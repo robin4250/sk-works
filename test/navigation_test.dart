@@ -10,9 +10,14 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const SkWorksApp());
-    await tester.tap(find.text(menu));
+
+    final menuFinder = find.text(menu);
+    await tester.ensureVisible(menuFinder);
+    await tester.pump();
+    await tester.tap(menuFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
+
     expect(find.text(expected), findsWidgets);
   }
 
