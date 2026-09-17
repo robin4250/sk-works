@@ -9,6 +9,7 @@ import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
 class SkWorksApp extends StatelessWidget {
@@ -49,7 +50,9 @@ class HomePage extends StatelessWidget {
           ? const PeopleCloudPage()
           : const PeoplePage(),
       'qualifications' => const QualificationPage(),
-      'sites' => const SitePage(),
+      'sites' => SupabaseBackend.isInitialized
+          ? const SiteCloudPage()
+          : const SitePage(),
       'attendance' => const AttendancePage(),
       'invoices' => const InvoicePage(),
       'settings' => const SettingsPage(),
