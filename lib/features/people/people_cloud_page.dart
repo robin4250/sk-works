@@ -177,7 +177,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
     if (draft == null || _repository == null) return;
     try {
-      final row = await _repository!.insert(draft.toJson());
+      final row = await _repository.insert(draft.toJson());
       final saved = PersonRecord.fromJson(row);
       if (!mounted) return;
       setState(() => _records.insert(0, saved));
