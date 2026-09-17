@@ -9,6 +9,7 @@ import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
+import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/sites/site_cloud_page.dart';
@@ -51,7 +52,9 @@ class HomePage extends StatelessWidget {
       'people' => SupabaseBackend.isInitialized
           ? const PeopleCloudPage()
           : const PeoplePage(),
-      'qualifications' => const QualificationPage(),
+      'qualifications' => SupabaseBackend.isInitialized
+          ? const QualificationCloudPage()
+          : const QualificationPage(),
       'sites' => SupabaseBackend.isInitialized
           ? const SiteCloudPage()
           : const SitePage(),
