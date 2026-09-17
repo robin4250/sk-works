@@ -1,0 +1,21 @@
+workflows:
+  sk-works-ios:
+    name: SK WORKS iOS Build
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Create native Flutter project files
+        script: |
+          flutter create . --platforms=ios,android --project-name sk_works --org com.skworks
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze
+      - name: Run tests
+        script: flutter test
+      - name: Build iOS without signing
+        script: flutter build ios --release --no-codesign
+    artifacts:
+      - build/ios/iphoneos/Runner.app
