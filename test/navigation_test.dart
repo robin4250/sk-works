@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/main.dart';
@@ -12,8 +13,12 @@ void main() {
     await tester.pumpWidget(const SkWorksApp());
 
     final menuFinder = find.text(menu);
-    await tester.ensureVisible(menuFinder);
-    await tester.pump();
+    if (menuFinder.evaluate().isEmpty) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+      await tester.pump();
+    }
+
+    expect(menuFinder, findsOneWidget);
     await tester.tap(menuFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
