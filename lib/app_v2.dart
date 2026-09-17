@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart' as legacy;
 import 'data/supabase_backend.dart';
+import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/invoices/invoice_page.dart';
@@ -53,7 +54,9 @@ class HomePage extends StatelessWidget {
       'sites' => SupabaseBackend.isInitialized
           ? const SiteCloudPage()
           : const SitePage(),
-      'attendance' => const AttendancePage(),
+      'attendance' => SupabaseBackend.isInitialized
+          ? const AttendanceCloudPage()
+          : const AttendancePage(),
       'invoices' => const InvoicePage(),
       'settings' => const SettingsPage(),
       _ => legacy.ModulePage(module: module),
