@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart' as legacy;
+import 'features/attendance/attendance_page.dart';
+import 'features/invoices/invoice_page.dart';
 import 'features/people/people_page.dart';
+import 'features/qualifications/qualification_page.dart';
+import 'features/settings/settings_page.dart';
+import 'features/sites/site_page.dart';
 
 class SkWorksApp extends StatelessWidget {
   const SkWorksApp({super.key});
@@ -28,6 +33,18 @@ class SkWorksApp extends StatelessWidget {
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
+
+  Widget _pageFor(legacy.ModuleDefinition module) {
+    return switch (module.storageKey) {
+      'people' => const PeoplePage(),
+      'qualifications' => const QualificationPage(),
+      'sites' => const SitePage(),
+      'attendance' => const AttendancePage(),
+      'invoices' => const InvoicePage(),
+      'settings' => const SettingsPage(),
+      _ => legacy.ModulePage(module: module),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,11 +93,7 @@ class HomePage extends StatelessWidget {
                     subtitle: Text(module.subtitle),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => module.storageKey == 'people'
-                            ? const PeoplePage()
-                            : legacy.ModulePage(module: module),
-                      ),
+                      MaterialPageRoute(builder: (_) => _pageFor(module)),
                     ),
                   ),
                 ),
