@@ -7,6 +7,7 @@ import 'features/attendance/attendance_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
+import 'features/notes/notes_cloud_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
@@ -127,6 +128,26 @@ class HomePage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => _pageFor(module)),
+                    ),
+                  ),
+                ),
+              ),
+            if (SupabaseBackend.isInitialized)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.sticky_note_2_outlined),
+                    ),
+                    title: const Text(
+                      'ノート',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('グループ・現場ごとの連絡事項や引継ぎを管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const NotesCloudPage()),
                     ),
                   ),
                 ),
