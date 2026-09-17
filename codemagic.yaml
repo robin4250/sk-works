@@ -9,6 +9,14 @@ workflows:
       - name: Create native Flutter project files
         script: |
           flutter create . --platforms=ios,android --project-name sk_works --org com.skworks
+      - name: Configure iOS runtime permissions
+        script: |
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string SK WORKS uses your location only when you explicitly confirm attendance or departure." ios/Runner/Info.plist || \
+          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription SK WORKS uses your location only when you explicitly confirm attendance or departure." ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string SK WORKS uses the camera only when you choose to attach an attendance or work photo." ios/Runner/Info.plist || \
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription SK WORKS uses the camera only when you choose to attach an attendance or work photo." ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string SK WORKS accesses your photo library only when you choose photos to upload." ios/Runner/Info.plist || \
+          /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription SK WORKS accesses your photo library only when you choose photos to upload." ios/Runner/Info.plist
       - name: Get Flutter packages
         script: flutter pub get
       - name: Analyze
