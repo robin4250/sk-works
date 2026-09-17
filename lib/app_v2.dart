@@ -5,6 +5,7 @@ import 'data/supabase_backend.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/auth/auth_gate.dart';
+import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
@@ -57,7 +58,9 @@ class HomePage extends StatelessWidget {
       'attendance' => SupabaseBackend.isInitialized
           ? const AttendanceCloudPage()
           : const AttendancePage(),
-      'invoices' => const InvoicePage(),
+      'invoices' => SupabaseBackend.isInitialized
+          ? const InvoiceCloudPage()
+          : const InvoicePage(),
       'settings' => const SettingsPage(),
       _ => legacy.ModulePage(module: module),
     };
