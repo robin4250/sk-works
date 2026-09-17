@@ -5,6 +5,7 @@ import 'data/supabase_backend.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/invoices/invoice_page.dart';
+import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
@@ -44,7 +45,9 @@ class HomePage extends StatelessWidget {
 
   Widget _pageFor(legacy.ModuleDefinition module) {
     return switch (module.storageKey) {
-      'people' => const PeoplePage(),
+      'people' => SupabaseBackend.isInitialized
+          ? const PeopleCloudPage()
+          : const PeoplePage(),
       'qualifications' => const QualificationPage(),
       'sites' => const SitePage(),
       'attendance' => const AttendancePage(),
