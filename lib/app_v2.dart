@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart' as legacy;
 import 'data/supabase_backend.dart';
+import 'features/albums/albums_cloud_page.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/auth/auth_gate.dart';
@@ -132,7 +133,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
-            if (SupabaseBackend.isInitialized)
+            if (SupabaseBackend.isInitialized) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -152,6 +153,26 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.photo_album_outlined),
+                    ),
+                    title: const Text(
+                      'アルバム',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('グループ・現場ごとの写真をアルバムで管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AlbumsCloudPage()),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
