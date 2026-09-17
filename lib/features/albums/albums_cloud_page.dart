@@ -160,11 +160,14 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
                                     : Text(album['description'].toString()),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () async {
+                                  final repository = _repository;
+                                  final groupId = _selectedGroupId;
+                                  if (repository == null || groupId == null) return;
                                   final changed = await Navigator.of(context).push<bool>(
                                     MaterialPageRoute(
                                       builder: (_) => AlbumDetailPage(
-                                        repository: _repository,
-                                        groupId: _selectedGroupId!,
+                                        repository: repository,
+                                        groupId: groupId,
                                         album: album,
                                       ),
                                     ),
