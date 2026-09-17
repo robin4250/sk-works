@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const SkWorksApp());
@@ -17,10 +20,7 @@ class SkWorksApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF4F6F8),
-        cardTheme: const CardThemeData(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-        ),
+        cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
         inputDecorationTheme: const InputDecorationTheme(
           border: OutlineInputBorder(),
         ),
@@ -35,6 +35,7 @@ class HomePage extends StatelessWidget {
 
   static final List<ModuleDefinition> modules = [
     ModuleDefinition(
+      storageKey: 'people',
       title: '社員・協力会社',
       subtitle: '社員・下請け会社・作業員を管理',
       icon: Icons.people_alt_outlined,
@@ -45,6 +46,7 @@ class HomePage extends StatelessWidget {
       ],
     ),
     ModuleDefinition(
+      storageKey: 'qualifications',
       title: '資格管理',
       subtitle: '資格マスターと保有資格を管理',
       icon: Icons.badge_outlined,
@@ -55,6 +57,7 @@ class HomePage extends StatelessWidget {
       ],
     ),
     ModuleDefinition(
+      storageKey: 'sites',
       title: '現場管理',
       subtitle: '現場情報・担当者・進捗を管理',
       icon: Icons.apartment_outlined,
@@ -65,6 +68,7 @@ class HomePage extends StatelessWidget {
       ],
     ),
     ModuleDefinition(
+      storageKey: 'attendance',
       title: '勤怠・人工',
       subtitle: '出面・人工・残業などを記録',
       icon: Icons.schedule_outlined,
@@ -75,6 +79,7 @@ class HomePage extends StatelessWidget {
       ],
     ),
     ModuleDefinition(
+      storageKey: 'invoices',
       title: '請求管理',
       subtitle: '得意先・現場別の請求を管理',
       icon: Icons.receipt_long_outlined,
@@ -85,6 +90,7 @@ class HomePage extends StatelessWidget {
       ],
     ),
     ModuleDefinition(
+      storageKey: 'settings',
       title: '設定',
       subtitle: '会社情報・各種マスターを設定',
       icon: Icons.settings_outlined,
@@ -156,9 +162,7 @@ class HomePage extends StatelessWidget {
   }
 
   void _showInfo(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -247,6 +251,7 @@ class _StatusStrip extends StatelessWidget {
 
 class ModuleDefinition {
   ModuleDefinition({
+    required this.storageKey,
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -254,6 +259,7 @@ class ModuleDefinition {
     required this.samples,
   });
 
+  final String storageKey;
   final String title;
   final String subtitle;
   final IconData icon;
@@ -271,13 +277,55 @@ class ModulePage extends StatefulWidget {
 }
 
 class _ModulePageState extends State<ModulePage> {
-  late final List<List<String>> records;
+  final List<List<String>> records = [];
+  final SharedPreferencesAsync prefs = SharedPreferencesAsync();
+  bool loading = true;
   String query = '';
+
+  String get storageKey => 'sk_works_${widget.module.storageKey}_v1';
 
   @override
   void initState() {
     super.initState();
-    records = widget.module.samples.map((row) => List<String>.from(row)).toList();
+    _loadRecords();
+  }
+
+  Future<void> _loadRecords() async {
+    List<List<String>> loaded = [];
+    try {
+      final raw = await prefs.getString(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        loaded = decoded
+            .map((row) => (row as List<dynamic>).map((e) => e.toString()).toList())
+            .toList();
+      }
+    } catch (_) {
+      loaded = [];
+    }
+
+    if (loaded.isEmpty) {
+      loaded = widget.module.samples.map((row) => List<String>.from(row)).toList();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      records
+        ..clear()
+        ..addAll(loaded);
+      loading = false;
+    });
+  }
+
+  Future<void> _saveRecords() async {
+    try {
+      await prefs.setString(storageKey, jsonEncode(records));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('端末保存に失敗しました。入力内容は現在の画面には残っています。')),
+      );
+    }
   }
 
   @override
@@ -291,7 +339,7 @@ class _ModulePageState extends State<ModulePage> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.module.title)),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addRecord,
+        onPressed: loading ? null : _addRecord,
         icon: const Icon(Icons.add),
         label: const Text('新規登録'),
       ),
@@ -309,30 +357,34 @@ class _ModulePageState extends State<ModulePage> {
               ),
             ),
             Expanded(
-              child: filtered.isEmpty
-                  ? const Center(child: Text('該当するデータがありません'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final row = filtered[index];
-                        return Card(
-                          child: ListTile(
-                            title: Text(
-                              row.first,
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(row.skip(1).where((e) => e.isNotEmpty).join(' / ')),
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => _showDetails(row),
-                          ),
-                        );
-                      },
-                    ),
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtered.isEmpty
+                      ? const Center(child: Text('該当するデータがありません'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final row = filtered[index];
+                            return Card(
+                              child: ListTile(
+                                title: Text(
+                                  row.first,
+                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    row.skip(1).where((e) => e.isNotEmpty).join(' / '),
+                                  ),
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _showDetails(row),
+                              ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -351,6 +403,7 @@ class _ModulePageState extends State<ModulePage> {
     );
     if (result != null) {
       setState(() => records.insert(0, result));
+      await _saveRecords();
     }
   }
 
@@ -421,8 +474,10 @@ class _ModulePageState extends State<ModulePage> {
     );
   }
 
-  void _deleteRecord(List<String> row) {
+  Future<void> _deleteRecord(List<String> row) async {
     setState(() => records.remove(row));
+    await _saveRecords();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('データを削除しました')),
     );
@@ -450,10 +505,7 @@ class _RecordFormPageState extends State<RecordFormPage> {
   @override
   void initState() {
     super.initState();
-    controllers = List.generate(
-      widget.fields.length,
-      (_) => TextEditingController(),
-    );
+    controllers = List.generate(widget.fields.length, (_) => TextEditingController());
   }
 
   @override
