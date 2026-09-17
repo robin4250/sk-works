@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart' as legacy;
+import 'data/supabase_backend.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/auth/auth_gate.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/people/people_page.dart';
 import 'features/qualifications/qualification_page.dart';
@@ -26,13 +28,19 @@ class SkWorksApp extends StatelessWidget {
           border: OutlineInputBorder(),
         ),
       ),
-      home: const HomePage(),
+      home: SupabaseBackend.isInitialized
+          ? SupabaseAuthGate(
+              homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
+            )
+          : const HomePage(),
     );
   }
 }
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.onSignOut});
+
+  final VoidCallback? onSignOut;
 
   Widget _pageFor(legacy.ModuleDefinition module) {
     return switch (module.storageKey) {
@@ -49,7 +57,17 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('SK WORKS')),
+      appBar: AppBar(
+        title: const Text('SK WORKS'),
+        actions: [
+          if (onSignOut != null)
+            IconButton(
+              tooltip: 'ログアウト',
+              onPressed: onSignOut,
+              icon: const Icon(Icons.logout),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
