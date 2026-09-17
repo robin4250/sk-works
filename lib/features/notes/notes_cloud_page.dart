@@ -42,7 +42,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
     }
 
     try {
-      final groups = await _repository!.loadGroups();
+      final groups = await _repository.loadGroups();
       if (!mounted) return;
       setState(() {
         _groups = groups;
@@ -67,7 +67,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
       _error = null;
     });
     try {
-      final notes = await _repository!.loadNotes(groupId);
+      final notes = await _repository.loadNotes(groupId);
       if (!mounted) return;
       setState(() {
         _notes = notes;
@@ -118,7 +118,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                       )
                     else ...[
                       DropdownButtonFormField<String>(
-                        value: _selectedGroupId,
+                        initialValue: _selectedGroupId,
                         decoration: const InputDecoration(
                           labelText: 'グループ / 現場',
                           prefixIcon: Icon(Icons.groups_outlined),
@@ -209,8 +209,8 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
     if (result == null || _repository == null || _selectedGroupId == null) return;
 
     try {
-      await _repository!.insertNote(
-        groupId: _selectedGroupId!,
+      await _repository.insertNote(
+        groupId: _selectedGroupId,
         title: result.title,
         body: result.body,
         isPinned: result.isPinned,
