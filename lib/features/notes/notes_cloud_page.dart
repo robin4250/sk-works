@@ -210,7 +210,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
     try {
       await _repository.insertNote(
-        groupId: _selectedGroupId,
+        groupId: _selectedGroupId!,
         title: result.title,
         body: result.body,
         isPinned: result.isPinned,
