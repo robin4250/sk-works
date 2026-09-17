@@ -25,7 +25,7 @@ class SupabaseBackend {
 
     await Supabase.initialize(
       url: SupabaseBackendConfig.url,
-      anonKey: SupabaseBackendConfig.publishableKey,
+      publishableKey: SupabaseBackendConfig.publishableKey,
     );
     _initialized = true;
   }
