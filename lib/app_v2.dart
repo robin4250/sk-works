@@ -5,6 +5,7 @@ import 'data/supabase_backend.dart';
 import 'features/albums/albums_cloud_page.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_verification_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
@@ -134,6 +135,25 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             if (SupabaseBackend.isInitialized) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.how_to_reg_outlined),
+                    ),
+                    title: const Text(
+                      '出勤・退勤確認',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('手動 / 位置情報 / 位置情報＋写真で勤務を確認'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AttendanceVerificationPage()),
+                    ),
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
