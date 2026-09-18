@@ -134,12 +134,155 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _createGroup() async {
+    final repository = _repository;
+    if (repository == null) return;
+
+    List<Map<String, dynamic>> sites;
+    try {
+      sites = await repository.loadSites();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('現場一覧を読み込めませんでした: $error')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final nameController = TextEditingController();
+    var scope = 'company';
+    String? siteId;
+
+    final draft = await showDialog<({String name, String? siteId})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('通信グループ作成'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'グループ名',
+                    hintText: '例: 東京海上 / 全社連絡',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: scope,
+                  decoration: const InputDecoration(labelText: '種類'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'company',
+                      child: Text('全社・共通グループ'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'site',
+                      child: Text('現場グループ'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(() {
+                      scope = value;
+                      if (scope == 'company') siteId = null;
+                    });
+                  },
+                ),
+                if (scope == 'site') ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: siteId,
+                    decoration: const InputDecoration(labelText: '現場'),
+                    items: sites
+                        .map(
+                          (site) => DropdownMenuItem<String>(
+                            value: site['id'] as String,
+                            child: Text(site['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setDialogState(() => siteId = value),
+                  ),
+                  if (sites.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('先に現場管理で現場を登録してください。'),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: scope == 'site' && siteId == null
+                  ? null
+                  : () {
+                      final name = nameController.text.trim();
+                      if (name.isEmpty) return;
+                      Navigator.pop(
+                        dialogContext,
+                        (name: name, siteId: scope == 'site' ? siteId : null),
+                      );
+                    },
+              child: const Text('作成'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameController.dispose();
+
+    if (draft == null) return;
+
+    try {
+      final created = await repository.createGroup(
+        name: draft.name,
+        siteId: draft.siteId,
+      );
+      final createdId = created['id']?.toString();
+      await _load();
+      if (!mounted) return;
+      if (createdId != null) {
+        setState(() => _selectedGroupId = createdId);
+        await _subscribeToSelectedGroup();
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('通信グループを作成しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('通信グループを作成できませんでした: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedGroup = _selectedGroup;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('チャット')),
+      appBar: AppBar(
+        title: const Text('チャット'),
+        actions: [
+          IconButton(
+            tooltip: '通信グループ作成',
+            onPressed: _loading ? null : _createGroup,
+            icon: const Icon(Icons.group_add_outlined),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())

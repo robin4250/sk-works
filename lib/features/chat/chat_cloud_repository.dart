@@ -61,6 +61,62 @@ class ChatCloudRepository {
     }).toList();
   }
 
+  Future<List<Map<String, dynamic>>> loadSites() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('sites')
+        .select('id, name, status')
+        .eq('company_id', companyId)
+        .order('name');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createGroup({
+    required String name,
+    String? siteId,
+  }) async {
+    final companyId = await _companyId();
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw StateError('グループ名を入力してください。');
+    }
+
+    final duplicateName = await _client
+        .from('communication_groups')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('name', trimmedName)
+        .limit(1);
+    if (duplicateName.isNotEmpty) {
+      throw StateError('同じグループ名がすでにあります。');
+    }
+
+    if (siteId != null) {
+      final existingSiteGroup = await _client
+          .from('communication_groups')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('site_id', siteId)
+          .limit(1);
+      if (existingSiteGroup.isNotEmpty) {
+        throw StateError('この現場にはすでに通信グループがあります。');
+      }
+    }
+
+    final row = await _client
+        .from('communication_groups')
+        .insert({
+          'company_id': companyId,
+          'site_id': siteId,
+          'name': trimmedName,
+          'group_type': siteId == null ? 'company' : 'site',
+        })
+        .select('id, name, site_id, group_type')
+        .single();
+
+    return Map<String, dynamic>.from(row);
+  }
+
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
     return _client
         .from('chat_messages')
