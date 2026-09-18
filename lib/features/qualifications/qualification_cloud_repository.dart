@@ -44,7 +44,7 @@ class QualificationCloudRepository {
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
     if (user == null) {
-      throw StateError('SK WORKSへのログインが必要です。');
+      throw StateError('SKOへのログインが必要です。');
     }
     final rows = await _client
         .from('company_members')
