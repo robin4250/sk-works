@@ -562,6 +562,7 @@ class _LineBindingStatus extends StatelessWidget {
     final present = group['line_binding_present'] == true;
     final enabled = group['line_binding_enabled'] == true;
     final displayName = group['line_binding_name']?.toString().trim();
+    final canManage = group['line_binding_can_manage'] == true;
 
     late final String title;
     late final String detail;
@@ -592,15 +593,17 @@ class _LineBindingStatus extends StatelessWidget {
         leading: Icon(icon),
         title: Text(title),
         subtitle: Text(detail),
-        trailing: enabled
-            ? TextButton(
-                onPressed: onDisable,
-                child: const Text('停止'),
-              )
-            : FilledButton.tonal(
-                onPressed: onStartClaim,
-                child: Text(present ? '再連携' : '連携する'),
-              ),
+        trailing: !canManage
+            ? null
+            : enabled
+                ? TextButton(
+                    onPressed: onDisable,
+                    child: const Text('停止'),
+                  )
+                : FilledButton.tonal(
+                    onPressed: onStartClaim,
+                    child: Text(present ? '再連携' : '連携する'),
+                  ),
       ),
     );
   }
