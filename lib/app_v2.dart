@@ -14,6 +14,7 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
+import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
@@ -152,6 +153,27 @@ class HomePage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const AttendanceVerificationPage()),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.document_scanner_outlined),
+                    ),
+                    title: const Text(
+                      '資格証写真',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('登録済み資格に資格証の写真を安全に保存'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const QualificationCertificatePage(),
+                      ),
                     ),
                   ),
                 ),
