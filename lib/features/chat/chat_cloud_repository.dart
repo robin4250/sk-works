@@ -80,16 +80,17 @@ class ChatCloudRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
-    await _client.from('communication_messages').insert({
+    await _client.from('chat_messages').insert({
       'company_id': companyId,
-      'group_id': groupId,
+      'communication_group_id': groupId,
       'body': text,
-      'origin': 'sko',
-      'created_by': user.id,
+      'origin': 'sk_works',
+      'sender_user_id': user.id,
+      'sender_display_name': user.email,
     });
   }
 
   Future<void> deleteOwnMessage(String id) async {
-    await _client.from('communication_messages').delete().eq('id', id);
+    await _client.from('chat_messages').delete().eq('id', id);
   }
 }
