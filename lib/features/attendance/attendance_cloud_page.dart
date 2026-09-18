@@ -14,6 +14,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
   final _repository = AttendanceCloudRepository.maybeCreate();
   final _entries = <AttendanceEntry>[];
   bool _loading = true;
+  bool _canManageAttendanceEntries = false;
   String _query = '';
   String? _error;
 
@@ -34,13 +35,18 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       return;
     }
     try {
-      final rows = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageAttendanceEntries(),
+      ]);
+      final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(AttendanceEntry.fromJson).toList();
       if (!mounted) return;
       setState(() {
         _entries
           ..clear()
           ..addAll(loaded);
+        _canManageAttendanceEntries = values[1] as bool;
         _loading = false;
         _error = null;
       });
@@ -84,7 +90,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _add,
+        onPressed: _loading || !_canManageAttendanceEntries ? null : _add,
         icon: const Icon(Icons.add),
         label: const Text('出面入力'),
       ),
@@ -197,14 +203,15 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
               if (entry.allowanceYen != 0) Text('手当: ¥${entry.allowanceYen}'),
               if (entry.notes.isNotEmpty) Text('備考: ${entry.notes}'),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(sheetContext);
-                  await _delete(entry);
-                },
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('削除'),
-              ),
+              if (_canManageAttendanceEntries)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _delete(entry);
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('削除'),
+                ),
             ],
           ),
         ),
