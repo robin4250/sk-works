@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import 'line_attendance_candidate_parser.dart';
 import 'line_attendance_reference_matcher.dart';
+import 'line_attendance_status_parser.dart';
 import 'line_history_parser.dart';
 import 'today_line_attendance_repository.dart';
 
@@ -18,6 +19,7 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
   final _referenceRepository = AttendanceVerificationRepository.maybeCreate();
   final _candidateParser = const LineAttendanceCandidateParser();
   final _matcher = const LineAttendanceReferenceMatcher();
+  final _statusParser = const LineAttendanceStatusParser();
 
   bool _loading = true;
   String? _error;
@@ -107,6 +109,25 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
           ),
         )
         .toList(growable: false);
+
+    final statusRows = <_EvaluatedStatus>[];
+    for (final message in _messages) {
+      final body = message['body']?.toString() ?? '';
+      final sentAt = DateTime.tryParse(message['sent_at']?.toString() ?? '');
+      if (body.trim().isEmpty || sentAt == null) continue;
+      for (final status in _statusParser.parse(body)) {
+        statusRows.add(
+          _EvaluatedStatus(
+            status: status,
+            siteMatch: _matcher.match(
+              input: status.siteName,
+              candidates: siteNames,
+            ),
+            sourceTimestamp: sentAt.toLocal(),
+          ),
+        );
+      }
+    }
 
     final matchedCount = evaluated.where((item) => item.isFullyMatched).length;
     final needsReviewCount = evaluated.length - matchedCount;
@@ -254,6 +275,50 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
                         ),
                       ),
                   ],
+                  if (statusRows.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      '勤務状況プレビュー',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (final item in statusRows)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Icon(
+                                item.siteMatch.isMatched
+                                    ? Icons.schedule
+                                    : Icons.priority_high,
+                              ),
+                            ),
+                            title: Text(
+                              item.status.siteName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(item.detailText),
+                            trailing: Text(
+                              _formatTime(item.sourceTimestamp),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          '定時・残業・早出・夜勤・鉄骨の表記は読み取り専用プレビューです。正式な勤怠・請求計算にはまだ自動反映しません。',
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   const Card(
                     child: Padding(
@@ -277,7 +342,7 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
     return LineHistoryMessage(
       timestamp: createdAt.toLocal(),
       sender: row['sender_display_name']?.toString().trim().isNotEmpty == true
-          ? row['external_sender_name'].toString()
+          ? row['sender_display_name'].toString()
           : 'LINE',
       body: body,
     );
@@ -331,6 +396,48 @@ class _EvaluatedCandidate {
     }
 
     return parts.join(' / ');
+  }
+}
+
+class _EvaluatedStatus {
+  const _EvaluatedStatus({
+    required this.status,
+    required this.siteMatch,
+    required this.sourceTimestamp,
+  });
+
+  final LineAttendanceStatus status;
+  final LineReferenceMatch siteMatch;
+  final DateTime sourceTimestamp;
+
+  String get detailText {
+    final parts = <String>[];
+
+    if (status.isRegularTime) parts.add('定時');
+    if (status.overtimeHours > 0) {
+      parts.add('残業${_formatHours(status.overtimeHours)}h');
+    }
+    if (status.earlyHours > 0) {
+      parts.add('早出${_formatHours(status.earlyHours)}h');
+    }
+    if (status.isNightWork) parts.add('夜勤');
+    if (status.hasSteelAllowance) parts.add('鉄骨');
+    if (parts.isEmpty) parts.add('勤務状況');
+
+    if (siteMatch.isMatched) {
+      parts.add('現場: 登録済み');
+    } else if (siteMatch.isAmbiguous) {
+      parts.add('現場: 同名候補あり');
+    } else {
+      parts.add('現場: 未登録/表記違い');
+    }
+
+    return parts.join(' / ');
+  }
+
+  String _formatHours(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
   }
 }
 
