@@ -17,6 +17,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
+  bool _canManageMaster = false;
+  bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
   String _query = '';
   String? _error;
@@ -45,12 +47,19 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     }
 
     try {
-      final data = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageMaster(),
+        repository.canManageWorkerQualifications(),
+      ]);
+      final data = values[0] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
         _qualifications = List<Map<String, dynamic>>.from(data['qualifications'] as List);
+        _canManageMaster = values[1] as bool;
+        _canManageWorkerQualifications = values[2] as bool;
         _loading = false;
         _error = null;
       });
@@ -101,7 +110,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         actions: [
           IconButton(
             tooltip: '資格マスター追加',
-            onPressed: _loading ? null : _addMaster,
+            onPressed: _loading || !_canManageMaster ? null : _addMaster,
             icon: const Icon(Icons.library_add_outlined),
           ),
           IconButton(
@@ -117,7 +126,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _addQualification,
+        onPressed: _loading || !_canManageWorkerQualifications
+            ? null
+            : _addQualification,
         icon: const Icon(Icons.add_card),
         label: const Text('資格登録'),
       ),
@@ -159,8 +170,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                           ? _EmptyState(
                               hasMaster: _masters.isNotEmpty,
                               hasWorker: _workers.isNotEmpty,
-                              onAddMaster: _addMaster,
-                              onAddQualification: _addQualification,
+                              onAddMaster: _canManageMaster ? _addMaster : null,
+                              onAddQualification: _canManageWorkerQualifications
+                                  ? _addQualification
+                                  : null,
                             )
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
@@ -191,7 +204,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                       ].join(' / '),
                                     ),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(row, master, worker, status),
+                                    onTap: () => _showDetails(
+                                      row,
+                                      master,
+                                      worker,
+                                      status,
+                                    ),
                                   ),
                                 );
                               },
@@ -491,14 +509,15 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               if ((row['attachment_path']?.toString() ?? '').isNotEmpty)
                 const Text('証明書画像: 登録済み'),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(sheetContext);
-                  await _delete(row['id']?.toString() ?? '');
-                },
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('資格登録を削除'),
-              ),
+              if (_canManageWorkerQualifications)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _delete(row['id']?.toString() ?? '');
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('資格登録を削除'),
+                ),
             ],
           ),
         ),
@@ -578,8 +597,8 @@ class _EmptyState extends StatelessWidget {
 
   final bool hasMaster;
   final bool hasWorker;
-  final VoidCallback onAddMaster;
-  final VoidCallback onAddQualification;
+  final VoidCallback? onAddMaster;
+  final VoidCallback? onAddQualification;
 
   @override
   Widget build(BuildContext context) {
@@ -602,13 +621,13 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            if (!hasMaster)
+            if (!hasMaster && onAddMaster != null)
               FilledButton.icon(
                 onPressed: onAddMaster,
                 icon: const Icon(Icons.library_add_outlined),
                 label: const Text('資格マスター追加'),
               )
-            else if (hasWorker)
+            else if (hasWorker && onAddQualification != null)
               FilledButton.icon(
                 onPressed: onAddQualification,
                 icon: const Icon(Icons.add_card),
