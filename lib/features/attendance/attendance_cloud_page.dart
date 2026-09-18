@@ -75,7 +75,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('勤怠・人工'),
+        title: Text(_canManageAttendanceEntries ? '出勤・人工管理' : '出勤表'),
         actions: [
           IconButton(
             tooltip: '再読み込み',
@@ -92,7 +92,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loading || !_canManageAttendanceEntries ? null : _add,
         icon: const Icon(Icons.add),
-        label: const Text('出面入力'),
+        label: const Text('勤務を追加'),
       ),
       body: SafeArea(
         child: Column(
@@ -111,7 +111,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Expanded(child: _SummaryCard(label: '人工合計', value: _formatNumber(totalManDays))),
+                  Expanded(child: _SummaryCard(label: _canManageAttendanceEntries ? '人工合計' : '勤務日数', value: _formatNumber(totalManDays))),
                   const SizedBox(width: 8),
                   Expanded(child: _SummaryCard(label: '残業合計', value: '${_formatNumber(totalOvertime)}h')),
                 ],
@@ -124,7 +124,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
                   : _error != null
                       ? _ErrorState(message: _error!, onRetry: _load)
                       : filtered.isEmpty
-                          ? const Center(child: Text('勤怠データはまだありません'))
+                          ? const Center(child: Text('出勤記録はまだありません'))
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                               itemCount: filtered.length,
