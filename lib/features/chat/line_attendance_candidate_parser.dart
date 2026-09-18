@@ -52,6 +52,22 @@ class LineAttendanceCandidateParser {
       for (final line in lines.skip(1)) {
         if (_looksLikeStatusLine(line)) continue;
 
+        if (pendingSite != null && _looksLikeWorkerList(line) && !RegExp(r'[　\\s]').hasMatch(line)) {
+          for (final worker in _splitWorkers(line)) {
+            candidates.add(
+              LineAttendanceCandidate(
+                workDate: workDate,
+                siteName: pendingSite,
+                workerName: worker,
+                sourceSender: message.sender,
+                sourceTimestamp: message.timestamp,
+              ),
+            );
+          }
+          pendingSite = null;
+          continue;
+        }
+
         final parsed = _splitSiteAndWorkers(line);
         if (parsed != null) {
           final site = parsed.$1;
