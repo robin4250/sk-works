@@ -20,6 +20,10 @@ type LineWebhookBody = {
   events?: LineWebhookEvent[];
 };
 
+type LineGroupMemberProfile = {
+  displayName?: string;
+};
+
 const encoder = new TextEncoder();
 
 function decodeBase64(value: string): Uint8Array {
@@ -48,12 +52,50 @@ async function verifyLineSignature(
   );
 }
 
+async function loadLineGroupMemberDisplayName(
+  groupId: string,
+  userId: string,
+  channelAccessToken: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${channelAccessToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.warn(
+        'Could not enrich LINE sender profile',
+        response.status,
+        groupId,
+        userId,
+      );
+      return null;
+    }
+
+    const profile = (await response.json()) as LineGroupMemberProfile;
+    finalDisplayName: {
+      const displayName = profile.displayName?.trim();
+      if (!displayName) return null;
+      return displayName.slice(0, 200);
+    }
+  } catch (error) {
+    console.warn('Could not enrich LINE sender profile', error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
   const channelSecret = Deno.env.get('LINE_CHANNEL_SECRET');
+  const channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -127,6 +169,15 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    const externalSenderId = event.source.userId ?? null;
+    const externalSenderName =
+      externalSenderId && channelAccessToken
+        ? await loadLineGroupMemberDisplayName(
+            lineGroupId,
+            externalSenderId,
+            channelAccessToken,
+          )
+        : null;
     const createdAt = event.timestamp
       ? new Date(event.timestamp).toISOString()
       : new Date().toISOString();
@@ -139,8 +190,8 @@ Deno.serve(async (req) => {
         body: text.slice(0, 5000),
         origin: 'line',
         external_message_id: externalMessageId,
-        external_sender_id: event.source.userId ?? null,
-        external_sender_name: null,
+        external_sender_id: externalSenderId,
+        external_sender_name: externalSenderName,
         created_by: null,
         created_at: createdAt,
       });
