@@ -31,12 +31,34 @@ class ChatCloudRepository {
 
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final companyId = await _companyId();
-    final rows = await _client
+    final groupRows = await _client
         .from('communication_groups')
         .select('id, name, site_id, group_type')
         .eq('company_id', companyId)
         .order('name');
-    return List<Map<String, dynamic>>.from(rows);
+    final bindingRows = await _client
+        .from('line_group_bindings')
+        .select('communication_group_id, display_name, is_enabled')
+        .eq('company_id', companyId);
+
+    final bindingsByGroup = <String, Map<String, dynamic>>{};
+    for (final binding in List<Map<String, dynamic>>.from(bindingRows)) {
+      final groupId = binding['communication_group_id']?.toString();
+      if (groupId != null) {
+        bindingsByGroup[groupId] = binding;
+      }
+    }
+
+    return List<Map<String, dynamic>>.from(groupRows).map((group) {
+      final groupId = group['id']?.toString();
+      final binding = groupId == null ? null : bindingsByGroup[groupId];
+      return <String, dynamic>{
+        ...group,
+        'line_binding_present': binding != null,
+        'line_binding_enabled': binding?['is_enabled'] == true,
+        'line_binding_name': binding?['display_name'],
+      };
+    }).toList();
   }
 
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
