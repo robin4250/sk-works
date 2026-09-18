@@ -161,24 +161,34 @@ class _HomePageState extends State<HomePage> {
     switch (key) {
       case 'attendance_verify':
         page = const AttendanceVerificationPage();
+        break;
       case 'qualification_certificates':
         page = const QualificationCertificatePage();
+        break;
       case 'documents':
         page = const WorkerDocumentPage();
+        break;
       case 'chat':
         page = const ChatCloudPage();
+        break;
       case 'today_line':
         page = const TodayLineAttendancePage();
+        break;
       case 'line_history':
         page = const LineHistoryPreviewPage();
+        break;
       case 'rollout':
         page = const RolloutReadinessPage();
+        break;
       case 'notes':
         page = const NotesCloudPage();
+        break;
       case 'albums':
         page = const AlbumsCloudPage();
+        break;
       case 'settings':
         page = const SettingsPage();
+        break;
       default:
         for (final module in legacy.HomePage.modules) {
           if (module.storageKey == key) {
