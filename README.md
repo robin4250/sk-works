@@ -1,24 +1,36 @@
 # SKO
 
-SKO is a Flutter-based company and work management app. The product brand is centralized in code so customer-facing naming can evolve without renaming compatibility-sensitive persistence, package, backend, or integration identifiers.
+SKO is a Flutter-based company and work management app. The customer-facing brand is centralized so naming can evolve without renaming compatibility-sensitive package, database, backend, or integration identifiers.
 
-## Current prototype
+## Current implementation
 
-The app currently includes interactive prototype screens for:
+The app now includes authenticated Supabase-backed workflows for:
 
-- Employees and partner companies
-- Qualification management
-- Site/project management
-- Attendance and man-day tracking
-- Invoice management
-- Company/master settings
+- Employees / partner companies
+- Qualifications and certificate photos
+- Sites / projects
+- Attendance and optional verification
+- Customer / site-level invoice data
+- Site/company communication groups and realtime chat
+- Notes and photo albums
+- LINE webhook staging, explicit LINE-group binding, and LINE attendance previews
+- Required-document checks
+- Company settings and October rollout readiness
 
-Each module currently supports list display, search, record creation, detail viewing, and deletion using in-memory sample data.
+Local storage remains only for prototype/offline-compatible paths and lightweight preferences where applicable.
 
-## Important current limitation
+## Production safety
 
-Data is not persisted yet. Records added in the prototype are cleared when the app is restarted. Persistent storage, authentication, cloud sync, document/photo storage, detailed invoicing calculations, and production permissions will be added in later stages.
+- Company data is scoped through Supabase RLS and company membership.
+- LINE groups remain pending until an owner/admin explicitly proves control and activates a binding.
+- LINE-derived attendance remains candidate/preview data until identities and work records are confirmed.
+- Disabling an optional module hides the workflow without deleting its historical data.
+- Sensitive service-role webhook writes remain server-side.
+
+## Brand compatibility
+
+The product name shown to users is **SKO**. Internal compatibility identifiers such as the Dart package name `sk_works`, repository name, persistence keys, database identifiers, webhook URLs, and environment variable names are intentionally migrated only when a compatibility plan exists.
 
 ## Build
 
-Codemagic configuration is included in `codemagic.yaml`. The workflow creates the native iOS/Android project files, gets packages, analyzes the project, runs tests, and builds an unsigned iOS release app.
+GitHub Actions / Flutter CI analyzes the project, runs tests, and builds an Android debug APK for validation. Additional release workflows can be added when distribution credentials and release targets are finalized.
