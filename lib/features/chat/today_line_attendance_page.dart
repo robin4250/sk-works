@@ -186,14 +186,14 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
                       Expanded(
                         child: _SummaryCard(
                           label: '登録済みと一致',
-                          value: '${matchedCount}件',
+                          value: '$matchedCount件',
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: _SummaryCard(
                           label: '要確認',
-                          value: '${needsReviewCount}件',
+                          value: '$needsReviewCount件',
                         ),
                       ),
                     ],
