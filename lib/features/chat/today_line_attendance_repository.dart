@@ -42,7 +42,7 @@ class TodayLineAttendanceRepository {
     final rows = await _client
         .from('communication_messages')
         .select(
-          'id, body, origin, external_sender_name, created_at, communication_groups(name)',
+          'id, body, origin, external_sender_name, created_at',
         )
         .eq('company_id', companyId)
         .eq('origin', 'line')
