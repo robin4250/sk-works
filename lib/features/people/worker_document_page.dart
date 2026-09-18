@@ -492,7 +492,7 @@ class _RequirementTile extends StatelessWidget {
 
   final Map<String, dynamic> requirement;
   final Map<String, dynamic>? status;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
