@@ -84,6 +84,21 @@ Deno.serve(async (req: Request) => {
 
     if (!groupId || event?.type !== "message" || messageType !== "text" || !messageText) continue;
 
+    const claimMatch = messageText.match(/^\\s*SKO連携[\\s　]+([A-F0-9]{8})\\s*$/i);
+    if (claimMatch) {
+      const claimResp = await rest("rpc/complete_line_group_claim_for_line", {
+        method: "POST",
+        body: JSON.stringify({
+          p_claim_code: claimMatch[1].toUpperCase(),
+          p_line_group_id: groupId,
+        }),
+      });
+      if (!claimResp.ok) {
+        console.error("LINE binding claim failed", claimResp.status, await claimResp.text());
+      }
+      continue;
+    }
+
     const bindingResp = await rest(
       `line_group_bindings?line_group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&select=company_id,communication_group_id&limit=1`,
       { method: "GET", headers: { Prefer: "" } },
