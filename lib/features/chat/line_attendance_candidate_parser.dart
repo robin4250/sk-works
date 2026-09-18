@@ -137,7 +137,9 @@ class LineAttendanceCandidateParser {
   bool _looksLikeSiteOnly(String line) {
     if (_looksLikeStatusLine(line)) return false;
     if (line.length > 20) return false;
-    return !_looksLikeWorkerList(line);
+    if (RegExp(r'[　\s]').hasMatch(line)) return false;
+    if (RegExp(r'[、,，／/]').hasMatch(line)) return false;
+    return line.isNotEmpty;
   }
 
   bool _looksLikeWorkerList(String line) {
@@ -145,7 +147,11 @@ class LineAttendanceCandidateParser {
     if (line.contains('。') || line.contains('：') || line.contains(':')) {
       return false;
     }
-    return _splitWorkers(line).isNotEmpty;
+
+    // A standalone line is only treated as a worker list when it carries
+    // an explicit separator. A single bare token is ambiguous with a site
+    // name, so leave it unclassified rather than creating a false candidate.
+    return RegExp(r'[、,，／/]').hasMatch(line) && _splitWorkers(line).isNotEmpty;
   }
 
   List<String> _splitWorkers(String value) {
