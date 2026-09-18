@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'line_attendance_candidate_parser.dart';
 import 'line_history_parser.dart';
 import 'line_history_summary.dart';
 
@@ -13,6 +14,7 @@ class LineHistoryPreviewPage extends StatefulWidget {
 class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
   final _controller = TextEditingController();
   final _parser = const LineHistoryParser();
+  final _attendanceParser = const LineAttendanceCandidateParser();
 
   LineHistoryParseResult? _result;
 
@@ -34,6 +36,9 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
     final summary = result == null
         ? null
         : LineHistorySummary.fromMessages(messages);
+    final attendanceCandidates = result == null
+        ? const <LineAttendanceCandidate>[]
+        : _attendanceParser.parseMessages(messages);
 
     return Scaffold(
       appBar: AppBar(
@@ -138,6 +143,47 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
                           const SizedBox(height: 8),
                           Text('ほか ${summary.participantCount - 8} 人'),
                         ],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '出勤候補（確認用）',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '日付・現場・作業員が明確な記載だけを候補表示します。ここから出勤実績を自動確定することはありません。',
+                      ),
+                      const SizedBox(height: 12),
+                      if (attendanceCandidates.isEmpty)
+                        const Text('明確な出勤候補は検出されませんでした。')
+                      else ...[
+                        Text(
+                          '${attendanceCandidates.length}件の候補を検出',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 10),
+                        for (final candidate in attendanceCandidates.take(30))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              '${_formatDate(candidate.workDate)}  '
+                              '${candidate.siteName}  ${candidate.workerName}',
+                            ),
+                          ),
+                        if (attendanceCandidates.length > 30)
+                          Text('ほか ${attendanceCandidates.length - 30} 件あります。'),
                       ],
                     ],
                   ),
