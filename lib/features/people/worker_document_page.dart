@@ -174,7 +174,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                           const SizedBox(height: 8),
                           Expanded(
                             child: _requirements.isEmpty
-                                ? _EmptyState(onAddDefaults: _addDefaults)
+                                ? _EmptyState(
+                                    onAddDefaults:
+                                        _canManageRequirements ? _addDefaults : null,
+                                  )
                                 : ListView.separated(
                                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                                     itemCount: visibleRequirements.length,
@@ -632,7 +635,7 @@ class _RequirementTile extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onAddDefaults});
 
-  final VoidCallback onAddDefaults;
+  final VoidCallback? onAddDefaults;
 
   @override
   Widget build(BuildContext context) {
@@ -646,11 +649,12 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 12),
             const Text('必要書類の設定がまだありません'),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onAddDefaults,
-              icon: const Icon(Icons.playlist_add),
-              label: const Text('標準項目を追加'),
-            ),
+            if (onAddDefaults != null)
+              FilledButton.icon(
+                onPressed: onAddDefaults,
+                icon: const Icon(Icons.playlist_add),
+                label: const Text('標準項目を追加'),
+              ),
           ],
         ),
       ),
