@@ -31,6 +31,21 @@ class ChatCloudRepository {
 
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final companyId = await _companyId();
+    final user = _client.auth.currentUser;
+    final membershipRows = user == null
+        ? const <Map<String, dynamic>>[]
+        : List<Map<String, dynamic>>.from(
+            await _client
+                .from('company_members')
+                .select('role')
+                .eq('company_id', companyId)
+                .eq('user_id', user.id)
+                .limit(1),
+          );
+    final role = membershipRows.isEmpty
+        ? null
+        : membershipRows.first['role']?.toString();
+    final canManageLineBinding = role == 'owner' || role == 'admin';
     final groupRows = await _client
         .from('communication_groups')
         .select('id, name, site_id, group_type')
@@ -58,6 +73,7 @@ class ChatCloudRepository {
         'line_binding_enabled': binding?['status'] == 'active',
         'line_binding_id': binding?['id'],
         'line_binding_name': binding?['display_name'],
+        'line_binding_can_manage': canManageLineBinding,
       };
     }).toList();
   }
