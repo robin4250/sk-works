@@ -42,6 +42,26 @@ create unique index if not exists line_group_bindings_one_active_per_communicati
 alter table public.line_binding_claims enable row level security;
 alter table public.line_binding_audit enable row level security;
 
+drop policy if exists "company members can manage line bindings"
+  on public.line_group_bindings;
+drop policy if exists "company members can read line group bindings"
+  on public.line_group_bindings;
+drop policy if exists "company members can read line bindings"
+  on public.line_group_bindings;
+create policy "company members can read line bindings"
+on public.line_group_bindings
+for select
+to authenticated
+using (
+  company_id is not null
+  and exists (
+    select 1
+    from public.company_members cm
+    where cm.company_id = line_group_bindings.company_id
+      and cm.user_id = auth.uid()
+  )
+);
+
 drop policy if exists "owners and admins can read line binding claims"
   on public.line_binding_claims;
 create policy "owners and admins can read line binding claims"
@@ -189,10 +209,16 @@ begin
   end if;
 
   if v_claim.expires_at <= now() then
-    update public.line_binding_claims
-    set status = 'expired'
-    where id = v_claim.id;
     raise exception 'claim code expired';
+  end if;
+
+  if not exists (
+    select 1
+    from public.communication_groups cg
+    where cg.id = v_claim.communication_group_id
+      and cg.company_id = v_claim.company_id
+  ) then
+    raise exception 'communication group ownership changed';
   end if;
 
   select *
