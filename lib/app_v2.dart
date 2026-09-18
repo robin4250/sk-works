@@ -9,6 +9,7 @@ import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/chat/chat_cloud_page.dart';
+import 'features/chat/line_history_preview_page.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
@@ -213,6 +214,27 @@ class HomePage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const ChatCloudPage()),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.manage_search_outlined),
+                    ),
+                    title: const Text(
+                      'LINE履歴プレビュー',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('書き出したLINEトークを保存せずに解析・確認'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const LineHistoryPreviewPage(),
+                      ),
                     ),
                   ),
                 ),
