@@ -21,6 +21,7 @@ import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/settings/rollout_readiness_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
@@ -256,6 +257,27 @@ class HomePage extends StatelessWidget {
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const LineHistoryPreviewPage(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.checklist_rtl_outlined),
+                    ),
+                    title: const Text(
+                      '10月運用 準備チェック',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('作業員・現場・LINE連携など本番準備を確認'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RolloutReadinessPage(),
                       ),
                     ),
                   ),
