@@ -271,12 +271,12 @@ class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
 
   LineHistoryMessage? _toHistoryMessage(Map<String, dynamic> row) {
     final body = row['body']?.toString() ?? '';
-    final createdAt = DateTime.tryParse(row['created_at']?.toString() ?? '');
+    final createdAt = DateTime.tryParse(row['sent_at']?.toString() ?? '');
     if (body.trim().isEmpty || createdAt == null) return null;
 
     return LineHistoryMessage(
       timestamp: createdAt.toLocal(),
-      sender: row['external_sender_name']?.toString().trim().isNotEmpty == true
+      sender: row['sender_display_name']?.toString().trim().isNotEmpty == true
           ? row['external_sender_name'].toString()
           : 'LINE',
       body: body,
