@@ -40,15 +40,15 @@ class TodayLineAttendanceRepository {
     final localEnd = localStart.add(const Duration(days: 1));
 
     final rows = await _client
-        .from('communication_messages')
+        .from('chat_messages')
         .select(
-          'id, body, origin, external_sender_name, created_at',
+          'id, body, origin, sender_display_name, sent_at, created_at',
         )
         .eq('company_id', companyId)
         .eq('origin', 'line')
-        .gte('created_at', localStart.toUtc().toIso8601String())
-        .lt('created_at', localEnd.toUtc().toIso8601String())
-        .order('created_at');
+        .gte('sent_at', localStart.toUtc().toIso8601String())
+        .lt('sent_at', localEnd.toUtc().toIso8601String())
+        .order('sent_at');
 
     return List<Map<String, dynamic>>.from(rows);
   }
