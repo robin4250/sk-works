@@ -81,7 +81,9 @@ Some older checked-in migrations describe the earlier prototype tables `communic
 
 Do not rewrite already-applied historical migrations in place.
 
-When fresh-environment reproducibility is addressed, add a reconciliation / baseline migration strategy that produces the current production shape without destructive changes to production.
+Fresh-environment reproducibility is provided by `20260919010000_reconcile_chat_line_schema.sql`. It creates the production `chat_messages` shape, aligns the historical LINE binding table to the pending/active/disabled model, and leaves legacy prototype objects in place rather than destructively rewriting migration history.
+
+The older `communication_messages` table remains a historical compatibility object only. New application code and new migrations must treat `chat_messages` as authoritative.
 
 ## Security decisions to preserve
 
