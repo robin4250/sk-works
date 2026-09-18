@@ -84,7 +84,7 @@ Deno.serve(async (req: Request) => {
 
     if (!groupId || event?.type !== "message" || messageType !== "text" || !messageText) continue;
 
-    const claimMatch = messageText.match(/^\\s*SKO連携[\\s　]+([A-F0-9]{8})\\s*$/i);
+    const claimMatch = messageText.match(/^\s*SKO連携[\s　]+([A-F0-9]{8})\s*$/i);
     if (claimMatch) {
       const claimResp = await rest("rpc/complete_line_group_claim_for_line", {
         method: "POST",
