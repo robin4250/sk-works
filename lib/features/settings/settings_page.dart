@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/supabase_backend.dart';
+import 'company_module_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -203,6 +204,20 @@ class _SettingsPageState extends State<SettingsPage> {
                             leading: const Icon(Icons.cloud_done_outlined),
                             title: const Text('Supabaseクラウド接続中'),
                             subtitle: const Text('この設定は会社のクラウドデータに保存されます'),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.widgets_outlined),
+                            title: const Text('利用機能の設定'),
+                            subtitle: const Text('会社で使う機能をON / OFF'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const CompanyModuleSettingsPage(),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
