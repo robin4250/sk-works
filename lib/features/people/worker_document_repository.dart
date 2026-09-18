@@ -111,7 +111,7 @@ class WorkerDocumentRepository {
   Future<void> addRequirement({
     required String name,
     required String scope,
-    required bool required,
+    required bool isRequired,
     required bool expiryRequired,
   }) async {
     final companyId = await _companyId();
@@ -119,7 +119,7 @@ class WorkerDocumentRepository {
       'company_id': companyId,
       'name': name,
       'scope': scope,
-      'is_required': required,
+      'is_required': isRequired,
       'expiry_required': expiryRequired,
       'renewal_reminder_days': 30,
     });
