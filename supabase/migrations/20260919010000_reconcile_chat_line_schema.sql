@@ -174,5 +174,10 @@ with check (
   )
 );
 
-comment on table public.communication_messages is
-  'Legacy prototype chat table. New application code must use public.chat_messages.';
+do $
+begin
+  if to_regclass('public.communication_messages') is not null then
+    comment on table public.communication_messages is
+      'Legacy prototype chat table. New application code must use public.chat_messages.';
+  end if;
+end $;
