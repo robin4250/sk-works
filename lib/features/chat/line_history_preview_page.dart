@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'line_attendance_candidate_parser.dart';
+import 'line_attendance_candidate_validator.dart';
 import 'line_history_parser.dart';
 import 'line_history_summary.dart';
 
@@ -15,6 +16,7 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
   final _controller = TextEditingController();
   final _parser = const LineHistoryParser();
   final _attendanceParser = const LineAttendanceCandidateParser();
+  final _attendanceValidator = const LineAttendanceCandidateValidator();
 
   LineHistoryParseResult? _result;
 
@@ -39,6 +41,11 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
     final attendanceCandidates = result == null
         ? const <LineAttendanceCandidate>[]
         : _attendanceParser.parseMessages(messages);
+    final attendanceValidation = result == null
+        ? null
+        : _attendanceValidator.validate(attendanceCandidates);
+    final uniqueAttendanceCandidates =
+        attendanceValidation?.uniqueCandidates ?? const <LineAttendanceCandidate>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -166,15 +173,51 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
                         '日付・現場・作業員が明確な記載だけを候補表示します。ここから出勤実績を自動確定することはありません。',
                       ),
                       const SizedBox(height: 12),
-                      if (attendanceCandidates.isEmpty)
+                      if (uniqueAttendanceCandidates.isEmpty)
                         const Text('明確な出勤候補は検出されませんでした。')
                       else ...[
-                        Text(
-                          '${attendanceCandidates.length}件の候補を検出',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          children: [
+                            _Metric(
+                              label: '有効候補',
+                              value: '${uniqueAttendanceCandidates.length}件',
+                            ),
+                            _Metric(
+                              label: '重複除外',
+                              value: '${attendanceValidation?.duplicateCount ?? 0}件',
+                            ),
+                            _Metric(
+                              label: '要確認',
+                              value: '${attendanceValidation?.conflicts.length ?? 0}件',
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 10),
-                        for (final candidate in attendanceCandidates.take(30))
+                        if (attendanceValidation != null &&
+                            attendanceValidation.conflicts.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            '同じ作業員が同日に複数現場へ入っている候補があります。正式登録前に確認してください。',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          for (final conflict
+                              in attendanceValidation.conflicts.take(10))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(
+                                '${_formatDate(conflict.workDate)}  '
+                                '${conflict.workerName}  '
+                                '${conflict.siteNames.join(' / ')}',
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 12),
+                        for (final candidate in uniqueAttendanceCandidates.take(30))
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Text(
@@ -182,8 +225,10 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
                               '${candidate.siteName}  ${candidate.workerName}',
                             ),
                           ),
-                        if (attendanceCandidates.length > 30)
-                          Text('ほか ${attendanceCandidates.length - 30} 件あります。'),
+                        if (uniqueAttendanceCandidates.length > 30)
+                          Text(
+                            'ほか ${uniqueAttendanceCandidates.length - 30} 件あります。',
+                          ),
                       ],
                     ],
                   ),
