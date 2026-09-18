@@ -483,6 +483,8 @@ class _ManagementList extends StatelessWidget {
       if (moduleEnabled('documents'))
         const _ListItem('documents', '必要書類チェック', Icons.fact_check_outlined),
       if (moduleEnabled('qualifications'))
+        const _ListItem('qualifications', '資格管理', Icons.badge_outlined),
+      if (moduleEnabled('qualifications'))
         const _ListItem('qualification_certificates', '資格証写真', Icons.document_scanner_outlined),
       if (moduleEnabled('line_bridge'))
         const _ListItem('today_line', '本日のLINE出勤候補', Icons.today_outlined),
