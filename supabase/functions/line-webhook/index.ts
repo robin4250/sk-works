@@ -17,6 +17,35 @@ async function hmacSha256Base64(secret: string, body: string) {
   return btoa(binary);
 }
 
+async function lineGroupMemberDisplayName(groupId: string, userId: string) {
+  const token = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN");
+  if (!token) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(
+      `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) return null;
+
+    const profile = await response.json();
+    const displayName = typeof profile?.displayName === "string"
+      ? profile.displayName.trim()
+      : "";
+    return displayName || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function rest(path: string, init: RequestInit = {}) {
   const url = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -117,13 +146,17 @@ Deno.serve(async (req: Request) => {
       ? new Date(event.timestamp).toISOString()
       : new Date().toISOString();
 
+    const senderDisplayName = userId
+      ? await lineGroupMemberDisplayName(groupId, userId)
+      : null;
+
     const chatResp = await rest("chat_messages?on_conflict=external_event_id", {
       method: "POST",
       headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
       body: JSON.stringify({
         company_id: binding.company_id,
         communication_group_id: binding.communication_group_id,
-        sender_display_name: userId ? `LINE:${userId}` : "LINE",
+        sender_display_name: senderDisplayName ?? (userId ? `LINE:${userId}` : "LINE"),
         origin: "line",
         body: messageText,
         external_event_id: webhookEventId,
