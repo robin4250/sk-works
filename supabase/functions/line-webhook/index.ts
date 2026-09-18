@@ -78,11 +78,9 @@ async function loadLineGroupMemberDisplayName(
     }
 
     const profile = (await response.json()) as LineGroupMemberProfile;
-    finalDisplayName: {
-      const displayName = profile.displayName?.trim();
-      if (!displayName) return null;
-      return displayName.slice(0, 200);
-    }
+    const displayName = profile.displayName?.trim();
+    if (!displayName) return null;
+    return displayName.slice(0, 200);
   } catch (error) {
     console.warn('Could not enrich LINE sender profile', error);
     return null;
