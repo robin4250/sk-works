@@ -10,7 +10,8 @@ This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
 - Stores the message in `communication_messages` with `origin = 'line'`.
 - Keeps LINE message IDs for deduplication and the sender user ID for traceability.
 - When `LINE_CHANNEL_ACCESS_TOKEN` is configured, looks up the group member profile and stores the sender display name when LINE returns one.
-- Profile lookup is best-effort: a failed profile request does not block message ingestion.
+- Profile lookup is best-effort and capped at 1.5 seconds so a slow profile API cannot hold message ingestion open indefinitely.
+- A failed or timed-out profile request does not block message ingestion.
 - LINE may redeliver a webhook; external message ID uniqueness keeps retries from creating duplicate chat rows.
 - Ignores unbound groups and non-text events.
 - Does not send SKO replies back to LINE yet, preventing reply loops in the pilot.
@@ -25,7 +26,7 @@ This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
 5. Optional but recommended for readable sender names in SKO chat:
    - `LINE_CHANNEL_ACCESS_TOKEN`
    - The bridge uses LINE's group-member profile endpoint only when this token is present.
-   - If the token is missing, invalid, or LINE cannot return a profile, the message is still stored and the UI falls back to `LINE` as the sender label.
+   - If the token is missing, invalid, times out, or LINE cannot return a profile, the message is still stored and the UI falls back to `LINE` as the sender label.
 6. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Supabase Edge Functions by the project environment.
 7. Deploy the function:
 
@@ -69,6 +70,7 @@ A LINE group can bind to only one SKO communication group, and one SKO communica
 6. Open the same SKO communication group and confirm the message appears through Realtime.
 7. Confirm the sender is shown by display name when enrichment succeeded, otherwise the UI safely falls back to `LINE`.
 8. Send the same webhook payload again and confirm the external message ID uniqueness prevents a duplicate record.
+9. Confirm a deliberately unavailable/slow profile lookup still allows the message to be stored after the best-effort enrichment times out.
 
 ## Security notes
 
