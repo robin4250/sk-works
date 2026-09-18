@@ -72,6 +72,24 @@ A LINE group can bind to only one SKO communication group, and one SKO communica
 8. Send the same webhook payload again and confirm the external message ID uniqueness prevents a duplicate record.
 9. Confirm a deliberately unavailable/slow profile lookup still allows the message to be stored after the best-effort enrichment times out.
 
+## Historical LINE export preview
+
+Before adding any database import path, use the local preview tool to validate an exported LINE text file safely:
+
+```bash
+dart run tool/line_history_preview.dart path/to/line-chat.txt
+```
+
+The preview tool:
+
+- Parses common Japanese LINE date headers and tab-separated message rows.
+- Preserves multiline message bodies.
+- Ignores non-message/header/system lines that do not match the message shape.
+- Prints only a local summary and the first 20 parsed messages.
+- Does **not** upload, insert, update, or delete SKO/Supabase data.
+
+This is intentionally the first historical-import step for the October rollout. Validate the actual exported attendance/work-group format with this parser before adding a write/import command.
+
 ## Security notes
 
 - Never expose the service-role key in the Flutter app.
@@ -82,7 +100,8 @@ A LINE group can bind to only one SKO communication group, and one SKO communica
 
 ## Next steps
 
+- Validate one real exported LINE attendance/work-group text file with the non-destructive preview parser.
 - Optional admin binding UI with explicit role checks.
 - Image/content ingestion into private Supabase Storage.
-- Historical LINE exported-chat import for attendance/invoice migration.
+- Historical LINE exported-chat import for attendance/invoice migration after preview validation.
 - Optional `SKO -> LINE` replies with loop prevention and permissions after the one-way pilot is stable.
