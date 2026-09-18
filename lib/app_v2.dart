@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart' as legacy;
+import 'branding/product_brand.dart';
 import 'data/supabase_backend.dart';
 import 'features/albums/albums_cloud_page.dart';
 import 'features/attendance/attendance_cloud_page.dart';
@@ -26,7 +27,7 @@ class SkWorksApp extends StatelessWidget {
     const seed = Color(0xFF173B57);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'SK WORKS',
+      title: ProductBrand.displayName,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
@@ -76,7 +77,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SK WORKS'),
+        title: const Text(ProductBrand.displayName),
         actions: [
           if (onSignOut != null)
             IconButton(
@@ -97,13 +98,13 @@ class HomePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'SK WORKS',
+                      ProductBrand.displayName,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.w900,
                           ),
                     ),
                     const SizedBox(height: 6),
-                    const Text('会社・現場・人員・資格・勤怠・請求をひとつに。'),
+                    const Text(ProductBrand.tagline),
                   ],
                 ),
               ),
