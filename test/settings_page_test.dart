@@ -13,6 +13,6 @@ void main() {
     expect(find.text('会社情報'), findsOneWidget);
     expect(find.text('請求設定'), findsOneWidget);
     expect(find.text('設定を保存'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'SK WORKS'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'SKO'), findsOneWidget);
   });
 }

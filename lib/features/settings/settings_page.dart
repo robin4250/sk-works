@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../branding/product_brand.dart';
 import '../../data/supabase_backend.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -11,7 +12,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _companyName = TextEditingController(text: 'SK WORKS');
+  final _companyName = TextEditingController(text: ProductBrand.displayName);
   final _taxRate = TextEditingController(text: '10');
   final _defaultUnitPrice = TextEditingController(text: '25000');
   bool _loading = true;
@@ -77,7 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final company = companies.first;
     _companyId = companyId;
-    _companyName.text = company['name'] as String? ?? 'SK WORKS';
+    _companyName.text = company['name'] as String? ?? ProductBrand.displayName;
     _taxRate.text = (company['tax_rate'] ?? 10).toString();
     _defaultUnitPrice.text = (company['default_unit_price'] ?? 25000).toString();
     _detailMode = _fromDatabaseDetailMode(
@@ -87,7 +88,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadFromLocal() async {
     final prefs = await SharedPreferences.getInstance();
-    _companyName.text = prefs.getString('settings_company_name') ?? 'SK WORKS';
+    _companyName.text = prefs.getString('settings_company_name') ?? ProductBrand.displayName;
     _taxRate.text = prefs.getDouble('settings_tax_rate')?.toString() ?? '10';
     _defaultUnitPrice.text =
         prefs.getInt('settings_default_unit_price')?.toString() ?? '25000';
