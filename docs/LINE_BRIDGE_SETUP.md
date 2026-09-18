@@ -1,107 +1,150 @@
-# SKO LINE bridge pilot setup
+# SKO LINE bridge setup
 
-This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
+SKO currently uses a one-way `LINE -> SKO` bridge for the October 2026 rollout.
 
-## Current scope
+## Current production behavior
 
-- Verifies `x-line-signature` with `LINE_CHANNEL_SECRET` before processing.
-- Accepts new **text messages** from LINE **group** webhook events.
-- Looks up an explicit `line_group_bindings` record.
-- Stores the message in `communication_messages` with `origin = 'line'`.
-- Keeps LINE message IDs for deduplication and the sender user ID for traceability.
-- When `LINE_CHANNEL_ACCESS_TOKEN` is configured, looks up the group member profile and stores the sender display name when LINE returns one.
-- Profile lookup is best-effort and capped at 1.5 seconds so a slow profile API cannot hold message ingestion open indefinitely.
-- A failed or timed-out profile request does not block message ingestion.
-- LINE may redeliver a webhook; external message ID uniqueness keeps retries from creating duplicate chat rows.
-- Ignores unbound groups and non-text events.
-- Does not send SKO replies back to LINE yet, preventing reply loops in the pilot.
+- Verifies `x-line-signature` with `LINE_CHANNEL_SECRET`.
+- Accepts new text messages from LINE group webhook events.
+- Stores raw webhook events in service-only `line_webhook_events`.
+- Routes ordinary LINE text messages only when a matching `line_group_bindings.status = 'active'` row exists.
+- Stores routed chat messages in `chat_messages` with `origin = 'line'`.
+- Uses external event/message IDs to avoid duplicates.
+- Ignores unbound/pending/disabled groups.
+- Does not send SKO replies back to LINE, preventing reply loops.
 
-## Prerequisites
+The deployed Supabase `line-webhook` function is intentionally `verify_jwt = false` because LINE is the caller. Authenticity is enforced by the LINE HMAC signature instead of a Supabase user JWT.
 
-1. Deploy the chat migration from the site-chat PR first.
-2. Deploy `20260918114500_add_line_bridge_foundation.sql`.
-3. Create a LINE Official Account / Messaging API channel and allow the bot to be added to groups.
-4. Set the required Supabase Edge Function secret:
-   - `LINE_CHANNEL_SECRET`
-5. Optional but recommended for readable sender names in SKO chat:
-   - `LINE_CHANNEL_ACCESS_TOKEN`
-   - The bridge uses LINE's group-member profile endpoint only when this token is present.
-   - If the token is missing, invalid, times out, or LINE cannot return a profile, the message is still stored and the UI falls back to `LINE` as the sender label.
-6. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Supabase Edge Functions by the project environment.
-7. Deploy the function:
+## Explicit secure binding flow
+
+Do not bind a LINE group by browsing globally pending IDs or by guessing the only pending row.
+
+An SKO company owner/admin performs the binding from the Chat screen:
+
+1. Create/select the SKO communication group.
+2. Tap **LINE連携する**.
+3. SKO creates a one-time 8-character claim code valid for 15 minutes.
+4. Send exactly this form into the LINE group that should be connected:
+
+```text
+SKO連携 XXXXXXXX
+```
+
+5. The verified LINE webhook receives that message together with the real LINE group ID.
+6. The service-role-only claim RPC atomically:
+   - verifies the one-time code;
+   - verifies the claim is still pending and within its validity window;
+   - confirms the SKO communication group still belongs to the intended company;
+   - refuses a LINE group already active for another company/group;
+   - sets `company_id`, `communication_group_id`, and `status = 'active'`;
+   - writes an activation record to `line_binding_audit`.
+7. Refresh the SKO Chat screen and confirm **LINE連携中**.
+
+This proof-of-control flow prevents arbitrary authenticated users from seeing or claiming other tenants' pending LINE group IDs.
+
+## Disable a binding
+
+Only an SKO company owner/admin can disable an active binding through the app. The disable RPC changes the binding to `status = 'disabled'` and records the action in `line_binding_audit`.
+
+A disabled binding no longer routes normal LINE messages into SKO.
+
+## Relevant production tables
+
+### `line_group_bindings`
+
+- `line_group_id`
+- `company_id` nullable while pending
+- `communication_group_id` nullable while pending
+- `display_name`
+- `status`: `pending | active | disabled`
+- `discovered_at`
+- `updated_at`
+
+### `line_binding_claims`
+
+Stores short-lived owner/admin claim requests.
+
+### `line_binding_audit`
+
+Stores activation/disable audit records.
+
+### `chat_messages`
+
+This is the current chat table. Do not use the obsolete prototype name `communication_messages`.
+
+## Production function permissions
+
+- `begin_line_group_claim(uuid)`
+  - authenticated only
+  - function itself requires company `owner` or `admin`
+- `complete_line_group_claim_for_line(text, text)`
+  - service-role only
+  - called by the verified LINE webhook
+- `disable_line_group_binding(uuid)`
+  - authenticated only
+  - function itself requires company `owner` or `admin`
+
+The anonymous role must not have execute permission on these RPCs.
+
+## Webhook deployment
+
+Required secret:
+
+- `LINE_CHANNEL_SECRET`
+
+Supabase supplies its own function environment values such as `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+
+Deploy:
 
 ```bash
 supabase functions deploy line-webhook --no-verify-jwt
 ```
 
-`--no-verify-jwt` is required because LINE, not a signed-in SKO user, calls this endpoint. Request authenticity is instead enforced by LINE's HMAC signature.
-
-## Webhook URL
-
-Configure the LINE Messaging API webhook URL to the deployed Supabase Edge Function URL for `line-webhook` and enable webhooks in the LINE console.
-
-## Bind one LINE group to one SKO group
-
-The first release intentionally keeps binding writes out of the normal member UI. Create the binding with an administrator/service-role operation after you know the LINE group ID:
-
-```sql
-insert into public.line_group_bindings (
-  company_id,
-  communication_group_id,
-  line_group_id,
-  display_name
-) values (
-  '<company uuid>',
-  '<SKO communication group uuid>',
-  '<LINE group id>',
-  '既存LINE連絡グループ'
-);
-```
-
-A LINE group can bind to only one SKO communication group, and one SKO communication group can bind to only one LINE group in this pilot.
+The repository webhook source must stay aligned with the deployed function before further LINE bridge changes are made.
 
 ## Pilot test
 
-1. Add the LINE bot to the existing group.
-2. Send a normal text message in LINE.
-3. Confirm the Edge Function returns HTTP 200.
-4. Confirm a row appears in `communication_messages` with `origin = 'line'`.
-5. If `LINE_CHANNEL_ACCESS_TOKEN` is configured, confirm `external_sender_name` is populated when LINE returns the member profile.
-6. Open the same SKO communication group and confirm the message appears through Realtime.
-7. Confirm the sender is shown by display name when enrichment succeeded, otherwise the UI safely falls back to `LINE`.
-8. Send the same webhook payload again and confirm the external message ID uniqueness prevents a duplicate record.
-9. Confirm a deliberately unavailable/slow profile lookup still allows the message to be stored after the best-effort enrichment times out.
+1. Add the LINE bot to the target LINE group.
+2. Create/select an SKO communication group.
+3. Start LINE linking from the SKO Chat screen.
+4. Send the generated `SKO連携 XXXXXXXX` line into the target LINE group.
+5. Confirm the SKO group shows **LINE連携中**.
+6. Send an ordinary text message in LINE.
+7. Confirm a new `chat_messages` row appears with:
+   - matching company/group IDs;
+   - `origin = 'line'`;
+   - body and external identifiers.
+8. Confirm the message appears in the same SKO chat through Realtime.
+9. Redeliver the same webhook and confirm deduplication prevents a duplicate chat row.
+10. Disable the binding from SKO and confirm subsequent ordinary LINE messages are no longer routed.
+
+## LINE attendance preview rule
+
+LINE-derived attendance remains candidate/preview data until worker/site identities are confirmed. Current safe flow:
+
+- receive LINE text;
+- parse date/site/worker candidates;
+- exact-match registered worker/site names;
+- parse status details such as 定時 / 残業 / 早出 / 夜勤 / 鉄骨;
+- display results in the read-only **本日のLINE出勤候補** screen.
+
+Do not silently finalize attendance or invoice records from parsed LINE content.
 
 ## Historical LINE export preview
 
-Before adding any database import path, use the local preview tool to validate an exported LINE text file safely:
+Use the local parser for exported LINE history before any import/write flow:
 
 ```bash
 dart run tool/line_history_preview.dart path/to/line-chat.txt
 ```
 
-The preview tool:
+The preview does not write to Supabase.
 
-- Parses common Japanese LINE date headers and tab-separated message rows.
-- Preserves multiline message bodies.
-- Ignores non-message/header/system lines that do not match the message shape.
-- Prints only a local summary and the first 20 parsed messages.
-- Does **not** upload, insert, update, or delete SKO/Supabase data.
+## Security rules
 
-This is intentionally the first historical-import step for the October rollout. Validate the actual exported attendance/work-group format with this parser before adding a write/import command.
-
-## Security notes
-
-- Never expose the service-role key in the Flutter app.
-- Never expose the LINE channel access token in the Flutter app or commit it to the repository.
-- Never accept a webhook without verifying `x-line-signature` against the exact raw request body.
-- Normal authenticated SKO users cannot create `origin = 'line'` messages through the existing chat RLS policy.
-- `line_group_bindings` is readable only within the same company; writes are service-role/admin-only until a dedicated admin binding UI and role policy are added.
-
-## Next steps
-
-- Validate one real exported LINE attendance/work-group text file with the non-destructive preview parser.
-- Optional admin binding UI with explicit role checks.
-- Image/content ingestion into private Supabase Storage.
-- Historical LINE exported-chat import for attendance/invoice migration after preview validation.
-- Optional `SKO -> LINE` replies with loop prevention and permissions after the one-way pilot is stable.
+- Never expose the service-role key in Flutter.
+- Never bypass LINE signature verification.
+- Never expose globally pending LINE group IDs to normal users.
+- Never auto-claim the only pending group.
+- Keep raw `line_webhook_events` service-role only.
+- Keep attendance parsing preview-only until master-data identities are confirmed.
