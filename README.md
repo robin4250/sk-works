@@ -1,6 +1,6 @@
-# SK WORKS
+# SKO
 
-SK WORKS is a Flutter-based company and work management app for construction operations.
+SKO is a Flutter-based company and work management app. The product brand is centralized in code so customer-facing naming can evolve without renaming compatibility-sensitive persistence, package, backend, or integration identifiers.
 
 ## Current prototype
 
