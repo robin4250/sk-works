@@ -8,6 +8,7 @@ import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/auth/auth_gate.dart';
+import 'features/chat/chat_cloud_page.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
@@ -151,6 +152,25 @@ class HomePage extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const AttendanceVerificationPage()),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.chat_bubble_outline),
+                    ),
+                    title: const Text(
+                      'チャット',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('グループ・現場ごとの連絡をリアルタイムで共有'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ChatCloudPage()),
                     ),
                   ),
                 ),
