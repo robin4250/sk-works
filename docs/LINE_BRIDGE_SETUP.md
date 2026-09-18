@@ -8,7 +8,9 @@ This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
 - Accepts new **text messages** from LINE **group** webhook events.
 - Looks up an explicit `line_group_bindings` record.
 - Stores the message in `communication_messages` with `origin = 'line'`.
-- Keeps LINE message IDs for deduplication and the sender user ID for later profile enrichment.
+- Keeps LINE message IDs for deduplication and the sender user ID for traceability.
+- When `LINE_CHANNEL_ACCESS_TOKEN` is configured, looks up the group member profile and stores the sender display name when LINE returns one.
+- Profile lookup is best-effort: a failed profile request does not block message ingestion.
 - LINE may redeliver a webhook; external message ID uniqueness keeps retries from creating duplicate chat rows.
 - Ignores unbound groups and non-text events.
 - Does not send SKO replies back to LINE yet, preventing reply loops in the pilot.
@@ -18,10 +20,14 @@ This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
 1. Deploy the chat migration from the site-chat PR first.
 2. Deploy `20260918114500_add_line_bridge_foundation.sql`.
 3. Create a LINE Official Account / Messaging API channel and allow the bot to be added to groups.
-4. Set the Supabase Edge Function secret:
+4. Set the required Supabase Edge Function secret:
    - `LINE_CHANNEL_SECRET`
-5. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Supabase Edge Functions by the project environment.
-6. Deploy the function:
+5. Optional but recommended for readable sender names in SKO chat:
+   - `LINE_CHANNEL_ACCESS_TOKEN`
+   - The bridge uses LINE's group-member profile endpoint only when this token is present.
+   - If the token is missing, invalid, or LINE cannot return a profile, the message is still stored and the UI falls back to `LINE` as the sender label.
+6. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Supabase Edge Functions by the project environment.
+7. Deploy the function:
 
 ```bash
 supabase functions deploy line-webhook --no-verify-jwt
@@ -59,12 +65,15 @@ A LINE group can bind to only one SKO communication group, and one SKO communica
 2. Send a normal text message in LINE.
 3. Confirm the Edge Function returns HTTP 200.
 4. Confirm a row appears in `communication_messages` with `origin = 'line'`.
-5. Open the same SKO communication group and confirm the message appears through Realtime.
-6. Send the same webhook payload again and confirm the external message ID uniqueness prevents a duplicate record.
+5. If `LINE_CHANNEL_ACCESS_TOKEN` is configured, confirm `external_sender_name` is populated when LINE returns the member profile.
+6. Open the same SKO communication group and confirm the message appears through Realtime.
+7. Confirm the sender is shown by display name when enrichment succeeded, otherwise the UI safely falls back to `LINE`.
+8. Send the same webhook payload again and confirm the external message ID uniqueness prevents a duplicate record.
 
 ## Security notes
 
 - Never expose the service-role key in the Flutter app.
+- Never expose the LINE channel access token in the Flutter app or commit it to the repository.
 - Never accept a webhook without verifying `x-line-signature` against the exact raw request body.
 - Normal authenticated SKO users cannot create `origin = 'line'` messages through the existing chat RLS policy.
 - `line_group_bindings` is readable only within the same company; writes are service-role/admin-only until a dedicated admin binding UI and role policy are added.
@@ -72,7 +81,6 @@ A LINE group can bind to only one SKO communication group, and one SKO communica
 ## Next steps
 
 - Optional admin binding UI with explicit role checks.
-- LINE member profile lookup using a channel access token so sender display names can be enriched.
 - Image/content ingestion into private Supabase Storage.
 - Historical LINE exported-chat import for attendance/invoice migration.
 - Optional `SKO -> LINE` replies with loop prevention and permissions after the one-way pilot is stable.
