@@ -14,6 +14,7 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
+import 'features/people/worker_document_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
@@ -174,6 +175,25 @@ class HomePage extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (_) => const QualificationCertificatePage(),
                       ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.fact_check_outlined),
+                    ),
+                    title: const Text(
+                      '必要書類チェック',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text('社員・作業員ごとの提出・確認状況を管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const WorkerDocumentPage()),
                     ),
                   ),
                 ),
