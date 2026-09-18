@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -6,6 +8,7 @@ class WorkerDocumentRepository {
   WorkerDocumentRepository._(this._client);
 
   final SupabaseClient _client;
+  static const _bucket = 'worker-documents';
 
   static WorkerDocumentRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -123,6 +126,94 @@ class WorkerDocumentRepository {
       'expiry_required': expiryRequired,
       'renewal_reminder_days': 30,
     });
+  }
+
+  Future<Map<String, dynamic>> uploadAttachment({
+    required String statusId,
+    required String workerId,
+    required String requirementId,
+    required Uint8List bytes,
+    required String originalFilename,
+  }) async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('worker_document_statuses')
+        .select('id, attachment_path')
+        .eq('company_id', companyId)
+        .eq('id', statusId)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('書類情報が見つかりません。');
+
+    final oldPath = rows.first['attachment_path']?.toString();
+    final extension = _extensionOf(originalFilename);
+    final objectName = '${DateTime.now().microsecondsSinceEpoch}$extension';
+    final storagePath =
+        '$companyId/$workerId/$requirementId/$statusId/$objectName';
+
+    await _client.storage.from(_bucket).uploadBinary(
+      storagePath,
+      bytes,
+      fileOptions: const FileOptions(upsert: false),
+    );
+
+    try {
+      final updated = await _client
+          .from('worker_document_statuses')
+          .update({
+            'attachment_path': storagePath,
+            'updated_by': _client.auth.currentUser?.id,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('company_id', companyId)
+          .eq('id', statusId)
+          .select(
+            'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
+          )
+          .single();
+
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != storagePath) {
+        await _client.storage.from(_bucket).remove([oldPath]);
+      }
+      return Map<String, dynamic>.from(updated);
+    } catch (_) {
+      await _client.storage.from(_bucket).remove([storagePath]);
+      rethrow;
+    }
+  }
+
+  Future<String> createSignedAttachmentUrl(String storagePath) {
+    return _client.storage.from(_bucket).createSignedUrl(storagePath, 60 * 10);
+  }
+
+  Future<Map<String, dynamic>> removeAttachment({
+    required String statusId,
+    required String storagePath,
+  }) async {
+    final companyId = await _companyId();
+    final updated = await _client
+        .from('worker_document_statuses')
+        .update({
+          'attachment_path': null,
+          'updated_by': _client.auth.currentUser?.id,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('company_id', companyId)
+        .eq('id', statusId)
+        .select(
+          'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
+        )
+        .single();
+    await _client.storage.from(_bucket).remove([storagePath]);
+    return Map<String, dynamic>.from(updated);
+  }
+
+  String _extensionOf(String filename) {
+    final lastDot = filename.lastIndexOf('.');
+    if (lastDot < 0 || lastDot == filename.length - 1) return '.jpg';
+    final ext = filename.substring(lastDot).toLowerCase();
+    if (ext.length > 8) return '.jpg';
+    final sanitized = ext.replaceAll(RegExp(r'[^a-z0-9.]'), '');
+    return sanitized.isEmpty ? '.jpg' : sanitized;
   }
 
   Future<void> updateStatus({
