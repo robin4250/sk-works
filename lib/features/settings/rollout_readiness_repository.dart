@@ -35,7 +35,10 @@ class RolloutReadinessRepository {
     }) async {
       var query = _client.from(table).select('id');
       for (final entry in equals.entries) {
-        query = query.eq(entry.key, entry.value);
+        final value = entry.value;
+        if (value != null) {
+          query = query.eq(entry.key, value);
+        }
       }
       final rows = await query;
       return rows.length;
