@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'line_attendance_candidate_parser.dart';
 import 'line_history_parser.dart';
 
 class LineHistoryPreviewPage extends StatefulWidget {
@@ -12,6 +13,7 @@ class LineHistoryPreviewPage extends StatefulWidget {
 class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
   final _controller = TextEditingController();
   final _parser = const LineHistoryParser();
+  final _attendanceParser = const LineAttendanceCandidateParser();
 
   LineHistoryParseResult? _result;
 
@@ -30,6 +32,9 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
   Widget build(BuildContext context) {
     final result = _result;
     final messages = result?.messages ?? const <LineHistoryMessage>[];
+    final attendanceCandidates = result == null
+        ? const <LineAttendanceCandidate>[]
+        : _attendanceParser.parseMessages(messages);
 
     return Scaffold(
       appBar: AppBar(
@@ -100,6 +105,40 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
               ),
               const SizedBox(height: 16),
               Text(
+                '出勤候補',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: attendanceCandidates.isEmpty
+                      ? const Text('日付・現場・作業員の組み合わせをまだ検出していません。')
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${attendanceCandidates.length}件の候補を検出',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 10),
+                            for (final candidate in attendanceCandidates.take(20))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  '${_formatDate(candidate.workDate)}  ${candidate.siteName}  ${candidate.workerName}',
+                                ),
+                              ),
+                            if (attendanceCandidates.length > 20)
+                              Text('ほか ${attendanceCandidates.length - 20} 件あります。'),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
                 '先頭20件',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -144,6 +183,11 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${value.year}/${two(value.month)}/${two(value.day)}';
   }
 
   String _formatTimestamp(DateTime value) {
