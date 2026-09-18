@@ -24,6 +24,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   bool _sending = false;
   String? _error;
 
+  Map<String, dynamic>? get _selectedGroup {
+    final groupId = _selectedGroupId;
+    if (groupId == null) return null;
+    for (final group in _groups) {
+      if (group['id']?.toString() == groupId) return group;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -127,6 +136,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedGroup = _selectedGroup;
+
     return Scaffold(
       appBar: AppBar(title: const Text('チャット')),
       body: SafeArea(
@@ -164,6 +175,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                             },
                           ),
                   ),
+                  if (selectedGroup != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: _LineBindingStatus(group: selectedGroup),
+                    ),
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -227,6 +243,51 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                     ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _LineBindingStatus extends StatelessWidget {
+  const _LineBindingStatus({required this.group});
+
+  final Map<String, dynamic> group;
+
+  @override
+  Widget build(BuildContext context) {
+    final present = group['line_binding_present'] == true;
+    final enabled = group['line_binding_enabled'] == true;
+    final displayName = group['line_binding_name']?.toString().trim();
+
+    late final String title;
+    late final String detail;
+    late final IconData icon;
+
+    if (!present) {
+      title = 'LINE未連携';
+      detail = 'このグループはLINEからの受信先にまだ紐付いていません。';
+      icon = Icons.link_off;
+    } else if (enabled) {
+      title = 'LINE連携中';
+      detail = displayName?.isNotEmpty == true
+          ? '$displayName からの受信を有効にしています。'
+          : 'LINEグループからの受信を有効にしています。';
+      icon = Icons.link;
+    } else {
+      title = 'LINE連携停止中';
+      detail = displayName?.isNotEmpty == true
+          ? '$displayName との紐付けはありますが、現在は受信停止中です。'
+          : 'LINEとの紐付けはありますが、現在は受信停止中です。';
+      icon = Icons.link_off;
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        dense: true,
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(detail),
       ),
     );
   }
