@@ -301,11 +301,11 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final createdBy = message['created_by']?.toString();
+    final createdBy = message['sender_user_id']?.toString();
     final origin = message['origin']?.toString() ?? 'sko';
-    final isOwn = origin == 'sko' && createdBy != null && createdBy == currentUserId;
+    final isOwn = origin == 'sk_works' && createdBy != null && createdBy == currentUserId;
     final sender = origin == 'line'
-        ? (message['external_sender_name']?.toString().trim().isNotEmpty == true
+        ? (message['sender_display_name']?.toString().trim().isNotEmpty == true
             ? message['external_sender_name'].toString()
             : 'LINE')
         : isOwn
@@ -346,7 +346,7 @@ class _MessageBubble extends StatelessWidget {
             Text(message['body']?.toString() ?? ''),
             const SizedBox(height: 4),
             Text(
-              _formatTime(message['created_at']?.toString()),
+              _formatTime(message['sent_at']?.toString()),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
