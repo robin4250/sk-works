@@ -16,6 +16,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _requirements = [];
   List<Map<String, dynamic>> _statuses = [];
   bool _loading = true;
+  bool _canManageRequirements = false;
+  bool _canManageStatuses = false;
   String? _error;
   String? _selectedWorkerId;
   String _scope = 'all';
@@ -37,13 +39,20 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       return;
     }
     try {
-      final data = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageRequirements(),
+        repository.canManageStatuses(),
+      ]);
+      final data = values[0] as Map<String, List<Map<String, dynamic>>>;
       if (!mounted) return;
       final workers = data['workers'] ?? const <Map<String, dynamic>>[];
       setState(() {
         _workers = workers;
         _requirements = data['requirements'] ?? const <Map<String, dynamic>>[];
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
+        _canManageRequirements = values[1] as bool;
+        _canManageStatuses = values[2] as bool;
         if (_selectedWorkerId == null ||
             !_workers.any((row) => row['id']?.toString() == _selectedWorkerId)) {
           _selectedWorkerId = _workers.isEmpty ? null : _workers.first['id']?.toString();
@@ -87,12 +96,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         actions: [
           IconButton(
             tooltip: '標準項目を追加',
-            onPressed: _loading ? null : _addDefaults,
+            onPressed: _loading || !_canManageRequirements ? null : _addDefaults,
             icon: const Icon(Icons.playlist_add_check_circle_outlined),
           ),
           IconButton(
             tooltip: '自由項目を追加',
-            onPressed: _loading ? null : _addRequirement,
+            onPressed: _loading || !_canManageRequirements ? null : _addRequirement,
             icon: const Icon(Icons.add_circle_outline),
           ),
           IconButton(
@@ -175,7 +184,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                       return _RequirementTile(
                                         requirement: requirement,
                                         status: status,
-                                        onTap: () => _editStatus(requirement, status),
+                                        onTap: _canManageStatuses
+                                            ? () => _editStatus(requirement, status)
+                                            : null,
                                       );
                                     },
                                   ),
@@ -481,7 +492,7 @@ class _RequirementTile extends StatelessWidget {
 
   final Map<String, dynamic> requirement;
   final Map<String, dynamic>? status;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

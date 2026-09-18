@@ -37,6 +37,33 @@ class WorkerDocumentRepository {
     {'name': '自由項目2', 'scope': 'internal', 'expiry': false},
   ];
 
+  Future<({String companyId, String role})> membership() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id, role')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return (
+      companyId: rows.first['company_id'] as String,
+      role: rows.first['role']?.toString() ?? 'viewer',
+    );
+  }
+
+  Future<bool> canManageRequirements() async {
+    final value = await membership();
+    return value.role == 'owner' || value.role == 'admin';
+  }
+
+  Future<bool> canManageStatuses() async {
+    final value = await membership();
+    return value.role == 'owner' ||
+        value.role == 'admin' ||
+        value.role == 'manager';
+  }
+
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
