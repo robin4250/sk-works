@@ -9,6 +9,7 @@ This is the first, one-way `LINE -> SKO` bridge for the October 2026 rollout.
 - Looks up an explicit `line_group_bindings` record.
 - Stores the message in `communication_messages` with `origin = 'line'`.
 - Keeps LINE message IDs for deduplication and the sender user ID for later profile enrichment.
+- LINE may redeliver a webhook; external message ID uniqueness keeps retries from creating duplicate chat rows.
 - Ignores unbound groups and non-text events.
 - Does not send SKO replies back to LINE yet, preventing reply loops in the pilot.
 
