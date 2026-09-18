@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'line_history_parser.dart';
+import 'line_history_summary.dart';
 
 class LineHistoryPreviewPage extends StatefulWidget {
   const LineHistoryPreviewPage({super.key});
@@ -30,6 +31,9 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
   Widget build(BuildContext context) {
     final result = _result;
     final messages = result?.messages ?? const <LineHistoryMessage>[];
+    final summary = result == null
+        ? null
+        : LineHistorySummary.fromMessages(messages);
 
     return Scaffold(
       appBar: AppBar(
@@ -80,20 +84,61 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
                 ),
               ),
             ),
-            if (result != null) ...[
+            if (result != null && summary != null) ...[
               const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Wrap(
-                    spacing: 20,
-                    runSpacing: 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Metric(label: 'メッセージ', value: '${messages.length}件'),
-                      _Metric(
-                        label: '解析対象外',
-                        value: '${result.ignoredLineCount}行',
+                      Wrap(
+                        spacing: 20,
+                        runSpacing: 12,
+                        children: [
+                          _Metric(
+                            label: 'メッセージ',
+                            value: '${summary.totalMessages}件',
+                          ),
+                          _Metric(
+                            label: '送信者',
+                            value: '${summary.participantCount}人',
+                          ),
+                          _Metric(
+                            label: '解析対象外',
+                            value: '${result.ignoredLineCount}行',
+                          ),
+                          _Metric(
+                            label: '期間',
+                            value: _formatRange(summary),
+                          ),
+                        ],
                       ),
+                      if (summary.messageCountBySender.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          '送信者別メッセージ数',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final entry
+                                in summary.messageCountBySender.entries.take(8))
+                              Chip(
+                                label: Text('${entry.key} ${entry.value}件'),
+                              ),
+                          ],
+                        ),
+                        if (summary.participantCount > 8) ...[
+                          const SizedBox(height: 8),
+                          Text('ほか ${summary.participantCount - 8} 人'),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -144,6 +189,20 @@ class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
         ),
       ),
     );
+  }
+
+  String _formatRange(LineHistorySummary summary) {
+    final first = summary.firstTimestamp;
+    final last = summary.lastTimestamp;
+    if (first == null || last == null) return '—';
+    final firstText = _formatDate(first);
+    final lastText = _formatDate(last);
+    return firstText == lastText ? firstText : '$firstText〜$lastText';
+  }
+
+  String _formatDate(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${value.year}/${two(value.month)}/${two(value.day)}';
   }
 
   String _formatTimestamp(DateTime value) {
