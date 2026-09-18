@@ -21,6 +21,7 @@ import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
@@ -52,10 +53,44 @@ class SkWorksApp extends StatelessWidget {
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key, this.onSignOut});
 
   final VoidCallback? onSignOut;
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final _moduleSettingsRepository =
+      CompanyModuleSettingsRepository.maybeCreate();
+
+  Map<String, bool> _moduleStates = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadModuleSettings();
+  }
+
+  Future<void> _loadModuleSettings() async {
+    final repository = _moduleSettingsRepository;
+    if (repository == null) return;
+    try {
+      final states = await repository.loadOptionalModuleStates();
+      if (!mounted) return;
+      setState(() => _moduleStates = states);
+    } catch (_) {
+      // Keep modules visible if settings cannot be loaded.
+    }
+  }
+
+  bool _moduleEnabled(String key) {
+    if (!SupabaseBackend.isInitialized) return true;
+    if (key == 'people' || key == 'settings') return true;
+    return _moduleStates[key] ?? true;
+  }
 
   Widget _pageFor(legacy.ModuleDefinition module) {
     return switch (module.storageKey) {
@@ -85,10 +120,10 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(ProductBrand.displayName),
         actions: [
-          if (onSignOut != null)
+          if (widget.onSignOut != null)
             IconButton(
               tooltip: 'ログアウト',
-              onPressed: onSignOut,
+              onPressed: widget.onSignOut,
               icon: const Icon(Icons.logout),
             ),
         ],
@@ -124,6 +159,7 @@ class HomePage extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             for (final module in legacy.HomePage.modules)
+              if (_moduleEnabled(module.storageKey))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -135,13 +171,19 @@ class HomePage extends StatelessWidget {
                     ),
                     subtitle: Text(module.subtitle),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => _pageFor(module)),
-                    ),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => _pageFor(module)),
+                      );
+                      if (module.storageKey == 'settings') {
+                        await _loadModuleSettings();
+                      }
+                    },
                   ),
                 ),
               ),
             if (SupabaseBackend.isInitialized) ...[
+              if (_moduleEnabled('attendance'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -161,6 +203,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('qualifications'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -182,6 +225,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('documents'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -201,6 +245,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('chat'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -220,6 +265,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('line_bridge'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -241,6 +287,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('line_bridge'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -283,6 +330,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('notes'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -302,6 +350,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_moduleEnabled('albums'))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
