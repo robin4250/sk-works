@@ -1,0 +1,73 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/supabase_backend.dart';
+
+class ChatCloudRepository {
+  ChatCloudRepository._(this._client);
+
+  final SupabaseClient _client;
+
+  static ChatCloudRepository? maybeCreate() {
+    if (!SupabaseBackend.isInitialized) return null;
+    final client = SupabaseBackend.client;
+    if (client.auth.currentUser == null) return null;
+    return ChatCloudRepository._(client);
+  }
+
+  String? get currentUserId => _client.auth.currentUser?.id;
+
+  Future<String> _companyId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return rows.first['company_id'] as String;
+  }
+
+  Future<List<Map<String, dynamic>>> loadGroups() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('communication_groups')
+        .select('id, name, site_id, group_type')
+        .eq('company_id', companyId)
+        .order('name');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
+    return _client
+        .from('communication_messages')
+        .stream(primaryKey: ['id'])
+        .eq('group_id', groupId)
+        .order('created_at')
+        .map((rows) => List<Map<String, dynamic>>.from(rows));
+  }
+
+  Future<void> sendMessage({
+    required String groupId,
+    required String body,
+  }) async {
+    final text = body.trim();
+    if (text.isEmpty) return;
+    final companyId = await _companyId();
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+
+    await _client.from('communication_messages').insert({
+      'company_id': companyId,
+      'group_id': groupId,
+      'body': text,
+      'origin': 'sko',
+      'created_by': user.id,
+    });
+  }
+
+  Future<void> deleteOwnMessage(String id) async {
+    await _client.from('communication_messages').delete().eq('id', id);
+  }
+}
