@@ -38,7 +38,7 @@ class ChatCloudRepository {
         .order('name');
     final bindingRows = await _client
         .from('line_group_bindings')
-        .select('communication_group_id, display_name, is_enabled')
+        .select('communication_group_id, display_name, status')
         .eq('company_id', companyId);
 
     final bindingsByGroup = <String, Map<String, dynamic>>{};
@@ -55,7 +55,7 @@ class ChatCloudRepository {
       return <String, dynamic>{
         ...group,
         'line_binding_present': binding != null,
-        'line_binding_enabled': binding?['is_enabled'] == true,
+        'line_binding_enabled': binding?['status'] == 'active',
         'line_binding_name': binding?['display_name'],
       };
     }).toList();
@@ -63,10 +63,10 @@ class ChatCloudRepository {
 
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
     return _client
-        .from('communication_messages')
+        .from('chat_messages')
         .stream(primaryKey: ['id'])
-        .eq('group_id', groupId)
-        .order('created_at')
+        .eq('communication_group_id', groupId)
+        .order('sent_at')
         .map((rows) => List<Map<String, dynamic>>.from(rows));
   }
 
@@ -80,16 +80,17 @@ class ChatCloudRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
-    await _client.from('communication_messages').insert({
+    await _client.from('chat_messages').insert({
       'company_id': companyId,
-      'group_id': groupId,
+      'communication_group_id': groupId,
       'body': text,
-      'origin': 'sko',
-      'created_by': user.id,
+      'origin': 'sk_works',
+      'sender_user_id': user.id,
+      'sender_display_name': user.email,
     });
   }
 
   Future<void> deleteOwnMessage(String id) async {
-    await _client.from('communication_messages').delete().eq('id', id);
+    await _client.from('chat_messages').delete().eq('id', id);
   }
 }
