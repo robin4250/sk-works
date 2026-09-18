@@ -35,7 +35,7 @@ class QualificationCloudRepository {
 
     final masters = await _client
         .from('qualification_master')
-        .select('id, name, category, issuer, expiry_required, notes')
+        .select('id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom')
         .eq('company_id', companyId)
         .order('name');
 
@@ -77,8 +77,10 @@ class QualificationCloudRepository {
           'issuer': _nullable(issuer),
           'expiry_required': expiryRequired,
           'notes': _nullable(notes),
+          'is_active': true,
+          'is_company_custom': true,
         })
-        .select('id, name, category, issuer, expiry_required, notes')
+        .select('id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom')
         .single();
     return Map<String, dynamic>.from(inserted);
   }
