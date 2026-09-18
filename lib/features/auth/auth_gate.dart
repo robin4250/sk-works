@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../branding/product_brand.dart';
 import '../../data/supabase_backend.dart';
 
 class SupabaseAuthGate extends StatefulWidget {
@@ -169,7 +170,7 @@ class _AuthPageState extends State<AuthPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('SK WORKS')),
+      appBar: AppBar(title: const Text(ProductBrand.displayName)),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -192,7 +193,7 @@ class _AuthPageState extends State<AuthPage> {
                       Text(
                         _registerMode
                             ? '最初の管理者アカウントを作成します。'
-                            : 'SK WORKSのクラウドデータに接続します。',
+                            : '${ProductBrand.displayName}のクラウドデータに接続します。',
                       ),
                       const SizedBox(height: 20),
                       TextField(
@@ -280,7 +281,7 @@ class CompanySetupPage extends StatefulWidget {
 }
 
 class _CompanySetupPageState extends State<CompanySetupPage> {
-  final _companyController = TextEditingController(text: 'SK WORKS');
+  final _companyController = TextEditingController();
   bool _busy = false;
   String? _error;
 
@@ -375,7 +376,7 @@ class _CompanySetupPageState extends State<CompanySetupPage> {
                       FilledButton.icon(
                         onPressed: _busy ? null : _createCompany,
                         icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('SK WORKSを開始'),
+                        label: const Text('${ProductBrand.displayName}を開始'),
                       ),
                     ],
                   ),
