@@ -59,9 +59,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     try {
       final groups = await _repository.loadGroups();
       if (!mounted) return;
+      final previousGroupId = _selectedGroupId;
+      final nextGroupId = groups.any(
+        (group) => group['id']?.toString() == previousGroupId,
+      )
+          ? previousGroupId
+          : (groups.isEmpty ? null : groups.first['id'] as String);
       setState(() {
         _groups = groups;
-        _selectedGroupId = groups.isEmpty ? null : groups.first['id'] as String;
+        _selectedGroupId = nextGroupId;
         _loading = false;
         _error = null;
       });
@@ -268,6 +274,151 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _startLineClaim() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+
+    try {
+      final claim = await repository.beginLineBindingClaim(groupId);
+      final code = claim['claim_code']?.toString();
+      final expiresRaw = claim['expires_at']?.toString();
+      if (code == null || code.isEmpty) {
+        throw StateError('LINE連携コードを確認できませんでした。');
+      }
+
+      final expiresAt = expiresRaw == null
+          ? null
+          : DateTime.tryParse(expiresRaw)?.toLocal();
+
+      if (!mounted) return;
+      final shouldRefresh = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('LINEグループを連携'),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '連携したいLINEグループに、次の1行をそのまま送信してください。',
+                ),
+                const SizedBox(height: 14),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(dialogContext)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: SelectableText(
+                      'SKO連携 $code',
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'このコードを送ったLINEグループだけが、このSKO通信グループに連携されます。',
+                ),
+                if (expiresAt != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '有効期限: '
+                    '${expiresAt.month.toString().padLeft(2, '0')}/'
+                    '${expiresAt.day.toString().padLeft(2, '0')} '
+                    '${expiresAt.hour.toString().padLeft(2, '0')}:'
+                    '${expiresAt.minute.toString().padLeft(2, '0')}',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('閉じる'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('送信したので確認'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldRefresh == true) {
+        await _load();
+        if (!mounted) return;
+        final selected = _selectedGroup;
+        final linked = selected?['line_binding_enabled'] == true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              linked
+                  ? 'LINEグループの連携を確認しました。'
+                  : 'まだ連携を確認できません。LINE側の送信後、もう一度確認してください。',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LINE連携を開始できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _disableLineBinding() async {
+    final repository = _repository;
+    final bindingId = _selectedGroup?['line_binding_id']?.toString();
+    if (repository == null || bindingId == null || bindingId.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('LINE連携を停止'),
+        content: const Text(
+          'この通信グループへのLINEメッセージ受信を停止します。よろしいですか？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('停止する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await repository.disableLineBinding(bindingId);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('LINE連携を停止しました。')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LINE連携を停止できませんでした: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedGroup = _selectedGroup;
@@ -321,7 +472,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   if (selectedGroup != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: _LineBindingStatus(group: selectedGroup),
+                      child: _LineBindingStatus(
+                        group: selectedGroup,
+                        onStartClaim: _startLineClaim,
+                        onDisable: _disableLineBinding,
+                      ),
                     ),
                   if (_error != null)
                     Padding(
@@ -392,9 +547,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 }
 
 class _LineBindingStatus extends StatelessWidget {
-  const _LineBindingStatus({required this.group});
+  const _LineBindingStatus({
+    required this.group,
+    required this.onStartClaim,
+    required this.onDisable,
+  });
 
   final Map<String, dynamic> group;
+  final VoidCallback onStartClaim;
+  final VoidCallback onDisable;
 
   @override
   Widget build(BuildContext context) {
@@ -431,6 +592,15 @@ class _LineBindingStatus extends StatelessWidget {
         leading: Icon(icon),
         title: Text(title),
         subtitle: Text(detail),
+        trailing: enabled
+            ? TextButton(
+                onPressed: onDisable,
+                child: const Text('停止'),
+              )
+            : FilledButton.tonal(
+                onPressed: onStartClaim,
+                child: Text(present ? '再連携' : '連携する'),
+              ),
       ),
     );
   }
