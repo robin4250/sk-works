@@ -15,6 +15,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   final _repository = InvoiceCloudRepository.maybeCreate();
   final _invoices = <InvoiceCalculationResult>[];
   bool _loading = true;
+  bool _canManageFinancials = false;
   String? _error;
 
   @override
@@ -34,12 +35,17 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       return;
     }
     try {
-      final rows = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageFinancials(),
+      ]);
+      final rows = values[0] as List<InvoiceCalculationResult>;
       if (!mounted) return;
       setState(() {
         _invoices
           ..clear()
           ..addAll(rows);
+        _canManageFinancials = values[1] as bool;
         _loading = false;
         _error = null;
       });
@@ -71,7 +77,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _addInvoice,
+        onPressed: _loading || !_canManageFinancials ? null : _addInvoice,
         icon: const Icon(Icons.add),
         label: const Text('請求作成'),
       ),
