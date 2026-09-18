@@ -38,7 +38,7 @@ class ChatCloudRepository {
         .order('name');
     final bindingRows = await _client
         .from('line_group_bindings')
-        .select('communication_group_id, display_name, status')
+        .select('id, communication_group_id, display_name, status')
         .eq('company_id', companyId);
 
     final bindingsByGroup = <String, Map<String, dynamic>>{};
@@ -56,6 +56,7 @@ class ChatCloudRepository {
         ...group,
         'line_binding_present': binding != null,
         'line_binding_enabled': binding?['status'] == 'active',
+        'line_binding_id': binding?['id'],
         'line_binding_name': binding?['display_name'],
       };
     }).toList();
@@ -115,6 +116,28 @@ class ChatCloudRepository {
         .single();
 
     return Map<String, dynamic>.from(row);
+  }
+
+  Future<Map<String, dynamic>> beginLineBindingClaim(String groupId) async {
+    final response = await _client.rpc(
+      'begin_line_group_claim',
+      params: {'p_communication_group_id': groupId},
+    );
+
+    if (response is List && response.isNotEmpty) {
+      return Map<String, dynamic>.from(response.first as Map);
+    }
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+    throw StateError('LINE連携コードを発行できませんでした。');
+  }
+
+  Future<void> disableLineBinding(String bindingId) async {
+    await _client.rpc(
+      'disable_line_group_binding',
+      params: {'p_binding_id': bindingId},
+    );
   }
 
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
