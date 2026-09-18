@@ -16,6 +16,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
   String _query = '';
   SiteStatus? _filter;
   bool _loading = true;
+  bool _canManageSites = false;
   String? _error;
 
   @override
@@ -35,13 +36,18 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       return;
     }
     try {
-      final rows = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageSites(),
+      ]);
+      final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(SiteRecord.fromJson).toList();
       if (!mounted) return;
       setState(() {
         _sites
           ..clear()
           ..addAll(loaded);
+        _canManageSites = values[1] as bool;
         _loading = false;
         _error = null;
       });
@@ -86,7 +92,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _add,
+        onPressed: _loading || !_canManageSites ? null : _add,
         icon: const Icon(Icons.add_business),
         label: const Text('現場登録'),
       ),
@@ -209,7 +215,8 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               if (site.endDate.isNotEmpty) Text('終了日: ${site.endDate}'),
               if (site.notes.isNotEmpty) Text('備考: ${site.notes}'),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              if (_canManageSites)
+                OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.pop(sheetContext);
                   await _delete(site);
