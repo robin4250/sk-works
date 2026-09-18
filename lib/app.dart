@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'branding/product_brand.dart';
+
 class SkWorksApp extends StatelessWidget {
   const SkWorksApp({super.key});
 
@@ -11,7 +13,7 @@ class SkWorksApp extends StatelessWidget {
     const seed = Color(0xFF173B57);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'SK WORKS',
+      title: ProductBrand.displayName,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
@@ -92,7 +94,7 @@ class HomePage extends StatelessWidget {
       icon: Icons.settings_outlined,
       fields: const ['設定項目', '内容', '区分', '備考'],
       samples: const [
-        ['会社名', 'SK WORKS', '基本情報', ''],
+        ['会社名', ProductBrand.displayName, '基本情報', ''],
         ['消費税率', '10%', '請求設定', '標準税率'],
       ],
     ),
@@ -101,7 +103,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('SK WORKS')),
+      appBar: AppBar(title: const Text(ProductBrand.displayName)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -113,13 +115,13 @@ class HomePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'SK WORKS',
+                      ProductBrand.displayName,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.w900,
                           ),
                     ),
                     const SizedBox(height: 6),
-                    const Text('会社・現場・人員・資格・勤怠・請求をひとつに。'),
+                    const Text(ProductBrand.tagline),
                   ],
                 ),
               ),
