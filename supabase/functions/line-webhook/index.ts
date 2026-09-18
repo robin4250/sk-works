@@ -25,6 +25,7 @@ type LineGroupMemberProfile = {
 };
 
 const encoder = new TextEncoder();
+const profileLookupTimeoutMs = 1500;
 
 function decodeBase64(value: string): Uint8Array {
   const decoded = atob(value);
@@ -57,6 +58,9 @@ async function loadLineGroupMemberDisplayName(
   userId: string,
   channelAccessToken: string,
 ): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), profileLookupTimeoutMs);
+
   try {
     const response = await fetch(
       `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
@@ -64,6 +68,7 @@ async function loadLineGroupMemberDisplayName(
         headers: {
           Authorization: `Bearer ${channelAccessToken}`,
         },
+        signal: controller.signal,
       },
     );
 
@@ -84,6 +89,8 @@ async function loadLineGroupMemberDisplayName(
   } catch (error) {
     console.warn('Could not enrich LINE sender profile', error);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
