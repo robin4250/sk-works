@@ -263,55 +263,6 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ),
           ),
           actions: [
-            if (current != null)
-              TextButton.icon(
-                onPressed: () async {
-                  final source = await showModalBottomSheet<ImageSource>(
-                    context: dialogContext,
-                    builder: (sheetContext) => SafeArea(
-                      child: Wrap(
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.photo_camera_outlined),
-                            title: const Text('カメラで撮影'),
-                            onTap: () =>
-                                Navigator.pop(sheetContext, ImageSource.camera),
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.photo_library_outlined),
-                            title: const Text('写真から選ぶ'),
-                            onTap: () =>
-                                Navigator.pop(sheetContext, ImageSource.gallery),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                  if (source == null) return;
-                  final picked = await _picker.pickImage(
-                    source: source,
-                    imageQuality: 88,
-                    maxWidth: 2400,
-                  );
-                  if (picked == null) return;
-                  await repository.uploadAttachment(
-                    statusId: current!['id'].toString(),
-                    workerId: workerId,
-                    requirementId: requirementId,
-                    bytes: await picked.readAsBytes(),
-                    originalFilename: picked.name,
-                  );
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext, true);
-                  }
-                },
-                icon: const Icon(Icons.attach_file),
-                label: Text(
-                  (current?['attachment_path']?.toString() ?? '').isEmpty
-                      ? '写真を添付'
-                      : '写真を差し替え',
-                ),
-              ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('キャンセル'),
@@ -448,6 +399,63 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ),
           ),
           actions: [
+            if (current != null)
+              TextButton.icon(
+                onPressed: () async {
+                  final source = await showModalBottomSheet<ImageSource>(
+                    context: dialogContext,
+                    builder: (sheetContext) => SafeArea(
+                      child: Wrap(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.photo_camera_outlined),
+                            title: const Text('カメラで撮影'),
+                            onTap: () =>
+                                Navigator.pop(sheetContext, ImageSource.camera),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.photo_library_outlined),
+                            title: const Text('写真から選ぶ'),
+                            onTap: () =>
+                                Navigator.pop(sheetContext, ImageSource.gallery),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                  if (source == null) return;
+                  final picked = await _picker.pickImage(
+                    source: source,
+                    imageQuality: 88,
+                    maxWidth: 2400,
+                  );
+                  if (picked == null) return;
+                  try {
+                    await repository.uploadAttachment(
+                      statusId: current['id'].toString(),
+                      workerId: workerId,
+                      requirementId: requirementId,
+                      bytes: await picked.readAsBytes(),
+                      originalFilename: picked.name,
+                    );
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext, true);
+                    }
+                  } catch (error) {
+                    if (dialogContext.mounted) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(content: Text('写真を保存できませんでした: $error')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.attach_file),
+                label: Text(
+                  (current['attachment_path']?.toString() ?? '').isEmpty
+                      ? '写真を添付'
+                      : '写真を差し替え',
+                ),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('キャンセル'),
