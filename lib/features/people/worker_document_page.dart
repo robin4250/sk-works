@@ -70,9 +70,15 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       for (final row in _statuses.where((row) => row['worker_id']?.toString() == workerId))
         row['requirement_id']?.toString() ?? '': row,
     };
+    final today = DateTime.now();
     final completed = visibleRequirements.where((requirement) {
-      final status = statusByRequirement[requirement['id']?.toString()]?['status']?.toString();
-      return status == 'submitted' || status == 'verified';
+      final status = statusByRequirement[requirement['id']?.toString()];
+      final effectiveStatus = _effectiveDocumentStatus(requirement, status, today);
+      return effectiveStatus == 'submitted' || effectiveStatus == 'verified';
+    }).length;
+    final needsAttention = visibleRequirements.where((requirement) {
+      final status = statusByRequirement[requirement['id']?.toString()];
+      return _documentNeedsAttention(requirement, status, today);
     }).length;
 
     return Scaffold(
@@ -146,7 +152,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                   onSelected: (_) => setState(() => _scope = 'upstream'),
                                 ),
                                 const Spacer(),
-                                Text('$completed/${visibleRequirements.length}'),
+                                Text(
+                                  needsAttention == 0
+                                      ? '完了 $completed/${visibleRequirements.length}'
+                                      : '完了 $completed/${visibleRequirements.length} / 要確認 $needsAttention',
+                                ),
                               ],
                             ),
                           ),
@@ -404,6 +414,64 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 }
 
+
+DateTime? _parseDocumentDate(Object? value) {
+  if (value == null) return null;
+  final parsed = DateTime.tryParse(value.toString());
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
+
+DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+
+int _reminderDays(Map<String, dynamic> requirement) {
+  final raw = requirement['renewal_reminder_days'];
+  if (raw is int) return raw;
+  return int.tryParse(raw?.toString() ?? '') ?? 30;
+}
+
+String _effectiveDocumentStatus(
+  Map<String, dynamic> requirement,
+  Map<String, dynamic>? status,
+  DateTime now,
+) {
+  final stored = status?['status']?.toString() ?? 'not_submitted';
+  if (requirement['expiry_required'] != true) return stored;
+
+  final expiry = _parseDocumentDate(status?['expires_at']);
+  if (expiry == null) return stored;
+  if (expiry.isBefore(_dateOnly(now))) return 'expired';
+  return stored;
+}
+
+bool _documentNeedsAttention(
+  Map<String, dynamic> requirement,
+  Map<String, dynamic>? status,
+  DateTime now,
+) {
+  final effective = _effectiveDocumentStatus(requirement, status, now);
+  if (effective == 'expired' || effective == 'missing') return true;
+  if (requirement['expiry_required'] != true) return false;
+
+  final expiry = _parseDocumentDate(status?['expires_at']);
+  if (expiry == null) return false;
+  final days = expiry.difference(_dateOnly(now)).inDays;
+  return days >= 0 && days <= _reminderDays(requirement);
+}
+
+String? _expiryHint(
+  Map<String, dynamic> requirement,
+  DateTime? expiry,
+  DateTime now,
+) {
+  if (requirement['expiry_required'] != true || expiry == null) return null;
+  final days = expiry.difference(_dateOnly(now)).inDays;
+  if (days < 0) return '期限切れ';
+  if (days == 0) return '本日期限';
+  if (days <= _reminderDays(requirement)) return 'あと$days日';
+  return null;
+}
+
 class _RequirementTile extends StatelessWidget {
   const _RequirementTile({
     required this.requirement,
@@ -417,7 +485,8 @@ class _RequirementTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusValue = status?['status']?.toString() ?? 'not_submitted';
+    final today = DateTime.now();
+    final statusValue = _effectiveDocumentStatus(requirement, status, today);
     final labels = <String, String>{
       'not_submitted': '未提出',
       'submitted': '提出済み',
@@ -428,11 +497,19 @@ class _RequirementTile extends StatelessWidget {
     final scopeLabel = requirement['scope'] == 'upstream' ? '元請・得意先' : '社内';
     final requiredLabel = requirement['is_required'] == true ? '必須' : '任意';
     final expiry = status?['expires_at']?.toString();
+    final expiryDate = _parseDocumentDate(expiry);
+    final expiryHint = _expiryHint(requirement, expiryDate, today);
 
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          child: Icon(statusValue == 'verified' ? Icons.check : Icons.description_outlined),
+          child: Icon(
+            statusValue == 'verified'
+                ? Icons.check
+                : statusValue == 'expired'
+                    ? Icons.warning_amber_rounded
+                    : Icons.description_outlined,
+          ),
         ),
         title: Text(
           requirement['name']?.toString() ?? '',
@@ -443,6 +520,7 @@ class _RequirementTile extends StatelessWidget {
             '$scopeLabel / $requiredLabel',
             labels[statusValue] ?? statusValue,
             if (expiry != null && expiry.isNotEmpty) '期限 $expiry',
+            if (expiryHint != null) expiryHint,
             if (status?['original_verified'] == true) '原本確認済み',
           ].join(' / '),
         ),
