@@ -16,6 +16,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   String _query = '';
   PersonKind? _filter;
   bool _loading = true;
+  bool _canManagePeople = false;
   String? _error;
 
   @override
@@ -35,13 +36,18 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       return;
     }
     try {
-      final rows = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManagePeople(),
+      ]);
+      final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
       if (!mounted) return;
       setState(() {
         _records
           ..clear()
           ..addAll(loaded);
+        _canManagePeople = values[1] as bool;
         _loading = false;
         _error = null;
       });
@@ -85,7 +91,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _add,
+        onPressed: _loading || !_canManagePeople ? null : _add,
         icon: const Icon(Icons.person_add_alt_1),
         label: const Text('新規登録'),
       ),
@@ -212,7 +218,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              if (_canManagePeople)
+                OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.pop(sheetContext);
                   await _delete(record);
