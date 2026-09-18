@@ -368,33 +368,39 @@ class _LargeActionCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(18),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            CircleAvatar(
-              radius: 24,
-              child: Icon(icon),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                    ),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  child: Icon(icon),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(subtitle),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(subtitle),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            FilledButton(
+            const SizedBox(height: 14),
+            FilledButton.icon(
               onPressed: onTap,
-              child: Text(buttonLabel),
+              icon: const Icon(Icons.arrow_forward),
+              label: Text(buttonLabel),
             ),
           ],
         ),
