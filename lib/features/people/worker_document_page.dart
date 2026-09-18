@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
 
@@ -11,6 +12,7 @@ class WorkerDocumentPage extends StatefulWidget {
 
 class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   final _repository = WorkerDocumentRepository.maybeCreate();
+  final _picker = ImagePicker();
 
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _requirements = [];
@@ -378,10 +380,93 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   decoration: const InputDecoration(labelText: '備考'),
                   maxLines: 3,
                 ),
+                if ((current?['attachment_path']?.toString() ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  FutureBuilder<String>(
+                    future: repository.createSignedAttachmentUrl(
+                      current!['attachment_path'].toString(),
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const LinearProgressIndicator();
+                      }
+                      if (snapshot.hasError || snapshot.data == null) {
+                        return const Text('添付写真を表示できませんでした。');
+                      }
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          snapshot.data!,
+                          height: 180,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) =>
+                              const Text('添付写真を表示できませんでした。'),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ],
             ),
           ),
           actions: [
+            if (current != null)
+              TextButton.icon(
+                onPressed: () async {
+                  final source = await showModalBottomSheet<ImageSource>(
+                    context: dialogContext,
+                    builder: (sheetContext) => SafeArea(
+                      child: Wrap(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.photo_camera_outlined),
+                            title: const Text('カメラで撮影'),
+                            onTap: () =>
+                                Navigator.pop(sheetContext, ImageSource.camera),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.photo_library_outlined),
+                            title: const Text('写真から選ぶ'),
+                            onTap: () =>
+                                Navigator.pop(sheetContext, ImageSource.gallery),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                  if (source == null) return;
+                  final picked = await _picker.pickImage(
+                    source: source,
+                    imageQuality: 88,
+                    maxWidth: 2400,
+                  );
+                  if (picked == null) return;
+                  try {
+                    await repository.uploadAttachment(
+                      statusId: current['id'].toString(),
+                      workerId: workerId,
+                      requirementId: requirementId,
+                      bytes: await picked.readAsBytes(),
+                      originalFilename: picked.name,
+                    );
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext, true);
+                    }
+                  } catch (error) {
+                    if (dialogContext.mounted) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(content: Text('写真を保存できませんでした: $error')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.attach_file),
+                label: Text(
+                  (current['attachment_path']?.toString() ?? '').isEmpty
+                      ? '写真を添付'
+                      : '写真を差し替え',
+                ),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('キャンセル'),
@@ -533,6 +618,8 @@ class _RequirementTile extends StatelessWidget {
             if (expiry != null && expiry.isNotEmpty) '期限 $expiry',
             if (expiryHint != null) expiryHint,
             if (status?['original_verified'] == true) '原本確認済み',
+            if ((status?['attachment_path']?.toString() ?? '').isNotEmpty)
+              '写真あり',
           ].join(' / '),
         ),
         trailing: const Icon(Icons.chevron_right),
