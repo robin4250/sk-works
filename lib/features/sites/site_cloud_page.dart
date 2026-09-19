@@ -17,6 +17,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
   SiteStatus? _filter;
   bool _loading = true;
   bool _canManageSites = false;
+  bool _canCreateSites = false;
   String? _error;
 
   @override
@@ -39,6 +40,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageSites(),
+        repository.canCreateSites(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(SiteRecord.fromJson).toList();
@@ -48,6 +50,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
           ..clear()
           ..addAll(loaded);
         _canManageSites = values[1] as bool;
+        _canCreateSites = values[2] as bool;
         _loading = false;
         _error = null;
       });
@@ -77,7 +80,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場管理'),
+        title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
         actions: [
           IconButton(
             tooltip: '再読み込み',
@@ -92,7 +95,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || !_canManageSites ? null : _add,
+        onPressed: _loading || !_canCreateSites ? null : _add,
         icon: const Icon(Icons.add_business),
         label: const Text('現場登録'),
       ),
