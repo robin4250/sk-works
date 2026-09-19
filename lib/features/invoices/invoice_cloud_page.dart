@@ -20,6 +20,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   final _invoices = <InvoiceCalculationResult>[];
 
   bool _loading = true;
+  bool _canManageSettings = false;
   String? _error;
   _InvoiceBrowseMode _browseMode = _InvoiceBrowseMode.all;
   _InvoicePeriodMode _periodMode = _InvoicePeriodMode.month;
@@ -49,12 +50,18 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     });
 
     try {
-      final rows = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageFinancials(),
+      ]);
+      final rows = values[0] as List<InvoiceCalculationResult>;
+      final canManage = values[1] as bool;
       if (!mounted) return;
       setState(() {
         _invoices
           ..clear()
           ..addAll(rows);
+        _canManageSettings = canManage;
         _loading = false;
         if (_companyFilter != null &&
             !_companies.contains(_companyFilter)) {
@@ -147,15 +154,16 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
         ),
         actions: [
           const SkoNotificationBell(),
-          IconButton(
-            tooltip: '請求書設定',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const InvoiceSettingsPage(),
+          if (_canManageSettings)
+            IconButton(
+              tooltip: '請求書設定',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const InvoiceSettingsPage(),
+                ),
               ),
+              icon: const Icon(Icons.settings_outlined),
             ),
-            icon: const Icon(Icons.settings_outlined),
-          ),
         ],
       ),
       body: SafeArea(
