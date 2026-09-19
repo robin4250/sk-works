@@ -290,6 +290,16 @@ class PayrollStatementPreviewPage extends StatelessWidget {
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 }
 
+String _formatYen(int value) {
+  final digits = value.abs().toString();
+  final groups = <String>[];
+  for (var end = digits.length; end > 0; end -= 3) {
+    final start = (end - 3).clamp(0, digits.length);
+    groups.insert(0, digits.substring(start, end));
+  }
+  return '${value < 0 ? '-' : ''}¥${groups.join(',')}';
+}
+
 class _MoneyRow extends StatelessWidget {
   const _MoneyRow({
     required this.label,
@@ -320,7 +330,7 @@ class _MoneyRow extends StatelessWidget {
             ),
           ),
           Text(
-            PayrollStatementsPage._yen(value),
+            _formatYen(value),
             style: style,
           ),
         ],
