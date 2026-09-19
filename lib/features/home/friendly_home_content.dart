@@ -260,46 +260,52 @@ class _AdminHome extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const CircleAvatar(
-              child: Icon(Icons.approval_outlined),
+        if (identity.can('can_approve_daily_report_edits')) ...[
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.approval_outlined),
+              ),
+              title: const Text(
+                '承認待ち',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: const Text('日報の修正申請など、対応が必要なものを確認'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => onOpen('approvals'),
             ),
-            title: const Text(
-              '承認待ち',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: const Text('日報の修正申請など、対応が必要なものを確認'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => onOpen('approvals'),
           ),
-        ),
-        const SizedBox(height: 18),
+          const SizedBox(height: 18),
+        ],
         const _SectionTitle('管理'),
         const SizedBox(height: 9),
         _ActionGrid(
-          items: const [
-            _HomeAction(
-              'attendance',
-              '出勤・人区管理',
-              Icons.calendar_month_outlined,
-            ),
-            _HomeAction(
-              'people',
-              '人員管理',
-              Icons.groups_2_outlined,
-            ),
-            _HomeAction(
-              'invoices',
-              '請求書',
-              Icons.receipt_long_outlined,
-            ),
-            _HomeAction(
-              'admin_sites',
-              '管理者用現場データ',
-              Icons.admin_panel_settings_outlined,
-            ),
-            _HomeAction(
+          items: [
+            if (identity.can('can_manage_attendance'))
+              const _HomeAction(
+                'attendance',
+                '出勤・人区管理',
+                Icons.calendar_month_outlined,
+              ),
+            if (identity.can('can_manage_people'))
+              const _HomeAction(
+                'people',
+                '人員管理',
+                Icons.groups_2_outlined,
+              ),
+            if (identity.can('can_view_invoices'))
+              const _HomeAction(
+                'invoices',
+                '請求書',
+                Icons.receipt_long_outlined,
+              ),
+            if (identity.can('can_view_admin_site_data'))
+              const _HomeAction(
+                'admin_sites',
+                '管理者用現場データ',
+                Icons.admin_panel_settings_outlined,
+              ),
+            const _HomeAction(
               'settings',
               '設定',
               Icons.settings_outlined,
