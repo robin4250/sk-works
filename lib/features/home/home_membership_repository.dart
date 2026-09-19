@@ -2,6 +2,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class HomeIdentity {
+  const HomeIdentity({
+    required this.role,
+    required this.companyName,
+    required this.displayName,
+  });
+
+  final String role;
+  final String companyName;
+  final String displayName;
+
+  bool get isAdmin =>
+      role == 'owner' || role == 'admin' || role == 'manager';
+
+  String get roleLabel => switch (role) {
+        'owner' => '管理者',
+        'admin' => '管理者',
+        'manager' => 'サブ管理者',
+        _ => '一般ユーザー',
+      };
+}
+
 class HomeMembershipRepository {
   HomeMembershipRepository._(this._client);
 
@@ -14,17 +36,64 @@ class HomeMembershipRepository {
     return HomeMembershipRepository._(client);
   }
 
-  Future<String> loadRole() async {
+  Future<String> loadRole() async => (await loadIdentity()).role;
+
+  Future<HomeIdentity> loadIdentity() async {
     final user = _client.auth.currentUser;
-    if (user == null) return 'viewer';
+    if (user == null) {
+      return const HomeIdentity(
+        role: 'viewer',
+        companyName: 'SKO',
+        displayName: 'ユーザー',
+      );
+    }
 
     final rows = await _client
         .from('company_members')
-        .select('role')
+        .select('company_id, role')
         .eq('user_id', user.id)
         .limit(1);
 
-    if (rows.isEmpty) return 'viewer';
-    return rows.first['role']?.toString() ?? 'viewer';
+    if (rows.isEmpty) {
+      return HomeIdentity(
+        role: 'viewer',
+        companyName: 'SKO',
+        displayName: user.phone ?? user.email ?? 'ユーザー',
+      );
+    }
+
+    final companyId = rows.first['company_id'] as String;
+    final role = rows.first['role']?.toString() ?? 'viewer';
+
+    final values = await Future.wait([
+      _client
+          .from('companies')
+          .select('name')
+          .eq('id', companyId)
+          .limit(1),
+      _client
+          .from('user_profiles')
+          .select('display_name')
+          .eq('user_id', user.id)
+          .limit(1),
+    ]);
+
+    final companies = values[0] as List<dynamic>;
+    final profiles = values[1] as List<dynamic>;
+
+    final companyName = companies.isNotEmpty
+        ? (companies.first['name']?.toString() ?? 'SKO')
+        : 'SKO';
+    final displayName = profiles.isNotEmpty &&
+            (profiles.first['display_name']?.toString().trim().isNotEmpty ??
+                false)
+        ? profiles.first['display_name'].toString()
+        : user.phone ?? user.email ?? 'ユーザー';
+
+    return HomeIdentity(
+      role: role,
+      companyName: companyName,
+      displayName: displayName,
+    );
   }
 }
