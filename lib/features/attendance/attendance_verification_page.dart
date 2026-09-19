@@ -4,10 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../notifications/notification_bell.dart';
 import 'attendance_verification_repository.dart';
 
 class AttendanceVerificationPage extends StatefulWidget {
-  const AttendanceVerificationPage({super.key});
+  const AttendanceVerificationPage({
+    super.key,
+    this.initialEventType,
+  });
+
+  final String? initialEventType;
 
   @override
   State<AttendanceVerificationPage> createState() => _AttendanceVerificationPageState();
@@ -25,7 +31,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
   int _radiusM = 300;
   String? _workerId;
   String? _siteId;
-  String _eventType = 'clock_in';
+  late String _eventType;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -33,6 +39,9 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
   @override
   void initState() {
     super.initState();
+    _eventType = widget.initialEventType == 'clock_out'
+        ? 'clock_out'
+        : 'clock_in';
     _load();
   }
 
@@ -83,6 +92,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       appBar: AppBar(
         title: const Text('出勤・退勤確認'),
         actions: [
+          const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _saving ? null : _load,
