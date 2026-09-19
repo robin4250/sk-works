@@ -1,52 +1,66 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/main.dart';
 
 void main() {
-  Future<void> openModule(
-    WidgetTester tester,
-    String menu,
-    String expected,
-  ) async {
+  Future<void> pumpHome(WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const SkWorksApp());
+    await tester.pump();
+  }
 
-    final menuFinder = find.text(menu);
-    if (menuFinder.evaluate().isEmpty) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -500));
-      await tester.pump();
-    }
+  testWidgets('admin home routes to people module', (tester) async {
+    await pumpHome(tester);
 
-    expect(menuFinder, findsOneWidget);
-    await tester.tap(menuFinder);
+    expect(find.text('人員管理'), findsOneWidget);
+    await tester.tap(find.text('人員管理'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text(expected), findsWidgets);
-  }
-
-  testWidgets('home routes to people module', (tester) async {
-    await openModule(tester, '社員・協力会社', '新規登録');
+    expect(find.text('新規登録'), findsOneWidget);
   });
 
-  testWidgets('home routes to qualification module', (tester) async {
-    await openModule(tester, '資格管理', '資格登録');
+  testWidgets('admin home routes to invoice module', (tester) async {
+    await pumpHome(tester);
+
+    expect(find.text('請求書'), findsOneWidget);
+    await tester.tap(find.text('請求書'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('請求作成'), findsOneWidget);
   });
 
-  testWidgets('home routes to site module', (tester) async {
-    await openModule(tester, '現場管理', '現場登録');
+  testWidgets('admin home routes to settings module', (tester) async {
+    await pumpHome(tester);
+
+    expect(find.text('設定'), findsOneWidget);
+    await tester.tap(find.text('設定'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('設定を保存'), findsOneWidget);
   });
 
-  testWidgets('home routes to attendance module', (tester) async {
-    await openModule(tester, '勤怠・人工', '出面入力');
+  testWidgets('footer exposes five primary destinations', (tester) async {
+    await pumpHome(tester);
+
+    expect(find.text('ホーム'), findsOneWidget);
+    expect(find.text('出勤表'), findsOneWidget);
+    expect(find.text('現場'), findsOneWidget);
+    expect(find.text('チャット'), findsOneWidget);
+    expect(find.text('メニュー'), findsOneWidget);
   });
 
-  testWidgets('home routes to invoice module', (tester) async {
-    await openModule(tester, '請求管理', '請求作成');
-  });
+  testWidgets('menu exposes secondary functions', (tester) async {
+    await pumpHome(tester);
 
-  testWidgets('home routes to settings module', (tester) async {
-    await openModule(tester, '設定', '設定を保存');
+    await tester.tap(find.text('メニュー'));
+    await tester.pump();
+
+    expect(find.text('日報'), findsOneWidget);
+    expect(find.text('プロフィール'), findsOneWidget);
+    expect(find.text('ヘルプ'), findsOneWidget);
+    expect(find.text('資格'), findsOneWidget);
   });
 }
