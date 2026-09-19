@@ -34,6 +34,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
   late String _eventType;
   bool _loading = true;
   bool _saving = false;
+  bool _canManageAttendance = false;
   String? _error;
 
   @override
@@ -61,12 +62,14 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       return;
     }
     try {
+      final canManage = await repository.canManageAttendance();
       final settings = await repository.loadSettings();
       final workers = await repository.loadWorkers();
       final sites = await repository.loadSites();
       final recent = await repository.loadRecent();
       if (!mounted) return;
       setState(() {
+        _canManageAttendance = canManage;
         _mode = settings['mode']?.toString() ?? 'manual';
         _radiusM = (settings['proximity_radius_m'] as num?)?.toInt() ?? 300;
         _workers = workers;
@@ -132,7 +135,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                               DropdownMenuItem(value: 'location', child: Text('位置情報')),
                               DropdownMenuItem(value: 'location_photo', child: Text('位置情報＋写真')),
                             ],
-                            onChanged: _saving
+                            onChanged: _saving || !_canManageAttendance
                                 ? null
                                 : (value) async {
                                     if (value == null) return;
@@ -166,7 +169,9 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                                       child: Text(worker['name'].toString()),
                                     ))
                                 .toList(),
-                            onChanged: _saving ? null : (value) => setState(() => _workerId = value),
+                            onChanged: _saving || !_canManageAttendance
+                                ? null
+                                : (value) => setState(() => _workerId = value),
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
@@ -186,14 +191,18 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                               alignment: Alignment.centerLeft,
                               child: Text(_siteLocationText(_selectedSite!)),
                             ),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: _saving ? null : _setSelectedSiteLocation,
-                                icon: const Icon(Icons.my_location),
-                                label: const Text('この現場の基準位置を現在地で登録'),
+                            if (_canManageAttendance)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed:
+                                      _saving ? null : _setSelectedSiteLocation,
+                                  icon: const Icon(Icons.my_location),
+                                  label: const Text(
+                                    'この現場の基準位置を現在地で登録',
+                                  ),
+                                ),
                               ),
-                            ),
                           ],
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
