@@ -12,6 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   geolocator: ^14.0.3
   image_picker: ^1.1.2
+  local_auth: ^2.3.0
   shared_preferences: ^2.5.5
   supabase_flutter: ^2.17.2
 
