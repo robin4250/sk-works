@@ -1,9 +1,15 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../albums/albums_cloud_page.dart';
+import '../notes/notes_cloud_page.dart';
 import '../notifications/notification_bell.dart';
 import 'chat_cloud_repository.dart';
+
+enum _ChatTab { all, site, direct, partner }
 
 class ChatCloudPage extends StatefulWidget {
   const ChatCloudPage({super.key});
@@ -15,21 +21,31 @@ class ChatCloudPage extends StatefulWidget {
 class _ChatCloudPageState extends State<ChatCloudPage> {
   final _repository = ChatCloudRepository.maybeCreate();
   final _composer = TextEditingController();
+  final _memberSearch = TextEditingController();
   final _scrollController = ScrollController();
+  final _picker = ImagePicker();
 
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _groups = [];
+  List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _messages = [];
+  List<String> _prioritizedSiteGroupIds = const [];
+
   String? _selectedGroupId;
+  String _role = 'viewer';
+  _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
   bool _sending = false;
   String? _error;
 
+  bool get _isAdmin =>
+      _role == 'owner' || _role == 'admin' || _role == 'manager';
+
   Map<String, dynamic>? get _selectedGroup {
-    final groupId = _selectedGroupId;
-    if (groupId == null) return null;
+    final id = _selectedGroupId;
+    if (id == null) return null;
     for (final group in _groups) {
-      if (group['id']?.toString() == groupId) return group;
+      if (group['id']?.toString() == id) return group;
     }
     return null;
   }
@@ -44,63 +60,73 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   void dispose() {
     _subscription?.cancel();
     _composer.dispose();
+    _memberSearch.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (_repository == null) {
+    final repository = _repository;
+    if (repository == null) {
       setState(() {
         _loading = false;
-        _error = 'Supabaseに接続されていません。';
+        _error = 'チャットを利用できません。';
       });
       return;
     }
 
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
-      final groups = await _repository.loadGroups();
+      final membership = await repository.membership();
+      final groups = await repository.loadGroups();
+      final members = await repository.loadMembers();
+      final priorities = await repository.prioritizedSiteGroupIds();
+
+      final previous = _selectedGroupId;
+      final next = groups.any((g) => g['id']?.toString() == previous)
+          ? previous
+          : (groups.isEmpty ? null : groups.first['id']?.toString());
+
       if (!mounted) return;
-      final previousGroupId = _selectedGroupId;
-      final nextGroupId = groups.any(
-        (group) => group['id']?.toString() == previousGroupId,
-      )
-          ? previousGroupId
-          : (groups.isEmpty ? null : groups.first['id'] as String);
       setState(() {
+        _role = membership.role;
         _groups = groups;
-        _selectedGroupId = nextGroupId;
+        _members = members;
+        _prioritizedSiteGroupIds = priorities;
+        _selectedGroupId = next;
         _loading = false;
-        _error = null;
       });
-      await _subscribeToSelectedGroup();
-    } catch (e) {
+
+      await _subscribeSelected();
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = error.toString();
       });
     }
   }
 
-  Future<void> _subscribeToSelectedGroup() async {
+  Future<void> _subscribeSelected() async {
     await _subscription?.cancel();
     _subscription = null;
+    final id = _selectedGroupId;
     final repository = _repository;
-    final groupId = _selectedGroupId;
-    if (repository == null || groupId == null) return;
+    if (id == null || repository == null) return;
 
     setState(() {
       _messages = [];
       _error = null;
     });
 
-    _subscription = repository.watchMessages(groupId).listen(
+    _subscription = repository.watchMessages(id).listen(
       (messages) {
         if (!mounted) return;
-        setState(() {
-          _messages = messages;
-          _error = null;
-        });
+        setState(() => _messages = messages);
         _scrollToBottom();
       },
       onError: (Object error) {
@@ -110,12 +136,24 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     );
   }
 
+  Future<void> _selectGroup(String id) async {
+    if (id == _selectedGroupId) {
+      setState(() => _tab = _ChatTab.all);
+      return;
+    }
+    setState(() {
+      _selectedGroupId = id;
+      _tab = _ChatTab.all;
+    });
+    await _subscribeSelected();
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
+        duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
       );
     });
@@ -123,317 +161,278 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   Future<void> _send() async {
     final repository = _repository;
-    final groupId = _selectedGroupId;
+    final id = _selectedGroupId;
     final text = _composer.text.trim();
-    if (repository == null || groupId == null || text.isEmpty || _sending) return;
+    if (repository == null || id == null || text.isEmpty || _sending) return;
 
     setState(() => _sending = true);
     try {
-      await repository.sendMessage(groupId: groupId, body: text);
+      await repository.sendMessage(groupId: id, body: text);
       _composer.clear();
-    } catch (e) {
+      await _loadGroupsOnly();
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('メッセージを送信できませんでした: $e')),
+        SnackBar(content: Text('送信できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
-  Future<void> _createGroup() async {
+  Future<void> _loadGroupsOnly() async {
     final repository = _repository;
     if (repository == null) return;
-
-    List<Map<String, dynamic>> sites;
     try {
-      sites = await repository.loadSites();
+      final groups = await repository.loadGroups();
+      final priorities = await repository.prioritizedSiteGroupIds();
+      if (!mounted) return;
+      setState(() {
+        _groups = groups;
+        _prioritizedSiteGroupIds = priorities;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _startDirect(Map<String, dynamic> member) async {
+    final repository = _repository;
+    if (repository == null) return;
+    try {
+      final id = await repository.startDirectChat(
+        member['user_id'].toString(),
+      );
+      await _loadGroupsOnly();
+      if (!mounted) return;
+      await _selectGroup(id);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場一覧を読み込めませんでした: $error')),
+        SnackBar(content: Text('個別トークを開始できませんでした: $error')),
       );
-      return;
     }
+  }
 
-    if (!mounted) return;
-    final nameController = TextEditingController();
-    var scope = 'company';
-    String? siteId;
+  Future<void> _attachPhoto() async {
+    final id = _selectedGroupId;
+    final repository = _repository;
+    if (id == null || repository == null) return;
 
-    final draft = await showDialog<({String name, String? siteId})>(
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 2000,
+    );
+    if (file == null) return;
+
+    setState(() => _sending = true);
+    try {
+      await repository.sendAttachment(
+        groupId: id,
+        bytes: await file.readAsBytes(),
+        filename: file.name,
+        mimeType: file.mimeType ?? 'image/jpeg',
+        isImage: true,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('写真を送信できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _attachFile() async {
+    final id = _selectedGroupId;
+    final repository = _repository;
+    if (id == null || repository == null) return;
+
+    final result = await FilePicker.platform.pickFiles(withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) return;
+
+    setState(() => _sending = true);
+    try {
+      await repository.sendAttachment(
+        groupId: id,
+        bytes: bytes,
+        filename: file.name,
+        mimeType: 'application/octet-stream',
+        isImage: false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ファイルを送信できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _showAttachMenu() async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('通信グループ作成'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'グループ名',
-                    hintText: '例: 東京海上 / 全社連絡',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: scope,
-                  decoration: const InputDecoration(labelText: '種類'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'company',
-                      child: Text('全社・共通グループ'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'site',
-                      child: Text('現場グループ'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setDialogState(() {
-                      scope = value;
-                      if (scope == 'company') siteId = null;
-                    });
-                  },
-                ),
-                if (scope == 'site') ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: siteId,
-                    decoration: const InputDecoration(labelText: '現場'),
-                    items: sites
-                        .map(
-                          (site) => DropdownMenuItem<String>(
-                            value: site['id'] as String,
-                            child: Text(site['name']?.toString() ?? ''),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setDialogState(() => siteId = value),
-                  ),
-                  if (sites.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Text('先に現場管理で現場を登録してください。'),
-                    ),
-                ],
-              ],
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_outlined),
+              title: const Text('写真'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _attachPhoto();
+              },
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('キャンセル'),
-            ),
-            FilledButton(
-              onPressed: scope == 'site' && siteId == null
-                  ? null
-                  : () {
-                      final name = nameController.text.trim();
-                      if (name.isEmpty) return;
-                      Navigator.pop(
-                        dialogContext,
-                        (name: name, siteId: scope == 'site' ? siteId : null),
-                      );
-                    },
-              child: const Text('作成'),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('ファイル'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _attachFile();
+              },
             ),
           ],
         ),
       ),
     );
-    nameController.dispose();
-
-    if (draft == null) return;
-
-    try {
-      final created = await repository.createGroup(
-        name: draft.name,
-        siteId: draft.siteId,
-      );
-      final createdId = created['id']?.toString();
-      await _load();
-      if (!mounted) return;
-      if (createdId != null) {
-        setState(() => _selectedGroupId = createdId);
-        await _subscribeToSelectedGroup();
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('通信グループを作成しました')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('通信グループを作成できませんでした: $error')),
-      );
-    }
   }
 
-  Future<void> _startLineClaim() async {
-    final repository = _repository;
-    final groupId = _selectedGroupId;
-    if (repository == null || groupId == null) return;
-
-    try {
-      final claim = await repository.beginLineBindingClaim(groupId);
-      final code = claim['claim_code']?.toString();
-      final expiresRaw = claim['expires_at']?.toString();
-      if (code == null || code.isEmpty) {
-        throw StateError('LINE連携コードを確認できませんでした。');
-      }
-
-      final expiresAt = expiresRaw == null
-          ? null
-          : DateTime.tryParse(expiresRaw)?.toLocal();
-
-      if (!mounted) return;
-      final shouldRefresh = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('LINEグループを連携'),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '連携したいLINEグループに、次の1行をそのまま送信してください。',
-                ),
-                const SizedBox(height: 14),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(dialogContext)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: SelectableText(
-                      'SKO連携 $code',
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'このコードを送ったLINEグループだけが、このSKO通信グループに連携されます。',
-                ),
-                if (expiresAt != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '有効期限: '
-                    '${expiresAt.month.toString().padLeft(2, '0')}/'
-                    '${expiresAt.day.toString().padLeft(2, '0')} '
-                    '${expiresAt.hour.toString().padLeft(2, '0')}:'
-                    '${expiresAt.minute.toString().padLeft(2, '0')}',
-                    style: Theme.of(dialogContext).textTheme.bodySmall,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('閉じる'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('送信したので確認'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRefresh == true) {
-        await _load();
-        if (!mounted) return;
-        final selected = _selectedGroup;
-        final linked = selected?['line_binding_enabled'] == true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              linked
-                  ? 'LINEグループの連携を確認しました。'
-                  : 'まだ連携を確認できません。LINE側の送信後、もう一度確認してください。',
-            ),
-          ),
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('LINE連携を開始できませんでした: $error')),
-      );
-    }
-  }
-
-  Future<void> _disableLineBinding() async {
-    final repository = _repository;
-    final bindingId = _selectedGroup?['line_binding_id']?.toString();
-    if (repository == null || bindingId == null || bindingId.isEmpty) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('LINE連携を停止'),
-        content: const Text(
-          'この通信グループへのLINEメッセージ受信を停止します。よろしいですか？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('停止する'),
-          ),
-        ],
+  Future<void> _openNotes() async {
+    final id = _selectedGroupId;
+    if (id == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NotesCloudPage(initialGroupId: id),
       ),
     );
-    if (confirmed != true) return;
-
-    try {
-      await repository.disableLineBinding(bindingId);
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('LINE連携を停止しました。')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('LINE連携を停止できませんでした: $error')),
-      );
-    }
   }
+
+  Future<void> _openAlbums() async {
+    final id = _selectedGroupId;
+    if (id == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AlbumsCloudPage(initialGroupId: id),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> get _siteGroups {
+    final groups =
+        _groups.where((g) => g['group_type'] == 'site').toList();
+    final order = {
+      for (var i = 0; i < _prioritizedSiteGroupIds.length; i++)
+        _prioritizedSiteGroupIds[i]: i,
+    };
+    groups.sort((a, b) {
+      final ai = order[a['id']?.toString()] ?? 999999;
+      final bi = order[b['id']?.toString()] ?? 999999;
+      if (ai != bi) return ai.compareTo(bi);
+      return _lastActivity(b).compareTo(_lastActivity(a));
+    });
+    return groups;
+  }
+
+  List<Map<String, dynamic>> get _directGroups {
+    final groups =
+        _groups.where((g) => g['group_type'] == 'direct').toList();
+    groups.sort(
+      (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
+    );
+    return groups;
+  }
+
+  List<Map<String, dynamic>> get _partnerGroups {
+    final groups =
+        _groups.where((g) => g['group_type'] == 'partner').toList();
+    groups.sort(
+      (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
+    );
+    return groups;
+  }
+
+  List<Map<String, dynamic>> get _filteredMembers {
+    final query = _memberSearch.text.trim().toLowerCase();
+    final directActivityByUser = <String, DateTime>{};
+    for (final group in _directGroups) {
+      final other = group['direct_other_user_id']?.toString();
+      if (other != null) {
+        directActivityByUser[other] = _lastActivity(group);
+      }
+    }
+
+    final members = _members.where((member) {
+      if (query.isEmpty) return true;
+      return (member['display_name'] ?? '')
+          .toString()
+          .toLowerCase()
+          .contains(query);
+    }).toList();
+
+    members.sort((a, b) {
+      final aId = a['user_id']?.toString() ?? '';
+      final bId = b['user_id']?.toString() ?? '';
+      final aDate = directActivityByUser[aId];
+      final bDate = directActivityByUser[bId];
+      if (aDate != null || bDate != null) {
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        final byDate = bDate.compareTo(aDate);
+        if (byDate != 0) return byDate;
+      }
+      return (a['display_name'] ?? '')
+          .toString()
+          .compareTo((b['display_name'] ?? '').toString());
+    });
+
+    return members;
+  }
+
+  DateTime _lastActivity(Map<String, dynamic> group) =>
+      DateTime.tryParse(group['last_activity_at']?.toString() ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   Widget build(BuildContext context) {
-    final selectedGroup = _selectedGroup;
+    final selected = _selectedGroup;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('チャット'),
+        title: Text(
+          selected?['display_name']?.toString() ?? 'チャット',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           const SkoNotificationBell(),
-          IconButton(
-            tooltip: '通信グループ作成',
-            onPressed: _loading ? null : _createGroup,
-            icon: const Icon(Icons.group_add_outlined),
-          ),
+          if (selected != null)
+            PopupMenuButton<String>(
+              tooltip: 'トーク機能',
+              onSelected: (value) {
+                if (value == 'notes') _openNotes();
+                if (value == 'albums') _openAlbums();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'notes',
+                  child: ListTile(
+                    leading: Icon(Icons.sticky_note_2_outlined),
+                    title: Text('ノート'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'albums',
+                  child: ListTile(
+                    leading: Icon(Icons.photo_album_outlined),
+                    title: Text('アルバム'),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
       body: SafeArea(
@@ -441,233 +440,357 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             ? const Center(child: CircularProgressIndicator())
             : Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: _groups.isEmpty
-                        ? const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(18),
-                              child: Text('チャットを始めるには、先に通信グループを作成してください。'),
-                            ),
-                          )
-                        : DropdownButtonFormField<String>(
-                            initialValue: _selectedGroupId,
-                            decoration: const InputDecoration(
-                              labelText: 'グループ / 現場',
-                              prefixIcon: Icon(Icons.groups_outlined),
-                            ),
-                            items: _groups
-                                .map(
-                                  (group) => DropdownMenuItem<String>(
-                                    value: group['id'] as String,
-                                    child: Text(group['name'].toString()),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) async {
-                              if (value == null || value == _selectedGroupId) return;
-                              setState(() => _selectedGroupId = value);
-                              await _subscribeToSelectedGroup();
-                            },
-                          ),
-                  ),
-                  if (selectedGroup != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: _LineBindingStatus(
-                        group: selectedGroup,
-                        onStartClaim: _startLineClaim,
-                        onDisable: _disableLineBinding,
-                      ),
-                    ),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      ),
-                    ),
+                  _tabs(),
+                  const Divider(height: 1),
                   Expanded(
-                    child: _groups.isEmpty
-                        ? const SizedBox.shrink()
-                        : _messages.isEmpty
-                            ? const Center(child: Text('まだメッセージはありません。'))
-                            : ListView.builder(
-                                controller: _scrollController,
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                                itemCount: _messages.length,
-                                itemBuilder: (context, index) => _MessageBubble(
-                                  message: _messages[index],
-                                  currentUserId: _repository?.currentUserId,
-                                ),
-                              ),
-                  ),
-                  if (_selectedGroupId != null)
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        border: Border(
-                          top: BorderSide(color: Theme.of(context).dividerColor),
+                    child: switch (_tab) {
+                      _ChatTab.all => _conversationView(),
+                      _ChatTab.site => _groupList(
+                          _siteGroups,
+                          emptyText: '現場トークはまだありません',
                         ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _composer,
-                              minLines: 1,
-                              maxLines: 4,
-                              textInputAction: TextInputAction.newline,
-                              decoration: const InputDecoration(
-                                hintText: 'メッセージを入力',
-                                isDense: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton.filled(
-                            tooltip: '送信',
-                            onPressed: _sending ? null : _send,
-                            icon: _sending
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.send),
-                          ),
-                        ],
-                      ),
-                    ),
+                      _ChatTab.direct => _directList(),
+                      _ChatTab.partner => _groupList(
+                          _partnerGroups,
+                          emptyText: '協力会社トークはまだありません',
+                        ),
+                    },
+                  ),
                 ],
               ),
       ),
     );
   }
-}
 
-class _LineBindingStatus extends StatelessWidget {
-  const _LineBindingStatus({
-    required this.group,
-    required this.onStartClaim,
-    required this.onDisable,
-  });
+  Widget _tabs() {
+    final tabs = <ButtonSegment<_ChatTab>>[
+      const ButtonSegment(value: _ChatTab.all, label: Text('すべて')),
+      const ButtonSegment(value: _ChatTab.site, label: Text('現場')),
+      const ButtonSegment(value: _ChatTab.direct, label: Text('個別')),
+      if (_isAdmin)
+        const ButtonSegment(
+          value: _ChatTab.partner,
+          label: Text('協力会社'),
+        ),
+    ];
 
-  final Map<String, dynamic> group;
-  final VoidCallback onStartClaim;
-  final VoidCallback onDisable;
-
-  @override
-  Widget build(BuildContext context) {
-    final present = group['line_binding_present'] == true;
-    final enabled = group['line_binding_enabled'] == true;
-    final displayName = group['line_binding_name']?.toString().trim();
-    final canManage = group['line_binding_can_manage'] == true;
-
-    late final String title;
-    late final String detail;
-    late final IconData icon;
-
-    if (!present) {
-      title = 'LINE未連携';
-      detail = 'このグループはLINEからの受信先にまだ紐付いていません。';
-      icon = Icons.link_off;
-    } else if (enabled) {
-      title = 'LINE連携中';
-      detail = displayName?.isNotEmpty == true
-          ? '$displayName からの受信を有効にしています。'
-          : 'LINEグループからの受信を有効にしています。';
-      icon = Icons.link;
-    } else {
-      title = 'LINE連携停止中';
-      detail = displayName?.isNotEmpty == true
-          ? '$displayName との紐付けはありますが、現在は受信停止中です。'
-          : 'LINEとの紐付けはありますが、現在は受信停止中です。';
-      icon = Icons.link_off;
-    }
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        dense: true,
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(detail),
-        trailing: !canManage
-            ? null
-            : enabled
-                ? TextButton(
-                    onPressed: onDisable,
-                    child: const Text('停止'),
-                  )
-                : FilledButton.tonal(
-                    onPressed: onStartClaim,
-                    child: Text(present ? '再連携' : '連携する'),
-                  ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+      child: SegmentedButton<_ChatTab>(
+        segments: tabs,
+        selected: {_tab},
+        onSelectionChanged: (value) =>
+            setState(() => _tab = value.first),
       ),
     );
+  }
+
+  Widget _conversationView() {
+    if (_selectedGroupId == null) {
+      return const Center(
+        child: Text(
+          'トークを選択してください',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        Expanded(
+          child: _messages.isEmpty
+              ? const Center(child: Text('まだメッセージはありません'))
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) => _MessageBubble(
+                    message: _messages[index],
+                    currentUserId: _repository?.currentUserId,
+                  ),
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              top: BorderSide(color: Theme.of(context).dividerColor),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: '写真・ファイル',
+                onPressed: _sending ? null : _showAttachMenu,
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _composer,
+                  minLines: 1,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'メッセージ',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filled(
+                tooltip: '送信',
+                onPressed: _sending ? null : _send,
+                icon: _sending
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _groupList(
+    List<Map<String, dynamic>> groups, {
+    required String emptyText,
+  }) {
+    if (groups.isEmpty) {
+      return Center(child: Text(emptyText));
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(10),
+      itemCount: groups.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 7),
+      itemBuilder: (context, index) {
+        final group = groups[index];
+        final selected =
+            group['id']?.toString() == _selectedGroupId;
+
+        return Card(
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundImage: group['avatar_url'] == null
+                  ? null
+                  : NetworkImage(group['avatar_url'].toString()),
+              child: group['avatar_url'] == null
+                  ? Icon(
+                      group['group_type'] == 'site'
+                          ? Icons.business_outlined
+                          : Icons.groups_outlined,
+                    )
+                  : null,
+            ),
+            title: Text(
+              group['display_name']?.toString() ??
+                  group['name']?.toString() ??
+                  '',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              _activityText(_lastActivity(group)),
+            ),
+            trailing: selected
+                ? const Icon(Icons.chat_bubble)
+                : const Icon(Icons.chevron_right),
+            onTap: () => _selectGroup(group['id'].toString()),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _directList() {
+    final members = _filteredMembers;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 5),
+          child: TextField(
+            controller: _memberSearch,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: '社員を検索',
+              hintText: '名前を入力',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        Expanded(
+          child: members.isEmpty
+              ? const Center(child: Text('該当するメンバーはいません'))
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
+                  itemCount: members.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: 6),
+                  itemBuilder: (context, index) {
+                    final member = members[index];
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: member['avatar_url'] == null
+                              ? null
+                              : NetworkImage(
+                                  member['avatar_url'].toString(),
+                                ),
+                          child: member['avatar_url'] == null
+                              ? const Icon(Icons.person)
+                              : null,
+                        ),
+                        title: Text(
+                          member['display_name']?.toString() ??
+                              'メンバー',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        subtitle: Text(
+                          member['role']?.toString() ?? '',
+                        ),
+                        trailing:
+                            const Icon(Icons.chat_bubble_outline),
+                        onTap: () => _startDirect(member),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  String _activityText(DateTime value) {
+    if (value.millisecondsSinceEpoch == 0) return 'まだ会話はありません';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(value.month)}/${two(value.day)} '
+        '${two(value.hour)}:${two(value.minute)}';
   }
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.currentUserId});
+  const _MessageBubble({
+    required this.message,
+    required this.currentUserId,
+  });
 
   final Map<String, dynamic> message;
   final String? currentUserId;
 
   @override
   Widget build(BuildContext context) {
-    final createdBy = message['sender_user_id']?.toString();
+    final senderUserId = message['sender_user_id']?.toString();
     final origin = message['origin']?.toString() ?? 'sk_works';
-    final isOwn = origin == 'sk_works' && createdBy != null && createdBy == currentUserId;
-    final sender = origin == 'line'
-        ? (message['sender_display_name']?.toString().trim().isNotEmpty == true
+    final own = origin == 'sk_works' &&
+        senderUserId != null &&
+        senderUserId == currentUserId;
+
+    final sender = own
+        ? '自分'
+        : (message['sender_display_name']?.toString().trim().isNotEmpty ==
+                true
             ? message['sender_display_name'].toString()
-            : 'LINE')
-        : isOwn
-            ? '自分'
-            : 'メンバー';
+            : 'メンバー');
+
+    final attachments = message['attachments'] is List
+        ? List<Map<String, dynamic>>.from(
+            message['attachments'] as List,
+          )
+        : const <Map<String, dynamic>>[];
 
     return Align(
-      alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: own ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
+        constraints: const BoxConstraints(maxWidth: 340),
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 7),
         decoration: BoxDecoration(
-          color: isOwn
+          color: own
               ? Theme.of(context).colorScheme.primaryContainer
               : Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  sender,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+            if (!own)
+              Text(
+                sender,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
                 ),
-                if (origin == 'line') ...[
-                  const SizedBox(width: 6),
-                  const Icon(Icons.chat_bubble_outline, size: 13),
-                ],
-              ],
-            ),
-            const SizedBox(height: 3),
-            Text(message['body']?.toString() ?? ''),
-            const SizedBox(height: 4),
-            Text(
-              _formatTime(message['sent_at']?.toString()),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            if (!own) const SizedBox(height: 3),
+            for (final attachment in attachments) ...[
+              if (attachment['attachment_type'] == 'image' &&
+                  attachment['signed_url'] != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    attachment['signed_url'].toString(),
+                    width: 250,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(
+                      height: 90,
+                      child: Center(
+                        child: Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
                   ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.insert_drive_file_outlined),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          attachment['original_filename']?.toString() ??
+                              'ファイル',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
+            ],
+            Text(message['body']?.toString() ?? ''),
+            const SizedBox(height: 3),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Text(
+                _formatTime(message['sent_at']?.toString()),
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ),
           ],
         ),
@@ -676,9 +799,10 @@ class _MessageBubble extends StatelessWidget {
   }
 
   String _formatTime(String? value) {
-    final parsed = value == null ? null : DateTime.tryParse(value)?.toLocal();
+    final parsed =
+        value == null ? null : DateTime.tryParse(value)?.toLocal();
     if (parsed == null) return '';
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(parsed.month)}/${two(parsed.day)} ${two(parsed.hour)}:${two(parsed.minute)}';
+    return '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
