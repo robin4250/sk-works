@@ -19,7 +19,7 @@ class AttendanceVerificationRepository {
 
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SK WORKSへのログインが必要です。');
+    if (user == null) throw StateError('SKOへのログインが必要です。');
     final rows = await _client
         .from('company_members')
         .select('company_id')
@@ -27,6 +27,13 @@ class AttendanceVerificationRepository {
         .limit(1);
     if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
     return rows.first['company_id'] as String;
+  }
+
+  Future<bool> canManageAttendance() async {
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_attendance'] == true;
   }
 
   Future<Map<String, dynamic>> loadSettings() async {
@@ -50,6 +57,9 @@ class AttendanceVerificationRepository {
     required String mode,
     required int proximityRadiusM,
   }) async {
+    if (!await canManageAttendance()) {
+      throw StateError('出勤確認方法を変更する権限がありません。');
+    }
     final companyId = await _companyId();
     await _client.from('attendance_verification_settings').upsert({
       'company_id': companyId,
@@ -62,12 +72,27 @@ class AttendanceVerificationRepository {
 
   Future<List<Map<String, dynamic>>> loadWorkers() async {
     final companyId = await _companyId();
+
+    if (await canManageAttendance()) {
+      final rows = await _client
+          .from('workers')
+          .select('id, name')
+          .eq('company_id', companyId)
+          .eq('status', 'active')
+          .order('name');
+      return List<Map<String, dynamic>>.from(rows);
+    }
+
+    final workerId = await _client.rpc('ensure_current_user_worker');
+    final id = workerId?.toString();
+    if (id == null || id.isEmpty) return const [];
+
     final rows = await _client
         .from('workers')
         .select('id, name')
         .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('name');
+        .eq('id', id)
+        .limit(1);
     return List<Map<String, dynamic>>.from(rows);
   }
 
@@ -86,23 +111,28 @@ class AttendanceVerificationRepository {
     required double latitude,
     required double longitude,
   }) async {
-    final companyId = await _companyId();
-    await _client
-        .from('sites')
-        .update({
-          'latitude': latitude,
-          'longitude': longitude,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('company_id', companyId)
-        .eq('id', siteId);
+    if (!await canManageAttendance()) {
+      throw StateError('現場の基準位置を変更する権限がありません。');
+    }
+
+    await _client.rpc(
+      'update_site_attendance_location',
+      params: {
+        'p_site_id': siteId,
+        'p_latitude': latitude,
+        'p_longitude': longitude,
+      },
+    );
   }
 
   Future<List<Map<String, dynamic>>> loadRecent({int limit = 20}) async {
     final companyId = await _companyId();
     final rows = await _client
         .from('attendance_verifications')
-        .select('id, event_type, verification_mode, confirmed_at, proximity_status, distance_to_site_m, workers(name), sites(name)')
+        .select(
+          'id, event_type, verification_mode, confirmed_at, '
+          'proximity_status, distance_to_site_m, workers(name), sites(name)',
+        )
         .eq('company_id', companyId)
         .order('confirmed_at', ascending: false)
         .limit(limit);
@@ -128,8 +158,10 @@ class AttendanceVerificationRepository {
 
     if (photoBytes != null) {
       final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
-      final objectName = '${DateTime.now().microsecondsSinceEpoch}$extension';
-      storagePath = '$companyId/attendance/$siteId/$workerId/$objectName';
+      final objectName =
+          '${DateTime.now().microsecondsSinceEpoch}$extension';
+      storagePath =
+          '$companyId/attendance/$siteId/$workerId/$objectName';
       await _client.storage.from(_bucket).uploadBinary(
             storagePath,
             photoBytes,
