@@ -19,6 +19,8 @@ void main() {
 
     final menuFinder = find.text(menu);
     expect(menuFinder, findsOneWidget);
+    await tester.ensureVisible(menuFinder);
+    await tester.pump();
     await tester.tap(menuFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
