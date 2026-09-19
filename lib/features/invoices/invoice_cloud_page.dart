@@ -62,7 +62,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('請求管理'),
+        title: const Text('請求書'),
         actions: [
           IconButton(
             tooltip: '再読み込み',
@@ -79,7 +79,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loading || !_canManageFinancials ? null : _addInvoice,
         icon: const Icon(Icons.add),
-        label: const Text('請求作成'),
+        label: const Text('請求書を作る'),
       ),
       body: SafeArea(
         child: _loading
@@ -87,7 +87,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
             : _error != null
                 ? _ErrorState(message: _error!, onRetry: _load)
                 : _invoices.isEmpty
-                    ? const Center(child: Text('請求データはまだありません'))
+                    ? const Center(child: Text('請求書はまだありません'))
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                         itemCount: _invoices.length,
