@@ -38,28 +38,56 @@ class AdminSiteFinancialRepository {
     return AdminSiteFinancialRepository._(client);
   }
 
-  Future<String> _companyId() async {
+  Future<({String companyId, Map<String, dynamic> permissions})>
+      _access() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
 
     final rows = await _client
         .from('company_members')
-        .select('company_id, role')
+        .select('company_id')
         .eq('user_id', user.id)
         .limit(1);
 
     if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
 
-    final role = rows.first['role']?.toString() ?? 'viewer';
-    if (role != 'owner' && role != 'admin') {
-      throw StateError('管理者権限が必要です。');
-    }
+    final raw = await _client.rpc('current_feature_permissions');
+    final permissions = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
 
-    return rows.first['company_id'] as String;
+    return (
+      companyId: rows.first['company_id'] as String,
+      permissions: permissions,
+    );
+  }
+
+  Future<bool> canManage() async {
+    final value = await _access();
+    return value.permissions['can_manage_admin_site_data'] == true;
+  }
+
+  Future<String> _companyIdForView() async {
+    final value = await _access();
+    final canView =
+        value.permissions['can_view_admin_site_data'] == true ||
+        value.permissions['can_manage_admin_site_data'] == true;
+    if (!canView) {
+      throw StateError('管理者用現場データを見る権限がありません。');
+    }
+    return value.companyId;
+  }
+
+  Future<String> _companyIdForManage() async {
+    final value = await _access();
+    if (value.permissions['can_manage_admin_site_data'] != true) {
+      throw StateError('管理者用現場データを変更する権限がありません。');
+    }
+    return value.companyId;
   }
 
   Future<List<AdminSiteFinancialRecord>> loadAll() async {
-    final companyId = await _companyId();
+    final companyId = await _companyIdForView();
 
     final sites = await _client
         .from('sites')
@@ -70,7 +98,9 @@ class AdminSiteFinancialRepository {
     final settings = await _client
         .from('site_financial_settings')
         .select(
-          'site_id, worker_daily_rate_yen, overtime_hour_rate_yen, early_hour_rate_yen, night_hour_rate_yen, billing_unit_price_yen, welfare_rate',
+          'site_id, worker_daily_rate_yen, overtime_hour_rate_yen, '
+          'early_hour_rate_yen, night_hour_rate_yen, '
+          'billing_unit_price_yen, welfare_rate',
         )
         .eq('company_id', companyId);
 
@@ -104,7 +134,7 @@ class AdminSiteFinancialRepository {
   }
 
   Future<void> save(AdminSiteFinancialRecord record) async {
-    final companyId = await _companyId();
+    final companyId = await _companyIdForManage();
 
     await _client.from('site_financial_settings').upsert({
       'site_id': record.siteId,
