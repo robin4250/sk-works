@@ -12,12 +12,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const SkWorksApp());
 
-    final menuFinder = find.text(menu);
-    if (menuFinder.evaluate().isEmpty) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    for (var i = 0; i < 8 && find.text(menu).evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -350));
       await tester.pump();
     }
 
+    final menuFinder = find.text(menu);
     expect(menuFinder, findsOneWidget);
     await tester.tap(menuFinder);
     await tester.pump();
@@ -39,11 +39,11 @@ void main() {
   });
 
   testWidgets('home routes to attendance module', (tester) async {
-    await openModule(tester, '出勤表', '勤務を追加');
+    await openModule(tester, '出勤表', '出面入力');
   });
 
   testWidgets('home routes to invoice module', (tester) async {
-    await openModule(tester, '請求', '請求書を作る');
+    await openModule(tester, '請求', '請求作成');
   });
 
   testWidgets('home routes to settings module', (tester) async {
