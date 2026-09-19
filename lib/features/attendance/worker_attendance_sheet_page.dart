@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_bell.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
@@ -103,17 +104,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
             onPressed: _loading ? null : _showMonthCalendar,
             icon: const Icon(Icons.calendar_month_outlined),
           ),
-          IconButton(
-            tooltip: 'お知らせ',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('お知らせ画面は共通通知センターに接続予定です')),
-              );
-            },
-            icon: const Badge(
-              isLabelVisible: false,
-              child: Icon(Icons.notifications_outlined),
-            ),
+          const SkoNotificationBell(),
           ),
         ],
       ),
@@ -462,11 +453,7 @@ class WorkerAttendanceMonthPage extends StatelessWidget {
       appBar: AppBar(
         title: Text('${month.year}年${month.month}月'),
         actions: [
-          IconButton(
-            tooltip: 'お知らせ',
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_outlined),
-          ),
+          const SkoNotificationBell(),
         ],
       ),
       body: SafeArea(
