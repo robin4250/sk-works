@@ -7,13 +7,14 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
+import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
-import 'features/home/home_membership_repository.dart';
 import 'features/home/friendly_home_content.dart';
+import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
@@ -23,68 +24,14 @@ import 'features/people/worker_document_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
-import 'features/settings/settings_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
+import 'features/settings/settings_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
 class SkWorksApp extends StatelessWidget {
   const SkWorksApp({super.key});
-
-  Future<void> _openHomeAction(String key) async {
-    Widget? page;
-
-    switch (key) {
-      case 'attendance_verify':
-        page = const AttendanceVerificationPage();
-        break;
-      case 'qualification_certificates':
-        page = const QualificationCertificatePage();
-        break;
-      case 'documents':
-        page = const WorkerDocumentPage();
-        break;
-      case 'chat':
-        page = const ChatCloudPage();
-        break;
-      case 'today_line':
-        page = const TodayLineAttendancePage();
-        break;
-      case 'line_history':
-        page = const LineHistoryPreviewPage();
-        break;
-      case 'rollout':
-        page = const RolloutReadinessPage();
-        break;
-      case 'notes':
-        page = const NotesCloudPage();
-        break;
-      case 'albums':
-        page = const AlbumsCloudPage();
-        break;
-      case 'settings':
-        page = const SettingsPage();
-        break;
-      default:
-        for (final module in legacy.HomePage.modules) {
-          if (module.storageKey == key) {
-            page = _pageFor(module);
-            break;
-          }
-        }
-    }
-
-    if (page == null || !mounted) return;
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => page!),
-    );
-
-    if (key == 'settings') {
-      await _loadModuleSettings();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +92,9 @@ class _HomePageState extends State<HomePage> {
   Map<String, bool> _moduleStates = const {};
   String _role = SupabaseBackend.isInitialized ? 'viewer' : 'owner';
 
+  bool get _isAdmin =>
+      _role == 'owner' || _role == 'admin' || _role == 'manager';
+
   @override
   void initState() {
     super.initState();
@@ -200,7 +150,9 @@ class _HomePageState extends State<HomePage> {
           ? const SiteCloudPage()
           : const SitePage(),
       'attendance' => SupabaseBackend.isInitialized
-          ? const AttendanceCloudPage()
+          ? (_isAdmin
+              ? const AttendanceCloudPage()
+              : const WorkerAttendanceSheetPage())
           : const AttendancePage(),
       'invoices' => SupabaseBackend.isInitialized
           ? const SecondaryProtectedPage(
@@ -211,6 +163,68 @@ class _HomePageState extends State<HomePage> {
       'settings' => const SettingsPage(),
       _ => legacy.ModulePage(module: module),
     };
+  }
+
+  Future<void> _openHomeAction(String key) async {
+    Widget? page;
+
+    switch (key) {
+      case 'attendance_verify':
+        page = const AttendanceVerificationPage();
+        break;
+      case 'qualification_certificates':
+        page = const QualificationCertificatePage();
+        break;
+      case 'documents':
+        page = const WorkerDocumentPage();
+        break;
+      case 'chat':
+        page = const ChatCloudPage();
+        break;
+      case 'today_line':
+        page = const TodayLineAttendancePage();
+        break;
+      case 'line_history':
+        page = const LineHistoryPreviewPage();
+        break;
+      case 'rollout':
+        page = const RolloutReadinessPage();
+        break;
+      case 'notes':
+        page = const NotesCloudPage();
+        break;
+      case 'albums':
+        page = const AlbumsCloudPage();
+        break;
+      case 'settings':
+        page = const SettingsPage();
+        break;
+      default:
+        for (final module in legacy.HomePage.modules) {
+          if (module.storageKey == key) {
+            page = _pageFor(module);
+            break;
+          }
+        }
+    }
+
+    if (page == null || !mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => page!),
+    );
+
+    if (key == 'settings') {
+      await _loadModuleSettings();
+    }
+  }
+
+  void _showNotificationsPlaceholder() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('共通通知センターをこのベルに接続する工程を続けています'),
+      ),
+    );
   }
 
   @override
@@ -224,11 +238,7 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             tooltip: 'お知らせ',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('通知センターは次の工程で接続します')),
-              );
-            },
+            onPressed: _showNotificationsPlaceholder,
             icon: const Badge(
               isLabelVisible: false,
               child: Icon(Icons.notifications_outlined),
@@ -242,17 +252,17 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      floatingActionButton: SupabaseBackend.isInitialized &&
-              _moduleEnabled('chat')
-          ? FloatingActionButton.extended(
-              onPressed: () => _openHomeAction('chat'),
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text(
-                'チャット',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            )
-          : null,
+      floatingActionButton:
+          SupabaseBackend.isInitialized && _moduleEnabled('chat')
+              ? FloatingActionButton.extended(
+                  onPressed: () => _openHomeAction('chat'),
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: const Text(
+                    'チャット',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                )
+              : null,
       body: SafeArea(
         child: FriendlyHomeContent(
           role: _role,
