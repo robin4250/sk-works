@@ -27,7 +27,7 @@ void main() {
   }
 
   testWidgets('home routes to people module', (tester) async {
-    await openModule(tester, '社員・協力会社', '新規登録');
+    await openModule(tester, '人員', '新規登録');
   });
 
   testWidgets('home routes to qualification module', (tester) async {
@@ -35,15 +35,15 @@ void main() {
   });
 
   testWidgets('home routes to site module', (tester) async {
-    await openModule(tester, '現場管理', '現場登録');
+    await openModule(tester, '現場', '現場登録');
   });
 
   testWidgets('home routes to attendance module', (tester) async {
-    await openModule(tester, '勤怠・人工', '出面入力');
+    await openModule(tester, '出勤表', '勤務を追加');
   });
 
   testWidgets('home routes to invoice module', (tester) async {
-    await openModule(tester, '請求管理', '請求作成');
+    await openModule(tester, '請求', '請求書を作る');
   });
 
   testWidgets('home routes to settings module', (tester) async {
