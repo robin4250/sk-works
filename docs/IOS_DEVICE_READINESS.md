@@ -99,3 +99,20 @@ Apple Developer Program会社登録がまだ処理中でも、Personal Teamで�
 - 印刷 / 共有 / メール送信
 - 実機画面サイズでのレイアウト
 - キーボード表示時の画面崩れ
+
+
+## 8. Supabase接続付きでiPhoneへ起動
+
+SKOはSupabase接続値をソースコードに埋め込まず、Dart defineで受け取る。
+
+ターミナルから実機起動する場合:
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL="<Supabase Project URL>" \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY="<Publishable Key>"
+```
+
+XcodeだけでRunする場合は、Flutter側のDart defineをビルド設定へ渡す必要があるため、初回は上記 `flutter run` を使う方が簡単。
+
+秘密鍵/service_roleキーは絶対にiPhoneアプリへ入れない。使用するのはPublishable Keyのみ。
