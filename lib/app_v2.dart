@@ -503,7 +503,13 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
-        children: pages,
+        children: [
+          for (var i = 0; i < pages.length; i++)
+            HeroMode(
+              enabled: i == _selectedIndex,
+              child: pages[i],
+            ),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
