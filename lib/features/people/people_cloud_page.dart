@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_bell.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
 
@@ -80,6 +81,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       appBar: AppBar(
         title: const Text('社員・協力会社'),
         actions: [
+          const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : () {
