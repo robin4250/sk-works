@@ -139,6 +139,18 @@ class SecureOnboardingRepository {
     );
   }
 
+  bool get companySetupDeferred =>
+      _client.auth.currentUser?.userMetadata?['sko_company_setup_deferred'] == true;
+
+  Future<void> setCompanySetupDeferred(bool value) async {
+    final current = _client.auth.currentUser;
+    final metadata = Map<String, dynamic>.from(current?.userMetadata ?? const {});
+    metadata['sko_company_setup_deferred'] = value;
+    await _client.auth.updateUser(
+      UserAttributes(data: metadata),
+    );
+  }
+
   Future<void> signOut() => _client.auth.signOut();
 
   String? _nullable(String? value) {
