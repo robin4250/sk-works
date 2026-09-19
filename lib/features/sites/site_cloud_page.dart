@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
 import 'site_page.dart';
 
@@ -82,6 +83,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       appBar: AppBar(
         title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
         actions: [
+          const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading
