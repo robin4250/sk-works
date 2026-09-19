@@ -3,7 +3,12 @@ import 'package:flutter/material.dart';
 import 'notes_cloud_repository.dart';
 
 class NotesCloudPage extends StatefulWidget {
-  const NotesCloudPage({super.key});
+  const NotesCloudPage({
+    super.key,
+    this.initialGroupId,
+  });
+
+  final String? initialGroupId;
 
   @override
   State<NotesCloudPage> createState() => _NotesCloudPageState();
@@ -46,7 +51,11 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
       if (!mounted) return;
       setState(() {
         _groups = groups;
-        _selectedGroupId = groups.isEmpty ? null : groups.first['id'] as String;
+        _selectedGroupId = groups.any(
+          (group) => group['id']?.toString() == widget.initialGroupId,
+        )
+            ? widget.initialGroupId
+            : (groups.isEmpty ? null : groups.first['id'] as String);
         _loading = false;
       });
       if (_selectedGroupId != null) await _loadNotes();
