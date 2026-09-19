@@ -248,11 +248,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final repository = _repository;
     if (id == null || repository == null) return;
 
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) return;
+    final file = await FilePicker.pickFile();
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
 
     setState(() => _sending = true);
     try {
