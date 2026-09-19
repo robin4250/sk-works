@@ -214,6 +214,20 @@ class _HomePageState extends State<HomePage> {
     await _recordUsage(key);
     if (!mounted) return;
 
+    final restricted = <String, String>{
+      'approvals': 'can_approve_daily_report_edits',
+      'invoices': 'can_view_invoices',
+      'admin_sites': 'can_view_admin_site_data',
+      'people': 'can_manage_people',
+    };
+    final permission = restricted[key];
+    if (permission != null && !_identity.can(permission)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この機能を利用する権限がありません')),
+      );
+      return;
+    }
+
     if (key == 'footer_home') {
       setState(() => _selectedIndex = 0);
       return;
@@ -361,13 +375,15 @@ class _HomePageState extends State<HomePage> {
           label: 'アルバム',
           icon: Icons.photo_album_outlined,
         ),
-      if (_isAdmin)
+      if (_isAdmin && _identity.can('can_approve_daily_report_edits'))
         const _MenuAction(
           key: 'approvals',
           label: '承認待ち',
           icon: Icons.approval_outlined,
         ),
-      if (_isAdmin && _moduleEnabled('line_bridge'))
+      if (_isAdmin &&
+          _identity.can('can_manage_attendance') &&
+          _moduleEnabled('line_bridge'))
         const _MenuAction(
           key: 'today_line',
           label: '本日のLINE出勤候補',
