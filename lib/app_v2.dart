@@ -18,6 +18,7 @@ import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
+import 'features/notifications/notification_bell.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/worker_document_page.dart';
@@ -236,13 +237,7 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          IconButton(
-            tooltip: 'お知らせ',
-            onPressed: _showNotificationsPlaceholder,
-            icon: const Badge(
-              isLabelVisible: false,
-              child: Icon(Icons.notifications_outlined),
-            ),
+          const SkoNotificationBell(),
           ),
           if (widget.onSignOut != null)
             IconButton(
