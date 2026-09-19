@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import 'member_permission_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
 
@@ -79,9 +80,19 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('社員・協力会社'),
+        title: const Text('人員管理'),
         actions: [
           const SkoNotificationBell(),
+          if (_canManagePeople)
+            IconButton(
+              tooltip: '利用者の権限設定',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MemberPermissionPage(),
+                ),
+              ),
+              icon: const Icon(Icons.manage_accounts_outlined),
+            ),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : () {
