@@ -12,13 +12,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const SkWorksApp());
 
-    final menuFinder = find.text(menu);
-    if (menuFinder.evaluate().isEmpty) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    for (var i = 0; i < 8 && find.text(menu).evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -350));
       await tester.pump();
     }
 
+    final menuFinder = find.text(menu);
     expect(menuFinder, findsOneWidget);
+    await tester.ensureVisible(menuFinder);
+    await tester.pump();
     await tester.tap(menuFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -27,7 +29,7 @@ void main() {
   }
 
   testWidgets('home routes to people module', (tester) async {
-    await openModule(tester, '社員・協力会社', '新規登録');
+    await openModule(tester, '人員', '新規登録');
   });
 
   testWidgets('home routes to qualification module', (tester) async {
@@ -35,15 +37,15 @@ void main() {
   });
 
   testWidgets('home routes to site module', (tester) async {
-    await openModule(tester, '現場管理', '現場登録');
+    await openModule(tester, '現場', '現場登録');
   });
 
   testWidgets('home routes to attendance module', (tester) async {
-    await openModule(tester, '勤怠・人工', '出面入力');
+    await openModule(tester, '出勤表', '出面入力');
   });
 
   testWidgets('home routes to invoice module', (tester) async {
-    await openModule(tester, '請求管理', '請求作成');
+    await openModule(tester, '請求', '請求作成');
   });
 
   testWidgets('home routes to settings module', (tester) async {

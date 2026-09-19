@@ -3,17 +3,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/main.dart';
 
 void main() {
-  testWidgets('SKO home and employee module work', (tester) async {
+  testWidgets('SKO friendly admin home and people module work', (tester) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const SkWorksApp());
 
     expect(find.text('SKO'), findsWidgets);
-    expect(find.text('社員・協力会社'), findsOneWidget);
-    expect(find.text('資格管理'), findsOneWidget);
-    expect(find.text('現場管理'), findsOneWidget);
+    expect(find.text('管理ホーム'), findsOneWidget);
+    expect(find.text('人員'), findsOneWidget);
+    expect(find.text('現場'), findsOneWidget);
+    expect(find.text('出勤表'), findsOneWidget);
+    expect(find.text('請求'), findsOneWidget);
 
-    await tester.tap(find.text('社員・協力会社'));
+    await tester.tap(find.text('人員'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
