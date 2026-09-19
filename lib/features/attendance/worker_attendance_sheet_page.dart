@@ -105,7 +105,6 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
             icon: const Icon(Icons.calendar_month_outlined),
           ),
           const SkoNotificationBell(),
-          ),
         ],
       ),
       body: SafeArea(
