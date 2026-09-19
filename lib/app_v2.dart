@@ -34,6 +34,7 @@ import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
@@ -268,7 +269,7 @@ class _HomePageState extends State<HomePage> {
       case 'admin_sites':
         page = const SecondaryProtectedPage(
           title: '管理者用現場データ',
-          child: SiteCloudPage(),
+          child: AdminSiteFinancialPage(),
         );
         break;
       case 'qualification_certificates':
