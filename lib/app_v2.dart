@@ -12,6 +12,8 @@ import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
+import 'features/home/home_membership_repository.dart';
+import 'features/home/friendly_home_content.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
@@ -30,6 +32,60 @@ import 'features/sites/site_page.dart';
 class SkWorksApp extends StatelessWidget {
   const SkWorksApp({super.key});
 
+  Future<void> _openHomeAction(String key) async {
+    Widget? page;
+
+    switch (key) {
+      case 'attendance_verify':
+        page = const AttendanceVerificationPage();
+        break;
+      case 'qualification_certificates':
+        page = const QualificationCertificatePage();
+        break;
+      case 'documents':
+        page = const WorkerDocumentPage();
+        break;
+      case 'chat':
+        page = const ChatCloudPage();
+        break;
+      case 'today_line':
+        page = const TodayLineAttendancePage();
+        break;
+      case 'line_history':
+        page = const LineHistoryPreviewPage();
+        break;
+      case 'rollout':
+        page = const RolloutReadinessPage();
+        break;
+      case 'notes':
+        page = const NotesCloudPage();
+        break;
+      case 'albums':
+        page = const AlbumsCloudPage();
+        break;
+      case 'settings':
+        page = const SettingsPage();
+        break;
+      default:
+        for (final module in legacy.HomePage.modules) {
+          if (module.storageKey == key) {
+            page = _pageFor(module);
+            break;
+          }
+        }
+    }
+
+    if (page == null || !mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => page!),
+    );
+
+    if (key == 'settings') {
+      await _loadModuleSettings();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const seed = Color(0xFF173B57);
@@ -40,9 +96,27 @@ class SkWorksApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF4F6F8),
-        cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
         ),
       ),
       home: SupabaseBackend.isInitialized
@@ -66,13 +140,34 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _moduleSettingsRepository =
       CompanyModuleSettingsRepository.maybeCreate();
+  final _membershipRepository = HomeMembershipRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
+  String _role = SupabaseBackend.isInitialized ? 'viewer' : 'owner';
 
   @override
   void initState() {
     super.initState();
-    _loadModuleSettings();
+    _loadHomeData();
+  }
+
+  Future<void> _loadHomeData() async {
+    await Future.wait([
+      _loadModuleSettings(),
+      _loadRole(),
+    ]);
+  }
+
+  Future<void> _loadRole() async {
+    final repository = _membershipRepository;
+    if (repository == null) return;
+    try {
+      final role = await repository.loadRole();
+      if (!mounted) return;
+      setState(() => _role = role);
+    } catch (_) {
+      // Default to the worker-safe view if role loading fails.
+    }
   }
 
   Future<void> _loadModuleSettings() async {
@@ -122,8 +217,23 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(ProductBrand.displayName),
+        title: const Text(
+          ProductBrand.displayName,
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
+          IconButton(
+            tooltip: 'お知らせ',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('通知センターは次の工程で接続します')),
+              );
+            },
+            icon: const Badge(
+              isLabelVisible: false,
+              child: Icon(Icons.notifications_outlined),
+            ),
+          ),
           if (widget.onSignOut != null)
             IconButton(
               tooltip: 'ログアウト',
@@ -132,250 +242,23 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
+      floatingActionButton: SupabaseBackend.isInitialized &&
+              _moduleEnabled('chat')
+          ? FloatingActionButton.extended(
+              onPressed: () => _openHomeAction('chat'),
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text(
+                'チャット',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            )
+          : null,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ProductBrand.displayName,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(ProductBrand.tagline),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '業務メニュー',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 10),
-            for (final module in legacy.HomePage.modules)
-              if (_moduleEnabled(module.storageKey))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: CircleAvatar(child: Icon(module.icon)),
-                    title: Text(
-                      module.title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(module.subtitle),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => _pageFor(module)),
-                      );
-                      if (module.storageKey == 'settings') {
-                        await _loadModuleSettings();
-                      }
-                    },
-                  ),
-                ),
-              ),
-            if (SupabaseBackend.isInitialized) ...[
-              if (_moduleEnabled('attendance'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.how_to_reg_outlined),
-                    ),
-                    title: const Text(
-                      '出勤・退勤確認',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('手動 / 位置情報 / 位置情報＋写真で勤務を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AttendanceVerificationPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('qualifications'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.document_scanner_outlined),
-                    ),
-                    title: const Text(
-                      '資格証写真',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('登録済み資格に資格証の写真を安全に保存'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const QualificationCertificatePage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('documents'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.fact_check_outlined),
-                    ),
-                    title: const Text(
-                      '必要書類チェック',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('社員・作業員ごとの提出・確認状況を管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const WorkerDocumentPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('chat'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.chat_bubble_outline),
-                    ),
-                    title: const Text(
-                      'チャット',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの連絡をリアルタイムで共有'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ChatCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('line_bridge'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.today_outlined),
-                    ),
-                    title: const Text(
-                      '本日のLINE出勤候補',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('今日届いたLINEから出勤候補と登録状況を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const TodayLineAttendancePage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('line_bridge'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.manage_search_outlined),
-                    ),
-                    title: const Text(
-                      'LINE履歴プレビュー',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('書き出したLINEトークを保存せずに解析・確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LineHistoryPreviewPage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.checklist_rtl_outlined),
-                    ),
-                    title: const Text(
-                      '10月運用 準備チェック',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('作業員・現場・LINE連携など本番準備を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const RolloutReadinessPage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('notes'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.sticky_note_2_outlined),
-                    ),
-                    title: const Text(
-                      'ノート',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの連絡事項や引継ぎを管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const NotesCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('albums'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.photo_album_outlined),
-                    ),
-                    title: const Text(
-                      'アルバム',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの写真をアルバムで管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AlbumsCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
+        child: FriendlyHomeContent(
+          role: _role,
+          moduleEnabled: _moduleEnabled,
+          onOpen: _openHomeAction,
+          onRefresh: _loadHomeData,
         ),
       ),
     );
