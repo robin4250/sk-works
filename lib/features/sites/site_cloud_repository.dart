@@ -36,6 +36,11 @@ class SiteCloudRepository {
         value.role == 'manager';
   }
 
+  Future<bool> canCreateSites() async {
+    await membership();
+    return true;
+  }
+
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
@@ -74,58 +79,26 @@ class SiteCloudRepository {
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
-    final companyId = await _companyId();
     final customerName = record['customerName']?.toString().trim() ?? '';
+    final siteName = record['name']?.toString().trim() ?? '';
+    if (siteName.isEmpty) throw StateError('現場名を入力してください。');
     if (customerName.isEmpty) throw StateError('得意先を入力してください。');
 
-    String customerId;
-    final existingCustomer = await _client
-        .from('customers')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('name', customerName)
-        .limit(1);
-    if (existingCustomer.isNotEmpty) {
-      customerId = existingCustomer.first['id'] as String;
-    } else {
-      final createdCustomer = await _client
-          .from('customers')
-          .insert({'company_id': companyId, 'name': customerName})
-          .select('id')
-          .single();
-      customerId = createdCustomer['id'] as String;
-    }
+    final insertedId = await _client.rpc(
+      'create_basic_site_for_member',
+      params: {
+        'p_name': siteName,
+        'p_customer_name': customerName,
+        'p_address': _nullable(record['address']),
+        'p_starts_at': _dbDate(record['startDate']),
+        'p_ends_at': _dbDate(record['endDate']),
+        'p_manager_name': _nullable(record['managerName']),
+        'p_status': _toDbStatus(record['status']?.toString()),
+        'p_notes': _nullable(record['notes']),
+      },
+    );
 
-    String? managerWorkerId;
-    final managerName = record['managerName']?.toString().trim() ?? '';
-    if (managerName.isNotEmpty) {
-      final managers = await _client
-          .from('workers')
-          .select('id')
-          .eq('company_id', companyId)
-          .eq('affiliation', 'employee')
-          .eq('name', managerName)
-          .limit(1);
-      if (managers.isNotEmpty) managerWorkerId = managers.first['id'] as String;
-    }
-
-    final inserted = await _client
-        .from('sites')
-        .insert({
-          'company_id': companyId,
-          'customer_id': customerId,
-          'name': record['name'],
-          'address': _nullable(record['address']),
-          'starts_at': _dbDate(record['startDate']),
-          'ends_at': _dbDate(record['endDate']),
-          'manager_worker_id': managerWorkerId,
-          'status': _toDbStatus(record['status']?.toString()),
-          'notes': _nullable(record['notes']),
-        })
-        .select('id')
-        .single();
-
-    return {...record, 'id': inserted['id']};
+    return {...record, 'id': insertedId?.toString() ?? ''};
   }
 
   Future<void> delete(String id) async {
