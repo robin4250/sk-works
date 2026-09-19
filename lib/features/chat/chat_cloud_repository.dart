@@ -173,6 +173,72 @@ class ChatCloudRepository {
     return list;
   }
 
+  Future<List<String>> prioritizedSiteGroupIds() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return const [];
+
+    final groups = await loadGroups();
+    final siteGroups = groups
+        .where((group) => group['group_type'] == 'site')
+        .toList();
+
+    final messageRows = await _client
+        .from('chat_messages')
+        .select('communication_group_id, sent_at')
+        .eq('sender_user_id', user.id)
+        .order('sent_at', ascending: false)
+        .limit(200);
+
+    final spoken = <String>[];
+    for (final raw in messageRows) {
+      final id = raw['communication_group_id']?.toString();
+      if (id != null && !spoken.contains(id)) spoken.add(id);
+    }
+
+    String? workerId;
+    try {
+      final value = await _client.rpc('ensure_current_user_worker');
+      workerId = value?.toString();
+    } catch (_) {
+      workerId = null;
+    }
+
+    final attended = <String>[];
+    if (workerId != null && workerId.isNotEmpty) {
+      final attendanceRows = await _client
+          .from('attendance_verifications')
+          .select('site_id, confirmed_at')
+          .eq('worker_id', workerId)
+          .eq('event_type', 'clock_in')
+          .order('confirmed_at', ascending: false)
+          .limit(100);
+
+      final groupBySite = <String, String>{
+        for (final group in siteGroups)
+          if (group['site_id'] != null)
+            group['site_id'].toString(): group['id'].toString(),
+      };
+
+      for (final raw in attendanceRows) {
+        final siteId = raw['site_id']?.toString();
+        final groupId = siteId == null ? null : groupBySite[siteId];
+        if (groupId != null && !attended.contains(groupId)) {
+          attended.add(groupId);
+        }
+      }
+    }
+
+    return [
+      ...spoken.where(
+        (id) => siteGroups.any((group) => group['id']?.toString() == id),
+      ),
+      ...attended.where((id) => !spoken.contains(id)),
+      ...siteGroups
+          .map((group) => group['id'].toString())
+          .where((id) => !spoken.contains(id) && !attended.contains(id)),
+    ];
+  }
+
   Future<String> startDirectChat(String otherUserId) async {
     final value = await _client.rpc(
       'start_direct_chat',
