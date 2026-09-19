@@ -410,7 +410,7 @@ class ChatCloudRepository {
         .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')
         .replaceAll(RegExp(r'_+'), '_');
     final storagePath =
-        '${companyId}/${groupId}/${messageId}/${DateTime.now().microsecondsSinceEpoch}-${safeName}';
+        '$companyId/$groupId/$messageId/${DateTime.now().microsecondsSinceEpoch}-$safeName';
 
     await _client.storage.from(_attachmentBucket).uploadBinary(
           storagePath,
