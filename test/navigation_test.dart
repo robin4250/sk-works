@@ -13,6 +13,8 @@ void main() {
     await pumpHome(tester);
 
     expect(find.text('人員管理'), findsOneWidget);
+    await tester.ensureVisible(find.text('人員管理'));
+    await tester.pump();
     await tester.tap(find.text('人員管理'));
     await tester.pumpAndSettle();
 
@@ -23,6 +25,8 @@ void main() {
     await pumpHome(tester);
 
     expect(find.text('請求書'), findsOneWidget);
+    await tester.ensureVisible(find.text('請求書'));
+    await tester.pump();
     await tester.tap(find.text('請求書'));
     await tester.pumpAndSettle();
 
@@ -33,6 +37,8 @@ void main() {
     await pumpHome(tester);
 
     expect(find.text('設定'), findsOneWidget);
+    await tester.ensureVisible(find.text('設定'));
+    await tester.pump();
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 
@@ -58,6 +64,8 @@ void main() {
     expect(find.text('日報'), findsOneWidget);
     expect(find.text('プロフィール'), findsOneWidget);
     expect(find.text('ヘルプ'), findsOneWidget);
+    await tester.ensureVisible(find.text('資格'));
+    await tester.pump();
     expect(find.text('資格'), findsOneWidget);
   });
 }
