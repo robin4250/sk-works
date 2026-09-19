@@ -8,6 +8,7 @@ import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/auth/auth_gate.dart';
+import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
@@ -107,7 +108,10 @@ class _HomePageState extends State<HomePage> {
           ? const AttendanceCloudPage()
           : const AttendancePage(),
       'invoices' => SupabaseBackend.isInitialized
-          ? const InvoiceCloudPage()
+          ? const SecondaryProtectedPage(
+              title: '請求書',
+              child: InvoiceCloudPage(),
+            )
           : const InvoicePage(),
       'settings' => const SettingsPage(),
       _ => legacy.ModulePage(module: module),
