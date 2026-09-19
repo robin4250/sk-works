@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_bell.dart';
 import '../../domain/invoice_engine.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_page.dart';
@@ -64,6 +65,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       appBar: AppBar(
         title: const Text('請求管理'),
         actions: [
+          const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading
