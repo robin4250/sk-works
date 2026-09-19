@@ -7,14 +7,21 @@ class HomeIdentity {
     required this.role,
     required this.companyName,
     required this.displayName,
+    this.permissions = const {},
   });
 
   final String role;
   final String companyName;
   final String displayName;
+  final Map<String, bool> permissions;
 
   bool get isAdmin =>
       role == 'owner' || role == 'admin' || role == 'manager';
+
+  bool can(String key) {
+    if (role == 'owner' || role == 'admin') return true;
+    return permissions[key] ?? false;
+  }
 
   String get roleLabel => switch (role) {
         'owner' => '管理者',
@@ -45,6 +52,7 @@ class HomeMembershipRepository {
         role: 'viewer',
         companyName: 'SKO',
         displayName: 'ユーザー',
+        permissions: {},
       );
     }
 
@@ -59,6 +67,7 @@ class HomeMembershipRepository {
         role: 'viewer',
         companyName: 'SKO',
         displayName: user.phone ?? user.email ?? 'ユーザー',
+        permissions: const {},
       );
     }
 
@@ -81,6 +90,13 @@ class HomeMembershipRepository {
     final companies = values[0] as List<dynamic>;
     final profiles = values[1] as List<dynamic>;
 
+    final permissionValue = await _client.rpc('current_feature_permissions');
+    final permissions = permissionValue is Map
+        ? permissionValue.map<String, bool>(
+            (key, value) => MapEntry(key.toString(), value == true),
+          )
+        : const <String, bool>{};
+
     final companyName = companies.isNotEmpty
         ? (companies.first['name']?.toString() ?? 'SKO')
         : 'SKO';
@@ -94,6 +110,7 @@ class HomeMembershipRepository {
       role: role,
       companyName: companyName,
       displayName: displayName,
+      permissions: permissions,
     );
   }
 }
