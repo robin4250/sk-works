@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart' as legacy;
 import 'branding/product_brand.dart';
@@ -7,23 +10,33 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
+import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
+import 'features/daily_reports/daily_report_approvals_page.dart';
+import 'features/daily_reports/daily_report_page.dart';
+import 'features/help/help_page.dart';
+import 'features/home/friendly_home_content.dart';
+import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
+import 'features/notifications/notification_bell.dart';
+import 'features/payroll/payroll_statements_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/worker_document_page.dart';
+import 'features/profile/profile_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/qualification_page.dart';
-import 'features/settings/settings_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
+import 'features/settings/settings_page.dart';
+import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
@@ -40,9 +53,27 @@ class SkWorksApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF4F6F8),
-        cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
         ),
       ),
       home: SupabaseBackend.isInitialized
@@ -64,15 +95,58 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const _usagePrefix = 'sko_menu_usage_';
+
   final _moduleSettingsRepository =
       CompanyModuleSettingsRepository.maybeCreate();
+  final _membershipRepository = HomeMembershipRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
+  Map<String, int> _usage = const {};
+  HomeIdentity _identity = const HomeIdentity(
+    role: 'viewer',
+    companyName: 'SKO',
+    displayName: 'ユーザー',
+  );
+  int _selectedIndex = 0;
+
+  bool get _isAdmin => _identity.isAdmin;
 
   @override
   void initState() {
     super.initState();
-    _loadModuleSettings();
+    _loadHomeData();
+  }
+
+  Future<void> _loadHomeData() async {
+    await Future.wait([
+      _loadModuleSettings(),
+      _loadIdentity(),
+      _loadUsage(),
+    ]);
+  }
+
+  Future<void> _loadIdentity() async {
+    final repository = _membershipRepository;
+    if (repository == null) {
+      if (!mounted) return;
+      setState(() {
+        _identity = const HomeIdentity(
+          role: 'owner',
+          companyName: 'SKO',
+          displayName: '管理者',
+        );
+      });
+      return;
+    }
+
+    try {
+      final identity = await repository.loadIdentity();
+      if (!mounted) return;
+      setState(() => _identity = identity);
+    } catch (_) {
+      // Keep the safest default if identity loading fails.
+    }
   }
 
   Future<void> _loadModuleSettings() async {
@@ -85,6 +159,24 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {
       // Keep modules visible if settings cannot be loaded.
     }
+  }
+
+  Future<void> _loadUsage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final usage = <String, int>{};
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_usagePrefix)) continue;
+      usage[key.substring(_usagePrefix.length)] = prefs.getInt(key) ?? 0;
+    }
+    if (!mounted) return;
+    setState(() => _usage = usage);
+  }
+
+  Future<void> _recordUsage(String key) async {
+    final next = (_usage[key] ?? 0) + 1;
+    setState(() => _usage = {..._usage, key: next});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('$_usagePrefix$key', next);
   }
 
   bool _moduleEnabled(String key) {
@@ -105,7 +197,9 @@ class _HomePageState extends State<HomePage> {
           ? const SiteCloudPage()
           : const SitePage(),
       'attendance' => SupabaseBackend.isInitialized
-          ? const AttendanceCloudPage()
+          ? (_isAdmin
+              ? const AttendanceCloudPage()
+              : const WorkerAttendanceSheetPage())
           : const AttendancePage(),
       'invoices' => SupabaseBackend.isInitialized
           ? const SecondaryProtectedPage(
@@ -118,12 +212,220 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _openHomeAction(String key) async {
+    unawaited(_recordUsage(key));
+    if (!mounted) return;
+
+    final restricted = <String, String>{
+      'approvals': 'can_approve_daily_report_edits',
+      'invoices': 'can_view_invoices',
+      'admin_sites': 'can_view_admin_site_data',
+      'people': 'can_manage_people',
+    };
+    final permission = restricted[key];
+    if (permission != null && !_identity.can(permission)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この機能を利用する権限がありません')),
+      );
+      return;
+    }
+
+    if (key == 'footer_home') {
+      setState(() => _selectedIndex = 0);
+      return;
+    }
+    if (key == 'attendance') {
+      setState(() => _selectedIndex = 1);
+      return;
+    }
+    if (key == 'footer_sites' || key == 'site_register') {
+      setState(() => _selectedIndex = 2);
+      return;
+    }
+    if (key == 'chat') {
+      setState(() => _selectedIndex = 3);
+      return;
+    }
+    if (key == 'menu') {
+      setState(() => _selectedIndex = 4);
+      return;
+    }
+
+    Widget? page;
+
+    switch (key) {
+      case 'clock_in':
+        page = const AttendanceVerificationPage(
+          initialEventType: 'clock_in',
+        );
+        break;
+      case 'clock_out':
+        page = const AttendanceVerificationPage(
+          initialEventType: 'clock_out',
+        );
+        break;
+      case 'attendance_verify':
+        page = const AttendanceVerificationPage();
+        break;
+      case 'daily_report':
+        page = const DailyReportPage();
+        break;
+      case 'approvals':
+        page = const DailyReportApprovalsPage();
+        break;
+      case 'payroll':
+        page = const PayrollStatementsPage();
+        break;
+      case 'profile':
+        page = const ProfilePage();
+        break;
+      case 'help':
+        page = const HelpPage();
+        break;
+      case 'admin_sites':
+        page = const SecondaryProtectedPage(
+          title: '管理者用現場データ',
+          child: AdminSiteFinancialPage(),
+        );
+        break;
+      case 'qualification_certificates':
+        page = const QualificationCertificatePage();
+        break;
+      case 'documents':
+        page = const WorkerDocumentPage();
+        break;
+      case 'today_line':
+        page = const TodayLineAttendancePage();
+        break;
+      case 'line_history':
+        page = const LineHistoryPreviewPage();
+        break;
+      case 'rollout':
+        page = const RolloutReadinessPage();
+        break;
+      case 'notes':
+        page = const NotesCloudPage();
+        break;
+      case 'albums':
+        page = const AlbumsCloudPage();
+        break;
+      case 'settings':
+        page = const SettingsPage();
+        break;
+      default:
+        for (final module in legacy.HomePage.modules) {
+          if (module.storageKey == key) {
+            page = _pageFor(module);
+            break;
+          }
+        }
+    }
+
+    if (page == null || !mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => page!),
+    );
+
+    if (key == 'settings') {
+      await _loadModuleSettings();
+    }
+    if (key == 'profile') {
+      await _loadIdentity();
+    }
+  }
+
+  List<_MenuAction> get _menuItems {
+    final items = <_MenuAction>[
+      const _MenuAction(
+        key: 'daily_report',
+        label: '日報',
+        icon: Icons.description_outlined,
+      ),
+      if (!_isAdmin)
+        const _MenuAction(
+          key: 'payroll',
+          label: '給与明細',
+          icon: Icons.payments_outlined,
+        ),
+      const _MenuAction(
+        key: 'profile',
+        label: 'プロフィール',
+        icon: Icons.account_circle_outlined,
+      ),
+      if (_moduleEnabled('qualifications'))
+        const _MenuAction(
+          key: 'qualifications',
+          label: '資格',
+          icon: Icons.badge_outlined,
+        ),
+      if (_moduleEnabled('documents'))
+        const _MenuAction(
+          key: 'documents',
+          label: '必要書類',
+          icon: Icons.fact_check_outlined,
+        ),
+      if (_moduleEnabled('notes'))
+        const _MenuAction(
+          key: 'notes',
+          label: 'ノート',
+          icon: Icons.sticky_note_2_outlined,
+        ),
+      if (_moduleEnabled('albums'))
+        const _MenuAction(
+          key: 'albums',
+          label: 'アルバム',
+          icon: Icons.photo_album_outlined,
+        ),
+      if (_isAdmin && _identity.can('can_approve_daily_report_edits'))
+        const _MenuAction(
+          key: 'approvals',
+          label: '承認待ち',
+          icon: Icons.approval_outlined,
+        ),
+      if (_isAdmin &&
+          _identity.can('can_manage_attendance') &&
+          _moduleEnabled('line_bridge'))
+        const _MenuAction(
+          key: 'today_line',
+          label: '本日のLINE出勤候補',
+          icon: Icons.today_outlined,
+        ),
+      if (_isAdmin)
+        const _MenuAction(
+          key: 'rollout',
+          label: '運用準備チェック',
+          icon: Icons.checklist_rtl_outlined,
+        ),
+      const _MenuAction(
+        key: 'settings',
+        label: '設定',
+        icon: Icons.settings_outlined,
+      ),
+      const _MenuAction(
+        key: 'help',
+        label: 'ヘルプ',
+        icon: Icons.help_outline,
+      ),
+    ];
+
+    items.sort((a, b) {
+      final byUsage = (_usage[b.key] ?? 0).compareTo(_usage[a.key] ?? 0);
+      if (byUsage != 0) return byUsage;
+      return a.label.compareTo(b.label);
+    });
+    return items;
+  }
+
+  Widget _homeDashboard() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(ProductBrand.displayName),
+        title: Text(
+          _identity.companyName,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
+          const SkoNotificationBell(),
           if (widget.onSignOut != null)
             IconButton(
               tooltip: 'ログアウト',
@@ -133,251 +435,126 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ProductBrand.displayName,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(ProductBrand.tagline),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '業務メニュー',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 10),
-            for (final module in legacy.HomePage.modules)
-              if (_moduleEnabled(module.storageKey))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: CircleAvatar(child: Icon(module.icon)),
-                    title: Text(
-                      module.title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(module.subtitle),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => _pageFor(module)),
-                      );
-                      if (module.storageKey == 'settings') {
-                        await _loadModuleSettings();
-                      }
-                    },
-                  ),
-                ),
-              ),
-            if (SupabaseBackend.isInitialized) ...[
-              if (_moduleEnabled('attendance'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.how_to_reg_outlined),
-                    ),
-                    title: const Text(
-                      '出勤・退勤確認',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('手動 / 位置情報 / 位置情報＋写真で勤務を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AttendanceVerificationPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('qualifications'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.document_scanner_outlined),
-                    ),
-                    title: const Text(
-                      '資格証写真',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('登録済み資格に資格証の写真を安全に保存'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const QualificationCertificatePage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('documents'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.fact_check_outlined),
-                    ),
-                    title: const Text(
-                      '必要書類チェック',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('社員・作業員ごとの提出・確認状況を管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const WorkerDocumentPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('chat'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.chat_bubble_outline),
-                    ),
-                    title: const Text(
-                      'チャット',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの連絡をリアルタイムで共有'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ChatCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('line_bridge'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.today_outlined),
-                    ),
-                    title: const Text(
-                      '本日のLINE出勤候補',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('今日届いたLINEから出勤候補と登録状況を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const TodayLineAttendancePage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('line_bridge'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.manage_search_outlined),
-                    ),
-                    title: const Text(
-                      'LINE履歴プレビュー',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('書き出したLINEトークを保存せずに解析・確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LineHistoryPreviewPage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.checklist_rtl_outlined),
-                    ),
-                    title: const Text(
-                      '10月運用 準備チェック',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('作業員・現場・LINE連携など本番準備を確認'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const RolloutReadinessPage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('notes'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.sticky_note_2_outlined),
-                    ),
-                    title: const Text(
-                      'ノート',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの連絡事項や引継ぎを管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const NotesCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-              if (_moduleEnabled('albums'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.photo_album_outlined),
-                    ),
-                    title: const Text(
-                      'アルバム',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('グループ・現場ごとの写真をアルバムで管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AlbumsCloudPage()),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
+        child: FriendlyHomeContent(
+          identity: _identity,
+          moduleEnabled: _moduleEnabled,
+          onOpen: _openHomeAction,
+          onRefresh: _loadHomeData,
         ),
       ),
     );
   }
+
+  Widget _menuPage() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'メニュー',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        actions: const [SkoNotificationBell()],
+      ),
+      body: SafeArea(
+        child: ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: _menuItems.length + 1,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return const Padding(
+                padding: EdgeInsets.fromLTRB(6, 4, 6, 6),
+                child: Text(
+                  'よく使う機能ほど上に表示されます',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              );
+            }
+
+            final item = _menuItems[index - 1];
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Icon(item.icon)),
+                title: Text(
+                  item.label,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openHomeAction(item.key),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = <Widget>[
+      _homeDashboard(),
+      _isAdmin
+          ? const AttendanceCloudPage()
+          : const WorkerAttendanceSheetPage(),
+      const SiteCloudPage(),
+      const ChatCloudPage(),
+      _menuPage(),
+    ];
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          for (var i = 0; i < pages.length; i++)
+            HeroMode(
+              enabled: i == _selectedIndex,
+              child: pages[i],
+            ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'ホーム',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: '出勤表',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.business_outlined),
+            selectedIcon: Icon(Icons.business),
+            label: '現場',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'チャット',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.menu),
+            label: 'メニュー',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuAction {
+  const _MenuAction({
+    required this.key,
+    required this.label,
+    required this.icon,
+  });
+
+  final String key;
+  final String label;
+  final IconData icon;
 }

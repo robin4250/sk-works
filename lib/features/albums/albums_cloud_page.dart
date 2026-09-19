@@ -4,7 +4,12 @@ import 'package:image_picker/image_picker.dart';
 import 'albums_cloud_repository.dart';
 
 class AlbumsCloudPage extends StatefulWidget {
-  const AlbumsCloudPage({super.key});
+  const AlbumsCloudPage({
+    super.key,
+    this.initialGroupId,
+  });
+
+  final String? initialGroupId;
 
   @override
   State<AlbumsCloudPage> createState() => _AlbumsCloudPageState();
@@ -38,7 +43,11 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
       if (!mounted) return;
       setState(() {
         _groups = groups;
-        _selectedGroupId = groups.isEmpty ? null : groups.first['id'] as String;
+        _selectedGroupId = groups.any(
+          (group) => group['id']?.toString() == widget.initialGroupId,
+        )
+            ? widget.initialGroupId
+            : (groups.isEmpty ? null : groups.first['id'] as String);
         _loading = false;
       });
       await _loadAlbums();
