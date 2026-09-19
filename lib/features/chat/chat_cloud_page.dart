@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_bell.dart';
 import 'chat_cloud_repository.dart';
 
 class ChatCloudPage extends StatefulWidget {
@@ -427,6 +428,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       appBar: AppBar(
         title: const Text('チャット'),
         actions: [
+          const SkoNotificationBell(),
           IconButton(
             tooltip: '通信グループ作成',
             onPressed: _loading ? null : _createGroup,
