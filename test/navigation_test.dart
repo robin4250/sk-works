@@ -14,8 +14,7 @@ void main() {
 
     expect(find.text('人員管理'), findsOneWidget);
     await tester.tap(find.text('人員管理'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     expect(find.text('新規登録'), findsOneWidget);
   });
@@ -25,8 +24,7 @@ void main() {
 
     expect(find.text('請求書'), findsOneWidget);
     await tester.tap(find.text('請求書'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     expect(find.text('請求作成'), findsOneWidget);
   });
@@ -36,8 +34,7 @@ void main() {
 
     expect(find.text('設定'), findsOneWidget);
     await tester.tap(find.text('設定'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     expect(find.text('設定を保存'), findsOneWidget);
   });
@@ -56,7 +53,7 @@ void main() {
     await pumpHome(tester);
 
     await tester.tap(find.text('メニュー'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('日報'), findsOneWidget);
     expect(find.text('プロフィール'), findsOneWidget);
