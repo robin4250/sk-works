@@ -95,6 +95,7 @@ class ChatCloudRepository {
 
       String displayName = group['name']?.toString() ?? '';
       String? avatarPath;
+      String? directOtherUserId;
 
       if (group['group_type'] == 'direct') {
         final members = directUsersByGroup[groupId] ?? const [];
@@ -102,6 +103,7 @@ class ChatCloudRepository {
           (id) => id != myId,
           orElse: () => '',
         );
+        directOtherUserId = otherId.isEmpty ? null : otherId;
         final profile = profileByUser[otherId];
         displayName = profile?['display_name']?.toString() ?? '個別トーク';
         avatarPath = profile?['avatar_storage_path']?.toString();
@@ -124,6 +126,7 @@ class ChatCloudRepository {
         ...group,
         'display_name': displayName,
         'avatar_url': avatarUrl,
+        'direct_other_user_id': directOtherUserId,
         'line_binding_present': binding != null,
         'line_binding_enabled': binding?['status'] == 'active',
         'line_binding_id': binding?['id'],
