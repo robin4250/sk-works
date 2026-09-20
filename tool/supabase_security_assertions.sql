@@ -130,8 +130,10 @@ begin
       and tablename = 'objects'
       and policyname = 'attendance_evidence_read'
       and 'authenticated' = any(roles)
+      and position('can_manage_attendance' in coalesce(qual, '')) > 0
+      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
   ) then
-    raise exception 'attendance evidence authenticated read policy missing';
+    raise exception 'attendance evidence self-or-manager read policy missing';
   end if;
 end
 $$;
