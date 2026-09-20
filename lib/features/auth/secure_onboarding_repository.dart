@@ -81,6 +81,34 @@ class SecureOnboardingRepository {
     );
   }
 
+  Future<void> requestPasswordResetSms({required String phone}) async {
+    await _client.auth.signInWithOtp(
+      phone: normalizeJapanesePhone(phone),
+      shouldCreateUser: false,
+      channel: OtpChannel.sms,
+    );
+  }
+
+  Future<void> verifyPasswordResetSms({
+    required String phone,
+    required String code,
+  }) async {
+    await _client.auth.verifyOTP(
+      type: OtpType.sms,
+      phone: normalizeJapanesePhone(phone),
+      token: code.trim(),
+    );
+  }
+
+  Future<void> updatePrimaryPassword(String password) async {
+    if (password.length < 8) {
+      throw StateError('password must be at least 8 characters');
+    }
+    await _client.auth.updateUser(
+      UserAttributes(password: password),
+    );
+  }
+
   Future<bool> secondaryPasswordConfigured() async {
     if (_client.auth.currentUser == null) return false;
     final value = await _client.rpc('secondary_password_configured');
