@@ -35,10 +35,17 @@ class QualificationCloudRepository {
   }
 
   Future<bool> canManageWorkerQualifications() async {
-    final value = await membership();
-    return value.role == 'owner' ||
-        value.role == 'admin' ||
-        value.role == 'manager';
+    await membership();
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_people'] == true;
+  }
+
+  Future<void> _requireManageWorkerQualifications() async {
+    if (!await canManageWorkerQualifications()) {
+      throw StateError('資格情報を変更する権限がありません。');
+    }
   }
 
   Future<String> _companyId() async {
@@ -59,6 +66,13 @@ class QualificationCloudRepository {
 
   Future<Map<String, dynamic>> loadAll() async {
     final companyId = await _companyId();
+    final canManage = await canManageWorkerQualifications();
+
+    String? ownWorkerId;
+    if (!canManage) {
+      final value = await _client.rpc('ensure_current_user_worker');
+      ownWorkerId = value?.toString();
+    }
 
     final masters = await _client
         .from('qualification_master')
@@ -66,19 +80,27 @@ class QualificationCloudRepository {
         .eq('company_id', companyId)
         .order('name');
 
-    final workers = await _client
+    var workersQuery = _client
         .from('workers')
         .select('id, name, affiliation, status')
-        .eq('company_id', companyId)
-        .order('name');
+        .eq('company_id', companyId);
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      workersQuery = workersQuery.eq('id', ownWorkerId);
+    }
+    final workers = await workersQuery.order('name');
 
-    final qualifications = await _client
+    var qualificationsQuery = _client
         .from('worker_qualifications')
         .select(
           'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes',
         )
-        .eq('company_id', companyId)
-        .order('created_at', ascending: false);
+        .eq('company_id', companyId);
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      qualificationsQuery =
+          qualificationsQuery.eq('worker_id', ownWorkerId);
+    }
+    final qualifications =
+        await qualificationsQuery.order('created_at', ascending: false);
 
     return {
       'masters': List<Map<String, dynamic>>.from(masters),
@@ -122,6 +144,7 @@ class QualificationCloudRepository {
     String? notes,
     String? attachmentPath,
   }) async {
+    await _requireManageWorkerQualifications();
     final companyId = await _companyId();
     final inserted = await _client
         .from('worker_qualifications')
@@ -144,6 +167,7 @@ class QualificationCloudRepository {
   }
 
   Future<void> deleteWorkerQualification(String id) async {
+    await _requireManageWorkerQualifications();
     await _client.from('worker_qualifications').delete().eq('id', id);
   }
 
