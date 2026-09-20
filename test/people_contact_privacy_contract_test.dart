@@ -12,6 +12,7 @@ void main() {
     ).readAsStringSync();
 
     expect(repo, contains("rpc('people_management_records')"));
+    expect(repo, contains("'companyName': value['company_name'] ?? ''"));
     expect(repo, isNot(contains("select('id, affiliation, partner_company_id, name, phone, email")));
     expect(migration, contains("not private.has_company_feature(v_company_id, 'can_manage_people')"));
     expect(migration, contains('revoke select on table public.workers'));
