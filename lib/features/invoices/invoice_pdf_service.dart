@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../domain/invoice_engine.dart';
@@ -12,27 +13,42 @@ class InvoicePdfService {
   static Future<Uint8List> buildPdf(
     List<InvoiceCalculationResult> invoices, {
     String? title,
-  }) {
+    PdfPageFormat format = PdfPageFormat.a4,
+  }) async {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
-    return Printing.convertHtml(
-      format: PdfPageFormat.a4,
-      html: buildHtml(invoices, title: title),
-    );
+
+    final regular = await PdfGoogleFonts.notoSansJPRegular();
+    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final theme = pw.ThemeData.withFont(base: regular, bold: bold);
+    final document = pw.Document(theme: theme);
+
+    for (final invoice in invoices) {
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: format,
+          margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+          build: (_) => _invoiceWidgets(invoice),
+        ),
+      );
+    }
+
+    return document.save();
   }
 
   static Future<bool> printInvoices(
     List<InvoiceCalculationResult> invoices, {
     String? title,
   }) {
-    final name = _fileName(invoices, title: title);
+    final name = fileNameFor(invoices, title: title);
     return Printing.layoutPdf(
       name: name,
       format: PdfPageFormat.a4,
-      onLayout: (format) => Printing.convertHtml(
+      onLayout: (format) => buildPdf(
+        invoices,
+        title: title,
         format: format,
-        html: buildHtml(invoices, title: title),
       ),
     );
   }
@@ -46,156 +62,212 @@ class InvoicePdfService {
     final bytes = await buildPdf(invoices, title: title);
     return Printing.sharePdf(
       bytes: bytes,
-      filename: _fileName(invoices, title: title),
+      filename: fileNameFor(invoices, title: title),
       subject: subject,
       body: body,
     );
   }
 
-  static String buildHtml(
+  static String fileNameFor(
     List<InvoiceCalculationResult> invoices, {
     String? title,
   }) {
-    final documentTitle = _escape(
-      title ??
-          (invoices.length == 1
-              ? '${invoices.first.billingPeriod} 請求書'
-              : '請求書まとめ'),
-    );
-
-    final body = invoices
-        .map(
-          (invoice) => '''
-<section class="invoice">
-  <header>
-    <h1>請求書</h1>
-    <div class="period">${_escape(invoice.billingPeriod)}</div>
-  </header>
-
-  <div class="recipient">${_escape(invoice.customerId)} 御中</div>
-
-  <table class="details">
-    <thead>
-      <tr>
-        <th>現場 / 明細</th>
-        <th class="num">数量</th>
-        <th class="num">単価</th>
-        <th class="num">金額</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${invoice.siteCalculations.map(_siteHtml).join()}
-    </tbody>
-  </table>
-
-  <table class="totals">
-    <tr><th>小計</th><td>${_yen(invoice.subtotalYen)}</td></tr>
-    <tr><th>消費税</th><td>${_yen(invoice.taxYen)}</td></tr>
-    <tr class="grand"><th>請求合計</th><td>${_yen(invoice.grandTotalYen)}</td></tr>
-  </table>
-</section>
-''',
-        )
-        .join('<div class="page-break"></div>');
-
-    return '''<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<title>$documentTitle</title>
-<style>
-  @page { size: A4; margin: 14mm; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    color: #111;
-    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
-      "Yu Gothic", "Noto Sans JP", sans-serif;
-    font-size: 11pt;
-  }
-  .invoice { width: 100%; }
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 2px solid #222;
-    margin-bottom: 18px;
-  }
-  h1 { margin: 0 0 8px; font-size: 26pt; }
-  .period { font-size: 12pt; font-weight: 700; }
-  .recipient {
-    font-size: 16pt;
-    font-weight: 700;
-    margin: 20px 0 24px;
-  }
-  table { width: 100%; border-collapse: collapse; }
-  .details th, .details td {
-    border: 1px solid #bbb;
-    padding: 7px 8px;
-    vertical-align: top;
-  }
-  .details thead th { background: #f2f2f2; }
-  .site-row td {
-    background: #fafafa;
-    font-weight: 700;
-  }
-  .num { text-align: right; white-space: nowrap; }
-  .totals {
-    width: 52%;
-    margin: 18px 0 0 auto;
-  }
-  .totals th, .totals td {
-    border-bottom: 1px solid #bbb;
-    padding: 7px 8px;
-  }
-  .totals th { text-align: left; }
-  .totals td { text-align: right; white-space: nowrap; }
-  .totals .grand th, .totals .grand td {
-    border-top: 2px solid #222;
-    border-bottom: 2px solid #222;
-    font-size: 14pt;
-    font-weight: 700;
-  }
-  .page-break { page-break-after: always; }
-</style>
-</head>
-<body>
-$body
-</body>
-</html>''';
+    if (invoices.isEmpty) return '請求書.pdf';
+    final base = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : invoices.length == 1
+            ? '${invoices.first.customerId}_${invoices.first.billingPeriod}_請求書'
+            : '請求書まとめ';
+    final safe = base
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+    return '$safe.pdf';
   }
 
-  static String _siteHtml(SiteInvoiceCalculation site) {
-    final rows = <String>[
-      '<tr class="site-row"><td colspan="4">${_escape(site.siteName)}</td></tr>',
-      ...site.lines.map(
-        (line) => '''
-<tr>
-  <td>${_escape(line.label)}</td>
-  <td class="num">${_quantity(line.quantity)}</td>
-  <td class="num">${_yen(line.unitPriceYen)}</td>
-  <td class="num">${_yen(line.amountYen)}</td>
-</tr>''',
+  static String buildTextSnapshot(
+    List<InvoiceCalculationResult> invoices, {
+    String? title,
+  }) {
+    final buffer = StringBuffer();
+    if (title != null && title.trim().isNotEmpty) {
+      buffer.writeln(title.trim());
+    }
+
+    for (final invoice in invoices) {
+      buffer
+        ..writeln('請求書')
+        ..writeln(invoice.billingPeriod)
+        ..writeln('${invoice.customerId} 御中');
+
+      for (final site in invoice.siteCalculations) {
+        buffer.writeln(site.siteName);
+        for (final line in site.lines) {
+          buffer.writeln(
+            '${line.label} ${_quantity(line.quantity)} × '
+            '${_yen(line.unitPriceYen)} = ${_yen(line.amountYen)}',
+          );
+        }
+        if (site.manualAdjustmentYen != 0) {
+          buffer.writeln('調整 ${_yen(site.manualAdjustmentYen)}');
+        }
+        if (site.welfareAmountYen != 0) {
+          buffer.writeln('法定福利費 ${_yen(site.welfareAmountYen)}');
+        }
+      }
+
+      buffer
+        ..writeln('小計 ${_yen(invoice.subtotalYen)}')
+        ..writeln('消費税 ${_yen(invoice.taxYen)}')
+        ..writeln('請求合計 ${_yen(invoice.grandTotalYen)}');
+    }
+
+    return buffer.toString();
+  }
+
+  static List<pw.Widget> _invoiceWidgets(InvoiceCalculationResult invoice) {
+    final rows = <List<String>>[];
+
+    for (final site in invoice.siteCalculations) {
+      if (site.lines.isEmpty) {
+        rows.add([site.siteName, '', '', '']);
+      } else {
+        for (var index = 0; index < site.lines.length; index++) {
+          final line = site.lines[index];
+          rows.add([
+            index == 0
+                ? '${site.siteName}\n${line.label}'
+                : line.label,
+            _quantity(line.quantity),
+            _yen(line.unitPriceYen),
+            _yen(line.amountYen),
+          ]);
+        }
+      }
+
+      if (site.manualAdjustmentYen != 0) {
+        rows.add([
+          '${site.siteName} 調整',
+          '',
+          '',
+          _yen(site.manualAdjustmentYen),
+        ]);
+      }
+
+      if (site.welfareAmountYen != 0) {
+        rows.add([
+          '${site.siteName} 法定福利費',
+          '',
+          '',
+          _yen(site.welfareAmountYen),
+        ]);
+      }
+    }
+
+    return [
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.end,
+        children: [
+          pw.Text(
+            '請求書',
+            style: pw.TextStyle(
+              fontSize: 28,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.Text(
+            invoice.billingPeriod,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+        ],
+      ),
+      pw.Divider(thickness: 1.5),
+      pw.SizedBox(height: 18),
+      pw.Text(
+        '${invoice.customerId} 御中',
+        style: pw.TextStyle(
+          fontSize: 17,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+      pw.SizedBox(height: 22),
+      pw.TableHelper.fromTextArray(
+        headers: const ['現場 / 明細', '数量', '単価', '金額'],
+        data: rows,
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        headerDecoration: const pw.BoxDecoration(
+          color: PdfColors.grey200,
+        ),
+        cellPadding: const pw.EdgeInsets.symmetric(
+          horizontal: 6,
+          vertical: 5,
+        ),
+        headerAlignments: const {
+          1: pw.Alignment.centerRight,
+          2: pw.Alignment.centerRight,
+          3: pw.Alignment.centerRight,
+        },
+        cellAlignments: const {
+          1: pw.Alignment.centerRight,
+          2: pw.Alignment.centerRight,
+          3: pw.Alignment.centerRight,
+        },
+        columnWidths: const {
+          0: pw.FlexColumnWidth(4),
+          1: pw.FlexColumnWidth(1),
+          2: pw.FlexColumnWidth(1.6),
+          3: pw.FlexColumnWidth(1.8),
+        },
+      ),
+      pw.SizedBox(height: 18),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Container(
+          width: 230,
+          child: pw.Column(
+            children: [
+              _totalRow('小計', invoice.subtotalYen),
+              _totalRow('消費税', invoice.taxYen),
+              pw.Divider(thickness: 1.5),
+              _totalRow(
+                '請求合計',
+                invoice.grandTotalYen,
+                strong: true,
+              ),
+            ],
+          ),
+        ),
       ),
     ];
+  }
 
-    if (site.manualAdjustmentYen != 0) {
-      rows.add(
-        '<tr><td>調整</td><td></td><td></td><td class="num">${_yen(site.manualAdjustmentYen)}</td></tr>',
-      );
-    }
-    if (site.welfareAmountYen != 0) {
-      rows.add(
-        '<tr><td>法定福利費</td><td></td><td></td><td class="num">${_yen(site.welfareAmountYen)}</td></tr>',
-      );
-    }
-
-    return rows.join();
+  static pw.Widget _totalRow(
+    String label,
+    int value, {
+    bool strong = false,
+  }) {
+    final style = pw.TextStyle(
+      fontSize: strong ? 14 : 11,
+      fontWeight: strong ? pw.FontWeight.bold : pw.FontWeight.normal,
+    );
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: style),
+          pw.Text(_yen(value), style: style),
+        ],
+      ),
+    );
   }
 
   static String _quantity(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
-    return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   static String _yen(int value) {
@@ -208,28 +280,6 @@ $body
     }
     return '${negative ? '-' : ''}¥$buffer';
   }
-
-  static String _fileName(
-    List<InvoiceCalculationResult> invoices, {
-    String? title,
-  }) {
-    final base = title?.trim().isNotEmpty == true
-        ? title!.trim()
-        : invoices.length == 1
-            ? '${invoices.first.customerId}_${invoices.first.billingPeriod}_請求書'
-            : '請求書まとめ';
-    final safe = base
-        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
-        .replaceAll(RegExp(r'\s+'), '_');
-    return '$safe.pdf';
-  }
-
-  static String _escape(String value) => value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
 }
 
 class InvoicePdfPreviewPage extends StatelessWidget {
@@ -252,10 +302,14 @@ class InvoicePdfPreviewPage extends StatelessWidget {
         canChangeOrientation: false,
         allowPrinting: true,
         allowSharing: true,
-        pdfFileName: InvoicePdfService._fileName(invoices, title: title),
-        build: (format) => Printing.convertHtml(
+        pdfFileName: InvoicePdfService.fileNameFor(
+          invoices,
+          title: title,
+        ),
+        build: (format) => InvoicePdfService.buildPdf(
+          invoices,
+          title: title,
           format: format,
-          html: InvoicePdfService.buildHtml(invoices, title: title),
         ),
       ),
     );
