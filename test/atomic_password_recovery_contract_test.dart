@@ -11,11 +11,13 @@ void main() {
     final verifyIndex = source.indexOf('verifyPasswordResetSms(');
     final updateIndex =
         source.indexOf('updatePrimaryPassword(_password.text)', verifyIndex);
+    final signOutIndex = source.indexOf('repository.signOut()', updateIndex);
     final authIndex = source.indexOf('widget.onAuthenticated()', updateIndex);
 
     expect(source, isNot(contains('_passwordResetVerified')));
     expect(verifyIndex, greaterThanOrEqualTo(0));
     expect(updateIndex, greaterThan(verifyIndex));
+    expect(signOutIndex, greaterThan(updateIndex));
     expect(authIndex, greaterThan(updateIndex));
     expect(
       source,
