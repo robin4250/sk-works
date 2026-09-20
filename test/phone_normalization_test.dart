@@ -54,4 +54,36 @@ void main() {
       );
     });
   });
+
+  group('SecureOnboardingRepository.isSupportedJapaneseMobileValue', () {
+    test('accepts 070 080 090 Japanese mobile IDs', () {
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('070-1234-5678'),
+        isTrue,
+      );
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('08012345678'),
+        isTrue,
+      );
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('+81 90 1234 5678'),
+        isTrue,
+      );
+    });
+
+    test('rejects landlines and malformed values', () {
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('03-1234-5678'),
+        isFalse,
+      );
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('0901234'),
+        isFalse,
+      );
+      expect(
+        SecureOnboardingRepository.isSupportedJapaneseMobileValue('abc'),
+        isFalse,
+      );
+    });
+  });
 }
