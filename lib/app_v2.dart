@@ -206,7 +206,7 @@ class _HomePageState extends State<HomePage> {
           ? const SiteCloudPage()
           : const SitePage(),
       'attendance' => SupabaseBackend.isInitialized
-          ? (_isAdmin
+          ? (_identity.can('can_manage_attendance')
               ? const AttendanceCloudPage()
               : const WorkerAttendanceSheetPage())
           : const AttendancePage(),
@@ -501,7 +501,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _homeDashboard(),
-      _isAdmin
+      _identity.can('can_manage_attendance')
           ? const AttendanceCloudPage()
           : const WorkerAttendanceSheetPage(),
       const SiteCloudPage(),
