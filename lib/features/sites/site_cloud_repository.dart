@@ -41,17 +41,6 @@ class SiteCloudRepository {
     return true;
   }
 
-  Future<String> _companyId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SKOへのログインが必要です。');
-    final rows = await _client
-        .from('company_members')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
-    return rows.first['company_id'] as String;
-  }
 
   Future<List<Map<String, dynamic>>> loadAll() async {
     final rows = await _client.rpc('site_directory_rows');
