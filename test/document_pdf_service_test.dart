@@ -55,6 +55,33 @@ void main() {
     expect(text, contains('現場責任者'));
   });
 
+  test('daily report signature SVG preserves handwritten strokes', () {
+    final svg = DailyReportPdfService.signatureSvg([
+      [
+        {'x': 0.1, 'y': 0.2},
+        {'x': 0.5, 'y': 0.7},
+        {'x': 0.9, 'y': 0.3},
+      ],
+    ]);
+    expect(svg, isNotNull);
+    expect(svg, contains('<polyline'));
+    expect(svg, contains('40.0,24.0'));
+    expect(svg, contains('360.0,36.0'));
+  });
+
+  test('daily report signature SVG ignores invalid data', () {
+    expect(DailyReportPdfService.signatureSvg(null), isNull);
+    expect(DailyReportPdfService.signatureSvg(const []), isNull);
+    expect(
+      DailyReportPdfService.signatureSvg([
+        [
+          {'x': 'bad', 'y': null},
+        ],
+      ]),
+      isNull,
+    );
+  });
+
   test('payroll PDF snapshot includes protected payroll totals', () {
     final statement = PayrollStatementRecord(
       id: 'p1',
