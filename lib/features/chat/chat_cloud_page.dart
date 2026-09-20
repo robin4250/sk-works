@@ -33,13 +33,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   String? _selectedGroupId;
   String _role = 'viewer';
+  bool _canManagePartnerChat = false;
   _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
   bool _sending = false;
   String? _error;
-
-  bool get _isAdmin =>
-      _role == 'owner' || _role == 'admin' || _role == 'manager';
 
   Map<String, dynamic>? get _selectedGroup {
     final id = _selectedGroupId;
@@ -82,6 +80,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     try {
       final membership = await repository.membership();
+      final canManagePartnerChat = await repository.canManagePartnerChat();
       final groups = await repository.loadGroups();
       final members = await repository.loadMembers();
       final priorities = await repository.prioritizedSiteGroupIds();
@@ -94,6 +93,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       if (!mounted) return;
       setState(() {
         _role = membership.role;
+        _canManagePartnerChat = canManagePartnerChat;
+        if (!_canManagePartnerChat && _tab == _ChatTab.partner) {
+          _tab = _ChatTab.all;
+        }
         _groups = groups;
         _members = members;
         _prioritizedSiteGroupIds = priorities;
@@ -465,7 +468,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       const ButtonSegment(value: _ChatTab.all, label: Text('すべて')),
       const ButtonSegment(value: _ChatTab.site, label: Text('現場')),
       const ButtonSegment(value: _ChatTab.direct, label: Text('個別')),
-      if (_isAdmin)
+      if (_canManagePartnerChat)
         const ButtonSegment(
           value: _ChatTab.partner,
           label: Text('協力会社'),
