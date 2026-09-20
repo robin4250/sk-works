@@ -49,6 +49,10 @@ begin
     raise exception 'create_company first-membership guard missing';
   end if;
 
+  if position('owner role cannot be changed' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
+    raise exception 'owner role protection missing';
+  end if;
+
   if position('failed_attempts + 1 >= 5' in pg_get_functiondef('public.verify_secondary_password(text)'::regprocedure)) = 0 then
     raise exception 'secondary-password five-attempt lock contract missing';
   end if;
