@@ -6,7 +6,7 @@ import 'package:sk_works/main.dart';
 void main() {
   Future<void> pumpHome(WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const SkWorksApp());
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
     await tester.pump();
   }
 
