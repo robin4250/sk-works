@@ -27,7 +27,11 @@ class FriendlyHomeContent extends StatelessWidget {
           _GreetingCard(identity: identity),
           const SizedBox(height: 14),
           if (identity.isAdmin)
-            _AdminHome(identity: identity, onOpen: onOpen)
+            _AdminHome(
+              identity: identity,
+              moduleEnabled: moduleEnabled,
+              onOpen: onOpen,
+            )
           else
             _WorkerHome(
               moduleEnabled: moduleEnabled,
@@ -222,10 +226,12 @@ class _WorkerHome extends StatelessWidget {
 class _AdminHome extends StatelessWidget {
   const _AdminHome({
     required this.identity,
+    required this.moduleEnabled,
     required this.onOpen,
   });
 
   final HomeIdentity identity;
+  final bool Function(String key) moduleEnabled;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -233,7 +239,8 @@ class _AdminHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
+        if (moduleEnabled('attendance'))
+          Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -259,7 +266,7 @@ class _AdminHome extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        if (moduleEnabled('attendance')) const SizedBox(height: 12),
         if (identity.can('can_approve_daily_report_edits')) ...[
           Card(
             child: ListTile(
@@ -281,7 +288,8 @@ class _AdminHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            if (identity.can('can_manage_attendance'))
+            if (moduleEnabled('attendance') &&
+                identity.can('can_manage_attendance'))
               const _HomeAction(
                 'attendance',
                 '出勤・人区管理',
@@ -293,7 +301,8 @@ class _AdminHome extends StatelessWidget {
                 '人員管理',
                 Icons.groups_2_outlined,
               ),
-            if (identity.can('can_view_invoices'))
+            if (moduleEnabled('invoices') &&
+                identity.can('can_view_invoices'))
               const _HomeAction(
                 'invoices',
                 '請求書',
