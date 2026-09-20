@@ -56,8 +56,29 @@ else
 fi
 
 echo
+echo "--- iOS project ---"
 if [[ -d ios/Runner.xcworkspace ]]; then
   echo "✓ ios/Runner.xcworkspace exists"
+
+  if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
+    bundle_id="$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+text = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
+for value in re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", text):
+    value = value.strip()
+    if "$(" not in value and not value.endswith(".RunnerTests"):
+        print(value)
+        break
+PY
+)"
+    if [[ -n "$bundle_id" ]]; then
+      echo "✓ Bundle Identifier: $bundle_id"
+    else
+      echo "△ Bundle Identifierを確認できませんでした"
+    fi
+  fi
 else
   echo "△ iOS project not generated yet. Run: bash tool/prepare_ios.sh"
 fi
