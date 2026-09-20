@@ -8,7 +8,6 @@ SKOを自分のiPhoneへ試作インストールするための最短ルート�
 2. Xcodeを一度起動し、追加コンポーネントを完了
 3. Xcode > Settings > Accounts でApple Accountへサインイン
 4. Flutter SDKをインストール
-5. ターミナルで `flutter doctor`
 
 ## 2. SKOを取得
 
@@ -19,19 +18,26 @@ git checkout main
 git pull
 ```
 
-## 3. Mac診断
+## 3. Mac初回セットアップ診断
 
 ```bash
-bash tool/check_ios_readiness.sh
+bash tool/mac_first_run.sh
 ```
 
-不足している項目だけ先に解消する。
+この1コマンドで次をまとめて確認する。
 
-## 4. Supabase接続値をMacだけに保存
+- Xcode / 初回セットアップ
+- Git
+- Flutter
+- Python 3
+- CocoaPods
+- Supabaseローカル設定
+- iOSプロジェクト生成
 
-```bash
-cp tool/local_supabase_env.example.sh tool/local_supabase_env.sh
-```
+`tool/local_supabase_env.sh` が無い場合はテンプレートから自動作成する。
+実際のSupabase接続値だけ入力して再実行する。
+
+## 4. Supabase接続値
 
 `tool/local_supabase_env.sh` に以下を設定する。
 
@@ -41,6 +47,9 @@ cp tool/local_supabase_env.example.sh tool/local_supabase_env.sh
 このファイルはgitignore済みでGitHubには送られない。
 
 ## 5. iOSプロジェクト生成
+
+`mac_first_run.sh` が必要条件を満たしていれば自動生成する。
+手動で再生成する場合:
 
 ```bash
 bash tool/prepare_ios.sh
@@ -101,7 +110,7 @@ Xcodeで:
 bash tool/run_ios_device.sh
 ```
 
-スクリプトが実機iPhoneを自動検出し、Supabase接続付きでSKOを起動する。
+スクリプトが実機起動前チェックを再実行し、問題がなければ実機iPhoneを自動検出してSupabase接続付きでSKOを起動する。
 
 複数端末がある場合:
 
