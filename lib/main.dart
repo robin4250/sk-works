@@ -7,6 +7,10 @@ export 'app_v2.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SupabaseBackend.initializeIfConfigured();
+  try {
+    await SupabaseBackend.initializeIfConfigured();
+  } catch (_) {
+    // Fail closed in the app UI instead of terminating before runApp.
+  }
   runApp(const SkWorksApp());
 }
