@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../branding/product_brand.dart';
+import 'auth_error_message.dart';
 import 'secure_onboarding_repository.dart';
 
 class SecureAuthPage extends StatefulWidget {
@@ -75,8 +76,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
       return;
     }
 
-    if (_phone.text.trim().isEmpty || _password.text.length < 8) {
-      setState(() => _message = '携帯電話番号と8文字以上のパスワードを入力してください。');
+    if (!SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
+      setState(() => _message = '070 / 080 / 090から始まる携帯電話番号を入力してください。');
+      return;
+    }
+
+    if (_password.text.length < 8) {
+      setState(() => _message = '8文字以上のパスワードを入力してください。');
       return;
     }
 
@@ -110,6 +116,17 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
     });
   }
 
+  Future<void> _resendSms() async {
+    final repository = _repository;
+    if (repository == null) return;
+
+    await _run(() async {
+      await repository.resendSmsCode(phone: _phone.text);
+      if (!mounted) return;
+      setState(() => _message = 'SMSを再送しました。最新の6桁コードを入力してください。');
+    });
+  }
+
   Future<void> _run(Future<void> Function() action) async {
     setState(() {
       _busy = true;
@@ -119,7 +136,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
       await action();
     } on AuthException catch (error) {
       if (!mounted) return;
-      setState(() => _message = error.message);
+      setState(() => _message = friendlyAuthErrorMessage(error.message));
     } catch (error) {
       if (!mounted) return;
       setState(() => _message = '処理に失敗しました: $error');
@@ -267,6 +284,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                       ),
                       if (_awaitingSms) ...[
                         const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _busy ? null : _resendSms,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('SMSを再送'),
+                        ),
                         TextButton(
                           onPressed: _busy
                               ? null
