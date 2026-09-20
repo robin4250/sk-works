@@ -18,9 +18,13 @@ set +e
 bash tool/mac_first_run.sh
 status=$?
 set -e
-if [[ "$status" -ne 0 && "$status" -ne 2 ]]; then
+if [[ "$status" -ne 0 ]]; then
   echo
-  echo "Mac初回準備に必須の不足があります。上の案内を解消して再実行してください。"
+  if [[ "$status" -eq 2 ]]; then
+    echo "Mac初回準備に確認事項が残っています。上の △ を解消して同じコマンドを再実行してください。"
+  else
+    echo "Mac初回準備に必須の不足があります。上の ✗ を解消して同じコマンドを再実行してください。"
+  fi
   exit "$status"
 fi
 
