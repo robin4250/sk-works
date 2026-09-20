@@ -47,6 +47,13 @@ class SecureOnboardingRepository {
     return response.session != null;
   }
 
+  Future<void> resendSmsCode({required String phone}) async {
+    await _client.auth.resend(
+      type: OtpType.sms,
+      phone: normalizeJapanesePhone(phone),
+    );
+  }
+
   Future<void> verifySmsCode({
     required String phone,
     required String code,
