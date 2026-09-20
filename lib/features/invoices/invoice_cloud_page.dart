@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/invoice_engine.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
+import 'invoice_pdf_service.dart';
 import 'invoice_settings_page.dart';
 
 enum _InvoiceBrowseMode { all, company }
@@ -394,24 +395,51 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     );
   }
 
-  void _annualAction(
+  Future<void> _annualAction(
     String action,
     List<InvoiceCalculationResult> invoices,
-  ) {
-    final label = switch (action) {
-      'print' => '年間印刷',
-      'save' => '年間保存',
-      'mail' => '年間メール送信',
-      _ => '年間プレビュー',
-    };
+  ) async {
+    if (invoices.isEmpty) return;
+    final title = '${_period.year}年 請求書';
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$label：${invoices.length}件をまとめる処理は実機出力工程で接続します',
-        ),
-      ),
-    );
+    try {
+      switch (action) {
+        case 'print':
+          await InvoicePdfService.printInvoices(invoices, title: title);
+          break;
+        case 'save':
+          await InvoicePdfService.shareInvoices(
+            invoices,
+            title: title,
+            subject: title,
+            body: '共有メニューから「ファイルに保存」を選択してください。',
+          );
+          break;
+        case 'mail':
+          await InvoicePdfService.shareInvoices(
+            invoices,
+            title: title,
+            subject: title,
+            body: '年間請求書PDFを送付します。',
+          );
+          break;
+        default:
+          if (!mounted) return;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => InvoicePdfPreviewPage(
+                invoices: invoices,
+                title: title,
+              ),
+            ),
+          );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請求書PDFを出力できませんでした: $error')),
+      );
+    }
   }
 }
 
@@ -578,10 +606,7 @@ class InvoicePreviewPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _outputPlaceholder(
-                      context,
-                      '保存',
-                    ),
+                    onPressed: () => _savePdf(context),
                     icon: const Icon(Icons.download_outlined),
                     label: const Text('保存'),
                   ),
@@ -589,10 +614,7 @@ class InvoicePreviewPage extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _outputPlaceholder(
-                      context,
-                      'メール送信',
-                    ),
+                    onPressed: () => _mailPdf(context),
                     icon: const Icon(Icons.email_outlined),
                     label: const Text('メール'),
                   ),
@@ -600,10 +622,7 @@ class InvoicePreviewPage extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () => _outputPlaceholder(
-                      context,
-                      '印刷',
-                    ),
+                    onPressed: () => _printPdf(context),
                     icon: const Icon(Icons.print_outlined),
                     label: const Text('印刷'),
                   ),
@@ -616,13 +635,44 @@ class InvoicePreviewPage extends StatelessWidget {
     );
   }
 
-  void _outputPlaceholder(BuildContext context, String action) {
+  Future<void> _savePdf(BuildContext context) async {
+    try {
+      await InvoicePdfService.shareInvoices(
+        [invoice],
+        subject: '${invoice.billingPeriod} 請求書',
+        body: '共有メニューから「ファイルに保存」を選択してください。',
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      _showOutputError(context, error);
+    }
+  }
+
+  Future<void> _mailPdf(BuildContext context) async {
+    try {
+      await InvoicePdfService.shareInvoices(
+        [invoice],
+        subject: '${invoice.billingPeriod} ${invoice.customerId} 御中 請求書',
+        body: '請求書PDFを送付します。',
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      _showOutputError(context, error);
+    }
+  }
+
+  Future<void> _printPdf(BuildContext context) async {
+    try {
+      await InvoicePdfService.printInvoices([invoice]);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showOutputError(context, error);
+    }
+  }
+
+  void _showOutputError(BuildContext context, Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$actionはiPhone実機の共有・印刷機能へ接続する直前まで準備済みにします',
-        ),
-      ),
+      SnackBar(content: Text('請求書PDFを出力できませんでした: $error')),
     );
   }
 }
