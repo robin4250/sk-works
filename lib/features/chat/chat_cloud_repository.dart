@@ -466,6 +466,22 @@ class ChatCloudRepository {
   }
 
   Future<void> deleteOwnMessage(String id) async {
+    if (id.isEmpty) return;
+
+    final rows = await _client
+        .from('chat_attachments')
+        .select('storage_path')
+        .eq('message_id', id);
+    final paths = rows
+        .map((row) => row['storage_path']?.toString())
+        .whereType<String>()
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+
+    if (paths.isNotEmpty) {
+      await _client.storage.from(_attachmentBucket).remove(paths);
+    }
+
     await _client.from('chat_messages').delete().eq('id', id);
   }
 }
