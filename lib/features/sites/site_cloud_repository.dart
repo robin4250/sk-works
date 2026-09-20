@@ -54,28 +54,23 @@ class SiteCloudRepository {
   }
 
   Future<List<Map<String, dynamic>>> loadAll() async {
-    final companyId = await _companyId();
-    final rows = await _client
-        .from('sites')
-        .select('id, name, address, starts_at, ends_at, status, notes, customers(name), workers(name)')
-        .eq('company_id', companyId)
-        .order('created_at', ascending: false);
+    final rows = await _client.rpc('site_directory_rows');
+    if (rows is! List) return const <Map<String, dynamic>>[];
 
-    return rows.map<Map<String, dynamic>>((row) {
-      final customer = row['customers'];
-      final manager = row['workers'];
+    return rows.map<Map<String, dynamic>>((raw) {
+      final row = Map<String, dynamic>.from(raw as Map);
       return {
         'id': row['id'],
         'name': row['name'] ?? '',
-        'customerName': customer is Map ? customer['name'] ?? '' : '',
+        'customerName': row['customer_name'] ?? '',
         'status': _fromDbStatus(row['status']?.toString()),
         'address': row['address'] ?? '',
-        'managerName': manager is Map ? manager['name'] ?? '' : '',
+        'managerName': row['manager_name'] ?? '',
         'startDate': _displayDate(row['starts_at']?.toString()),
         'endDate': _displayDate(row['ends_at']?.toString()),
         'notes': row['notes'] ?? '',
       };
-    }).toList();
+    }).toList(growable: false);
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
