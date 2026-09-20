@@ -96,6 +96,22 @@ class WorkerDocumentRepository {
       ownWorkerId = value?.toString();
     }
 
+    final requirements = await _client
+        .from('document_requirements')
+        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name');
+
+    if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
+      return {
+        'workers': const <Map<String, dynamic>>[],
+        'requirements': List<Map<String, dynamic>>.from(requirements),
+        'statuses': const <Map<String, dynamic>>[],
+      };
+    }
+
     var workersQuery = _client
         .from('workers')
         .select('id, name, affiliation, status')
@@ -105,13 +121,6 @@ class WorkerDocumentRepository {
       workersQuery = workersQuery.eq('id', ownWorkerId);
     }
     final workers = await workersQuery.order('name');
-    final requirements = await _client
-        .from('document_requirements')
-        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('sort_order')
-        .order('name');
     var statusesQuery = _client
         .from('worker_document_statuses')
         .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at')
