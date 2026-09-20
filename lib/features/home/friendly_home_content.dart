@@ -239,7 +239,8 @@ class _AdminHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (moduleEnabled('attendance'))
+        if (moduleEnabled('attendance') &&
+            identity.can('can_manage_attendance'))
           Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -266,7 +267,9 @@ class _AdminHome extends StatelessWidget {
             ),
           ),
         ),
-        if (moduleEnabled('attendance')) const SizedBox(height: 12),
+        if (moduleEnabled('attendance') &&
+            identity.can('can_manage_attendance'))
+          const SizedBox(height: 12),
         if (identity.can('can_approve_daily_report_edits')) ...[
           Card(
             child: ListTile(
