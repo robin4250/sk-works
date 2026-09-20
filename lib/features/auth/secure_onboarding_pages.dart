@@ -58,7 +58,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
             phone: _phone.text,
             code: code,
           );
-          await repository.updatePrimaryPassword(_password.text);
+          try {
+            await repository.updatePrimaryPassword(_password.text);
+          } catch (_) {
+            await repository.signOut();
+            rethrow;
+          }
           widget.onAuthenticated();
         } else {
           await repository.verifySmsCode(phone: _phone.text, code: code);
