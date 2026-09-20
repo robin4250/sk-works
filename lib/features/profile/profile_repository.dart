@@ -98,6 +98,34 @@ class ProfileRepository {
     );
   }
 
+  String? get currentAuthPhone => _client.auth.currentUser?.phone;
+
+  Future<String> requestPhoneChange(String rawPhone) async {
+    final normalized = _normalizeJapanesePhone(rawPhone);
+    await _client.auth.updateUser(
+      UserAttributes(phone: normalized),
+    );
+    return normalized;
+  }
+
+  Future<void> resendPhoneChange(String phone) async {
+    await _client.auth.resend(
+      type: OtpType.phoneChange,
+      phone: _normalizeJapanesePhone(phone),
+    );
+  }
+
+  Future<void> verifyPhoneChange({
+    required String phone,
+    required String code,
+  }) async {
+    await _client.auth.verifyOTP(
+      type: OtpType.phoneChange,
+      phone: _normalizeJapanesePhone(phone),
+      token: code.trim(),
+    );
+  }
+
   Future<void> save({
     required String displayName,
     required String phone,
@@ -149,6 +177,28 @@ class ProfileRepository {
     if (!RegExp(r'^\.[a-z0-9]{2,5}$').hasMatch(ext)) return '.jpg';
     return ext;
   }
+
+  static String normalizeJapanesePhoneValue(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('+')) {
+      return '+${trimmed.substring(1).replaceAll(RegExp(r'\D'), '')}';
+    }
+    final digits = trimmed.replaceAll(RegExp(r'\D'), '');
+    if (digits.startsWith('81')) return '+$digits';
+    if (digits.startsWith('0') && digits.length >= 10) {
+      return '+81${digits.substring(1)}';
+    }
+    return '+$digits';
+  }
+
+  static bool isSupportedJapaneseMobileValue(String raw) {
+    final normalized = normalizeJapanesePhoneValue(raw);
+    return normalized.length == 13 &&
+        RegExp(r'^\+81(?:70|80|90)\d{8}').hasMatch(normalized);
+  }
+
+  String _normalizeJapanesePhone(String raw) =>
+      normalizeJapanesePhoneValue(raw);
 
   Object? _nullable(String value) {
     final text = value.trim();
