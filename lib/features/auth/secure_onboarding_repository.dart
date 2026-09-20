@@ -14,7 +14,7 @@ class SecureOnboardingRepository {
 
   User? get currentUser => _client.auth.currentUser;
 
-  String normalizeJapanesePhone(String raw) {
+  static String normalizeJapanesePhoneValue(String raw) {
     final trimmed = raw.trim();
     if (trimmed.startsWith('+')) {
       return '+${trimmed.substring(1).replaceAll(RegExp(r'\D'), '')}';
@@ -28,6 +28,9 @@ class SecureOnboardingRepository {
     return '+$digits';
   }
 
+  String normalizeJapanesePhone(String raw) =>
+      normalizeJapanesePhoneValue(raw);
+
   Future<bool> registerAdmin({
     required String phone,
     required String password,
@@ -36,6 +39,7 @@ class SecureOnboardingRepository {
     final response = await _client.auth.signUp(
       phone: normalized,
       password: password,
+      channel: OtpChannel.sms,
       data: const {
         'sko_registration_type': 'admin',
       },
