@@ -15,11 +15,14 @@ void main() {
         source.indexOf('storage.from(_attachmentBucket).remove', catchIndex);
     final deleteIndex =
         source.indexOf("from('chat_attachments').delete()", catchIndex);
+    final messageDeleteIndex =
+        source.indexOf("from('chat_messages').delete()", deleteIndex);
 
     expect(metadataIndex, greaterThanOrEqualTo(0));
     expect(uploadIndex, greaterThan(metadataIndex));
     expect(catchIndex, greaterThan(uploadIndex));
     expect(removeIndex, greaterThan(catchIndex));
     expect(deleteIndex, greaterThan(removeIndex));
+    expect(messageDeleteIndex, greaterThan(deleteIndex));
   });
 }
