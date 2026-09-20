@@ -18,13 +18,11 @@ class SecureAuthPage extends StatefulWidget {
 
 class _SecureAuthPageState extends State<SecureAuthPage> {
   final _phone = TextEditingController();
-  final _email = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirm = TextEditingController();
   final _otp = TextEditingController();
 
   bool _registerMode = false;
-  bool _existingEmailLogin = false;
   bool _awaitingSms = false;
   bool _busy = false;
   bool _obscurePassword = true;
@@ -37,7 +35,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   @override
   void dispose() {
     _phone.dispose();
-    _email.dispose();
     _password.dispose();
     _passwordConfirm.dispose();
     _otp.dispose();
@@ -56,21 +53,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
       }
       await _run(() async {
         await repository.verifySmsCode(phone: _phone.text, code: code);
-        widget.onAuthenticated();
-      });
-      return;
-    }
-
-    if (_existingEmailLogin) {
-      if (_email.text.trim().isEmpty || _password.text.length < 6) {
-        setState(() => _message = 'メールアドレスとパスワードを確認してください。');
-        return;
-      }
-      await _run(() async {
-        await repository.signInWithEmail(
-          email: _email.text,
-          password: _password.text,
-        );
         widget.onAuthenticated();
       });
       return;
@@ -192,25 +174,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           ),
                           onSubmitted: (_) => _busy ? null : _submit(),
                         ),
-                      ] else if (_existingEmailLogin) ...[
-                        TextField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: const InputDecoration(
-                            labelText: 'メールアドレス',
-                            prefixIcon: Icon(Icons.email_outlined),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _PasswordField(
-                          controller: _password,
-                          label: 'パスワード',
-                          obscure: _obscurePassword,
-                          onToggle: () =>
-                              setState(() => _obscurePassword = !_obscurePassword),
-                          onSubmitted: (_) => _busy ? null : _submit(),
-                        ),
                       ] else ...[
                         TextField(
                           controller: _phone,
@@ -305,7 +268,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                               ? null
                               : () => setState(() {
                                     _registerMode = !_registerMode;
-                                    _existingEmailLogin = false;
                                     _message = null;
                                   }),
                           child: Text(
@@ -314,20 +276,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                 : '管理者として初めて登録する',
                           ),
                         ),
-                        if (!_registerMode)
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() {
-                                      _existingEmailLogin = !_existingEmailLogin;
-                                      _message = null;
-                                    }),
-                            child: Text(
-                              _existingEmailLogin
-                                  ? '電話番号ログインへ戻る'
-                                  : '既存のメールアカウントでログイン',
-                            ),
-                          ),
                       ],
                     ],
                   ),
