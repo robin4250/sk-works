@@ -19,6 +19,15 @@ begin
     select 1
     from information_schema.role_table_grants
     where table_schema = 'public'
+      and grantee = 'anon'
+  ) then
+    raise exception 'anon must not have direct public table privileges';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.role_table_grants
+    where table_schema = 'public'
       and grantee in ('anon', 'authenticated')
       and privilege_type in ('TRUNCATE', 'TRIGGER', 'REFERENCES')
   ) then
