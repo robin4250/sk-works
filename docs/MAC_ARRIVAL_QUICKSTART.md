@@ -66,11 +66,13 @@ SK WORKSの公開クライアント用 `SUPABASE_URL` と `SUPABASE_PUBLISHABLE_
 ## 6. iOSプロジェクト生成
 
 `mac_first_run.sh` が必要条件を満たしていれば自動生成する。
-手動で再生成する場合:
+手動で準備をやり直す場合:
 
 ```bash
 bash tool/prepare_ios.sh
 ```
+
+既にiOSプロジェクトがある場合は再生成せず再利用するため、Xcodeで設定済みのSigning Teamを保持したまま権限説明・Bundle Identifier等を更新する。
 
 SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説明文に加えて、Personal Team向けのBundle Identifier `com.robin4250.sko` も自動設定される。
 

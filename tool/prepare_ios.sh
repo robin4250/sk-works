@@ -19,7 +19,13 @@ if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
   exit 1
 fi
 
-flutter create . --platforms=ios --project-name sk_works --org com.skworks
+if [[ -d ios/Runner.xcworkspace && -f ios/Runner.xcodeproj/project.pbxproj ]]; then
+  echo "既存のiOSプロジェクトを再利用します。Signing Team設定を保持します。"
+else
+  echo "iOSプロジェクトを新規生成します..."
+  flutter create . --platforms=ios --project-name sk_works --org com.skworks
+fi
+
 flutter pub get
 
 python3 - "$BUNDLE_ID" <<'PY'
