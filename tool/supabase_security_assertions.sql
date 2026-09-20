@@ -29,6 +29,11 @@ begin
     raise exception 'SECURITY DEFINER function is executable by anon or PUBLIC';
   end if;
 
+  if has_table_privilege('anon', 'public.company_members', 'SELECT,INSERT,UPDATE,DELETE')
+     or has_table_privilege('authenticated', 'public.company_members', 'INSERT,UPDATE,DELETE') then
+    raise exception 'company_members direct writes must be blocked';
+  end if;
+
   if has_table_privilege('anon', 'public.user_secondary_credentials', 'SELECT,INSERT,UPDATE,DELETE')
      or has_table_privilege('authenticated', 'public.user_secondary_credentials', 'SELECT,INSERT,UPDATE,DELETE') then
     raise exception 'user_secondary_credentials must not be directly accessible';
