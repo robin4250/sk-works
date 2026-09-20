@@ -64,11 +64,20 @@ class PeopleCloudRepository {
     final rows = await _client.rpc('people_management_records');
     if (rows is! List) return const <Map<String, dynamic>>[];
 
-    return rows
-        .map<Map<String, dynamic>>(
-          (row) => Map<String, dynamic>.from(row as Map),
-        )
-        .toList(growable: false);
+    return rows.map<Map<String, dynamic>>((row) {
+      final value = Map<String, dynamic>.from(row as Map);
+      return {
+        'id': value['id'],
+        'kind': value['kind'],
+        'name': value['name'] ?? '',
+        'companyName': value['company_name'] ?? '',
+        'phone': value['phone'] ?? '',
+        'email': value['email'] ?? '',
+        'role': value['role'] ?? '',
+        'notes': value['notes'] ?? '',
+        'active': value['active'] == true,
+      };
+    }).toList(growable: false);
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
