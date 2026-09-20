@@ -63,11 +63,20 @@ SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説�
 SKO_IOS_BUNDLE_ID=com.robin4250.sko.dev bash tool/prepare_ios.sh
 ```
 
-## 6. 実機インストール診断
+## 6. 実機当日の一括プリフライト
+
+```bash
+bash tool/device_day_preflight.sh
+```
+
+この1コマンドで、CI基準のFlutter 3.47.5、Supabase Auth/REST到達、署名、Bundle Identifier、Signing Team、実機iPhone認識までまとめて確認する。
+
+必要に応じて個別診断も利用できる。
 
 ```bash
 bash tool/ios_install_assistant.sh
 ```
+
 
 この1コマンドで、必須ツール、Supabase設定、iOSプロジェクト、Bundle Identifier、Signing Team、実機iPhone接続をまとめて確認する。
 
@@ -140,6 +149,7 @@ bash tool/run_ios_device.sh <DEVICE_ID>
 
 ## Mac到着前に確認済み
 
+- Flutter 3.47.5 / Dart 3.13.4へCI固定: 成功
 - Flutter analyze: 成功
 - Flutter tests: 成功
 - Android debug build: 成功
