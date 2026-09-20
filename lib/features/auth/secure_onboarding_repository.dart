@@ -81,16 +81,6 @@ class SecureOnboardingRepository {
     );
   }
 
-  Future<void> signInWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    await _client.auth.signInWithPassword(
-      email: email.trim(),
-      password: password,
-    );
-  }
-
   Future<bool> secondaryPasswordConfigured() async {
     if (_client.auth.currentUser == null) return false;
     final value = await _client.rpc('secondary_password_configured');
