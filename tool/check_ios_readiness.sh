@@ -4,6 +4,10 @@ set -u
 echo "=== SKO iPhone readiness check ==="
 echo
 
+if [[ -f "tool/local_supabase_env.sh" ]]; then
+  source "tool/local_supabase_env.sh"
+fi
+
 status=0
 
 check_cmd() {
