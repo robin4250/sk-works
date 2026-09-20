@@ -61,10 +61,17 @@ class WorkerDocumentRepository {
   }
 
   Future<bool> canManageStatuses() async {
-    final value = await membership();
-    return value.role == 'owner' ||
-        value.role == 'admin' ||
-        value.role == 'manager';
+    await membership();
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_people'] == true;
+  }
+
+  Future<void> _requireManagePeople() async {
+    if (!await canManageStatuses()) {
+      throw StateError('必要書類を変更する権限がありません。');
+    }
   }
 
   Future<String> _companyId() async {
@@ -81,12 +88,23 @@ class WorkerDocumentRepository {
 
   Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
     final companyId = await _companyId();
-    final workers = await _client
+    final canManage = await canManageStatuses();
+
+    String? ownWorkerId;
+    if (!canManage) {
+      final value = await _client.rpc('ensure_current_user_worker');
+      ownWorkerId = value?.toString();
+    }
+
+    var workersQuery = _client
         .from('workers')
         .select('id, name, affiliation, status')
         .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('name');
+        .eq('status', 'active');
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      workersQuery = workersQuery.eq('id', ownWorkerId);
+    }
+    final workers = await workersQuery.order('name');
     final requirements = await _client
         .from('document_requirements')
         .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order')
@@ -94,10 +112,14 @@ class WorkerDocumentRepository {
         .eq('is_active', true)
         .order('sort_order')
         .order('name');
-    final statuses = await _client
+    var statusesQuery = _client
         .from('worker_document_statuses')
         .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at')
         .eq('company_id', companyId);
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
+    }
+    final statuses = await statusesQuery;
 
     return {
       'workers': List<Map<String, dynamic>>.from(workers),
@@ -162,6 +184,7 @@ class WorkerDocumentRepository {
     required Uint8List bytes,
     required String originalFilename,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final rows = await _client
         .from('worker_document_statuses')
@@ -216,6 +239,7 @@ class WorkerDocumentRepository {
     required String statusId,
     required String storagePath,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final updated = await _client
         .from('worker_document_statuses')
@@ -251,6 +275,7 @@ class WorkerDocumentRepository {
     required bool originalVerified,
     required String notes,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final existing = await _client
         .from('worker_document_statuses')

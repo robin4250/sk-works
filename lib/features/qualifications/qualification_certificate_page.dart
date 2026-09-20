@@ -21,6 +21,7 @@ class _QualificationCertificatePageState
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
+  bool _canManage = false;
   String _query = '';
   String? _busyId;
   String? _error;
@@ -49,9 +50,14 @@ class _QualificationCertificatePageState
     }
 
     try {
-      final data = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManageCertificates(),
+      ]);
+      final data = values[0] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
+        _canManage = values[1] as bool;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
         _qualifications =
@@ -256,33 +262,35 @@ class _QualificationCertificatePageState
                     },
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _pickAndUpload(row, ImageSource.camera);
-                    },
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('撮り直す'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _pickAndUpload(row, ImageSource.gallery);
-                    },
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('写真から差し替える'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _remove(row);
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('資格証写真を削除'),
-                  ),
-                ] else ...[
+                  if (_canManage) ...[
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _pickAndUpload(row, ImageSource.camera);
+                      },
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('撮り直す'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _pickAndUpload(row, ImageSource.gallery);
+                      },
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('写真から差し替える'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _remove(row);
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('資格証写真を削除'),
+                    ),
+                  ],
+                ] else if (_canManage) ...[
                   FilledButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetContext);
@@ -300,7 +308,8 @@ class _QualificationCertificatePageState
                     icon: const Icon(Icons.photo_library_outlined),
                     label: const Text('写真から選ぶ'),
                   ),
-                ],
+                ] else
+                  const Text('資格証写真はまだ登録されていません。'),
               ],
             ),
           ),

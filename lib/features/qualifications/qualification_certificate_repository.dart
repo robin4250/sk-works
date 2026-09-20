@@ -17,6 +17,19 @@ class QualificationCertificateRepository {
     return QualificationCertificateRepository._(client);
   }
 
+  Future<bool> canManageCertificates() async {
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_people'] == true;
+  }
+
+  Future<void> _requireManagePeople() async {
+    if (!await canManageCertificates()) {
+      throw StateError('資格証を変更する権限がありません。');
+    }
+  }
+
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
@@ -31,6 +44,13 @@ class QualificationCertificateRepository {
 
   Future<Map<String, dynamic>> loadAll() async {
     final companyId = await _companyId();
+    final canManage = await canManageCertificates();
+
+    String? ownWorkerId;
+    if (!canManage) {
+      final value = await _client.rpc('ensure_current_user_worker');
+      ownWorkerId = value?.toString();
+    }
 
     final masters = await _client
         .from('qualification_master')
@@ -38,19 +58,27 @@ class QualificationCertificateRepository {
         .eq('company_id', companyId)
         .order('name');
 
-    final workers = await _client
+    var workersQuery = _client
         .from('workers')
         .select('id, name, affiliation, status')
-        .eq('company_id', companyId)
-        .order('name');
+        .eq('company_id', companyId);
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      workersQuery = workersQuery.eq('id', ownWorkerId);
+    }
+    final workers = await workersQuery.order('name');
 
-    final qualifications = await _client
+    var qualificationsQuery = _client
         .from('worker_qualifications')
         .select(
           'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, notes',
         )
-        .eq('company_id', companyId)
-        .order('created_at', ascending: false);
+        .eq('company_id', companyId);
+    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+      qualificationsQuery =
+          qualificationsQuery.eq('worker_id', ownWorkerId);
+    }
+    final qualifications =
+        await qualificationsQuery.order('created_at', ascending: false);
 
     return {
       'masters': List<Map<String, dynamic>>.from(masters),
@@ -65,6 +93,7 @@ class QualificationCertificateRepository {
     required Uint8List bytes,
     required String originalFilename,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final existingRows = await _client
         .from('worker_qualifications')
@@ -116,6 +145,7 @@ class QualificationCertificateRepository {
     required String qualificationId,
     required String storagePath,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final updated = await _client
         .from('worker_qualifications')
