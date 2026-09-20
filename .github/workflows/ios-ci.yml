@@ -45,6 +45,7 @@ jobs:
 
       - name: Verify iOS permission descriptions
         run: |
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSFaceIDUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
