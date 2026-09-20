@@ -18,7 +18,26 @@ git checkout main
 git pull
 ```
 
-## 3. Mac初回セットアップ診断
+## 3. 最短: 1コマンドで実機起動まで進める
+
+MacとiPhoneが手元に来たら、まず次を実行する。
+
+```bash
+bash tool/device_day.sh
+```
+
+このコマンドが、Mac初回診断 → iPhone署名/接続診断 → SKO実機起動まで順番に進める。
+Apple Account / Personal Team / USB信頼 / Developer Modeなど、人が操作する必要がある箇所で止まった場合は画面の案内を解消し、同じコマンドをもう一度実行する。
+
+問題調査が必要な場合:
+
+```bash
+bash tool/collect_ios_diagnostics.sh
+```
+
+以下は個別に実行したい場合の詳細手順。
+
+## 4. Mac初回セットアップ診断
 
 ```bash
 bash tool/mac_first_run.sh
@@ -37,7 +56,7 @@ bash tool/mac_first_run.sh
 `tool/local_supabase_env.sh` が無い場合はテンプレートから自動作成する。
 実際のSupabase接続値だけ入力して再実行する。
 
-## 4. Supabase接続値
+## 5. Supabase接続値
 
 `tool/local_supabase_env.sh` に以下を設定する。
 
@@ -46,7 +65,7 @@ bash tool/mac_first_run.sh
 
 このファイルはgitignore済みでGitHubには送られない。
 
-## 5. iOSプロジェクト生成
+## 6. iOSプロジェクト生成
 
 `mac_first_run.sh` が必要条件を満たしていれば自動生成する。
 手動で再生成する場合:
@@ -63,7 +82,7 @@ SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説�
 SKO_IOS_BUNDLE_ID=com.robin4250.sko.dev bash tool/prepare_ios.sh
 ```
 
-## 6. 実機インストール診断
+## 7. 実機インストール診断
 
 ```bash
 bash tool/ios_install_assistant.sh
@@ -77,7 +96,7 @@ bash tool/ios_install_assistant.sh
 
 Signing Teamが未設定なら、表示された案内どおりXcodeを開く。
 
-## 7. Xcode署名
+## 8. Xcode署名
 
 ```bash
 open ios/Runner.xcworkspace
@@ -94,7 +113,7 @@ Xcodeで:
 
 会社のApple Developer Teamが有効になったら、後でTeamと最終Bundle Identifierを切り替える。
 
-## 8. iPhone接続
+## 9. iPhone接続
 
 1. USBでiPhoneをMacへ接続
 2. iPhoneで「このコンピュータを信頼」
@@ -104,7 +123,7 @@ Xcodeで:
 
 すべて揃うと「iPhone実機起動の準備が整っています」と表示される。
 
-## 9. SKOをiPhoneへ起動
+## 10. SKOをiPhoneへ起動
 
 ```bash
 bash tool/run_ios_device.sh
@@ -119,7 +138,7 @@ flutter devices
 bash tool/run_ios_device.sh <DEVICE_ID>
 ```
 
-## 10. 最初に確認する順番
+## 11. 最初に確認する順番
 
 1. 電話番号ID
 2. 本パスワード2回
