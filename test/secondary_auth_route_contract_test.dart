@@ -18,6 +18,12 @@ void main() {
         "const SecondaryProtectedPage(\n          title: '管理者用現場データ',\n          child: AdminSiteFinancialPage(),",
       ),
     );
+    expect(
+      source,
+      contains(
+        "const SecondaryProtectedPage(\n          title: '給与明細',\n          child: PayrollStatementsPage(),",
+      ),
+    );
 
     final secondary =
         File('lib/features/auth/secondary_protected_page.dart').readAsStringSync();
