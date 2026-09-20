@@ -99,6 +99,17 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSPhotoLibraryUsageDescription" ios/Runner/Info.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          with Path("ios/Runner/Info.plist").open("rb") as f:
+              data = plistlib.load(f)
+
+          assert "NSLocationAlwaysUsageDescription" not in data
+          assert "NSLocationAlwaysAndWhenInUseUsageDescription" not in data
+          assert "location" not in data.get("UIBackgroundModes", [])
+          PY
 
       - name: Verify Personal Team bundle identifier
         run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.robin4250.sko;' ios/Runner.xcodeproj/project.pbxproj

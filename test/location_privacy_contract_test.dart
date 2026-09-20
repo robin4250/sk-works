@@ -18,10 +18,16 @@ void main() {
     final script = File('tool/prepare_ios.sh').readAsStringSync();
 
     expect(script, contains('NSLocationWhenInUseUsageDescription'));
-    expect(script, isNot(contains('NSLocationAlwaysUsageDescription')));
     expect(
       script,
-      isNot(contains('NSLocationAlwaysAndWhenInUseUsageDescription')),
+      contains('data.pop("NSLocationAlwaysUsageDescription", None)'),
     );
+    expect(
+      script,
+      contains(
+        'data.pop("NSLocationAlwaysAndWhenInUseUsageDescription", None)',
+      ),
+    );
+    expect(script, contains('mode != "location"'));
   });
 }
