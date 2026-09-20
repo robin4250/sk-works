@@ -99,6 +99,21 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSPhotoLibraryUsageDescription" ios/Runner/Info.plist
+          ! /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysUsageDescription" ios/Runner/Info.plist >/dev/null 2>&1
+          ! /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/Runner/Info.plist >/dev/null 2>&1
+          ! /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" ios/Runner/Info.plist 2>/dev/null | grep -q '^    location
+      - name: Verify Personal Team bundle identifier
+        run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.robin4250.sko;' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build iOS debug without codesigning
+        run: flutter build ios --debug --no-codesign
+
 
       - name: Verify Personal Team bundle identifier
         run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.robin4250.sko;' ios/Runner.xcodeproj/project.pbxproj
