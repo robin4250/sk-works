@@ -10,6 +10,9 @@ void main() {
     final qualifications =
         File('lib/features/qualifications/qualification_certificate_repository.dart')
             .readAsStringSync();
+    final qualificationCloud =
+        File('lib/features/qualifications/qualification_cloud_repository.dart')
+            .readAsStringSync();
     final page =
         File('lib/features/qualifications/qualification_certificate_page.dart')
             .readAsStringSync();
@@ -22,6 +25,14 @@ void main() {
     expect(qualifications, contains("rpc('ensure_current_user_worker')"));
     expect(
       qualifications,
+      contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),
+    );
+    expect(
+      qualificationCloud,
+      contains("permissions['can_manage_people'] == true"),
+    );
+    expect(
+      qualificationCloud,
       contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),
     );
     expect(page, contains('if (_canManage)'));
