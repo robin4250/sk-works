@@ -303,7 +303,10 @@ class _HomePageState extends State<HomePage> {
         page = const DailyReportApprovalsPage();
         break;
       case 'payroll':
-        page = const PayrollStatementsPage();
+        page = const SecondaryProtectedPage(
+          title: '給与明細',
+          child: PayrollStatementsPage(),
+        );
         break;
       case 'profile':
         page = const ProfilePage();
