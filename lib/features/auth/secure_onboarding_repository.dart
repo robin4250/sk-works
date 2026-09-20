@@ -30,8 +30,7 @@ class SecureOnboardingRepository {
 
   static bool isSupportedJapaneseMobileValue(String raw) {
     final normalized = normalizeJapanesePhoneValue(raw);
-    return RegExp(r'^\+81(?:70|80|90)\d{8}
-
+    return RegExp(r'^\\+81(?:70|80|90)\\d{8}
   Future<bool> registerAdmin({
     required String phone,
     required String password,
@@ -190,13 +189,6 @@ class SecureOnboardingRepository {
       },
     );
     return response.session != null;
-  }
-
-  Future<void> resendSmsCode({required String phone}) async {
-    await _client.auth.resend(
-      type: OtpType.sms,
-      phone: normalizeJapanesePhone(phone),
-    );
   }
 
   Future<void> verifySmsCode({
