@@ -38,6 +38,14 @@ class ChatCloudRepository {
 
   Future<String> _companyId() async => (await membership()).companyId;
 
+  Future<bool> canManagePartnerChat() async {
+    await membership();
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_partner_chat'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final value = await membership();
     final canManageLineBinding =
