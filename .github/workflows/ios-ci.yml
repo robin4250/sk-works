@@ -28,6 +28,8 @@ on:
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
       - 'tool/collect_ios_diagnostics.sh'
+      - 'tool/device_day_preflight.sh'
+      - 'tool/device_day.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
