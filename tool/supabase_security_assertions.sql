@@ -17,6 +17,16 @@ begin
 
   if exists (
     select 1
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and grantee in ('anon', 'authenticated')
+      and privilege_type in ('TRUNCATE', 'TRIGGER', 'REFERENCES')
+  ) then
+    raise exception 'anon/authenticated has unnecessary public table privilege';
+  end if;
+
+  if exists (
+    select 1
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
