@@ -79,6 +79,16 @@ jobs:
       - name: Prepare iOS project
         run: bash tool/prepare_ios.sh
 
+      - name: Verify prepare preserves existing iOS project
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("ios/Runner.xcodeproj/project.pbxproj")
+          p.write_text("// SKO_SIGNING_SENTINEL\n" + p.read_text())
+          PY
+          bash tool/prepare_ios.sh
+          grep -q 'SKO_SIGNING_SENTINEL' ios/Runner.xcodeproj/project.pbxproj
+
       - name: Flutter doctor
         run: flutter doctor -v
 
