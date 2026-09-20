@@ -154,20 +154,47 @@ class ProfileRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
 
+    final existing = await _client
+        .from('user_profiles')
+        .select('avatar_storage_path')
+        .eq('user_id', user.id)
+        .limit(1);
+    final oldPath = existing.isEmpty
+        ? null
+        : existing.first['avatar_storage_path']?.toString();
+
     final extension = _extension(filename);
-    final path = '${user.id}/avatar$extension';
+    final path =
+        '${user.id}/avatar-${DateTime.now().microsecondsSinceEpoch}$extension';
 
     await _client.storage.from(_bucket).uploadBinary(
           path,
           bytes,
-          fileOptions: const FileOptions(upsert: true),
+          fileOptions: const FileOptions(upsert: false),
         );
 
-    await _client.from('user_profiles').upsert({
-      'user_id': user.id,
-      'avatar_storage_path': path,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    try {
+      await _client.from('user_profiles').upsert({
+        'user_id': user.id,
+        'avatar_storage_path': path,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != path) {
+        try {
+          await _client.storage.from(_bucket).remove([oldPath]);
+        } catch (_) {
+          // The new avatar is already active; stale-file cleanup is best effort.
+        }
+      }
+    } catch (_) {
+      try {
+        await _client.storage.from(_bucket).remove([path]);
+      } catch (_) {
+        // Preserve the original profile update failure.
+      }
+      rethrow;
+    }
   }
 
   String _extension(String filename) {
