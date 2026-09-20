@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -u
+
+stamp="$(date +%Y%m%d-%H%M%S)"
+out="${1:-/tmp/sko-ios-diagnostics-$stamp.txt}"
+
+redact_env() {
+  local name="$1"
+  if [[ -n "${!name:-}" ]]; then echo "$name=set"; else echo "$name=unset"; fi
+}
+
+{
+  echo "=== SKO iOS diagnostics ==="
+  date
+  echo
+  echo "--- Git ---"
+  git rev-parse --short HEAD 2>/dev/null || true
+  git status --short 2>/dev/null || true
+  echo
+  echo "--- macOS / Xcode ---"
+  sw_vers 2>/dev/null || true
+  xcode-select -p 2>/dev/null || true
+  xcodebuild -version 2>/dev/null || true
+  echo
+  echo "--- Toolchain ---"
+  flutter --version 2>/dev/null || true
+  pod --version 2>/dev/null || true
+  python3 --version 2>/dev/null || true
+  git --version 2>/dev/null || true
+  echo
+  echo "--- Flutter doctor ---"
+  flutter doctor -v 2>/dev/null || true
+  echo
+  echo "--- Devices ---"
+  flutter devices 2>/dev/null || true
+  echo
+  echo "--- Xcode device control ---"
+  xcrun devicectl list devices 2>/dev/null || true
+  echo
+  echo "--- Signing identities ---"
+  security find-identity -v -p codesigning 2>/dev/null || true
+  echo
+  echo "--- Project signing ---"
+  if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
+    grep -E "PRODUCT_BUNDLE_IDENTIFIER = |DEVELOPMENT_TEAM = " ios/Runner.xcodeproj/project.pbxproj | sort -u || true
+  else
+    echo "iOS project not generated"
+  fi
+  echo
+  echo "--- Supabase env presence ---"
+  redact_env SUPABASE_URL
+  redact_env SUPABASE_PUBLISHABLE_KEY
+} | tee "$out"
+
+echo
+echo "診断ログを保存しました: $out"
+echo "※ Supabaseの実URL/キー値は出力していません。"
