@@ -32,7 +32,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   List<String> _prioritizedSiteGroupIds = const [];
 
   String? _selectedGroupId;
-  String _role = 'viewer';
   bool _canManagePartnerChat = false;
   _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
@@ -79,7 +78,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     });
 
     try {
-      final membership = await repository.membership();
       final canManagePartnerChat = await repository.canManagePartnerChat();
       final groups = await repository.loadGroups();
       final members = await repository.loadMembers();
@@ -92,7 +90,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
       if (!mounted) return;
       setState(() {
-        _role = membership.role;
         _canManagePartnerChat = canManagePartnerChat;
         if (!_canManagePartnerChat && _tab == _ChatTab.partner) {
           _tab = _ChatTab.all;
