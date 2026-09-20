@@ -420,18 +420,18 @@ class ChatCloudRepository {
     final storagePath =
         '$companyId/$groupId/$messageId/${DateTime.now().microsecondsSinceEpoch}-$safeName';
 
-    await _client.from('chat_attachments').insert({
-      'company_id': companyId,
-      'communication_group_id': groupId,
-      'message_id': messageId,
-      'storage_path': storagePath,
-      'original_filename': filename,
-      'mime_type': mimeType,
-      'attachment_type': isImage ? 'image' : 'file',
-      'uploaded_by': user.id,
-    });
-
     try {
+      await _client.from('chat_attachments').insert({
+        'company_id': companyId,
+        'communication_group_id': groupId,
+        'message_id': messageId,
+        'storage_path': storagePath,
+        'original_filename': filename,
+        'mime_type': mimeType,
+        'attachment_type': isImage ? 'image' : 'file',
+        'uploaded_by': user.id,
+      });
+
       await _client.storage.from(_attachmentBucket).uploadBinary(
             storagePath,
             bytes,
@@ -454,7 +454,12 @@ class ChatCloudRepository {
               storagePath,
             );
       } catch (_) {
-        // Preserve the original upload failure for the caller.
+        // Best effort; the original attachment error remains primary.
+      }
+      try {
+        await _client.from('chat_messages').delete().eq('id', messageId);
+      } catch (_) {
+        // Best effort; never hide the original attachment error.
       }
       rethrow;
     }
