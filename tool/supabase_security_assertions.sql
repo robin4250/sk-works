@@ -5,6 +5,45 @@ declare
   v_storage_guard text;
 begin
   if exists (
+    with grants as (
+      select table_name, privilege_type
+      from information_schema.role_table_grants
+      where table_schema = 'public'
+        and grantee = 'authenticated'
+        and privilege_type in ('SELECT','INSERT','UPDATE','DELETE')
+    ),
+    policies as (
+      select tablename,
+             case cmd
+               when 'SELECT' then 'SELECT'
+               when 'INSERT' then 'INSERT'
+               when 'UPDATE' then 'UPDATE'
+               when 'DELETE' then 'DELETE'
+               when 'ALL' then 'ALL'
+             end as privilege_type
+      from pg_policies
+      where schemaname = 'public'
+        and (
+          'authenticated' = any(roles)
+          or 'public' = any(roles)
+        )
+    )
+    select 1
+    from grants g
+    where not exists (
+      select 1
+      from policies p
+      where p.tablename = g.table_name
+        and (
+          p.privilege_type = g.privilege_type
+          or p.privilege_type = 'ALL'
+        )
+    )
+  ) then
+    raise exception 'authenticated has CRUD grant without matching RLS policy';
+  end if;
+
+  if exists (
     select 1
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
