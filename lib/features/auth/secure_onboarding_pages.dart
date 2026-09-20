@@ -23,6 +23,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   final _otp = TextEditingController();
 
   bool _registerMode = false;
+  bool _passwordResetMode = false;
+  bool _passwordResetVerified = false;
   bool _awaitingSms = false;
   bool _busy = false;
   bool _obscurePassword = true;
@@ -52,8 +54,56 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
         return;
       }
       await _run(() async {
-        await repository.verifySmsCode(phone: _phone.text, code: code);
+        if (_passwordResetMode) {
+          await repository.verifyPasswordResetSms(
+            phone: _phone.text,
+            code: code,
+          );
+          if (!mounted) return;
+          setState(() {
+            _awaitingSms = false;
+            _passwordResetVerified = true;
+            _otp.clear();
+            _password.clear();
+            _passwordConfirm.clear();
+            _message = '本人確認が完了しました。新しい本パスワードを設定してください。';
+          });
+        } else {
+          await repository.verifySmsCode(phone: _phone.text, code: code);
+          widget.onAuthenticated();
+        }
+      });
+      return;
+    }
+
+    if (_passwordResetMode && _passwordResetVerified) {
+      if (_password.text.length < 8) {
+        setState(() => _message = '8文字以上の新しい本パスワードを入力してください。');
+        return;
+      }
+      if (_password.text != _passwordConfirm.text) {
+        setState(() => _message = '確認用パスワードが一致していません。');
+        return;
+      }
+      await _run(() async {
+        await repository.updatePrimaryPassword(_password.text);
         widget.onAuthenticated();
+      });
+      return;
+    }
+
+    if (_passwordResetMode) {
+      if (!SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
+        setState(() => _message = '070 / 080 / 090から始まる携帯電話番号を入力してください。');
+        return;
+      }
+      await _run(() async {
+        await repository.requestPasswordResetSms(phone: _phone.text);
+        if (!mounted) return;
+        setState(() {
+          _awaitingSms = true;
+          _message = 'SMSで本人確認コードを送信しました。';
+        });
       });
       return;
     }
@@ -145,10 +195,14 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                     children: [
                       Text(
                         _awaitingSms
-                            ? '承認コード'
-                            : _registerMode
-                                ? '管理者の初回登録'
-                                : 'ログイン',
+                            ? (_passwordResetMode ? '本人確認コード' : '承認コード')
+                            : _passwordResetVerified
+                                ? '新しい本パスワード'
+                                : _passwordResetMode
+                                    ? '本パスワード再設定'
+                                    : _registerMode
+                                        ? '管理者の初回登録'
+                                        : 'ログイン',
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
@@ -157,9 +211,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                       Text(
                         _awaitingSms
                             ? 'SMSで届いた6桁のコードを入力してください。'
-                            : _registerMode
-                                ? '携帯電話番号をIDとして登録します。'
-                                : '登録した携帯電話番号とパスワードでログインします。',
+                            : _passwordResetVerified
+                                ? 'SMS本人確認済みです。新しい本パスワードを8文字以上で設定してください。'
+                                : _passwordResetMode
+                                    ? '登録済みの携帯電話番号へ本人確認SMSを送信します。'
+                                    : _registerMode
+                                        ? '携帯電話番号をIDとして登録します。'
+                                        : '登録した携帯電話番号とパスワードでログインします。',
                       ),
                       const SizedBox(height: 20),
                       if (_awaitingSms) ...[
@@ -174,6 +232,23 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           ),
                           onSubmitted: (_) => _busy ? null : _submit(),
                         ),
+                      ] else if (_passwordResetVerified) ...[
+                        _PasswordField(
+                          controller: _password,
+                          label: '新しい本パスワード',
+                          obscure: _obscurePassword,
+                          onToggle: () =>
+                              setState(() => _obscurePassword = !_obscurePassword),
+                        ),
+                        const SizedBox(height: 12),
+                        _PasswordField(
+                          controller: _passwordConfirm,
+                          label: '新しい本パスワード（確認）',
+                          obscure: _obscureConfirm,
+                          onToggle: () =>
+                              setState(() => _obscureConfirm = !_obscureConfirm),
+                          onSubmitted: (_) => _busy ? null : _submit(),
+                        ),
                       ] else ...[
                         TextField(
                           controller: _phone,
@@ -185,8 +260,9 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                             prefixIcon: Icon(Icons.phone_iphone_outlined),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        _PasswordField(
+                        if (!_passwordResetMode) ...[
+                          const SizedBox(height: 12),
+                          _PasswordField(
                           controller: _password,
                           label: _registerMode ? '本パスワード' : 'パスワード',
                           obscure: _obscurePassword,
@@ -195,7 +271,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           onSubmitted: (_) =>
                               _registerMode || _busy ? null : _submit(),
                         ),
-                        if (_registerMode) ...[
+                        ],
+                        if (_registerMode && !_passwordResetMode) ...[
                           const SizedBox(height: 12),
                           _PasswordField(
                             controller: _passwordConfirm,
@@ -240,9 +317,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                         label: Text(
                           _awaitingSms
                               ? '承認する'
-                              : _registerMode
-                                  ? '登録してSMS認証へ'
-                                  : 'ログイン',
+                              : _passwordResetVerified
+                                  ? '新しい本パスワードを設定'
+                                  : _passwordResetMode
+                                      ? '本人確認SMSを送信'
+                                      : _registerMode
+                                          ? '登録してSMS認証へ'
+                                          : 'ログイン',
                         ),
                       ),
                       if (_awaitingSms) ...[
@@ -259,23 +340,51 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                     _awaitingSms = false;
                                     _message = null;
                                   }),
-                          child: const Text('電話番号を修正'),
+                          child: Text(
+                            _passwordResetMode ? '電話番号を修正' : '電話番号を修正',
+                          ),
                         ),
                       ] else ...[
                         const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => setState(() {
-                                    _registerMode = !_registerMode;
-                                    _message = null;
-                                  }),
-                          child: Text(
-                            _registerMode
-                                ? 'すでに登録済みの方'
-                                : '管理者として初めて登録する',
+                        if (!_passwordResetMode)
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() {
+                                      _registerMode = !_registerMode;
+                                      _message = null;
+                                    }),
+                            child: Text(
+                              _registerMode
+                                  ? 'すでに登録済みの方'
+                                  : '管理者として初めて登録する',
+                            ),
                           ),
-                        ),
+                        if (!_registerMode)
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () async {
+                                    if (_passwordResetVerified) {
+                                      await _repository?.signOut();
+                                    }
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _passwordResetMode = !_passwordResetMode;
+                                      _passwordResetVerified = false;
+                                      _awaitingSms = false;
+                                      _otp.clear();
+                                      _password.clear();
+                                      _passwordConfirm.clear();
+                                      _message = null;
+                                    });
+                                  },
+                            child: Text(
+                              _passwordResetMode
+                                  ? '通常ログインへ戻る'
+                                  : '本パスワードを忘れた方',
+                            ),
+                          ),
                       ],
                     ],
                   ),
