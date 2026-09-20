@@ -61,7 +61,7 @@ jobs:
 
       - name: Verify public Supabase client template
         run: |
-          grep -q '^export SUPABASE_URL="https://.*\.supabase\.co"
+          grep -q '^export SUPABASE_URL="https://.*\.supabase\.co"        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
           channel: stable
@@ -98,7 +98,7 @@ jobs:
  tool/local_supabase_env.example.sh
           grep -q '^export SUPABASE_PUBLISHABLE_KEY="sb_publishable_' tool/local_supabase_env.example.sh
           ! grep -qi 'service_role' <(grep '^export ' tool/local_supabase_env.example.sh)
-          grep -q '^tool/local_supabase_env\.sh
+          grep -q '^tool/local_supabase_env\.sh        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
           channel: stable
