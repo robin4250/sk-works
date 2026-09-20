@@ -61,9 +61,21 @@ class DailyReportPdfService {
             if (report?.signed == true) ...[
               pw.Divider(),
               pw.Text(
-                '責任者サイン済み：${report?.signerName ?? ''}',
+                '責任者：${report?.signerName ?? ''}',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
               ),
+              if (signatureSvg(report?.signatureJson) case final svg?)
+                pw.Container(
+                  height: 72,
+                  margin: const pw.EdgeInsets.only(top: 6, bottom: 6),
+                  padding: const pw.EdgeInsets.all(4),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey500),
+                  ),
+                  child: pw.SvgImage(svg: svg),
+                )
+              else
+                pw.Text('サイン済み'),
               if (report?.signedAt != null)
                 pw.Text('確定日時：${report!.signedAt!.toLocal()}'),
             ],
@@ -93,6 +105,47 @@ class DailyReportPdfService {
         format: format,
       ),
     );
+  }
+
+  static String? signatureSvg(Object? value) {
+    if (value is! List) return null;
+    const width = 400.0;
+    const height = 120.0;
+    final elements = <String>[];
+
+    for (final rawStroke in value) {
+      if (rawStroke is! List || rawStroke.isEmpty) continue;
+      final points = <String>[];
+      for (final rawPoint in rawStroke) {
+        if (rawPoint is! Map) continue;
+        final rawX = rawPoint['x'];
+        final rawY = rawPoint['y'];
+        if (rawX is! num || rawY is! num) continue;
+        final x = rawX.toDouble();
+        final y = rawY.toDouble();
+        final px = (x.clamp(0, 1) * width).toStringAsFixed(1);
+        final py = (y.clamp(0, 1) * height).toStringAsFixed(1);
+        points.add('$px,$py');
+      }
+      if (points.length >= 2) {
+        elements.add(
+          '<polyline points="${points.join(' ')}" '
+          'fill="none" stroke="black" stroke-width="2.4" '
+          'stroke-linecap="round" stroke-linejoin="round"/>',
+        );
+      } else if (points.length == 1) {
+        final pair = points.single.split(',');
+        elements.add(
+          '<circle cx="${pair[0]}" cy="${pair[1]}" r="1.8" fill="black"/>',
+        );
+      }
+    }
+
+    if (elements.isEmpty) return null;
+    return '<svg xmlns="http://www.w3.org/2000/svg" '
+        'viewBox="0 0 ${width.toInt()} ${height.toInt()}">'
+        '${elements.join()}'
+        '</svg>';
   }
 
   static String buildTextSnapshot({
