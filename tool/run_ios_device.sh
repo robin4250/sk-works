@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ -f "tool/local_supabase_env.sh" ]]; then
+  # Local-only values. This file is gitignored.
+  source "tool/local_supabase_env.sh"
+fi
+
 if ! command -v flutter >/dev/null 2>&1; then
   echo "Flutter が見つかりません。"
   exit 1
