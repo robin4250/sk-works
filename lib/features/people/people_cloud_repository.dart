@@ -60,53 +60,15 @@ class PeopleCloudRepository {
   }
 
   Future<List<Map<String, dynamic>>> loadAll() async {
-    final companyId = await _companyId();
-    final companies = await _client
-        .from('partner_companies')
-        .select('id, name, phone, email, trade_role, notes, status')
-        .eq('company_id', companyId)
-        .order('name');
-    final companyNames = <String, String>{
-      for (final row in companies)
-        row['id'] as String: row['name']?.toString() ?? '',
-    };
+    await _requireManagePeople();
+    final rows = await _client.rpc('people_management_records');
+    if (rows is! List) return const <Map<String, dynamic>>[];
 
-    final workers = await _client
-        .from('workers')
-        .select('id, affiliation, partner_company_id, name, phone, email, role, notes, status')
-        .eq('company_id', companyId)
-        .order('name');
-
-    final records = <Map<String, dynamic>>[];
-    for (final row in companies) {
-      records.add({
-        'id': row['id'],
-        'kind': 'partnerCompany',
-        'name': row['name'] ?? '',
-        'companyName': '',
-        'phone': row['phone'] ?? '',
-        'email': row['email'] ?? '',
-        'role': row['trade_role'] ?? '',
-        'notes': row['notes'] ?? '',
-        'active': (row['status'] ?? 'active') == 'active',
-      });
-    }
-    for (final row in workers) {
-      final affiliation = row['affiliation']?.toString() ?? 'employee';
-      final partnerCompanyId = row['partner_company_id'] as String?;
-      records.add({
-        'id': row['id'],
-        'kind': affiliation == 'employee' ? 'employee' : 'partnerWorker',
-        'name': row['name'] ?? '',
-        'companyName': partnerCompanyId == null ? '' : companyNames[partnerCompanyId] ?? '',
-        'phone': row['phone'] ?? '',
-        'email': row['email'] ?? '',
-        'role': row['role'] ?? '',
-        'notes': row['notes'] ?? '',
-        'active': (row['status'] ?? 'active') == 'active',
-      });
-    }
-    return records;
+    return rows
+        .map<Map<String, dynamic>>(
+          (row) => Map<String, dynamic>.from(row as Map),
+        )
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
