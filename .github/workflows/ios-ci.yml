@@ -51,6 +51,9 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSPhotoLibraryUsageDescription" ios/Runner/Info.plist
 
+      - name: Verify Personal Team bundle identifier
+        run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.robin4250.sko;' ios/Runner.xcodeproj/project.pbxproj
+
       - name: Analyze
         run: flutter analyze
 
