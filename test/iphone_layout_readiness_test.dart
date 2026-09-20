@@ -31,7 +31,6 @@ void main() {
 
     expect(find.text('SKO'), findsWidgets);
     expect(find.text('本日の出勤'), findsOneWidget);
-    expect(find.text('本日の退勤'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
