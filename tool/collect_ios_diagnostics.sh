@@ -34,6 +34,9 @@ redact_env() {
   echo "--- Devices ---"
   flutter devices 2>/dev/null || true
   echo
+  echo "--- Flutter devices machine-readable ---"
+  flutter devices --machine 2>/dev/null || true
+  echo
   echo "--- Xcode device control ---"
   xcrun devicectl list devices 2>/dev/null || true
   echo
