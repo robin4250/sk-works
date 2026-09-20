@@ -115,8 +115,12 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                             ),
                           ),
                           subtitle: Text(_roleLabel(item.role)),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _edit(index),
+                          trailing: item.role == 'owner'
+                              ? const Icon(Icons.lock_outline)
+                              : const Icon(Icons.chevron_right),
+                          onTap: item.role == 'owner'
+                              ? null
+                              : () => _edit(index),
                         ),
                       );
                     },
@@ -127,6 +131,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
 
   Future<void> _edit(int index) async {
     final current = _items[index];
+    if (current.role == 'owner') return;
     var role = current.role;
     final permissions = Map<String, bool>.from(current.permissions);
 
@@ -144,7 +149,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      initialValue: role == 'owner' ? 'admin' : role,
+                      initialValue: role,
                       decoration: const InputDecoration(
                         labelText: '役割',
                       ),
