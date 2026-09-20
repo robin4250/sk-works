@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../auth/auth_error_message.dart';
 import '../notifications/notification_bell.dart';
 import 'profile_repository.dart';
 
@@ -78,11 +79,53 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
+    final rawPhone = _phone.text.trim();
+    final currentAuthPhone = repository.currentAuthPhone ?? '';
+
+    if (rawPhone.isEmpty && currentAuthPhone.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログインIDの電話番号は空にできません')),
+      );
+      return;
+    }
+
+    if (rawPhone.isNotEmpty &&
+        !ProfileRepository.isSupportedJapaneseMobileValue(rawPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('070 / 080 / 090から始まる携帯電話番号を入力してください')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
+      final normalizedInput = rawPhone.isEmpty
+          ? ''
+          : ProfileRepository.normalizeJapanesePhoneValue(rawPhone);
+      final normalizedCurrent = currentAuthPhone.isEmpty
+          ? ''
+          : ProfileRepository.normalizeJapanesePhoneValue(currentAuthPhone);
+
+      if (normalizedInput.isNotEmpty && normalizedInput != normalizedCurrent) {
+        final requestedPhone = await repository.requestPhoneChange(rawPhone);
+        if (!mounted) return;
+
+        final code = await _requestPhoneOtp(requestedPhone);
+        if (code == null) {
+          if (!mounted) return;
+          setState(() => _saving = false);
+          return;
+        }
+
+        await repository.verifyPhoneChange(
+          phone: requestedPhone,
+          code: code,
+        );
+      }
+
       await repository.save(
         displayName: _name.text,
-        phone: _phone.text,
+        phone: normalizedInput,
       );
       await _load();
       if (!mounted) return;
@@ -91,12 +134,60 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     } catch (error) {
       if (!mounted) return;
+      final message = error is Exception
+          ? friendlyAuthErrorMessage(error.toString())
+          : error.toString();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
+        SnackBar(content: Text('保存できませんでした: $message')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<String?> _requestPhoneOtp(String phone) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('電話番号のSMS確認'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('新しい電話番号 $phone に届いた6桁コードを入力してください。'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: '承認コード',
+                prefixIcon: Icon(Icons.sms_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final code = controller.text.replaceAll(RegExp(r'\D'), '');
+              if (code.length != 6) return;
+              Navigator.of(dialogContext).pop(code);
+            },
+            child: const Text('確認'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _pickPhoto() async {
