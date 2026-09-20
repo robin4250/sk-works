@@ -30,10 +30,17 @@ class PeopleCloudRepository {
   }
 
   Future<bool> canManagePeople() async {
-    final value = await membership();
-    return value.role == 'owner' ||
-        value.role == 'admin' ||
-        value.role == 'manager';
+    await membership();
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_manage_people'] == true;
+  }
+
+  Future<void> _requireManagePeople() async {
+    if (!await canManagePeople()) {
+      throw StateError('人員管理を変更する権限がありません。');
+    }
   }
 
   Future<String> _companyId() async {
@@ -103,6 +110,7 @@ class PeopleCloudRepository {
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final kind = record['kind']?.toString() ?? 'employee';
     if (kind == 'partnerCompany') {
@@ -169,6 +177,7 @@ class PeopleCloudRepository {
   }
 
   Future<void> delete(Map<String, dynamic> record) async {
+    await _requireManagePeople();
     final id = record['id']?.toString();
     if (id == null || id.isEmpty) return;
     final kind = record['kind']?.toString() ?? 'employee';
