@@ -108,6 +108,13 @@ class ProfileRepository {
     return normalized;
   }
 
+  Future<void> resendPhoneChange(String phone) async {
+    await _client.auth.resend(
+      type: OtpType.phoneChange,
+      phone: _normalizeJapanesePhone(phone),
+    );
+  }
+
   Future<void> verifyPhoneChange({
     required String phone,
     required String code,
