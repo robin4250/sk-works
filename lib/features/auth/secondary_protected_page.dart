@@ -18,7 +18,8 @@ class SecondaryProtectedPage extends StatefulWidget {
   State<SecondaryProtectedPage> createState() => _SecondaryProtectedPageState();
 }
 
-class _SecondaryProtectedPageState extends State<SecondaryProtectedPage> {
+class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
+    with WidgetsBindingObserver {
   final _password = TextEditingController();
   final _localAuth = LocalAuthentication();
 
@@ -35,7 +36,30 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadBiometricState();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      if (_unlocked || _password.text.isNotEmpty) {
+        _password.clear();
+        if (mounted) {
+          setState(() {
+            _unlocked = false;
+            _busy = false;
+            _message = null;
+          });
+        } else {
+          _unlocked = false;
+          _busy = false;
+          _message = null;
+        }
+      }
+    }
   }
 
   Future<void> _loadBiometricState() async {
@@ -61,6 +85,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     super.dispose();
   }
