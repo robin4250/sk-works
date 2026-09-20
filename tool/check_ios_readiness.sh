@@ -24,6 +24,7 @@ check_cmd() {
 check_cmd "Flutter" flutter
 check_cmd "Xcode command line tools" xcodebuild
 check_cmd "CocoaPods" pod
+check_cmd "Python 3" python3
 check_cmd "Git" git
 
 echo
@@ -59,9 +60,8 @@ echo
 echo "--- iOS project ---"
 if [[ -d ios/Runner.xcworkspace ]]; then
   echo "✓ ios/Runner.xcworkspace exists"
-
   if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
-    bundle_id="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj       | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/'       | grep -v '\$('       | grep -v '\.RunnerTests$'       | head -n 1 || true)"
+    bundle_id="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/' | grep -v '\$(' | grep -v '\.RunnerTests$' | head -n 1 || true)"
     if [[ -n "$bundle_id" ]]; then
       echo "✓ Bundle Identifier: $bundle_id"
     else
