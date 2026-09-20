@@ -52,6 +52,19 @@ entries = {
 for key, value in entries.items():
     data[key] = value
 
+# SKO never needs Always/background location. Remove stale keys if an
+# existing Xcode project or plist carried them from an earlier experiment.
+data.pop("NSLocationAlwaysUsageDescription", None)
+data.pop("NSLocationAlwaysAndWhenInUseUsageDescription", None)
+
+background_modes = data.get("UIBackgroundModes")
+if isinstance(background_modes, list):
+    filtered_modes = [mode for mode in background_modes if mode != "location"]
+    if filtered_modes:
+        data["UIBackgroundModes"] = filtered_modes
+    else:
+        data.pop("UIBackgroundModes", None)
+
 with plist_path.open("wb") as f:
     plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)
 
