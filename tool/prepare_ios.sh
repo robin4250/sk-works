@@ -20,6 +20,8 @@ with path.open("rb") as f:
     data = plistlib.load(f)
 
 entries = {
+    "CFBundleDisplayName": "SKO",
+    "CFBundleName": "SKO",
     "NSFaceIDUsageDescription": "SKOの請求書や管理者用データなど重要情報を保護するため、Face IDを使用します。",
     "NSLocationWhenInUseUsageDescription": "SKOで出勤・退勤を登録する際、現場付近にいることを確認するため位置情報を使用します。常時追跡は行いません。",
     "NSCameraUsageDescription": "SKOで出勤確認や資格証、現場写真を登録するためカメラを使用します。",
