@@ -3,20 +3,23 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('chat attachment failures attempt both metadata and storage cleanup', () {
+  test('chat attachment upload keeps metadata available for cleanup', () {
     final source =
         File('lib/features/chat/chat_cloud_repository.dart').readAsStringSync();
 
-    final insertIndex = source.indexOf("from('chat_attachments').insert");
-    final catchIndex = source.indexOf('} catch (_)', insertIndex);
-    final deleteIndex =
-        source.indexOf("from('chat_attachments').delete()", catchIndex);
+    final metadataIndex = source.indexOf("from('chat_attachments').insert");
+    final uploadIndex =
+        source.indexOf('storage.from(_attachmentBucket).uploadBinary');
+    final catchIndex = source.indexOf('} catch (_)', uploadIndex);
     final removeIndex =
         source.indexOf('storage.from(_attachmentBucket).remove', catchIndex);
+    final deleteIndex =
+        source.indexOf("from('chat_attachments').delete()", catchIndex);
 
-    expect(insertIndex, greaterThanOrEqualTo(0));
-    expect(catchIndex, greaterThan(insertIndex));
-    expect(deleteIndex, greaterThan(catchIndex));
-    expect(removeIndex, greaterThan(deleteIndex));
+    expect(metadataIndex, greaterThanOrEqualTo(0));
+    expect(uploadIndex, greaterThan(metadataIndex));
+    expect(catchIndex, greaterThan(uploadIndex));
+    expect(removeIndex, greaterThan(catchIndex));
+    expect(deleteIndex, greaterThan(removeIndex));
   });
 }
