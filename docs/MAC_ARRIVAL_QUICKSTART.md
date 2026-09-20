@@ -46,7 +46,13 @@ cp tool/local_supabase_env.example.sh tool/local_supabase_env.sh
 bash tool/prepare_ios.sh
 ```
 
-SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説明文も自動設定される。
+SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説明文に加えて、Personal Team向けのBundle Identifier `com.robin4250.sko` も自動設定される。
+
+もしApple側でBundle Identifierが重複すると表示された場合だけ、次のように任意の固有IDへ変更して再実行する。
+
+```bash
+SKO_IOS_BUNDLE_ID=com.robin4250.sko.dev bash tool/prepare_ios.sh
+```
 
 ## 6. Xcode署名
 
@@ -60,7 +66,8 @@ Xcodeで:
 - Signing & Capabilities
 - Automatically manage signing: ON
 - Team: 自分のApple Account / Personal Team
-- Bundle Identifierが重複した場合だけ変更
+- Bundle Identifierは通常 `com.robin4250.sko`
+- 重複エラー時のみ、上記 `SKO_IOS_BUNDLE_ID` で変更
 
 会社のApple Developer Teamが有効になったら、後でTeamと最終Bundle Identifierを切り替える。
 
@@ -115,5 +122,7 @@ bash tool/run_ios_device.sh <DEVICE_ID>
 - iOS debug build --no-codesign: 成功
 - Supabase最新DBマイグレーション: 適用済み
 - 必要な非公開Storage buckets: 作成済み
+- 電話番号＋パスワード登録はSMSチャネルを明示
+- 070/080/090形式の日本携帯番号正規化テスト: 成功
 
 残る実機固有項目はApple署名、iPhone接続、Face ID/GPS/カメラ/SMSなど実端末での確認。
