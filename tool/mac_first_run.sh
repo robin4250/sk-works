@@ -49,7 +49,15 @@ check_cmd "Flutter" flutter
 check_cmd "Python 3" python3
 check_cmd "CocoaPods" pod
 
-if ! command -v flutter >/dev/null 2>&1; then
+if command -v flutter >/dev/null 2>&1; then
+  flutter_version="$(flutter --version 2>/dev/null | head -n 1 | awk '{print $2}')"
+  if [[ "$flutter_version" == "3.47.5" ]]; then
+    ok "Flutter 3.47.5（CIと一致）"
+  else
+    warn "Flutter $flutter_version を検出。CI基準は3.47.5です"
+    echo "  実機テスト前にFlutter 3.47.5へ合わせることを推奨します"
+  fi
+else
   echo "  Flutter SDKをインストール後、flutter doctor を実行してください"
 fi
 
