@@ -56,34 +56,14 @@ else
 fi
 
 if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
-  bundle_id="$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-text = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
-for value in re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", text):
-    value = value.strip()
-    if "$(" not in value and not value.endswith(".RunnerTests"):
-        print(value)
-        break
-PY
-)"
+  bundle_id="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj     | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/'     | grep -v '\$('     | grep -v '\.RunnerTests$'     | head -n 1 || true)"
   if [[ -n "$bundle_id" ]]; then
     ok "Bundle Identifier: $bundle_id"
   else
     warn "Bundle Identifierを確認できませんでした"
   fi
 
-  team_id="$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-text = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
-values = [v.strip() for v in re.findall(r"DEVELOPMENT_TEAM = ([^;]*);", text)]
-values = [v for v in values if v]
-print(values[0] if values else "")
-PY
-)"
+  team_id="$(grep 'DEVELOPMENT_TEAM = ' ios/Runner.xcodeproj/project.pbxproj     | sed -E 's/.*DEVELOPMENT_TEAM = ([^;]*);.*/\1/'     | grep -v '^$'     | head -n 1 || true)"
   if [[ -n "$team_id" ]]; then
     ok "Signing Team設定済み: $team_id"
   else
