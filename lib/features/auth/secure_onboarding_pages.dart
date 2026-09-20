@@ -153,7 +153,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
     if (repository == null) return;
 
     await _run(() async {
-      await repository.resendSmsCode(phone: _phone.text);
+      if (_passwordResetMode) {
+        await repository.requestPasswordResetSms(phone: _phone.text);
+      } else {
+        await repository.resendSmsCode(phone: _phone.text);
+      }
       if (!mounted) return;
       setState(() => _message = 'SMSを再送しました。最新の6桁コードを入力してください。');
     });
@@ -340,9 +344,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                     _awaitingSms = false;
                                     _message = null;
                                   }),
-                          child: Text(
-                            _passwordResetMode ? '電話番号を修正' : '電話番号を修正',
-                          ),
+                          child: const Text('電話番号を修正'),
                         ),
                       ] else ...[
                         const SizedBox(height: 8),
