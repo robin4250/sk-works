@@ -172,6 +172,27 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         actions: [
           TextButton(
+            onPressed: () async {
+              try {
+                await _repository?.resendPhoneChange(phone);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('SMSを再送しました')),
+                );
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      friendlyAuthErrorMessage(error.toString()),
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('SMS再送'),
+          ),
+          TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('キャンセル'),
           ),
