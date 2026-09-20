@@ -420,15 +420,6 @@ class ChatCloudRepository {
     final storagePath =
         '$companyId/$groupId/$messageId/${DateTime.now().microsecondsSinceEpoch}-$safeName';
 
-    await _client.storage.from(_attachmentBucket).uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: FileOptions(
-            upsert: false,
-            contentType: mimeType,
-          ),
-        );
-
     try {
       await _client.from('chat_attachments').insert({
         'company_id': companyId,
@@ -440,8 +431,36 @@ class ChatCloudRepository {
         'attachment_type': isImage ? 'image' : 'file',
         'uploaded_by': user.id,
       });
+
+      await _client.storage.from(_attachmentBucket).uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: false,
+              contentType: mimeType,
+            ),
+          );
     } catch (_) {
-      await _client.storage.from(_attachmentBucket).remove([storagePath]);
+      // Keep metadata in place until Storage cleanup runs because the
+      // Storage DELETE policy verifies ownership through this row.
+      try {
+        await _client.storage.from(_attachmentBucket).remove([storagePath]);
+      } catch (_) {
+        // The upload may have failed before an object was created.
+      }
+      try {
+        await _client.from('chat_attachments').delete().eq(
+              'storage_path',
+              storagePath,
+            );
+      } catch (_) {
+        // Best effort; the original attachment error remains primary.
+      }
+      try {
+        await _client.from('chat_messages').delete().eq('id', messageId);
+      } catch (_) {
+        // Best effort; never hide the original attachment error.
+      }
       rethrow;
     }
   }
