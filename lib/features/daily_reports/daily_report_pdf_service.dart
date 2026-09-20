@@ -118,9 +118,11 @@ class DailyReportPdfService {
       final points = <String>[];
       for (final rawPoint in rawStroke) {
         if (rawPoint is! Map) continue;
-        final x = (rawPoint['x'] as num?)?.toDouble();
-        final y = (rawPoint['y'] as num?)?.toDouble();
-        if (x == null || y == null) continue;
+        final rawX = rawPoint['x'];
+        final rawY = rawPoint['y'];
+        if (rawX is! num || rawY is! num) continue;
+        final x = rawX.toDouble();
+        final y = rawY.toDouble();
         final px = (x.clamp(0, 1) * width).toStringAsFixed(1);
         final py = (y.clamp(0, 1) * height).toStringAsFixed(1);
         points.add('$px,$py');
