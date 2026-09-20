@@ -10,6 +10,7 @@ on:
       - 'tool/check_ios_readiness.sh'
       - 'tool/run_ios_device.sh'
       - 'tool/ios_install_assistant.sh'
+      - 'tool/mac_first_run.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -22,6 +23,7 @@ on:
       - 'tool/check_ios_readiness.sh'
       - 'tool/run_ios_device.sh'
       - 'tool/ios_install_assistant.sh'
+      - 'tool/mac_first_run.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -43,6 +45,7 @@ jobs:
           bash -n tool/check_ios_readiness.sh
           bash -n tool/run_ios_device.sh
           bash -n tool/ios_install_assistant.sh
+          bash -n tool/mac_first_run.sh
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
