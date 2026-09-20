@@ -420,39 +420,41 @@ class ChatCloudRepository {
     final storagePath =
         '$companyId/$groupId/$messageId/${DateTime.now().microsecondsSinceEpoch}-$safeName';
 
-    await _client.storage.from(_attachmentBucket).uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: FileOptions(
-            upsert: false,
-            contentType: mimeType,
-          ),
-        );
+    await _client.from('chat_attachments').insert({
+      'company_id': companyId,
+      'communication_group_id': groupId,
+      'message_id': messageId,
+      'storage_path': storagePath,
+      'original_filename': filename,
+      'mime_type': mimeType,
+      'attachment_type': isImage ? 'image' : 'file',
+      'uploaded_by': user.id,
+    });
 
     try {
-      await _client.from('chat_attachments').insert({
-        'company_id': companyId,
-        'communication_group_id': groupId,
-        'message_id': messageId,
-        'storage_path': storagePath,
-        'original_filename': filename,
-        'mime_type': mimeType,
-        'attachment_type': isImage ? 'image' : 'file',
-        'uploaded_by': user.id,
-      });
+      await _client.storage.from(_attachmentBucket).uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: false,
+              contentType: mimeType,
+            ),
+          );
     } catch (_) {
+      // Keep metadata in place until Storage cleanup runs because the
+      // Storage DELETE policy verifies ownership through this row.
+      try {
+        await _client.storage.from(_attachmentBucket).remove([storagePath]);
+      } catch (_) {
+        // The upload may have failed before an object was created.
+      }
       try {
         await _client.from('chat_attachments').delete().eq(
               'storage_path',
               storagePath,
             );
       } catch (_) {
-        // Best-effort cleanup; storage removal below is still attempted.
-      }
-      try {
-        await _client.storage.from(_attachmentBucket).remove([storagePath]);
-      } catch (_) {
-        // Keep the original database error as the user-visible failure.
+        // Preserve the original upload failure for the caller.
       }
       rethrow;
     }
