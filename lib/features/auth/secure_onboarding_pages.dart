@@ -76,8 +76,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
       return;
     }
 
-    if (_phone.text.trim().isEmpty || _password.text.length < 8) {
-      setState(() => _message = '携帯電話番号と8文字以上のパスワードを入力してください。');
+    if (!SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
+      setState(() => _message = '070 / 080 / 090から始まる携帯電話番号を入力してください。');
+      return;
+    }
+
+    if (_password.text.length < 8) {
+      setState(() => _message = '8文字以上のパスワードを入力してください。');
       return;
     }
 
