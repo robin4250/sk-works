@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -u
+set -eu
 
 echo "=== SKO iPhone device-day runner ==="
 echo
