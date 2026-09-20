@@ -61,18 +61,7 @@ if [[ -d ios/Runner.xcworkspace ]]; then
   echo "✓ ios/Runner.xcworkspace exists"
 
   if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
-    bundle_id="$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-text = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
-for value in re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", text):
-    value = value.strip()
-    if "$(" not in value and not value.endswith(".RunnerTests"):
-        print(value)
-        break
-PY
-)"
+    bundle_id="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj       | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/'       | grep -v '\$('       | grep -v '\.RunnerTests$'       | head -n 1 || true)"
     if [[ -n "$bundle_id" ]]; then
       echo "✓ Bundle Identifier: $bundle_id"
     else
