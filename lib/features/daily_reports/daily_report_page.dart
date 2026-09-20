@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import 'daily_report_pdf_service.dart';
 import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
 
@@ -820,13 +821,13 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('実機ではiOS印刷ダイアログへ接続します'),
-                  ),
-                );
-              },
+              onPressed: () => DailyReportPdfService.printReport(
+                date: date,
+                siteName: siteName,
+                workers: workers,
+                workDescription: workDescription,
+                report: report,
+              ),
               icon: const Icon(Icons.print),
               label: const Text('印刷'),
             ),
