@@ -24,48 +24,46 @@ void main() {
     taxRateBps: 1000,
   );
 
-  test('invoice PDF HTML contains Japanese invoice content and totals', () {
-    final html = InvoicePdfService.buildHtml([invoice]);
+  test('invoice PDF snapshot contains Japanese invoice content and totals', () {
+    final text = InvoicePdfService.buildTextSnapshot([invoice]);
 
-    expect(html, contains('請求書'));
-    expect(html, contains('株式会社テスト'));
-    expect(html, contains('新宿現場'));
-    expect(html, contains('人工'));
-    expect(html, contains('¥50,000'));
-    expect(html, contains('請求合計'));
+    expect(text, contains('請求書'));
+    expect(text, contains('株式会社テスト'));
+    expect(text, contains('新宿現場'));
+    expect(text, contains('人工'));
+    expect(text, contains('¥50,000'));
+    expect(text, contains('請求合計'));
   });
 
-  test('invoice PDF HTML escapes user-controlled text', () {
+  test('invoice file name is sanitized', () {
     final unsafe = InvoiceEngine.calculate(
-      customerId: '<script>alert(1)</script>',
+      customerId: 'A/B株式会社',
       billingPeriod: '2026年9月',
       detailMode: InvoiceDetailMode.consolidatedOnly,
       sites: const [
         SiteInvoiceCalculation(
           siteId: 'site-2',
-          siteName: 'A&B',
+          siteName: '現場',
           lines: [
-            InvoiceLine(label: '<作業>', quantity: 1, unitPriceYen: 1000),
+            InvoiceLine(label: '作業', quantity: 1, unitPriceYen: 1000),
           ],
         ),
       ],
     );
 
-    final html = InvoicePdfService.buildHtml([unsafe]);
+    final filename = InvoicePdfService.fileNameFor([unsafe]);
 
-    expect(html, isNot(contains('<script>alert(1)</script>')));
-    expect(html, contains('&lt;script&gt;alert(1)&lt;/script&gt;'));
-    expect(html, contains('A&amp;B'));
-    expect(html, contains('&lt;作業&gt;'));
+    expect(filename, endsWith('.pdf'));
+    expect(filename, isNot(contains('/')));
   });
 
-  test('annual PDF inserts page breaks between invoices', () {
-    final html = InvoicePdfService.buildHtml(
+  test('annual PDF snapshot includes all invoices and title', () {
+    final text = InvoicePdfService.buildTextSnapshot(
       [invoice, invoice],
       title: '2026年 請求書',
     );
 
-    expect(RegExp('page-break').allMatches(html).length, greaterThanOrEqualTo(2));
-    expect(html, contains('2026年 請求書'));
+    expect(text, contains('2026年 請求書'));
+    expect(RegExp('株式会社テスト').allMatches(text).length, 2);
   });
 }
