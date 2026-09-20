@@ -23,7 +23,7 @@ void main() {
       tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
 
-    await tester.pumpWidget(const SkWorksApp());
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
     await tester.pumpAndSettle();
   }
 
