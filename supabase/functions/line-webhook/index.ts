@@ -2,6 +2,15 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const encoder = new TextEncoder();
 
+function constantTimeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 async function hmacSha256Base64(secret: string, body: string) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -71,7 +80,7 @@ Deno.serve(async (req: Request) => {
   const rawBody = await req.text();
   const receivedSignature = req.headers.get("x-line-signature") ?? "";
   const expectedSignature = await hmacSha256Base64(secret, rawBody);
-  if (!receivedSignature || receivedSignature !== expectedSignature) {
+  if (!receivedSignature || !constantTimeEqual(receivedSignature, expectedSignature)) {
     return new Response("Invalid signature", { status: 401 });
   }
 
