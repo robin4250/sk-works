@@ -41,7 +41,14 @@ import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
 
 class SkWorksApp extends StatelessWidget {
-  const SkWorksApp({super.key});
+  const SkWorksApp({
+    super.key,
+    this.allowLocalFallback = false,
+  });
+
+  /// Development/test-only escape hatch for the legacy local prototype.
+  /// Production launches must fail closed when Supabase is unavailable.
+  final bool allowLocalFallback;
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +87,9 @@ class SkWorksApp extends StatelessWidget {
           ? SupabaseAuthGate(
               homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
             )
-          : const HomePage(),
+          : allowLocalFallback
+              ? const HomePage()
+              : const _BackendUnavailableScreen(),
     );
   }
 }
@@ -557,4 +566,42 @@ class _MenuAction {
   final String key;
   final String label;
   final IconData icon;
+}
+
+
+class _BackendUnavailableScreen extends StatelessWidget {
+  const _BackendUnavailableScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 52),
+                SizedBox(height: 16),
+                Text(
+                  'SKOを安全に開始できません',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '認証サーバーの設定を読み込めないため、ログインや管理機能は開いていません。Macの実機準備スクリプトでSupabase設定を確認してから再起動してください。',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

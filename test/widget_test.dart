@@ -6,7 +6,7 @@ void main() {
   testWidgets('SKO admin home uses finalized dashboard labels', (tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const SkWorksApp());
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
     await tester.pump();
 
     expect(find.text('SKO'), findsWidgets);
