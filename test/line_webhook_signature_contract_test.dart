@@ -13,8 +13,10 @@ void main() {
     expect(source, contains('LINE_CHANNEL_SECRET'));
     expect(source, contains('Invalid signature'));
     expect(source, contains('status: 401'));
+    expect(source, contains('constantTimeEqual'));
+    expect(source, isNot(contains('receivedSignature !== expectedSignature')));
 
-    final signatureCheck = source.indexOf('receivedSignature !== expectedSignature');
+    final signatureCheck = source.indexOf('constantTimeEqual(receivedSignature, expectedSignature)');
     final firstDatabaseCall = source.indexOf('rest("line_webhook_events');
     expect(signatureCheck, greaterThanOrEqualTo(0));
     expect(firstDatabaseCall, greaterThan(signatureCheck));
