@@ -28,9 +28,41 @@ command_ok "Python 3" python3
 command_ok "Git" git
 
 echo
+echo "--- Xcode / 署名 ---"
+if command -v xcode-select >/dev/null 2>&1; then
+  developer_dir="$(xcode-select -p 2>/dev/null || true)"
+  if [[ "$developer_dir" == *"/Xcode.app/Contents/Developer" ]]; then
+    ok "Xcode選択済み: $developer_dir"
+  elif [[ -n "$developer_dir" ]]; then
+    warn "現在のDeveloper Directory: $developer_dir"
+    echo "  Xcode本体を使う場合: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+  fi
+fi
+
+if command -v security >/dev/null 2>&1; then
+  identity_count="$(security find-identity -v -p codesigning 2>/dev/null | grep -c 'Apple Development' || true)"
+  if [[ "${identity_count:-0}" -gt 0 ]]; then
+    ok "Apple Development署名証明書を検出"
+  else
+    warn "Apple Development署名証明書をまだ検出していません"
+    echo "  次: Xcode > Settings > Accounts でApple Accountにサインイン"
+    echo "      Runner > Signing & Capabilities でPersonal Teamを選択"
+  fi
+fi
+
+echo
 echo "--- Supabase ---"
-[[ -n "${SUPABASE_URL:-}" ]] && ok "SUPABASE_URL" || fail "SUPABASE_URL が未設定です"
-[[ -n "${SUPABASE_PUBLISHABLE_KEY:-}" ]] && ok "SUPABASE_PUBLISHABLE_KEY" || fail "SUPABASE_PUBLISHABLE_KEY が未設定です"
+if [[ -n "${SUPABASE_URL:-}" && "$SUPABASE_URL" == https://*.supabase.co ]]; then
+  ok "SUPABASE_URL"
+else
+  fail "SUPABASE_URL が未設定または形式が不正です"
+fi
+
+if [[ -n "${SUPABASE_PUBLISHABLE_KEY:-}" && "$SUPABASE_PUBLISHABLE_KEY" != "YOUR_PUBLISHABLE_KEY" ]]; then
+  ok "SUPABASE_PUBLISHABLE_KEY"
+else
+  fail "SUPABASE_PUBLISHABLE_KEY が未設定です"
+fi
 
 echo
 echo "--- iOSプロジェクト ---"
@@ -76,10 +108,14 @@ for item in items:
 fi
 
 if [[ -n "$device_id" ]]; then
-  ok "実機iPhoneを検出: $device_id"
+  ok "Flutterが実機iPhoneを検出: $device_id"
 else
-  warn "実機iPhoneをまだ検出していません"
-  echo "  次: iPhoneをUSB接続 → 信頼 → Developer Mode確認"
+  warn "Flutterでは実機iPhoneをまだ検出していません"
+  if command -v xcrun >/dev/null 2>&1 && xcrun devicectl list devices >/dev/null 2>&1; then
+    echo "  Xcode側のデバイス一覧は取得できます。USB接続・信頼・Developer Modeを確認してください。"
+  else
+    echo "  次: iPhoneをUSB接続 → 信頼 → Developer Mode確認"
+  fi
 fi
 
 echo
