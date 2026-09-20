@@ -131,3 +131,7 @@ fi
 
 echo "iPhone実機起動の準備が整っています。"
 echo "次: bash tool/run_ios_device.sh"
+echo
+echo "※ 初回起動時にiPhoneで「信頼されていない開発元」等が表示された場合:"
+echo "   設定 > 一般 > VPNとデバイス管理（またはデバイス管理）から"
+echo "   Apple AccountのDeveloper Appを信頼して、もう一度起動してください。"
