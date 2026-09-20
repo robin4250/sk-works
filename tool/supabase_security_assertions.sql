@@ -1,5 +1,8 @@
 -- Run against the production project to verify pre-device security invariants.
 do $$
+declare
+  v_sensitive_bucket_count integer;
+  v_storage_guard text;
 begin
   if exists (
     select 1
@@ -42,6 +45,68 @@ begin
       and column_default::text like '%2%'
   ) then
     raise exception 'daily-report two-approval default missing';
+  end if;
+
+  select count(*)
+  into v_sensitive_bucket_count
+  from storage.buckets
+  where id in (
+    'attendance-evidence',
+    'chat-attachments',
+    'communication-albums',
+    'profile-photos',
+    'qualification-certificates',
+    'worker-documents'
+  );
+
+  if v_sensitive_bucket_count <> 6 then
+    raise exception 'one or more required private storage buckets are missing';
+  end if;
+
+  if exists (
+    select 1
+    from storage.buckets
+    where id in (
+      'attendance-evidence',
+      'chat-attachments',
+      'communication-albums',
+      'profile-photos',
+      'qualification-certificates',
+      'worker-documents'
+    )
+      and public
+  ) then
+    raise exception 'sensitive storage bucket must not be public';
+  end if;
+
+  select pg_get_functiondef('private.has_storage_company_access(text)'::regprocedure)
+  into v_storage_guard;
+
+  if position('auth.uid()' in v_storage_guard) = 0
+     or position('storage.foldername' in v_storage_guard) = 0 then
+    raise exception 'storage company access guard contract missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'profile_photos_read'
+      and 'authenticated' = any(roles)
+  ) then
+    raise exception 'profile photo authenticated read policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'attendance_evidence_read'
+      and 'authenticated' = any(roles)
+  ) then
+    raise exception 'attendance evidence authenticated read policy missing';
   end if;
 end
 $$;
