@@ -39,6 +39,10 @@ begin
     raise exception 'SECURITY DEFINER function is executable by anon or PUBLIC';
   end if;
 
+  if has_table_privilege('authenticated', 'public.app_notifications', 'INSERT,DELETE') then
+    raise exception 'authenticated must not insert/delete app_notifications directly';
+  end if;
+
   if has_table_privilege('anon', 'public.company_members', 'SELECT,INSERT,UPDATE,DELETE')
      or has_table_privilege('authenticated', 'public.company_members', 'INSERT,UPDATE,DELETE') then
     raise exception 'company_members direct writes must be blocked';
