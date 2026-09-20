@@ -441,7 +441,19 @@ class ChatCloudRepository {
         'uploaded_by': user.id,
       });
     } catch (_) {
-      await _client.storage.from(_attachmentBucket).remove([storagePath]);
+      try {
+        await _client.from('chat_attachments').delete().eq(
+              'storage_path',
+              storagePath,
+            );
+      } catch (_) {
+        // Best-effort cleanup; storage removal below is still attempted.
+      }
+      try {
+        await _client.storage.from(_attachmentBucket).remove([storagePath]);
+      } catch (_) {
+        // Keep the original database error as the user-visible failure.
+      }
       rethrow;
     }
   }
