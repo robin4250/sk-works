@@ -19,6 +19,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _defaultUnitPrice = TextEditingController(text: '25000');
   bool _loading = true;
   bool _saving = false;
+  bool _canManageCompany = false;
   String? _companyId;
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
@@ -59,7 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final memberships = await SupabaseBackend.client
         .from('company_members')
-        .select('company_id')
+        .select('company_id, role')
         .eq('user_id', user.id)
         .limit(1);
     if (memberships.isEmpty) {
@@ -67,6 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final companyId = memberships.first['company_id'] as String;
+    final role = memberships.first['role']?.toString() ?? 'viewer';
+    _canManageCompany = role == 'owner' || role == 'admin';
     final companies = await SupabaseBackend.client
         .from('companies')
         .select(
@@ -99,6 +102,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save() async {
+    if (_usesCloud && !_canManageCompany) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('会社設定は管理者のみ変更できます')),
+      );
+      return;
+    }
+
     final taxRate = double.tryParse(_taxRate.text.trim());
     final unitPrice = int.tryParse(_defaultUnitPrice.text.trim());
     if (_companyName.text.trim().isEmpty || taxRate == null || unitPrice == null) {
@@ -236,6 +246,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: _companyName,
+                        enabled: !_usesCloud || _canManageCompany,
                         decoration: const InputDecoration(labelText: '会社名'),
                       ),
                       const SizedBox(height: 24),
@@ -248,6 +259,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: _taxRate,
+                        enabled: !_usesCloud || _canManageCompany,
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
                         decoration: const InputDecoration(labelText: '消費税率（%）'),
@@ -255,6 +267,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 14),
                       TextField(
                         controller: _defaultUnitPrice,
+                        enabled: !_usesCloud || _canManageCompany,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: '標準人工単価（円）'),
                       ),
@@ -276,13 +289,17 @@ class _SettingsPageState extends State<SettingsPage> {
                             child: Text('現場別明細を別紙添付'),
                           ),
                         ],
-                        onChanged: (value) => setState(() {
-                          _detailMode = value ?? _detailMode;
-                        }),
+                        onChanged: _usesCloud && !_canManageCompany
+                            ? null
+                            : (value) => setState(() {
+                                  _detailMode = value ?? _detailMode;
+                                }),
                       ),
                       const SizedBox(height: 24),
                       FilledButton.icon(
-                        onPressed: _saving ? null : _save,
+                        onPressed: _saving || (_usesCloud && !_canManageCompany)
+                            ? null
+                            : _save,
                         icon: _saving
                             ? const SizedBox.square(
                                 dimension: 18,
