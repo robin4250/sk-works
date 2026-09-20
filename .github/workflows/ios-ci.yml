@@ -11,6 +11,7 @@ on:
       - 'tool/run_ios_device.sh'
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
+      - 'tool/collect_ios_diagnostics.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -24,6 +25,7 @@ on:
       - 'tool/run_ios_device.sh'
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
+      - 'tool/collect_ios_diagnostics.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -46,12 +48,17 @@ jobs:
           bash -n tool/run_ios_device.sh
           bash -n tool/ios_install_assistant.sh
           bash -n tool/mac_first_run.sh
+          bash -n tool/collect_ios_diagnostics.sh
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.5'
           channel: stable
           cache: true
+
+      - name: Verify pinned Flutter
+        run: flutter --version
 
       - name: Prepare iOS project
         run: bash tool/prepare_ios.sh
