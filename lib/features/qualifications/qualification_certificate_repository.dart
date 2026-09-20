@@ -58,6 +58,14 @@ class QualificationCertificateRepository {
         .eq('company_id', companyId)
         .order('name');
 
+    if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
+      return {
+        'masters': List<Map<String, dynamic>>.from(masters),
+        'workers': const <Map<String, dynamic>>[],
+        'qualifications': const <Map<String, dynamic>>[],
+      };
+    }
+
     var workersQuery = _client
         .from('workers')
         .select('id, name, affiliation, status')
