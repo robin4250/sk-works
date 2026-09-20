@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import 'attendance_pdf_service.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
@@ -755,13 +756,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('実機ではiOS印刷ダイアログへ接続します'),
-                  ),
-                );
-              },
+              onPressed: () => AttendancePdfService.printMonth(month, data),
               icon: const Icon(Icons.print),
               label: const Text('印刷'),
             ),
