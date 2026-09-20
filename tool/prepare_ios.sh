@@ -6,17 +6,30 @@ if ! command -v flutter >/dev/null 2>&1; then
   exit 1
 fi
 
+BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.robin4250.sko}"
+
+if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+  echo "SKO_IOS_BUNDLE_ID が不正です: $BUNDLE_ID"
+  echo "例: com.robin4250.sko"
+  exit 1
+fi
+
 flutter create . --platforms=ios --project-name sk_works --org com.skworks
 flutter pub get
 
 PLIST="ios/Runner/Info.plist"
+PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
 
-python3 - <<'PY'
+python3 - "$BUNDLE_ID" <<'PY'
 from pathlib import Path
 import plistlib
+import re
+import sys
 
-path = Path("ios/Runner/Info.plist")
-with path.open("rb") as f:
+bundle_id = sys.argv[1]
+
+plist_path = Path("ios/Runner/Info.plist")
+with plist_path.open("rb") as f:
     data = plistlib.load(f)
 
 entries = {
@@ -31,16 +44,37 @@ entries = {
 for key, value in entries.items():
     data[key] = value
 
-with path.open("wb") as f:
+with plist_path.open("wb") as f:
     plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)
 
+project_path = Path("ios/Runner.xcodeproj/project.pbxproj")
+project = project_path.read_text()
+
+pattern = re.compile(r"(PRODUCT_BUNDLE_IDENTIFIER = )([^;]+)(;)")
+
+def replace_bundle(match):
+    current = match.group(2).strip()
+    if "$(" in current:
+        return match.group(0)
+    if current.endswith(".RunnerTests"):
+        return f"{match.group(1)}{bundle_id}.RunnerTests{match.group(3)}"
+    return f"{match.group(1)}{bundle_id}{match.group(3)}"
+
+updated = pattern.sub(replace_bundle, project)
+project_path.write_text(updated)
+
 print("Info.plist に iOS 権限説明を追加しました。")
+print(f"Bundle Identifier を {bundle_id} に設定しました。")
 PY
 
 echo
 echo "iOS準備完了。次は:"
 echo "1. open ios/Runner.xcworkspace"
 echo "2. Runner > Signing & Capabilities で Apple Account / Personal Team を選択"
-echo "3. Bundle Identifier が重複する場合は com.skworks.sko.<任意文字列> に変更"
-echo "4. iPhoneをUSB接続して信頼"
-echo "5. Xcodeで実機を選択してRun"
+echo "3. Automatically manage signing を ON"
+echo "4. Bundle Identifier: $BUNDLE_ID"
+echo "5. iPhoneをUSB接続して信頼"
+echo "6. Xcodeで実機を選択してRun"
+echo
+echo "Bundle Identifierを変更したい場合:"
+echo "SKO_IOS_BUNDLE_ID=com.example.sko bash tool/prepare_ios.sh"
