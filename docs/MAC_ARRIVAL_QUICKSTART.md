@@ -53,17 +53,15 @@ bash tool/mac_first_run.sh
 - Supabaseローカル設定
 - iOSプロジェクト生成
 
-`tool/local_supabase_env.sh` が無い場合はテンプレートから自動作成する。
-実際のSupabase接続値だけ入力して再実行する。
+`tool/local_supabase_env.sh` が無い場合は、公開クライアント設定済みテンプレートから自動作成してその場で読み込む。
 
 ## 5. Supabase接続値
 
-`tool/local_supabase_env.sh` に以下を設定する。
+SK WORKSの公開クライアント用 `SUPABASE_URL` と `SUPABASE_PUBLISHABLE_KEY` はテンプレートへ設定済み。
 
-- SUPABASE_URL
-- SUPABASE_PUBLISHABLE_KEY
+`bash tool/device_day.sh` または `bash tool/mac_first_run.sh` の初回実行時に `tool/local_supabase_env.sh` を自動作成して読み込むため、通常は手入力不要。
 
-このファイルはgitignore済みでGitHubには送られない。
+このローカルファイルはgitignore済み。service_roleやsecretキーはアプリ側へ入れない。
 
 ## 6. iOSプロジェクト生成
 
