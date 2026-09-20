@@ -14,19 +14,23 @@ if [[ -f "tool/local_supabase_env.sh" ]]; then
 fi
 
 echo "[1/3] Mac初回準備を確認します"
-if ! bash tool/mac_first_run.sh; then
-  status=$?
-  if [[ "$status" -ne 2 ]]; then
-    echo
-    echo "Mac初回準備に必須の不足があります。上の案内を解消して再実行してください。"
-    exit "$status"
-  fi
+set +e
+bash tool/mac_first_run.sh
+status=$?
+set -e
+if [[ "$status" -ne 0 && "$status" -ne 2 ]]; then
+  echo
+  echo "Mac初回準備に必須の不足があります。上の案内を解消して再実行してください。"
+  exit "$status"
 fi
 
 echo
 echo "[2/3] iPhone実機インストール条件を確認します"
-if ! bash tool/ios_install_assistant.sh; then
-  status=$?
+set +e
+bash tool/ios_install_assistant.sh
+status=$?
+set -e
+if [[ "$status" -ne 0 ]]; then
   echo
   echo "実機固有の設定が残っています。上の △ / ✗ を解消して再実行してください。"
   echo "原因調査用ログ: bash tool/collect_ios_diagnostics.sh"
