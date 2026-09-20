@@ -26,7 +26,7 @@ MacとiPhoneが手元に来たら、まず次を実行する。
 bash tool/device_day.sh
 ```
 
-このコマンドが、実機当日の一括プリフライト → SKO実機起動まで順番に進める。
+このコマンドが、Mac初回準備 → 実機当日の一括プリフライト → SKO実機起動まで順番に進める。`tool/local_supabase_env.sh` が無い場合はテンプレート作成、iOSプロジェクトが無ければ生成まで自動で進める。
 Apple Account / Personal Team / USB信頼 / Developer Modeなど、人が操作する必要がある箇所で止まった場合は画面の案内を解消し、同じコマンドをもう一度実行する。
 
 問題調査が必要な場合:
@@ -53,17 +53,15 @@ bash tool/mac_first_run.sh
 - Supabaseローカル設定
 - iOSプロジェクト生成
 
-`tool/local_supabase_env.sh` が無い場合はテンプレートから自動作成する。
-実際のSupabase接続値だけ入力して再実行する。
+`tool/local_supabase_env.sh` が無い場合は、公開クライアント設定済みテンプレートから自動作成してその場で読み込む。
 
 ## 5. Supabase接続値
 
-`tool/local_supabase_env.sh` に以下を設定する。
+SK WORKSの公開クライアント用 `SUPABASE_URL` と `SUPABASE_PUBLISHABLE_KEY` はテンプレートへ設定済み。
 
-- SUPABASE_URL
-- SUPABASE_PUBLISHABLE_KEY
+`bash tool/device_day.sh` または `bash tool/mac_first_run.sh` の初回実行時に `tool/local_supabase_env.sh` を自動作成して読み込むため、通常は手入力不要。
 
-このファイルはgitignore済みでGitHubには送られない。
+このローカルファイルはgitignore済み。service_roleやsecretキーはアプリ側へ入れない。
 
 ## 6. iOSプロジェクト生成
 

@@ -73,8 +73,8 @@ if [[ -f "tool/local_supabase_env.sh" ]]; then
 else
   if [[ -f "tool/local_supabase_env.example.sh" ]]; then
     cp tool/local_supabase_env.example.sh tool/local_supabase_env.sh
-    warn "Supabase設定ファイルを作成しました"
-    echo "  次: tool/local_supabase_env.sh を開き、実際のSUPABASE_URLとSUPABASE_PUBLISHABLE_KEYを入力してください"
+    source tool/local_supabase_env.sh
+    ok "Supabase設定ファイルを公開クライアント設定から作成しました"
   else
     fail "Supabase設定テンプレートが見つかりません"
   fi
