@@ -225,6 +225,26 @@ class _HomePageState extends State<HomePage> {
     unawaited(_recordUsage(key));
     if (!mounted) return;
 
+    final requiredModule = switch (key) {
+      'attendance' || 'attendance_verify' || 'clock_in' || 'clock_out' =>
+        'attendance',
+      'footer_sites' || 'site_register' || 'sites' => 'sites',
+      'chat' => 'chat',
+      'invoices' => 'invoices',
+      'qualifications' || 'qualification_certificates' => 'qualifications',
+      'documents' => 'documents',
+      'notes' => 'notes',
+      'albums' => 'albums',
+      'today_line' || 'line_history' => 'line_bridge',
+      _ => null,
+    };
+    if (requiredModule != null && !_moduleEnabled(requiredModule)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この機能は会社設定でOFFになっています')),
+      );
+      return;
+    }
+
     final restricted = <String, String>{
       'approvals': 'can_approve_daily_report_edits',
       'invoices': 'can_view_invoices',
@@ -501,11 +521,17 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _homeDashboard(),
-      _identity.can('can_manage_attendance')
-          ? const AttendanceCloudPage()
-          : const WorkerAttendanceSheetPage(),
-      const SiteCloudPage(),
-      const ChatCloudPage(),
+      _moduleEnabled('attendance')
+          ? (_identity.can('can_manage_attendance')
+              ? const AttendanceCloudPage()
+              : const WorkerAttendanceSheetPage())
+          : const _ModuleDisabledPage(label: '出勤表'),
+      _moduleEnabled('sites')
+          ? const SiteCloudPage()
+          : const _ModuleDisabledPage(label: '現場'),
+      _moduleEnabled('chat')
+          ? const ChatCloudPage()
+          : const _ModuleDisabledPage(label: 'チャット'),
       _menuPage(),
     ];
 
@@ -523,6 +549,18 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
+          final module = switch (index) {
+            1 => 'attendance',
+            2 => 'sites',
+            3 => 'chat',
+            _ => null,
+          };
+          if (module != null && !_moduleEnabled(module)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('この機能は会社設定でOFFになっています')),
+            );
+            return;
+          }
           setState(() => _selectedIndex = index);
         },
         destinations: const [
@@ -596,6 +634,38 @@ class _BackendUnavailableScreen extends StatelessWidget {
                 Text(
                   '認証サーバーの設定を読み込めないため、ログインや管理機能は開いていません。Macの実機準備スクリプトでSupabase設定を確認してから再起動してください。',
                   textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _ModuleDisabledPage extends StatelessWidget {
+  const _ModuleDisabledPage({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.toggle_off_outlined, size: 52),
+                const SizedBox(height: 12),
+                Text(
+                  '$labelは会社設定でOFFになっています',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ],
             ),
