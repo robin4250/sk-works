@@ -16,6 +16,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
 
   List<AdminSiteFinancialRecord> _items = const [];
   bool _loading = true;
+  bool _canManage = false;
   String? _error;
   bool _showCompleted = false;
 
@@ -41,10 +42,16 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     });
 
     try {
-      final items = await repository.loadAll();
+      final values = await Future.wait([
+        repository.loadAll(),
+        repository.canManage(),
+      ]);
+      final items = values[0] as List<AdminSiteFinancialRecord>;
+      final canManage = values[1] as bool;
       if (!mounted) return;
       setState(() {
         _items = items;
+        _canManage = canManage;
         _loading = false;
       });
     } catch (error) {
@@ -127,9 +134,13 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                       subtitle: Text(
                                         '給与単価 ${_yen(item.workerDailyRateYen)} / 請求単価 ${_yen(item.billingUnitPriceYen)}',
                                       ),
-                                      trailing:
-                                          const Icon(Icons.chevron_right),
-                                      onTap: () => _edit(item),
+                                      trailing: Icon(
+                                        _canManage
+                                            ? Icons.chevron_right
+                                            : Icons.lock_outline,
+                                      ),
+                                      onTap:
+                                          _canManage ? () => _edit(item) : null,
                                     ),
                                   );
                                 },

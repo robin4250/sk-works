@@ -40,79 +40,96 @@ class InvoiceSettingsRepository {
     return InvoiceSettingsRepository._(client);
   }
 
-  Future<({String companyId, String role})> _membership() async {
+  Future<String> _companyIdForManage() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
 
     final rows = await _client
         .from('company_members')
-        .select('company_id, role')
+        .select('company_id')
         .eq('user_id', user.id)
         .limit(1);
 
     if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
 
-    final role = rows.first['role']?.toString() ?? 'viewer';
-    if (role != 'owner' && role != 'admin') {
-      throw StateError('請求書設定は管理者だけ変更できます。');
+    final permissions = await _client.rpc('current_feature_permissions');
+    final map = permissions is Map
+        ? Map<String, dynamic>.from(permissions)
+        : const <String, dynamic>{};
+
+    if (map['can_manage_invoices'] != true) {
+      throw StateError('請求書設定を変更する権限がありません。');
     }
 
-    return (
-      companyId: rows.first['company_id'] as String,
-      role: role,
-    );
+    return rows.first['company_id'] as String;
   }
 
   Future<InvoiceSettingsData> load() async {
-    final membership = await _membership();
+    final companyId = await _companyIdForManage();
 
-    final rows = await _client
+    final companyRows = await _client
         .from('companies')
         .select(
-          'name, tax_rate, default_welfare_rate, invoice_template_title, invoice_footer_note, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder',
+          'name, tax_rate, default_welfare_rate, '
+          'invoice_template_title, invoice_footer_note',
         )
-        .eq('id', membership.companyId)
+        .eq('id', companyId)
         .limit(1);
 
-    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
-    final row = Map<String, dynamic>.from(rows.first);
+    if (companyRows.isEmpty) {
+      throw StateError('会社情報が見つかりません。');
+    }
+
+    final company = Map<String, dynamic>.from(companyRows.first);
+
+    final billingRows = await _client
+        .from('company_private_billing_settings')
+        .select(
+          'bank_name, bank_branch, bank_account_type, '
+          'bank_account_number, bank_account_holder',
+        )
+        .eq('company_id', companyId)
+        .limit(1);
+
+    final billing = billingRows.isEmpty
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(billingRows.first);
 
     return InvoiceSettingsData(
-      companyName: row['name']?.toString() ?? '',
-      taxRate: (row['tax_rate'] as num?)?.toDouble() ?? 10,
+      companyName: company['name']?.toString() ?? '',
+      taxRate: (company['tax_rate'] as num?)?.toDouble() ?? 10,
       welfareRate:
-          (row['default_welfare_rate'] as num?)?.toDouble() ?? 0,
+          (company['default_welfare_rate'] as num?)?.toDouble() ?? 0,
       templateTitle:
-          row['invoice_template_title']?.toString() ?? '請求書',
-      footerNote: row['invoice_footer_note']?.toString() ?? '',
-      bankName: row['bank_name']?.toString() ?? '',
-      bankBranch: row['bank_branch']?.toString() ?? '',
-      bankAccountType: row['bank_account_type']?.toString() ?? '普通',
-      bankAccountNumber: row['bank_account_number']?.toString() ?? '',
-      bankAccountHolder: row['bank_account_holder']?.toString() ?? '',
+          company['invoice_template_title']?.toString() ?? '請求書',
+      footerNote: company['invoice_footer_note']?.toString() ?? '',
+      bankName: billing['bank_name']?.toString() ?? '',
+      bankBranch: billing['bank_branch']?.toString() ?? '',
+      bankAccountType:
+          billing['bank_account_type']?.toString() ?? '普通',
+      bankAccountNumber:
+          billing['bank_account_number']?.toString() ?? '',
+      bankAccountHolder:
+          billing['bank_account_holder']?.toString() ?? '',
     );
   }
 
   Future<void> save(InvoiceSettingsData value) async {
-    final membership = await _membership();
+    await _companyIdForManage();
 
-    await _client.from('companies').update({
-      'tax_rate': value.taxRate,
-      'default_welfare_rate': value.welfareRate,
-      'invoice_template_title': value.templateTitle.trim().isEmpty
-          ? '請求書'
-          : value.templateTitle.trim(),
-      'invoice_footer_note': _nullable(value.footerNote),
-      'bank_name': _nullable(value.bankName),
-      'bank_branch': _nullable(value.bankBranch),
-      'bank_account_type': _nullable(value.bankAccountType),
-      'bank_account_number': _nullable(value.bankAccountNumber),
-      'bank_account_holder': _nullable(value.bankAccountHolder),
-    }).eq('id', membership.companyId);
-  }
-
-  Object? _nullable(String value) {
-    final text = value.trim();
-    return text.isEmpty ? null : text;
+    await _client.rpc(
+      'save_invoice_settings',
+      params: {
+        'p_tax_rate': value.taxRate,
+        'p_welfare_rate': value.welfareRate,
+        'p_template_title': value.templateTitle,
+        'p_footer_note': value.footerNote,
+        'p_bank_name': value.bankName,
+        'p_bank_branch': value.bankBranch,
+        'p_bank_account_type': value.bankAccountType,
+        'p_bank_account_number': value.bankAccountNumber,
+        'p_bank_account_holder': value.bankAccountHolder,
+      },
+    );
   }
 }
