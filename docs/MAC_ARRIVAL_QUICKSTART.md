@@ -26,7 +26,7 @@ MacとiPhoneが手元に来たら、まず次を実行する。
 bash tool/device_day.sh
 ```
 
-このコマンドが、実機当日の一括プリフライト → SKO実機起動まで順番に進める。
+このコマンドが、Mac初回準備 → 実機当日の一括プリフライト → SKO実機起動まで順番に進める。`tool/local_supabase_env.sh` が無い場合はテンプレート作成、iOSプロジェクトが無ければ生成まで自動で進める。
 Apple Account / Personal Team / USB信頼 / Developer Modeなど、人が操作する必要がある箇所で止まった場合は画面の案内を解消し、同じコマンドをもう一度実行する。
 
 問題調査が必要な場合:
