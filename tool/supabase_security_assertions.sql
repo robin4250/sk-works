@@ -126,6 +126,54 @@ begin
   if not exists (
     select 1
     from pg_policies
+    where schemaname = 'public'
+      and tablename = 'worker_document_statuses'
+      and policyname = 'worker or people manager can read document statuses'
+      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('can_manage_people' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'worker document self-or-manager policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'worker_qualifications'
+      and policyname = 'worker or people manager can read worker qualifications'
+      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('can_manage_people' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'worker qualification self-or-manager policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'worker_documents_read'
+      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('can_manage_people' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'worker document storage self-or-manager policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'qualification_certificates_read'
+      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('can_manage_people' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'qualification certificate storage self-or-manager policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
     where schemaname = 'storage'
       and tablename = 'objects'
       and policyname = 'attendance_evidence_read'
