@@ -72,8 +72,12 @@ begin
     raise exception 'create_company first-membership guard missing';
   end if;
 
-  if position('coalesce(mfp.can_approve_daily_report_edits, false)' in pg_get_functiondef('public.request_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
-    raise exception 'daily report approval notification permission guard missing';
+  if position('coalesce(mfp.can_approve_daily_report_edits, true)' in pg_get_functiondef('public.request_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
+    raise exception 'daily report approval notification manager default missing';
+  end if;
+
+  if position('v_role = ''manager''' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
+    raise exception 'manager default feature permissions missing';
   end if;
 
   if position('owner role cannot be changed' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
