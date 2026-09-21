@@ -1,6 +1,6 @@
 # SKO pre-device readiness
 
-Status date: 2026-09-21
+Status date: 2026-09-22
 
 This file separates what has already been verified without a physical iPhone/Mac signing session from what still requires the actual device.
 
@@ -39,10 +39,17 @@ This file separates what has already been verified without a physical iPhone/Mac
 - The repeatable production DB audit is `tool/supabase_security_assertions.sql`.
 - The latest production audit returns:
   `SKO pre-device database security assertions passed`
+- The production audit was re-run after the latest approval-assignee and company-rate migrations on 2026-09-22 and passed.
 - Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
 - Supabase migration-history drift is documented and a non-destructive Mac-day reproducibility preflight is available.
 - The Supabase reproducibility preflight records migration history plus SHA-256 checksums for generated baseline artifacts.
+- Role-specific in-app manuals are available from Help/Profile: general 10 pages, sub-admin 15 pages, admin 20 pages, plus a 20-page SKO beta pamphlet.
+- Manual/pamphlet PDFs support A4 preview, printing and sharing, with highlighted "ここを押す" guidance and support timing.
+- Manual/pamphlet versioning is tied to the app version and CI rejects a mismatch.
+- Sub-admins are management users but not full admins: they keep personal payroll access with secondary authentication while invoices/admin financial site data remain denied by default.
+- Daily-report edit approval UI follows the configured 1-3 approval assignees; being an owner/admin alone does not bypass that selection.
+- Company tax/welfare/overtime/early/night/holiday and three allowance settings can be edited by admins after initial onboarding through RPC-only company-rate settings.
 
 ## Still requires the real Mac / iPhone
 
