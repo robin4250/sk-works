@@ -75,6 +75,11 @@ class EmployeeOnboardingRepository {
     );
   }
 
+  Future<bool> canReview() async {
+    final value = await _client.rpc('can_review_employee_onboarding');
+    return value == true;
+  }
+
   Future<List<Map<String, dynamic>>> loadPendingApprovals() async {
     final value = await _client.rpc('pending_employee_onboarding_rows');
     if (value is! List) return const [];
