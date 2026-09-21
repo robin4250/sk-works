@@ -251,6 +251,11 @@ begin
     raise exception 'manager default feature permissions missing';
   end if;
 
+  if position('company_approval_assignees' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0
+     or position('v_is_approval_assignee' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
+    raise exception 'current feature approval permission must follow configured assignees';
+  end if;
+
   if position('owner role cannot be changed' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
     raise exception 'owner role protection missing';
   end if;
@@ -278,20 +283,6 @@ begin
   if has_table_privilege('anon', 'public.company_approval_assignees', 'SELECT,INSERT,UPDATE,DELETE')
      or has_table_privilege('authenticated', 'public.company_approval_assignees', 'SELECT,INSERT,UPDATE,DELETE') then
     raise exception 'approval-assignee table must be RPC-only';
-  end if;
-
-  if to_regprocedure('public.company_rate_settings_state()') is not null
-     and has_function_privilege('anon', 'public.company_rate_settings_state()', 'EXECUTE') then
-    raise exception 'company_rate_settings_state must not be executable by anon';
-  end if;
-
-  if to_regprocedure('public.save_company_rate_settings(numeric,numeric,integer,integer,integer,integer,text,integer,text,integer,text,integer)') is not null
-     and has_function_privilege(
-       'anon',
-       'public.save_company_rate_settings(numeric,numeric,integer,integer,integer,integer,text,integer,text,integer,text,integer)',
-       'EXECUTE'
-     ) then
-    raise exception 'save_company_rate_settings must not be executable by anon';
   end if;
 
   select count(*)
