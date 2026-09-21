@@ -23,8 +23,8 @@ check_pattern() {
 }
 
 check_pattern "Supabase secret-key literal absent" 'sb_secret_[A-Za-z0-9_-]{8,}'
-check_pattern "service-role env assignment absent" 'SUPABASE_SERVICE_ROLE_KEY[[:space:]]*=[[:space:]]*["'+"'"+"']?[^$[:space:]"'"+ "'" +"']'
-check_pattern "LINE channel secret assignment absent" 'LINE_CHANNEL_SECRET[[:space:]]*=[[:space:]]*["'+"'"+"']?[^$[:space:]"'"+ "'" +"']'
+check_pattern "service-role env assignment absent" 'SUPABASE_SERVICE_ROLE_KEY[[:space:]]*=[[:space:]]*["'"'"']?[^$[:space:]"'"'"']'
+check_pattern "LINE channel secret assignment absent" 'LINE_CHANNEL_SECRET[[:space:]]*=[[:space:]]*["'"'"']?[^$[:space:]"'"'"']'
 check_pattern "legacy service-role JWT marker absent" '"role"[[:space:]]*:[[:space:]]*"service_role"'
 check_pattern "hard-coded bearer token absent" 'Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{30,}'
 
