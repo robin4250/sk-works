@@ -22,6 +22,7 @@ import 'features/daily_reports/daily_report_approvals_page.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
 import 'features/home/friendly_home_content.dart';
+import 'features/home/home_attention_repository.dart';
 import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
@@ -114,6 +115,7 @@ class _HomePageState extends State<HomePage> {
   final _membershipRepository = HomeMembershipRepository.maybeCreate();
   final _employeeOnboardingRepository =
       EmployeeOnboardingRepository.maybeCreate();
+  final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
@@ -124,6 +126,13 @@ class _HomePageState extends State<HomePage> {
   );
   int _selectedIndex = 0;
   bool _canReviewEmployeeOnboarding = false;
+  RequiredDocumentAttention _requiredDocumentAttention =
+      const RequiredDocumentAttention(
+        missingCount: 0,
+        missingNames: [],
+        needsLicense: false,
+        needsQualification: false,
+      );
 
   bool get _isAdmin => _identity.isAdmin;
 
@@ -139,6 +148,7 @@ class _HomePageState extends State<HomePage> {
       _loadIdentity(),
       _loadUsage(),
       _loadEmployeeOnboardingCapability(),
+      _loadRequiredDocumentAttention(),
     ]);
   }
 
@@ -162,6 +172,18 @@ class _HomePageState extends State<HomePage> {
       setState(() => _identity = identity);
     } catch (_) {
       // Keep the safest default if identity loading fails.
+    }
+  }
+
+  Future<void> _loadRequiredDocumentAttention() async {
+    final repository = _homeAttentionRepository;
+    if (repository == null) return;
+    try {
+      final value = await repository.loadRequiredDocumentAttention();
+      if (!mounted) return;
+      setState(() => _requiredDocumentAttention = value);
+    } catch (_) {
+      // Missing-document attention must not block the home screen.
     }
   }
 
@@ -512,6 +534,7 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: FriendlyHomeContent(
           identity: _identity,
+          requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
