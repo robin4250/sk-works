@@ -1,3 +1,19 @@
+update public.member_feature_permissions mfp
+set can_approve_daily_report_edits = false,
+    can_view_invoices = false,
+    can_manage_invoices = false,
+    can_view_admin_site_data = false,
+    can_manage_admin_site_data = false,
+    can_manage_payroll = false,
+    updated_at = now()
+where exists (
+  select 1
+  from public.company_members cm
+  where cm.company_id = mfp.company_id
+    and cm.user_id = mfp.user_id
+    and cm.role::text in ('manager','viewer')
+);
+
 create or replace function public.current_feature_permissions()
 returns jsonb
 language plpgsql
