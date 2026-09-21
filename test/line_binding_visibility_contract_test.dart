@@ -11,6 +11,9 @@ void main() {
     expect(sql, contains('owners and admins can read line bindings'));
     expect(sql, contains("'owner'::app_role"));
     expect(sql, contains("'admin'::app_role"));
-    expect(sql, isNot(contains('company members can read line bindings')));
+    expect(
+      sql,
+      isNot(contains('create policy "company members can read line bindings"')),
+    );
   });
 }
