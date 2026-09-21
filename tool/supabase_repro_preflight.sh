@@ -73,9 +73,13 @@ if command -v psql >/dev/null 2>&1 && [[ -n "${SUPABASE_DB_URL:-}" ]]; then
       to_regclass('public.company_initial_setup_progress') is not null,
       to_regclass('public.company_rate_settings') is not null,
       exists(select 1 from information_schema.columns where table_schema='public' and table_name='sites' and column_name='nearest_station'),
-      exists(select 1 from storage.buckets where id='employee-onboarding-documents' and not public);"     > supabase/baseline/production_capability_markers.tsv
+      exists(select 1 from storage.buckets where id='employee-onboarding-documents' and not public),
+      exists(select 1 from information_schema.columns where table_schema='public' and table_name='employee_registration_invites' and column_name='requested_role'),
+      exists(select 1 from information_schema.columns where table_schema='public' and table_name='employee_registration_invites' and column_name='requested_approval_assignee'),
+      exists(select 1 from information_schema.columns where table_schema='public' and table_name='employee_registration_invites' and column_name='replace_approval_assignee_user_id'),
+      position('approval_assignee_limit_reached' in pg_get_functiondef('public.approve_employee_onboarding(uuid)'::regprocedure)) > 0;"     > supabase/baseline/production_capability_markers.tsv
 
-  if [[ "$(cat supabase/baseline/production_capability_markers.tsv)" != "t|t|t|t|t|t" ]]; then
+  if [[ "$(cat supabase/baseline/production_capability_markers.tsv)" != "t|t|t|t|t|t|t|t|t|t" ]]; then
     echo "✗ Latest SKO onboarding/approval capability marker is missing"
     exit 1
   fi
