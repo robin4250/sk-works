@@ -40,6 +40,7 @@ This file separates what has already been verified without a physical iPhone/Mac
 - The repeatable production DB audit is `tool/supabase_security_assertions.sql`.
 - The latest production audit returns:
   `SKO pre-device database security assertions passed`
+- Supabase Security Advisor informational warnings for RLS-without-policy tables are intentional on RPC-only tables; authenticated SECURITY DEFINER RPC warnings are reviewed under the explicit-role-check/search-path/anon-deny contract.
 - The production audit was re-run after the latest approval-assignee, company-rate, and employee-invite role/approver migrations on 2026-09-22 and passed.
 - Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
