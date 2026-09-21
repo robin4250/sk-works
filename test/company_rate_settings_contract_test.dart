@@ -29,8 +29,9 @@ void main() {
     expect(page, contains('早出単価'));
     expect(page, contains('夜勤単価'));
     expect(page, contains('休日出勤単価'));
-    expect(page, contains('手当1 名称'));
-    expect(page, contains('手当2 名称'));
-    expect(page, contains('手当3 名称'));
+    expect(page, contains(r'手当$number 名称'));
+    expect(page, contains('_allowanceBlock(1'));
+    expect(page, contains('_allowanceBlock(2'));
+    expect(page, contains('_allowanceBlock(3'));
   });
 }
