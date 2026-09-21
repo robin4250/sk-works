@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
   const membershipResponse = await serviceFetch(
     "/rest/v1/company_members?user_id=eq." +
       encodeURIComponent(caller.id) +
-      "&select=company_id&limit=1",
+      "&select=company_id,role&limit=1",
     { method: "GET" },
   );
   if (!membershipResponse.ok) {
@@ -94,6 +94,74 @@ Deno.serve(async (req: Request) => {
     return json({ error: "従業員登録は会社メンバーのみ利用できます。" }, 403);
   }
   const companyId = memberships[0].company_id;
+  const callerRole = String(memberships[0].role ?? "viewer");
+  const canAssignManagementRole =
+    callerRole === "owner" || callerRole === "admin";
+
+  const requestedRole =
+    payload?.requestedRole === "manager" ? "manager" : "viewer";
+  const requestedApprovalAssignee =
+    payload?.requestedApprovalAssignee === true;
+  const replaceApprovalAssigneeUserId =
+    typeof payload?.replaceApprovalAssigneeUserId === "string" &&
+      payload.replaceApprovalAssigneeUserId.trim().length > 0
+      ? payload.replaceApprovalAssigneeUserId.trim()
+      : null;
+
+  if (
+    !canAssignManagementRole &&
+    (requestedRole !== "viewer" || requestedApprovalAssignee ||
+      replaceApprovalAssigneeUserId !== null)
+  ) {
+    return json(
+      { error: "サブ管理者・承認担当者の指定は管理者だけが行えます。" },
+      403,
+    );
+  }
+
+  if (requestedApprovalAssignee && requestedRole !== "manager") {
+    return json(
+      { error: "承認担当者にする場合はサブ管理者を選択してください。" },
+      400,
+    );
+  }
+
+  if (requestedApprovalAssignee) {
+    const assigneeResponse = await serviceFetch(
+      "/rest/v1/company_approval_assignees?company_id=eq." +
+        encodeURIComponent(companyId) +
+        "&select=user_id",
+      { method: "GET" },
+    );
+    if (!assigneeResponse.ok) {
+      return json({ error: "承認担当者を確認できませんでした。" }, 500);
+    }
+    const assignees = await assigneeResponse.json();
+    const currentIds = Array.isArray(assignees)
+      ? assignees.map((row: any) => String(row.user_id))
+      : [];
+
+    if (currentIds.length >= 3) {
+      if (!replaceApprovalAssigneeUserId) {
+        return json(
+          {
+            error: "承認担当者は最大3名です。現在の担当者から外す人を選んでください。",
+            code: "approval_assignee_limit_reached",
+          },
+          409,
+        );
+      }
+      if (!currentIds.includes(replaceApprovalAssigneeUserId)) {
+        return json(
+          {
+            error: "入れ替え対象の承認担当者が現在の設定と一致しません。",
+            code: "approval_assignee_replacement_invalid",
+          },
+          409,
+        );
+      }
+    }
+  }
 
   const existingInviteResponse = await serviceFetch(
     "/rest/v1/employee_registration_invites?company_id=eq." +
@@ -172,6 +240,9 @@ Deno.serve(async (req: Request) => {
           auth_user_id: authUserId,
           name,
           phone_e164: phone,
+          requested_role: requestedRole,
+          requested_approval_assignee: requestedApprovalAssignee,
+          replace_approval_assignee_user_id: replaceApprovalAssigneeUserId,
           created_by: caller.id,
         }),
       },
