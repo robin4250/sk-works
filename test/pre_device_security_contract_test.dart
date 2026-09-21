@@ -20,17 +20,20 @@ void main() {
       );
     });
 
-    test('daily report edit requires two approvals and blocks self approval', () {
-      final base = read(
-        'supabase/migrations/20260919220000_add_daily_reports_and_approval.sql',
-      );
-      final hardening = read(
-        'supabase/migrations/20260920022000_harden_attendance_and_approval_privacy.sql',
+    test('daily report approvers are configurable from one to three', () {
+      final sql = read(
+        'supabase/migrations/20260921220500_configurable_daily_report_approvers.sql',
       );
 
-      expect(base, contains('approvals_required integer not null default 2'));
-      expect(hardening, contains('requester cannot approve own request'));
-      expect(hardening, contains('v_approve_count >= v_required'));
+      expect(sql, contains('company_approval_assignees'));
+      expect(sql, contains('approval_assignee_limit_reached'));
+      expect(sql, contains('at_least_one_approval_assignee_required'));
+      expect(sql, contains("alter column approvals_required set default 1"));
+      expect(sql, contains('v_assignee_count > 1'));
+      expect(
+        sql,
+        contains('single configured approval assignee'),
+      );
     });
 
     test('payroll privacy keeps worker-self or authorized manager rule', () {
