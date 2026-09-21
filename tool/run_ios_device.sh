@@ -33,19 +33,59 @@ fi
 
 DEVICE_ID="${1:-}"
 if [[ -z "$DEVICE_ID" ]]; then
-  DEVICE_ID="$(flutter devices --machine | python3 -c '
+  selection="$(flutter devices --machine | python3 -c '
 import json, sys
 items = json.load(sys.stdin)
-for item in items:
-    target = str(item.get("targetPlatform", ""))
-    if target.startswith("ios") and not item.get("emulator", False):
-        print(item.get("id", ""))
-        break
+physical = [
+    item for item in items
+    if str(item.get("targetPlatform", "")).startswith("ios")
+    and not item.get("emulator", False)
+]
+iphones = [
+    item for item in physical
+    if "iphone" in str(item.get("name", "")).lower()
+]
+
+if len(iphones) == 1:
+    print("OK:" + str(iphones[0].get("id", "")))
+elif len(iphones) > 1:
+    print("MULTIPLE")
+    for item in iphones:
+        print(f"{item.get('id','')}\t{item.get('name','iPhone')}")
+elif physical:
+    print("NO_IPHONE")
+    for item in physical:
+        print(f"{item.get('id','')}\t{item.get('name','iOS device')}")
+else:
+    print("NONE")
 ')"
+
+  first_line="$(printf '%s\n' "$selection" | head -n 1)"
+  case "$first_line" in
+    OK:*)
+      DEVICE_ID="${first_line#OK:}"
+      ;;
+    MULTIPLE)
+      echo "複数の実機iPhoneを検出しました。起動先を自動選択しません。"
+      printf '%s\n' "$selection" | tail -n +2
+      echo "次: bash tool/device_day.sh <DEVICE_ID>"
+      exit 1
+      ;;
+    NO_IPHONE)
+      echo "物理iOS端末はありますが、iPhoneを特定できませんでした。"
+      printf '%s\n' "$selection" | tail -n +2
+      echo "iPhoneを接続するか、明示的に DEVICE_ID を指定してください。"
+      exit 1
+      ;;
+    *)
+      echo "実機iPhoneが見つかりません。"
+      exit 1
+      ;;
+  esac
 fi
 
 if [[ -z "$DEVICE_ID" ]]; then
-  echo "実機iPhoneが見つかりません。"
+  echo "実機iPhoneのDEVICE_IDを決定できませんでした。"
   exit 1
 fi
 
