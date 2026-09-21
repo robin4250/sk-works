@@ -47,6 +47,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify no committed secrets
+        run: bash tool/check_no_secrets.sh
+
       - name: Validate iOS helper scripts
         run: |
           bash -n tool/prepare_ios.sh
