@@ -61,6 +61,34 @@ else
 fi
 
 echo
+echo "--- unsigned iOS build ---"
+if command -v flutter >/dev/null 2>&1; then
+  if [[ ! -d ios/Runner.xcworkspace ]]; then
+    if bash tool/prepare_ios.sh; then
+      ok "iOSプロジェクト生成"
+    else
+      fail "iOSプロジェクト生成に失敗しました"
+    fi
+  fi
+
+  if [[ -d ios/Runner.xcworkspace ]]; then
+    if flutter build ios --debug --no-codesign; then
+      ok "iOS debug build（署名なし）"
+      if [[ -f ios/Podfile.lock ]]; then
+        ok "CocoaPods lockfile 生成済み"
+      else
+        warn "iOSビルドは成功しましたが Podfile.lock を確認できません"
+      fi
+    else
+      fail "iOS debug build（署名なし）に失敗しました"
+      echo "  次: bash tool/collect_ios_diagnostics.sh"
+    fi
+  fi
+else
+  fail "Flutter がないためiOSビルドを確認できません"
+fi
+
+echo
 echo "--- iPhone install readiness ---"
 if bash tool/ios_install_assistant.sh; then
   ok "iPhone install assistant"
