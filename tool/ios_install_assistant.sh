@@ -29,6 +29,23 @@ command_ok "Git" git
 
 echo
 echo "--- Xcode / 署名 ---"
+if command -v xcodebuild >/dev/null 2>&1; then
+  if xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+    ok "Xcode初回処理完了"
+  else
+    warn "Xcodeの初回処理が未完了です"
+    echo "  Xcodeを一度起動してライセンス/追加コンポーネントを完了してください。"
+    echo "  CLIで進める場合: sudo xcodebuild -runFirstLaunch"
+  fi
+
+  if xcodebuild -showsdks >/dev/null 2>&1; then
+    ok "Xcode SDK一覧を取得可能"
+  else
+    warn "Xcode SDKを読み込めません"
+    echo "  Xcodeライセンス・追加コンポーネント・Developer Directoryを確認してください。"
+  fi
+fi
+
 if command -v xcode-select >/dev/null 2>&1; then
   developer_dir="$(xcode-select -p 2>/dev/null || true)"
   if [[ "$developer_dir" == *"/Xcode.app/Contents/Developer" ]]; then
@@ -39,10 +56,22 @@ if command -v xcode-select >/dev/null 2>&1; then
   fi
 fi
 
+signing_team_candidate=""
 if command -v security >/dev/null 2>&1; then
-  identity_count="$(security find-identity -v -p codesigning 2>/dev/null | grep -c 'Apple Development' || true)"
+  identity_output="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+  identity_count="$(printf '%s\n' "$identity_output" | grep -c 'Apple Development' || true)"
   if [[ "${identity_count:-0}" -gt 0 ]]; then
     ok "Apple Development署名証明書を検出"
+    signing_team_candidate="$(
+      printf '%s\n' "$identity_output" \
+        | grep 'Apple Development' \
+        | sed -nE 's/.*\(([A-Z0-9]{10})\).*/\1/p' \
+        | sort -u \
+        | head -n 1
+    )"
+    if [[ -n "$signing_team_candidate" ]]; then
+      ok "Signing Team候補: $signing_team_candidate"
+    fi
   else
     warn "Apple Development署名証明書をまだ検出していません"
     echo "  次: Xcode > Settings > Accounts でApple Accountにサインイン"
@@ -85,7 +114,11 @@ if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
     echo "  次: open ios/Runner.xcworkspace"
     echo "      Runner > Signing & Capabilities"
     echo "      Automatically manage signing: ON"
-    echo "      Team: Apple Account / Personal Team"
+    if [[ -n "$signing_team_candidate" ]]; then
+      echo "      Team候補: $signing_team_candidate"
+    else
+      echo "      Team: Apple Account / Personal Team"
+    fi
   fi
 fi
 

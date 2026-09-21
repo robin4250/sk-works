@@ -89,6 +89,54 @@ if [[ -z "$DEVICE_ID" ]]; then
   exit 1
 fi
 
+validation="$(flutter devices --machine | python3 - "$DEVICE_ID" <<'PY'
+import json, sys
+wanted = sys.argv[1]
+try:
+    items = json.load(sys.stdin)
+except Exception:
+    items = []
+
+match = next((item for item in items if str(item.get("id", "")) == wanted), None)
+if match is None:
+    print("MISSING")
+    raise SystemExit
+
+target = str(match.get("targetPlatform", ""))
+name = str(match.get("name", ""))
+emulator = bool(match.get("emulator", False))
+
+if not target.startswith("ios") or emulator:
+    print("NOT_PHYSICAL_IOS")
+elif "iphone" not in name.lower():
+    print("NOT_IPHONE:" + name)
+else:
+    print("OK:" + name)
+PY
+)"
+
+case "$validation" in
+  OK:*)
+    echo "✓ 起動対象を確認: ${validation#OK:} ($DEVICE_ID)"
+    ;;
+  MISSING)
+    echo "指定したDEVICE_IDが現在のFlutterデバイス一覧にありません: $DEVICE_ID"
+    exit 1
+    ;;
+  NOT_PHYSICAL_IOS)
+    echo "指定したDEVICE_IDは物理iOS端末ではありません: $DEVICE_ID"
+    exit 1
+    ;;
+  NOT_IPHONE:*)
+    echo "指定したDEVICE_IDはiPhoneではありません: ${validation#NOT_IPHONE:}"
+    exit 1
+    ;;
+  *)
+    echo "DEVICE_IDの検証に失敗しました: $DEVICE_ID"
+    exit 1
+    ;;
+esac
+
 echo
 echo "iPhone実機へSKOを起動します: $DEVICE_ID"
 exec flutter run   -d "$DEVICE_ID"   --dart-define="SUPABASE_URL=$SUPABASE_URL"   --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"
