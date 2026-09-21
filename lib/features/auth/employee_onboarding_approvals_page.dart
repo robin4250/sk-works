@@ -59,6 +59,25 @@ class _EmployeeOnboardingApprovalsPageState
     }
   }
 
+  String _requestedRoleLabel(Map<String, dynamic> row) {
+    final role = row['requested_role']?.toString() ?? 'viewer';
+    final approver = row['requested_approval_assignee'] == true;
+    if (role == 'manager' && approver) return 'サブ管理者・承認担当者';
+    if (role == 'manager') return 'サブ管理者';
+    return '一般ユーザー';
+  }
+
+  String _assignmentSummary(Map<String, dynamic> row) {
+    final base = _requestedRoleLabel(row);
+    final replacement =
+        row['replace_approval_assignee_name']?.toString().trim() ?? '';
+    if (row['requested_approval_assignee'] == true &&
+        replacement.isNotEmpty) {
+      return '$base（$replacementさんと入れ替え）';
+    }
+    return base;
+  }
+
   Future<void> _approve(Map<String, dynamic> row) async {
     final repository = _repository;
     final inviteId = row['invite_id']?.toString();
@@ -69,7 +88,8 @@ class _EmployeeOnboardingApprovalsPageState
       builder: (dialogContext) => AlertDialog(
         title: const Text('本登録しますか？'),
         content: Text(
-          '${row['name'] ?? '従業員'}さんをSKOの一般ユーザーとして本登録します。',
+          '${row['name'] ?? '従業員'}さんを'
+          '${_assignmentSummary(row)}として本登録します。',
         ),
         actions: [
           TextButton(
@@ -196,6 +216,22 @@ class _EmployeeOnboardingApprovalsPageState
                         _detailLine('血液型', row['blood_type']),
                         _detailLine('家族構成', row['family_composition']),
                         const Divider(),
+                        _detailLine(
+                          '本登録後の役割',
+                          _requestedRoleLabel(row),
+                        ),
+                        _detailLine(
+                          '承認担当者',
+                          row['requested_approval_assignee'] == true
+                              ? 'はい'
+                              : 'いいえ',
+                        ),
+                        if (row['replace_approval_assignee_name'] != null)
+                          _detailLine(
+                            '入れ替え対象',
+                            row['replace_approval_assignee_name'],
+                          ),
+                        const Divider(),
                         _detailLine('緊急連絡先 関係', row['emergency_relation']),
                         _detailLine('緊急連絡先 名前', row['emergency_name']),
                         _detailLine('緊急連絡先 電話', row['emergency_phone']),
@@ -296,7 +332,10 @@ class _EmployeeOnboardingApprovalsPageState
                                 ),
                               ),
                               subtitle: Text(
-                                row['phone']?.toString() ?? '',
+                                [
+                                  row['phone']?.toString() ?? '',
+                                  _assignmentSummary(row),
+                                ].where((value) => value.isNotEmpty).join(' / '),
                               ),
                               trailing: FilledButton(
                                 onPressed: () => _openDetails(row),
