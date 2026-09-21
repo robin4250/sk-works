@@ -58,6 +58,9 @@ jobs:
       - name: Verify lockfile is stable
         run: git diff --exit-code -- pubspec.lock
 
+      - name: Pre-device release gate
+        run: bash tool/pre_device_release_gate.sh
+
       - name: Analyze
         run: flutter analyze
 
