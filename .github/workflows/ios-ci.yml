@@ -109,6 +109,9 @@ jobs:
           assert "NSLocationAlwaysUsageDescription" not in data
           assert "NSLocationAlwaysAndWhenInUseUsageDescription" not in data
           assert "location" not in data.get("UIBackgroundModes", [])
+          assert data.get("UISupportedInterfaceOrientations") == [
+              "UIInterfaceOrientationPortrait"
+          ]
           PY
 
       - name: Verify Personal Team bundle identifier
