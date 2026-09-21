@@ -38,9 +38,11 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
     }
 
     final employee = await repository.employeeOnboardingState();
-    if (employee != null &&
-        employee.status != 'approved' &&
-        employee.status != 'cancelled') {
+    if (employee != null && employee.status == 'cancelled') {
+      return _GateState.employeeInviteInvalid(employee);
+    }
+
+    if (employee != null && employee.status != 'approved') {
       if (employee.needsPrimaryPassword) {
         return _GateState.employeePassword(employee);
       }
@@ -121,6 +123,9 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onRefresh: _reload,
               onSignOut: _signOut,
             ),
+          _GateStatus.employeeInviteInvalid => EmployeeInviteInvalidPage(
+              onSignOut: _signOut,
+            ),
           _GateStatus.needsSecondaryPassword => SecondaryPasswordSetupPage(
               onContinue: _reload,
               onDeferred: _reload,
@@ -198,6 +203,7 @@ enum _GateStatus {
   employeePassword,
   employeeProfile,
   employeeApprovalPending,
+  employeeInviteInvalid,
   needsSecondaryPassword,
   needsCompany,
   companyDeferred,
@@ -215,6 +221,8 @@ class _GateState {
       : this._(_GateStatus.employeeProfile, employee);
   const _GateState.employeeApprovalPending(EmployeeOnboardingState employee)
       : this._(_GateStatus.employeeApprovalPending, employee);
+  const _GateState.employeeInviteInvalid(EmployeeOnboardingState employee)
+      : this._(_GateStatus.employeeInviteInvalid, employee);
   const _GateState.needsSecondaryPassword()
       : this._(_GateStatus.needsSecondaryPassword);
   const _GateState.needsCompany()
