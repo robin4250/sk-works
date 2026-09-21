@@ -255,6 +255,15 @@ begin
     raise exception 'owner role protection missing';
   end if;
 
+  if position('can_view_invoices = false' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0
+     or position('can_manage_invoices = false' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0
+     or position('can_view_admin_site_data = false' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0
+     or position('can_manage_admin_site_data = false' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0
+     or position('can_manage_payroll = false' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
+    raise exception 'sub-admin financial permission boundary missing';
+  end if;
+
+
   if position('failed_attempts + 1 >= 5' in pg_get_functiondef('public.verify_secondary_password(text)'::regprocedure)) = 0 then
     raise exception 'secondary-password five-attempt lock contract missing';
   end if;
