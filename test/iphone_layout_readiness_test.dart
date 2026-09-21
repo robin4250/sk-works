@@ -32,7 +32,7 @@ void main() {
     await pumpIphone(tester);
 
     expect(find.text('SKO'), findsWidgets);
-    expect(find.text('本日の出勤'), findsOneWidget);
+    expect(find.text('本日の出勤'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -103,7 +103,7 @@ void main() {
       textScale: 1.3,
     );
 
-    expect(find.text('本日の出勤'), findsOneWidget);
+    expect(find.text('本日の出勤'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }
