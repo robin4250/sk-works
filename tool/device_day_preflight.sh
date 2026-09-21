@@ -29,7 +29,8 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   [[ -n "$branch_name" ]] && ok "Git branch: $branch_name @ $head_sha"
 
   if [[ "$branch_name" != "main" ]]; then
-    warn "現在のbranchは main ではありません: $branch_name"
+    fail "現在のbranchは main ではありません: ${branch_name:-detached HEAD}"
+    echo "  実機テストはレビュー済みの main から実行してください"
   fi
 
   if git remote get-url origin >/dev/null 2>&1; then
@@ -42,8 +43,9 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
         fail "ローカルmainがorigin/mainより古いです"
         echo "  作業差分が無いことを確認してから: git pull --ff-only origin main"
       else
-        warn "ローカルHEADとorigin/mainが分岐しています"
-        echo "  自動pullせず、git status / git logを確認してください"
+        fail "ローカルHEADとorigin/mainが分岐しています"
+        echo "  自動pullや強制更新は行いません。git status / git logを確認してください"
+        echo "  実機テストはorigin/mainと一致するmainから実行してください"
       fi
     else
       warn "origin/mainの最新状態を取得できませんでした（ネットワークを確認）"
