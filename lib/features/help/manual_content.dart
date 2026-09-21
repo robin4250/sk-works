@@ -19,6 +19,12 @@ enum ManualRole { general, subAdmin, admin }
 class ManualContent {
   const ManualContent._();
 
+  static ManualRole fromMembershipRole(String role) => switch (role) {
+        'owner' || 'admin' => ManualRole.admin,
+        'manager' => ManualRole.subAdmin,
+        _ => ManualRole.general,
+      };
+
   static String roleLabel(ManualRole role) => switch (role) {
         ManualRole.general => '一般ユーザー',
         ManualRole.subAdmin => 'サブ管理者',
