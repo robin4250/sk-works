@@ -54,12 +54,6 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
       }
     }
 
-    final secondaryConfigured =
-        await repository.secondaryPasswordConfigured();
-    if (!secondaryConfigured) {
-      return const _GateState.needsSecondaryPassword();
-    }
-
     final hasCompany = await repository.hasCompanyMembership();
     if (!hasCompany) {
       if (repository.companySetupDeferred) {
@@ -124,11 +118,6 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onSignOut: _signOut,
             ),
           _GateStatus.employeeInviteInvalid => EmployeeInviteInvalidPage(
-              onSignOut: _signOut,
-            ),
-          _GateStatus.needsSecondaryPassword => SecondaryPasswordSetupPage(
-              onContinue: _reload,
-              onDeferred: _reload,
               onSignOut: _signOut,
             ),
           _GateStatus.needsCompany => CompanyProfileSetupPage(
@@ -204,7 +193,6 @@ enum _GateStatus {
   employeeProfile,
   employeeApprovalPending,
   employeeInviteInvalid,
-  needsSecondaryPassword,
   needsCompany,
   companyDeferred,
   authenticated,
@@ -223,8 +211,6 @@ class _GateState {
       : this._(_GateStatus.employeeApprovalPending, employee);
   const _GateState.employeeInviteInvalid(EmployeeOnboardingState employee)
       : this._(_GateStatus.employeeInviteInvalid, employee);
-  const _GateState.needsSecondaryPassword()
-      : this._(_GateStatus.needsSecondaryPassword);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
   const _GateState.companyDeferred()
