@@ -31,7 +31,7 @@ supabase --version
 
 echo
 echo "--- linked migration history ---"
-supabase migration list --linked
+supabase migration list
 
 echo
 echo "--- remote DB lint (errors only) ---"
@@ -40,21 +40,34 @@ supabase db lint --linked --fail-on error
 echo
 echo "--- non-destructive public schema snapshot ---"
 supabase db dump \
-  --linked \
   --schema public \
-  --file supabase/baseline/production_public_schema.sql
+  -f supabase/baseline/production_public_schema.sql
 
 echo
 echo "--- custom Storage schema diff ---"
 supabase db diff \
   --linked \
   --schema storage \
-  --output supabase/baseline/production_storage_customizations.sql
+  > supabase/baseline/production_storage_customizations.sql
+
+echo
+echo "--- Storage bucket metadata snapshot ---"
+if command -v psql >/dev/null 2>&1 && [[ -n "${SUPABASE_DB_URL:-}" ]]; then
+  psql "$SUPABASE_DB_URL" \
+    -v ON_ERROR_STOP=1 \
+    -Atc "select id, public, coalesce(file_size_limit::text,''), coalesce(array_to_string(allowed_mime_types, ','),'') from storage.buckets order by id;" \
+    > supabase/baseline/production_storage_buckets.tsv
+  echo "✓ Storage bucket metadata snapshot"
+else
+  echo "△ SUPABASE_DB_URL または psql がないためbucket metadata snapshotはスキップ"
+  echo "  Storage bucketは db diff の既知の制限対象です。MacでDB URLを設定後に再実行してください。"
+fi
 
 echo
 echo "✓ 非破壊の再現性診断が完了しました"
 echo "  public schema: supabase/baseline/production_public_schema.sql"
 echo "  storage diff : supabase/baseline/production_storage_customizations.sql"
+echo "  bucket meta  : supabase/baseline/production_storage_buckets.tsv（取得できた場合）"
 echo
 echo "重要:"
 echo "  supabase db reset --linked は本番DBを破壊するため実行しないでください。"
