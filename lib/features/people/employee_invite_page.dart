@@ -6,7 +6,12 @@ import 'package:share_plus/share_plus.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
-  const EmployeeInvitePage({super.key});
+  const EmployeeInvitePage({
+    super.key,
+    this.canAssignManagementRole = false,
+  });
+
+  final bool canAssignManagementRole;
 
   @override
   State<EmployeeInvitePage> createState() => _EmployeeInvitePageState();
@@ -18,8 +23,21 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   final _repository = EmployeeInviteRepository.maybeCreate();
 
   bool _busy = false;
+  bool _assigneeLoading = false;
+  bool _makeSubAdmin = false;
+  bool _makeApprovalAssignee = false;
+  String? _replaceApprovalAssigneeUserId;
+  List<ApprovalAssigneeOption> _currentApprovalAssignees = const [];
   EmployeeInviteResult? _result;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.canAssignManagementRole) {
+      _loadApprovalAssignees();
+    }
+  }
 
   @override
   void dispose() {
@@ -28,12 +46,122 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     super.dispose();
   }
 
+  Future<void> _loadApprovalAssignees() async {
+    final repository = _repository;
+    if (repository == null) return;
+    setState(() => _assigneeLoading = true);
+    try {
+      final rows = await repository.loadCurrentApprovalAssignees();
+      if (!mounted) return;
+      setState(() {
+        _currentApprovalAssignees = rows;
+        _assigneeLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _assigneeLoading = false);
+    }
+  }
+
+  Future<String?> _chooseApprovalReplacement() {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('承認担当者は最大3名です'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '現在登録中の3名のうち、誰か1名を外してください。'
+                '新しい従業員の本登録承認と同時に入れ替えます。',
+              ),
+              const SizedBox(height: 12),
+              for (final item in _currentApprovalAssignees)
+                Card(
+                  child: ListTile(
+                    title: Text(item.displayName),
+                    subtitle: Text(
+                      item.role == 'owner'
+                          ? '管理者'
+                          : item.role == 'admin'
+                              ? '管理者'
+                              : 'サブ管理者',
+                    ),
+                    trailing: TextButton(
+                      onPressed: () =>
+                          Navigator.pop(dialogContext, item.userId),
+                      child: const Text('この人を外す'),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setApprovalAssignee(bool value) async {
+    if (!value) {
+      setState(() {
+        _makeApprovalAssignee = false;
+        _replaceApprovalAssigneeUserId = null;
+      });
+      return;
+    }
+
+    setState(() => _makeSubAdmin = true);
+
+    if (_currentApprovalAssignees.length >= 3) {
+      final replacement = await _chooseApprovalReplacement();
+      if (!mounted) return;
+      if (replacement == null) {
+        setState(() {
+          _makeApprovalAssignee = false;
+          _replaceApprovalAssigneeUserId = null;
+        });
+        return;
+      }
+      setState(() {
+        _makeApprovalAssignee = true;
+        _replaceApprovalAssigneeUserId = replacement;
+      });
+      return;
+    }
+
+    setState(() {
+      _makeApprovalAssignee = true;
+      _replaceApprovalAssigneeUserId = null;
+    });
+  }
+
   Future<void> _create() async {
     final repository = _repository;
     if (repository == null) return;
     if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
       setState(() => _error = '名前と電話番号を入力してください。');
       return;
+    }
+
+    if (_makeApprovalAssignee &&
+        _currentApprovalAssignees.length >= 3 &&
+        _replaceApprovalAssigneeUserId == null) {
+      final replacement = await _chooseApprovalReplacement();
+      if (!mounted) return;
+      if (replacement == null) {
+        setState(() => _error = '承認担当者から外す人を選んでください。');
+        return;
+      }
+      _replaceApprovalAssigneeUserId = replacement;
     }
 
     setState(() {
@@ -45,6 +173,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       final result = await repository.createInvite(
         name: _name.text,
         phone: _phone.text,
+        requestedRole: _makeSubAdmin ? 'manager' : 'viewer',
+        requestedApprovalAssignee: _makeApprovalAssignee,
+        replaceApprovalAssigneeUserId: _replaceApprovalAssigneeUserId,
       );
       if (!mounted) return;
       setState(() {
@@ -73,9 +204,38 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     );
   }
 
+  void _reset() {
+    setState(() {
+      _result = null;
+      _name.clear();
+      _phone.clear();
+      _makeSubAdmin = false;
+      _makeApprovalAssignee = false;
+      _replaceApprovalAssigneeUserId = null;
+      _error = null;
+    });
+    if (widget.canAssignManagementRole) {
+      _loadApprovalAssignees();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
+    final replacementName = _replaceApprovalAssigneeUserId == null
+        ? null
+        : _currentApprovalAssignees
+                .where(
+                  (item) => item.userId == _replaceApprovalAssigneeUserId,
+                )
+                .isEmpty
+            ? null
+            : _currentApprovalAssignees
+                .firstWhere(
+                  (item) => item.userId == _replaceApprovalAssigneeUserId,
+                )
+                .displayName;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -87,14 +247,16 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Card(
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Text(
-                  '従業員登録はSKOを利用中の会社メンバーなら行えます。'
-                  '最初に必要なのは名前と携帯電話番号だけです。'
-                  '登録後に初期パスワードをSMSアプリ等へ共有したり、'
-                  'QRコードを相手に見せることができます。',
+                  widget.canAssignManagementRole
+                      ? '従業員登録はSKOを利用中の会社メンバーなら行えます。'
+                          '管理者はこの画面でサブ管理者・承認担当者の指定もできます。'
+                      : '従業員登録はSKOを利用中の会社メンバーなら行えます。'
+                          '一般ユーザーとして招待します。'
+                          'サブ管理者・承認担当者の指定は管理者が行います。',
                 ),
               ),
             ),
@@ -118,6 +280,68 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                 prefixIcon: Icon(Icons.phone_iphone_outlined),
               ),
             ),
+            if (widget.canAssignManagementRole && result == null) ...[
+              const SizedBox(height: 16),
+              Card(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        '役割・承認権限',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('サブ管理者にする'),
+                        subtitle: const Text(
+                          '請求書・管理者用現場データ・現場単価は表示しません',
+                        ),
+                        value: _makeSubAdmin,
+                        onChanged: _busy
+                            ? null
+                            : (value) {
+                                final enabled = value ?? false;
+                                setState(() {
+                                  _makeSubAdmin = enabled;
+                                  if (!enabled) {
+                                    _makeApprovalAssignee = false;
+                                    _replaceApprovalAssigneeUserId = null;
+                                  }
+                                });
+                              },
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('承認担当者にする'),
+                        subtitle: Text(
+                          _assigneeLoading
+                              ? '現在の承認担当者を確認中...'
+                              : '現在 ${_currentApprovalAssignees.length} / 3名'
+                                  '${replacementName == null ? '' : '　→ $replacementNameさんと入れ替え予定'}',
+                        ),
+                        value: _makeApprovalAssignee,
+                        onChanged: _busy || _assigneeLoading
+                            ? null
+                            : (value) =>
+                                _setApprovalAssignee(value ?? false),
+                      ),
+                      if (_makeApprovalAssignee)
+                        const Text(
+                          '承認担当者を選ぶと、サブ管理者も自動でONになります。',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             if (result == null)
               FilledButton.icon(
@@ -153,6 +377,15 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           fontSize: 20,
                         ),
                       ),
+                      if (_makeSubAdmin) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _makeApprovalAssignee
+                              ? '本登録後：サブ管理者・承認担当者'
+                              : '本登録後：サブ管理者',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       SelectableText(
                         result.temporaryPassword,
@@ -171,7 +404,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           );
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('初期パスワードをコピーしました')),
+                            const SnackBar(
+                              content: Text('初期パスワードをコピーしました'),
+                            ),
                           );
                         },
                         icon: const Icon(Icons.copy_outlined),
@@ -219,11 +454,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
               ),
               const SizedBox(height: 12),
               FilledButton.tonalIcon(
-                onPressed: () => setState(() {
-                  _result = null;
-                  _name.clear();
-                  _phone.clear();
-                }),
+                onPressed: _reset,
                 icon: const Icon(Icons.person_add_alt),
                 label: const Text('続けて別の従業員を登録'),
               ),
