@@ -46,6 +46,7 @@ required=(
   "20260922021500_align_approval_assignee_permission_source.sql"
   "20260922024000_add_invite_role_and_approver_selection.sql"
   "20260922031000_cache_auth_uid_in_core_rls.sql"
+  "20260922033000_cache_auth_uid_in_user_flows.sql"
 )
 
 for name in "${required[@]}"; do
