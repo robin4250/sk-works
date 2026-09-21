@@ -369,16 +369,10 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'qualification_certificates':
-        page = const SecondaryProtectedPage(
-          title: '資格証',
-          child: QualificationCertificatePage(),
-        );
+        page = const QualificationCertificatePage();
         break;
       case 'documents':
-        page = const SecondaryProtectedPage(
-          title: '必要書類',
-          child: WorkerDocumentPage(),
-        );
+        page = const WorkerDocumentPage();
         break;
       case 'today_line':
         page = const TodayLineAttendancePage();
