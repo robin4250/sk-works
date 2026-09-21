@@ -46,6 +46,8 @@ The script is intentionally non-destructive. It performs:
 3. a public-schema `supabase db dump`
 4. a Storage-schema diff
 5. a direct Storage bucket metadata snapshot when `psql` + `SUPABASE_DB_URL` are available, because bucket changes are a documented `db diff` limitation
+6. the production `tool/supabase_security_assertions.sql` audit
+7. semantic capability markers for configurable approvers, employee onboarding, admin initial setup, nearest-station support, and the private onboarding-document bucket
 
 It never runs `db reset --linked`, `db push`, `migration repair`, or any destructive SQL.
 
@@ -54,3 +56,17 @@ It never runs `db reset --linked`, `db push`, `migration repair`, or any destruc
 The generated files under `supabase/baseline/` are review artifacts. After reviewing them, the final reproducibility step is to create a clean baseline strategy using the current Supabase CLI. The preferred current Supabase workflow for remote-only historical changes is `supabase db pull`, but it can update migration history and therefore must be reviewed before it is used against production.
 
 Never run `supabase db reset --linked` against the production SKO project.
+
+
+## Latest semantic baseline
+
+Migration names can drift historically, so current reproducibility is not judged by filenames alone. The preflight also verifies the deployed schema contains the latest required SKO capabilities:
+
+- configurable company approval assignees
+- employee invitation/onboarding state
+- admin initial setup progress and company rate settings
+- nearest-station field on sites
+- private employee onboarding document Storage
+- full pre-device database security assertions
+
+This lets historical migration-name drift remain documented without using destructive `migration repair`.

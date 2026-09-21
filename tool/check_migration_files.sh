@@ -38,6 +38,11 @@ required=(
   "20260920213500_revoke_anon_public_table_access.sql"
   "20260920224500_restrict_company_members_self_read.sql"
   "20260920225500_restrict_line_binding_visibility.sql"
+  "20260921220500_configurable_daily_report_approvers.sql"
+  "20260922002000_add_employee_invite_foundation.sql"
+  "20260922004500_add_employee_onboarding_profile_and_approval.sql"
+  "20260922010000_add_required_document_attention.sql"
+  "20260922013000_add_admin_initial_setup_wizard.sql"
 )
 
 for name in "${required[@]}"; do
