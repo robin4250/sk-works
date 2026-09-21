@@ -43,6 +43,24 @@ void main() {
     expect(page, contains('_makeSubAdmin = true'));
   });
 
+  test('onboarding reviewers can see requested role and replacement', () {
+    final migration = read(
+      'supabase/migrations/20260922024000_add_invite_role_and_approver_selection.sql',
+    );
+    final page = read(
+      'lib/features/auth/employee_onboarding_approvals_page.dart',
+    );
+    final repository = read(
+      'lib/features/auth/employee_onboarding_repository.dart',
+    );
+
+    expect(migration, contains('pending_employee_onboarding_review_rows'));
+    expect(repository, contains('pending_employee_onboarding_review_rows'));
+    expect(page, contains('本登録後の役割'));
+    expect(page, contains('承認担当者'));
+    expect(page, contains('入れ替え対象'));
+  });
+
   test('home only exposes invite role controls to full admins', () {
     final app = read('lib/app_v2.dart');
 
