@@ -43,6 +43,19 @@ begin
     raise exception 'authenticated has CRUD grant without matching RLS policy';
   end if;
 
+  if has_column_privilege('authenticated', 'public.companies', 'bank_settings', 'SELECT')
+     or has_column_privilege('authenticated', 'public.companies', 'bank_name', 'SELECT')
+     or has_column_privilege('authenticated', 'public.companies', 'bank_branch', 'SELECT')
+     or has_column_privilege('authenticated', 'public.companies', 'bank_account_type', 'SELECT')
+     or has_column_privilege('authenticated', 'public.companies', 'bank_account_number', 'SELECT')
+     or has_column_privilege('authenticated', 'public.companies', 'bank_account_holder', 'SELECT') then
+    raise exception 'legacy company bank columns must not be directly selectable';
+  end if;
+
+  if not has_column_privilege('authenticated', 'public.companies', 'name', 'SELECT') then
+    raise exception 'company name must remain selectable for member UI';
+  end if;
+
   if has_column_privilege('authenticated', 'public.workers', 'phone', 'SELECT')
      or has_column_privilege('authenticated', 'public.workers', 'email', 'SELECT')
      or has_column_privilege('authenticated', 'public.workers', 'notes', 'SELECT') then
