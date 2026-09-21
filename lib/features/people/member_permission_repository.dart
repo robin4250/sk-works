@@ -28,6 +28,20 @@ class MemberPermissionRecord {
   }
 }
 
+class ApprovalAssigneeRecord {
+  const ApprovalAssigneeRecord({
+    required this.userId,
+    required this.displayName,
+    required this.role,
+    required this.isAssignee,
+  });
+
+  final String userId;
+  final String displayName;
+  final String role;
+  final bool isAssignee;
+}
+
 class MemberPermissionRepository {
   MemberPermissionRepository._(this._client);
 
@@ -70,6 +84,32 @@ class MemberPermissionRepository {
     }
 
     return records;
+  }
+
+  Future<List<ApprovalAssigneeRecord>> loadApprovalAssignees() async {
+    final rows = await _client.rpc('company_approval_assignee_rows');
+    return [
+      for (final raw in (rows as List<dynamic>))
+        ApprovalAssigneeRecord(
+          userId: (raw as Map)['user_id']?.toString() ?? '',
+          displayName: raw['display_name']?.toString() ?? 'SKOユーザー',
+          role: raw['role']?.toString() ?? 'manager',
+          isAssignee: raw['is_assignee'] == true,
+        ),
+    ];
+  }
+
+  Future<void> setApprovalAssignee({
+    required String userId,
+    required bool enabled,
+  }) async {
+    await _client.rpc(
+      'set_company_approval_assignee',
+      params: {
+        'p_user_id': userId,
+        'p_enabled': enabled,
+      },
+    );
   }
 
   Future<void> save(MemberPermissionRecord record) async {
