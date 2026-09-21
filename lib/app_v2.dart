@@ -473,14 +473,13 @@ class _HomePageState extends State<HomePage> {
           label: 'アルバム',
           icon: Icons.photo_album_outlined,
         ),
-      if (_isAdmin && _identity.can('can_approve_daily_report_edits'))
+      if (_identity.can('can_approve_daily_report_edits'))
         const _MenuAction(
           key: 'approvals',
           label: '承認待ち',
           icon: Icons.approval_outlined,
         ),
-      if (_isAdmin &&
-          _identity.can('can_manage_attendance') &&
+      if (_identity.can('can_manage_attendance') &&
           _moduleEnabled('line_bridge'))
         const _MenuAction(
           key: 'today_line',
