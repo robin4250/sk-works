@@ -47,6 +47,15 @@ begin
     return null;
   end if;
 
+  if v_row.status <> 'approved'
+     and v_row.status <> 'cancelled'
+     and v_row.expires_at < now() then
+    update public.employee_registration_invites
+    set status = 'cancelled'
+    where id = v_row.id;
+    v_row.status := 'cancelled';
+  end if;
+
   return jsonb_build_object(
     'invite_id', v_row.id,
     'company_id', v_row.company_id,
