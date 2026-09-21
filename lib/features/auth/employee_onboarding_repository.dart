@@ -81,7 +81,8 @@ class EmployeeOnboardingRepository {
   }
 
   Future<List<Map<String, dynamic>>> loadPendingApprovals() async {
-    final value = await _client.rpc('pending_employee_onboarding_rows');
+    final value =
+        await _client.rpc('pending_employee_onboarding_review_rows');
     if (value is! List) return const [];
     return value
         .map<Map<String, dynamic>>(
