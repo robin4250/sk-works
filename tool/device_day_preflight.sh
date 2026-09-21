@@ -22,6 +22,38 @@ else
   echo "  次: bash tool/mac_first_run.sh"
 fi
 
+echo "--- Git / main freshness ---"
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  branch_name="$(git branch --show-current 2>/dev/null || true)"
+  head_sha="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  [[ -n "$branch_name" ]] && ok "Git branch: $branch_name @ $head_sha"
+
+  if [[ "$branch_name" != "main" ]]; then
+    warn "現在のbranchは main ではありません: $branch_name"
+  fi
+
+  if git remote get-url origin >/dev/null 2>&1; then
+    if git fetch --quiet origin main 2>/dev/null; then
+      local_full="$(git rev-parse HEAD)"
+      remote_full="$(git rev-parse origin/main)"
+      if [[ "$local_full" == "$remote_full" ]]; then
+        ok "ローカルHEADは origin/main と一致"
+      elif git merge-base --is-ancestor "$local_full" "$remote_full" 2>/dev/null; then
+        fail "ローカルmainがorigin/mainより古いです"
+        echo "  作業差分が無いことを確認してから: git pull --ff-only origin main"
+      else
+        warn "ローカルHEADとorigin/mainが分岐しています"
+        echo "  自動pullせず、git status / git logを確認してください"
+      fi
+    else
+      warn "origin/mainの最新状態を取得できませんでした（ネットワークを確認）"
+    fi
+  fi
+else
+  fail "Gitリポジトリを確認できません"
+fi
+
+echo
 echo "--- Flutter version ---"
 if command -v flutter >/dev/null 2>&1; then
   flutter_version="$(flutter --version 2>/dev/null | head -n 1 | awk '{print $2}')"
