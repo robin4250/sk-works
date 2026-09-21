@@ -43,6 +43,7 @@ required=(
   "20260922004500_add_employee_onboarding_profile_and_approval.sql"
   "20260922010000_add_required_document_attention.sql"
   "20260922013000_add_admin_initial_setup_wizard.sql"
+  "20260922020000_add_company_rate_settings_management.sql"
 )
 
 for name in "${required[@]}"; do
