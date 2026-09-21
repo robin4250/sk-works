@@ -48,6 +48,14 @@ redact_env() {
   echo "--- Signing identities ---"
   security find-identity -v -p codesigning 2>/dev/null || true
   echo
+  echo "--- CocoaPods lock ---"
+  if [[ -f ios/Podfile.lock ]]; then
+    echo "ios/Podfile.lock exists"
+    shasum -a 256 ios/Podfile.lock 2>/dev/null || true
+  else
+    echo "ios/Podfile.lock missing"
+  fi
+  echo
   echo "--- Project signing ---"
   if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
     grep -E "PRODUCT_BUNDLE_IDENTIFIER = |DEVELOPMENT_TEAM = " ios/Runner.xcodeproj/project.pbxproj | sort -u || true
