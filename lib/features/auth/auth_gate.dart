@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'admin_initial_setup_page.dart';
 import 'admin_initial_setup_repository.dart';
+import 'employee_onboarding_pages.dart';
 import 'secure_onboarding_pages.dart';
 import 'secure_onboarding_repository.dart';
 
@@ -36,6 +37,23 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
 
     if (repository == null || user == null) {
       return const _GateState.unauthenticated();
+    }
+
+    final employee = await repository.employeeOnboardingState();
+    if (employee != null && employee.status == 'cancelled') {
+      return _GateState.employeeInviteInvalid(employee);
+    }
+
+    if (employee != null && employee.status != 'approved') {
+      if (employee.needsPrimaryPassword) {
+        return _GateState.employeePassword(employee);
+      }
+      if (employee.needsProfile) {
+        return _GateState.employeeProfile(employee);
+      }
+      if (employee.awaitingApproval) {
+        return _GateState.employeeApprovalPending(employee);
+      }
     }
 
     final hasCompany = await repository.hasCompanyMembership();
@@ -94,6 +112,24 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         return switch (state.status) {
           _GateStatus.unauthenticated =>
             SecureAuthPage(onAuthenticated: _reload),
+          _GateStatus.employeePassword => EmployeePrimaryPasswordPage(
+              name: state.employee!.name,
+              onCompleted: _reload,
+              onSignOut: _signOut,
+            ),
+          _GateStatus.employeeProfile => EmployeeProfileOnboardingPage(
+              name: state.employee!.name,
+              onSubmitted: _reload,
+              onSignOut: _signOut,
+            ),
+          _GateStatus.employeeApprovalPending => EmployeeApprovalWaitingPage(
+              name: state.employee!.name,
+              onRefresh: _reload,
+              onSignOut: _signOut,
+            ),
+          _GateStatus.employeeInviteInvalid => EmployeeInviteInvalidPage(
+              onSignOut: _signOut,
+            ),
           _GateStatus.needsCompany => CompanyProfileSetupPage(
               onCompleted: _reload,
               onDeferred: _reload,
@@ -167,6 +203,10 @@ class _ErrorScreen extends StatelessWidget {
 
 enum _GateStatus {
   unauthenticated,
+  employeePassword,
+  employeeProfile,
+  employeeApprovalPending,
+  employeeInviteInvalid,
   needsCompany,
   companyDeferred,
   needsAdminInitialSetup,
@@ -174,10 +214,18 @@ enum _GateStatus {
 }
 
 class _GateState {
-  const _GateState._(this.status);
+  const _GateState._(this.status, [this.employee]);
 
   const _GateState.unauthenticated()
       : this._(_GateStatus.unauthenticated);
+  const _GateState.employeePassword(EmployeeOnboardingState employee)
+      : this._(_GateStatus.employeePassword, employee);
+  const _GateState.employeeProfile(EmployeeOnboardingState employee)
+      : this._(_GateStatus.employeeProfile, employee);
+  const _GateState.employeeApprovalPending(EmployeeOnboardingState employee)
+      : this._(_GateStatus.employeeApprovalPending, employee);
+  const _GateState.employeeInviteInvalid(EmployeeOnboardingState employee)
+      : this._(_GateStatus.employeeInviteInvalid, employee);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
   const _GateState.companyDeferred()
@@ -188,4 +236,5 @@ class _GateState {
       : this._(_GateStatus.authenticated);
 
   final _GateStatus status;
+  final EmployeeOnboardingState? employee;
 }
