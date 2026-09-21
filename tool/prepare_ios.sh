@@ -52,6 +52,12 @@ entries = {
 for key, value in entries.items():
     data[key] = value
 
+# SKO's iPhone UI is designed and acceptance-tested in portrait.
+# Keep the iPad-specific orientation key untouched.
+data["UISupportedInterfaceOrientations"] = [
+    "UIInterfaceOrientationPortrait",
+]
+
 # SKO never needs Always/background location. Remove stale keys if an
 # existing Xcode project or plist carried them from an earlier experiment.
 data.pop("NSLocationAlwaysUsageDescription", None)
