@@ -211,6 +211,22 @@ begin
   end if;
 
 
+  if to_regclass('public.company_initial_setup_progress') is not null
+     and (
+       has_table_privilege('anon', 'public.company_initial_setup_progress', 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('authenticated', 'public.company_initial_setup_progress', 'SELECT,INSERT,UPDATE,DELETE')
+     ) then
+    raise exception 'company_initial_setup_progress must be RPC-only';
+  end if;
+
+  if to_regclass('public.company_rate_settings') is not null
+     and (
+       has_table_privilege('anon', 'public.company_rate_settings', 'SELECT,INSERT,UPDATE,DELETE')
+       or has_table_privilege('authenticated', 'public.company_rate_settings', 'SELECT,INSERT,UPDATE,DELETE')
+     ) then
+    raise exception 'company_rate_settings must be RPC-only';
+  end if;
+
   if has_table_privilege('anon', 'public.line_webhook_events', 'SELECT,INSERT,UPDATE,DELETE')
      or has_table_privilege('authenticated', 'public.line_webhook_events', 'SELECT,INSERT,UPDATE,DELETE') then
     raise exception 'line_webhook_events must not be directly accessible';

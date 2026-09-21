@@ -21,6 +21,10 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Required documents and qualification certificates do not require the secondary password.
 - The secondary password is configured on first access to a protected page, not during initial app onboarding.
 - Protected pages re-lock when the app backgrounds.
+- Employee onboarding supports temporary-password sharing and QR handoff, then forces a new primary password before profile submission.
+- Employee onboarding identity documents use a dedicated private Storage bucket and one reviewer approval activates membership.
+- New-company admin onboarding is guided through company/self registration, required-document setup, first-site setup, and company rate setup; existing companies are backfilled complete.
+- General users, sub-admins, and admins all retain personal clock-in/clock-out controls; management attendance remains separately permissioned.
 - Primary login is phone-ID only.
 - Primary password recovery requires SMS for an existing user and updates the password immediately after OTP.
 - Phone-number change requires SMS confirmation before the Auth login ID/profile number is updated.
