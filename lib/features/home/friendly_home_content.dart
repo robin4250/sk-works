@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
+import 'home_attention_repository.dart';
 import 'home_membership_repository.dart';
 
 class FriendlyHomeContent extends StatelessWidget {
   const FriendlyHomeContent({
     super.key,
     required this.identity,
+    required this.requiredDocumentAttention,
     required this.moduleEnabled,
     required this.onOpen,
     required this.onRefresh,
   });
 
   final HomeIdentity identity;
+  final RequiredDocumentAttention requiredDocumentAttention;
   final bool Function(String key) moduleEnabled;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
@@ -25,6 +28,17 @@ class FriendlyHomeContent extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
         children: [
           _GreetingCard(identity: identity),
+          if (requiredDocumentAttention.hasMissing) ...[
+            const SizedBox(height: 12),
+            _RequiredDocumentAttentionCard(
+              attention: requiredDocumentAttention,
+              onOpen: onOpen,
+            ),
+          ],
+          if (moduleEnabled('attendance')) ...[
+            const SizedBox(height: 12),
+            _PersonalAttendanceCard(onOpen: onOpen),
+          ],
           const SizedBox(height: 14),
           if (identity.isAdmin)
             _AdminHome(
@@ -105,6 +119,110 @@ class _GreetingCard extends StatelessWidget {
   }
 }
 
+class _RequiredDocumentAttentionCard extends StatelessWidget {
+  const _RequiredDocumentAttentionCard({
+    required this.attention,
+    required this.onOpen,
+  });
+
+  final RequiredDocumentAttention attention;
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = attention.missingNames.take(3).join('・');
+    final extra = attention.missingCount > 3
+        ? ' ほか${attention.missingCount - 3}件'
+        : '';
+    final guidance = <String>[
+      if (attention.needsLicense) '運転免許証',
+      if (attention.needsQualification) '資格証',
+    ];
+
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: const CircleAvatar(
+          child: Icon(Icons.priority_high),
+        ),
+        title: const Text(
+          '大事なお知らせ：必要書類が未登録です',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        subtitle: Text(
+          [
+            '未登録 ${attention.missingCount}件',
+            if (preview.isNotEmpty) '$preview$extra',
+            if (guidance.isNotEmpty)
+              '${guidance.join('・')}の登録も確認してください',
+            'すべて登録するとこの通知は自動で消えます',
+          ].join('\n'),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => onOpen('documents'),
+      ),
+    );
+  }
+}
+
+class _PersonalAttendanceCard extends StatelessWidget {
+  const _PersonalAttendanceCard({required this.onOpen});
+
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '自分の本日の勤務',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '一般ユーザー・サブ管理者・管理者の全員が、自分自身の出勤・退勤を登録できます。'
+              '位置情報は登録ボタンを押した時だけ取得します。',
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => onOpen('footer_sites'),
+              icon: const Icon(Icons.business_outlined),
+              label: const Text('自分の現場を選ぶ・確認する'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => onOpen('clock_in'),
+                    icon: const Icon(Icons.login),
+                    label: const Text('本日の出勤'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => onOpen('clock_out'),
+                    icon: const Icon(Icons.logout),
+                    label: const Text('本日の退勤'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _WorkerHome extends StatelessWidget {
   const _WorkerHome({
     required this.moduleEnabled,
@@ -119,55 +237,6 @@ class _WorkerHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (moduleEnabled('attendance')) ...[
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '本日の勤務',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '現場を確認してから、出勤・退勤を登録します。位置情報は登録ボタンを押した時だけ取得します。',
-                  ),
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    onPressed: () => onOpen('footer_sites'),
-                    icon: const Icon(Icons.business_outlined),
-                    label: const Text('現場を選ぶ・確認する'),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => onOpen('clock_in'),
-                          icon: const Icon(Icons.login),
-                          label: const Text('本日の出勤'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: () => onOpen('clock_out'),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('本日の退勤'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
         const _SectionTitle('ホーム'),
         const SizedBox(height: 9),
         _ActionGrid(
