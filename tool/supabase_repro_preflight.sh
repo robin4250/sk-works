@@ -58,15 +58,37 @@ if command -v psql >/dev/null 2>&1 && [[ -n "${SUPABASE_DB_URL:-}" ]]; then
     -Atc "select id, public, coalesce(file_size_limit::text,''), coalesce(array_to_string(allowed_mime_types, ','),'') from storage.buckets order by id;" \
     > supabase/baseline/production_storage_buckets.tsv
   echo "✓ Storage bucket metadata snapshot"
+
+  echo
+  echo "--- production security assertions ---"
+  psql "$SUPABASE_DB_URL"     -v ON_ERROR_STOP=1     -f tool/supabase_security_assertions.sql     | tee supabase/baseline/production_security_assertions.txt
+  grep -q "SKO pre-device database security assertions passed"     supabase/baseline/production_security_assertions.txt
+  echo "✓ Production security assertions"
+
+  echo
+  echo "--- latest schema capability markers ---"
+  psql "$SUPABASE_DB_URL"     -v ON_ERROR_STOP=1     -Atc "select
+      to_regclass('public.company_approval_assignees') is not null,
+      to_regclass('public.employee_registration_invites') is not null,
+      to_regclass('public.company_initial_setup_progress') is not null,
+      to_regclass('public.company_rate_settings') is not null,
+      exists(select 1 from information_schema.columns where table_schema='public' and table_name='sites' and column_name='nearest_station'),
+      exists(select 1 from storage.buckets where id='employee-onboarding-documents' and not public);"     > supabase/baseline/production_capability_markers.tsv
+
+  if [[ "$(cat supabase/baseline/production_capability_markers.tsv)" != "t|t|t|t|t|t" ]]; then
+    echo "✗ Latest SKO onboarding/approval capability marker is missing"
+    exit 1
+  fi
+  echo "✓ Latest onboarding/approval capability markers"
 else
   echo "△ SUPABASE_DB_URL または psql がないためbucket metadata snapshotはスキップ"
-  echo "  Storage bucketは db diff の既知の制限対象です。MacでDB URLを設定後に再実行してください。"
+  echo "  Storage bucketとproduction assertions/capability markersは、MacでDB URLを設定後に再実行してください。"
 fi
 
 echo
 echo "--- baseline checksums ---"
 : > supabase/baseline/SHA256SUMS.txt
-for artifact in   supabase/baseline/production_migration_history.txt   supabase/baseline/production_public_schema.sql   supabase/baseline/production_storage_customizations.sql   supabase/baseline/production_storage_buckets.tsv; do
+for artifact in   supabase/baseline/production_migration_history.txt   supabase/baseline/production_public_schema.sql   supabase/baseline/production_storage_customizations.sql   supabase/baseline/production_storage_buckets.tsv   supabase/baseline/production_security_assertions.txt   supabase/baseline/production_capability_markers.tsv; do
   if [[ -f "$artifact" ]]; then
     shasum -a 256 "$artifact" >> supabase/baseline/SHA256SUMS.txt
   fi
@@ -79,6 +101,8 @@ echo "  migration history: supabase/baseline/production_migration_history.txt"
 echo "  public schema     : supabase/baseline/production_public_schema.sql"
 echo "  storage diff : supabase/baseline/production_storage_customizations.sql"
 echo "  bucket meta       : supabase/baseline/production_storage_buckets.tsv（取得できた場合）"
+echo "  security audit    : supabase/baseline/production_security_assertions.txt（取得できた場合）"
+echo "  capability markers: supabase/baseline/production_capability_markers.tsv（取得できた場合）"
 echo "  checksums         : supabase/baseline/SHA256SUMS.txt"
 echo
 echo "重要:"
