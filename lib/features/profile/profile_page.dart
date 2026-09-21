@@ -2,11 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../auth/auth_error_message.dart';
+import '../help/manual_content.dart';
+import '../help/manual_library_page.dart';
 import '../notifications/notification_bell.dart';
 import 'profile_repository.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({
+    super.key,
+    required this.role,
+  });
+
+  final ManualRole role;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -347,6 +354,28 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ],
                             ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.menu_book_outlined),
+                          ),
+                          title: const Text(
+                            '使い方・説明書',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            '${ManualContent.roleLabel(widget.role)}用説明書とSKOパンフレットを閲覧・印刷できます',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ManualLibraryPage(role: widget.role),
+                            ),
                           ),
                         ),
                       ),
