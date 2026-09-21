@@ -234,6 +234,25 @@ begin
     raise exception 'sensitive storage bucket must not be public';
   end if;
 
+  if exists (
+    select 1
+    from (
+      values
+        ('profile-photos'::text, 10485760::bigint),
+        ('attendance-evidence'::text, 15728640::bigint),
+        ('qualification-certificates'::text, 20971520::bigint),
+        ('communication-albums'::text, 20971520::bigint),
+        ('worker-documents'::text, 52428800::bigint),
+        ('chat-attachments'::text, 52428800::bigint)
+    ) as expected(id, file_size_limit)
+    left join storage.buckets b on b.id = expected.id
+    where b.id is null
+       or b.public
+       or b.file_size_limit is distinct from expected.file_size_limit
+  ) then
+    raise exception 'private storage bucket size limits do not match SKO baseline';
+  end if;
+
   select pg_get_functiondef('private.has_storage_company_access(text)'::regprocedure)
   into v_storage_guard;
 
