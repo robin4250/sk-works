@@ -195,3 +195,93 @@ revoke execute on function public.approve_employee_onboarding(uuid)
   from public, anon;
 grant execute on function public.approve_employee_onboarding(uuid)
   to authenticated;
+
+
+create or replace function public.pending_employee_onboarding_review_rows()
+returns table(
+  invite_id uuid,
+  company_id uuid,
+  worker_id uuid,
+  auth_user_id uuid,
+  name text,
+  phone text,
+  address text,
+  blood_type text,
+  family_composition text,
+  emergency_relation text,
+  emergency_name text,
+  emergency_phone text,
+  emergency_address text,
+  portrait_path text,
+  my_number_front_path text,
+  my_number_back_path text,
+  submitted_at timestamptz,
+  requested_role text,
+  requested_approval_assignee boolean,
+  replace_approval_assignee_user_id uuid,
+  replace_approval_assignee_name text
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_company_id uuid;
+begin
+  select cm.company_id
+  into v_company_id
+  from public.company_members cm
+  left join public.company_approval_assignees caa
+    on caa.company_id = cm.company_id
+   and caa.user_id = cm.user_id
+  where cm.user_id = v_user_id
+    and (
+      cm.role::text in ('owner','admin')
+      or caa.user_id is not null
+    )
+  limit 1;
+
+  if v_company_id is null then
+    raise exception 'onboarding approval permission required';
+  end if;
+
+  return query
+  select
+    eri.id,
+    eri.company_id,
+    eri.worker_id,
+    eri.auth_user_id,
+    eri.name,
+    eri.phone_e164,
+    eri.address,
+    eri.blood_type,
+    eri.family_composition,
+    eri.emergency_relation,
+    eri.emergency_name,
+    eri.emergency_phone,
+    eri.emergency_address,
+    eri.portrait_path,
+    eri.my_number_front_path,
+    eri.my_number_back_path,
+    eri.submitted_at,
+    eri.requested_role,
+    eri.requested_approval_assignee,
+    eri.replace_approval_assignee_user_id,
+    coalesce(replacement_profile.display_name, replacement_member.role::text)
+  from public.employee_registration_invites eri
+  left join public.user_profiles replacement_profile
+    on replacement_profile.user_id = eri.replace_approval_assignee_user_id
+  left join public.company_members replacement_member
+    on replacement_member.company_id = eri.company_id
+   and replacement_member.user_id = eri.replace_approval_assignee_user_id
+  where eri.company_id = v_company_id
+    and eri.status = 'approval_pending'
+  order by eri.submitted_at nulls last, eri.created_at;
+end;
+$$;
+
+revoke execute on function public.pending_employee_onboarding_review_rows()
+  from public, anon;
+grant execute on function public.pending_employee_onboarding_review_rows()
+  to authenticated;
