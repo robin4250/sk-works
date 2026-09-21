@@ -53,6 +53,10 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Daily-report edit approval UI follows the configured 1-3 approval assignees; being an owner/admin alone does not bypass that selection.
 - Company tax/welfare/overtime/early/night/holiday and three allowance settings can be edited by admins after initial onboarding through RPC-only company-rate settings.
 - Full admins can assign sub-admin status and approval-assignee intent during employee invite; if three approvers already exist, one of the current three must be selected for replacement, and the final approval re-validates the assignment server-side.
+- Production RLS performance hardening now caches auth helper evaluation across core, high-use user flows, reference/document, admin/settings, and operational policies; the latest Performance Advisor has no `auth_rls_initplan` findings.
+- Nine high-use foreign-key indexes were added non-destructively after verifying the production index catalog, reducing the unindexed-foreign-key advisor findings from 52 to 43 without removing existing indexes.
+- A post-performance production read-only audit reconfirmed public-table RLS, anon table isolation, SECURITY DEFINER search-path/execute boundaries, RPC-only membership/invite/approval-assignee tables, the 1-to-3 approval guard, invite role/approver assignment, secondary-password lockout, and all seven required private Storage buckets.
+- Deployed `create-employee-invite` and `line-webhook` Edge Function sources were re-compared with `main` and match; employee invite JWT verification remains enabled.
 
 ## Still requires the real Mac / iPhone
 
