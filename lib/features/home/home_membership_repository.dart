@@ -19,6 +19,9 @@ class HomeIdentity {
       role == 'owner' || role == 'admin' || role == 'manager';
 
   bool can(String key) {
+    if (key == 'can_approve_daily_report_edits') {
+      return permissions[key] ?? false;
+    }
     if (role == 'owner' || role == 'admin') return true;
     return permissions[key] ?? false;
   }
