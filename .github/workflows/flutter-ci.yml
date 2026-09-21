@@ -2,16 +2,14 @@ name: Flutter CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**']
     paths-ignore:
       - 'docs/**'
-      - 'supabase/migrations/**'
       - 'README.md'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**'
-      - 'supabase/migrations/**'
       - 'README.md'
 
 concurrency:
