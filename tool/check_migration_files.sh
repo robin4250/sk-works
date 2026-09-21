@@ -7,7 +7,7 @@ tmp_files="$(mktemp)"
 tmp_seen="$(mktemp)"
 trap 'rm -f "$tmp_files" "$tmp_seen"' EXIT
 
-find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort > "$tmp_files"
+find supabase/migrations -type f -name '*.sql' | sort > "$tmp_files"
 
 if [[ ! -s "$tmp_files" ]]; then
   echo "✗ migration SQL がありません"
