@@ -38,6 +38,9 @@ jobs:
       - name: Create Android project files
         run: flutter create . --platforms=android --project-name sk_works --org com.skworks
 
+      - name: Scan tracked files for production secrets
+        run: bash tool/check_no_client_secrets.sh
+
       - name: Install dependencies
         run: flutter pub get
 
