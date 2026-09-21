@@ -26,7 +26,7 @@ MacとiPhoneが手元に来たら、まず次を実行する。
 bash tool/device_day.sh
 ```
 
-このコマンドが、Mac初回準備 → 実機当日の一括プリフライト → SKO実機起動まで順番に進める。`tool/local_supabase_env.sh` が無い場合はテンプレート作成、iOSプロジェクトが無ければ生成まで自動で進める。
+このコマンドが、Mac初回準備 → Mac/iPhone非依存release gate → 実機当日の一括プリフライト → SKO実機起動まで順番に進める。`tool/local_supabase_env.sh` が無い場合はテンプレート作成、iOSプロジェクトが無ければ生成まで自動で進める。
 Apple Account / Personal Team / USB信頼 / Developer Modeなど、人が操作する必要がある箇所で止まった場合は画面の案内を解消し、同じコマンドをもう一度実行する。
 
 問題調査が必要な場合:
@@ -34,6 +34,14 @@ Apple Account / Personal Team / USB信頼 / Developer Modeなど、人が操作�
 ```bash
 bash tool/collect_ios_diagnostics.sh
 ```
+
+Mac/iPhoneなしでも先にrelease gateだけ確認したい場合:
+
+```bash
+bash tool/pre_device_release_gate.sh
+```
+
+このrelease gateは、依存固定/lockfile、秘密情報、migration整合、shell構文、Flutter analyze/testをまとめて検査する。
 
 以下は個別に実行したい場合の詳細手順。
 
