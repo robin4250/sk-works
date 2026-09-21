@@ -5,6 +5,7 @@ import '../notifications/notification_bell.dart';
 import '../../branding/product_brand.dart';
 import '../../data/supabase_backend.dart';
 import 'company_module_settings_page.dart';
+import 'company_rate_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -236,6 +237,22 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        if (_canManageCompany) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.currency_yen_outlined),
+                              title: const Text('会社単価・手当設定'),
+                              subtitle: const Text('福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const CompanyRateSettingsPage(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ],
                       Text(
                         '会社情報',
