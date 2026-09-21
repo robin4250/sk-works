@@ -10,6 +10,9 @@ void main() {
 
     expect(sql, contains(r'as $review$'));
     expect(sql, contains(r'$review$;'));
-    expect(sql, isNot(contains('as $\n  select exists')));
+    expect(sql, isNot(contains(r'as 
+  });
+}
+ '\n  select exists')));
   });
 }
