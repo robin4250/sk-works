@@ -15,6 +15,11 @@ void main() {
       expect(source, isNot(contains('mapfile ')), reason: file.path);
       expect(source, isNot(contains('readarray ')), reason: file.path);
       expect(source, isNot(contains('declare -A')), reason: file.path);
+      expect(source, isNot(contains(' -maxdepth ')), reason: file.path);
+      expect(RegExp(r'\$\{[^}]+,,\}').hasMatch(source), isFalse,
+          reason: file.path);
+      expect(RegExp(r'\$\{[^}]+\^\^\}').hasMatch(source), isFalse,
+          reason: file.path);
     }
   });
 }
