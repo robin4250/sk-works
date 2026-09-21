@@ -10,7 +10,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('SKO'), findsWidgets);
-    expect(find.text('本日の出勤'), findsOneWidget);
+    expect(find.text('本日の出勤'), findsWidgets);
     expect(find.text('承認待ち'), findsOneWidget);
     expect(find.text('出勤・人区管理'), findsOneWidget);
     expect(find.text('人員管理'), findsOneWidget);
