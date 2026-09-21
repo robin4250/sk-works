@@ -211,7 +211,10 @@ class _HomePageState extends State<HomePage> {
               : const WorkerAttendanceSheetPage())
           : const AttendancePage(),
       'invoices' => SupabaseBackend.isInitialized
-          ? const InvoiceCloudPage()
+          ? const SecondaryProtectedPage(
+              title: '請求書',
+              child: InvoiceCloudPage(),
+            )
           : const InvoicePage(),
       'settings' => const SettingsPage(),
       _ => legacy.ModulePage(module: module),
@@ -312,7 +315,10 @@ class _HomePageState extends State<HomePage> {
         page = const HelpPage();
         break;
       case 'admin_sites':
-        page = const AdminSiteFinancialPage();
+        page = const SecondaryProtectedPage(
+          title: '管理者用現場データ',
+          child: AdminSiteFinancialPage(),
+        );
         break;
       case 'qualification_certificates':
         page = const QualificationCertificatePage();
