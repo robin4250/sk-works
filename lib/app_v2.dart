@@ -21,6 +21,7 @@ import 'features/chat/today_line_attendance_page.dart';
 import 'features/daily_reports/daily_report_approvals_page.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
+import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_membership_repository.dart';
@@ -357,10 +358,14 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'profile':
-        page = const ProfilePage();
+        page = ProfilePage(
+          role: ManualContent.fromMembershipRole(_identity.role),
+        );
         break;
       case 'help':
-        page = const HelpPage();
+        page = HelpPage(
+          role: ManualContent.fromMembershipRole(_identity.role),
+        );
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
