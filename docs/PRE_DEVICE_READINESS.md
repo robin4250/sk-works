@@ -17,8 +17,10 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Broad ATS bypasses are stripped and forbidden.
 - GPS is action-only; continuous tracking is contract-tested.
 - Camera cancellation must not create attendance.
-- Sensitive routes are protected by the secondary password / Face ID gate.
-- Sensitive pages re-lock when the app backgrounds.
+- Secondary authentication is role-specific: general users and sub-admins use it for payroll statements; admins use it for invoices and admin-only site financial data.
+- Required documents and qualification certificates do not require the secondary password.
+- The secondary password is configured on first access to a protected page, not during initial app onboarding.
+- Protected pages re-lock when the app backgrounds.
 - Primary login is phone-ID only.
 - Primary password recovery requires SMS for an existing user and updates the password immediately after OTP.
 - Phone-number change requires SMS confirmation before the Auth login ID/profile number is updated.

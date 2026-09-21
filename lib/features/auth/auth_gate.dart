@@ -36,12 +36,6 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
       return const _GateState.unauthenticated();
     }
 
-    final secondaryConfigured =
-        await repository.secondaryPasswordConfigured();
-    if (!secondaryConfigured) {
-      return const _GateState.needsSecondaryPassword();
-    }
-
     final hasCompany = await repository.hasCompanyMembership();
     if (!hasCompany) {
       if (repository.companySetupDeferred) {
@@ -90,11 +84,6 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         return switch (state.status) {
           _GateStatus.unauthenticated =>
             SecureAuthPage(onAuthenticated: _reload),
-          _GateStatus.needsSecondaryPassword => SecondaryPasswordSetupPage(
-              onContinue: _reload,
-              onDeferred: _reload,
-              onSignOut: _signOut,
-            ),
           _GateStatus.needsCompany => CompanyProfileSetupPage(
               onCompleted: _reload,
               onDeferred: _reload,
@@ -164,7 +153,6 @@ class _ErrorScreen extends StatelessWidget {
 
 enum _GateStatus {
   unauthenticated,
-  needsSecondaryPassword,
   needsCompany,
   companyDeferred,
   authenticated,
@@ -175,8 +163,6 @@ class _GateState {
 
   const _GateState.unauthenticated()
       : this._(_GateStatus.unauthenticated);
-  const _GateState.needsSecondaryPassword()
-      : this._(_GateStatus.needsSecondaryPassword);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
   const _GateState.companyDeferred()
