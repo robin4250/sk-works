@@ -13,13 +13,13 @@ import plistlib
 with Path("ios/Runner/Info.plist").open("rb") as f:
     data = plistlib.load(f)
 
-required = {
-    "CFBundleDisplayName": "SKO",
+required = [
+    "CFBundleDisplayName",
     "NSFaceIDUsageDescription",
     "NSLocationWhenInUseUsageDescription",
     "NSCameraUsageDescription",
     "NSPhotoLibraryUsageDescription",
-}
+]
 for key in required:
     if key not in data or not str(data[key]).strip():
         raise SystemExit(f"missing iOS plist contract: {key}")
