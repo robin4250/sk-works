@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('secret scan workflow runs without path exclusions', () {
+  test('secret scan workflow runs for every push and pull request', () {
     final source =
         File('.github/workflows/secret-scan.yml').readAsStringSync();
 
