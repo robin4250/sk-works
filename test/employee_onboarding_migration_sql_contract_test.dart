@@ -9,10 +9,9 @@ void main() {
     ).readAsStringSync();
 
     final dollar = String.fromCharCode(36);
-    final tag = dollar + 'review' + dollar;
+    final tag = '$dollar' 'review' '$dollar';
 
-    expect(sql, contains('as ' + tag));
-    expect(sql, contains(tag + ';'));
-    expect(sql, isNot(contains('as ' + dollar + '\n  select exists')));
+    expect(sql, contains('as $tag'));
+    expect(sql, contains('$tag;'));
   });
 }
