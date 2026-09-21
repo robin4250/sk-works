@@ -111,10 +111,30 @@ if [[ -n "$device_id" ]]; then
   ok "Flutterが実機iPhoneを検出: $device_id"
 else
   warn "Flutterでは実機iPhoneをまだ検出していません"
-  if command -v xcrun >/dev/null 2>&1 && xcrun devicectl list devices >/dev/null 2>&1; then
-    echo "  Xcode側のデバイス一覧は取得できます。USB接続・信頼・Developer Modeを確認してください。"
+
+  devicectl_output=""
+  if command -v xcrun >/dev/null 2>&1; then
+    devicectl_output="$(xcrun devicectl list devices 2>/dev/null || true)"
+  fi
+
+  usb_iphone=""
+  if command -v system_profiler >/dev/null 2>&1; then
+    usb_iphone="$(system_profiler SPUSBDataType 2>/dev/null | grep -i -m 1 'iPhone' || true)"
+  fi
+
+  if [[ -n "$devicectl_output" && "$devicectl_output" == *"iPhone"* ]]; then
+    if echo "$devicectl_output" | grep -Eqi 'unavailable|locked|developer[[:space:]]+mode'; then
+      echo "  XcodeはiPhoneを認識していますが利用可能状態ではありません。"
+      echo "  iPhoneをロック解除 → Macを信頼 → 設定 > プライバシーとセキュリティ > Developer Mode を確認してください。"
+    else
+      echo "  XcodeはiPhoneを認識しています。Flutter側だけ見えないため flutter doctor -v を確認してください。"
+      echo "  Xcode > Window > Devices and Simulators で端末が利用可能かも確認してください。"
+    fi
+  elif [[ -n "$usb_iphone" ]]; then
+    echo "  USBではiPhoneを検出していますが、Xcodeのデバイス一覧に出ていません。"
+    echo "  iPhone側の「このコンピュータを信頼」を許可し、Developer Modeを確認してください。"
   else
-    echo "  次: iPhoneをUSB接続 → 信頼 → Developer Mode確認"
+    echo "  Mac側でiPhoneのUSB接続を確認できません。ケーブル・USBポート・ロック解除状態を確認してください。"
   fi
 fi
 

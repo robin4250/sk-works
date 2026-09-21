@@ -21,6 +21,8 @@ redact_env() {
   sw_vers 2>/dev/null || true
   xcode-select -p 2>/dev/null || true
   xcodebuild -version 2>/dev/null || true
+  echo "Xcode first-launch status:"
+  xcodebuild -checkFirstLaunchStatus 2>&1 || true
   echo
   echo "--- Toolchain ---"
   flutter --version 2>/dev/null || true
@@ -40,12 +42,22 @@ redact_env() {
   echo "--- Xcode device control ---"
   xcrun devicectl list devices 2>/dev/null || true
   echo
+  echo "--- USB iPhone visibility ---"
+  system_profiler SPUSBDataType 2>/dev/null | grep -i -A 12 -B 2 'iPhone' || true
+  echo
   echo "--- Signing identities ---"
   security find-identity -v -p codesigning 2>/dev/null || true
   echo
   echo "--- Project signing ---"
   if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
     grep -E "PRODUCT_BUNDLE_IDENTIFIER = |DEVELOPMENT_TEAM = " ios/Runner.xcodeproj/project.pbxproj | sort -u || true
+    if [[ -d ios/Runner.xcworkspace ]]; then
+      echo
+      echo "Resolved Runner build settings:"
+      xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -showBuildSettings 2>/dev/null \
+        | grep -E "^[[:space:]]+(PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_STYLE) =" \
+        | sort -u || true
+    fi
   else
     echo "iOS project not generated"
   fi
