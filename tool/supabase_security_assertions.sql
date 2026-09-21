@@ -108,6 +108,24 @@ begin
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
+      and c.relkind in ('v', 'm')
+      and (
+        has_table_privilege('anon', format('%I.%I', n.nspname, c.relname), 'SELECT')
+        or has_table_privilege('authenticated', format('%I.%I', n.nspname, c.relname), 'SELECT')
+      )
+      and (
+        c.relkind = 'm'
+        or not ('security_invoker=true' = any(coalesce(c.reloptions, array[]::text[])))
+      )
+  ) then
+    raise exception 'exposed public view/materialized view may bypass RLS';
+  end if;
+
+  if exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
       and c.relkind in ('r', 'p')
       and not c.relrowsecurity
   ) then
