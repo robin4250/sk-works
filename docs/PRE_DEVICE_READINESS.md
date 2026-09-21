@@ -65,6 +65,19 @@ From the repository root:
 bash tool/device_day.sh
 ```
 
+This one command now runs, in order:
+
+1. Mac first-run preparation
+2. the Mac/iPhone-independent release gate
+3. physical-device preflight
+4. the iPhone launch command
+
+To run only the non-device gate:
+
+```bash
+bash tool/pre_device_release_gate.sh
+```
+
 If it stops, capture the diagnostic report:
 
 ```bash

@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-echo "[1/3] Mac初回準備を確認します"
+echo "[1/4] Mac初回準備を確認します"
 set +e
 bash tool/mac_first_run.sh
 status=$?
@@ -26,7 +26,19 @@ if [[ "$status" -ne 0 ]]; then
 fi
 
 echo
-echo "[2/3] 実機当日の一括プリフライトを実行します"
+echo "[2/4] Mac/iPhone非依存のrelease gateを実行します"
+set +e
+bash tool/pre_device_release_gate.sh
+status=$?
+set -e
+if [[ "$status" -ne 0 ]]; then
+  echo
+  echo "release gateで問題が見つかりました。上の ✗ を修正して同じコマンドを再実行してください。"
+  exit "$status"
+fi
+
+echo
+echo "[3/4] 実機当日の一括プリフライトを実行します"
 set +e
 bash tool/device_day_preflight.sh
 status=$?
@@ -43,7 +55,7 @@ if [[ "$status" -ne 0 ]]; then
 fi
 
 echo
-echo "[3/3] SKOをiPhoneへ起動します"
+echo "[4/4] SKOをiPhoneへ起動します"
 if [[ "$#" -gt 0 ]]; then
   exec bash tool/run_ios_device.sh "$1"
 else

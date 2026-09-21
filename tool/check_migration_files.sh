@@ -3,17 +3,20 @@ set -euo pipefail
 
 echo "=== SKO migration file check ==="
 
-mapfile -t files < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+tmp_files="$(mktemp)"
+tmp_seen="$(mktemp)"
+trap 'rm -f "$tmp_files" "$tmp_seen"' EXIT
 
-if [[ "${#files[@]}" -eq 0 ]]; then
+find supabase/migrations -type f -name '*.sql' | sort > "$tmp_files"
+
+if [[ ! -s "$tmp_files" ]]; then
   echo "✗ migration SQL がありません"
   exit 1
 fi
 
-declare -A seen
 failed=0
 
-for path in "${files[@]}"; do
+while IFS= read -r path; do
   name="$(basename "$path")"
   if [[ ! "$name" =~ ^[0-9]{8,14}_[a-z0-9_]+\.sql$ ]]; then
     echo "✗ migrationファイル名形式が不正: $name"
@@ -22,15 +25,13 @@ for path in "${files[@]}"; do
   fi
 
   version="${name%%_*}"
-  if [[ -n "${seen[$version]:-}" ]]; then
+  if grep -Fxq "$version" "$tmp_seen"; then
     echo "✗ migration version重複: $version"
-    echo "  ${seen[$version]}"
-    echo "  $name"
     failed=1
   else
-    seen[$version]="$name"
+    printf '%s\n' "$version" >> "$tmp_seen"
   fi
-done
+done < "$tmp_files"
 
 required=(
   "20260919010000_reconcile_chat_line_schema.sql"
