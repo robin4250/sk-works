@@ -16,6 +16,7 @@ void main() {
 
     expect(buildIndex, greaterThanOrEqualTo(0));
     expect(assistantIndex, greaterThan(buildIndex));
+    expect(preflight, contains('bash tool/check_ios_generated_contract.sh'));
     expect(preflight, contains('Podfile.lock'));
     expect(diagnostics, contains('ios/Podfile.lock'));
   });

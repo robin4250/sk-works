@@ -7,13 +7,16 @@ void main() {
     final source =
         File('tool/supabase_repro_preflight.sh').readAsStringSync();
 
-    expect(source, contains('supabase migration list'));
+    expect(source, contains('supabase migration list | tee'));
+    expect(source, contains('production_migration_history.txt'));
     expect(source, contains('supabase db lint --linked --fail-on error'));
     expect(source, contains('supabase db dump'));
     expect(source, contains('supabase db diff'));
     expect(source, contains('> supabase/baseline/production_storage_customizations.sql'));
     expect(source, isNot(contains('--output supabase/baseline')));
     expect(source, contains('production_storage_buckets.tsv'));
+    expect(source, contains('SHA256SUMS.txt'));
+    expect(source, contains('shasum -a 256'));
     expect(source, isNot(contains('supabase db reset --linked\n')));
     expect(source, isNot(contains('supabase db push\n')));
     expect(source, isNot(contains('supabase migration repair ')));

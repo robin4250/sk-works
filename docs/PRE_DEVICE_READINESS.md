@@ -33,9 +33,10 @@ This file separates what has already been verified without a physical iPhone/Mac
 - The repeatable production DB audit is `tool/supabase_security_assertions.sql`.
 - The latest production audit returns:
   `SKO pre-device database security assertions passed`
-- Tracked production-secret scanning runs in CI.
+- Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
 - Supabase migration-history drift is documented and a non-destructive Mac-day reproducibility preflight is available.
+- The Supabase reproducibility preflight records migration history plus SHA-256 checksums for generated baseline artifacts.
 
 ## Still requires the real Mac / iPhone
 
@@ -64,6 +65,8 @@ From the repository root:
 ```bash
 bash tool/device_day.sh
 ```
+
+The device-day preflight now also fails closed unless the checkout is exactly on `main` and aligned with `origin/main`, and it re-verifies the generated iOS permission/orientation/bundle-ID contract before the unsigned build.
 
 This one command now runs, in order:
 
