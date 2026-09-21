@@ -8,17 +8,26 @@ This does **not** affect the existing production project or iPhone installation.
 
 ## Historical drift currently expected
 
-Production contains older historical migration names such as:
+As verified on 2026-09-21, production has historical migration names that are not present as same-named files in Git:
 
 - `initial_sk_works_schema`
 - `harden_membership_and_storage_policies`
 - `move_rls_helpers_to_private_schema`
-- early LINE webhook / communication-group migrations
+- `add_line_webhook_event_staging`
+- `add_communication_groups_and_line_bindings`
+- `allow_line_webhook_service_inserts`
+- `line_webhook_event_deduplication`
+- `chat_message_line_external_dedupe`
 
-The repository later converged those historical shapes through reconciliation migrations such as:
+The repository has early replacement/reconciliation files whose names do not appear in the remote history under the same names:
 
-- `20260919010000_reconcile_chat_line_schema.sql`
-- later RLS/security hardening migrations
+- `add_communication_chat`
+- `add_line_bridge_foundation`
+- `add_qualification_certificate_storage`
+
+The repository later converged the production chat/LINE shape through `20260919010000_reconcile_chat_line_schema.sql` and subsequent hardening migrations. Newer security migrations from the pre-device hardening period are present in both the deployed schema and Git history by behavior, even when their generated remote timestamps differ from the checked-in filename timestamps.
+
+These name differences are historical tracking drift, not evidence that the deployed schema is currently missing the corresponding tables or policies.
 
 Do not rewrite or delete already-applied historical migrations in production just to make names match.
 
