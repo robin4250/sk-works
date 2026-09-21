@@ -21,6 +21,10 @@ redact_env() {
   sw_vers 2>/dev/null || true
   xcode-select -p 2>/dev/null || true
   xcodebuild -version 2>/dev/null || true
+  echo
+  echo "--- Xcode SDKs ---"
+  xcodebuild -showsdks 2>/dev/null || true
+  echo
   echo "Xcode first-launch status:"
   xcodebuild -checkFirstLaunchStatus 2>&1 || true
   echo
