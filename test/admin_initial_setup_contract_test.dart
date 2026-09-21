@@ -5,6 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
+  test('admin setup keeps employee invite onboarding states intact', () {
+    final gate = read('lib/features/auth/auth_gate.dart');
+    final pages = read('lib/features/auth/secure_onboarding_pages.dart');
+
+    expect(gate, contains('_GateStatus.employeePassword'));
+    expect(gate, contains('_GateStatus.employeeProfile'));
+    expect(gate, contains('_GateStatus.employeeApprovalPending'));
+    expect(gate, contains('_GateStatus.needsAdminInitialSetup'));
+    expect(pages, contains('従業員登録QRコードからログイン'));
+  });
+
   test('new companies require guided initial setup without affecting existing companies', () {
     final sql = read(
       'supabase/migrations/20260922013000_add_admin_initial_setup_wizard.sql',
