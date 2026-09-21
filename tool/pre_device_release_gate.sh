@@ -24,6 +24,15 @@ echo "✓ Shell helper syntax"
 
 if command -v flutter >/dev/null 2>&1; then
   echo
+  echo "--- Flutter version ---"
+  flutter_version="$(flutter --version 2>/dev/null | head -n 1 | awk '{print $2}')"
+  if [[ "$flutter_version" != "3.47.5" ]]; then
+    echo "✗ Flutter $flutter_version を検出。SKO基準は3.47.5です"
+    exit 1
+  fi
+  echo "✓ Flutter 3.47.5"
+
+  echo
   echo "--- Flutter analyze ---"
   flutter analyze
 
