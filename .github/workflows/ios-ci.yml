@@ -47,6 +47,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Scan committed secrets
+        run: bash tool/check_no_committed_secrets.sh
+
       - name: Validate iOS helper scripts
         run: |
           bash -n tool/prepare_ios.sh
@@ -58,6 +61,7 @@ jobs:
           bash -n tool/local_supabase_env.example.sh
           bash -n tool/device_day_preflight.sh
           bash -n tool/device_day.sh
+          bash -n tool/check_no_committed_secrets.sh
 
       - name: Verify public Supabase client template
         run: |
