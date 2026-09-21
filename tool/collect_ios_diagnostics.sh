@@ -21,6 +21,10 @@ redact_env() {
   sw_vers 2>/dev/null || true
   xcode-select -p 2>/dev/null || true
   xcodebuild -version 2>/dev/null || true
+  echo
+  echo "--- Xcode SDKs ---"
+  xcodebuild -showsdks 2>/dev/null || true
+  echo
   echo "Xcode first-launch status:"
   xcodebuild -checkFirstLaunchStatus 2>&1 || true
   echo
@@ -46,7 +50,13 @@ redact_env() {
   system_profiler SPUSBDataType 2>/dev/null | grep -i -A 12 -B 2 'iPhone' || true
   echo
   echo "--- Signing identities ---"
-  security find-identity -v -p codesigning 2>/dev/null || true
+  identity_output="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+  printf '%s\n' "$identity_output"
+  echo "Detected Team ID candidates:"
+  printf '%s\n' "$identity_output" \
+    | grep 'Apple Development' \
+    | sed -nE 's/.*\(([A-Z0-9]{10})\).*/\1/p' \
+    | sort -u || true
   echo
   echo "--- CocoaPods lock ---"
   if [[ -f ios/Podfile.lock ]]; then
