@@ -251,6 +251,11 @@ begin
     raise exception 'manager default feature permissions missing';
   end if;
 
+  if position('company_approval_assignees' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0
+     or position('v_is_approval_assignee' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
+    raise exception 'current feature approval permission must follow configured assignees';
+  end if;
+
   if position('owner role cannot be changed' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
     raise exception 'owner role protection missing';
   end if;
