@@ -86,7 +86,9 @@ begin
     where schemaname = 'public'
       and tablename = 'company_members'
       and policyname = 'company_members_self_read'
-      and position('user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and (position('user_id = auth.uid()' in coalesce(qual, '')) > 0
+           or position('user_id = ( SELECT auth.uid()' in coalesce(qual, '')) > 0
+           or position('user_id = (select auth.uid())' in lower(coalesce(qual, ''))) > 0)
   ) then
     raise exception 'company_members self-read policy missing';
   end if;
