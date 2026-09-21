@@ -13,6 +13,15 @@ void main() {
     expect(doc, contains('SHA-256 checksums'));
     expect(doc, contains('bash tool/device_day.sh'));
     expect(doc, contains('bash tool/supabase_repro_preflight.sh'));
+    expect(doc, contains('general 10 pages'));
+    expect(doc, contains('sub-admin 15 pages'));
+    expect(doc, contains('admin 20 pages'));
+    expect(doc, contains('20-page SKO beta pamphlet'));
+    expect(doc, contains('CI rejects a mismatch'));
+    expect(doc, contains('configured 1-3 approval assignees'));
+    expect(doc, contains('2026-09-22'));
+    expect(doc, contains('assign sub-admin status and approval-assignee intent'));
+    expect(doc, contains('one of the current three must be selected for replacement'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
