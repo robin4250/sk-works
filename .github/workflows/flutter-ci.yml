@@ -2,7 +2,7 @@ name: Flutter CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**']
     paths-ignore:
       - 'docs/**'
       - 'README.md'
