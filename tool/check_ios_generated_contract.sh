@@ -6,9 +6,14 @@ if [[ ! -f ios/Runner/Info.plist || ! -f ios/Runner.xcodeproj/project.pbxproj ]]
   exit 1
 fi
 
-python3 <<'PY'
+EXPECTED_BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.robin4250.sko}"
+
+python3 - "$EXPECTED_BUNDLE_ID" <<'PY'
 from pathlib import Path
 import plistlib
+import sys
+
+expected_bundle_id = sys.argv[1]
 
 with Path("ios/Runner/Info.plist").open("rb") as f:
     data = plistlib.load(f)
@@ -46,8 +51,8 @@ if data.get("UISupportedInterfaceOrientations") != [
     raise SystemExit("iPhone orientation contract must be portrait-only")
 
 project = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
-if "PRODUCT_BUNDLE_IDENTIFIER = com.robin4250.sko;" not in project:
-    raise SystemExit("unexpected Runner bundle identifier")
+if f"PRODUCT_BUNDLE_IDENTIFIER = {expected_bundle_id};" not in project:
+    raise SystemExit(f"unexpected Runner bundle identifier: expected {expected_bundle_id}")
 PY
 
 echo "✓ iOS generated project contract"
