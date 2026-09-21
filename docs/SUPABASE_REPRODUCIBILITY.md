@@ -67,6 +67,7 @@ Migration names can drift historically, so current reproducibility is not judged
 - admin initial setup progress and company rate settings
 - nearest-station field on sites
 - private employee onboarding document Storage
+- invite-time sub-admin / approval-assignee intent columns and the 3-person approver limit guard
 - full pre-device database security assertions
 
 This lets historical migration-name drift remain documented without using destructive `migration repair`.
