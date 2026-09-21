@@ -1,8 +1,38 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/home/home_membership_repository.dart';
 
 void main() {
+  test('full admin approval access follows configured permission value', () {
+    const adminNotAssignee = HomeIdentity(
+      role: 'admin',
+      companyName: 'SKO',
+      displayName: 'Admin',
+      permissions: {
+        'can_approve_daily_report_edits': false,
+      },
+    );
+    const adminAssignee = HomeIdentity(
+      role: 'admin',
+      companyName: 'SKO',
+      displayName: 'Admin',
+      permissions: {
+        'can_approve_daily_report_edits': true,
+      },
+    );
+
+    expect(
+      adminNotAssignee.can('can_approve_daily_report_edits'),
+      isFalse,
+    );
+    expect(
+      adminAssignee.can('can_approve_daily_report_edits'),
+      isTrue,
+    );
+    expect(adminNotAssignee.can('can_view_invoices'), isTrue);
+  });
+
   test('current approval permission follows configured assignee table', () {
     final sql = File(
       'supabase/migrations/20260922021500_align_approval_assignee_permission_source.sql',
