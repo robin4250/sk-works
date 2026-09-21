@@ -189,6 +189,27 @@ begin
 end;
 $$;
 
+create or replace function public.can_review_employee_onboarding()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $
+  select exists (
+    select 1
+    from public.company_members cm
+    left join public.company_approval_assignees caa
+      on caa.company_id = cm.company_id
+     and caa.user_id = cm.user_id
+    where cm.user_id = auth.uid()
+      and (
+        cm.role::text in ('owner','admin')
+        or caa.user_id is not null
+      )
+  );
+$;
+
 create or replace function public.pending_employee_onboarding_rows()
 returns table(
   invite_id uuid,
@@ -356,6 +377,8 @@ $$;
 revoke execute on function public.save_employee_onboarding_profile(
   text,text,text,text,text,text,text,text,text,text
 ) from public, anon;
+revoke execute on function public.can_review_employee_onboarding()
+  from public, anon;
 revoke execute on function public.pending_employee_onboarding_rows()
   from public, anon;
 revoke execute on function public.approve_employee_onboarding(uuid)
@@ -364,6 +387,8 @@ revoke execute on function public.approve_employee_onboarding(uuid)
 grant execute on function public.save_employee_onboarding_profile(
   text,text,text,text,text,text,text,text,text,text
 ) to authenticated;
+grant execute on function public.can_review_employee_onboarding()
+  to authenticated;
 grant execute on function public.pending_employee_onboarding_rows()
   to authenticated;
 grant execute on function public.approve_employee_onboarding(uuid)
