@@ -14,5 +14,6 @@ void main() {
     expect(source, contains('SUPABASE_SERVICE_ROLE_KEY'));
     expect(source, contains('LINE_CHANNEL_SECRET'));
     expect(source, contains('sb_secret_'));
+    expect(source, contains('JWT-like secret absent'));
   });
 }
