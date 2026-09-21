@@ -30,6 +30,7 @@ void main() {
     expect(doc, contains('52 to 43'));
     expect(doc, contains('no `migration repair` has been performed'));
     expect(doc, contains('seven required private Storage buckets'));
+    expect(doc, contains('Edge Function sources were re-compared with `main` and match exactly'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
