@@ -77,6 +77,12 @@ if command -v flutter >/dev/null 2>&1; then
       else
         ok "pubspec.lock はGit管理可能"
       fi
+      if git diff --quiet -- pubspec.lock; then
+        ok "pubspec.lock は現在の固定依存と一致"
+      else
+        fail "flutter pub get により pubspec.lock が変更されました"
+        echo "  依存固定が変わっているため、実機テスト前に差分を確認してください"
+      fi
     else
       fail "flutter pub get 後も pubspec.lock が生成されませんでした"
     fi
