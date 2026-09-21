@@ -24,6 +24,12 @@ echo "✓ Shell helper syntax"
 
 if command -v flutter >/dev/null 2>&1; then
   echo
+  echo "--- Flutter dependency resolution ---"
+  flutter pub get
+  git diff --exit-code -- pubspec.lock
+  echo "✓ pubspec.lock is stable after flutter pub get"
+
+  echo
   echo "--- Flutter analyze ---"
   flutter analyze
 
