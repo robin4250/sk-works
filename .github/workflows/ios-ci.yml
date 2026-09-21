@@ -82,6 +82,9 @@ jobs:
       - name: Prepare iOS project
         run: bash tool/prepare_ios.sh
 
+      - name: Verify lockfile is stable
+        run: git diff --exit-code -- pubspec.lock
+
       - name: Verify prepare preserves existing iOS project
         run: |
           python3 - <<'PY'
