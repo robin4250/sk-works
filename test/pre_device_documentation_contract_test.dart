@@ -22,6 +22,8 @@ void main() {
     expect(doc, contains('2026-09-22'));
     expect(doc, contains('assign sub-admin status and approval-assignee intent'));
     expect(doc, contains('one of the current three must be selected for replacement'));
+    expect(doc, contains('employee-invite role/approver migrations'));
+    expect(doc, contains('JWT verification enabled'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
