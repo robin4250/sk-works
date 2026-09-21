@@ -61,6 +61,13 @@ jobs:
           bash -n tool/device_day_preflight.sh
           bash -n tool/device_day.sh
 
+      - name: Verify device-day signing diagnostics
+        run: |
+          grep -q 'xcodebuild -checkFirstLaunchStatus' tool/ios_install_assistant.sh
+          grep -q 'xcodebuild -showsdks' tool/ios_install_assistant.sh
+          grep -q 'Signing Team候補' tool/ios_install_assistant.sh
+          grep -q 'Detected Team ID candidates' tool/collect_ios_diagnostics.sh
+
       - name: Verify public Supabase client template
         run: |
           grep -Eq '^export SUPABASE_URL="https://.*\.supabase\.co"$' tool/local_supabase_env.example.sh
