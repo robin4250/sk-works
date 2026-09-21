@@ -66,6 +66,9 @@ jobs:
           ! grep '^export ' tool/local_supabase_env.example.sh | grep -qi 'service_role'
           grep -Eq '^/?tool/local_supabase_env\.sh$' .gitignore
 
+      - name: Scan tracked files for production secrets
+        run: bash tool/check_no_client_secrets.sh
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
