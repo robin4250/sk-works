@@ -36,10 +36,11 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Membership writes are RPC-only and the owner role is protected.
 - CRUD grants without a matching RLS path are removed.
 - LINE webhook signature verification is HMAC-SHA256 with constant-time comparison, and deployed Edge Function source matches Git.
+- `create-employee-invite` is deployed from the current Git source with JWT verification enabled; the production function was updated after invite role/approver assignment was added.
 - The repeatable production DB audit is `tool/supabase_security_assertions.sql`.
 - The latest production audit returns:
   `SKO pre-device database security assertions passed`
-- The production audit was re-run after the latest approval-assignee and company-rate migrations on 2026-09-22 and passed.
+- The production audit was re-run after the latest approval-assignee, company-rate, and employee-invite role/approver migrations on 2026-09-22 and passed.
 - Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
 - Supabase migration-history drift is documented and a non-destructive Mac-day reproducibility preflight is available.
