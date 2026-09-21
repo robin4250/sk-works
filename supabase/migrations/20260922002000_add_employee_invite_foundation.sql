@@ -47,8 +47,7 @@ begin
     return null;
   end if;
 
-  if v_row.status <> 'approved'
-     and v_row.status <> 'cancelled'
+  if v_row.status = 'invited'
      and v_row.expires_at < now() then
     update public.employee_registration_invites
     set status = 'cancelled'
