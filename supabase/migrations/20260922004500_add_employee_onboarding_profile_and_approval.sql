@@ -195,7 +195,7 @@ language sql
 stable
 security definer
 set search_path = public, pg_temp
-as $
+as $review$
   select exists (
     select 1
     from public.company_members cm
@@ -208,7 +208,7 @@ as $
         or caa.user_id is not null
       )
   );
-$;
+$review$;
 
 create or replace function public.pending_employee_onboarding_rows()
 returns table(
