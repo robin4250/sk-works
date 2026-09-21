@@ -547,3 +547,60 @@ class EmployeeApprovalWaitingPage extends StatelessWidget {
     );
   }
 }
+
+
+class EmployeeInviteInvalidPage extends StatelessWidget {
+  const EmployeeInviteInvalidPage({
+    super.key,
+    required this.onSignOut,
+  });
+
+  final Future<void> Function() onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('従業員登録')),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer_off_outlined, size: 58),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'この従業員登録は期限切れです',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 20,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        '登録した会社のSKO利用者に、従業員登録をもう一度作成してもらってください。',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        onPressed: onSignOut,
+                        child: const Text('ログアウト'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
