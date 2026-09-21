@@ -8,11 +8,11 @@ void main() {
       'supabase/migrations/20260922004500_add_employee_onboarding_profile_and_approval.sql',
     ).readAsStringSync();
 
-    expect(sql, contains(r'as $review$'));
-    expect(sql, contains(r'$review$;'));
-    expect(sql, isNot(contains(r'as 
-  });
-}
- '\n  select exists')));
+    final dollar = String.fromCharCode(36);
+    final tag = dollar + 'review' + dollar;
+
+    expect(sql, contains('as ' + tag));
+    expect(sql, contains(tag + ';'));
+    expect(sql, isNot(contains('as ' + dollar + '\n  select exists')));
   });
 }
