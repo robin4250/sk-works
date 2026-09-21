@@ -30,6 +30,10 @@ void main() {
     expect(source, contains('company_rate_settings'));
     expect(source, contains('nearest_station'));
     expect(source, contains('employee-onboarding-documents'));
-    expect(source, contains('t|t|t|t|t|t'));
+    expect(source, contains('requested_role'));
+    expect(source, contains('requested_approval_assignee'));
+    expect(source, contains('replace_approval_assignee_user_id'));
+    expect(source, contains('approval_assignee_limit_reached'));
+    expect(source, contains('t|t|t|t|t|t|t|t|t|t'));
   });
 }
