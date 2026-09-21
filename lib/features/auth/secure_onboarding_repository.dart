@@ -2,6 +2,31 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class EmployeeOnboardingState {
+  const EmployeeOnboardingState({
+    required this.inviteId,
+    required this.companyId,
+    required this.workerId,
+    required this.name,
+    required this.phone,
+    required this.status,
+    required this.passwordChanged,
+  });
+
+  final String inviteId;
+  final String companyId;
+  final String workerId;
+  final String name;
+  final String phone;
+  final String status;
+  final bool passwordChanged;
+
+  bool get needsPrimaryPassword =>
+      status == 'invited' || status == 'password_changed';
+  bool get needsProfile => status == 'profile_pending';
+  bool get awaitingApproval => status == 'approval_pending';
+}
+
 class SecureOnboardingRepository {
   SecureOnboardingRepository._(this._client);
 
@@ -107,6 +132,29 @@ class SecureOnboardingRepository {
     await _client.auth.updateUser(
       UserAttributes(password: password),
     );
+  }
+
+  Future<EmployeeOnboardingState?> employeeOnboardingState() async {
+    if (_client.auth.currentUser == null) return null;
+    final value = await _client.rpc('employee_onboarding_state');
+    if (value == null || value is! Map) return null;
+    final row = Map<String, dynamic>.from(value);
+    final inviteId = row['invite_id']?.toString() ?? '';
+    if (inviteId.isEmpty) return null;
+    return EmployeeOnboardingState(
+      inviteId: inviteId,
+      companyId: row['company_id']?.toString() ?? '',
+      workerId: row['worker_id']?.toString() ?? '',
+      name: row['name']?.toString() ?? '',
+      phone: row['phone']?.toString() ?? '',
+      status: row['status']?.toString() ?? 'invited',
+      passwordChanged: row['password_changed_at'] != null,
+    );
+  }
+
+  Future<void> setEmployeePrimaryPassword(String password) async {
+    await updatePrimaryPassword(password);
+    await _client.rpc('mark_employee_initial_password_changed');
   }
 
   Future<bool> secondaryPasswordConfigured() async {
