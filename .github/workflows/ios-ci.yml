@@ -112,6 +112,9 @@ jobs:
           assert "NSLocationAlwaysUsageDescription" not in data
           assert "NSLocationAlwaysAndWhenInUseUsageDescription" not in data
           assert "location" not in data.get("UIBackgroundModes", [])
+          ats = data.get("NSAppTransportSecurity", {})
+          assert ats.get("NSAllowsArbitraryLoads") is not True
+          assert ats.get("NSAllowsArbitraryLoadsInWebContent") is not True
           assert data.get("UISupportedInterfaceOrientations") == [
               "UIInterfaceOrientationPortrait"
           ]
