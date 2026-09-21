@@ -21,11 +21,6 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
   static const _permissionLabels = <String, String>{
     'can_manage_attendance': '出勤・人区管理',
     'can_manage_people': '人員管理',
-    'can_view_invoices': '請求書を見る',
-    'can_manage_invoices': '請求書設定・管理',
-    'can_view_admin_site_data': '管理者用現場データを見る',
-    'can_manage_admin_site_data': '管理者用現場データを編集',
-    'can_manage_payroll': '給与管理',
     'can_manage_partner_chat': '協力会社チャット',
   };
 
@@ -408,7 +403,17 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                           ),
                         ),
                       )
-                    else
+                    else ...[
+                      if (role == 'manager')
+                        const Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(14),
+                            child: Text(
+                              'サブ管理者は請求書・管理者用現場データ（現場単価）・給与管理を利用できません。'
+                              '本人の給与明細は一般ユーザーと同じように第2認証で確認できます。',
+                            ),
+                          ),
+                        ),
                       for (final entry in _permissionLabels.entries)
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -418,6 +423,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                             () => permissions[entry.key] = value,
                           ),
                         ),
+                    ],
                   ],
                 ),
               ),
