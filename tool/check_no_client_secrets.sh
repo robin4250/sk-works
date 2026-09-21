@@ -9,10 +9,13 @@ check_pattern() {
   local label="$1"
   local pattern="$2"
   local matches
-  matches="$(git grep -nEI "$pattern" --     ':!docs/**'     ':!tool/check_no_client_secrets.sh'     ':!supabase/functions/line-webhook/index.ts' 2>/dev/null || true)"
+  matches="$(git grep -lEI "$pattern" --     ':!docs/**'     ':!tool/check_no_client_secrets.sh'     ':!supabase/functions/line-webhook/index.ts' 2>/dev/null || true)"
   if [[ -n "$matches" ]]; then
     echo "✗ $label"
-    echo "$matches"
+    echo "  該当ファイル:"
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && echo "  - $file"
+    done <<< "$matches"
     fail=1
   else
     echo "✓ $label"
