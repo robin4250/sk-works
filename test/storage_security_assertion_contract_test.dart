@@ -14,6 +14,8 @@ void main() {
     expect(source, contains("'worker-documents'::text, 52428800::bigint"));
     expect(source, contains("'chat-attachments'::text, 52428800::bigint"));
     expect(source, contains('security_invoker=true'));
+    expect(source, contains("has_schema_privilege('authenticated', 'public', 'CREATE')"));
+    expect(source, contains('SECURITY DEFINER function without explicit search_path'));
     expect(source, contains('exposed public view/materialized view may bypass RLS'));
   });
 }
