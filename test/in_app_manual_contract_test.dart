@@ -11,6 +11,22 @@ void main() {
     expect(ManualContent.pamphlet.length, 20);
   });
 
+  test('admin manual does not inherit sub-admin-only restrictions', () {
+    final adminText = ManualContent.admin
+        .map((section) => [
+              section.title,
+              section.summary,
+              section.support,
+              ...section.steps,
+            ].join(' '))
+        .join(' ');
+
+    expect(adminText, isNot(contains('請求書・現場単価は対象外')));
+    expect(adminText, contains('会社単価・手当設定'));
+    expect(adminText, contains('管理者用現場データ'));
+    expect(adminText, contains('個人事業主・一人親方'));
+  });
+
   test('membership roles map to the correct manual', () {
     expect(
       ManualContent.fromMembershipRole('viewer'),
