@@ -256,6 +256,13 @@ begin
     raise exception 'current feature approval permission must follow configured assignees';
   end if;
 
+  if position('requested_role' in pg_get_functiondef('public.approve_employee_onboarding(uuid)'::regprocedure)) = 0
+     or position('requested_approval_assignee' in pg_get_functiondef('public.approve_employee_onboarding(uuid)'::regprocedure)) = 0
+     or position('replace_approval_assignee_user_id' in pg_get_functiondef('public.approve_employee_onboarding(uuid)'::regprocedure)) = 0
+     or position('approval_assignee_limit_reached' in pg_get_functiondef('public.approve_employee_onboarding(uuid)'::regprocedure)) = 0 then
+    raise exception 'employee onboarding role/approver assignment contract missing';
+  end if;
+
   if position('owner role cannot be changed' in pg_get_functiondef('public.set_member_feature_permissions(uuid,text,jsonb)'::regprocedure)) = 0 then
     raise exception 'owner role protection missing';
   end if;
