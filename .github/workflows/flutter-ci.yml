@@ -41,8 +41,14 @@ jobs:
       - name: Scan tracked files for production secrets
         run: bash tool/check_no_client_secrets.sh
 
+      - name: Verify dependency pins
+        run: bash tool/check_dependency_pins.sh
+
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Verify lockfile is stable
+        run: git diff --exit-code -- pubspec.lock
 
       - name: Analyze
         run: flutter analyze

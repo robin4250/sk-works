@@ -119,3 +119,6 @@ app.*.symbols
 !/dev/ci/**/Gemfile.lock
 # Local SKO device-test environment
 /tool/local_supabase_env.sh
+
+# Flutter application lockfile must be committed for reproducible builds
+!/pubspec.lock
