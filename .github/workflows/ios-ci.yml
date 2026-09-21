@@ -9,6 +9,7 @@ on:
       - 'ios/**'
       - 'tool/prepare_ios.sh'
       - 'tool/check_ios_readiness.sh'
+      - 'tool/check_ios_generated_contract.sh'
       - 'tool/run_ios_device.sh'
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
@@ -55,6 +56,7 @@ jobs:
         run: |
           bash -n tool/prepare_ios.sh
           bash -n tool/check_ios_readiness.sh
+          bash -n tool/check_ios_generated_contract.sh
           bash -n tool/run_ios_device.sh
           bash -n tool/ios_install_assistant.sh
           bash -n tool/mac_first_run.sh
@@ -96,6 +98,9 @@ jobs:
 
       - name: Prepare iOS project
         run: bash tool/prepare_ios.sh
+
+      - name: Verify generated iOS project contract
+        run: bash tool/check_ios_generated_contract.sh
 
       - name: Verify lockfile is stable
         run: git diff --exit-code -- pubspec.lock
