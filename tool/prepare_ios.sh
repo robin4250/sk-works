@@ -71,6 +71,17 @@ if isinstance(background_modes, list):
     else:
         data.pop("UIBackgroundModes", None)
 
+# SKO uses HTTPS endpoints. Never carry over a broad ATS bypass from an
+# older/reused Xcode project.
+ats = data.get("NSAppTransportSecurity")
+if isinstance(ats, dict):
+    ats.pop("NSAllowsArbitraryLoads", None)
+    ats.pop("NSAllowsArbitraryLoadsInWebContent", None)
+    if ats:
+        data["NSAppTransportSecurity"] = ats
+    else:
+        data.pop("NSAppTransportSecurity", None)
+
 with plist_path.open("wb") as f:
     plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)
 
