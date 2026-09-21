@@ -15,4 +15,14 @@ void main() {
     expect(source, isNot(contains('supabase db push\n')));
     expect(source, isNot(contains('supabase migration repair ')));
   });
+
+  test('known historical migration drift is documented', () {
+    final doc =
+        File('docs/SUPABASE_REPRODUCIBILITY.md').readAsStringSync();
+
+    expect(doc, contains('initial_sk_works_schema'));
+    expect(doc, contains('add_communication_groups_and_line_bindings'));
+    expect(doc, contains('add_communication_chat'));
+    expect(doc, contains('add_line_bridge_foundation'));
+  });
 }
