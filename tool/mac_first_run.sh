@@ -66,6 +66,32 @@ if ! command -v pod >/dev/null 2>&1; then
 fi
 
 echo
+echo "--- Flutter依存固定 ---"
+if command -v flutter >/dev/null 2>&1; then
+  if flutter pub get; then
+    ok "Flutter依存解決"
+    if [[ -f "pubspec.lock" ]]; then
+      ok "pubspec.lock 生成済み"
+      if git check-ignore -q pubspec.lock 2>/dev/null; then
+        fail "pubspec.lock が .gitignore に含まれています"
+      else
+        ok "pubspec.lock はGit管理可能"
+      fi
+      if git diff --quiet -- pubspec.lock; then
+        ok "pubspec.lock は現在の固定依存と一致"
+      else
+        fail "flutter pub get により pubspec.lock が変更されました"
+        echo "  依存固定が変わっているため、実機テスト前に差分を確認してください"
+      fi
+    else
+      fail "flutter pub get 後も pubspec.lock が生成されませんでした"
+    fi
+  else
+    fail "flutter pub get に失敗しました"
+  fi
+fi
+
+echo
 echo "--- SKOローカル設定 ---"
 if [[ -f "tool/local_supabase_env.sh" ]]; then
   ok "tool/local_supabase_env.sh"
