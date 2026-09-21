@@ -19,7 +19,7 @@ done
 echo "--- Shell syntax ---"
 while IFS= read -r file; do
   bash -n "$file"
-done < <(find tool -maxdepth 1 -type f -name '*.sh' | sort)
+done < <(find tool -type f -name '*.sh' | sort)
 echo "✓ Shell helper syntax"
 
 if command -v flutter >/dev/null 2>&1; then
