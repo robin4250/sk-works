@@ -10,7 +10,7 @@ void main() {
     expect(source, contains('check_dependency_pins.sh'));
     expect(source, contains('check_no_client_secrets.sh'));
     expect(source, contains('check_migration_files.sh'));
-    expect(source, contains("find tool -maxdepth 1 -type f -name '*.sh'"));
+    expect(source, contains("find tool -type f -name '*.sh'"));
     expect(source, isNot(contains('mapfile')));
     expect(source, contains('flutter analyze'));
     expect(source, contains('flutter test'));
