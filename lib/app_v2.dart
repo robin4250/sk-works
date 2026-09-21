@@ -12,6 +12,8 @@ import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
+import 'features/auth/employee_onboarding_approvals_page.dart';
+import 'features/auth/employee_onboarding_repository.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
@@ -20,12 +22,14 @@ import 'features/daily_reports/daily_report_approvals_page.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
 import 'features/home/friendly_home_content.dart';
+import 'features/home/home_attention_repository.dart';
 import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/payroll/payroll_statements_page.dart';
+import 'features/people/employee_invite_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/worker_document_page.dart';
@@ -109,6 +113,9 @@ class _HomePageState extends State<HomePage> {
   final _moduleSettingsRepository =
       CompanyModuleSettingsRepository.maybeCreate();
   final _membershipRepository = HomeMembershipRepository.maybeCreate();
+  final _employeeOnboardingRepository =
+      EmployeeOnboardingRepository.maybeCreate();
+  final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
@@ -118,6 +125,14 @@ class _HomePageState extends State<HomePage> {
     displayName: 'ユーザー',
   );
   int _selectedIndex = 0;
+  bool _canReviewEmployeeOnboarding = false;
+  RequiredDocumentAttention _requiredDocumentAttention =
+      const RequiredDocumentAttention(
+        missingCount: 0,
+        missingNames: [],
+        needsLicense: false,
+        needsQualification: false,
+      );
 
   bool get _isAdmin => _identity.isAdmin;
 
@@ -132,6 +147,8 @@ class _HomePageState extends State<HomePage> {
       _loadModuleSettings(),
       _loadIdentity(),
       _loadUsage(),
+      _loadEmployeeOnboardingCapability(),
+      _loadRequiredDocumentAttention(),
     ]);
   }
 
@@ -155,6 +172,31 @@ class _HomePageState extends State<HomePage> {
       setState(() => _identity = identity);
     } catch (_) {
       // Keep the safest default if identity loading fails.
+    }
+  }
+
+  Future<void> _loadRequiredDocumentAttention() async {
+    final repository = _homeAttentionRepository;
+    if (repository == null) return;
+    try {
+      final value = await repository.loadRequiredDocumentAttention();
+      if (!mounted) return;
+      setState(() => _requiredDocumentAttention = value);
+    } catch (_) {
+      // Missing-document attention must not block the home screen.
+    }
+  }
+
+  Future<void> _loadEmployeeOnboardingCapability() async {
+    final repository = _employeeOnboardingRepository;
+    if (repository == null) return;
+    try {
+      final value = await repository.canReview();
+      if (!mounted) return;
+      setState(() => _canReviewEmployeeOnboarding = value);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _canReviewEmployeeOnboarding = false);
     }
   }
 
@@ -299,6 +341,12 @@ class _HomePageState extends State<HomePage> {
       case 'daily_report':
         page = const DailyReportPage();
         break;
+      case 'employee_register':
+        page = const EmployeeInvitePage();
+        break;
+      case 'employee_onboarding_approvals':
+        page = const EmployeeOnboardingApprovalsPage();
+        break;
       case 'approvals':
         page = const DailyReportApprovalsPage();
         break;
@@ -374,6 +422,17 @@ class _HomePageState extends State<HomePage> {
         label: '日報',
         icon: Icons.description_outlined,
       ),
+      const _MenuAction(
+        key: 'employee_register',
+        label: '従業員登録',
+        icon: Icons.person_add_alt_1,
+      ),
+      if (_canReviewEmployeeOnboarding)
+        const _MenuAction(
+          key: 'employee_onboarding_approvals',
+          label: '本登録承認',
+          icon: Icons.verified_user_outlined,
+        ),
       if (!_isAdmin)
         const _MenuAction(
           key: 'payroll',
@@ -469,6 +528,7 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: FriendlyHomeContent(
           identity: _identity,
+          requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
