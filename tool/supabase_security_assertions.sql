@@ -103,6 +103,32 @@ begin
     raise exception 'LINE binding owner/admin visibility policy missing';
   end if;
 
+  if has_schema_privilege('anon', 'public', 'CREATE')
+     or has_schema_privilege('authenticated', 'public', 'CREATE')
+     or has_schema_privilege('anon', 'private', 'CREATE')
+     or has_schema_privilege('authenticated', 'private', 'CREATE')
+     or has_schema_privilege('anon', 'storage', 'CREATE')
+     or has_schema_privilege('authenticated', 'storage', 'CREATE')
+     or has_schema_privilege('anon', 'extensions', 'CREATE')
+     or has_schema_privilege('authenticated', 'extensions', 'CREATE') then
+    raise exception 'app roles must not have CREATE on security-sensitive schemas';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef
+      and n.nspname in ('public', 'private')
+      and not exists (
+        select 1
+        from unnest(coalesce(p.proconfig, array[]::text[])) cfg
+        where cfg like 'search_path=%'
+      )
+  ) then
+    raise exception 'SECURITY DEFINER function without explicit search_path';
+  end if;
+
   if exists (
     select 1
     from pg_class c
