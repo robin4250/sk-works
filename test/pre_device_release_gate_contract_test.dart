@@ -14,5 +14,9 @@ void main() {
     expect(source, isNot(contains('mapfile')));
     expect(source, contains('flutter analyze'));
     expect(source, contains('flutter test'));
+
+    final deviceDay = File('tool/device_day.sh').readAsStringSync();
+    expect(deviceDay, contains('bash tool/pre_device_release_gate.sh'));
+    expect(deviceDay, contains('[4/4] SKOをiPhoneへ起動します'));
   });
 }
