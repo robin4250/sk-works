@@ -9,7 +9,7 @@ check_pattern() {
   local label="$1"
   local pattern="$2"
   local matches
-  matches="$(git grep -lEI "$pattern" --     ':!docs/**'     ':!tool/check_no_client_secrets.sh' 2>/dev/null || true)"
+  matches="$(git grep -lEI "$pattern" --     ':!tool/check_no_client_secrets.sh' 2>/dev/null || true)"
   if [[ -n "$matches" ]]; then
     echo "✗ $label"
     echo "  該当ファイル:"
