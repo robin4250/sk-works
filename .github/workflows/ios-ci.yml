@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'lib/**'
+      - 'test/**'
       - 'ios/**'
       - 'tool/prepare_ios.sh'
       - 'tool/check_ios_readiness.sh'
@@ -22,6 +23,7 @@ on:
     branches: [main]
     paths:
       - 'lib/**'
+      - 'test/**'
       - 'ios/**'
       - 'tool/prepare_ios.sh'
       - 'tool/check_ios_readiness.sh'
