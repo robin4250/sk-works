@@ -43,6 +43,53 @@ begin
     raise exception 'authenticated has CRUD grant without matching RLS policy';
   end if;
 
+  if has_column_privilege('authenticated', 'public.workers', 'phone', 'SELECT')
+     or has_column_privilege('authenticated', 'public.workers', 'email', 'SELECT')
+     or has_column_privilege('authenticated', 'public.workers', 'notes', 'SELECT') then
+    raise exception 'worker private contact columns must not be directly selectable';
+  end if;
+
+  if has_column_privilege('authenticated', 'public.partner_companies', 'phone', 'SELECT')
+     or has_column_privilege('authenticated', 'public.partner_companies', 'email', 'SELECT')
+     or has_column_privilege('authenticated', 'public.partner_companies', 'address', 'SELECT')
+     or has_column_privilege('authenticated', 'public.partner_companies', 'notes', 'SELECT') then
+    raise exception 'partner-company private contact columns must not be directly selectable';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'customers'
+      and policyname = 'invoice viewers can read customers'
+      and position('can_view_invoices' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'customer billing privacy policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'company_members'
+      and policyname = 'company_members_self_read'
+      and position('user_id = auth.uid()' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'company_members self-read policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'line_group_bindings'
+      and policyname = 'owners and admins can read line bindings'
+      and position('owner' in coalesce(qual, '')) > 0
+      and position('admin' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'LINE binding owner/admin visibility policy missing';
+  end if;
+
   if exists (
     select 1
     from pg_class c
