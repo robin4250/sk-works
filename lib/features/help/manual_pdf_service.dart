@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'manual_content.dart';
+import 'manual_version.dart';
 
 class ManualPdfService {
   const ManualPdfService._();
@@ -175,9 +176,18 @@ class ManualPdfService {
           ),
         ),
         pw.SizedBox(height: 8),
-        pw.Text(
-          'ベータ版：アプリの大幅更新時は、説明書・パンフレットもセットで更新します。',
-          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'ベータ版：アプリの大幅更新時は、説明書・パンフレットもセットで更新します。',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+            pw.Text(
+              ManualVersion.label,
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+          ],
         ),
       ],
     );
