@@ -48,6 +48,7 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Approval routing/1-to-3 approver guards, invite-time sub-admin/approver assignment, secondary-password five-attempt locking, sole-requester approval boundaries, and the seven required private Storage buckets were re-verified after the performance migrations.
 - The current authenticated SECURITY DEFINER Advisor warning set is reviewed rather than auto-rewritten: the 40 currently callable functions reference `auth.uid()`, while anon/PUBLIC execution remains denied and explicit `search_path` is enforced.
 - Production migration history can contain repeated deployment entries with the same descriptive migration name after safe non-destructive replay. Schema state and the reproducibility preflight are authoritative; no `migration repair` has been performed.
+- Deployed `create-employee-invite` and `line-webhook` Edge Function sources were re-compared with `main` and match exactly; employee invite JWT verification remains enabled.
 - Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
 - Supabase migration-history drift is documented and a non-destructive Mac-day reproducibility preflight is available.
