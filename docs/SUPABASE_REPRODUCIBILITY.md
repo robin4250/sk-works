@@ -41,10 +41,11 @@ bash tool/supabase_repro_preflight.sh
 
 The script is intentionally non-destructive. It performs:
 
-1. `supabase migration list --linked`
+1. `supabase migration list`
 2. `supabase db lint --linked --fail-on error`
 3. a public-schema `supabase db dump`
 4. a Storage-schema diff
+5. a direct Storage bucket metadata snapshot when `psql` + `SUPABASE_DB_URL` are available, because bucket changes are a documented `db diff` limitation
 
 It never runs `db reset --linked`, `db push`, `migration repair`, or any destructive SQL.
 
