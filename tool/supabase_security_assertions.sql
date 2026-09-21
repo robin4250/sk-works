@@ -280,6 +280,20 @@ begin
     raise exception 'approval-assignee table must be RPC-only';
   end if;
 
+  if to_regprocedure('public.company_rate_settings_state()') is not null
+     and has_function_privilege('anon', 'public.company_rate_settings_state()', 'EXECUTE') then
+    raise exception 'company_rate_settings_state must not be executable by anon';
+  end if;
+
+  if to_regprocedure('public.save_company_rate_settings(numeric,numeric,integer,integer,integer,integer,text,integer,text,integer,text,integer)') is not null
+     and has_function_privilege(
+       'anon',
+       'public.save_company_rate_settings(numeric,numeric,integer,integer,integer,integer,text,integer,text,integer,text,integer)',
+       'EXECUTE'
+     ) then
+    raise exception 'save_company_rate_settings must not be executable by anon';
+  end if;
+
   select count(*)
   into v_sensitive_bucket_count
   from storage.buckets
