@@ -103,6 +103,50 @@ begin
     raise exception 'LINE binding owner/admin visibility policy missing';
   end if;
 
+  if has_schema_privilege('anon', 'public', 'CREATE')
+     or has_schema_privilege('authenticated', 'public', 'CREATE')
+     or has_schema_privilege('anon', 'private', 'CREATE')
+     or has_schema_privilege('authenticated', 'private', 'CREATE')
+     or has_schema_privilege('anon', 'storage', 'CREATE')
+     or has_schema_privilege('authenticated', 'storage', 'CREATE')
+     or has_schema_privilege('anon', 'extensions', 'CREATE')
+     or has_schema_privilege('authenticated', 'extensions', 'CREATE') then
+    raise exception 'app roles must not have CREATE on security-sensitive schemas';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef
+      and n.nspname in ('public', 'private')
+      and not exists (
+        select 1
+        from unnest(coalesce(p.proconfig, array[]::text[])) cfg
+        where cfg like 'search_path=%'
+      )
+  ) then
+    raise exception 'SECURITY DEFINER function without explicit search_path';
+  end if;
+
+  if exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('v', 'm')
+      and (
+        has_table_privilege('anon', format('%I.%I', n.nspname, c.relname), 'SELECT')
+        or has_table_privilege('authenticated', format('%I.%I', n.nspname, c.relname), 'SELECT')
+      )
+      and (
+        c.relkind = 'm'
+        or not ('security_invoker=true' = any(coalesce(c.reloptions, array[]::text[])))
+      )
+  ) then
+    raise exception 'exposed public view/materialized view may bypass RLS';
+  end if;
+
   if exists (
     select 1
     from pg_class c
@@ -232,6 +276,25 @@ begin
       and public
   ) then
     raise exception 'sensitive storage bucket must not be public';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      values
+        ('profile-photos'::text, 10485760::bigint),
+        ('attendance-evidence'::text, 15728640::bigint),
+        ('qualification-certificates'::text, 20971520::bigint),
+        ('communication-albums'::text, 20971520::bigint),
+        ('worker-documents'::text, 52428800::bigint),
+        ('chat-attachments'::text, 52428800::bigint)
+    ) as expected(id, file_size_limit)
+    left join storage.buckets b on b.id = expected.id
+    where b.id is null
+       or b.public
+       or b.file_size_limit is distinct from expected.file_size_limit
+  ) then
+    raise exception 'private storage bucket size limits do not match SKO baseline';
   end if;
 
   select pg_get_functiondef('private.has_storage_company_access(text)'::regprocedure)
