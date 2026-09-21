@@ -205,6 +205,12 @@ begin
     raise exception 'user_secondary_credentials must not be directly accessible';
   end if;
 
+  if has_table_privilege('anon', 'public.employee_registration_invites', 'SELECT,INSERT,UPDATE,DELETE')
+     or has_table_privilege('authenticated', 'public.employee_registration_invites', 'SELECT,INSERT,UPDATE,DELETE') then
+    raise exception 'employee_registration_invites must be RPC/Edge-only';
+  end if;
+
+
   if has_table_privilege('anon', 'public.line_webhook_events', 'SELECT,INSERT,UPDATE,DELETE')
      or has_table_privilege('authenticated', 'public.line_webhook_events', 'SELECT,INSERT,UPDATE,DELETE') then
     raise exception 'line_webhook_events must not be directly accessible';
@@ -289,6 +295,17 @@ begin
   ) then
     raise exception 'sensitive storage bucket must not be public';
   end if;
+
+  if not exists (
+    select 1
+    from storage.buckets
+    where id = 'employee-onboarding-documents'
+      and not public
+      and file_size_limit = 20971520
+  ) then
+    raise exception 'employee onboarding document bucket privacy/size mismatch';
+  end if;
+
 
   if exists (
     select 1
@@ -390,6 +407,18 @@ begin
       and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
   ) then
     raise exception 'attendance evidence self-or-manager read policy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'employee_onboarding_documents_read'
+      and position('auth.uid()' in coalesce(qual, '')) > 0
+      and position('can_review_employee_onboarding_user' in coalesce(qual, '')) > 0
+  ) then
+    raise exception 'employee onboarding document read boundary missing';
   end if;
 
   if not exists (

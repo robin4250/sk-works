@@ -62,14 +62,13 @@ void main() {
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
 
-    expect(find.text('日報'), findsOneWidget);
-    expect(find.text('プロフィール'), findsOneWidget);
-    expect(find.text('ヘルプ'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('資格'),
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('資格'), findsOneWidget);
+    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
+      await tester.scrollUntilVisible(
+        find.text(label),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text(label), findsOneWidget);
+    }
   });
 }

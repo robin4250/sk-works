@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../branding/product_brand.dart';
 import 'auth_error_message.dart';
+import 'employee_invite_scanner_page.dart';
 import 'secure_onboarding_repository.dart';
 
 class SecureAuthPage extends StatefulWidget {
@@ -137,6 +138,25 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
     });
   }
 
+  Future<void> _scanEmployeeInvite() async {
+    final credentials = await Navigator.of(context).push<EmployeeInviteCredentials>(
+      MaterialPageRoute(
+        builder: (_) => const EmployeeInviteScannerPage(),
+      ),
+    );
+    if (credentials == null || !mounted) return;
+
+    setState(() {
+      _registerMode = false;
+      _passwordResetMode = false;
+      _awaitingSms = false;
+      _phone.text = credentials.phone;
+      _password.text = credentials.password;
+      _passwordConfirm.clear();
+      _message = '従業員登録QRを読み取りました。「ログイン」を押してください。';
+    });
+  }
+
   Future<void> _resendSms() async {
     final repository = _repository;
     if (repository == null) return;
@@ -209,6 +229,16 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                         : '登録した携帯電話番号とパスワードでログインします。',
                       ),
                       const SizedBox(height: 20),
+                      if (!_awaitingSms &&
+                          !_registerMode &&
+                          !_passwordResetMode) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _scanEmployeeInvite,
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: const Text('従業員登録QRコードからログイン'),
+                        ),
+                      ],
                       if (_awaitingSms) ...[
                         TextField(
                           controller: _otp,
@@ -262,7 +292,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           Text(
                             _passwordResetMode
                                 ? 'SMS本人確認に成功した直後、この新しい本パスワードへ更新します。'
-                                : '8文字以上で設定してください。次の画面で重要情報用の別パスワードも設定します。',
+                                : '8文字以上で設定してください。',
                           ),
                         ],
                       ],
