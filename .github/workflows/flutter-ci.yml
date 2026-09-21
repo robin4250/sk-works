@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Scan committed secrets
+        run: bash tool/check_no_committed_secrets.sh
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
