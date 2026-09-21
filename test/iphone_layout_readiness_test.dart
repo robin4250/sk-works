@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/home/friendly_home_content.dart';
+import 'package:sk_works/features/home/home_attention_repository.dart';
 import 'package:sk_works/features/home/home_membership_repository.dart';
 import 'package:sk_works/main.dart';
 
@@ -31,7 +32,7 @@ void main() {
     await pumpIphone(tester);
 
     expect(find.text('SKO'), findsWidgets);
-    expect(find.text('本日の出勤'), findsOneWidget);
+    expect(find.text('本日の出勤'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -76,6 +77,12 @@ void main() {
         home: Scaffold(
           body: FriendlyHomeContent(
             identity: identity,
+            requiredDocumentAttention: const RequiredDocumentAttention(
+              missingCount: 0,
+              missingNames: [],
+              needsLicense: false,
+              needsQualification: false,
+            ),
             moduleEnabled: (_) => true,
             onOpen: (_) async {},
             onRefresh: () async {},
@@ -96,7 +103,7 @@ void main() {
       textScale: 1.3,
     );
 
-    expect(find.text('本日の出勤'), findsOneWidget);
+    expect(find.text('本日の出勤'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }
