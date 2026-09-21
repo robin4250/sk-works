@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
+import 'admin_initial_setup_page.dart';
+import 'admin_initial_setup_repository.dart';
 import 'secure_onboarding_pages.dart';
 import 'secure_onboarding_repository.dart';
 
@@ -42,6 +44,14 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         return const _GateState.companyDeferred();
       }
       return const _GateState.needsCompany();
+    }
+
+    final adminSetupRepository = AdminInitialSetupRepository.maybeCreate();
+    if (adminSetupRepository != null) {
+      final setup = await adminSetupRepository.loadState();
+      if (setup.required && !setup.completed) {
+        return const _GateState.needsAdminInitialSetup();
+      }
     }
 
     return const _GateState.authenticated();
@@ -91,6 +101,10 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
             ),
           _GateStatus.companyDeferred => DeferredCompanySetupPage(
               onResume: _resumeCompanySetup,
+              onSignOut: _signOut,
+            ),
+          _GateStatus.needsAdminInitialSetup => AdminInitialSetupWizardPage(
+              onCompleted: _reload,
               onSignOut: _signOut,
             ),
           _GateStatus.authenticated => widget.homeBuilder(_signOut),
@@ -155,6 +169,7 @@ enum _GateStatus {
   unauthenticated,
   needsCompany,
   companyDeferred,
+  needsAdminInitialSetup,
   authenticated,
 }
 
@@ -167,6 +182,8 @@ class _GateState {
       : this._(_GateStatus.needsCompany);
   const _GateState.companyDeferred()
       : this._(_GateStatus.companyDeferred);
+  const _GateState.needsAdminInitialSetup()
+      : this._(_GateStatus.needsAdminInitialSetup);
   const _GateState.authenticated()
       : this._(_GateStatus.authenticated);
 
