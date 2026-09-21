@@ -343,7 +343,9 @@ class _HomePageState extends State<HomePage> {
         page = const DailyReportPage();
         break;
       case 'employee_register':
-        page = const EmployeeInvitePage();
+        page = EmployeeInvitePage(
+          canAssignManagementRole: _identity.isAdmin,
+        );
         break;
       case 'employee_onboarding_approvals':
         page = const EmployeeOnboardingApprovalsPage();
