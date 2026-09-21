@@ -24,6 +24,7 @@ void main() {
     expect(doc, contains('one of the current three must be selected for replacement'));
     expect(doc, contains('employee-invite role/approver migrations'));
     expect(doc, contains('JWT verification enabled'));
+    expect(doc, contains('RLS-without-policy'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
