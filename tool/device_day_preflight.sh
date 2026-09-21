@@ -106,6 +106,12 @@ if command -v flutter >/dev/null 2>&1; then
   fi
 
   if [[ -d ios/Runner.xcworkspace ]]; then
+    if bash tool/check_ios_generated_contract.sh; then
+      ok "iOS生成設定契約"
+    else
+      fail "iOS生成設定契約に違反があります"
+    fi
+
     if flutter build ios --debug --no-codesign; then
       ok "iOS debug build（署名なし）"
       if [[ -f ios/Podfile.lock ]]; then
