@@ -29,6 +29,23 @@ command_ok "Git" git
 
 echo
 echo "--- Xcode / 署名 ---"
+if command -v xcodebuild >/dev/null 2>&1; then
+  if xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+    ok "Xcode初回処理完了"
+  else
+    warn "Xcodeの初回処理が未完了です"
+    echo "  Xcodeを一度起動してライセンス/追加コンポーネントを完了してください。"
+    echo "  CLIで進める場合: sudo xcodebuild -runFirstLaunch"
+  fi
+
+  if xcodebuild -showsdks >/dev/null 2>&1; then
+    ok "Xcode SDK一覧を取得可能"
+  else
+    warn "Xcode SDKを読み込めません"
+    echo "  Xcodeライセンス・追加コンポーネント・Developer Directoryを確認してください。"
+  fi
+fi
+
 if command -v xcode-select >/dev/null 2>&1; then
   developer_dir="$(xcode-select -p 2>/dev/null || true)"
   if [[ "$developer_dir" == *"/Xcode.app/Contents/Developer" ]]; then
