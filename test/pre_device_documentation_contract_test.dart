@@ -25,6 +25,11 @@ void main() {
     expect(doc, contains('employee-invite role/approver migrations'));
     expect(doc, contains('JWT verification enabled'));
     expect(doc, contains('RLS-without-policy'));
+    expect(doc, contains('auth_rls_initplan'));
+    expect(doc, contains('unindexed_foreign_keys'));
+    expect(doc, contains('52 to 43'));
+    expect(doc, contains('no `migration repair` has been performed'));
+    expect(doc, contains('seven required private Storage buckets'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
