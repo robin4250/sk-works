@@ -44,11 +44,8 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Emit generated lockfile for bootstrap
-        run: |
-          echo "PUBSPEC_LOCK_BEGIN"
-          cat pubspec.lock
-          echo "PUBSPEC_LOCK_END"
+      - name: Verify lockfile is stable
+        run: git diff --exit-code -- pubspec.lock
 
       - name: Analyze
         run: flutter analyze
