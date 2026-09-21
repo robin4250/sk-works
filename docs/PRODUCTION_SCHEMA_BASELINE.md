@@ -1,6 +1,6 @@
 # Production Supabase Schema Baseline
 
-Verified against the deployed SKO Supabase project on 2026-09-18.
+Verified against the deployed SKO Supabase project on 2026-09-21.
 
 This document records the production chat / LINE bridge shape so future work does not accidentally reintroduce older prototype table names.
 
@@ -95,3 +95,31 @@ The older `communication_messages` table remains a historical compatibility obje
 ## October rollout rule
 
 Until worker, site, communication group, and LINE binding identities are confirmed, LINE-derived attendance must remain preview / candidate data. Do not silently finalize attendance or invoice records from a parsed LINE message.
+
+
+## 2026-09-21 pre-device hardening baseline
+
+The following production invariants have now been verified and should be preserved:
+
+- every public table has RLS enabled;
+- the `anon` role has no direct public-table privileges and no public SECURITY DEFINER RPC execute privileges;
+- all six SKO Storage buckets are private;
+- attendance evidence is visible only to the worker or an attendance manager;
+- worker documents and qualification certificates are visible only to the worker or a people manager;
+- worker / partner-company phone, email, address, and notes are not directly selectable by ordinary authenticated sessions;
+- customer billing details require invoice-view permission;
+- direct `company_members` reads are self-scoped;
+- LINE binding metadata is owner/admin-only;
+- direct membership writes are RPC-only;
+- the initial owner role cannot be demoted by the permission RPC;
+- private Storage buckets have explicit file-size limits;
+- authenticated CRUD grants without a matching RLS policy have been removed;
+- the current repeatable audit is `tool/supabase_security_assertions.sql`.
+
+The production audit currently returns:
+
+```
+SKO pre-device database security assertions passed
+```
+
+The repository may still contain historical migration-name differences from the earliest production setup. These are tracked separately in `docs/SUPABASE_REPRODUCIBILITY.md`; do not rewrite already-applied production migration history merely to make names match.
