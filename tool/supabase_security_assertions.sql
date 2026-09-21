@@ -215,8 +215,14 @@ begin
     raise exception 'create_company first-membership guard missing';
   end if;
 
-  if position('coalesce(mfp.can_approve_daily_report_edits, true)' in pg_get_functiondef('public.request_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
-    raise exception 'daily report approval notification manager default missing';
+  if position('company_approval_assignees' in pg_get_functiondef('public.request_daily_report_edit(uuid,text)'::regprocedure)) = 0
+     or position('approvals_required' in pg_get_functiondef('public.request_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
+    raise exception 'daily report configured approval-assignee routing missing';
+  end if;
+
+  if position('approval_assignee_limit_reached' in pg_get_functiondef('public.set_company_approval_assignee(uuid,boolean)'::regprocedure)) = 0
+     or position('at_least_one_approval_assignee_required' in pg_get_functiondef('public.set_company_approval_assignee(uuid,boolean)'::regprocedure)) = 0 then
+    raise exception 'approval-assignee 1-to-3 guard missing';
   end if;
 
   if position('v_role = ''manager''' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
@@ -231,8 +237,9 @@ begin
     raise exception 'secondary-password five-attempt lock contract missing';
   end if;
 
-  if position('requester cannot approve own request' in pg_get_functiondef('public.decide_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
-    raise exception 'daily-report self-approval protection missing';
+  if position('v_assignee_count > 1' in pg_get_functiondef('public.decide_daily_report_edit(uuid,text)'::regprocedure)) = 0
+     or position('requester cannot approve own request' in pg_get_functiondef('public.decide_daily_report_edit(uuid,text)'::regprocedure)) = 0 then
+    raise exception 'daily-report sole-proprietor/self-approval boundary missing';
   end if;
 
   if not exists (
@@ -241,9 +248,14 @@ begin
     where table_schema='public'
       and table_name='daily_report_edit_requests'
       and column_name='approvals_required'
-      and column_default::text like '%2%'
+      and column_default::text like '%1%'
   ) then
-    raise exception 'daily-report two-approval default missing';
+    raise exception 'daily-report one-approval default missing';
+  end if;
+
+  if has_table_privilege('anon', 'public.company_approval_assignees', 'SELECT,INSERT,UPDATE,DELETE')
+     or has_table_privilege('authenticated', 'public.company_approval_assignees', 'SELECT,INSERT,UPDATE,DELETE') then
+    raise exception 'approval-assignee table must be RPC-only';
   end if;
 
   select count(*)
