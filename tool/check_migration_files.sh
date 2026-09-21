@@ -48,6 +48,7 @@ required=(
   "20260922031000_cache_auth_uid_in_core_rls.sql"
   "20260922033000_cache_auth_uid_in_user_flows.sql"
   "20260922035000_cache_auth_uid_in_reference_rls.sql"
+  "20260922041000_index_high_use_foreign_keys_v2.sql"
 )
 
 for name in "${required[@]}"; do
