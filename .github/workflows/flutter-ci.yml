@@ -38,6 +38,9 @@ jobs:
       - name: Create Android project files
         run: flutter create . --platforms=android --project-name sk_works --org com.skworks
 
+      - name: Verify dependency pins
+        run: bash tool/check_dependency_pins.sh
+
       - name: Install dependencies
         run: flutter pub get
 
