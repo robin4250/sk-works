@@ -1,6 +1,6 @@
 # SKO pre-device readiness
 
-Status date: 2026-09-21
+Status date: 2026-09-22
 
 This file separates what has already been verified without a physical iPhone/Mac signing session from what still requires the actual device.
 
@@ -36,13 +36,23 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Membership writes are RPC-only and the owner role is protected.
 - CRUD grants without a matching RLS path are removed.
 - LINE webhook signature verification is HMAC-SHA256 with constant-time comparison, and deployed Edge Function source matches Git.
+- `create-employee-invite` is deployed from the current Git source with JWT verification enabled; the production function was updated after invite role/approver assignment was added.
 - The repeatable production DB audit is `tool/supabase_security_assertions.sql`.
 - The latest production audit returns:
   `SKO pre-device database security assertions passed`
+- Supabase Security Advisor informational warnings for RLS-without-policy tables are intentional on RPC-only tables; authenticated SECURITY DEFINER RPC warnings are reviewed under the explicit-role-check/search-path/anon-deny contract.
+- The production audit was re-run after the latest approval-assignee, company-rate, and employee-invite role/approver migrations on 2026-09-22 and passed.
 - Tracked production-secret scanning runs on every push and pull request, including docs-only changes.
 - Mac/iPhone diagnostics distinguish USB visibility, Xcode visibility, Flutter visibility, signing state, and Xcode first-launch state.
 - Supabase migration-history drift is documented and a non-destructive Mac-day reproducibility preflight is available.
 - The Supabase reproducibility preflight records migration history plus SHA-256 checksums for generated baseline artifacts.
+- Role-specific in-app manuals are available from Help/Profile: general 10 pages, sub-admin 15 pages, admin 20 pages, plus a 20-page SKO beta pamphlet.
+- Manual/pamphlet PDFs support A4 preview, printing and sharing, with highlighted "ここを押す" guidance and support timing.
+- Manual/pamphlet versioning is tied to the app version and CI rejects a mismatch.
+- Sub-admins are management users but not full admins: they keep personal payroll access with secondary authentication while invoices/admin financial site data remain denied by default.
+- Daily-report edit approval UI follows the configured 1-3 approval assignees; being an owner/admin alone does not bypass that selection.
+- Company tax/welfare/overtime/early/night/holiday and three allowance settings can be edited by admins after initial onboarding through RPC-only company-rate settings.
+- Full admins can assign sub-admin status and approval-assignee intent during employee invite; if three approvers already exist, one of the current three must be selected for replacement, and the final approval re-validates the assignment server-side.
 
 ## Still requires the real Mac / iPhone
 
