@@ -13,5 +13,7 @@ void main() {
     expect(source, contains("'communication-albums'::text, 20971520::bigint"));
     expect(source, contains("'worker-documents'::text, 52428800::bigint"));
     expect(source, contains("'chat-attachments'::text, 52428800::bigint"));
+    expect(source, contains('security_invoker=true'));
+    expect(source, contains('exposed public view/materialized view may bypass RLS'));
   });
 }
