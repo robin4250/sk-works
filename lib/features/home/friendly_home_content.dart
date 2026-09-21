@@ -40,7 +40,7 @@ class FriendlyHomeContent extends StatelessWidget {
             _PersonalAttendanceCard(onOpen: onOpen),
           ],
           const SizedBox(height: 14),
-          if (identity.isAdmin)
+          if (identity.isManagement)
             _AdminHome(
               identity: identity,
               moduleEnabled: moduleEnabled,
