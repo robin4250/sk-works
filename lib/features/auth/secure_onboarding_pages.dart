@@ -754,21 +754,6 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
     }
   }
 
-  Future<void> _defer() async {
-    final repository = _repository;
-    if (repository == null) return;
-    setState(() => _busy = true);
-    try {
-      await repository.setCompanySetupDeferred(true);
-      widget.onDeferred();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _message = '後で登録の設定に失敗しました: $error';
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -800,7 +785,7 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      '請求書や会社情報に使用します。会社情報は後から登録・修正できます。',
+                      '会社・本人の基本情報を登録します。登録後も設定画面から修正できます。',
                     ),
                   ],
                 ),
@@ -950,12 +935,7 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
             FilledButton.icon(
               onPressed: _busy ? null : _save,
               icon: const Icon(Icons.check_circle_outline),
-              label: Text(_busy ? '登録中...' : '登録してSKOを開始'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _busy ? null : _defer,
-              child: const Text('会社情報は後で登録する'),
+              label: Text(_busy ? '登録中...' : '会社・本人情報を登録して次へ'),
             ),
             const SizedBox(height: 24),
           ],
