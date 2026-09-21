@@ -92,7 +92,7 @@ class _AdminInitialSetupWizardPageState
       List<Map<String, dynamic>> requirements = const [];
       if (!state.documentRequirementsReviewed &&
           _documentRepository != null) {
-        final all = await _documentRepository!.loadAll();
+        final all = await _documentRepository.loadAll();
         requirements = all['requirements'] ?? const [];
       }
       if (!mounted) return;
@@ -254,7 +254,7 @@ class _AdminInitialSetupWizardPageState
     ];
     if (tax == null ||
         welfare == null ||
-        values.any((value) => value == null || value! < 0)) {
+        values.any((value) => value == null || value < 0)) {
       setState(() => _error = '税率・福利厚生費率・各単価を数字で入力してください。');
       return;
     }
