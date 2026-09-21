@@ -15,8 +15,9 @@ class HomeIdentity {
   final String displayName;
   final Map<String, bool> permissions;
 
-  bool get isAdmin =>
-      role == 'owner' || role == 'admin' || role == 'manager';
+  bool get isAdmin => role == 'owner' || role == 'admin';
+  bool get isSubAdmin => role == 'manager';
+  bool get isManagement => isAdmin || isSubAdmin;
 
   bool can(String key) {
     if (role == 'owner' || role == 'admin') return true;
