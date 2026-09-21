@@ -7,6 +7,7 @@ echo
 checks=(
   "bash tool/check_dependency_pins.sh"
   "bash tool/check_no_client_secrets.sh"
+  "bash tool/check_no_destructive_supabase_commands.sh"
   "bash tool/check_migration_files.sh"
 )
 
