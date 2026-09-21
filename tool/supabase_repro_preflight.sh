@@ -31,7 +31,7 @@ supabase --version
 
 echo
 echo "--- linked migration history ---"
-supabase migration list
+supabase migration list | tee supabase/baseline/production_migration_history.txt
 
 echo
 echo "--- remote DB lint (errors only) ---"
@@ -64,10 +64,22 @@ else
 fi
 
 echo
+echo "--- baseline checksums ---"
+: > supabase/baseline/SHA256SUMS.txt
+for artifact in   supabase/baseline/production_migration_history.txt   supabase/baseline/production_public_schema.sql   supabase/baseline/production_storage_customizations.sql   supabase/baseline/production_storage_buckets.tsv; do
+  if [[ -f "$artifact" ]]; then
+    shasum -a 256 "$artifact" >> supabase/baseline/SHA256SUMS.txt
+  fi
+done
+echo "✓ baseline SHA-256 manifest"
+
+echo
 echo "✓ 非破壊の再現性診断が完了しました"
-echo "  public schema: supabase/baseline/production_public_schema.sql"
+echo "  migration history: supabase/baseline/production_migration_history.txt"
+echo "  public schema     : supabase/baseline/production_public_schema.sql"
 echo "  storage diff : supabase/baseline/production_storage_customizations.sql"
-echo "  bucket meta  : supabase/baseline/production_storage_buckets.tsv（取得できた場合）"
+echo "  bucket meta       : supabase/baseline/production_storage_buckets.tsv（取得できた場合）"
+echo "  checksums         : supabase/baseline/SHA256SUMS.txt"
 echo
 echo "重要:"
 echo "  supabase db reset --linked は本番DBを破壊するため実行しないでください。"
