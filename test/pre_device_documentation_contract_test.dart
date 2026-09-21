@@ -25,6 +25,10 @@ void main() {
     expect(doc, contains('employee-invite role/approver migrations'));
     expect(doc, contains('JWT verification enabled'));
     expect(doc, contains('RLS-without-policy'));
+    expect(doc, contains('no `auth_rls_initplan` findings'));
+    expect(doc, contains('reducing the unindexed-foreign-key advisor findings from 52 to 43'));
+    expect(doc, contains('all seven required private Storage buckets'));
+    expect(doc, contains('Edge Function sources were re-compared with `main` and match'));
   });
 
   test('iPhone acceptance checklist covers latest security-critical flows', () {
