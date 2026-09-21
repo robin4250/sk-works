@@ -25,6 +25,10 @@ done
 echo "✓ Direct Flutter dependencies are pinned"
 if [[ -f pubspec.lock ]]; then
   echo "✓ pubspec.lock exists"
+  if git check-ignore -q pubspec.lock 2>/dev/null; then
+    echo "✗ pubspec.lock がGit管理対象外です"
+    exit 1
+  fi
 else
   echo "△ pubspec.lock は未生成です。Mac初回準備時に flutter pub get で生成します。"
 fi
