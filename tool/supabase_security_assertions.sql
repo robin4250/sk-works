@@ -312,8 +312,11 @@ begin
       and tablename = 'objects'
       and policyname = 'profile_photos_read'
       and 'authenticated' = any(roles)
+      and position('auth.uid()' in coalesce(qual, '')) > 0
+      and position('company_members' in coalesce(qual, '')) > 0
+      and position('other.company_id = me.company_id' in coalesce(qual, '')) > 0
   ) then
-    raise exception 'profile photo authenticated read policy missing';
+    raise exception 'profile photo self-or-same-company read policy missing';
   end if;
 
   if not exists (
