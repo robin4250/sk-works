@@ -33,6 +33,19 @@ void main() {
     expect(adminNotAssignee.can('can_view_invoices'), isTrue);
   });
 
+  test('legacy non-admin financial permissions are cleaned up', () {
+    final sql = File(
+      'supabase/migrations/20260922021500_align_approval_assignee_permission_source.sql',
+    ).readAsStringSync();
+
+    expect(sql, contains("cm.role::text in ('manager','viewer')"));
+    expect(sql, contains('can_view_invoices = false'));
+    expect(sql, contains('can_manage_invoices = false'));
+    expect(sql, contains('can_view_admin_site_data = false'));
+    expect(sql, contains('can_manage_admin_site_data = false'));
+    expect(sql, contains('can_manage_payroll = false'));
+  });
+
   test('current approval permission follows configured assignee table', () {
     final sql = File(
       'supabase/migrations/20260922021500_align_approval_assignee_permission_source.sql',
