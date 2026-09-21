@@ -12,6 +12,9 @@ required=(
   "local_auth: 2.3.0"
   "geolocator: 14.0.3"
   "image_picker: 1.1.2"
+  "mobile_scanner: 7.4.2"
+  "qr_flutter: 4.1.0"
+  "share_plus: 13.3.0"
   "printing: 5.15.1"
   "pdf: 3.13.1"
 )
