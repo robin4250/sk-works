@@ -44,6 +44,7 @@ required=(
   "20260922010000_add_required_document_attention.sql"
   "20260922013000_add_admin_initial_setup_wizard.sql"
   "20260922021500_align_approval_assignee_permission_source.sql"
+  "20260922024000_add_invite_role_and_approver_selection.sql"
 )
 
 for name in "${required[@]}"; do
