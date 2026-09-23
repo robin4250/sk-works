@@ -58,17 +58,22 @@ class SkWorksApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: ProductBrand.displayName,
-      theme: SkoTheme.light(),
-      home: SupabaseBackend.isInitialized
-          ? SupabaseAuthGate(
-              homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
-            )
-          : allowLocalFallback
-              ? const HomePage()
-              : const _BackendUnavailableScreen(),
+    return ValueListenableBuilder<SkoPalette>(
+      valueListenable: SkoThemeController.palette,
+      builder: (context, palette, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: ProductBrand.displayName,
+          theme: SkoTheme.light(palette),
+          home: SupabaseBackend.isInitialized
+              ? SupabaseAuthGate(
+                  homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
+                )
+              : allowLocalFallback
+                  ? const HomePage()
+                  : const _BackendUnavailableScreen(),
+        );
+      },
     );
   }
 }
