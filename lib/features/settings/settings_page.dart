@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../branding/product_brand.dart';
+import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
@@ -214,6 +215,58 @@ class _SettingsPageState extends State<SettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      Text(
+                        '表示カラー',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      ValueListenableBuilder<SkoPalette>(
+                        valueListenable: SkoThemeController.palette,
+                        builder: (context, selectedPalette, _) {
+                          return Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'テーマカラー',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    '文字・アイコン・ボタン・背景などへ一括で反映します。',
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      for (final palette in SkoTheme.palettes)
+                                        ChoiceChip(
+                                          selected:
+                                              selectedPalette.key == palette.key,
+                                          avatar: CircleAvatar(
+                                            radius: 8,
+                                            backgroundColor: palette.brand,
+                                          ),
+                                          label: Text(palette.label),
+                                          onSelected: (_) =>
+                                              SkoThemeController.setPalette(
+                                            palette.key,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 24),
                       if (_usesCloud) ...[
                         Card(
                           child: ListTile(
