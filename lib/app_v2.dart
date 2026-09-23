@@ -57,15 +57,61 @@ class SkWorksApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF173B57);
+    const seed = Color(0xFF0D5DCC);
+    const background = Color(0xFFF4F7FB);
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.light,
+    );
+    final baseTheme = ThemeData(
+      colorScheme: colorScheme,
+      useMaterial3: true,
+      scaffoldBackgroundColor: background,
+    );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: ProductBrand.displayName,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF4F6F8),
+      theme: baseTheme.copyWith(
+        textTheme: baseTheme.textTheme.apply(
+          bodyColor: const Color(0xFF172033),
+          displayColor: const Color(0xFF172033),
+        ).copyWith(
+          headlineSmall: baseTheme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+          ),
+          titleLarge: baseTheme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+          ),
+          titleMedium: baseTheme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+          labelLarge: baseTheme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        iconTheme: const IconThemeData(
+          size: 24,
+          color: Color(0xFF244A72),
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          backgroundColor: background,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Color(0xFF172033),
+          titleTextStyle: TextStyle(
+            color: Color(0xFF172033),
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+          ),
+        ),
         cardTheme: CardThemeData(
+          color: Colors.white,
           elevation: 0,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
@@ -75,16 +121,81 @@ class SkWorksApp extends StatelessWidget {
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+          prefixIconColor: const Color(0xFF42698E),
+          suffixIconColor: const Color(0xFF42698E),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFC7D2DF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: seed, width: 1.8),
           ),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 48),
+            minimumSize: const Size(0, 52),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 50),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800),
+            side: const BorderSide(color: Color(0xFF9FB0C2)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        listTileTheme: const ListTileThemeData(
+          iconColor: Color(0xFF245A8C),
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          height: 72,
+          backgroundColor: Colors.white,
+          indicatorColor: colorScheme.primaryContainer,
+          labelTextStyle: WidgetStateProperty.resolveWith(
+            (states) => TextStyle(
+              fontSize: 12,
+              fontWeight: states.contains(WidgetState.selected)
+                  ? FontWeight.w900
+                  : FontWeight.w700,
+            ),
+          ),
+          iconTheme: WidgetStateProperty.resolveWith(
+            (states) => IconThemeData(
+              size: 25,
+              color: states.contains(WidgetState.selected)
+                  ? colorScheme.primary
+                  : const Color(0xFF60758A),
+            ),
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(18)),
           ),
         ),
       ),
