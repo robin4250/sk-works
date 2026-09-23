@@ -192,18 +192,37 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text(ProductBrand.displayName)),
+      appBar: AppBar(
+        toolbarHeight: 72,
+        centerTitle: true,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        title: const Text(
+          ProductBrand.displayName,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.4,
+          ),
+        ),
+      ),
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
+              constraints: const BoxConstraints(maxWidth: 430),
               child: Card(
+                color: Colors.white,
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
@@ -211,34 +230,29 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                             ? (_passwordResetMode ? '本人確認コード' : '承認コード')
                             : _passwordResetMode
                                 ? '本パスワード再設定'
-                                    : _registerMode
-                                        ? '管理者の初回登録'
-                                        : 'ログイン',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
+                                : _registerMode
+                                    ? '管理者の初回登録'
+                                    : 'ログイン',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text(
                         _awaitingSms
                             ? 'SMSで届いた6桁のコードを入力してください。'
                             : _passwordResetMode
-                                ? '新しい本パスワードを先に設定し、登録済み携帯電話番号へのSMS確認後に更新します。'
-                                    : _registerMode
-                                        ? '携帯電話番号をIDとして登録します。'
-                                        : '登録した携帯電話番号とパスワードでログインします。',
-                      ),
-                      const SizedBox(height: 20),
-                      if (!_awaitingSms &&
-                          !_registerMode &&
-                          !_passwordResetMode) ...[
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _scanEmployeeInvite,
-                          icon: const Icon(Icons.qr_code_scanner),
-                          label: const Text('従業員登録QRコードからログイン'),
+                                ? '新しい本パスワードを設定し、登録済み携帯電話番号へのSMS確認後に更新します。'
+                                : _registerMode
+                                    ? '携帯電話番号をIDとして登録します。'
+                                    : '登録した携帯電話番号とパスワードでログインします。',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.5,
+                          color: scheme.onSurfaceVariant,
                         ),
-                      ],
+                      ),
+                      const SizedBox(height: 24),
                       if (_awaitingSms) ...[
                         TextField(
                           controller: _otp,
@@ -262,7 +276,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                             prefixIcon: Icon(Icons.phone_iphone_outlined),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         _PasswordField(
                           controller: _password,
                           label: _passwordResetMode
@@ -277,7 +291,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                   : _submit(),
                         ),
                         if (_registerMode || _passwordResetMode) ...[
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
                           _PasswordField(
                             controller: _passwordConfirm,
                             label: _passwordResetMode
@@ -288,52 +302,101 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                 setState(() => _obscureConfirm = !_obscureConfirm),
                             onSubmitted: (_) => _busy ? null : _submit(),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Text(
                             _passwordResetMode
                                 ? 'SMS本人確認に成功した直後、この新しい本パスワードへ更新します。'
                                 : '8文字以上で設定してください。',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ],
                       if (_message != null) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         Text(
                           _message!,
                           style: TextStyle(
                             color: _awaitingSms
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.error,
+                                ? scheme.primary
+                                : scheme.error,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
                       const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: _busy ? null : _submit,
-                        icon: _busy
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(
-                                _awaitingSms
-                                    ? Icons.verified_outlined
-                                    : _registerMode
-                                        ? Icons.person_add_alt_1
-                                        : Icons.login,
-                              ),
-                        label: Text(
-                          _awaitingSms
-                              ? '承認する'
-                              : _passwordResetMode
-                                  ? '本人確認SMSを送信'
+                      SizedBox(
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: _busy ? null : _submit,
+                          icon: _busy
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Icon(
+                                  _awaitingSms
+                                      ? Icons.verified_outlined
                                       : _registerMode
-                                          ? '登録してSMS認証へ'
-                                          : 'ログイン',
+                                          ? Icons.person_add_alt_1
+                                          : Icons.login,
+                                ),
+                          label: Text(
+                            _awaitingSms
+                                ? '承認する'
+                                : _passwordResetMode
+                                    ? '本人確認SMSを送信'
+                                    : _registerMode
+                                        ? '登録してSMS認証へ'
+                                        : 'ログイン',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
+                      if (!_awaitingSms &&
+                          !_registerMode &&
+                          !_passwordResetMode) ...[
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text(
+                                'または',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _scanEmployeeInvite,
+                            icon: const Icon(Icons.qr_code_scanner),
+                            label: const Text(
+                              '従業員登録QRでログイン',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (_awaitingSms) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         TextButton.icon(
                           onPressed: _busy ? null : _resendSms,
                           icon: const Icon(Icons.refresh),
@@ -349,7 +412,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           child: const Text('電話番号を修正'),
                         ),
                       ] else ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         if (!_passwordResetMode)
                           TextButton(
                             onPressed: _busy
