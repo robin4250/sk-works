@@ -109,8 +109,6 @@ emulator = bool(match.get("emulator", False))
 
 if not target.startswith("ios") or emulator:
     print("NOT_PHYSICAL_IOS")
-elif "iphone" not in name.lower():
-    print("NOT_IPHONE:" + name)
 else:
     print("OK:" + name)
 PY
@@ -128,10 +126,7 @@ case "$validation" in
     echo "指定したDEVICE_IDは物理iOS端末ではありません: $DEVICE_ID"
     exit 1
     ;;
-  NOT_IPHONE:*)
-    echo "指定したDEVICE_IDはiPhoneではありません: ${validation#NOT_IPHONE:}"
-    exit 1
-    ;;
+
   *)
     echo "DEVICE_IDの検証に失敗しました: $DEVICE_ID"
     exit 1
