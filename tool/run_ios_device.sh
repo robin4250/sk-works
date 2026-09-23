@@ -89,11 +89,12 @@ if [[ -z "$DEVICE_ID" ]]; then
   exit 1
 fi
 
-validation="$(flutter devices --machine | python3 - "$DEVICE_ID" <<'PY'
-import json, sys
+device_list="$(flutter devices --machine)"
+validation="$(DEVICE_LIST="$device_list" python3 - "$DEVICE_ID" <<'PY'
+import json, os, sys
 wanted = sys.argv[1]
 try:
-    items = json.load(sys.stdin)
+    items = json.loads(os.environ.get("DEVICE_LIST", "[]"))
 except Exception:
     items = []
 
