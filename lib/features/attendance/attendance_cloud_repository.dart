@@ -135,6 +135,19 @@ class AttendanceCloudRepository {
     return {...record, 'id': inserted['id']};
   }
 
+  Future<List<Map<String, dynamic>>> insertMany(
+    Iterable<Map<String, dynamic>> records,
+  ) async {
+    final drafts = records.toList(growable: false);
+    if (drafts.isEmpty) return const [];
+
+    final inserted = <Map<String, dynamic>>[];
+    for (final record in drafts) {
+      inserted.add(await insert(record));
+    }
+    return inserted;
+  }
+
   Future<void> delete(String id) async {
     if (id.isEmpty) return;
     await _client.from('attendance_entries').delete().eq('id', id);
