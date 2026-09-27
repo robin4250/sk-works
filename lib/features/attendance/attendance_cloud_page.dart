@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'attendance_cloud_repository.dart';
 import 'attendance_page.dart';
+import 'bulk_attendance_page.dart';
 
 class AttendanceCloudPage extends StatefulWidget {
   const AttendanceCloudPage({super.key});
@@ -77,6 +78,12 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       appBar: AppBar(
         title: const Text('勤怠・人工'),
         actions: [
+          if (_canManageAttendanceEntries)
+            IconButton(
+              tooltip: 'おまとめ出勤',
+              onPressed: _loading ? null : _openBulkAttendance,
+              icon: const Icon(Icons.playlist_add_check_circle_outlined),
+            ),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading
@@ -97,6 +104,18 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_canManageAttendanceEntries)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _openBulkAttendance,
+                    icon: const Icon(Icons.done_all),
+                    label: const Text('おまとめ出勤'),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: TextField(
@@ -158,6 +177,22 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
   String _formatNumber(double value) => value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+  Future<void> _openBulkAttendance() async {
+    final repository = _repository;
+    if (repository == null) return;
+    final count = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => BulkAttendancePage(repository: repository),
+      ),
+    );
+    if (count == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$count件の勤怠をまとめて登録しました')),
+    );
+    setState(() => _loading = true);
+    await _load();
+  }
 
   Future<void> _add() async {
     final draft = await Navigator.of(context).push<AttendanceEntry>(
