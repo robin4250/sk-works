@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'attendance_cloud_repository.dart';
 import 'attendance_page.dart';
+import 'past_attendance_entry_page.dart';
 
 class AttendanceCloudPage extends StatefulWidget {
   const AttendanceCloudPage({super.key});
@@ -107,6 +108,18 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
                 onChanged: (value) => setState(() => _query = value),
               ),
             ),
+            if (_canManageAttendanceEntries)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _loading ? null : _openPastAttendance,
+                    icon: const Icon(Icons.history_outlined),
+                    label: const Text('過去の出勤をまとめて登録'),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -158,6 +171,16 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
   String _formatNumber(double value) => value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+  Future<void> _openPastAttendance() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const PastAttendanceEntryPage()),
+    );
+    if (changed == true && mounted) {
+      setState(() => _loading = true);
+      await _load();
+    }
+  }
 
   Future<void> _add() async {
     final draft = await Navigator.of(context).push<AttendanceEntry>(
