@@ -49,6 +49,33 @@ class AttendanceCloudRepository {
     return rows.first['company_id'] as String;
   }
 
+  Future<List<String>> loadActiveWorkerNames() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('workers')
+        .select('name')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('name');
+    return rows
+        .map((row) => row['name']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<String>> loadSiteNames() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('sites')
+        .select('name')
+        .eq('company_id', companyId)
+        .order('name');
+    return rows
+        .map((row) => row['name']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
   Future<List<Map<String, dynamic>>> loadAll() async {
     final companyId = await _companyId();
     final rows = await _client
