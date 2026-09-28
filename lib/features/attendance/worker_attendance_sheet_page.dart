@@ -527,7 +527,12 @@ class _MonthCalendar extends StatelessWidget {
                   Center(
                     child: Text(
                       label,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: label == '日'
+                            ? Theme.of(context).colorScheme.error
+                            : null,
+                      ),
                     ),
                   ),
               ],
@@ -588,9 +593,12 @@ class _MonthCalendarCell extends StatelessWidget {
               alignment: Alignment.topRight,
               child: Text(
                 '${date.day}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
+                  color: date.weekday == DateTime.sunday
+                      ? Theme.of(context).colorScheme.error
+                      : null,
                 ),
               ),
             ),
