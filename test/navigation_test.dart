@@ -43,6 +43,11 @@ void main() {
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('設定を保存'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('設定を保存'), findsOneWidget);
   });
 
