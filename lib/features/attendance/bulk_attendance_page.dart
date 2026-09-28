@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../daily_reports/signature_capture_page.dart';
 import 'attendance_cloud_repository.dart';
 
 class BulkAttendancePage extends StatefulWidget {
@@ -156,9 +157,27 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
       return;
     }
 
+    final signature = await Navigator.of(context).push<SignatureResult>(
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(),
+      ),
+    );
+    if (signature == null || !mounted) return;
+
+    final signedAt = DateTime.now().toUtc().toIso8601String();
+    final signedRecords = [
+      for (final record in records)
+        {
+          ...record,
+          'signerName': signature.signerName,
+          'signatureJson': signature.toJson(),
+          'signedAt': signedAt,
+        },
+    ];
+
     setState(() => _saving = true);
     try {
-      final saved = await widget.repository.insertMany(records);
+      final saved = await widget.repository.insertMany(signedRecords);
       if (!mounted) return;
       Navigator.of(context).pop(saved.length);
     } catch (error) {
@@ -271,7 +290,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.done_all),
-          label: Text(_saving ? '登録中…' : 'まとめて登録'),
+          label: Text(_saving ? '登録中…' : 'まとめてサインして登録'),
         ),
       ),
       body: SafeArea(
