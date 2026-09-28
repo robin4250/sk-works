@@ -43,44 +43,34 @@ class PayrollStatementRepository {
   }
 
   Future<List<PayrollStatementRecord>> loadMyStatements() async {
-    final workerId = await _client.rpc('ensure_current_user_worker');
-    final workerIdText = workerId?.toString();
-    if (workerIdText == null || workerIdText.isEmpty) {
-      throw StateError('本人の作業員情報を確認できません。');
-    }
+    final rows = await _client.rpc(
+      'my_payroll_statement_rows_with_adjustments',
+    );
 
-    final rows = await _client
-        .from('payroll_statements')
-        .select(
-          'id, period_start, period_end, gross_pay, deductions, net_pay, detail, issued_at, companies(name), workers(name)',
-        )
-        .eq('worker_id', workerIdText)
-        .order('period_end', ascending: false);
+    return [
+      for (final raw in (rows as List<dynamic>))
+        _fromRow(Map<String, dynamic>.from(raw as Map)),
+    ];
+  }
 
-    return rows.map<PayrollStatementRecord>((raw) {
-      final row = Map<String, dynamic>.from(raw);
-      final company = row['companies'];
-      final worker = row['workers'];
-      return PayrollStatementRecord(
-        id: row['id']?.toString() ?? '',
-        companyName:
-            company is Map ? company['name']?.toString() ?? '' : '',
-        workerName:
-            worker is Map ? worker['name']?.toString() ?? '' : '',
-        periodStart:
-            DateTime.tryParse(row['period_start']?.toString() ?? '') ??
-                DateTime.now(),
-        periodEnd: DateTime.tryParse(row['period_end']?.toString() ?? '') ??
-            DateTime.now(),
-        grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
-        deductions: (row['deductions'] as num?)?.toInt() ?? 0,
-        netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
-        detail: row['detail'] is Map
-            ? Map<String, dynamic>.from(row['detail'] as Map)
-            : const {},
-        issuedAt:
-            DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
-      );
-    }).toList();
+  PayrollStatementRecord _fromRow(Map<String, dynamic> row) {
+    return PayrollStatementRecord(
+      id: row['id']?.toString() ?? '',
+      companyName: row['company_name']?.toString() ?? '',
+      workerName: row['worker_name']?.toString() ?? '',
+      periodStart:
+          DateTime.tryParse(row['period_start']?.toString() ?? '') ??
+              DateTime.now(),
+      periodEnd: DateTime.tryParse(row['period_end']?.toString() ?? '') ??
+          DateTime.now(),
+      grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
+      deductions: (row['deductions'] as num?)?.toInt() ?? 0,
+      netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
+      detail: row['detail'] is Map
+          ? Map<String, dynamic>.from(row['detail'] as Map)
+          : const {},
+      issuedAt:
+          DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
+    );
   }
 }
