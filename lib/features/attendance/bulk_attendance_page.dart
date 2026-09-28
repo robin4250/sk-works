@@ -348,7 +348,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        value: _site,
+                        initialValue: _site,
                         decoration: const InputDecoration(
                           labelText: '現場',
                           border: OutlineInputBorder(),
