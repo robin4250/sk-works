@@ -299,6 +299,9 @@ class _AttendanceDayCard extends StatelessWidget {
                       '${date.day}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w900,
+                            color: date.weekday == DateTime.sunday
+                                ? colors.error
+                                : null,
                           ),
                     ),
                     Text(
