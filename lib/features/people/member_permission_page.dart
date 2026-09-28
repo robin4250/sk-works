@@ -22,6 +22,8 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
     'can_manage_attendance': '出勤・人区管理',
     'can_manage_people': '人員管理',
     'can_manage_partner_chat': '協力会社チャット',
+    'can_view_payroll_adjustments': '給与調整を閲覧',
+    'can_manage_payroll_adjustments': '給与調整を登録・編集',
   };
 
   @override
@@ -389,7 +391,12 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                       ],
                       onChanged: (value) {
                         if (value == null) return;
-                        setDialogState(() => role = value);
+                        setDialogState(() {
+                          role = value;
+                          if (role == 'viewer') {
+                            permissions['can_manage_payroll_adjustments'] = false;
+                          }
+                        });
                       },
                     ),
                     const SizedBox(height: 12),
@@ -418,10 +425,34 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(entry.value),
+                          subtitle: entry.key == 'can_manage_payroll_adjustments'
+                              ? Text(
+                                  role == 'viewer'
+                                      ? '一般ユーザーには登録・編集権限を付与できません'
+                                      : '登録・編集を許可すると閲覧も自動で許可されます',
+                                )
+                              : null,
                           value: permissions[entry.key] ?? false,
-                          onChanged: (value) => setDialogState(
-                            () => permissions[entry.key] = value,
-                          ),
+                          onChanged: entry.key == 'can_manage_payroll_adjustments' &&
+                                  role == 'viewer'
+                              ? null
+                              : (value) => setDialogState(() {
+                                    permissions[entry.key] = value;
+                                    if (entry.key ==
+                                            'can_manage_payroll_adjustments') {
+                                      if (value) {
+                                        permissions[
+                                            'can_view_payroll_adjustments'] = true;
+                                      }
+                                    }
+                                    if (entry.key ==
+                                            'can_view_payroll_adjustments') {
+                                      if (!value) {
+                                        permissions[
+                                            'can_manage_payroll_adjustments'] = false;
+                                      }
+                                    }
+                                  }),
                         ),
                     ],
                   ],
