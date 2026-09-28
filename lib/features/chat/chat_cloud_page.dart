@@ -378,7 +378,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                                 ),
                               ),
                               subtitle: Text(
-                                member['role']?.toString() ?? '',
+                                member['company_name']?.toString() ?? '',
                               ),
                             );
                           },
@@ -818,12 +818,11 @@ class _MessageBubble extends StatelessWidget {
           )
         : const <Map<String, dynamic>>[];
 
-    return Align(
-      alignment: own ? Alignment.centerRight : Alignment.centerLeft,
+    final time = _formatTime(message['sent_at']?.toString());
+    final bubble = Flexible(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(12, 9, 12, 7),
+        constraints: const BoxConstraints(maxWidth: 300),
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         decoration: BoxDecoration(
           color: own
               ? Theme.of(context).colorScheme.primaryContainer
@@ -886,16 +885,36 @@ class _MessageBubble extends StatelessWidget {
               const SizedBox(height: 6),
             ],
             Text(message['body']?.toString() ?? ''),
-            const SizedBox(height: 3),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Text(
-                _formatTime(message['sent_at']?.toString()),
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
           ],
         ),
+      ),
+    );
+
+    final timeWidget = Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text(
+        time,
+        style: Theme.of(context).textTheme.labelSmall,
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment:
+            own ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: own
+            ? [
+                timeWidget,
+                const SizedBox(width: 6),
+                bubble,
+              ]
+            : [
+                bubble,
+                const SizedBox(width: 6),
+                timeWidget,
+              ],
       ),
     );
   }
