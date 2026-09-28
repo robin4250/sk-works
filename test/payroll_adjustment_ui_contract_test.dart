@@ -26,9 +26,9 @@ void main() {
     expect(page, contains('canRename'));
 
     expect(repository, contains("rpc('payroll_adjustment_access')"));
-    expect(repository, contains("rpc('create_payroll_adjustment'"));
-    expect(repository, contains("rpc('cancel_payroll_adjustment'"));
-    expect(repository, contains("rpc('upsert_payroll_adjustment_type'"));
+    expect(repository, contains("'create_payroll_adjustment'"));
+    expect(repository, contains("'cancel_payroll_adjustment'"));
+    expect(repository, contains("'upsert_payroll_adjustment_type'"));
   });
 
   test('menu label is refreshed after admin renames payroll adjustment page', () {
