@@ -78,6 +78,10 @@ class MemberPermissionRepository {
                 row['can_manage_admin_site_data'] == true,
             'can_manage_payroll': row['can_manage_payroll'] == true,
             'can_manage_partner_chat': row['can_manage_partner_chat'] == true,
+            'can_view_payroll_adjustments':
+                row['can_view_payroll_adjustments'] == true,
+            'can_manage_payroll_adjustments':
+                row['can_manage_payroll_adjustments'] == true,
           },
         ),
       );
