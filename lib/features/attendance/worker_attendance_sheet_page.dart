@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'attendance_pdf_service.dart';
+import 'japan_holiday.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
@@ -282,6 +283,8 @@ class _AttendanceDayCard extends StatelessWidget {
     final worked = day?.worked == true;
     final colors = Theme.of(context).colorScheme;
     final faded = !inMonth;
+    final holidayName = JapanHoliday.name(date);
+    final isHoliday = holidayName != null;
 
     return Opacity(
       opacity: faded ? 0.42 : 1,
@@ -299,7 +302,7 @@ class _AttendanceDayCard extends StatelessWidget {
                       '${date.day}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w900,
-                            color: date.weekday == DateTime.sunday
+                            color: isHoliday || date.weekday == DateTime.sunday
                                 ? colors.error
                                 : date.weekday == DateTime.saturday
                                     ? Colors.blue.shade700
@@ -310,13 +313,28 @@ class _AttendanceDayCard extends StatelessWidget {
                       weekday,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: weekday == '日'
+                        color: isHoliday || weekday == '日'
                             ? colors.error
                             : weekday == '土'
                                 ? Colors.blue.shade700
                                 : colors.onSurfaceVariant,
                       ),
                     ),
+                    if (holidayName != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        holidayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.error,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          height: 1.05,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
