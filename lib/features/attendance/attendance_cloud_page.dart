@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'attendance_cloud_repository.dart';
 import 'attendance_correction_approvals_page.dart';
 import 'attendance_page.dart';
+import 'bulk_attendance_correction_page.dart';
 import 'bulk_attendance_page.dart';
 
 class AttendanceCloudPage extends StatefulWidget {
@@ -88,12 +89,18 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
               onPressed: _loading ? null : _openCorrectionApprovals,
               icon: const Icon(Icons.approval_outlined),
             ),
-          if (_canManageAttendanceEntries)
+          if (_canManageAttendanceEntries) ...[
+            IconButton(
+              tooltip: '過去分まとめて修正',
+              onPressed: _loading ? null : _openBulkCorrection,
+              icon: const Icon(Icons.edit_calendar_outlined),
+            ),
             IconButton(
               tooltip: 'おまとめ出勤',
               onPressed: _loading ? null : _openBulkAttendance,
               icon: const Icon(Icons.playlist_add_check_circle_outlined),
             ),
+          ],
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading
@@ -196,6 +203,19 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
     );
     if (!mounted) return;
     await _load();
+  }
+
+  Future<void> _openBulkCorrection() async {
+    final count = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => const BulkAttendanceCorrectionPage(),
+      ),
+    );
+    if (count == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$count件の過去勤怠をまとめて修正申請しました')),
+    );
   }
 
   Future<void> _openBulkAttendance() async {
