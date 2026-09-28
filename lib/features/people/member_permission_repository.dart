@@ -55,14 +55,28 @@ class MemberPermissionRepository {
   }
 
   Future<List<MemberPermissionRecord>> loadAll() async {
-    final rows = await _client.rpc('company_member_permission_rows');
-    final records = <MemberPermissionRecord>[];
+    final values = await Future.wait([
+      _client.rpc('company_member_permission_rows'),
+      _client.rpc('company_payroll_adjustment_permission_rows'),
+    ]);
 
-    for (final raw in (rows as List<dynamic>)) {
+    final rows = values[0] as List<dynamic>;
+    final adjustmentRows = values[1] as List<dynamic>;
+    final adjustmentsByUser = <String, Map<String, dynamic>>{
+      for (final raw in adjustmentRows)
+        if ((raw as Map)['user_id'] != null)
+          raw['user_id'].toString(): Map<String, dynamic>.from(raw),
+    };
+
+    final records = <MemberPermissionRecord>[];
+    for (final raw in rows) {
       final row = Map<String, dynamic>.from(raw as Map);
+      final userId = row['user_id']?.toString() ?? '';
+      final adjustment = adjustmentsByUser[userId] ?? const <String, dynamic>{};
+
       records.add(
         MemberPermissionRecord(
-          userId: row['user_id']?.toString() ?? '',
+          userId: userId,
           displayName: row['display_name']?.toString() ?? 'SKOユーザー',
           role: row['role']?.toString() ?? 'viewer',
           permissions: {
@@ -79,9 +93,9 @@ class MemberPermissionRepository {
             'can_manage_payroll': row['can_manage_payroll'] == true,
             'can_manage_partner_chat': row['can_manage_partner_chat'] == true,
             'can_view_payroll_adjustments':
-                row['can_view_payroll_adjustments'] == true,
+                adjustment['can_view'] == true,
             'can_manage_payroll_adjustments':
-                row['can_manage_payroll_adjustments'] == true,
+                adjustment['can_manage'] == true,
           },
         ),
       );
@@ -125,5 +139,18 @@ class MemberPermissionRepository {
         'p_permissions': record.permissions,
       },
     );
+
+    if (record.role != 'admin') {
+      await _client.rpc(
+        'set_payroll_adjustment_permissions',
+        params: {
+          'p_user_id': record.userId,
+          'p_can_view':
+              record.permissions['can_view_payroll_adjustments'] ?? false,
+          'p_can_manage':
+              record.permissions['can_manage_payroll_adjustments'] ?? false,
+        },
+      );
+    }
   }
 }
