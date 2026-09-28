@@ -37,4 +37,19 @@ void main() {
     expect(sql, contains("cm.role::text in ('owner','admin')"));
     expect(sql, contains("cm.role::text = 'manager'"));
   });
+
+  test('configured approver decides and approved changes are applied atomically', () {
+    final sql = File(
+      'supabase/migrations/20260929210000_add_attendance_correction_requests.sql',
+    ).readAsStringSync();
+
+    expect(sql, contains('pending_attendance_correction_rows'));
+    expect(sql, contains('attendance_correction_item_rows'));
+    expect(sql, contains('decide_attendance_correction_request'));
+    expect(sql, contains('company_approval_assignees'));
+    expect(sql, contains("p_decision not in ('approve','reject')"));
+    expect(sql, contains("set status = 'approved'"));
+    expect(sql, contains('update public.attendance_entries'));
+    expect(sql, contains('requester cannot approve own request'));
+  });
 }
