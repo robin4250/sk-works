@@ -301,7 +301,9 @@ class _AttendanceDayCard extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                             color: date.weekday == DateTime.sunday
                                 ? colors.error
-                                : null,
+                                : date.weekday == DateTime.saturday
+                                    ? Colors.blue.shade700
+                                    : null,
                           ),
                     ),
                     Text(
@@ -310,7 +312,9 @@ class _AttendanceDayCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: weekday == '日'
                             ? colors.error
-                            : colors.onSurfaceVariant,
+                            : weekday == '土'
+                                ? Colors.blue.shade700
+                                : colors.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -534,7 +538,9 @@ class _MonthCalendar extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                         color: label == '日'
                             ? Theme.of(context).colorScheme.error
-                            : null,
+                            : label == '土'
+                                ? Colors.blue.shade700
+                                : null,
                       ),
                     ),
                   ),
@@ -601,7 +607,9 @@ class _MonthCalendarCell extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   color: date.weekday == DateTime.sunday
                       ? Theme.of(context).colorScheme.error
-                      : null,
+                      : date.weekday == DateTime.saturday
+                          ? Colors.blue.shade700
+                          : null,
                 ),
               ),
             ),
