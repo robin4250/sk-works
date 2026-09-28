@@ -258,7 +258,7 @@ class PayrollStatementPreviewPage extends StatelessWidget {
                               child: Row(
                                 children: [
                                   Expanded(child: Text(entry.key)),
-                                  Text(entry.value.toString()),
+                                  Text(_formatDetailValue(entry.value)),
                                 ],
                               ),
                             ),
@@ -283,6 +283,11 @@ class PayrollStatementPreviewPage extends StatelessWidget {
 
   static String _date(DateTime value) =>
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+}
+
+String _formatDetailValue(Object? value) {
+  if (value is num) return _formatYen(value.toInt());
+  return value?.toString() ?? '';
 }
 
 String _formatYen(int value) {
