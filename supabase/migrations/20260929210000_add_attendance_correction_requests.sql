@@ -190,11 +190,13 @@ create or replace function public.submit_attendance_correction_request(
 returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, private, pg_temp
 as $$
 declare
   v_actor uuid := auth.uid();
   v_request public.attendance_correction_requests%rowtype;
+  v_assignee record;
+  v_assignee_count integer;
 begin
   if v_actor is null then
     raise exception 'authentication required';
@@ -230,6 +232,15 @@ begin
     raise exception 'at least one correction item is required';
   end if;
 
+  select count(*)
+  into v_assignee_count
+  from public.company_approval_assignees
+  where company_id = v_request.company_id;
+
+  if v_assignee_count < 1 or v_assignee_count > 3 then
+    raise exception 'company approval assignee configuration is invalid';
+  end if;
+
   update public.attendance_correction_requests
   set status = 'submitted',
       signer_name = trim(p_signer_name),
@@ -238,6 +249,282 @@ begin
       submitted_at = now(),
       updated_at = now()
   where id = p_request_id;
+
+  for v_assignee in
+    select caa.user_id
+    from public.company_approval_assignees caa
+    where caa.company_id = v_request.company_id
+  loop
+    perform private.enqueue_notification(
+      v_request.company_id,
+      v_assignee.user_id,
+      'approval',
+      '過去勤怠のまとめて修正',
+      '過去勤怠のまとめて修正申請があります。',
+      'attendance_correction_request',
+      p_request_id
+    );
+  end loop;
+end;
+$$;
+
+create or replace function public.pending_attendance_correction_rows()
+returns table(
+  request_id uuid,
+  requested_by uuid,
+  requested_by_name text,
+  item_count bigint,
+  signer_name text,
+  submitted_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_company_id uuid;
+begin
+  select caa.company_id
+  into v_company_id
+  from public.company_approval_assignees caa
+  where caa.user_id = v_actor
+  limit 1;
+
+  if v_company_id is null then
+    raise exception 'approval assignee permission required';
+  end if;
+
+  return query
+  select
+    r.id,
+    r.requested_by,
+    coalesce(up.display_name, 'SKOユーザー'),
+    count(i.id),
+    r.signer_name,
+    r.submitted_at
+  from public.attendance_correction_requests r
+  left join public.attendance_correction_items i
+    on i.request_id = r.id
+  left join public.user_profiles up
+    on up.user_id = r.requested_by
+  where r.company_id = v_company_id
+    and r.status = 'submitted'
+  group by
+    r.id,
+    r.requested_by,
+    up.display_name,
+    r.signer_name,
+    r.submitted_at
+  order by r.submitted_at;
+end;
+$$;
+
+create or replace function public.attendance_correction_item_rows(
+  p_request_id uuid
+)
+returns table(
+  item_id uuid,
+  attendance_entry_id uuid,
+  original_snapshot jsonb,
+  proposed_snapshot jsonb,
+  change_summary text
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_company_id uuid;
+begin
+  select caa.company_id
+  into v_company_id
+  from public.company_approval_assignees caa
+  where caa.user_id = v_actor
+  limit 1;
+
+  if v_company_id is null then
+    raise exception 'approval assignee permission required';
+  end if;
+
+  if not exists (
+    select 1
+    from public.attendance_correction_requests r
+    where r.id = p_request_id
+      and r.company_id = v_company_id
+      and r.status = 'submitted'
+  ) then
+    raise exception 'submitted attendance correction request not found';
+  end if;
+
+  return query
+  select
+    i.id,
+    i.attendance_entry_id,
+    i.original_snapshot,
+    i.proposed_snapshot,
+    i.change_summary
+  from public.attendance_correction_items i
+  where i.request_id = p_request_id
+    and i.company_id = v_company_id
+  order by i.created_at;
+end;
+$$;
+
+create or replace function public.decide_attendance_correction_request(
+  p_request_id uuid,
+  p_decision text,
+  p_note text default null
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, private, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_request public.attendance_correction_requests%rowtype;
+  v_assignee_count integer;
+  v_item record;
+  v_site_id uuid;
+begin
+  if v_actor is null then
+    raise exception 'authentication required';
+  end if;
+
+  if p_decision not in ('approve','reject') then
+    raise exception 'invalid decision';
+  end if;
+
+  select *
+  into v_request
+  from public.attendance_correction_requests
+  where id = p_request_id
+  for update;
+
+  if not found or v_request.status <> 'submitted' then
+    raise exception 'submitted attendance correction request not found';
+  end if;
+
+  if not exists (
+    select 1
+    from public.company_approval_assignees caa
+    where caa.company_id = v_request.company_id
+      and caa.user_id = v_actor
+  ) then
+    raise exception 'approval assignee permission required';
+  end if;
+
+  select count(*)
+  into v_assignee_count
+  from public.company_approval_assignees
+  where company_id = v_request.company_id;
+
+  if v_request.requested_by = v_actor and v_assignee_count > 1 then
+    raise exception 'requester cannot approve own request';
+  end if;
+
+  if p_decision = 'reject' then
+    update public.attendance_correction_requests
+    set status = 'rejected',
+        reviewed_by = v_actor,
+        reviewed_at = now(),
+        review_note = nullif(trim(coalesce(p_note, '')), ''),
+        updated_at = now()
+    where id = p_request_id;
+
+    perform private.enqueue_notification(
+      v_request.company_id,
+      v_request.requested_by,
+      'warning',
+      '過去勤怠の修正申請が却下されました',
+      'まとめて修正申請が却下されました。内容を確認してください。',
+      'attendance_correction_request',
+      p_request_id
+    );
+
+    return 'rejected';
+  end if;
+
+  for v_item in
+    select *
+    from public.attendance_correction_items
+    where request_id = p_request_id
+      and company_id = v_request.company_id
+    order by created_at
+  loop
+    select s.id
+    into v_site_id
+    from public.sites s
+    where s.company_id = v_request.company_id
+      and s.name = trim(coalesce(v_item.proposed_snapshot ->> 'siteName', ''))
+    limit 2;
+
+    if v_site_id is null then
+      raise exception 'site not found for correction item';
+    end if;
+
+    if (
+      select count(*)
+      from public.sites s
+      where s.company_id = v_request.company_id
+        and s.name = trim(coalesce(v_item.proposed_snapshot ->> 'siteName', ''))
+    ) > 1 then
+      raise exception 'duplicate site name for correction item';
+    end if;
+
+    update public.attendance_entries
+    set site_id = v_site_id,
+        base_man_days = coalesce(
+          (v_item.proposed_snapshot ->> 'manDays')::numeric,
+          base_man_days
+        ),
+        overtime_hours = coalesce(
+          (v_item.proposed_snapshot ->> 'overtimeHours')::numeric,
+          overtime_hours
+        ),
+        early_hours = coalesce(
+          (v_item.proposed_snapshot ->> 'earlyHours')::numeric,
+          early_hours
+        ),
+        night_hours = coalesce(
+          (v_item.proposed_snapshot ->> 'nightHours')::numeric,
+          night_hours
+        ),
+        allowance_amount = coalesce(
+          (v_item.proposed_snapshot ->> 'allowanceYen')::integer,
+          allowance_amount
+        ),
+        notes = nullif(
+          trim(coalesce(v_item.proposed_snapshot ->> 'notes', '')),
+          ''
+        ),
+        updated_by = v_actor,
+        updated_at = now()
+    where id = v_item.attendance_entry_id
+      and company_id = v_request.company_id;
+  end loop;
+
+  update public.attendance_correction_requests
+  set status = 'approved',
+      reviewed_by = v_actor,
+      reviewed_at = now(),
+      review_note = nullif(trim(coalesce(p_note, '')), ''),
+      updated_at = now()
+  where id = p_request_id;
+
+  perform private.enqueue_notification(
+    v_request.company_id,
+    v_request.requested_by,
+    'approval',
+    '過去勤怠の修正が反映されました',
+    'まとめて修正申請が承認され、勤怠へ反映されました。',
+    'attendance_correction_request',
+    p_request_id
+  );
+
+  return 'approved';
 end;
 $$;
 
@@ -245,8 +532,20 @@ revoke execute on function public.can_manage_attendance_corrections(uuid)
   from public, anon;
 revoke execute on function public.submit_attendance_correction_request(uuid,text,jsonb)
   from public, anon;
+revoke execute on function public.pending_attendance_correction_rows()
+  from public, anon;
+revoke execute on function public.attendance_correction_item_rows(uuid)
+  from public, anon;
+revoke execute on function public.decide_attendance_correction_request(uuid,text,text)
+  from public, anon;
 
 grant execute on function public.can_manage_attendance_corrections(uuid)
   to authenticated;
 grant execute on function public.submit_attendance_correction_request(uuid,text,jsonb)
+  to authenticated;
+grant execute on function public.pending_attendance_correction_rows()
+  to authenticated;
+grant execute on function public.attendance_correction_item_rows(uuid)
+  to authenticated;
+grant execute on function public.decide_attendance_correction_request(uuid,text,text)
   to authenticated;
