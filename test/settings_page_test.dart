@@ -6,6 +6,9 @@ import 'package:sk_works/features/settings/settings_page.dart';
 void main() {
   testWidgets('settings page shows company and invoice defaults', (tester) async {
     SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));

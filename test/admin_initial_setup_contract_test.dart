@@ -13,7 +13,7 @@ void main() {
     expect(gate, contains('_GateStatus.employeeProfile'));
     expect(gate, contains('_GateStatus.employeeApprovalPending'));
     expect(gate, contains('_GateStatus.needsAdminInitialSetup'));
-    expect(pages, contains('従業員登録QRコードからログイン'));
+    expect(pages, contains('従業員登録QRでログイン'));
   });
 
   test('new companies require guided initial setup without affecting existing companies', () {
