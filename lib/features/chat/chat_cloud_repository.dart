@@ -199,24 +199,19 @@ class ChatCloudRepository {
         .toSet();
     if (userIds.isEmpty) return const [];
 
-    final values = await Future.wait([
-      _client.rpc('company_member_profiles'),
-      _client
-          .from('companies')
-          .select('name')
-          .eq('id', value.companyId)
-          .limit(1),
-      _client
-          .from('chat_messages')
-          .select('sender_user_id, sent_at')
-          .eq('communication_group_id', groupId)
-          .order('sent_at', ascending: false)
-          .limit(500),
-    ]);
-
-    final profileRows = values[0] as List<dynamic>;
-    final companyRows = values[1] as List<dynamic>;
-    final messageRows = values[2] as List<dynamic>;
+    final profileRows =
+        await _client.rpc('company_member_profiles') as List<dynamic>;
+    final companyRows = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', value.companyId)
+        .limit(1);
+    final messageRows = await _client
+        .from('chat_messages')
+        .select('sender_user_id, sent_at')
+        .eq('communication_group_id', groupId)
+        .order('sent_at', ascending: false)
+        .limit(500);
     final companyName = companyRows.isEmpty
         ? ''
         : companyRows.first['name']?.toString() ?? '';
