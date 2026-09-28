@@ -14,6 +14,7 @@ class BulkAttendancePage extends StatefulWidget {
 class _BulkAttendancePageState extends State<BulkAttendancePage> {
   final _selectedDays = <int>{};
   final _selectedWorkers = <String>{};
+  final _dayDetails = <int, _BulkDayDetails>{};
   List<String> _workers = const [];
   List<String> _sites = const [];
   String? _site;
@@ -29,6 +30,14 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
     _loadLookups();
+  }
+
+  @override
+  void dispose() {
+    for (final details in _dayDetails.values) {
+      details.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadLookups() async {
@@ -63,7 +72,43 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta);
       _selectedDays.clear();
+      for (final details in _dayDetails.values) {
+        details.dispose();
+      }
+      _dayDetails.clear();
     });
+  }
+
+  void _setDaySelected(int day, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedDays.add(day);
+        _dayDetails.putIfAbsent(day, _BulkDayDetails.new);
+      } else {
+        _selectedDays.remove(day);
+        _dayDetails.remove(day)?.dispose();
+      }
+    });
+  }
+
+  double _parseHours(TextEditingController controller, String label, int day) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return 0;
+    final value = double.tryParse(text);
+    if (value == null || value < 0) {
+      throw FormatException('$day日の$labelは0以上の数値で入力してください。');
+    }
+    return value;
+  }
+
+  int _parseAllowance(TextEditingController controller, int day) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return 0;
+    final value = int.tryParse(text.replaceAll(',', ''));
+    if (value == null || value < 0) {
+      throw FormatException('$day日の手当は0以上の整数で入力してください。');
+    }
+    return value;
   }
 
   Future<void> _save() async {
@@ -83,20 +128,32 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
     final records = <Map<String, dynamic>>[];
     final days = _selectedDays.toList()..sort();
     final workers = _selectedWorkers.toList()..sort();
-    for (final day in days) {
-      for (final worker in workers) {
-        records.add({
-          'date': _dateText(day),
-          'workerName': worker,
-          'siteName': _site,
-          'manDays': 1.0,
-          'overtimeHours': 0.0,
-          'earlyHours': 0.0,
-          'nightHours': 0.0,
-          'allowanceYen': 0,
-          'notes': '',
-        });
+
+    try {
+      for (final day in days) {
+        final details = _dayDetails.putIfAbsent(day, _BulkDayDetails.new);
+        final overtimeHours = _parseHours(details.overtime, '残業', day);
+        final earlyHours = _parseHours(details.early, '早出', day);
+        final nightHours = _parseHours(details.night, '夜勤', day);
+        final allowanceYen = _parseAllowance(details.allowance, day);
+
+        for (final worker in workers) {
+          records.add({
+            'date': _dateText(day),
+            'workerName': worker,
+            'siteName': _site,
+            'manDays': 1.0,
+            'overtimeHours': overtimeHours,
+            'earlyHours': earlyHours,
+            'nightHours': nightHours,
+            'allowanceYen': allowanceYen,
+            'notes': details.notes.text.trim(),
+          });
+        }
       }
+    } on FormatException catch (error) {
+      _show(error.message);
+      return;
     }
 
     setState(() => _saving = true);
@@ -115,8 +172,92 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Widget _numberField({
+    required TextEditingController controller,
+    required String label,
+    String? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: suffix,
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+
+  Widget _dayDetailCard(int day) {
+    final details = _dayDetails.putIfAbsent(day, _BulkDayDetails.new);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        key: ValueKey('bulk-day-$day'),
+        title: Text('${_dateText(day)} の詳細'),
+        subtitle: const Text('残業・早出・夜勤・手当を日ごとに設定'),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _numberField(
+                  controller: details.overtime,
+                  label: '残業',
+                  suffix: '時間',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _numberField(
+                  controller: details.early,
+                  label: '早出',
+                  suffix: '時間',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _numberField(
+                  controller: details.night,
+                  label: '夜勤',
+                  suffix: '時間',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: details.allowance,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '手当',
+                    suffixText: '円',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: details.notes,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: '備考',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedDays = _selectedDays.toList()..sort();
     return Scaffold(
       appBar: AppBar(title: const Text('おまとめ出勤')),
       bottomNavigationBar: SafeArea(
@@ -173,7 +314,10 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                             child: Text(
                               '${_month.year}年${_month.month}月',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                           ),
                           IconButton(
@@ -195,15 +339,8 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                                 FilterChip(
                                   label: Text('$day日'),
                                   selected: _selectedDays.contains(day),
-                                  onSelected: (selected) {
-                                    setState(() {
-                                      if (selected) {
-                                        _selectedDays.add(day);
-                                      } else {
-                                        _selectedDays.remove(day);
-                                      }
-                                    });
-                                  },
+                                  onSelected: (selected) =>
+                                      _setDaySelected(day, selected),
                                 ),
                             ],
                           ),
@@ -217,12 +354,18 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                           border: OutlineInputBorder(),
                         ),
                         items: _sites
-                            .map((site) => DropdownMenuItem(value: site, child: Text(site)))
+                            .map((site) => DropdownMenuItem(
+                                  value: site,
+                                  child: Text(site),
+                                ))
                             .toList(growable: false),
                         onChanged: (value) => setState(() => _site = value),
                       ),
                       const SizedBox(height: 16),
-                      Text('作業員（複数選択）', style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        '作業員（複数選択）',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 8),
                       if (_workers.isEmpty)
                         const Text('登録可能な作業員がいません。')
@@ -234,7 +377,8 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                                 CheckboxListTile(
                                   value: _selectedWorkers.contains(worker),
                                   title: Text(worker),
-                                  controlAffinity: ListTileControlAffinity.leading,
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
                                   onChanged: (selected) {
                                     setState(() {
                                       if (selected == true) {
@@ -248,16 +392,43 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                             ],
                           ),
                         ),
+                      if (selectedDays.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          '日ごとの入力',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        for (final day in selectedDays) _dayDetailCard(day),
+                      ],
                       const SizedBox(height: 12),
                       Text(
                         '選択: ${_selectedDays.length}日 × ${_selectedWorkers.length}人 = ${_selectedDays.length * _selectedWorkers.length}件',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
-                      const Text('残業・早出・夜勤・手当と共通サインは次の実装段階で、日ごとに編集できるよう追加します。'),
+                      const Text(
+                        '共通サインは次の実装で、選択した全件へ1回の署名をひも付けます。',
+                      ),
                     ],
                   ),
       ),
     );
+  }
+}
+
+class _BulkDayDetails {
+  final overtime = TextEditingController(text: '0');
+  final early = TextEditingController(text: '0');
+  final night = TextEditingController(text: '0');
+  final allowance = TextEditingController(text: '0');
+  final notes = TextEditingController();
+
+  void dispose() {
+    overtime.dispose();
+    early.dispose();
+    night.dispose();
+    allowance.dispose();
+    notes.dispose();
   }
 }
