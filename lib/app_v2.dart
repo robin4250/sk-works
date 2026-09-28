@@ -30,6 +30,8 @@ import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
+import 'features/payroll/payroll_adjustment_page.dart';
+import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
 import 'features/people/employee_invite_page.dart';
 import 'features/people/people_cloud_page.dart';
@@ -96,6 +98,8 @@ class _HomePageState extends State<HomePage> {
   final _employeeOnboardingRepository =
       EmployeeOnboardingRepository.maybeCreate();
   final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
+  final _payrollAdjustmentRepository =
+      PayrollAdjustmentRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
@@ -106,6 +110,7 @@ class _HomePageState extends State<HomePage> {
   );
   int _selectedIndex = 0;
   bool _canReviewEmployeeOnboarding = false;
+  String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
       const RequiredDocumentAttention(
         missingCount: 0,
@@ -129,6 +134,7 @@ class _HomePageState extends State<HomePage> {
       _loadUsage(),
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
+      _loadPayrollAdjustmentAccess(),
     ]);
   }
 
@@ -164,6 +170,18 @@ class _HomePageState extends State<HomePage> {
       setState(() => _requiredDocumentAttention = value);
     } catch (_) {
       // Missing-document attention must not block the home screen.
+    }
+  }
+
+  Future<void> _loadPayrollAdjustmentAccess() async {
+    final repository = _payrollAdjustmentRepository;
+    if (repository == null) return;
+    try {
+      final access = await repository.loadAccess();
+      if (!mounted) return;
+      setState(() => _payrollAdjustmentLabel = access.pageLabel);
+    } catch (_) {
+      // Keep the standard label until the payroll adjustment migration is ready.
     }
   }
 
@@ -272,6 +290,7 @@ class _HomePageState extends State<HomePage> {
       'invoices': 'can_view_invoices',
       'admin_sites': 'can_view_admin_site_data',
       'people': 'can_manage_people',
+      'payroll_adjustments': 'can_view_payroll_adjustments',
     };
     final permission = restricted[key];
     if (permission != null && !_identity.can(permission)) {
@@ -338,6 +357,12 @@ class _HomePageState extends State<HomePage> {
           child: PayrollStatementsPage(),
         );
         break;
+      case 'payroll_adjustments':
+        page = SecondaryProtectedPage(
+          title: _payrollAdjustmentLabel,
+          child: const PayrollAdjustmentPage(),
+        );
+        break;
       case 'profile':
         page = ProfilePage(
           role: ManualContent.fromMembershipRole(_identity.role),
@@ -399,6 +424,10 @@ class _HomePageState extends State<HomePage> {
     if (key == 'profile') {
       await _loadIdentity();
     }
+    if (key == 'payroll_adjustments') {
+      await _loadPayrollAdjustmentAccess();
+      await _loadIdentity();
+    }
   }
 
   List<_MenuAction> get _menuItems {
@@ -424,6 +453,12 @@ class _HomePageState extends State<HomePage> {
           key: 'payroll',
           label: '給与明細',
           icon: Icons.payments_outlined,
+        ),
+      if (_identity.can('can_view_payroll_adjustments'))
+        _MenuAction(
+          key: 'payroll_adjustments',
+          label: _payrollAdjustmentLabel,
+          icon: Icons.price_change_outlined,
         ),
       const _MenuAction(
         key: 'profile',
