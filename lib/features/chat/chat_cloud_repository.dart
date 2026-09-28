@@ -184,6 +184,52 @@ class ChatCloudRepository {
     return list;
   }
 
+  Future<List<Map<String, dynamic>>> loadGroupMembers(String groupId) async {
+    final value = await membership();
+    final membershipRows = await _client
+        .from('communication_group_members')
+        .select('user_id')
+        .eq('company_id', value.companyId)
+        .eq('group_id', groupId);
+
+    final userIds = membershipRows
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (userIds.isEmpty) return const [];
+
+    final profileRows = await _client.rpc('company_member_profiles');
+    final result = <Map<String, dynamic>>[];
+
+    for (final raw in (profileRows as List<dynamic>)) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final userId = row['user_id']?.toString();
+      if (userId == null || !userIds.contains(userId)) continue;
+
+      String? avatarUrl;
+      final path = row['avatar_storage_path']?.toString();
+      if (path != null && path.isNotEmpty) {
+        try {
+          avatarUrl = await _client.storage
+              .from('profile-photos')
+              .createSignedUrl(path, 3600);
+        } catch (_) {
+          avatarUrl = null;
+        }
+      }
+
+      result.add({...row, 'avatar_url': avatarUrl});
+    }
+
+    result.sort(
+      (a, b) => (a['display_name'] ?? '')
+          .toString()
+          .compareTo((b['display_name'] ?? '').toString()),
+    );
+    return result;
+  }
+
   Future<List<String>> prioritizedSiteGroupIds() async {
     final user = _client.auth.currentUser;
     if (user == null) return const [];
