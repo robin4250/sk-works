@@ -554,11 +554,452 @@ begin
 end;
 $$;
 
+create or replace function public.payroll_adjustment_access()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_company_id uuid;
+  v_role text;
+  v_page_label text := '給与調整';
+  v_can_view boolean := false;
+  v_can_manage boolean := false;
+begin
+  select
+    cm.company_id,
+    cm.role::text,
+    case
+      when cm.role::text in ('owner','admin') then true
+      else coalesce(p.can_view_payroll_adjustments, false)
+        or coalesce(p.can_manage_payroll_adjustments, false)
+    end,
+    case
+      when cm.role::text in ('owner','admin') then true
+      when cm.role::text = 'manager'
+        then coalesce(p.can_manage_payroll_adjustments, false)
+      else false
+    end
+  into v_company_id, v_role, v_can_view, v_can_manage
+  from public.company_members cm
+  left join public.member_feature_permissions p
+    on p.company_id = cm.company_id
+   and p.user_id = cm.user_id
+  where cm.user_id = v_user_id
+  limit 1;
+
+  if v_company_id is null then
+    return jsonb_build_object(
+      'page_label', v_page_label,
+      'can_view', false,
+      'can_manage', false,
+      'can_rename', false
+    );
+  end if;
+
+  select coalesce(s.page_label, '給与調整')
+  into v_page_label
+  from (
+    select v_company_id as company_id
+  ) x
+  left join public.payroll_adjustment_settings s
+    on s.company_id = x.company_id;
+
+  return jsonb_build_object(
+    'company_id', v_company_id,
+    'role', v_role,
+    'page_label', coalesce(v_page_label, '給与調整'),
+    'can_view', v_can_view,
+    'can_manage', v_can_manage,
+    'can_rename', v_role in ('owner','admin')
+  );
+end;
+$$;
+
+create or replace function public.payroll_adjustment_worker_rows()
+returns table(
+  worker_id uuid,
+  worker_name text
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+begin
+  if coalesce((v_access ->> 'can_view')::boolean, false) is not true then
+    raise exception 'payroll adjustment view permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  return query
+  select w.id, w.name
+  from public.workers w
+  where w.company_id = v_company_id
+    and w.status = 'active'
+  order by w.name;
+end;
+$$;
+
+create or replace function public.payroll_adjustment_type_rows()
+returns table(
+  id uuid,
+  label text,
+  direction text,
+  is_active boolean
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+begin
+  if coalesce((v_access ->> 'can_view')::boolean, false) is not true then
+    raise exception 'payroll adjustment view permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  return query
+  select t.id, t.label, t.direction, t.is_active
+  from public.payroll_adjustment_types t
+  where t.company_id = v_company_id
+  order by t.is_active desc, t.label, t.direction;
+end;
+$$;
+
+create or replace function public.payroll_adjustment_rows(
+  p_worker_id uuid default null,
+  p_start date default null,
+  p_end date default null
+)
+returns table(
+  id uuid,
+  worker_id uuid,
+  worker_name text,
+  type_id uuid,
+  label text,
+  direction text,
+  amount_yen integer,
+  effective_date date,
+  note text,
+  created_by uuid,
+  created_at timestamptz,
+  cancelled_at timestamptz,
+  cancelled_by uuid,
+  cancellation_reason text
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+begin
+  if coalesce((v_access ->> 'can_view')::boolean, false) is not true then
+    raise exception 'payroll adjustment view permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  return query
+  select
+    a.id,
+    a.worker_id,
+    w.name,
+    a.type_id,
+    a.label_snapshot,
+    a.direction,
+    a.amount_yen,
+    a.effective_date,
+    a.note,
+    a.created_by,
+    a.created_at,
+    a.cancelled_at,
+    a.cancelled_by,
+    a.cancellation_reason
+  from public.payroll_adjustments a
+  join public.workers w
+    on w.id = a.worker_id
+   and w.company_id = a.company_id
+  where a.company_id = v_company_id
+    and (p_worker_id is null or a.worker_id = p_worker_id)
+    and (p_start is null or a.effective_date >= p_start)
+    and (p_end is null or a.effective_date <= p_end)
+  order by a.effective_date desc, a.created_at desc;
+end;
+$$;
+
+create or replace function public.upsert_payroll_adjustment_type(
+  p_id uuid,
+  p_label text,
+  p_direction text,
+  p_is_active boolean default true
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+  v_id uuid;
+  v_label text := trim(coalesce(p_label, ''));
+  v_direction text := trim(coalesce(p_direction, ''));
+  v_action text;
+begin
+  if coalesce((v_access ->> 'can_manage')::boolean, false) is not true then
+    raise exception 'payroll adjustment manage permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  if char_length(v_label) < 1 or char_length(v_label) > 60 then
+    raise exception 'adjustment label must be 1 to 60 characters';
+  end if;
+  if v_direction not in ('addition','deduction') then
+    raise exception 'invalid adjustment direction';
+  end if;
+
+  if p_id is null then
+    insert into public.payroll_adjustment_types(
+      company_id, label, direction, is_active, created_by, updated_by
+    )
+    values(
+      v_company_id, v_label, v_direction, p_is_active, v_actor, v_actor
+    )
+    returning id into v_id;
+    v_action := 'type_create';
+  else
+    update public.payroll_adjustment_types
+    set label = v_label,
+        direction = v_direction,
+        is_active = p_is_active,
+        updated_by = v_actor,
+        updated_at = now()
+    where id = p_id
+      and company_id = v_company_id
+    returning id into v_id;
+
+    if v_id is null then
+      raise exception 'payroll adjustment type not found';
+    end if;
+    v_action := 'type_update';
+  end if;
+
+  insert into public.payroll_adjustment_audit_log(
+    company_id, action, target_kind, target_id, actor_user_id, details
+  )
+  values(
+    v_company_id,
+    v_action,
+    'type',
+    v_id,
+    v_actor,
+    jsonb_build_object(
+      'label', v_label,
+      'direction', v_direction,
+      'is_active', p_is_active
+    )
+  );
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.create_payroll_adjustment(
+  p_worker_id uuid,
+  p_type_id uuid,
+  p_amount_yen integer,
+  p_effective_date date,
+  p_note text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+  v_label text;
+  v_direction text;
+  v_id uuid;
+begin
+  if coalesce((v_access ->> 'can_manage')::boolean, false) is not true then
+    raise exception 'payroll adjustment manage permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  if p_amount_yen is null or p_amount_yen <= 0 then
+    raise exception 'amount must be greater than zero';
+  end if;
+  if p_effective_date is null then
+    raise exception 'effective date is required';
+  end if;
+
+  if not exists (
+    select 1
+    from public.workers w
+    where w.id = p_worker_id
+      and w.company_id = v_company_id
+      and w.status = 'active'
+  ) then
+    raise exception 'worker not found';
+  end if;
+
+  select t.label, t.direction
+  into v_label, v_direction
+  from public.payroll_adjustment_types t
+  where t.id = p_type_id
+    and t.company_id = v_company_id
+    and t.is_active = true;
+
+  if v_label is null then
+    raise exception 'active payroll adjustment type not found';
+  end if;
+
+  insert into public.payroll_adjustments(
+    company_id,
+    worker_id,
+    type_id,
+    label_snapshot,
+    direction,
+    amount_yen,
+    effective_date,
+    note,
+    created_by
+  )
+  values(
+    v_company_id,
+    p_worker_id,
+    p_type_id,
+    v_label,
+    v_direction,
+    p_amount_yen,
+    p_effective_date,
+    nullif(trim(coalesce(p_note, '')), ''),
+    v_actor
+  )
+  returning id into v_id;
+
+  insert into public.payroll_adjustment_audit_log(
+    company_id, action, target_kind, target_id, actor_user_id, details
+  )
+  values(
+    v_company_id,
+    'adjustment_create',
+    'adjustment',
+    v_id,
+    v_actor,
+    jsonb_build_object(
+      'worker_id', p_worker_id,
+      'type_id', p_type_id,
+      'label', v_label,
+      'direction', v_direction,
+      'amount_yen', p_amount_yen,
+      'effective_date', p_effective_date
+    )
+  );
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.cancel_payroll_adjustment(
+  p_id uuid,
+  p_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_access jsonb := public.payroll_adjustment_access();
+  v_company_id uuid;
+  v_row public.payroll_adjustments%rowtype;
+begin
+  if coalesce((v_access ->> 'can_manage')::boolean, false) is not true then
+    raise exception 'payroll adjustment manage permission required';
+  end if;
+
+  v_company_id := (v_access ->> 'company_id')::uuid;
+
+  select *
+  into v_row
+  from public.payroll_adjustments
+  where id = p_id
+    and company_id = v_company_id
+  for update;
+
+  if not found then
+    raise exception 'payroll adjustment not found';
+  end if;
+  if v_row.cancelled_at is not null then
+    return;
+  end if;
+
+  update public.payroll_adjustments
+  set cancelled_at = now(),
+      cancelled_by = v_actor,
+      cancellation_reason = nullif(trim(coalesce(p_reason, '')), '')
+  where id = p_id
+    and company_id = v_company_id;
+
+  insert into public.payroll_adjustment_audit_log(
+    company_id, action, target_kind, target_id, actor_user_id, details
+  )
+  values(
+    v_company_id,
+    'adjustment_cancel',
+    'adjustment',
+    p_id,
+    v_actor,
+    jsonb_build_object(
+      'worker_id', v_row.worker_id,
+      'label', v_row.label_snapshot,
+      'direction', v_row.direction,
+      'amount_yen', v_row.amount_yen,
+      'effective_date', v_row.effective_date,
+      'reason', nullif(trim(coalesce(p_reason, '')), '')
+    )
+  );
+end;
+$$;
+
 revoke execute on function public.current_feature_permissions() from public, anon;
 revoke execute on function public.company_member_permission_rows() from public, anon;
 revoke execute on function public.set_member_feature_permissions(uuid,text,jsonb)
   from public, anon;
 revoke execute on function public.set_payroll_adjustment_page_label(text)
+  from public, anon;
+revoke execute on function public.payroll_adjustment_access()
+  from public, anon;
+revoke execute on function public.payroll_adjustment_worker_rows()
+  from public, anon;
+revoke execute on function public.payroll_adjustment_type_rows()
+  from public, anon;
+revoke execute on function public.payroll_adjustment_rows(uuid,date,date)
+  from public, anon;
+revoke execute on function public.upsert_payroll_adjustment_type(uuid,text,text,boolean)
+  from public, anon;
+revoke execute on function public.create_payroll_adjustment(uuid,uuid,integer,date,text)
+  from public, anon;
+revoke execute on function public.cancel_payroll_adjustment(uuid,text)
   from public, anon;
 
 grant execute on function public.current_feature_permissions() to authenticated;
@@ -566,4 +1007,18 @@ grant execute on function public.company_member_permission_rows() to authenticat
 grant execute on function public.set_member_feature_permissions(uuid,text,jsonb)
   to authenticated;
 grant execute on function public.set_payroll_adjustment_page_label(text)
+  to authenticated;
+grant execute on function public.payroll_adjustment_access()
+  to authenticated;
+grant execute on function public.payroll_adjustment_worker_rows()
+  to authenticated;
+grant execute on function public.payroll_adjustment_type_rows()
+  to authenticated;
+grant execute on function public.payroll_adjustment_rows(uuid,date,date)
+  to authenticated;
+grant execute on function public.upsert_payroll_adjustment_type(uuid,text,text,boolean)
+  to authenticated;
+grant execute on function public.create_payroll_adjustment(uuid,uuid,integer,date,text)
+  to authenticated;
+grant execute on function public.cancel_payroll_adjustment(uuid,text)
   to authenticated;
