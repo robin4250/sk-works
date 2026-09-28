@@ -33,9 +33,13 @@ void main() {
 
   test('menu label is refreshed after admin renames payroll adjustment page', () {
     final app = read('lib/app_v2.dart');
+    final membership =
+        read('lib/features/home/home_membership_repository.dart');
 
     expect(app, contains('_payrollAdjustmentLabel'));
     expect(app, contains('_loadPayrollAdjustmentAccess()'));
     expect(app, contains("if (key == 'payroll_adjustments')"));
+    expect(membership, contains('current_payroll_adjustment_permissions'));
+    expect(membership, contains("'can_view_payroll_adjustments'"));
   });
 }
