@@ -47,6 +47,7 @@ class PayrollAdjustmentListItem {
     required this.id,
     required this.workerId,
     required this.workerName,
+    required this.typeId,
     required this.label,
     required this.direction,
     required this.amountYen,
@@ -60,6 +61,7 @@ class PayrollAdjustmentListItem {
   final String id;
   final String workerId;
   final String workerName;
+  final String typeId;
   final String label;
   final String direction;
   final int amountYen;
@@ -148,6 +150,7 @@ class PayrollAdjustmentRepository {
           id: (raw as Map)['id']?.toString() ?? '',
           workerId: raw['worker_id']?.toString() ?? '',
           workerName: raw['worker_name']?.toString() ?? '',
+          typeId: raw['type_id']?.toString() ?? '',
           label: raw['label']?.toString() ?? '',
           direction: raw['direction']?.toString() ?? 'deduction',
           amountYen: (raw['amount_yen'] as num?)?.toInt() ?? 0,
@@ -207,6 +210,25 @@ class PayrollAdjustmentRepository {
       },
     );
     return raw?.toString() ?? '';
+  }
+
+  Future<void> updateAdjustment({
+    required String id,
+    required String typeId,
+    required int amountYen,
+    required DateTime effectiveDate,
+    String? note,
+  }) async {
+    await _client.rpc(
+      'update_payroll_adjustment',
+      params: {
+        'p_id': id,
+        'p_type_id': typeId,
+        'p_amount_yen': amountYen,
+        'p_effective_date': effectiveDate.toIso8601String().substring(0, 10),
+        'p_note': note?.trim(),
+      },
+    );
   }
 
   Future<void> cancelAdjustment({
