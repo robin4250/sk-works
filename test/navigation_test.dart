@@ -35,6 +35,8 @@ void main() {
   });
 
   testWidgets('admin home routes to settings module', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
     expect(find.text('設定'), findsOneWidget);
