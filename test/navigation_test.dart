@@ -35,6 +35,8 @@ void main() {
   });
 
   testWidgets('admin home routes to settings module', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
     expect(find.text('設定'), findsOneWidget);
@@ -43,11 +45,6 @@ void main() {
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('設定を保存'),
-      300,
-      scrollable: find.byType(Scrollable).last,
-    );
     expect(find.text('設定を保存'), findsOneWidget);
   });
 
