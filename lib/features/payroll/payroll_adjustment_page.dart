@@ -298,7 +298,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
 
     if (_types.where((item) => item.isActive).isEmpty) {
       final created = await _addType();
-      if (!created) return;
+      if (!created || !mounted) return;
     }
 
     String workerId = _workerFilter ?? _workers.first.id;
