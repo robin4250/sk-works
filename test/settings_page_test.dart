@@ -12,7 +12,13 @@ void main() {
 
     expect(find.text('会社情報'), findsOneWidget);
     expect(find.text('請求設定'), findsOneWidget);
-    expect(find.text('設定を保存'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'SKO'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('設定を保存'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('設定を保存'), findsOneWidget);
   });
 }
