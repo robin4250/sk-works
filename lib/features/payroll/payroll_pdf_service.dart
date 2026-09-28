@@ -50,7 +50,7 @@ class PayrollPdfService {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(entry.key),
-                    pw.Text(entry.value.toString()),
+                    pw.Text(_detailValue(entry.value)),
                   ],
                 ),
             ],
@@ -90,6 +90,11 @@ class PayrollPdfService {
 
   static String _date(DateTime value) =>
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+
+  static String _detailValue(Object? value) {
+    if (value is num) return _yen(value.toInt());
+    return value?.toString() ?? '';
+  }
 
   static String _yen(int value) {
     final negative = value < 0;
