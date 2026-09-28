@@ -199,10 +199,40 @@ class ChatCloudRepository {
         .toSet();
     if (userIds.isEmpty) return const [];
 
-    final profileRows = await _client.rpc('company_member_profiles');
-    final result = <Map<String, dynamic>>[];
+    final profileRows =
+        await _client.rpc('company_member_profiles') as List<dynamic>;
+    final companyRows = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', value.companyId)
+        .limit(1);
+    final messageRows = await _client
+        .from('chat_messages')
+        .select('sender_user_id, sent_at')
+        .eq('communication_group_id', groupId)
+        .order('sent_at', ascending: false)
+        .limit(500);
+    final companyName = companyRows.isEmpty
+        ? ''
+        : companyRows.first['name']?.toString() ?? '';
 
-    for (final raw in (profileRows as List<dynamic>)) {
+    final lastMessageByUser = <String, String>{};
+    for (final raw in messageRows) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final userId = row['sender_user_id']?.toString();
+      final sentAt = row['sent_at']?.toString();
+      if (userId == null ||
+          userId.isEmpty ||
+          sentAt == null ||
+          sentAt.isEmpty ||
+          lastMessageByUser.containsKey(userId)) {
+        continue;
+      }
+      lastMessageByUser[userId] = sentAt;
+    }
+
+    final result = <Map<String, dynamic>>[];
+    for (final raw in profileRows) {
       final row = Map<String, dynamic>.from(raw as Map);
       final userId = row['user_id']?.toString();
       if (userId == null || !userIds.contains(userId)) continue;
@@ -219,14 +249,27 @@ class ChatCloudRepository {
         }
       }
 
-      result.add({...row, 'avatar_url': avatarUrl});
+      result.add({
+        ...row,
+        'avatar_url': avatarUrl,
+        'company_name': companyName,
+        'last_message_at': lastMessageByUser[userId],
+      });
     }
 
-    result.sort(
-      (a, b) => (a['display_name'] ?? '')
+    result.sort((a, b) {
+      final aDate = DateTime.tryParse(a['last_message_at']?.toString() ?? '');
+      final bDate = DateTime.tryParse(b['last_message_at']?.toString() ?? '');
+      if (aDate != null || bDate != null) {
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        final byRecent = bDate.compareTo(aDate);
+        if (byRecent != 0) return byRecent;
+      }
+      return (a['display_name'] ?? '')
           .toString()
-          .compareTo((b['display_name'] ?? '').toString()),
-    );
+          .compareTo((b['display_name'] ?? '').toString());
+    });
     return result;
   }
 
