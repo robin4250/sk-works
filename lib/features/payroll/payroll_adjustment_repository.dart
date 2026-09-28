@@ -209,6 +209,25 @@ class PayrollAdjustmentRepository {
     return raw?.toString() ?? '';
   }
 
+  Future<void> updateAdjustment({
+    required String id,
+    required String typeId,
+    required int amountYen,
+    required DateTime effectiveDate,
+    String? note,
+  }) async {
+    await _client.rpc(
+      'update_payroll_adjustment',
+      params: {
+        'p_id': id,
+        'p_type_id': typeId,
+        'p_amount_yen': amountYen,
+        'p_effective_date': effectiveDate.toIso8601String().substring(0, 10),
+        'p_note': note?.trim(),
+      },
+    );
+  }
+
   Future<void> cancelAdjustment({
     required String id,
     String? reason,
