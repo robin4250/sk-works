@@ -18,6 +18,9 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
   List<PayrollAdjustmentTypeOption> _types = const [];
   List<PayrollAdjustmentListItem> _items = const [];
   String? _workerFilter;
+  String? _typeFilter;
+  DateTime? _startFilter;
+  DateTime? _endFilter;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -99,11 +102,42 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     }
   }
 
+  List<PayrollAdjustmentListItem> get _visibleItems {
+    return _items.where((item) {
+      if (_typeFilter != null && item.typeId != _typeFilter) return false;
+      if (_startFilter != null &&
+          item.effectiveDate.isBefore(
+            DateTime(
+              _startFilter!.year,
+              _startFilter!.month,
+              _startFilter!.day,
+            ),
+          )) {
+        return false;
+      }
+      if (_endFilter != null &&
+          item.effectiveDate.isAfter(
+            DateTime(
+              _endFilter!.year,
+              _endFilter!.month,
+              _endFilter!.day,
+              23,
+              59,
+              59,
+            ),
+          )) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final access = _access;
     final pageLabel = access?.pageLabel ?? '給与調整';
-    final activeItems = _items.where((item) => !item.isCancelled);
+    final visibleItems = _visibleItems;
+    final activeItems = visibleItems.where((item) => !item.isCancelled);
     final additions = activeItems
         .where((item) => item.isAddition)
         .fold<int>(0, (sum, item) => sum + item.amountYen);
@@ -178,6 +212,51 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                                   },
                                 ),
                                 const SizedBox(height: 12),
+                                DropdownButtonFormField<String?>(
+                                  initialValue: _typeFilter,
+                                  decoration: const InputDecoration(
+                                    labelText: '項目',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('すべての項目'),
+                                    ),
+                                    for (final type in _types)
+                                      DropdownMenuItem<String?>(
+                                        value: type.id,
+                                        child: Text(
+                                          '${type.label}（${type.isAddition ? '加算' : '控除'}）',
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: (value) =>
+                                      setState(() => _typeFilter = value),
+                                ),
+                                const SizedBox(height: 12),
+                                OutlinedButton.icon(
+                                  onPressed: _pickPeriod,
+                                  icon: const Icon(Icons.date_range_outlined),
+                                  label: Text(
+                                    _startFilter == null && _endFilter == null
+                                        ? '期間を指定'
+                                        : '${_startFilter == null ? '開始なし' : _date(_startFilter!)} ～ '
+                                          '${_endFilter == null ? '終了なし' : _date(_endFilter!)}',
+                                  ),
+                                ),
+                                if (_startFilter != null ||
+                                    _endFilter != null) ...[
+                                  const SizedBox(height: 6),
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      _startFilter = null;
+                                      _endFilter = null;
+                                    }),
+                                    child: const Text('期間指定を解除'),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
@@ -201,7 +280,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        if (_items.isEmpty)
+                        if (visibleItems.isEmpty)
                           const Card(
                             child: Padding(
                               padding: EdgeInsets.all(28),
@@ -220,10 +299,11 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                             ),
                           )
                         else
-                          for (final item in _items) ...[
+                          for (final item in visibleItems) ...[
                             _AdjustmentCard(
                               item: item,
                               canManage: access?.canManage == true,
+                              onEdit: () => _editAdjustment(item),
                               onCancel: () => _cancelAdjustment(item),
                             ),
                             const SizedBox(height: 8),
@@ -233,6 +313,152 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                   ),
       ),
     );
+  }
+
+  Future<void> _pickPeriod() async {
+    final now = DateTime.now();
+    final initial = DateTimeRange(
+      start: _startFilter ?? DateTime(now.year, now.month, 1),
+      end: _endFilter ?? now,
+    );
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: initial,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _startFilter = picked.start;
+      _endFilter = picked.end;
+    });
+  }
+
+  Future<void> _editAdjustment(PayrollAdjustmentListItem item) async {
+    final repository = _repository;
+    if (repository == null ||
+        _access?.canManage != true ||
+        item.isCancelled) {
+      return;
+    }
+
+    String? typeId = item.typeId;
+    final amount = TextEditingController(text: item.amountYen.toString());
+    final note = TextEditingController(text: item.note ?? '');
+    var effectiveDate = item.effectiveDate;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('給与調整を修正'),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: typeId,
+                    decoration: const InputDecoration(labelText: '項目'),
+                    items: [
+                      for (final type in _types.where((item) => item.isActive))
+                        DropdownMenuItem(
+                          value: type.id,
+                          child: Text(
+                            '${type.label}（${type.isAddition ? '加算' : '控除'}）',
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => typeId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amount,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '金額',
+                      suffixText: '円',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('対象日'),
+                    subtitle: Text(_date(effectiveDate)),
+                    trailing: const Icon(Icons.calendar_month_outlined),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: dialogContext,
+                        initialDate: effectiveDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => effectiveDate = picked);
+                      }
+                    },
+                  ),
+                  TextField(
+                    controller: note,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: '備考（任意）',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final parsed =
+                    int.tryParse(amount.text.replaceAll(',', '').trim());
+                if (typeId == null || parsed == null || parsed <= 0) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('項目と金額を確認してください')),
+                  );
+                  return;
+                }
+                try {
+                  await repository.updateAdjustment(
+                    id: item.id,
+                    typeId: typeId!,
+                    amountYen: parsed,
+                    effectiveDate: effectiveDate,
+                    note: note.text,
+                  );
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, true);
+                  }
+                } catch (error) {
+                  if (!dialogContext.mounted) return;
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(content: Text('修正できませんでした: $error')),
+                  );
+                }
+              },
+              child: const Text('修正を保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    amount.dispose();
+    note.dispose();
+
+    if (saved == true) {
+      await _reloadItems();
+      if (!mounted) return;
+      _show('給与調整を修正しました');
+    }
   }
 
   Future<void> _renamePage() async {
@@ -654,11 +880,13 @@ class _AdjustmentCard extends StatelessWidget {
   const _AdjustmentCard({
     required this.item,
     required this.canManage,
+    required this.onEdit,
     required this.onCancel,
   });
 
   final PayrollAdjustmentListItem item;
   final bool canManage;
+  final VoidCallback onEdit;
   final VoidCallback onCancel;
 
   @override
@@ -707,9 +935,14 @@ class _AdjustmentCard extends StatelessWidget {
                 PopupMenuButton<String>(
                   tooltip: '操作',
                   onSelected: (value) {
+                    if (value == 'edit') onEdit();
                     if (value == 'cancel') onCancel();
                   },
                   itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text('修正'),
+                    ),
                     PopupMenuItem(
                       value: 'cancel',
                       child: Text('取消'),
