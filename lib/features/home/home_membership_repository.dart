@@ -95,11 +95,20 @@ class HomeMembershipRepository {
     final profiles = values[1] as List<dynamic>;
 
     final permissionValue = await _client.rpc('current_feature_permissions');
-    final permissions = permissionValue is Map
-        ? permissionValue.map<String, bool>(
-            (key, value) => MapEntry(key.toString(), value == true),
-          )
-        : const <String, bool>{};
+    final payrollAdjustmentPermissionValue =
+        await _client.rpc('current_payroll_adjustment_permissions');
+
+    final permissions = <String, bool>{
+      if (permissionValue is Map)
+        for (final entry in permissionValue.entries)
+          entry.key.toString(): entry.value == true,
+      if (payrollAdjustmentPermissionValue is Map) ...{
+        'can_view_payroll_adjustments':
+            payrollAdjustmentPermissionValue['can_view'] == true,
+        'can_manage_payroll_adjustments':
+            payrollAdjustmentPermissionValue['can_manage'] == true,
+      },
+    };
 
     final companyName = companies.isNotEmpty
         ? (companies.first['name']?.toString() ?? 'SKO')
