@@ -427,7 +427,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '共通サインは次の実装で、選択した全件へ1回の署名をひも付けます。',
+                        '「まとめてサインして登録」を押すと、次の画面で1回だけ責任者サインを入力し、選択した全件へ同じ署名をひも付けます。',
                       ),
                     ],
                   ),
