@@ -320,6 +320,83 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     );
   }
 
+  Future<void> _showSelectedGroupMembers() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+
+    try {
+      final members = await repository.loadGroupMembers(groupId);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * 0.65,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Text(
+                    '参加メンバー  ${members.length}人',
+                    style: Theme.of(sheetContext)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: members.isEmpty
+                      ? const Center(child: Text('参加メンバーはいません'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(10),
+                          itemCount: members.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 4),
+                          itemBuilder: (context, index) {
+                            final member = members[index];
+                            final avatarUrl =
+                                member['avatar_url']?.toString();
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage:
+                                    avatarUrl == null || avatarUrl.isEmpty
+                                        ? null
+                                        : NetworkImage(avatarUrl),
+                                child: avatarUrl == null || avatarUrl.isEmpty
+                                    ? const Icon(Icons.person)
+                                    : null,
+                              ),
+                              title: Text(
+                                member['display_name']?.toString() ??
+                                    'メンバー',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                member['role']?.toString() ?? '',
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('参加メンバーを読み込めませんでした: $error')),
+      );
+    }
+  }
+
   List<Map<String, dynamic>> get _siteGroups {
     final groups =
         _groups.where((g) => g['group_type'] == 'site').toList();
@@ -401,10 +478,37 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          selected?['display_name']?.toString() ?? 'チャット',
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: selected == null
+            ? const Text(
+                'チャット',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              )
+            : InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: _showSelectedGroupMembers,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 6,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          selected['display_name']?.toString() ?? 'チャット',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.group_outlined, size: 18),
+                    ],
+                  ),
+                ),
+              ),
         actions: [
           const SkoNotificationBell(),
           if (selected != null)
