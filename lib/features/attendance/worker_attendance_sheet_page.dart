@@ -299,6 +299,11 @@ class _AttendanceDayCard extends StatelessWidget {
                       '${date.day}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w900,
+                            color: date.weekday == DateTime.sunday
+                                ? colors.error
+                                : date.weekday == DateTime.saturday
+                                    ? Colors.blue.shade700
+                                    : null,
                           ),
                     ),
                     Text(
@@ -307,7 +312,9 @@ class _AttendanceDayCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: weekday == '日'
                             ? colors.error
-                            : colors.onSurfaceVariant,
+                            : weekday == '土'
+                                ? Colors.blue.shade700
+                                : colors.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -527,7 +534,14 @@ class _MonthCalendar extends StatelessWidget {
                   Center(
                     child: Text(
                       label,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: label == '日'
+                            ? Theme.of(context).colorScheme.error
+                            : label == '土'
+                                ? Colors.blue.shade700
+                                : null,
+                      ),
                     ),
                   ),
               ],
@@ -588,9 +602,14 @@ class _MonthCalendarCell extends StatelessWidget {
               alignment: Alignment.topRight,
               child: Text(
                 '${date.day}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
+                  color: date.weekday == DateTime.sunday
+                      ? Theme.of(context).colorScheme.error
+                      : date.weekday == DateTime.saturday
+                          ? Colors.blue.shade700
+                          : null,
                 ),
               ),
             ),
