@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'attendance_cloud_repository.dart';
+import 'attendance_correction_approvals_page.dart';
 import 'attendance_page.dart';
 import 'bulk_attendance_correction_page.dart';
 import 'bulk_attendance_page.dart';
@@ -17,6 +18,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
   final _entries = <AttendanceEntry>[];
   bool _loading = true;
   bool _canManageAttendanceEntries = false;
+  bool _canApproveAttendanceCorrections = false;
   String _query = '';
   String? _error;
 
@@ -40,6 +42,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageAttendanceEntries(),
+        repository.canApproveAttendanceCorrections(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(AttendanceEntry.fromJson).toList();
@@ -49,6 +52,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
           ..clear()
           ..addAll(loaded);
         _canManageAttendanceEntries = values[1] as bool;
+        _canApproveAttendanceCorrections = values[2] as bool;
         _loading = false;
         _error = null;
       });
@@ -79,6 +83,12 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
       appBar: AppBar(
         title: const Text('勤怠・人工'),
         actions: [
+          if (_canApproveAttendanceCorrections)
+            IconButton(
+              tooltip: '過去勤怠の修正承認',
+              onPressed: _loading ? null : _openCorrectionApprovals,
+              icon: const Icon(Icons.approval_outlined),
+            ),
           if (_canManageAttendanceEntries) ...[
             IconButton(
               tooltip: '過去分まとめて修正',
@@ -184,6 +194,16 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
   String _formatNumber(double value) => value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+  Future<void> _openCorrectionApprovals() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AttendanceCorrectionApprovalsPage(),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
 
   Future<void> _openBulkCorrection() async {
     final count = await Navigator.of(context).push<int>(
