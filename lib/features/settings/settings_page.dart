@@ -7,6 +7,8 @@ import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
+import 'master_device_management_page.dart';
+import 'master_device_repository.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -22,6 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _loading = true;
   bool _saving = false;
   bool _canManageCompany = false;
+  bool _isMasterAdmin = false;
   String? _companyId;
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
@@ -72,6 +75,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final companyId = memberships.first['company_id'] as String;
     final role = memberships.first['role']?.toString() ?? 'viewer';
     _canManageCompany = role == 'owner' || role == 'admin';
+
+    final masterRepository = MasterDeviceRepository.maybeCreate();
+    if (masterRepository != null) {
+      try {
+        _isMasterAdmin = await masterRepository.isMasterAdmin();
+      } catch (_) {
+        _isMasterAdmin = false;
+      }
+    }
     final companies = await SupabaseBackend.client
         .from('companies')
         .select(
@@ -300,6 +312,23 @@ class _SettingsPageState extends State<SettingsPage> {
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const CompanyRateSettingsPage(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.admin_panel_settings_outlined),
+                              title: const Text('マスターデバイス管理'),
+                              subtitle: const Text('信頼済み端末の確認・ロック・登録解除'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const MasterDeviceManagementPage(),
                                 ),
                               ),
                             ),
