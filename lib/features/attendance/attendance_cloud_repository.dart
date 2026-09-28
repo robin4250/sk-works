@@ -37,6 +37,14 @@ class AttendanceCloudRepository {
     return permissions['can_manage_attendance'] == true;
   }
 
+  Future<bool> canApproveAttendanceCorrections() async {
+    await membership();
+    final value = await _client.rpc('current_feature_permissions');
+    if (value is! Map) return false;
+    final permissions = Map<String, dynamic>.from(value);
+    return permissions['can_approve_daily_report_edits'] == true;
+  }
+
   Future<String> _companyId() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
