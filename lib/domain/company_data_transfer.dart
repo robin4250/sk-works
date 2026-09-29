@@ -37,6 +37,23 @@ class CompanyDataTransfer {
   bool get includesDocuments =>
       kind == TransferPayloadKind.personnelBundle ||
       kind == TransferPayloadKind.documentsOnly;
+
+  CompanyDataTransfer forward({
+    required String id,
+    required String forwardingCompanyId,
+    required String targetCompanyId,
+  }) {
+    return CompanyDataTransfer(
+      id: id,
+      sourceCompanyId: forwardingCompanyId,
+      currentCompanyId: forwardingCompanyId,
+      targetCompanyId: targetCompanyId,
+      workerIds: List<String>.unmodifiable(workerIds),
+      kind: kind,
+      originCompanyId: originCompanyId ?? sourceCompanyId,
+      forwardedFromTransferId: this.id,
+    );
+  }
 }
 
 class TransferConfirmation {
