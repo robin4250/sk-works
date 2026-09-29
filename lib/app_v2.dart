@@ -30,6 +30,7 @@ import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
+import 'features/operations/vehicle_route_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
@@ -411,6 +412,9 @@ class _HomePageState extends State<HomePage> {
       case 'albums':
         page = const AlbumsCloudPage();
         break;
+      case 'vehicle_routes':
+        page = const VehicleRoutePage();
+        break;
       case 'settings':
         page = const SettingsPage();
         break;
@@ -447,6 +451,11 @@ class _HomePageState extends State<HomePage> {
         key: 'daily_report',
         label: '日報',
         icon: Icons.description_outlined,
+      ),
+      const _MenuAction(
+        key: 'vehicle_routes',
+        label: '車両・ルート',
+        icon: Icons.route_outlined,
       ),
       const _MenuAction(
         key: 'employee_register',
