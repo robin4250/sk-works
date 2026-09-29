@@ -58,12 +58,19 @@ class MemberPermissionRepository {
     final values = await Future.wait([
       _client.rpc('company_member_permission_rows'),
       _client.rpc('company_payroll_adjustment_permission_rows'),
+      _client.rpc('company_member_vehicle_route_permission_rows'),
     ]);
 
     final rows = values[0] as List<dynamic>;
     final adjustmentRows = values[1] as List<dynamic>;
+    final vehicleRouteRows = values[2] as List<dynamic>;
     final adjustmentsByUser = <String, Map<String, dynamic>>{
       for (final raw in adjustmentRows)
+        if ((raw as Map)['user_id'] != null)
+          raw['user_id'].toString(): Map<String, dynamic>.from(raw),
+    };
+    final vehicleRoutesByUser = <String, Map<String, dynamic>>{
+      for (final raw in vehicleRouteRows)
         if ((raw as Map)['user_id'] != null)
           raw['user_id'].toString(): Map<String, dynamic>.from(raw),
     };
@@ -73,6 +80,8 @@ class MemberPermissionRepository {
       final row = Map<String, dynamic>.from(raw as Map);
       final userId = row['user_id']?.toString() ?? '';
       final adjustment = adjustmentsByUser[userId] ?? const <String, dynamic>{};
+      final vehicleRoute =
+          vehicleRoutesByUser[userId] ?? const <String, dynamic>{};
 
       records.add(
         MemberPermissionRecord(
@@ -92,6 +101,8 @@ class MemberPermissionRepository {
                 row['can_manage_admin_site_data'] == true,
             'can_manage_payroll': row['can_manage_payroll'] == true,
             'can_manage_partner_chat': row['can_manage_partner_chat'] == true,
+            'can_manage_vehicles': vehicleRoute['can_manage_vehicles'] == true,
+            'can_manage_routes': vehicleRoute['can_manage_routes'] == true,
             'can_view_payroll_adjustments':
                 adjustment['can_view'] == true,
             'can_manage_payroll_adjustments':
