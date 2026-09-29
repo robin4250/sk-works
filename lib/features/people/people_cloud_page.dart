@@ -315,11 +315,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '送信内容を確定しました（' +
-                result.selection.workerIds.length.toString() +
-                '名 / ' +
-                result.selection.summaryLabel +
-                '）',
+            '送信内容を確定しました（${result.selection.workerIds.length}名 / ${result.selection.summaryLabel}）',
           ),
         ),
       );
