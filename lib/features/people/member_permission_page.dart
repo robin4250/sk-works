@@ -482,7 +482,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
       ),
     );
 
-    if (saved == null) return;
+    if (saved == null || !mounted) return;
 
     final confirmed = await showDialog<bool>(
           context: context,
