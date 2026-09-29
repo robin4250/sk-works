@@ -248,9 +248,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '書類の送信内容を確定しました（' +
-                result.selection.workerIds.length.toString() +
-                '名）',
+            '書類の送信内容を確定しました（${result.selection.workerIds.length}名）',
           ),
         ),
       );
