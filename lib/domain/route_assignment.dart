@@ -8,6 +8,7 @@ class RouteAssignment {
     this.siteId,
     this.driverUserId,
     this.notes,
+    this.isActive = true,
   });
 
   final String id;
@@ -18,4 +19,5 @@ class RouteAssignment {
   final String? siteId;
   final String? driverUserId;
   final String? notes;
+  final bool isActive;
 }
