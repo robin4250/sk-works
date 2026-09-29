@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../domain/company_data_transfer.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import 'worker_document_send_page.dart';
 
 class WorkerDocumentPage extends StatefulWidget {
   const WorkerDocumentPage({super.key});
@@ -230,7 +231,20 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       .toList(growable: false);
 
   Future<void> _openExport(PersonnelExportOperation operation) async {
-    final result = await Navigator.of(context).push<PersonnelExportResult>(
+    if (operation == PersonnelExportOperation.send) {
+      final workerIds = _workers
+          .map((row) => row['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => WorkerDocumentSendPage(workerIds: workerIds),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push<PersonnelExportResult>(
       MaterialPageRoute(
         builder: (_) => PersonnelExportPage(
           title: '書類データ',
@@ -243,16 +257,6 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         ),
       ),
     );
-    if (result == null || !mounted) return;
-    if (result.operation == PersonnelExportOperation.send) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '書類の送信内容を確定しました（${result.selection.workerIds.length}名）',
-          ),
-        ),
-      );
-    }
   }
   void _reload() {
     setState(() => _loading = true);
