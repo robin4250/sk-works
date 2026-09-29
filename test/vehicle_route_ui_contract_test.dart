@@ -9,6 +9,7 @@ void main() {
     final repository = File(
       'lib/features/operations/vehicle_route_repository.dart',
     ).readAsStringSync();
+    final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(page, contains('車両休止の確認'));
     expect(page, contains('ルート休止の確認'));
@@ -26,5 +27,7 @@ void main() {
     expect(repository, contains('setVehicleActive'));
     expect(repository, contains('setRouteActive'));
     expect(repository, isNot(contains(".delete()")));
+    expect(app, contains("key: 'vehicle_routes'"));
+    expect(app, contains("page = const VehicleRoutePage()"));
   });
 }
