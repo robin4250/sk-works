@@ -57,7 +57,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if auth.uid() is null or not private.is_current_master_admin() then
+  if auth.uid() is null or not public.is_current_user_master_admin() then
     raise exception 'master administrator access required';
   end if;
 
