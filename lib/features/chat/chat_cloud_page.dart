@@ -598,8 +598,28 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       );
     }
 
+    final archived = _selectedGroup?['archived_at'] != null;
+
     return Column(
       children: [
+        if (archived)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Row(
+              children: [
+                Icon(Icons.archive_outlined, size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'この現場は終了済みです。履歴は閲覧できますが、新しいメッセージは送信できません。',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(10),
@@ -636,7 +656,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             children: [
               IconButton(
                 tooltip: '写真・ファイル',
-                onPressed: _sending ? null : _showAttachMenu,
+                onPressed: _sending || archived ? null : _showAttachMenu,
                 icon: const Icon(Icons.add_circle_outline),
               ),
               Expanded(
@@ -644,8 +664,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   controller: _composer,
                   minLines: 1,
                   maxLines: 5,
-                  decoration: const InputDecoration(
-                    hintText: 'メッセージ',
+                  enabled: !archived,
+                  decoration: InputDecoration(
+                    hintText: archived ? 'アーカイブ済み' : 'メッセージ',
                     isDense: true,
                   ),
                 ),
@@ -653,7 +674,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               const SizedBox(width: 6),
               IconButton.filled(
                 tooltip: '送信',
-                onPressed: _sending ? null : _send,
+                onPressed: _sending || archived ? null : _send,
                 icon: _sending
                     ? const SizedBox.square(
                         dimension: 18,
@@ -708,7 +729,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             subtitle: Text(
-              _activityText(_lastActivity(group)),
+              group['archived_at'] != null
+                  ? 'アーカイブ済み / \${_activityText(_lastActivity(group))}'
+                  : _activityText(_lastActivity(group)),
             ),
             trailing: selected
                 ? const Icon(Icons.chat_bubble)
