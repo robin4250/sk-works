@@ -33,6 +33,7 @@ import 'features/notifications/notification_bell.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
+import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/employee_invite_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
@@ -285,6 +286,13 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    if (key == 'company_deliveries' && !_isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この機能は管理者のみ利用できます')),
+      );
+      return;
+    }
+
     final restricted = <String, String>{
       'approvals': 'can_approve_daily_report_edits',
       'invoices': 'can_view_invoices',
@@ -384,6 +392,9 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'documents':
         page = const WorkerDocumentPage();
+        break;
+      case 'company_deliveries':
+        page = const CompanyDeliveryInboxPage();
         break;
       case 'today_line':
         page = const TodayLineAttendancePage();
@@ -501,6 +512,12 @@ class _HomePageState extends State<HomePage> {
           key: 'today_line',
           label: '本日のLINE出勤候補',
           icon: Icons.today_outlined,
+        ),
+      if (_isAdmin)
+        const _MenuAction(
+          key: 'company_deliveries',
+          label: '協力会社から受け取ったデータ',
+          icon: Icons.folder_shared_outlined,
         ),
       if (_isAdmin)
         const _MenuAction(
