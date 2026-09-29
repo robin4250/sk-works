@@ -54,7 +54,7 @@ class ChatCloudRepository {
     final groupRows = await _client
         .from('communication_groups')
         .select(
-          'id, name, site_id, group_type, last_activity_at, sites(name)',
+          'id, name, site_id, group_type, last_activity_at, archived_at, sites(name)',
         )
         .eq('company_id', value.companyId)
         .order('last_activity_at', ascending: false);

@@ -220,15 +220,15 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               if (site.endDate.isNotEmpty) Text('終了日: ${site.endDate}'),
               if (site.notes.isNotEmpty) Text('備考: ${site.notes}'),
               const SizedBox(height: 16),
-              if (_canManageSites)
+              if (_canManageSites && site.status != SiteStatus.completed)
                 OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(sheetContext);
-                  await _delete(site);
-                },
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('削除'),
-              ),
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _complete(site);
+                  },
+                  icon: const Icon(Icons.archive_outlined),
+                  label: const Text('現場を終了'),
+                ),
             ],
           ),
         ),
@@ -236,20 +236,57 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     );
   }
 
-  Future<void> _delete(SiteRecord site) async {
+  Future<void> _complete(SiteRecord site) async {
     final repository = _repository;
     if (repository == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('現場終了の確認'),
+        content: Text(
+          '「undefined」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('現場を終了'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     try {
-      await repository.delete(site.id);
+      await repository.complete(site.id);
       if (!mounted) return;
-      setState(() => _sites.removeWhere((item) => item.id == site.id));
+      setState(() {
+        final index = _sites.indexWhere((item) => item.id == site.id);
+        if (index >= 0) {
+          _sites[index] = SiteRecord(
+            id: site.id,
+            name: site.name,
+            customerName: site.customerName,
+            status: SiteStatus.completed,
+            address: site.address,
+            managerName: site.managerName,
+            startDate: site.startDate,
+            endDate: site.endDate,
+            notes: site.notes,
+          );
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現場を削除しました')),
+        const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('削除できませんでした: $error')),
+        SnackBar(content: Text('現場を終了できませんでした: $error')),
       );
     }
   }

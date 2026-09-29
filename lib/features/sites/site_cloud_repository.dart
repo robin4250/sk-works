@@ -85,9 +85,12 @@ class SiteCloudRepository {
     return {...record, 'id': insertedId?.toString() ?? ''};
   }
 
-  Future<void> delete(String id) async {
+  Future<void> complete(String id) async {
     if (id.isEmpty) return;
-    await _client.from('sites').delete().eq('id', id);
+    await _client.from('sites').update({
+      'status': 'completed',
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
   }
 
   String _toDbStatus(String? value) => switch (value) {
