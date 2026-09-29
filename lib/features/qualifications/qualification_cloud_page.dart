@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/company_data_transfer.dart';
+import '../people/personnel_export_page.dart';
 import 'qualification_cloud_repository.dart';
 
 class QualificationCloudPage extends StatefulWidget {
@@ -108,6 +110,20 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       appBar: AppBar(
         title: const Text('資格管理'),
         actions: [
+          IconButton(
+            tooltip: '親会社に送る',
+            onPressed: _loading || _workers.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.send),
+            icon: const Icon(Icons.send_outlined),
+          ),
+          IconButton(
+            tooltip: '印刷',
+            onPressed: _loading || _workers.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.print),
+            icon: const Icon(Icons.print_outlined),
+          ),
           IconButton(
             tooltip: '資格マスター追加',
             onPressed: _loading || !_canManageMaster ? null : _addMaster,
@@ -221,6 +237,41 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     );
   }
 
+  List<PersonnelExportWorker> get _exportWorkers => _workers
+      .map(
+        (row) => PersonnelExportWorker(
+          id: row['id']?.toString() ?? '',
+          name: row['name']?.toString() ?? '名称未設定',
+          originCompanyName: row['affiliation']?.toString(),
+        ),
+      )
+      .where((worker) => worker.id.isNotEmpty)
+      .toList(growable: false);
+
+  Future<void> _openExport(PersonnelExportOperation operation) async {
+    final result = await Navigator.of(context).push<PersonnelExportResult>(
+      MaterialPageRoute(
+        builder: (_) => PersonnelExportPage(
+          title: '資格データ',
+          workers: _exportWorkers,
+          operation: operation,
+          fixedKind: TransferPayloadKind.qualificationsOnly,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result.operation == PersonnelExportOperation.send) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '資格の送信内容を確定しました（' +
+                result.selection.workerIds.length.toString() +
+                '名）',
+          ),
+        ),
+      );
+    }
+  }
   Future<void> _addMaster() async {
     final repository = _repository;
     if (repository == null) return;
