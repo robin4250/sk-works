@@ -37,6 +37,25 @@ class VehicleRouteRepository {
     return [for (final row in rows) Map<String, dynamic>.from(row)];
   }
 
+  Future<List<Map<String, dynamic>>> sites() async {
+    final rows = await _client
+        .from('sites')
+        .select('id,name,status')
+        .neq('status', 'completed')
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<List<Map<String, dynamic>>> drivers() async {
+    final rows = await _client
+        .from('workers')
+        .select('user_id,name,status')
+        .eq('status', 'active')
+        .not('user_id', 'is', null)
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
   Future<void> saveVehicle({
     String? id,
     required String name,
