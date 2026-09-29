@@ -22,6 +22,8 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
     'can_manage_attendance': '出勤・人区管理',
     'can_manage_people': '人員管理',
     'can_manage_partner_chat': '協力会社チャット',
+    'can_manage_vehicles': '車両の登録・変更・休止',
+    'can_manage_routes': 'ルートの登録・変更・休止',
     'can_view_payroll_adjustments': '給与調整を閲覧',
     'can_manage_payroll_adjustments': '給与調整を登録・編集',
   };
@@ -481,6 +483,29 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
     );
 
     if (saved == null) return;
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('権限変更の確認'),
+            content: Text(
+              '「${saved.displayName}」さんの役割と利用権限を変更します。'
+              '内容を確認してから確定してください。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('戻る'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('変更を確定'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
 
     try {
       await _repository?.save(saved);
