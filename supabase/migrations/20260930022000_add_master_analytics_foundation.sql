@@ -28,7 +28,7 @@ language sql
 security definer
 set search_path = public, private
 as $$
-  select case when private.is_current_master_admin() then
+  select case when public.is_current_user_master_admin() then
     jsonb_build_object(
       'companies', (select count(*) from public.companies),
       'users', (select count(distinct user_id) from public.company_members),
