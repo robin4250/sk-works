@@ -4,14 +4,14 @@ import 'package:sk_works/domain/company_connection.dart';
 void main() {
   const accepted = CompanyConnection(
     id: 'a-b',
-    companyAId: 'company-a',
-    companyBId: 'company-b',
+    parentCompanyId: 'company-a',
+    childCompanyId: 'company-b',
     status: CompanyConnectionStatus.accepted,
   );
 
-  test('accepted connection allows transfer to the connected company', () {
+  test('accepted child to parent connection allows upstream transfer', () {
     expect(
-      CompanyTransferTargetPolicy.canSend(
+      CompanyTransferTargetPolicy.canSendUpstream(
         currentCompanyId: 'company-b',
         targetCompanyId: 'company-a',
         connections: const [accepted],
@@ -20,24 +20,35 @@ void main() {
     );
   });
 
+  test('reverse parent to child transfer is not an upstream send', () {
+    expect(
+      CompanyTransferTargetPolicy.canSendUpstream(
+        currentCompanyId: 'company-a',
+        targetCompanyId: 'company-b',
+        connections: const [accepted],
+      ),
+      isFalse,
+    );
+  });
+
   test('pending or unrelated company cannot be used as transfer target', () {
     const pending = CompanyConnection(
       id: 'b-c',
-      companyAId: 'company-b',
-      companyBId: 'company-c',
+      parentCompanyId: 'company-b',
+      childCompanyId: 'company-c',
       status: CompanyConnectionStatus.pending,
     );
 
     expect(
-      CompanyTransferTargetPolicy.canSend(
-        currentCompanyId: 'company-b',
-        targetCompanyId: 'company-c',
+      CompanyTransferTargetPolicy.canSendUpstream(
+        currentCompanyId: 'company-c',
+        targetCompanyId: 'company-b',
         connections: const [pending],
       ),
       isFalse,
     );
     expect(
-      CompanyTransferTargetPolicy.canSend(
+      CompanyTransferTargetPolicy.canSendUpstream(
         currentCompanyId: 'company-b',
         targetCompanyId: 'company-x',
         connections: const [accepted, pending],
@@ -48,7 +59,7 @@ void main() {
 
   test('company cannot send transfer to itself', () {
     expect(
-      CompanyTransferTargetPolicy.canSend(
+      CompanyTransferTargetPolicy.canSendUpstream(
         currentCompanyId: 'company-a',
         targetCompanyId: 'company-a',
         connections: const [accepted],
