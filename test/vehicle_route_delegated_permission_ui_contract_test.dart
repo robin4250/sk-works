@@ -30,5 +30,17 @@ void main() {
     expect(sql, contains('p.can_manage_vehicles'));
     expect(sql, contains('p.can_manage_routes'));
     expect(sql, contains('grant execute'));
+
+    final effectiveSql = File(
+      'supabase/migrations/20260930062500_fix_manager_vehicle_route_effective_permissions.sql',
+    ).readAsStringSync();
+    expect(
+      effectiveSql,
+      contains("'can_manage_vehicles',v_role='manager' or coalesce"),
+    );
+    expect(
+      effectiveSql,
+      contains("'can_manage_routes',v_role='manager' or coalesce"),
+    );
   });
 }
