@@ -161,7 +161,7 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
                     title: Text(worker.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                     subtitle: (worker.originCompanyName ?? '').isEmpty
                         ? null
-                        : Text('出所: \${worker.originCompanyName}'),
+                        : Text('出所: ${worker.originCompanyName}'),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                 ),
@@ -175,9 +175,9 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
                     const Text('確認内容', style: TextStyle(fontWeight: FontWeight.w900)),
                     const SizedBox(height: 8),
                     if (_isSend && _targetCompanyController.text.trim().isNotEmpty)
-                      Text('送信先: \${_targetCompanyController.text.trim()}'),
-                    Text('内容: \${selection.summaryLabel}'),
-                    Text('対象者: \${_selectedWorkerIds.length}名'),
+                      Text('送信先: ${_targetCompanyController.text.trim()}'),
+                    Text('内容: ${selection.summaryLabel}'),
+                    Text('対象者: ${_selectedWorkerIds.length}名'),
                   ],
                 ),
               ),
@@ -186,7 +186,7 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
             FilledButton.icon(
               onPressed: !canContinue || _submitting ? null : _confirmAndRun,
               icon: Icon(_isSend ? Icons.send_outlined : Icons.print_outlined),
-              label: Text('内容を確認して\$_operationLabel'),
+              label: Text('内容を確認して$_operationLabel'),
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             ),
           ],
@@ -206,17 +206,17 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('最終確認 — \$_operationLabel'),
+        title: Text('最終確認 — $_operationLabel'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (targetCompany != null) Text('送信先: \$targetCompany'),
-              Text('内容: \${selection.summaryLabel}'),
-              Text('対象: \${selectedNames.length}名'),
+              if (targetCompany != null) Text('送信先: $targetCompany'),
+              Text('内容: ${selection.summaryLabel}'),
+              Text('対象: ${selectedNames.length}名'),
               const SizedBox(height: 10),
-              for (final name in selectedNames) Text('・\$name'),
+              for (final name in selectedNames) Text('・$name'),
               if (_isSend) ...[
                 const SizedBox(height: 12),
                 const Text('受け渡し後も出所情報を保持し、上位会社へ転送できる前提で扱います。'),
@@ -264,10 +264,10 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
         build: (_) => [
           pw.Text('SKO Personnel Export', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 12),
-          pw.Text('Scope: \${selection.kind.name}'),
-          pw.Text('People: \${selectedNames.length}'),
+          pw.Text('Scope: ${selection.kind.name}'),
+          pw.Text('People: ${selectedNames.length}'),
           pw.SizedBox(height: 12),
-          for (final name in selectedNames) pw.Text('- \$name'),
+          for (final name in selectedNames) pw.Text('- $name'),
         ],
       ),
     );
