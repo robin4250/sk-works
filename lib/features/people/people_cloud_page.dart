@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
+import '../qualifications/qualification_send_page.dart';
 import 'member_permission_page.dart';
+import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
+import 'worker_document_send_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
   const PeopleCloudPage({super.key});
@@ -246,15 +250,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(sheetContext);
-                  _openPersonExport(record);
-                },
-                icon: const Icon(Icons.ios_share_outlined),
-                label: const Text('送信・印刷'),
-              ),
-              const SizedBox(height: 8),
+              if (record.kind != PersonKind.partnerCompany) ...[
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    _openPersonExport(record);
+                  },
+                  icon: const Icon(Icons.ios_share_outlined),
+                  label: const Text('送信・印刷'),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (_canManagePeople)
                 OutlinedButton.icon(
                 onPressed: () async {
@@ -299,7 +305,19 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ),
           ];
     if (workers.isEmpty || !mounted) return;
-    final result = await Navigator.of(context).push<PersonnelExportResult>(
+
+    if (operation == PersonnelExportOperation.send && initialRecord == null) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PersonnelBundleSendPage(
+            workerIds: workers.map((worker) => worker.id).toSet(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push<PersonnelExportResult>(
       MaterialPageRoute(
         builder: (_) => PersonnelExportPage(
           title: '人員データ',
@@ -310,16 +328,6 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         ),
       ),
     );
-    if (result == null || !mounted) return;
-    if (result.operation == PersonnelExportOperation.send) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '送信内容を確定しました（${result.selection.workerIds.length}名 / ${result.selection.summaryLabel}）',
-          ),
-        ),
-      );
-    }
   }
 
   Future<void> _openPersonExport(PersonRecord record) async {
@@ -332,7 +340,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ListTile(
               leading: const Icon(Icons.send_outlined),
               title: const Text('親会社に送る'),
-              subtitle: const Text('送信先・内容・対象を確認してから確定します'),
+              subtitle: const Text('送信内容を選び、送信先を確認してから確定します'),
               onTap: () => Navigator.pop(
                 sheetContext,
                 PersonnelExportOperation.send,
@@ -352,7 +360,61 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       ),
     );
     if (operation == null || !mounted) return;
-    await _openExport(operation, initialRecord: record);
+
+    if (operation == PersonnelExportOperation.print) {
+      await _openExport(operation, initialRecord: record);
+      return;
+    }
+
+    final kind = await showModalBottomSheet<TransferPayloadKind>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_pin_outlined),
+              title: const Text('一式'),
+              subtitle: const Text('基本情報＋資格＋元請向け書類'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                TransferPayloadKind.personnelBundle,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.badge_outlined),
+              title: const Text('資格のみ'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                TransferPayloadKind.qualificationsOnly,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('書類のみ'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                TransferPayloadKind.documentsOnly,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (kind == null || !mounted) return;
+
+    final workerIds = <String>{record.id};
+    final page = switch (kind) {
+      TransferPayloadKind.personnelBundle =>
+        PersonnelBundleSendPage(workerIds: workerIds),
+      TransferPayloadKind.qualificationsOnly =>
+        QualificationSendPage(workerIds: workerIds),
+      TransferPayloadKind.documentsOnly =>
+        WorkerDocumentSendPage(workerIds: workerIds),
+    };
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => page),
+    );
   }
   Future<void> _delete(PersonRecord record) async {
     final repository = _repository;
