@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/company_data_transfer.dart';
 import '../people/personnel_export_page.dart';
 import 'qualification_cloud_repository.dart';
+import 'qualification_send_page.dart';
 
 class QualificationCloudPage extends StatefulWidget {
   const QualificationCloudPage({super.key});
@@ -249,7 +250,20 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       .toList(growable: false);
 
   Future<void> _openExport(PersonnelExportOperation operation) async {
-    final result = await Navigator.of(context).push<PersonnelExportResult>(
+    if (operation == PersonnelExportOperation.send) {
+      final workerIds = _workers
+          .map((row) => row['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => QualificationSendPage(workerIds: workerIds),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push<PersonnelExportResult>(
       MaterialPageRoute(
         builder: (_) => PersonnelExportPage(
           title: '資格データ',
@@ -259,16 +273,6 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         ),
       ),
     );
-    if (result == null || !mounted) return;
-    if (result.operation == PersonnelExportOperation.send) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '資格の送信内容を確定しました（${result.selection.workerIds.length}名）',
-          ),
-        ),
-      );
-    }
   }
   Future<void> _addMaster() async {
     final repository = _repository;
