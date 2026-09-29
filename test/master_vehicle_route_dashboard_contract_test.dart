@@ -13,7 +13,7 @@ void main() {
     final settings =
         File('lib/features/settings/settings_page.dart').readAsStringSync();
 
-    expect(sql, contains('private.is_current_master_admin()'));
+    expect(sql, contains('public.is_current_user_master_admin()'));
     expect(sql, contains('vehicles_total'));
     expect(sql, contains('routes_total'));
     expect(sql, contains('site_chats_archived'));
@@ -21,6 +21,6 @@ void main() {
     expect(page, contains('個別データは表示しません'));
     expect(page, contains('車両・ルート'));
     expect(page, contains('現場チャット'));
-    expect(settings, contains('Master ダッシュボード'));
+    expect(settings, isNot(contains('MasterOperationsDashboardPage')));
   });
 }
