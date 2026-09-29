@@ -267,7 +267,17 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       setState(() {
         final index = _sites.indexWhere((item) => item.id == site.id);
         if (index >= 0) {
-          _sites[index] = site.copyWith(status: SiteStatus.completed);
+          _sites[index] = SiteRecord(
+            id: site.id,
+            name: site.name,
+            customerName: site.customerName,
+            status: SiteStatus.completed,
+            address: site.address,
+            managerName: site.managerName,
+            startDate: site.startDate,
+            endDate: site.endDate,
+            notes: site.notes,
+          );
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(
