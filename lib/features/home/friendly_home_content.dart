@@ -251,6 +251,11 @@ class _WorkerHome extends StatelessWidget {
               'プロフィール',
               Icons.account_circle_outlined,
             ),
+            const _HomeAction(
+              'vehicle_routes',
+              '車両・ルート',
+              Icons.route_outlined,
+            ),
             if (moduleEnabled('sites'))
               const _HomeAction(
                 'site_register',
@@ -386,6 +391,11 @@ class _AdminHome extends StatelessWidget {
                 '管理者用現場データ',
                 Icons.admin_panel_settings_outlined,
               ),
+            const _HomeAction(
+              'vehicle_routes',
+              '車両・ルート',
+              Icons.route_outlined,
+            ),
             const _HomeAction(
               'settings',
               '設定',
