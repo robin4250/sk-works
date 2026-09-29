@@ -245,7 +245,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('現場終了の確認'),
         content: Text(
-          '「undefined」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
+          '「${site.name}」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
         ),
         actions: [
           TextButton(
