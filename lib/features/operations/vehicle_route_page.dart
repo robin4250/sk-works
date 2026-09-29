@@ -339,7 +339,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                   decoration: const InputDecoration(labelText: 'ルート名'),
                 ),
                 DropdownButtonFormField<String>(
-                  value: vehicleId,
+                  initialValue: vehicleId,
                   decoration: const InputDecoration(labelText: '車両'),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('未指定')),
@@ -353,7 +353,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                       setDialogState(() => vehicleId = value ?? ''),
                 ),
                 DropdownButtonFormField<String>(
-                  value: siteId,
+                  initialValue: siteId,
                   decoration: const InputDecoration(labelText: '現場'),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('未指定')),
@@ -367,7 +367,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                       setDialogState(() => siteId = value ?? ''),
                 ),
                 DropdownButtonFormField<String>(
-                  value: driverUserId,
+                  initialValue: driverUserId,
                   decoration: const InputDecoration(labelText: '運転者'),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('未指定')),
