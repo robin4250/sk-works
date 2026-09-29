@@ -36,6 +36,8 @@ void main() {
         File('lib/features/sites/site_cloud_repository.dart').readAsStringSync();
 
     expect(page, contains('現場終了の確認'));
+    expect(page, contains('「\${site.name}」を終了します'));
+    expect(page, isNot(contains('「undefined」を終了します')));
     expect(page, contains('チャットは削除せず、履歴を残したままアーカイブします'));
     expect(page, isNot(contains('await repository.delete(site.id)')));
     expect(repository, contains("update({\n      'status': 'completed'"));
