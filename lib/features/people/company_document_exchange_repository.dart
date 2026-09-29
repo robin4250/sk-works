@@ -64,6 +64,22 @@ class CompanyDocumentExchangeRepository {
     ];
   }
 
+  Future<List<Map<String, dynamic>>> listDeliveryDataItems(
+    String deliveryId,
+  ) async {
+    final value = await _client.rpc(
+      'company_document_exchange',
+      params: {
+        'p_action': 'data_items',
+        'p_data': {'id': deliveryId},
+      },
+    );
+    return [
+      for (final item in value as List<dynamic>)
+        Map<String, dynamic>.from(item as Map),
+    ];
+  }
+
   Future<List<Map<String, dynamic>>> listSendableSources() async {
     final value = await _client.rpc(
       'company_document_exchange',
