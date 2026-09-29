@@ -8,32 +8,31 @@ enum CompanyConnectionStatus {
 class CompanyConnection {
   const CompanyConnection({
     required this.id,
-    required this.companyAId,
-    required this.companyBId,
+    required this.parentCompanyId,
+    required this.childCompanyId,
     required this.status,
   });
 
   final String id;
-  final String companyAId;
-  final String companyBId;
+  final String parentCompanyId;
+  final String childCompanyId;
   final CompanyConnectionStatus status;
 
-  bool containsCompany(String companyId) =>
-      companyAId == companyId || companyBId == companyId;
-
-  String? otherCompanyId(String companyId) {
-    if (companyAId == companyId) return companyBId;
-    if (companyBId == companyId) return companyAId;
-    return null;
-  }
-
   bool get isActive => status == CompanyConnectionStatus.accepted;
+
+  bool allowsUpstreamTransfer({
+    required String sourceCompanyId,
+    required String targetCompanyId,
+  }) =>
+      isActive &&
+      childCompanyId == sourceCompanyId &&
+      parentCompanyId == targetCompanyId;
 }
 
 class CompanyTransferTargetPolicy {
   const CompanyTransferTargetPolicy._();
 
-  static bool canSend({
+  static bool canSendUpstream({
     required String currentCompanyId,
     required String targetCompanyId,
     required Iterable<CompanyConnection> connections,
@@ -45,10 +44,10 @@ class CompanyTransferTargetPolicy {
     }
 
     return connections.any(
-      (connection) =>
-          connection.isActive &&
-          connection.containsCompany(currentCompanyId) &&
-          connection.otherCompanyId(currentCompanyId) == targetCompanyId,
+      (connection) => connection.allowsUpstreamTransfer(
+        sourceCompanyId: currentCompanyId,
+        targetCompanyId: targetCompanyId,
+      ),
     );
   }
 }
