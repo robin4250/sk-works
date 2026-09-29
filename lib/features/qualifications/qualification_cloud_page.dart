@@ -264,9 +264,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '資格の送信内容を確定しました（' +
-                result.selection.workerIds.length.toString() +
-                '名）',
+            '資格の送信内容を確定しました（${result.selection.workerIds.length}名）',
           ),
         ),
       );
