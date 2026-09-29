@@ -13,6 +13,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
   final _repository = VehicleRouteRepository.maybeCreate();
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _routes = [];
+  List<Map<String, dynamic>> _sites = [];
+  List<Map<String, dynamic>> _drivers = [];
   bool _canManageVehicles = false;
   bool _canManageRoutes = false;
   bool _loading = true;
@@ -38,12 +40,16 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         repository.vehicles(),
         repository.routes(),
         repository.permissions(),
+        repository.sites(),
+        repository.drivers(),
       ]);
       final permissions = values[2] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
         _vehicles = values[0] as List<Map<String, dynamic>>;
         _routes = values[1] as List<Map<String, dynamic>>;
+        _sites = values[3] as List<Map<String, dynamic>>;
+        _drivers = values[4] as List<Map<String, dynamic>>;
         _canManageVehicles = permissions['can_manage_vehicles'] == true;
         _canManageRoutes = permissions['can_manage_routes'] == true;
         _loading = false;
@@ -131,7 +137,25 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                     ].whereType<String>().where((v) => v.isNotEmpty).join(' / '),
                   ),
                   trailing: _canManageVehicles
-                      ? const Icon(Icons.chevron_right)
+                      ? PopupMenuButton<String>(
+                          tooltip: '車両の操作',
+                          onSelected: (value) {
+                            if (value == 'edit') _editVehicle(row);
+                            if (value == 'active') _setVehicleActive(row);
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Text('内容を変更'),
+                            ),
+                            PopupMenuItem(
+                              value: 'active',
+                              child: Text(
+                                row['is_active'] == true ? '休止する' : '再開する',
+                              ),
+                            ),
+                          ],
+                        )
                       : null,
                   onTap: _canManageVehicles ? () => _editVehicle(row) : null,
                 ),
@@ -182,8 +206,27 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                       if (row['is_active'] != true) '休止中',
                     ].whereType<String>().where((v) => v.isNotEmpty).join(' / '),
                   ),
-                  trailing:
-                      _canManageRoutes ? const Icon(Icons.chevron_right) : null,
+                  trailing: _canManageRoutes
+                      ? PopupMenuButton<String>(
+                          tooltip: 'ルートの操作',
+                          onSelected: (value) {
+                            if (value == 'edit') _editRoute(row);
+                            if (value == 'active') _setRouteActive(row);
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Text('内容を変更'),
+                            ),
+                            PopupMenuItem(
+                              value: 'active',
+                              child: Text(
+                                row['is_active'] == true ? '休止する' : '再開する',
+                              ),
+                            ),
+                          ],
+                        )
+                      : null,
                   onTap: _canManageRoutes ? () => _editRoute(row) : null,
                 ),
               ),
@@ -274,36 +317,102 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
           DateTime.now().toIso8601String().substring(0, 10),
     );
     final notes = TextEditingController(text: row?['notes']?.toString());
+    var vehicleId = row?['vehicle_id']?.toString() ?? '';
+    var siteId = row?['site_id']?.toString() ?? '';
+    var driverUserId = row?['driver_user_id']?.toString() ?? '';
 
     final result = await showDialog<_RouteDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(row == null ? 'ルートを登録' : 'ルートを変更'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: date, decoration: const InputDecoration(labelText: '運行日（YYYY-MM-DD）')),
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'ルート名')),
-            TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: '備考')),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(row == null ? 'ルートを登録' : 'ルートを変更'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: date,
+                  decoration: const InputDecoration(labelText: '運行日（YYYY-MM-DD）'),
+                ),
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'ルート名'),
+                ),
+                DropdownButtonFormField<String>(
+                  value: vehicleId,
+                  decoration: const InputDecoration(labelText: '車両'),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('未指定')),
+                    for (final vehicle in _vehicles)
+                      DropdownMenuItem(
+                        value: vehicle['id']?.toString() ?? '',
+                        child: Text(vehicle['display_name']?.toString() ?? '車両'),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => vehicleId = value ?? ''),
+                ),
+                DropdownButtonFormField<String>(
+                  value: siteId,
+                  decoration: const InputDecoration(labelText: '現場'),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('未指定')),
+                    for (final site in _sites)
+                      DropdownMenuItem(
+                        value: site['id']?.toString() ?? '',
+                        child: Text(site['name']?.toString() ?? '現場'),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => siteId = value ?? ''),
+                ),
+                DropdownButtonFormField<String>(
+                  value: driverUserId,
+                  decoration: const InputDecoration(labelText: '運転者'),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('未指定')),
+                    for (final driver in _drivers)
+                      DropdownMenuItem(
+                        value: driver['user_id']?.toString() ?? '',
+                        child: Text(driver['name']?.toString() ?? '従業員'),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => driverUserId = value ?? ''),
+                ),
+                TextField(
+                  controller: notes,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: '備考'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final parsed = DateTime.tryParse(date.text.trim());
+                if (name.text.trim().isEmpty || parsed == null) return;
+                Navigator.pop(
+                  dialogContext,
+                  _RouteDraft(
+                    date: parsed,
+                    name: name.text,
+                    notes: notes.text,
+                    vehicleId: vehicleId,
+                    siteId: siteId,
+                    driverUserId: driverUserId,
+                  ),
+                );
+              },
+              child: const Text('内容を確認'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsed = DateTime.tryParse(date.text.trim());
-              if (name.text.trim().isEmpty || parsed == null) return;
-              Navigator.pop(
-                dialogContext,
-                _RouteDraft(date: parsed, name: name.text, notes: notes.text),
-              );
-            },
-            child: const Text('内容を確認'),
-          ),
-        ],
       ),
     );
     if (result == null || !mounted) return;
@@ -319,8 +428,45 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
       id: row?['id']?.toString(),
       serviceDate: result.date,
       name: result.name,
+      vehicleId: result.vehicleId,
+      siteId: result.siteId,
+      driverUserId: result.driverUserId,
       notes: result.notes,
     );
+    await _reload();
+  }
+
+  Future<void> _setVehicleActive(Map<String, dynamic> row) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final active = row['is_active'] == true;
+    final name = row['display_name']?.toString() ?? '車両';
+    final confirmed = await _confirm(
+      title: active ? '車両休止の確認' : '車両再開の確認',
+      body: active
+          ? '「$name」を休止します。過去のルート履歴は削除されません。'
+          : '「$name」を再開します。',
+      action: active ? '休止する' : '再開する',
+    );
+    if (!confirmed) return;
+    await repository.setVehicleActive(row['id'].toString(), !active);
+    await _reload();
+  }
+
+  Future<void> _setRouteActive(Map<String, dynamic> row) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final active = row['is_active'] == true;
+    final name = row['route_name']?.toString() ?? 'ルート';
+    final confirmed = await _confirm(
+      title: active ? 'ルート休止の確認' : 'ルート再開の確認',
+      body: active
+          ? '「$name」を休止します。過去の運行履歴は削除されません。'
+          : '「$name」を再開します。',
+      action: active ? '休止する' : '再開する',
+    );
+    if (!confirmed) return;
+    await repository.setRouteActive(row['id'].toString(), !active);
     await _reload();
   }
 
@@ -389,8 +535,14 @@ class _RouteDraft {
     required this.date,
     required this.name,
     required this.notes,
+    required this.vehicleId,
+    required this.siteId,
+    required this.driverUserId,
   });
   final DateTime date;
   final String name;
   final String notes;
+  final String vehicleId;
+  final String siteId;
+  final String driverUserId;
 }
