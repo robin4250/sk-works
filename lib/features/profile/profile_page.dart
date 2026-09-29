@@ -353,6 +353,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                   subtitle: Text(data!.companyName),
                                 ),
                               ],
+                              if ((data?.companyId ?? '').isNotEmpty) ...[
+                                const Divider(),
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.badge_outlined),
+                                  title: const Text('SKO会社ID'),
+                                  subtitle: SelectableText(data!.companyId),
+                                ),
+                              ],
                             ],
                           ),
                         ),
