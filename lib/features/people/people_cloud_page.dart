@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'member_permission_page.dart';
+import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
 
@@ -83,6 +84,20 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         title: const Text('人員管理'),
         actions: [
           const SkoNotificationBell(),
+          IconButton(
+            tooltip: '親会社に送る',
+            onPressed: _loading || _records.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.send),
+            icon: const Icon(Icons.send_outlined),
+          ),
+          IconButton(
+            tooltip: '印刷',
+            onPressed: _loading || _records.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.print),
+            icon: const Icon(Icons.print_outlined),
+          ),
           if (_canManagePeople)
             IconButton(
               tooltip: '利用者の権限設定',
@@ -231,6 +246,15 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
               const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _openPersonExport(record);
+                },
+                icon: const Icon(Icons.ios_share_outlined),
+                label: const Text('送信・印刷'),
+              ),
+              const SizedBox(height: 8),
               if (_canManagePeople)
                 OutlinedButton.icon(
                 onPressed: () async {
@@ -247,6 +271,89 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
   }
 
+  List<PersonnelExportWorker> get _exportWorkers => _records
+      .where((record) => record.kind != PersonKind.partnerCompany)
+      .map(
+        (record) => PersonnelExportWorker(
+          id: record.id,
+          name: record.name,
+          originCompanyName:
+              record.kind == PersonKind.partnerWorker ? record.companyName : null,
+        ),
+      )
+      .toList(growable: false);
+
+  Future<void> _openExport(
+    PersonnelExportOperation operation, {
+    PersonRecord? initialRecord,
+  }) async {
+    final workers = initialRecord == null
+        ? _exportWorkers
+        : [
+            PersonnelExportWorker(
+              id: initialRecord.id,
+              name: initialRecord.name,
+              originCompanyName: initialRecord.kind == PersonKind.partnerWorker
+                  ? initialRecord.companyName
+                  : null,
+            ),
+          ];
+    if (workers.isEmpty || !mounted) return;
+    final result = await Navigator.of(context).push<PersonnelExportResult>(
+      MaterialPageRoute(
+        builder: (_) => PersonnelExportPage(
+          title: '人員データ',
+          workers: workers,
+          operation: operation,
+          initialWorkerIds:
+              initialRecord == null ? const [] : [initialRecord.id],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result.operation == PersonnelExportOperation.send) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '送信内容を確定しました（${result.selection.workerIds.length}名 / ${result.selection.summaryLabel}）',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openPersonExport(PersonRecord record) async {
+    final operation = await showModalBottomSheet<PersonnelExportOperation>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.send_outlined),
+              title: const Text('親会社に送る'),
+              subtitle: const Text('送信先・内容・対象を確認してから確定します'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                PersonnelExportOperation.send,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('印刷'),
+              subtitle: const Text('印刷内容を確認してから印刷画面を開きます'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                PersonnelExportOperation.print,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (operation == null || !mounted) return;
+    await _openExport(operation, initialRecord: record);
+  }
   Future<void> _delete(PersonRecord record) async {
     final repository = _repository;
     if (repository == null) return;

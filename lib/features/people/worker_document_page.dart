@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../domain/company_data_transfer.dart';
+import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 
 class WorkerDocumentPage extends StatefulWidget {
@@ -96,6 +98,20 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       appBar: AppBar(
         title: const Text('必要書類チェック'),
         actions: [
+          IconButton(
+            tooltip: '親会社に送る',
+            onPressed: _loading || _workers.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.send),
+            icon: const Icon(Icons.send_outlined),
+          ),
+          IconButton(
+            tooltip: '印刷',
+            onPressed: _loading || _workers.isEmpty
+                ? null
+                : () => _openExport(PersonnelExportOperation.print),
+            icon: const Icon(Icons.print_outlined),
+          ),
           IconButton(
             tooltip: '標準項目を追加',
             onPressed: _loading || !_canManageRequirements ? null : _addDefaults,
@@ -202,6 +218,42 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     );
   }
 
+  List<PersonnelExportWorker> get _exportWorkers => _workers
+      .map(
+        (row) => PersonnelExportWorker(
+          id: row['id']?.toString() ?? '',
+          name: row['name']?.toString() ?? '名称未設定',
+          originCompanyName: row['affiliation']?.toString(),
+        ),
+      )
+      .where((worker) => worker.id.isNotEmpty)
+      .toList(growable: false);
+
+  Future<void> _openExport(PersonnelExportOperation operation) async {
+    final result = await Navigator.of(context).push<PersonnelExportResult>(
+      MaterialPageRoute(
+        builder: (_) => PersonnelExportPage(
+          title: '書類データ',
+          workers: _exportWorkers,
+          operation: operation,
+          fixedKind: TransferPayloadKind.documentsOnly,
+          initialWorkerIds: _selectedWorkerId == null
+              ? const []
+              : [_selectedWorkerId!],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result.operation == PersonnelExportOperation.send) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '書類の送信内容を確定しました（${result.selection.workerIds.length}名）',
+          ),
+        ),
+      );
+    }
+  }
   void _reload() {
     setState(() => _loading = true);
     _load();
