@@ -22,7 +22,7 @@ void main() {
     ]) {
       expect(sql, contains(metric));
     }
-    expect(sql, contains('private.is_current_master_admin()'));
+    expect(sql, contains('public.is_current_user_master_admin()'));
     expect(sql, contains('revoke all on private.master_usage_events'));
   });
 
