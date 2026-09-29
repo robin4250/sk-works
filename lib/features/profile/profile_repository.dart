@@ -10,6 +10,7 @@ class ProfileData {
     required this.phone,
     required this.email,
     required this.companyName,
+    required this.companyId,
     required this.role,
     this.avatarPath,
     this.avatarUrl,
@@ -19,6 +20,7 @@ class ProfileData {
   final String phone;
   final String email;
   final String companyName;
+  final String companyId;
   final String role;
   final String? avatarPath;
   final String? avatarUrl;
@@ -48,10 +50,11 @@ class ProfileRepository {
         .limit(1);
 
     String companyName = '';
+    String companyId = '';
     String role = 'viewer';
 
     if (memberships.isNotEmpty) {
-      final companyId = memberships.first['company_id'] as String;
+      companyId = memberships.first['company_id'] as String;
       role = memberships.first['role']?.toString() ?? 'viewer';
       final companies = await _client
           .from('companies')
@@ -92,6 +95,7 @@ class ProfileRepository {
       phone: profile['phone']?.toString() ?? user.phone ?? '',
       email: user.email ?? '',
       companyName: companyName,
+      companyId: companyId,
       role: role,
       avatarPath: avatarPath,
       avatarUrl: avatarUrl,
