@@ -29,6 +29,7 @@ import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
+import 'features/operations/vehicle_route_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
@@ -408,6 +409,9 @@ class _HomePageState extends State<HomePage> {
       case 'notes':
         page = const NotesCloudPage();
         break;
+      case 'vehicle_routes':
+        page = const VehicleRoutePage();
+        break;
       case 'albums':
         page = const AlbumsCloudPage();
         break;
@@ -488,6 +492,11 @@ class _HomePageState extends State<HomePage> {
           label: '必要書類',
           icon: Icons.fact_check_outlined,
         ),
+      const _MenuAction(
+        key: 'vehicle_routes',
+        label: '車両・ルート',
+        icon: Icons.route_outlined,
+      ),
       if (_moduleEnabled('notes'))
         const _MenuAction(
           key: 'notes',
