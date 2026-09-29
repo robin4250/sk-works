@@ -9,6 +9,7 @@ import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
+import 'master_operations_dashboard_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -319,6 +320,21 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.dashboard_outlined),
+                              title: const Text('Master ダッシュボード'),
+                              subtitle: const Text('会社・利用者・現場・車両・ルートの集計を確認'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const MasterOperationsDashboardPage(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.admin_panel_settings_outlined),
