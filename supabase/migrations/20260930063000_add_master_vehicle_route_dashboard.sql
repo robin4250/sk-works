@@ -9,7 +9,7 @@ stable
 security definer
 set search_path='public','private','pg_temp'
 as $$
-  select case when private.is_current_master_admin() then
+  select case when public.is_current_user_master_admin() then
     jsonb_build_object(
       'vehicles_total', (select count(*) from public.vehicles),
       'vehicles_active', (select count(*) from public.vehicles where is_active),
