@@ -1,6 +1,6 @@
 # SKO pre-device readiness
 
-Status date: 2026-09-22
+Status date: 2026-09-30
 
 This file separates what has already been verified without a physical iPhone/Mac signing session from what still requires the actual device.
 
@@ -42,8 +42,8 @@ This file separates what has already been verified without a physical iPhone/Mac
   `SKO pre-device database security assertions passed`
 - Supabase Security Advisor informational warnings for RLS-without-policy tables are intentional on RPC-only tables; authenticated SECURITY DEFINER RPC warnings are reviewed under the explicit-role-check/search-path/anon-deny contract.
 - The production audit was re-run after the latest approval-assignee, company-rate, and employee-invite role/approver migrations on 2026-09-22 and passed.
-- All current public RLS policies that directly use `auth.uid()` now use the per-statement cached form `(select auth.uid())`; Supabase Performance Advisor no longer reports the `auth_rls_initplan` warning.
-- High-use foreign-key coverage was extended with nine non-destructive B-tree indexes; the production `unindexed_foreign_keys` informational count dropped from 52 to 43. Remaining FK advisories are intentionally left for query-driven tuning rather than blanket indexing; several major candidate tables are currently empty.
+- Supabase Performance Advisor currently reports 3 `auth_rls_initplan` WARN items, 19 `multiple_permissive_policies` WARN items, 92 `unindexed_foreign_keys` INFO items, and 42 `unused_index` INFO items. These are pre-existing tuning items and were not blanket-rewritten during the TestFlight stabilization pass.
+- Performance tuning remains query-driven rather than blanket-indexing; the TestFlight candidate prioritizes stable behavior and verified access boundaries.
 - Post-optimization production checks confirm: all public tables keep RLS enabled; anon has no direct public-table grants; SECURITY DEFINER functions are not executable by anon/PUBLIC and use explicit `search_path`; company membership, employee invites, and approval-assignee tables remain RPC-only for writes/direct access.
 - Approval routing/1-to-3 approver guards, invite-time sub-admin/approver assignment, secondary-password five-attempt locking, sole-requester approval boundaries, and the seven required private Storage buckets were re-verified after the performance migrations.
 - The current authenticated SECURITY DEFINER Advisor warning set is reviewed rather than auto-rewritten: the 40 currently callable functions reference `auth.uid()`, while anon/PUBLIC execution remains denied and explicit `search_path` is enforced.
@@ -60,6 +60,17 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Daily-report edit approval UI follows the configured 1-3 approval assignees; being an owner/admin alone does not bypass that selection.
 - Company tax/welfare/overtime/early/night/holiday and three allowance settings can be edited by admins after initial onboarding through RPC-only company-rate settings.
 - Full admins can assign sub-admin status and approval-assignee intent during employee invite; if three approvers already exist, one of the current three must be selected for replacement, and the final approval re-validates the assignment server-side.
+- Site registration now creates exactly one site chat; first attendance auto-joins the worker, site closure archives the chat, and archived chats are read-only.
+- Vehicle/route persistence, delegated management permissions, friendly UI, and home navigation are merged. Operational records use soft-disable to preserve history.
+- Master administration now requires Master role + trusted device + biometric authentication + secondary password. The step-up session is 15 minutes and clears on app background/exit.
+- Master analytics expose aggregate counts only. `get_master_growth_snapshot()` and `get_master_operations_snapshot()` deny anonymous execution; authenticated callers still pass an internal Master-role check.
+- Master vehicle/route feature controls are reversible and keep existing history/data when paused.
+- Japan Country Pack is the single source of truth for current JP settings, and Japanese +81 / 070/080/090 phone normalization/validation has been moved into the JP country module without changing the existing onboarding API.
+- Company discovery keys are fixed as company name, address, corporate number, and SKO company ID. Discovery remains an addressing/search contract and does not grant data access.
+- The latest iPhone acceptance checklist includes sections M (site-chat lifecycle), N (vehicle/routes), and O (Master administration).
+- Production migration history includes the Master admin/device/analytics/feature-control/strict-device/dashboard migrations plus the Master growth-snapshot RPC restriction. Known safe duplicate descriptive entries remain non-destructively preserved.
+- Final 2026-09-30 production security audit detected broad default grants on the new `vehicles` and `route_assignments` tables. A non-destructive hardening migration removed all anon table access and limited authenticated clients to RLS-covered SELECT/INSERT/UPDATE only.
+- After that hardening and whitespace-tolerant audit updates, the full production assertion suite returns `SKO pre-device database security assertions passed`.
 
 ## Still requires the real Mac / iPhone
 

@@ -19,15 +19,15 @@ void main() {
     expect(doc, contains('20-page SKO beta pamphlet'));
     expect(doc, contains('CI rejects a mismatch'));
     expect(doc, contains('configured 1-3 approval assignees'));
-    expect(doc, contains('2026-09-22'));
+    expect(doc, contains('Status date: 2026-09-30'));
     expect(doc, contains('assign sub-admin status and approval-assignee intent'));
     expect(doc, contains('one of the current three must be selected for replacement'));
     expect(doc, contains('employee-invite role/approver migrations'));
     expect(doc, contains('JWT verification enabled'));
     expect(doc, contains('RLS-without-policy'));
     expect(doc, contains('auth_rls_initplan'));
-    expect(doc, contains('unindexed_foreign_keys'));
-    expect(doc, contains('52 to 43'));
+    expect(doc, contains('92 `unindexed_foreign_keys`'));
+    expect(doc, contains('42 `unused_index`'));
     expect(doc, contains('no `migration repair` has been performed'));
     expect(doc, contains('seven required private Storage buckets'));
     expect(doc, contains('Edge Function sources were re-compared with `main` and match exactly'));

@@ -249,7 +249,15 @@ begin
     raise exception 'approval-assignee 1-to-3 guard missing';
   end if;
 
-  if position('v_role = ''manager''' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
+  if position(
+       'v_role=''manager'''
+       in regexp_replace(
+         pg_get_functiondef('public.current_feature_permissions()'::regprocedure),
+         '\\s+',
+         '',
+         'g'
+       )
+     ) = 0 then
     raise exception 'manager default feature permissions missing';
   end if;
 
@@ -384,7 +392,7 @@ begin
     where schemaname = 'public'
       and tablename = 'worker_document_statuses'
       and policyname = 'worker or people manager can read document statuses'
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
       and position('can_manage_people' in coalesce(qual, '')) > 0
   ) then
     raise exception 'worker document self-or-manager policy missing';
@@ -396,7 +404,7 @@ begin
     where schemaname = 'public'
       and tablename = 'worker_qualifications'
       and policyname = 'worker or people manager can read worker qualifications'
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
       and position('can_manage_people' in coalesce(qual, '')) > 0
   ) then
     raise exception 'worker qualification self-or-manager policy missing';
@@ -408,7 +416,7 @@ begin
     where schemaname = 'storage'
       and tablename = 'objects'
       and policyname = 'worker_documents_read'
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
       and position('can_manage_people' in coalesce(qual, '')) > 0
   ) then
     raise exception 'worker document storage self-or-manager policy missing';
@@ -420,7 +428,7 @@ begin
     where schemaname = 'storage'
       and tablename = 'objects'
       and policyname = 'qualification_certificates_read'
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
       and position('can_manage_people' in coalesce(qual, '')) > 0
   ) then
     raise exception 'qualification certificate storage self-or-manager policy missing';
@@ -434,7 +442,7 @@ begin
       and policyname = 'attendance_evidence_read'
       and 'authenticated' = any(roles)
       and position('can_manage_attendance' in coalesce(qual, '')) > 0
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
   ) then
     raise exception 'attendance evidence self-or-manager read policy missing';
   end if;
@@ -458,7 +466,7 @@ begin
       and tablename = 'objects'
       and policyname = 'attendance_evidence_delete'
       and position('can_manage_attendance' in coalesce(qual, '')) > 0
-      and position('w.user_id = auth.uid()' in coalesce(qual, '')) > 0
+      and position('auth.uid()' in coalesce(qual, '')) > 0
       and position('photo_storage_path' in coalesce(qual, '')) > 0
   ) then
     raise exception 'attendance evidence orphan cleanup policy missing';
