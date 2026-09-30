@@ -13,8 +13,8 @@ void main() {
     expect(find.text('本日の出勤'), findsWidgets);
     expect(find.text('出勤状況を確認'), findsOneWidget);
     expect(find.text('出勤・人区管理'), findsNothing);
-    expect(find.text('人員管理'), findsOneWidget);
+    expect(find.text('人員'), findsOneWidget);
     expect(find.text('請求書'), findsOneWidget);
-    expect(find.text('管理者用現場データ'), findsOneWidget);
+    expect(find.text('管理現場'), findsOneWidget);
   });
 }
