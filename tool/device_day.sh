@@ -55,7 +55,7 @@ if [[ "$status" -ne 0 ]]; then
 fi
 
 echo
-echo "[4/4] SKO Release版をiPhoneへインストールして単体起動します"
+echo "[4/4] SKOをiPhoneへ起動します\necho "      Release版をインストールして、ケーブルなし単体起動を確認します""
 if [[ "$#" -gt 0 ]]; then
   exec bash tool/run_ios_device.sh "$1"
 else
