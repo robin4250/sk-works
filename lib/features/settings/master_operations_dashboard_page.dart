@@ -19,7 +19,9 @@ class _MasterOperationsDashboardPageState
   Map<String, dynamic> _growth = const {};
   Map<String, dynamic> _operations = const {};
   Map<String, dynamic> _storage = const {};
+  Map<String, dynamic> _storageCompany = const {};
   Map<String, dynamic> _activity = const {};
+  Map<String, dynamic> _featureUsage = const {};
   Map<String, dynamic> _usage = const {};
   int _usageDays = 30;
 
@@ -50,7 +52,11 @@ class _MasterOperationsDashboardPageState
         _operations =
             Map<String, dynamic>.from(data['operations'] as Map? ?? {});
         _storage = Map<String, dynamic>.from(data['storage'] as Map? ?? {});
+        _storageCompany =
+            Map<String, dynamic>.from(data['storageCompany'] as Map? ?? {});
         _activity = Map<String, dynamic>.from(data['activity'] as Map? ?? {});
+        _featureUsage =
+            Map<String, dynamic>.from(data['featureUsage'] as Map? ?? {});
         _usage = Map<String, dynamic>.from(data['usage'] as Map? ?? {});
         _loading = false;
       });
@@ -273,6 +279,50 @@ class _MasterOperationsDashboardPageState
                             ),
                           ],
                         ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '会社ストレージ分布',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric(
+                              'ファイル有会社',
+                              _count(_storageCompany, 'companies_with_files'),
+                            ),
+                            _Metric(
+                              'ファイル無会社',
+                              _count(_storageCompany, 'companies_without_files'),
+                            ),
+                            _Metric(
+                              '平均使用量 MB',
+                              _number(_storageCompany, 'average_bytes_per_company') /
+                                  (1024 * 1024),
+                            ),
+                            _Metric(
+                              '最大使用量 MB',
+                              _number(_storageCompany, 'max_bytes_per_company') /
+                                  (1024 * 1024),
+                            ),
+                            _Metric(
+                              '平均画像/社',
+                              _number(
+                                _storageCompany,
+                                'average_images_per_company',
+                              ),
+                            ),
+                            _Metric(
+                              '平均PDF/社',
+                              _number(
+                                _storageCompany,
+                                'average_pdfs_per_company',
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 18),
                         Row(
                           children: [
@@ -320,6 +370,34 @@ class _MasterOperationsDashboardPageState
                         ),
                         const SizedBox(height: 8),
                         _UsageTrendSummary(usage: _usage),
+                        const SizedBox(height: 10),
+                        Text(
+                          '機能利用状態',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric(
+                              '無効化',
+                              _count(_featureUsage, 'disabled_features'),
+                            ),
+                            _Metric(
+                              '有効・未使用',
+                              _count(_featureUsage, 'enabled_unused_features'),
+                            ),
+                            _Metric(
+                              '有効・使用あり',
+                              _count(_featureUsage, 'enabled_used_features'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _FeatureUsageCard(
+                          rows: _featureUsageRows(_featureUsage['features']),
+                        ),
                         const SizedBox(height: 10),
                         _RankingCard(
                           title: 'よく使われる操作',
@@ -506,6 +584,86 @@ class _RankingRow {
   final int userCount;
   final num eventsPerCompany;
   final num eventsPerUser;
+}
+
+List<_FeatureUsageRow> _featureUsageRows(dynamic raw) {
+  if (raw is! List) return const <_FeatureUsageRow>[];
+  return raw
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .map(
+        (item) => _FeatureUsageRow(
+          key: item['feature_key']?.toString() ?? '',
+          state: item['usage_state']?.toString() ?? '',
+          eventCount: item['event_count'] is num
+              ? (item['event_count'] as num).toInt()
+              : 0,
+        ),
+      )
+      .where((item) => item.key.isNotEmpty)
+      .toList(growable: false);
+}
+
+class _FeatureUsageCard extends StatelessWidget {
+  const _FeatureUsageCard({required this.rows});
+
+  final List<_FeatureUsageRow> rows;
+
+  String _stateLabel(String state) {
+    return switch (state) {
+      'disabled' => '無効',
+      'enabled_unused' => '有効・未使用',
+      'enabled_used' => '有効・使用あり',
+      _ => state,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '制御対象機能',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            if (rows.isEmpty)
+              const Text('対象機能がありません')
+            else
+              for (final row in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(_friendlyUsageKey(row.key))),
+                      Text(
+                        '${_stateLabel(row.state)} / ${row.eventCount}回',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureUsageRow {
+  const _FeatureUsageRow({
+    required this.key,
+    required this.state,
+    required this.eventCount,
+  });
+
+  final String key;
+  final String state;
+  final int eventCount;
 }
 
 class _UsageTrendSummary extends StatelessWidget {
