@@ -19,6 +19,7 @@ class MasterOperationsDashboardRepository {
       _client.rpc('current_master_admin_status'),
       _client.rpc('get_master_growth_snapshot'),
       _client.rpc('get_master_operations_snapshot'),
+      _client.rpc('get_master_storage_snapshot'),
     ]);
     final status = values[0];
     if (status is! Map || status['is_master_admin'] != true) {
@@ -30,6 +31,9 @@ class MasterOperationsDashboardRepository {
           : const <String, dynamic>{},
       'operations': values[2] is Map
           ? Map<String, dynamic>.from(values[2] as Map)
+          : const <String, dynamic>{},
+      'storage': values[3] is Map
+          ? Map<String, dynamic>.from(values[3] as Map)
           : const <String, dynamic>{},
     };
   }
