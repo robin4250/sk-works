@@ -12,6 +12,7 @@ import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
 import 'master_operations_dashboard_page.dart';
 import 'master_protected_page.dart';
+import 'master_recovery_contacts_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -367,6 +368,23 @@ class _SettingsPageState extends State<SettingsPage> {
                                   builder: (_) => const MasterProtectedPage(
                                     title: 'マスターデバイス管理',
                                     child: MasterDeviceManagementPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.emergency_outlined),
+                              title: const Text('Master 緊急復旧設定'),
+                              subtitle: const Text('2系統の復旧メールを安全に登録'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: 'Master 緊急復旧設定',
+                                    child: MasterRecoveryContactsPage(),
                                   ),
                                 ),
                               ),
