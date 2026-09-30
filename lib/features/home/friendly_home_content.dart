@@ -351,10 +351,10 @@ class _AdminHome extends StatelessWidget {
                 child: Icon(Icons.approval_outlined),
               ),
               title: const Text(
-                '承認待ち',
+                '要対応',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
-              subtitle: const Text('日報の修正申請など、対応が必要なものを確認'),
+              subtitle: const Text('承認・修正申請など、対応が必要なものを確認'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onOpen('approvals'),
             ),
@@ -368,8 +368,9 @@ class _AdminHome extends StatelessWidget {
             if (identity.can('can_manage_people'))
               const _HomeAction(
                 'people',
-                '人員管理',
+                '人員',
                 Icons.groups_2_outlined,
+                access: _HomeActionAccess.subAdmin,
               ),
             if (moduleEnabled('invoices') &&
                 identity.can('can_view_invoices'))
@@ -377,12 +378,14 @@ class _AdminHome extends StatelessWidget {
                 'invoices',
                 '請求書',
                 Icons.receipt_long_outlined,
+                access: _HomeActionAccess.professional,
               ),
             if (identity.can('can_view_admin_site_data'))
               const _HomeAction(
                 'admin_sites',
-                '管理者用現場データ',
+                '管理現場',
                 Icons.admin_panel_settings_outlined,
+                access: _HomeActionAccess.admin,
               ),
             const _HomeAction(
               'vehicle_routes',
@@ -437,49 +440,102 @@ class _ActionGrid extends StatelessWidget {
       childAspectRatio: 1.55,
       children: [
         for (final item in items)
-          Material(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () => onOpen(item.key),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
+          Builder(
+            builder: (context) {
+              final scheme = Theme.of(context).colorScheme;
+              final isSubAdmin = item.access == _HomeActionAccess.subAdmin;
+              final isAdmin = item.access == _HomeActionAccess.admin ||
+                  item.access == _HomeActionAccess.professional;
+              final isProfessional =
+                  item.access == _HomeActionAccess.professional;
+              final background =
+                  isSubAdmin ? scheme.primaryContainer.withValues(alpha: 0.45) : scheme.surfaceContainerLowest;
+              final borderColor =
+                  isAdmin ? scheme.primary : scheme.outlineVariant;
+              final borderWidth = isAdmin ? 2.0 : 1.0;
+
+              return Material(
+                color: background,
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(child: Icon(item.icon)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        item.label,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                        ),
+                  onTap: () => onOpen(item.key),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: borderColor,
+                        width: borderWidth,
                       ),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const Icon(Icons.chevron_right),
-                  ],
+                    child: Row(
+                      children: [
+                        CircleAvatar(child: Icon(item.icon)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            item.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (isProfessional) ...[
+                          const _ProfessionalAccessMark(),
+                          const SizedBox(width: 4),
+                        ],
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
       ],
     );
   }
 }
 
+enum _HomeActionAccess {
+  general,
+  subAdmin,
+  admin,
+  professional,
+}
+
 class _HomeAction {
-  const _HomeAction(this.key, this.label, this.icon);
+  const _HomeAction(
+    this.key,
+    this.label,
+    this.icon, {
+    this.access = _HomeActionAccess.general,
+  });
 
   final String key;
   final String label;
   final IconData icon;
+  final _HomeActionAccess access;
+}
+
+class _ProfessionalAccessMark extends StatelessWidget {
+  const _ProfessionalAccessMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 18,
+      height: 18,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.circle_outlined, size: 18, color: Colors.black),
+          Icon(Icons.circle_outlined, size: 11, color: Colors.black),
+        ],
+      ),
+    );
+  }
 }
 
 class _SectionTitle extends StatelessWidget {
