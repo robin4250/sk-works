@@ -33,6 +33,7 @@ void main() {
     expect(settings, contains('_isMasterAdmin'));
     expect(settings, contains('isMasterAdmin()'));
     expect(settings, contains("if (_isMasterAdmin)"));
+    expect(settings, contains('MasterProtectedPage'));
     expect(settings, contains('MasterDeviceManagementPage'));
   });
 }
