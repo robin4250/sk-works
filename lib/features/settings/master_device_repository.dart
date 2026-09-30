@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -81,6 +82,15 @@ class MasterDeviceRepository {
       'revoke_master_device',
       params: {'p_device_id': deviceId},
     );
+  }
+
+  Future<String?> currentStoredDeviceKey() async {
+    final userId = currentUserId;
+    if (userId == null) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString('sko_master_device_key_$userId');
+    if (value == null || value.length < 32) return null;
+    return value;
   }
 
   Future<Map<String, dynamic>> currentDeviceStatus(String deviceKey) async {
