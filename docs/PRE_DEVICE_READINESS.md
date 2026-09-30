@@ -69,6 +69,8 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Company discovery keys are fixed as company name, address, corporate number, and SKO company ID. Discovery remains an addressing/search contract and does not grant data access.
 - The latest iPhone acceptance checklist includes sections M (site-chat lifecycle), N (vehicle/routes), and O (Master administration).
 - Production migration history includes the Master admin/device/analytics/feature-control/strict-device/dashboard migrations plus the Master growth-snapshot RPC restriction. Known safe duplicate descriptive entries remain non-destructively preserved.
+- Final 2026-09-30 production security audit detected broad default grants on the new `vehicles` and `route_assignments` tables. A non-destructive hardening migration removed all anon table access and limited authenticated clients to RLS-covered SELECT/INSERT/UPDATE only.
+- After that hardening and whitespace-tolerant audit updates, the full production assertion suite returns `SKO pre-device database security assertions passed`.
 
 ## Still requires the real Mac / iPhone
 
