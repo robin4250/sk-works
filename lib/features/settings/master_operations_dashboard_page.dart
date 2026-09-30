@@ -132,8 +132,32 @@ class _MasterOperationsDashboardPageState
                           items: [
                             _Metric('会社', _count(_growth, 'companies')),
                             _Metric('利用者', _count(_growth, 'users')),
-                            _Metric('会社接続', _count(_growth, 'connections')),
                             _Metric('現場', _count(_operations, 'sites_total')),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          '会社間連携',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric('接続レコード', _count(_growth, 'connections')),
+                            _Metric(
+                              '連携済み会社',
+                              _count(_growth, 'connected_companies'),
+                            ),
+                            _Metric(
+                              '未連携会社',
+                              _count(_growth, 'unconnected_companies'),
+                            ),
+                            _Metric(
+                              '連携率 %',
+                              _number(_growth, 'connection_rate_percent'),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 18),
