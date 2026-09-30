@@ -11,6 +11,7 @@ on:
       - 'tool/check_ios_readiness.sh'
       - 'tool/check_ios_generated_contract.sh'
       - 'tool/run_ios_device.sh'
+      - 'tool/run_ios_device_debug.sh'
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
       - 'tool/collect_ios_diagnostics.sh'
@@ -30,6 +31,7 @@ on:
       - 'tool/prepare_ios.sh'
       - 'tool/check_ios_readiness.sh'
       - 'tool/run_ios_device.sh'
+      - 'tool/run_ios_device_debug.sh'
       - 'tool/ios_install_assistant.sh'
       - 'tool/mac_first_run.sh'
       - 'tool/collect_ios_diagnostics.sh'
@@ -58,6 +60,7 @@ jobs:
           bash -n tool/check_ios_readiness.sh
           bash -n tool/check_ios_generated_contract.sh
           bash -n tool/run_ios_device.sh
+          bash -n tool/run_ios_device_debug.sh
           bash -n tool/ios_install_assistant.sh
           bash -n tool/mac_first_run.sh
           bash -n tool/collect_ios_diagnostics.sh
