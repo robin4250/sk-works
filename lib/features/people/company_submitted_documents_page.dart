@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
@@ -337,14 +339,12 @@ class _CompanySubmittedDocumentsPageState
   Future<void> _pickFile(Map<String, dynamic> row) async {
     final repository = _repository;
     if (repository == null) return;
-    final picked = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif'],
-      withData: true,
     );
-    final file = picked?.files.single;
-    final bytes = file?.bytes;
-    if (file == null || bytes == null) return;
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
     setState(() => _busy = true);
     try {
       await repository.upload(
