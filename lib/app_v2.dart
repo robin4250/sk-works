@@ -8,6 +8,7 @@ import 'branding/product_brand.dart';
 import 'branding/sko_theme.dart';
 import 'data/supabase_backend.dart';
 import 'features/albums/albums_cloud_page.dart';
+import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
