@@ -18,6 +18,10 @@ void main() {
     expect(sql, isNot(contains('p_company_id')));
     expect(sql, isNot(contains('p_user_id')));
     expect(sql, contains('from public, anon'));
+    expect(sql, contains('master_usage_events_user_recent_idx'));
+    expect(sql, contains("interval '1 minute'"));
+    expect(sql, contains('>= 120'));
+    expect(sql, contains('usage event rate limit exceeded'));
   });
 
   test('Master usage snapshot returns aggregate rankings only', () {
