@@ -9,6 +9,7 @@ import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
+import 'master_protected_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -327,8 +328,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      const MasterDeviceManagementPage(),
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: 'マスターデバイス管理',
+                                    child: MasterDeviceManagementPage(),
+                                  ),
                                 ),
                               ),
                             ),
