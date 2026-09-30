@@ -365,13 +365,6 @@ class _AdminHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            if (moduleEnabled('attendance') &&
-                identity.can('can_manage_attendance'))
-              const _HomeAction(
-                'attendance',
-                '出勤・人区管理',
-                Icons.calendar_month_outlined,
-              ),
             if (identity.can('can_manage_people'))
               const _HomeAction(
                 'people',
