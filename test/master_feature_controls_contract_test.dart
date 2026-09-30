@@ -11,7 +11,7 @@ void main() {
     expect(sql, contains("'vehicle_management'"));
     expect(sql, contains("'route_assignment'"));
     expect(sql, contains('enabled boolean not null default true'));
-    expect(sql, contains('private.is_current_master_admin()'));
+    expect(sql, contains('public.is_current_user_master_admin()'));
     expect(sql, contains('set_master_feature_enabled'));
     expect(sql, contains('current_master_feature_flags'));
     expect(sql, contains('on conflict (feature_key) do update'));
