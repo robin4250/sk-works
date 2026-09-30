@@ -53,6 +53,18 @@ if data.get("UISupportedInterfaceOrientations") != [
 project = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
 if f"PRODUCT_BUNDLE_IDENTIFIER = {expected_bundle_id};" not in project:
     raise SystemExit(f"unexpected Runner bundle identifier: expected {expected_bundle_id}")
+
+scheme_path = Path("ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme")
+if not scheme_path.exists():
+    raise SystemExit("Runner.xcscheme is missing")
+scheme = scheme_path.read_text()
+launch_marker = '<LaunchAction'
+launch_index = scheme.find(launch_marker)
+if launch_index < 0:
+    raise SystemExit("Runner LaunchAction is missing")
+launch_tail = scheme[launch_index:launch_index + 800]
+if 'buildConfiguration = "Release"' not in launch_tail:
+    raise SystemExit("Xcode Run must use Release for standalone iPhone launch")
 PY
 
 echo "✓ iOS generated project contract"
