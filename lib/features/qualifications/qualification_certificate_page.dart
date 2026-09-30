@@ -145,6 +145,8 @@ class _QualificationCertificatePageState
                                     row['worker_id']?.toString() ?? ''];
                                 final attachment =
                                     row['attachment_path']?.toString() ?? '';
+                                final backAttachment =
+                                    row['attachment_back_path']?.toString() ?? '';
                                 final busy = _busyId == row['id']?.toString();
                                 return Card(
                                   child: ListTile(
@@ -171,7 +173,11 @@ class _QualificationCertificatePageState
                                     subtitle: Text(
                                       [
                                         worker?['name']?.toString() ?? '保有者不明',
-                                        attachment.isEmpty ? '写真未登録' : '写真登録済み',
+                                        attachment.isEmpty
+                                            ? '表面未登録'
+                                            : backAttachment.isEmpty
+                                                ? '表面登録済み / 裏面なし'
+                                                : '表面・裏面登録済み',
                                       ].join(' / '),
                                     ),
                                     trailing: const Icon(Icons.chevron_right),
@@ -202,6 +208,7 @@ class _QualificationCertificatePageState
     final repository = _repository;
     if (repository == null) return;
     final attachment = row['attachment_path']?.toString() ?? '';
+    final backAttachment = row['attachment_back_path']?.toString() ?? '';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -232,7 +239,48 @@ class _QualificationCertificatePageState
                   Text('有効期限: ${row['expires_at']}'),
                 ],
                 const SizedBox(height: 16),
-                if (attachment.isNotEmpty) ...[
+                _CertificateSideSection(
+                  label: '表面',
+                  storagePath: attachment,
+                  canManage: _canManage,
+                  createSignedUrl: repository.createSignedUrl,
+                  onCamera: () {
+                    Navigator.pop(sheetContext);
+                    _pickAndUpload(row, ImageSource.camera);
+                  },
+                  onGallery: () {
+                    Navigator.pop(sheetContext);
+                    _pickAndUpload(row, ImageSource.gallery);
+                  },
+                  onRemove: attachment.isEmpty
+                      ? null
+                      : () {
+                          Navigator.pop(sheetContext);
+                          _remove(row);
+                        },
+                ),
+                const SizedBox(height: 16),
+                _CertificateSideSection(
+                  label: '裏面（ない資格証は未登録でOK）',
+                  storagePath: backAttachment,
+                  canManage: _canManage,
+                  createSignedUrl: repository.createSignedUrl,
+                  onCamera: () {
+                    Navigator.pop(sheetContext);
+                    _pickAndUploadBack(row, ImageSource.camera);
+                  },
+                  onGallery: () {
+                    Navigator.pop(sheetContext);
+                    _pickAndUploadBack(row, ImageSource.gallery);
+                  },
+                  onRemove: backAttachment.isEmpty
+                      ? null
+                      : () {
+                          Navigator.pop(sheetContext);
+                          _removeBack(row);
+                        },
+                ),
+                if (false) ...[
                   FutureBuilder<String>(
                     future: repository.createSignedUrl(attachment),
                     builder: (context, snapshot) {
@@ -358,6 +406,64 @@ class _QualificationCertificatePageState
     }
   }
 
+  Future<void> _pickAndUploadBack(
+    Map<String, dynamic> row,
+    ImageSource source,
+  ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final id = row['id']?.toString();
+    final workerId = row['worker_id']?.toString();
+    if (id == null || workerId == null) return;
+
+    final picked = await _picker.pickImage(
+      source: source,
+      imageQuality: 88,
+      maxWidth: 2400,
+    );
+    if (picked == null) return;
+
+    if (mounted) setState(() => _busyId = id);
+    try {
+      final updated = await repository.uploadCertificateBack(
+        qualificationId: id,
+        workerId: workerId,
+        bytes: await picked.readAsBytes(),
+        originalFilename: picked.name,
+      );
+      if (!mounted) return;
+      _replaceRow(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('資格証の裏面を保存しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  Future<void> _removeBack(Map<String, dynamic> row) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final id = row['id']?.toString();
+    final path = row['attachment_back_path']?.toString();
+    if (id == null || path == null || path.isEmpty) return;
+
+    if (mounted) setState(() => _busyId = id);
+    try {
+      final updated = await repository.removeCertificateBack(
+        qualificationId: id,
+        storagePath: path,
+      );
+      if (!mounted) return;
+      _replaceRow(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('資格証の裏面を削除しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
   Future<void> _remove(Map<String, dynamic> row) async {
     final repository = _repository;
     if (repository == null) return;
@@ -395,6 +501,92 @@ class _QualificationCertificatePageState
       );
       if (index >= 0) _qualifications[index] = updated;
     });
+  }
+}
+
+class _CertificateSideSection extends StatelessWidget {
+  const _CertificateSideSection({
+    required this.label,
+    required this.storagePath,
+    required this.canManage,
+    required this.createSignedUrl,
+    required this.onCamera,
+    required this.onGallery,
+    this.onRemove,
+  });
+
+  final String label;
+  final String storagePath;
+  final bool canManage;
+  final Future<String> Function(String) createSignedUrl;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            if (storagePath.isNotEmpty)
+              FutureBuilder<String>(
+                future: createSignedUrl(storagePath),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const LinearProgressIndicator();
+                  }
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return const Text('画像を表示できませんでした。');
+                  }
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      snapshot.data!,
+                      height: 180,
+                      fit: BoxFit.contain,
+                    ),
+                  );
+                },
+              )
+            else
+              const Text('未登録'),
+            if (canManage) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onCamera,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('撮影'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onGallery,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('写真'),
+                    ),
+                  ),
+                ],
+              ),
+              if (onRemove != null)
+                TextButton.icon(
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('この面を削除'),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
