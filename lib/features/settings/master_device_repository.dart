@@ -38,6 +38,8 @@ class MasterDeviceRepository {
 
   final SupabaseClient _client;
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+
   static MasterDeviceRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
     final client = SupabaseBackend.client;
@@ -78,6 +80,31 @@ class MasterDeviceRepository {
     await _client.rpc(
       'revoke_master_device',
       params: {'p_device_id': deviceId},
+    );
+  }
+
+  Future<Map<String, dynamic>> currentDeviceStatus(String deviceKey) async {
+    final raw = await _client.rpc(
+      'current_master_device_status',
+      params: {'p_device_key': deviceKey},
+    );
+    return raw is Map ? Map<String, dynamic>.from(raw) : const {};
+  }
+
+  Future<void> bootstrapFirstDevice({
+    required String deviceKey,
+    required String deviceName,
+    required String deviceType,
+    String? platform,
+  }) async {
+    await _client.rpc(
+      'bootstrap_first_master_device',
+      params: {
+        'p_device_key': deviceKey,
+        'p_device_name': deviceName,
+        'p_device_type': deviceType,
+        'p_platform': platform,
+      },
     );
   }
 
