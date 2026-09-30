@@ -4,37 +4,44 @@
 
 create or replace function public.get_master_storage_snapshot()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path='public','private','storage','pg_temp'
 as $$
+declare
+  v_result jsonb;
+begin
+  if not public.is_current_user_master_admin() then
+    return null;
+  end if;
+
   with objects as (
     select
       lower(coalesce(metadata->>'mimetype','')) as mime_type,
       lower(name) as object_name,
-      coalesce(nullif(metadata->>'size','')::bigint,0) as size_bytes
+      coalesce(nullif(metadata->>'size','')::bigint,0) as size_bytes,
+      bucket_id
     from storage.objects
   )
-  select case when public.is_current_user_master_admin() then
-    jsonb_build_object(
-      'objects_total', (select count(*) from objects),
-      'bytes_total', (select coalesce(sum(size_bytes),0) from objects),
-      'buckets_with_objects', (
-        select count(distinct bucket_id) from storage.objects
-      ),
-      'images_total', (
-        select count(*) from objects
-        where mime_type like 'image/%'
-           or object_name ~ '\.(png|jpe?g|heic|webp)$'
-      ),
-      'pdfs_total', (
-        select count(*) from objects
-        where mime_type='application/pdf'
-           or object_name ~ '\.pdf$'
-      )
+  select jsonb_build_object(
+    'objects_total', count(*),
+    'bytes_total', coalesce(sum(size_bytes),0),
+    'buckets_with_objects', count(distinct bucket_id),
+    'images_total', count(*) filter (
+      where mime_type like 'image/%'
+         or object_name ~ '\.(png|jpe?g|heic|webp)$'
+    ),
+    'pdfs_total', count(*) filter (
+      where mime_type='application/pdf'
+         or object_name ~ '\.pdf$'
     )
-  else null end;
+  )
+  into v_result
+  from objects;
+
+  return v_result;
+end;
 $$;
 
 revoke all on function public.get_master_storage_snapshot()
