@@ -16,7 +16,7 @@ void main() {
     expect(run, isNot(contains('exec flutter run')));
 
     expect(debug, contains('exec flutter run'));
-    expect(day, contains('Release版をiPhoneへインストール'));
+    expect(day, contains('Release版をインストールして、ケーブルなし単体起動を確認します'));
     expect(prepare, contains('LaunchAction'));
     expect(prepare, contains(r'\1Release\2'));
   });
