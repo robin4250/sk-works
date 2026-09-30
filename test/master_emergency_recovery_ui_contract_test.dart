@@ -25,7 +25,7 @@ void main() {
     expect(repository, contains("'current_master_recovery_contacts'"));
     expect(repository, contains("'set_master_recovery_contacts'"));
     expect(repository, contains("'p_device_key': deviceKey"));
-    expect(devices, contains("sko_master_device_key_$userId"));
+    expect(devices, contains(r'sko_master_device_key_$userId'));
   });
 
   test('Master recovery page never displays raw configured addresses', () {
