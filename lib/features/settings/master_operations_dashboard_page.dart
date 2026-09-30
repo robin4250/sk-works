@@ -19,6 +19,7 @@ class _MasterOperationsDashboardPageState
   Map<String, dynamic> _growth = const {};
   Map<String, dynamic> _operations = const {};
   Map<String, dynamic> _storage = const {};
+  Map<String, dynamic> _activity = const {};
   Map<String, dynamic> _usage = const {};
   int _usageDays = 30;
 
@@ -49,6 +50,7 @@ class _MasterOperationsDashboardPageState
         _operations =
             Map<String, dynamic>.from(data['operations'] as Map? ?? {});
         _storage = Map<String, dynamic>.from(data['storage'] as Map? ?? {});
+        _activity = Map<String, dynamic>.from(data['activity'] as Map? ?? {});
         _usage = Map<String, dynamic>.from(data['usage'] as Map? ?? {});
         _loading = false;
       });
@@ -176,6 +178,42 @@ class _MasterOperationsDashboardPageState
                             _Metric('利用者 7日', _count(_growth, 'users_last_7_days')),
                             _Metric('利用者 30日', _count(_growth, 'users_last_30_days')),
                             _Metric('利用者 今月', _count(_growth, 'users_current_month')),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          '利用継続・成長',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric(
+                              'アクティブ会社 7日',
+                              _count(_activity, 'active_companies_7'),
+                            ),
+                            _Metric(
+                              'アクティブ会社 30日',
+                              _count(_activity, 'active_companies_30'),
+                            ),
+                            _Metric(
+                              '30日継続会社',
+                              _count(_activity, 'retained_companies_30'),
+                            ),
+                            _Metric(
+                              '30日継続率 %',
+                              _number(_activity, 'retention_rate_30_percent'),
+                            ),
+                            _Metric(
+                              '利用成長 7日 %',
+                              _number(_activity, 'usage_growth_7_percent'),
+                            ),
+                            _Metric(
+                              '登録成長 7日 %',
+                              _number(_activity, 'registration_growth_7_percent'),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 18),
