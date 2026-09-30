@@ -102,6 +102,7 @@ class _HomePageState extends State<HomePage> {
   final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
   final _payrollAdjustmentRepository =
       PayrollAdjustmentRepository.maybeCreate();
+  final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
@@ -230,6 +231,59 @@ class _HomePageState extends State<HomePage> {
     await prefs.setInt('$_usagePrefix$key', next);
   }
 
+  void _recordCloudUsageForAction(String key) {
+    final repository = _usageAnalyticsRepository;
+    if (repository == null) return;
+
+    final surfaceKey = switch (key) {
+      'footer_home' => 'home',
+      'attendance' => 'attendance_sheet',
+      'footer_sites' || 'site_register' => 'sites',
+      'chat' => 'chat',
+      'clock_in' || 'clock_out' || 'attendance_verify' => 'attendance',
+      'daily_report' || 'approvals' => 'daily_report',
+      'employee_register' ||
+      'employee_onboarding_approvals' ||
+      'people' ||
+      'company_deliveries' => 'people',
+      'payroll' || 'payroll_adjustments' => 'payroll',
+      'profile' => 'profile',
+      'help' => 'help',
+      'admin_sites' => 'sites',
+      'qualification_certificates' || 'qualifications' => 'qualifications',
+      'documents' => 'documents',
+      'vehicle_routes' => 'vehicle_routes',
+      'settings' || 'rollout' => 'settings',
+      'invoices' => 'invoice',
+      _ => null,
+    };
+
+    final featureKey = switch (key) {
+      'clock_in' => 'clock_in',
+      'clock_out' => 'clock_out',
+      'attendance' || 'attendance_verify' => 'attendance',
+      'daily_report' || 'approvals' => 'daily_report',
+      'payroll' || 'payroll_adjustments' => 'payroll',
+      'invoices' => 'invoice',
+      'chat' => 'chat',
+      'people' || 'employee_register' || 'employee_onboarding_approvals' =>
+        'people',
+      'qualification_certificates' || 'qualifications' => 'qualifications',
+      'documents' => 'documents',
+      'company_deliveries' => 'company_connection',
+      _ => null,
+    };
+
+    if (surfaceKey == null && featureKey == null) return;
+    unawaited(
+      repository.record(
+        eventKey: 'page_open',
+        surfaceKey: surfaceKey,
+        featureKey: featureKey,
+      ),
+    );
+  }
+
   bool _moduleEnabled(String key) {
     if (!SupabaseBackend.isInitialized) return true;
     if (key == 'people' || key == 'settings') return true;
@@ -308,6 +362,8 @@ class _HomePageState extends State<HomePage> {
       );
       return;
     }
+
+    _recordCloudUsageForAction(key);
 
     if (key == 'footer_home') {
       setState(() => _selectedIndex = 0);
@@ -669,6 +725,16 @@ class _HomePageState extends State<HomePage> {
               const SnackBar(content: Text('この機能は会社設定でOFFになっています')),
             );
             return;
+          }
+          final usageKey = switch (index) {
+            0 => 'footer_home',
+            1 => 'attendance',
+            2 => 'footer_sites',
+            3 => 'chat',
+            _ => null,
+          };
+          if (usageKey != null) {
+            _recordCloudUsageForAction(usageKey);
           }
           setState(() => _selectedIndex = index);
         },
