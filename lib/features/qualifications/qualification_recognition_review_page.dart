@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'qualification_recognition_matcher.dart';
 
+// OCR values remain review-only until explicit submit.
+
 class QualificationRecognitionReviewResult {
   const QualificationRecognitionReviewResult({
     required this.qualificationMasterId,
