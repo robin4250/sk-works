@@ -20,6 +20,6 @@ void main() {
     expect(page, contains("'kind': 'company'"));
     expect(page, contains('resolveReceiveCode'));
     expect(page, contains('送信内容の最終確認'));
-    expect(page, contains('FilePicker.platform.pickFiles'));
+    expect(page, contains('FilePicker.pickFile'));
   });
 }
