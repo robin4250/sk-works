@@ -183,4 +183,4 @@ if [[ "$warnings" -gt 0 ]]; then
 fi
 
 echo "iPhone実機起動の準備が整っています。"
-echo "次: bash tool/run_ios_device.sh"
+echo "次: bash tool/run_ios_device.sh  # Release版をインストール（ケーブルなし単体起動用）"
