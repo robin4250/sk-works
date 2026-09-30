@@ -21,10 +21,12 @@ void main() {
     expect(repository, contains("'set_master_feature_enabled'"));
   });
 
-  test('master feature controls are not exposed before dedicated master gate', () {
+  test('master feature controls are exposed only through strict master gate', () {
     final settings =
         File('lib/features/settings/settings_page.dart').readAsStringSync();
 
-    expect(settings, isNot(contains('MasterFeatureControlsPage')));
+    expect(settings, contains('MasterFeatureControlsPage'));
+    expect(settings, contains("title: 'Master 機能設定'"));
+    expect(settings, contains('MasterProtectedPage'));
   });
 }
