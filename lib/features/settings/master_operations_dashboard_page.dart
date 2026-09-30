@@ -437,6 +437,17 @@ class _MasterOperationsDashboardPageState
                             keyName: 'feature_key',
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        _FeatureRankingGraphCard(
+                          popularRows: _rankingRows(
+                            _usage['top_features'],
+                            keyName: 'feature_key',
+                          ),
+                          lowRows: _lowUsageRows(
+                            _usage['top_features'],
+                            keyName: 'feature_key',
+                          ),
+                        ),
                         const SizedBox(height: 18),
                         Text(
                           '現場チャット',
@@ -497,6 +508,19 @@ List<_RankingRow> _rankingRows(
       .toList(growable: false);
 }
 
+List<_RankingRow> _lowUsageRows(
+  dynamic raw, {
+  required String keyName,
+}) {
+  final rows = _rankingRows(raw, keyName: keyName).toList();
+  rows.sort((left, right) {
+    final byCount = left.count.compareTo(right.count);
+    if (byCount != 0) return byCount;
+    return left.key.compareTo(right.key);
+  });
+  return rows;
+}
+
 String _friendlyUsageKey(String value) {
   return switch (value) {
     'page_open' => '画面を開いた',
@@ -527,6 +551,94 @@ String _friendlyUsageKey(String value) {
     'route_assignment' => 'ルート・配車',
     _ => value,
   };
+}
+
+class _FeatureRankingGraphCard extends StatelessWidget {
+  const _FeatureRankingGraphCard({
+    required this.popularRows,
+    required this.lowRows,
+  });
+
+  final List<_RankingRow> popularRows;
+  final List<_RankingRow> lowRows;
+
+  List<_RankingRow> _takeFive(List<_RankingRow> rows) {
+    return rows.take(5).toList(growable: false);
+  }
+
+  int _maxCount(List<_RankingRow> rows) {
+    var maxCount = 0;
+    for (final row in rows) {
+      if (row.count > maxCount) maxCount = row.count;
+    }
+    return maxCount == 0 ? 1 : maxCount;
+  }
+
+  Widget _group(String title, List<_RankingRow> source) {
+    final rows = _takeFive(source);
+    final maxCount = _maxCount(rows);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        if (rows.isEmpty)
+          const Text('まだ集計データがありません')
+        else
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(_friendlyUsageKey(row.key))),
+                      Text(
+                        '${row.count}回',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: row.count / maxCount,
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '機能利用グラフ',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            _group('人気機能', popularRows),
+            const SizedBox(height: 14),
+            _group('低利用機能（使用あり）', lowRows),
+            const SizedBox(height: 4),
+            const Text(
+              '※ 0回の機能は上の「有効・未使用」で別表示します。',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _RankingCard extends StatelessWidget {
