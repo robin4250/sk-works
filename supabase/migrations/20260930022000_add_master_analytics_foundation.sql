@@ -28,13 +28,14 @@ language sql
 security definer
 set search_path = public, private
 as $$
-  select case when private.is_current_master_admin() then
+  select case when public.is_current_user_master_admin() then
     jsonb_build_object(
       'companies', (select count(*) from public.companies),
       'users', (select count(distinct user_id) from public.company_members),
+      -- Current production company-link source. Replace with the formal
+      -- connection table when that contract is introduced.
       'connections', (
-        select count(*) from public.company_connections
-        where status = 'accepted'
+        select count(*) from public.partner_companies
       ),
       'companies_last_7_days', (
         select count(*) from public.companies

@@ -9,6 +9,8 @@ import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
+import 'master_feature_controls_page.dart';
+import 'master_operations_dashboard_page.dart';
 import 'master_protected_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -320,6 +322,40 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.dashboard_outlined),
+                              title: const Text('Master ダッシュボード'),
+                              subtitle: const Text('SKO全体の集計値を確認'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: 'Master ダッシュボード',
+                                    child: MasterOperationsDashboardPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.tune_outlined),
+                              title: const Text('Master 機能設定'),
+                              subtitle: const Text('車両管理・ルート配車を安全にON / OFF'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: 'Master 機能設定',
+                                    child: MasterFeatureControlsPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.admin_panel_settings_outlined),
