@@ -94,21 +94,32 @@ class HomeMembershipRepository {
     final companies = values[0] as List<dynamic>;
     final profiles = values[1] as List<dynamic>;
 
-    final permissionValue = await _client.rpc('current_feature_permissions');
-    final payrollAdjustmentPermissionValue =
-        await _client.rpc('current_payroll_adjustment_permissions');
+    final permissions = <String, bool>{};
 
-    final permissions = <String, bool>{
-      if (permissionValue is Map)
-        for (final entry in permissionValue.entries)
-          entry.key.toString(): entry.value == true,
-      if (payrollAdjustmentPermissionValue is Map) ...{
-        'can_view_payroll_adjustments':
-            payrollAdjustmentPermissionValue['can_view'] == true,
-        'can_manage_payroll_adjustments':
-            payrollAdjustmentPermissionValue['can_manage'] == true,
-      },
-    };
+    try {
+      final permissionValue =
+          await _client.rpc('current_feature_permissions');
+      if (permissionValue is Map) {
+        for (final entry in permissionValue.entries) {
+          permissions[entry.key.toString()] = entry.value == true;
+        }
+      }
+    } catch (_) {
+      // Keep identity loading available even if optional permissions are absent.
+    }
+
+    try {
+      final payrollAdjustmentPermissionValue =
+          await _client.rpc('current_payroll_adjustment_permissions');
+      if (payrollAdjustmentPermissionValue is Map) {
+        permissions['can_view_payroll_adjustments'] =
+            payrollAdjustmentPermissionValue['can_view'] == true;
+        permissions['can_manage_payroll_adjustments'] =
+            payrollAdjustmentPermissionValue['can_manage'] == true;
+      }
+    } catch (_) {
+      // Payroll adjustment permissions are optional during rollout.
+    }
 
     final companyName = companies.isNotEmpty
         ? (companies.first['name']?.toString() ?? 'SKO')
