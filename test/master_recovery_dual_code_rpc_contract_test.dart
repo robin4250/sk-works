@@ -9,12 +9,13 @@ void main() {
     ).readAsStringSync();
 
     expect(sql, contains('public.service_create_master_recovery_challenge'));
-    expect(sql, contains("auth.role() is distinct from 'service_role'"));
+    expect(sql, isNot(contains('auth.role()')));
     expect(sql, contains('two distinct six digit codes required'));
     expect(sql, contains("crypt(p_primary_code, gen_salt('bf'))"));
     expect(sql, contains("crypt(p_secondary_code, gen_salt('bf'))"));
     expect(sql, contains('from public, anon, authenticated'));
     expect(sql, contains('to service_role'));
+    expect(sql, contains('Execution is restricted to service_role by function ACL'));
   });
 
   test('Master recovery requires both codes before device registration', () {
