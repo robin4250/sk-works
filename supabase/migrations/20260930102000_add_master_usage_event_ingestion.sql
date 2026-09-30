@@ -91,6 +91,10 @@ begin
   where cm.user_id=v_user_id
   limit 1;
 
+  if v_company_id is null then
+    raise exception 'company membership required';
+  end if;
+
   insert into private.master_usage_events(
     company_id,
     user_id,
