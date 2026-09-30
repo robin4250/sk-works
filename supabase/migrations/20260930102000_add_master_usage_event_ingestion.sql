@@ -2,6 +2,10 @@
 -- Records only predefined-style event/surface/feature keys. No arbitrary metadata,
 -- message/file/photo contents, coordinates, phone numbers, or document data.
 
+create index if not exists master_usage_events_user_recent_idx
+  on private.master_usage_events(user_id,occurred_at desc)
+  where user_id is not null;
+
 create or replace function public.record_usage_event(
   p_event_key text,
   p_surface_key text default null,
@@ -40,6 +44,15 @@ begin
        or v_feature_key !~ '^[a-z0-9][a-z0-9_.:-]*$'
      ) then
     raise exception 'invalid feature key';
+  end if;
+
+  if (
+    select count(*)
+    from private.master_usage_events mue
+    where mue.user_id=v_user_id
+      and mue.occurred_at >= now() - interval '1 minute'
+  ) >= 120 then
+    raise exception 'usage event rate limit exceeded';
   end if;
 
   select cm.company_id
