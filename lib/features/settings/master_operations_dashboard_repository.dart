@@ -20,7 +20,12 @@ class MasterOperationsDashboardRepository {
       _client.rpc('get_master_growth_snapshot'),
       _client.rpc('get_master_operations_snapshot'),
       _client.rpc('get_master_storage_snapshot'),
+      _client.rpc('get_master_storage_company_summary'),
       _client.rpc('get_master_activity_snapshot'),
+      _client.rpc(
+        'get_master_feature_usage_status',
+        params: {'p_days': usageDays},
+      ),
       _client.rpc(
         'get_master_usage_snapshot',
         params: {'p_days': usageDays},
@@ -40,11 +45,17 @@ class MasterOperationsDashboardRepository {
       'storage': values[3] is Map
           ? Map<String, dynamic>.from(values[3] as Map)
           : const <String, dynamic>{},
-      'activity': values[4] is Map
+      'storageCompany': values[4] is Map
           ? Map<String, dynamic>.from(values[4] as Map)
           : const <String, dynamic>{},
-      'usage': values[5] is Map
+      'activity': values[5] is Map
           ? Map<String, dynamic>.from(values[5] as Map)
+          : const <String, dynamic>{},
+      'featureUsage': values[6] is Map
+          ? Map<String, dynamic>.from(values[6] as Map)
+          : const <String, dynamic>{},
+      'usage': values[7] is Map
+          ? Map<String, dynamic>.from(values[7] as Map)
           : const <String, dynamic>{},
     };
   }
