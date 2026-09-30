@@ -35,6 +35,51 @@ import re
 import sys
 
 bundle_id = sys.argv[1]
+ios_min_version = "15.5"
+
+podfile_path = Path("ios/Podfile")
+podfile = podfile_path.read_text()
+
+platform_pattern = re.compile(
+    r"(?m)^\s*#?\s*platform\s+:ios,\s*['\"][^'\"]+['\"]\s*$"
+)
+if platform_pattern.search(podfile):
+    podfile = platform_pattern.sub(
+        "platform :ios, '" + ios_min_version + "'",
+        podfile,
+        count=1,
+    )
+else:
+    podfile = "platform :ios, '" + ios_min_version + "'\n\n" + podfile
+
+japanese_pod = "  pod 'GoogleMLKit/TextRecognitionJapanese', '~> 9.0.0'"
+runner_marker = "target 'Runner' do\n"
+if "GoogleMLKit/TextRecognitionJapanese" not in podfile:
+    if runner_marker not in podfile:
+        raise SystemExit("Podfile Runner target not found")
+    podfile = podfile.replace(
+        runner_marker,
+        runner_marker + japanese_pod + "\n",
+        1,
+    )
+
+flutter_settings = "    flutter_additional_ios_build_settings(target)\n"
+mlkit_settings = (
+    "    target.build_configurations.each do |config|\n"
+    "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'\n"
+    "      config.build_settings['EXCLUDED_ARCHS[sdk=*]'] = 'armv7'\n"
+    "    end\n"
+)
+if "EXCLUDED_ARCHS[sdk=*]" not in podfile:
+    if flutter_settings not in podfile:
+        raise SystemExit("Podfile flutter iOS settings hook not found")
+    podfile = podfile.replace(
+        flutter_settings,
+        flutter_settings + mlkit_settings,
+        1,
+    )
+
+podfile_path.write_text(podfile)
 
 plist_path = Path("ios/Runner/Info.plist")
 with plist_path.open("rb") as f:
@@ -98,10 +143,17 @@ def replace_bundle(match):
         return f"{match.group(1)}{bundle_id}.RunnerTests{match.group(3)}"
     return f"{match.group(1)}{bundle_id}{match.group(3)}"
 
-project_path.write_text(pattern.sub(replace_bundle, project))
+project = pattern.sub(replace_bundle, project)
+project = re.sub(
+    r"(IPHONEOS_DEPLOYMENT_TARGET = )[^;]+(;)",
+    r"\g<1>15.5\2",
+    project,
+)
+project_path.write_text(project)
 
 print("Info.plist に iOS 権限説明を追加しました。")
 print(f"Bundle Identifier を {bundle_id} に設定しました。")
+print("iOS Deployment Target 15.5 / 日本語OCRモデルを設定しました。")
 PY
 
 echo
