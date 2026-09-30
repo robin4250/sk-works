@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../../international/countries/jp/japan_phone_rules.dart';
 
 class EmployeeOnboardingState {
   const EmployeeOnboardingState({
@@ -39,25 +40,11 @@ class SecureOnboardingRepository {
 
   User? get currentUser => _client.auth.currentUser;
 
-  static String normalizeJapanesePhoneValue(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.startsWith('+')) {
-      return '+${trimmed.substring(1).replaceAll(RegExp(r'\D'), '')}';
-    }
+  static String normalizeJapanesePhoneValue(String raw) =>
+      JapanPhoneRules.normalize(raw);
 
-    final digits = trimmed.replaceAll(RegExp(r'\D'), '');
-    if (digits.startsWith('81')) return '+$digits';
-    if (digits.startsWith('0') && digits.length >= 10) {
-      return '+81${digits.substring(1)}';
-    }
-    return '+$digits';
-  }
-
-  static bool isSupportedJapaneseMobileValue(String raw) {
-    final normalized = normalizeJapanesePhoneValue(raw);
-    return normalized.length == 13 &&
-        RegExp(r'^\+81(?:70|80|90)\d{8}').hasMatch(normalized);
-  }
+  static bool isSupportedJapaneseMobileValue(String raw) =>
+      JapanPhoneRules.isSupportedMobile(raw);
 
   String normalizeJapanesePhone(String raw) =>
       normalizeJapanesePhoneValue(raw);
