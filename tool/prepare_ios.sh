@@ -100,6 +100,18 @@ def replace_bundle(match):
 
 project_path.write_text(pattern.sub(replace_bundle, project))
 
+scheme_path = Path("ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme")
+if scheme_path.exists():
+    scheme = scheme_path.read_text()
+    scheme = re.sub(
+        r'(<LaunchAction\b[\s\S]*?buildConfiguration = ")[^"]+(")',
+        r'\1Release\2',
+        scheme,
+        count=1,
+    )
+    scheme_path.write_text(scheme)
+    print("XcodeのRun構成をReleaseに設定しました（単体起動用）。")
+
 print("Info.plist に iOS 権限説明を追加しました。")
 print(f"Bundle Identifier を {bundle_id} に設定しました。")
 PY
@@ -113,3 +125,4 @@ echo "4. Bundle Identifier: $BUNDLE_ID"
 echo "5. iPhoneをUSB接続して信頼"
 echo "6. bash tool/ios_install_assistant.sh"
 echo "7. bash tool/run_ios_device.sh"
+echo "※ Xcodeの▶︎ RunもRelease構成です。Debug/Hot Reloadは bash tool/run_ios_device_debug.sh"
