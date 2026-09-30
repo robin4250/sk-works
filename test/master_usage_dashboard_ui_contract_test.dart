@@ -21,6 +21,11 @@ void main() {
     expect(page, contains('よく開かれる画面'));
     expect(page, contains('よく使われる機能'));
     expect(page, contains('まだ集計データがありません'));
+    expect(page, contains('1社あたり利用回数'));
+    expect(page, contains('1人あたり利用回数'));
+    expect(page, contains('前期間比'));
+    expect(page, contains('companyCount'));
+    expect(page, contains('userCount'));
 
     for (final forbidden in <String>[
       'user_id',

@@ -246,8 +246,18 @@ class _MasterOperationsDashboardPageState
                             _Metric('利用会社', _count(_usage, 'companies_active')),
                             _Metric('利用者', _count(_usage, 'users_active')),
                             _Metric('集計日数', _count(_usage, 'window_days')),
+                            _Metric(
+                              '1社あたり利用回数',
+                              _number(_usage, 'events_per_company'),
+                            ),
+                            _Metric(
+                              '1人あたり利用回数',
+                              _number(_usage, 'events_per_user'),
+                            ),
                           ],
                         ),
+                        const SizedBox(height: 8),
+                        _UsageTrendSummary(usage: _usage),
                         const SizedBox(height: 10),
                         _RankingCard(
                           title: 'よく使われる操作',
@@ -313,6 +323,18 @@ List<_RankingRow> _rankingRows(
           key: item[keyName]?.toString() ?? '',
           count: item['event_count'] is num
               ? (item['event_count'] as num).toInt()
+              : 0,
+          companyCount: item['company_count'] is num
+              ? (item['company_count'] as num).toInt()
+              : 0,
+          userCount: item['user_count'] is num
+              ? (item['user_count'] as num).toInt()
+              : 0,
+          eventsPerCompany: item['events_per_company'] is num
+              ? item['events_per_company'] as num
+              : 0,
+          eventsPerUser: item['events_per_user'] is num
+              ? item['events_per_user'] as num
               : 0,
         ),
       )
@@ -391,7 +413,9 @@ class _RankingCard extends StatelessWidget {
                       ),
                       Expanded(child: Text(_friendlyUsageKey(rows[index].key))),
                       Text(
-                        rows[index].count.toString(),
+                        '${rows[index].count}回 / '
+                        '${rows[index].companyCount}社 / '
+                        '${rows[index].userCount}人',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ],
@@ -408,10 +432,49 @@ class _RankingRow {
   const _RankingRow({
     required this.key,
     required this.count,
+    required this.companyCount,
+    required this.userCount,
+    required this.eventsPerCompany,
+    required this.eventsPerUser,
   });
 
   final String key;
   final int count;
+  final int companyCount;
+  final int userCount;
+  final num eventsPerCompany;
+  final num eventsPerUser;
+}
+
+class _UsageTrendSummary extends StatelessWidget {
+  const _UsageTrendSummary({required this.usage});
+
+  final Map<String, dynamic> usage;
+
+  @override
+  Widget build(BuildContext context) {
+    String trend(String key) {
+      final value = usage[key];
+      if (value is! num) return '比較データなし';
+      final prefix = value > 0 ? '+' : '';
+      return '$prefix${_formatMetricValue(value)}%';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Wrap(
+          spacing: 18,
+          runSpacing: 8,
+          children: [
+            Text('イベント 前期間比 ${trend('events_change_percent')}'),
+            Text('利用会社 前期間比 ${trend('companies_change_percent')}'),
+            Text('利用者 前期間比 ${trend('users_change_percent')}'),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 String _formatMetricValue(num value) {
