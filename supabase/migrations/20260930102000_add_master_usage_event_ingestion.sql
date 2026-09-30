@@ -1,5 +1,5 @@
 -- Privacy-bounded product usage analytics foundation.
--- Records only predefined-style event/surface/feature keys. No arbitrary metadata,
+-- Records only explicitly allowlisted event/surface/feature keys. No arbitrary metadata,
 -- message/file/photo contents, coordinates, phone numbers, or document data.
 
 create index if not exists master_usage_events_user_recent_idx
@@ -27,22 +27,52 @@ begin
     raise exception 'authentication required';
   end if;
 
-  if length(v_event_key) not between 1 and 120
-     or v_event_key !~ '^[a-z0-9][a-z0-9_.:-]*$' then
+  if v_event_key <> all(array[
+       'page_open',
+       'button_tap',
+       'feature_use',
+       'action_complete'
+     ]::text[]) then
     raise exception 'invalid event key';
   end if;
 
-  if v_surface_key is not null and (
-       length(v_surface_key) > 120
-       or v_surface_key !~ '^[a-z0-9][a-z0-9_.:-]*$'
-     ) then
+  if v_surface_key is not null and v_surface_key <> all(array[
+       'home',
+       'attendance',
+       'attendance_sheet',
+       'daily_report',
+       'payroll',
+       'invoice',
+       'chat',
+       'people',
+       'qualifications',
+       'documents',
+       'sites',
+       'vehicle_routes',
+       'settings',
+       'profile',
+       'help'
+     ]::text[]) then
     raise exception 'invalid surface key';
   end if;
 
-  if v_feature_key is not null and (
-       length(v_feature_key) > 120
-       or v_feature_key !~ '^[a-z0-9][a-z0-9_.:-]*$'
-     ) then
+  if v_feature_key is not null and v_feature_key <> all(array[
+       'clock_in',
+       'clock_out',
+       'attendance',
+       'daily_report',
+       'payroll',
+       'invoice',
+       'chat',
+       'print',
+       'company_connection',
+       'people',
+       'qualifications',
+       'documents',
+       'site_chat',
+       'vehicle_management',
+       'route_assignment'
+     ]::text[]) then
     raise exception 'invalid feature key';
   end if;
 
