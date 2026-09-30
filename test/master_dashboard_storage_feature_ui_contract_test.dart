@@ -13,6 +13,7 @@ void main() {
 
     expect(repository, contains("'get_master_storage_company_summary'"));
     expect(repository, contains("'get_master_feature_usage_status'"));
+    expect(repository, contains("'p_days': usageDays"));
     expect(repository, contains("'storageCompany'"));
     expect(repository, contains("'featureUsage'"));
 
