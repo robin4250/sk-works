@@ -585,12 +585,6 @@ class _HomePageState extends State<HomePage> {
           label: '協力会社から受け取ったデータ',
           icon: Icons.folder_shared_outlined,
         ),
-      if (_isAdmin)
-        const _MenuAction(
-          key: 'rollout',
-          label: '運用準備チェック',
-          icon: Icons.checklist_rtl_outlined,
-        ),
       const _MenuAction(
         key: 'settings',
         label: '設定',
