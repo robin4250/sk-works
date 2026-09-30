@@ -61,6 +61,11 @@ class _MasterOperationsDashboardPageState
     return value is num ? value.toInt() : 0;
   }
 
+  num _number(Map<String, dynamic> source, String key) {
+    final value = source[key];
+    return value is num ? value : 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -128,6 +133,40 @@ class _MasterOperationsDashboardPageState
                         ),
                         const SizedBox(height: 18),
                         Text(
+                          '新規登録',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric('会社 7日', _count(_growth, 'companies_last_7_days')),
+                            _Metric('会社 30日', _count(_growth, 'companies_last_30_days')),
+                            _Metric('会社 今月', _count(_growth, 'companies_current_month')),
+                            _Metric('利用者 7日', _count(_growth, 'users_last_7_days')),
+                            _Metric('利用者 30日', _count(_growth, 'users_last_30_days')),
+                            _Metric('利用者 今月', _count(_growth, 'users_current_month')),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          '1社あたり利用者',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric('平均', _number(_growth, 'members_per_company_average')),
+                            _Metric('中央値', _number(_growth, 'members_per_company_median')),
+                            _Metric('最小', _number(_growth, 'members_per_company_min')),
+                            _Metric('最大', _number(_growth, 'members_per_company_max')),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
                           '車両・ルート',
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w900,
@@ -172,6 +211,11 @@ class _MasterOperationsDashboardPageState
   }
 }
 
+String _formatMetricValue(num value) {
+  if (value == value.roundToDouble()) return value.toInt().toString();
+  return value.toStringAsFixed(1);
+}
+
 class _MetricGrid extends StatelessWidget {
   const _MetricGrid({required this.items});
 
@@ -195,7 +239,7 @@ class _MetricGrid extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    item.value.toString(),
+                    _formatMetricValue(item.value),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -215,5 +259,5 @@ class _Metric {
   const _Metric(this.label, this.value);
 
   final String label;
-  final int value;
+  final num value;
 }
