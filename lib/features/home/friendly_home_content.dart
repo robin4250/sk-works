@@ -387,6 +387,13 @@ class _AdminHome extends StatelessWidget {
                 Icons.admin_panel_settings_outlined,
                 access: _HomeActionAccess.admin,
               ),
+            if (identity.isAdmin)
+              const _HomeAction(
+                'company_documents',
+                '会社提出書類',
+                Icons.business_center_outlined,
+                access: _HomeActionAccess.admin,
+              ),
             const _HomeAction(
               'vehicle_routes',
               '車両・ルート',

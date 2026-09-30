@@ -36,6 +36,7 @@ import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
+import 'features/people/company_submitted_documents_page.dart';
 import 'features/people/employee_invite_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
@@ -247,6 +248,7 @@ class _HomePageState extends State<HomePage> {
       'employee_onboarding_approvals' ||
       'people' ||
       'company_deliveries' => 'people',
+      'company_documents' => 'documents',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'profile' => 'profile',
       'help' => 'help',
@@ -272,6 +274,7 @@ class _HomePageState extends State<HomePage> {
       'qualification_certificates' || 'qualifications' => 'qualifications',
       'documents' => 'documents',
       'company_deliveries' => 'company_connection',
+      'company_documents' => 'documents',
       _ => null,
     };
 
@@ -342,7 +345,8 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (key == 'company_deliveries' && !_isAdmin) {
+    if ((key == 'company_deliveries' || key == 'company_documents') &&
+        !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('この機能は管理者のみ利用できます')),
       );
@@ -453,6 +457,9 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'company_deliveries':
         page = const CompanyDeliveryInboxPage();
+        break;
+      case 'company_documents':
+        page = const CompanySubmittedDocumentsPage();
         break;
       case 'today_line':
         page = const TodayLineAttendancePage();
@@ -584,6 +591,12 @@ class _HomePageState extends State<HomePage> {
           key: 'company_deliveries',
           label: '協力会社から受け取ったデータ',
           icon: Icons.folder_shared_outlined,
+        ),
+      if (_isAdmin)
+        const _MenuAction(
+          key: 'company_documents',
+          label: '会社提出書類',
+          icon: Icons.business_center_outlined,
         ),
       const _MenuAction(
         key: 'settings',
