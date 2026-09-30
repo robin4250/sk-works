@@ -65,6 +65,10 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Master administration now requires Master role + trusted device + biometric authentication + secondary password. The step-up session is 15 minutes and clears on app background/exit.
 - Master analytics expose aggregate counts only. `get_master_growth_snapshot()` and `get_master_operations_snapshot()` deny anonymous execution; authenticated callers still pass an internal Master-role check.
 - Master vehicle/route feature controls are reversible and keep existing history/data when paused.
+- Master emergency recovery stores two distinct private recovery emails, exposes only masked addresses to the app, and records contact changes in the Master audit log.
+- Dual-code recovery uses service-only challenge issuance, bcrypt-backed code hashes, expiry/lock/one-time consumption, and requires both codes before a new trusted device is registered.
+- The `send-master-recovery-codes` Edge Function is fail-closed until `RESEND_API_KEY` and `MASTER_RECOVERY_FROM_EMAIL` are configured in Supabase Edge Function secrets. No recovery code or raw recovery email is returned to the Flutter app or written to logs.
+- Recovery challenge issuance is limited to three attempts per Master user per ten minutes at the database boundary.
 - Japan Country Pack is the single source of truth for current JP settings, and Japanese +81 / 070/080/090 phone normalization/validation has been moved into the JP country module without changing the existing onboarding API.
 - Company discovery keys are fixed as company name, address, corporate number, and SKO company ID. Discovery remains an addressing/search contract and does not grant data access.
 - The latest iPhone acceptance checklist includes sections M (site-chat lifecycle), N (vehicle/routes), and O (Master administration).
