@@ -37,7 +37,7 @@ fi
 
 DEVICE_ID="${1:-}"
 if [[ -z "$DEVICE_ID" ]]; then
-  DEVICE_ID="$(flutter devices --machine | python3 -c '
+  selection="$(flutter devices --machine | python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 physical = [
@@ -49,16 +49,92 @@ iphones = [
     item for item in physical
     if "iphone" in str(item.get("name", "")).lower()
 ]
+
 if len(iphones) == 1:
-    print(iphones[0].get("id", ""))
+    print("OK:" + str(iphones[0].get("id", "")))
+elif len(iphones) > 1:
+    print("MULTIPLE")
+    for item in iphones:
+        print(f"{item.get('id','')}\t{item.get('name','iPhone')}")
+elif physical:
+    print("NO_IPHONE")
+    for item in physical:
+        print(f"{item.get('id','')}\t{item.get('name','iOS device')}")
+else:
+    print("NONE")
 ')"
+
+  first_line="$(printf '%s\n' "$selection" | head -n 1)"
+  case "$first_line" in
+    OK:*)
+      DEVICE_ID="${first_line#OK:}"
+      ;;
+    MULTIPLE)
+      echo "複数の実機iPhoneを検出しました。起動先を自動選択しません。"
+      printf '%s\n' "$selection" | tail -n +2
+      echo "次: bash tool/device_day.sh <DEVICE_ID>"
+      exit 1
+      ;;
+    NO_IPHONE)
+      echo "物理iOS端末はありますが、iPhoneを特定できませんでした。"
+      printf '%s\n' "$selection" | tail -n +2
+      echo "iPhoneを接続するか、明示的に DEVICE_ID を指定してください。"
+      exit 1
+      ;;
+    *)
+      echo "実機iPhoneが見つかりません。"
+      exit 1
+      ;;
+  esac
 fi
 
 if [[ -z "$DEVICE_ID" ]]; then
-  echo "実機iPhoneを1台に特定できません。"
-  echo "次: bash tool/device_day.sh <DEVICE_ID>"
+  echo "実機iPhoneのDEVICE_IDを決定できませんでした。"
   exit 1
 fi
+
+device_list="$(flutter devices --machine)"
+validation="$(DEVICE_LIST="$device_list" python3 - "$DEVICE_ID" <<'PY'
+import json, os, sys
+wanted = sys.argv[1]
+try:
+    items = json.loads(os.environ.get("DEVICE_LIST", "[]"))
+except Exception:
+    items = []
+
+match = next((item for item in items if str(item.get("id", "")) == wanted), None)
+if match is None:
+    print("MISSING")
+    raise SystemExit
+
+target = str(match.get("targetPlatform", ""))
+name = str(match.get("name", ""))
+emulator = bool(match.get("emulator", False))
+
+if not target.startswith("ios") or emulator:
+    print("NOT_PHYSICAL_IOS")
+else:
+    print("OK:" + name)
+PY
+)"
+
+case "$validation" in
+  OK:*)
+    echo "✓ 起動対象を確認: ${validation#OK:} ($DEVICE_ID)"
+    ;;
+  MISSING)
+    echo "指定したDEVICE_IDが現在のFlutterデバイス一覧にありません: $DEVICE_ID"
+    exit 1
+    ;;
+  NOT_PHYSICAL_IOS)
+    echo "指定したDEVICE_IDは物理iOS端末ではありません: $DEVICE_ID"
+    exit 1
+    ;;
+  *)
+    echo "DEVICE_IDの検証に失敗しました: $DEVICE_ID"
+    exit 1
+    ;;
+esac
 
 echo
 echo "=== SKO standalone iPhone install ==="
