@@ -11,6 +11,7 @@ void main() {
     expect(sql, contains('public.record_usage_event'));
     expect(sql, contains('v_user_id uuid := auth.uid()'));
     expect(sql, contains('select cm.company_id'));
+    expect(sql, contains('company membership required'));
     expect(sql, contains('private.master_usage_events'));
     expect(sql, contains('invalid event key'));
     expect(sql, contains("'page_open'"));
