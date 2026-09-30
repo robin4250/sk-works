@@ -236,28 +236,54 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                               ),
                               subtitle: Text('${entry.value.length}件'),
                               children: [
-                                for (final item in entry.value)
-                                  CheckboxListTile(
-                                    value: _selectedKeys.contains(item.key),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        if (value == true) {
-                                          _selectedKeys.add(item.key);
-                                        } else {
-                                          _selectedKeys.remove(item.key);
-                                        }
-                                      });
-                                    },
-                                    title: Text(
-                                      item.title,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
+                                for (final category
+                                    in _ReceivedTransferCategory.values)
+                                  if (entry.value.any(
+                                    (item) => item.category == category,
+                                  )) ...[
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        12,
+                                        20,
+                                        4,
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          category.label,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                    subtitle: Text(item.subtitle),
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                  ),
+                                    for (final item in entry.value.where(
+                                      (item) => item.category == category,
+                                    ))
+                                      CheckboxListTile(
+                                        value:
+                                            _selectedKeys.contains(item.key),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            if (value == true) {
+                                              _selectedKeys.add(item.key);
+                                            } else {
+                                              _selectedKeys.remove(item.key);
+                                            }
+                                          });
+                                        },
+                                        title: Text(
+                                          item.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        subtitle: Text(item.subtitle),
+                                        controlAffinity:
+                                            ListTileControlAffinity.leading,
+                                      ),
+                                  ],
                               ],
                             ),
                           ),
@@ -429,10 +455,22 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   }
 }
 
+enum _ReceivedTransferCategory {
+  personnel('従業員一覧'),
+  qualifications('資格証一覧'),
+  workerDocuments('従業員提出書類一覧'),
+  companyDocuments('会社提出書類一覧');
+
+  const _ReceivedTransferCategory(this.label);
+
+  final String label;
+}
+
 class _ReceivedTransferItem {
   const _ReceivedTransferItem({
     required this.id,
     required this.isStructured,
+    required this.category,
     required this.originCompany,
     required this.title,
     required this.subtitle,
@@ -440,6 +478,7 @@ class _ReceivedTransferItem {
 
   final String id;
   final bool isStructured;
+  final _ReceivedTransferCategory category;
   final String originCompany;
   final String title;
   final String subtitle;
@@ -451,9 +490,20 @@ class _ReceivedTransferItem {
     required String fallbackCompany,
   }) {
     final path = _companyPath(row['company_path']);
+    final bucket = row['bucket']?.toString() ?? '';
+    final category = switch (bucket) {
+      'qualification-certificates' =>
+        _ReceivedTransferCategory.qualifications,
+      'worker-documents' => _ReceivedTransferCategory.workerDocuments,
+      'company-required-documents' ||
+      'partner-archive-documents' =>
+        _ReceivedTransferCategory.companyDocuments,
+      _ => _ReceivedTransferCategory.companyDocuments,
+    };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
       isStructured: false,
+      category: category,
       originCompany: _origin(path, fallbackCompany),
       title: row['name']?.toString() ?? '書類',
       subtitle: [
@@ -478,9 +528,15 @@ class _ReceivedTransferItem {
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
       _ => '受信データ',
     };
+    final category = switch (kind) {
+      'personnel' => _ReceivedTransferCategory.personnel,
+      'qualification' => _ReceivedTransferCategory.qualifications,
+      _ => _ReceivedTransferCategory.personnel,
+    };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
       isStructured: true,
+      category: category,
       originCompany: _origin(path, fallbackCompany),
       title: title,
       subtitle: [
