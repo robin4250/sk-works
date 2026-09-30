@@ -19,6 +19,8 @@ class _MasterOperationsDashboardPageState
   Map<String, dynamic> _growth = const {};
   Map<String, dynamic> _operations = const {};
   Map<String, dynamic> _storage = const {};
+  Map<String, dynamic> _usage = const {};
+  int _usageDays = 30;
 
   @override
   void initState() {
@@ -40,13 +42,14 @@ class _MasterOperationsDashboardPageState
       _error = null;
     });
     try {
-      final data = await repository.load();
+      final data = await repository.load(usageDays: _usageDays);
       if (!mounted) return;
       setState(() {
         _growth = Map<String, dynamic>.from(data['growth'] as Map? ?? {});
         _operations =
             Map<String, dynamic>.from(data['operations'] as Map? ?? {});
         _storage = Map<String, dynamic>.from(data['storage'] as Map? ?? {});
+        _usage = Map<String, dynamic>.from(data['usage'] as Map? ?? {});
         _loading = false;
       });
     } catch (error) {
@@ -209,6 +212,67 @@ class _MasterOperationsDashboardPageState
                           ],
                         ),
                         const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '利用状況',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              ),
+                            ),
+                            DropdownButton<int>(
+                              value: _usageDays,
+                              items: const [
+                                DropdownMenuItem(value: 7, child: Text('7日')),
+                                DropdownMenuItem(value: 30, child: Text('30日')),
+                                DropdownMenuItem(value: 90, child: Text('90日')),
+                              ],
+                              onChanged: _loading
+                                  ? null
+                                  : (value) {
+                                      if (value == null || value == _usageDays) return;
+                                      setState(() => _usageDays = value);
+                                      _load();
+                                    },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric('イベント', _count(_usage, 'events_total')),
+                            _Metric('利用会社', _count(_usage, 'companies_active')),
+                            _Metric('利用者', _count(_usage, 'users_active')),
+                            _Metric('集計日数', _count(_usage, 'window_days')),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _RankingCard(
+                          title: 'よく使われる操作',
+                          rows: _rankingRows(
+                            _usage['top_events'],
+                            keyName: 'event_key',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _RankingCard(
+                          title: 'よく開かれる画面',
+                          rows: _rankingRows(
+                            _usage['top_surfaces'],
+                            keyName: 'surface_key',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _RankingCard(
+                          title: 'よく使われる機能',
+                          rows: _rankingRows(
+                            _usage['top_features'],
+                            keyName: 'feature_key',
+                          ),
+                        ),
+                        const SizedBox(height: 18),
                         Text(
                           '現場チャット',
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -234,6 +298,120 @@ class _MasterOperationsDashboardPageState
       ),
     );
   }
+}
+
+List<_RankingRow> _rankingRows(
+  dynamic raw, {
+  required String keyName,
+}) {
+  if (raw is! List) return const <_RankingRow>[];
+  return raw
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .map(
+        (item) => _RankingRow(
+          key: item[keyName]?.toString() ?? '',
+          count: item['event_count'] is num
+              ? (item['event_count'] as num).toInt()
+              : 0,
+        ),
+      )
+      .where((item) => item.key.isNotEmpty)
+      .toList(growable: false);
+}
+
+String _friendlyUsageKey(String value) {
+  return switch (value) {
+    'page_open' => '画面を開いた',
+    'button_tap' => 'ボタン操作',
+    'feature_use' => '機能利用',
+    'action_complete' => '操作完了',
+    'home' => 'ホーム',
+    'attendance' => '出勤・退勤',
+    'attendance_sheet' => '出勤表',
+    'daily_report' => '日報',
+    'payroll' => '給与明細',
+    'invoice' => '請求書',
+    'chat' => 'チャット',
+    'people' => '人員管理',
+    'qualifications' => '資格',
+    'documents' => '書類',
+    'sites' => '現場',
+    'vehicle_routes' => '車両・ルート',
+    'settings' => '設定',
+    'profile' => 'プロフィール',
+    'help' => 'ヘルプ',
+    'clock_in' => '出勤',
+    'clock_out' => '退勤',
+    'print' => '印刷',
+    'company_connection' => '会社間連携',
+    'site_chat' => '現場チャット',
+    'vehicle_management' => '車両管理',
+    'route_assignment' => 'ルート・配車',
+    _ => value,
+  };
+}
+
+class _RankingCard extends StatelessWidget {
+  const _RankingCard({
+    required this.title,
+    required this.rows,
+  });
+
+  final String title;
+  final List<_RankingRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            if (rows.isEmpty)
+              const Text('まだ集計データがありません')
+            else
+              for (var index = 0; index < rows.length; index++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 28,
+                        child: Text(
+                          '${index + 1}.',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Expanded(child: Text(_friendlyUsageKey(rows[index].key))),
+                      Text(
+                        rows[index].count.toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RankingRow {
+  const _RankingRow({
+    required this.key,
+    required this.count,
+  });
+
+  final String key;
+  final int count;
 }
 
 String _formatMetricValue(num value) {
