@@ -205,6 +205,14 @@ class _MasterOperationsDashboardPageState
                               _count(_activity, 'active_companies_30'),
                             ),
                             _Metric(
+                              '利用率 7日 %',
+                              _number(_activity, 'usage_rate_7_percent'),
+                            ),
+                            _Metric(
+                              '利用率 30日 %',
+                              _number(_activity, 'usage_rate_30_percent'),
+                            ),
+                            _Metric(
                               '30日継続会社',
                               _count(_activity, 'retained_companies_30'),
                             ),
