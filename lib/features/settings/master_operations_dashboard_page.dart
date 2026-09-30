@@ -18,6 +18,7 @@ class _MasterOperationsDashboardPageState
   String? _error;
   Map<String, dynamic> _growth = const {};
   Map<String, dynamic> _operations = const {};
+  Map<String, dynamic> _storage = const {};
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _MasterOperationsDashboardPageState
         _growth = Map<String, dynamic>.from(data['growth'] as Map? ?? {});
         _operations =
             Map<String, dynamic>.from(data['operations'] as Map? ?? {});
+        _storage = Map<String, dynamic>.from(data['storage'] as Map? ?? {});
         _loading = false;
       });
     } catch (error) {
@@ -181,6 +183,29 @@ class _MasterOperationsDashboardPageState
                             _Metric('ルート 合計', _count(_operations, 'routes_total')),
                             _Metric('ルート 利用中', _count(_operations, 'routes_active')),
                             _Metric('ルート 休止', _count(_operations, 'routes_disabled')),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          'ストレージ',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricGrid(
+                          items: [
+                            _Metric('ファイル', _count(_storage, 'objects_total')),
+                            _Metric(
+                              '使用量 MB',
+                              _number(_storage, 'bytes_total') / (1024 * 1024),
+                            ),
+                            _Metric('画像', _count(_storage, 'images_total')),
+                            _Metric('PDF', _count(_storage, 'pdfs_total')),
+                            _Metric(
+                              '使用中バケット',
+                              _count(_storage, 'buckets_with_objects'),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 18),
