@@ -15,10 +15,11 @@ void main() {
     expect(source, contains('Promise.allSettled'));
     expect(source, contains('challengeId'));
     expect(source, contains('expiresAt'));
-    expect(source, isNot(contains('primaryCode,')));
-    expect(source, isNot(contains('secondaryCode,')));
-    expect(source, isNot(contains('primaryEmail,')));
-    expect(source, isNot(contains('secondaryEmail,')));
+    expect(source, contains('return json({\n    challengeId,\n    expiresAt,\n    sent: true,\n  });'));
+    expect(source, isNot(contains('primaryCode: primaryCode')));
+    expect(source, isNot(contains('secondaryCode: secondaryCode')));
+    expect(source, isNot(contains('primaryEmail: primaryEmail')));
+    expect(source, isNot(contains('secondaryEmail: secondaryEmail')));
     expect(source, isNot(contains('console.log')));
   });
 
