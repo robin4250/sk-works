@@ -19,10 +19,7 @@ declare
   v_expires_at timestamptz;
   v_ttl integer := greatest(5, least(coalesce(p_ttl_minutes,15), 30));
 begin
-  if auth.role() is distinct from 'service_role' then
-    raise exception 'service role required';
-  end if;
-
+  -- Execution is restricted to service_role by function ACL below.
   if p_master_user_id is null or not exists(
     select 1
     from private.master_admins ma
