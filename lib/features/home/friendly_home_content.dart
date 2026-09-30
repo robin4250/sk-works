@@ -449,7 +449,7 @@ class _ActionGrid extends StatelessWidget {
               final isProfessional =
                   item.access == _HomeActionAccess.professional;
               final background =
-                  isSubAdmin ? scheme.primaryContainer.withValues(alpha: 0.45) : scheme.surfaceContainerLowest;
+                  isSubAdmin ? scheme.primaryContainer : scheme.surfaceContainerLowest;
               final borderColor =
                   isAdmin ? scheme.primary : scheme.outlineVariant;
               final borderWidth = isAdmin ? 2.0 : 1.0;
