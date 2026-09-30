@@ -386,6 +386,13 @@ class _MasterOperationsDashboardPageState
                           comparison: _usageComparison,
                         ),
                         const SizedBox(height: 10),
+                        _PlanAnalysisIndicatorsCard(
+                          growth: _growth,
+                          storageCompany: _storageCompany,
+                          activity: _activity,
+                          usageComparison: _usageComparison,
+                        ),
+                        const SizedBox(height: 10),
                         Text(
                           '機能利用状態',
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -791,6 +798,86 @@ class _FeatureUsageRow {
   final String key;
   final String state;
   final int eventCount;
+}
+
+class _PlanAnalysisIndicatorsCard extends StatelessWidget {
+  const _PlanAnalysisIndicatorsCard({
+    required this.growth,
+    required this.storageCompany,
+    required this.activity,
+    required this.usageComparison,
+  });
+
+  final Map<String, dynamic> growth;
+  final Map<String, dynamic> storageCompany;
+  final Map<String, dynamic> activity;
+  final Map<String, dynamic> usageComparison;
+
+  num _number(Map<String, dynamic> source, String key) {
+    final value = source[key];
+    return value is num ? value : 0;
+  }
+
+  Map<String, dynamic> get _usage30 {
+    final value = usageComparison['30'];
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final averageStorageMb =
+        _number(storageCompany, 'average_bytes_per_company') / (1024 * 1024);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '将来プラン分析指標',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Free / Pro等の将来設計に使う全体集計です。個別会社のプラン判定や会社名・ID表示は行いません。',
+            ),
+            const SizedBox(height: 12),
+            _MetricGrid(
+              items: [
+                _Metric(
+                  '30日利用率 %',
+                  _number(activity, 'usage_rate_30_percent'),
+                ),
+                _Metric(
+                  '30日 1社あたり利用回数',
+                  _number(_usage30, 'events_per_company'),
+                ),
+                _Metric(
+                  '1社あたり利用者 平均',
+                  _number(growth, 'members_per_company_average'),
+                ),
+                _Metric(
+                  '1社あたりストレージ 平均MB',
+                  averageStorageMb,
+                ),
+                _Metric(
+                  '会社間連携率 %',
+                  _number(growth, 'connection_rate_percent'),
+                ),
+                _Metric(
+                  '30日継続率 %',
+                  _number(activity, 'retention_rate_30_percent'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UsagePeriodComparisonCard extends StatelessWidget {
