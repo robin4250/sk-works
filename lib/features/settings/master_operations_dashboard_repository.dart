@@ -30,6 +30,18 @@ class MasterOperationsDashboardRepository {
         'get_master_usage_snapshot',
         params: {'p_days': usageDays},
       ),
+      _client.rpc(
+        'get_master_usage_snapshot',
+        params: {'p_days': 7},
+      ),
+      _client.rpc(
+        'get_master_usage_snapshot',
+        params: {'p_days': 30},
+      ),
+      _client.rpc(
+        'get_master_usage_snapshot',
+        params: {'p_days': 90},
+      ),
     ]);
     final status = values[0];
     if (status is! Map || status['is_master_admin'] != true) {
@@ -57,6 +69,17 @@ class MasterOperationsDashboardRepository {
       'usage': values[7] is Map
           ? Map<String, dynamic>.from(values[7] as Map)
           : const <String, dynamic>{},
+      'usageComparison': {
+        '7': values[8] is Map
+            ? Map<String, dynamic>.from(values[8] as Map)
+            : const <String, dynamic>{},
+        '30': values[9] is Map
+            ? Map<String, dynamic>.from(values[9] as Map)
+            : const <String, dynamic>{},
+        '90': values[10] is Map
+            ? Map<String, dynamic>.from(values[10] as Map)
+            : const <String, dynamic>{},
+      },
     };
   }
 }
