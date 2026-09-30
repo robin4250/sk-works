@@ -249,7 +249,15 @@ begin
     raise exception 'approval-assignee 1-to-3 guard missing';
   end if;
 
-  if position('v_role = ''manager''' in pg_get_functiondef('public.current_feature_permissions()'::regprocedure)) = 0 then
+  if position(
+       'v_role=''manager'''
+       in regexp_replace(
+         pg_get_functiondef('public.current_feature_permissions()'::regprocedure),
+         '\\s+',
+         '',
+         'g'
+       )
+     ) = 0 then
     raise exception 'manager default feature permissions missing';
   end if;
 
