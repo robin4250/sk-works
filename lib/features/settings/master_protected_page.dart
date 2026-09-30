@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/secure_onboarding_repository.dart';
 import 'master_device_repository.dart';
+import 'master_emergency_recovery_page.dart';
 import 'master_step_up_policy.dart';
 
 class MasterProtectedPage extends StatefulWidget {
@@ -193,6 +194,22 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     }
   }
 
+  Future<void> _openEmergencyRecovery() async {
+    final recovered = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const MasterEmergencyRecoveryPage(),
+      ),
+    );
+    if (recovered != true || !mounted) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _unlocked = false;
+    });
+    await _load();
+  }
+
   String _deviceName() => Platform.isIOS
       ? 'SKO Master iOS'
       : Platform.isMacOS
@@ -308,6 +325,17 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
                           minimumSize: const Size.fromHeight(52),
                         ),
                       ),
+                      if (!_trustedDevice && !_canBootstrap) ...[
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _openEmergencyRecovery,
+                          icon: const Icon(Icons.emergency_outlined),
+                          label: const Text('信頼済み端末を使えない場合は緊急復旧'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
