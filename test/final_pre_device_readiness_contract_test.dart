@@ -16,7 +16,7 @@ void main() {
     expect(readiness, contains('15 minutes'));
     expect(readiness, contains('Japan Country Pack'));
     expect(readiness, contains('company name, address, corporate number, and SKO company ID'));
-    expect(readiness, contains('3 `auth_rls_initplan` warnings'));
+    expect(readiness, contains('3 `auth_rls_initplan` WARN items'));
     expect(readiness, contains('vehicles` and `route_assignments'));
     expect(readiness, contains('SKO pre-device database security assertions passed'));
     expect(record, contains('A〜Oの受入項目を確認'));
