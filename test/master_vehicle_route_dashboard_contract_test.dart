@@ -21,6 +21,8 @@ void main() {
     expect(page, contains('個別データは表示しません'));
     expect(page, contains('車両・ルート'));
     expect(page, contains('現場チャット'));
-    expect(settings, isNot(contains('MasterOperationsDashboardPage')));
+    expect(settings, contains('MasterOperationsDashboardPage'));
+    expect(settings, contains("title: 'Master ダッシュボード'"));
+    expect(settings, contains('MasterProtectedPage'));
   });
 }
