@@ -23,6 +23,7 @@ class _MasterOperationsDashboardPageState
   Map<String, dynamic> _activity = const {};
   Map<String, dynamic> _featureUsage = const {};
   Map<String, dynamic> _usage = const {};
+  Map<String, dynamic> _usageComparison = const {};
   int _usageDays = 30;
 
   @override
@@ -58,6 +59,8 @@ class _MasterOperationsDashboardPageState
         _featureUsage =
             Map<String, dynamic>.from(data['featureUsage'] as Map? ?? {});
         _usage = Map<String, dynamic>.from(data['usage'] as Map? ?? {});
+        _usageComparison =
+            Map<String, dynamic>.from(data['usageComparison'] as Map? ?? {});
         _loading = false;
       });
     } catch (error) {
@@ -379,6 +382,10 @@ class _MasterOperationsDashboardPageState
                         const SizedBox(height: 8),
                         _UsageTrendSummary(usage: _usage),
                         const SizedBox(height: 10),
+                        _UsagePeriodComparisonCard(
+                          comparison: _usageComparison,
+                        ),
+                        const SizedBox(height: 10),
                         Text(
                           '機能利用状態',
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -672,6 +679,82 @@ class _FeatureUsageRow {
   final String key;
   final String state;
   final int eventCount;
+}
+
+class _UsagePeriodComparisonCard extends StatelessWidget {
+  const _UsagePeriodComparisonCard({required this.comparison});
+
+  final Map<String, dynamic> comparison;
+
+  Map<String, dynamic> _snapshot(String days) {
+    final value = comparison[days];
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+  }
+
+  int _value(String days, String key) {
+    final value = _snapshot(days)[key];
+    return value is num ? value.toInt() : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '期間比較（7日・30日・90日）',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                SizedBox(width: 54, child: Text('期間')),
+                Expanded(child: Text('イベント')),
+                Expanded(child: Text('利用会社')),
+                Expanded(child: Text('利用者')),
+              ],
+            ),
+            const Divider(),
+            for (final days in const ['7', '30', '90'])
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 54,
+                      child: Text(
+                        '$days日',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _value(days, 'events_total').toString(),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _value(days, 'companies_active').toString(),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _value(days, 'users_active').toString(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UsageTrendSummary extends StatelessWidget {
