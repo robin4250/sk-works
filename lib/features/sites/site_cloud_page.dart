@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
+import 'site_cloud_detail_page.dart';
 import 'site_detail_page.dart';
 import 'site_page.dart';
 
@@ -75,6 +76,9 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
         site.customerName,
         site.address,
         site.managerName,
+        site.nearestStation,
+        site.formalName,
+        site.representativeName,
         site.notes,
       ].join(' ').toLowerCase();
       return matchesStatus && (needle.isEmpty || haystack.contains(needle));
@@ -207,41 +211,16 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     }
   }
 
-  void _showDetails(SiteRecord site) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(site.name, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              Text('取引先: ${site.customerName}'),
-              Text('状態: ${site.status.label}'),
-              if (site.managerName.isNotEmpty) Text('担当者: ${site.managerName}'),
-              if (site.address.isNotEmpty) Text('住所: ${site.address}'),
-              if (site.startDate.isNotEmpty) Text('開始日: ${site.startDate}'),
-              if (site.endDate.isNotEmpty) Text('終了日: ${site.endDate}'),
-              if (site.notes.isNotEmpty) Text('備考: ${site.notes}'),
-              const SizedBox(height: 16),
-              if (_canManageSites && site.status != SiteStatus.completed)
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.pop(sheetContext);
-                    await _complete(site);
-                  },
-                  icon: const Icon(Icons.archive_outlined),
-                  label: const Text('現場を終了'),
-                ),
-            ],
-          ),
+  Future<void> _showDetails(SiteRecord site) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SiteCloudDetailPage(
+          site: site,
+          canManage: _canManageSites,
         ),
       ),
     );
+    await _load();
   }
 
   Future<void> _complete(SiteRecord site) async {
@@ -285,6 +264,13 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
             startDate: site.startDate,
             endDate: site.endDate,
             notes: site.notes,
+            formalName: site.formalName,
+            nearestStation: site.nearestStation,
+            representativeName: site.representativeName,
+            representativePhone: site.representativePhone,
+            creatorName: site.creatorName,
+            createdAt: site.createdAt,
+            updatedAt: site.updatedAt,
           );
         }
       });
