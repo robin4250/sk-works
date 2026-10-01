@@ -9,8 +9,8 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.identity,
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
-    required this.gridColumns,
-    required this.actionOrder,
+    this.gridColumns = 2,
+    this.actionOrder = const <String>[],
     required this.onOpen,
     required this.onRefresh,
   });
