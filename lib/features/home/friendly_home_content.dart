@@ -512,6 +512,7 @@ class _AdminHome extends StatelessWidget {
             ),
           ),
         ),
+          ),
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance'))
           const SizedBox(height: 12),
