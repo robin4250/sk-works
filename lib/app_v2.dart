@@ -568,6 +568,11 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (_) => page!),
     );
 
+    if (key == 'clock_in' ||
+        key == 'clock_out' ||
+        key == 'attendance_verify') {
+      await _loadHomeAttendanceStatus();
+    }
     if (key == 'settings') {
       await _loadModuleSettings();
     }
