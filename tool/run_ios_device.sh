@@ -155,7 +155,7 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-EXPECTED_BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
+EXPECTED_BUNDLE_ID="com.skworks.skWorks"
 BUILT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null || true)"
 if [[ "$BUILT_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]]; then
   echo "✗ インストールを中止します。"
@@ -172,7 +172,7 @@ xcrun devicectl device install app \
   --device "$DEVICE_ID" \
   "$APP_PATH"
 
-BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
+BUNDLE_ID="com.skworks.skWorks"
 
 echo
 echo "インストール済みRelease版SKOを起動します: $BUNDLE_ID"
