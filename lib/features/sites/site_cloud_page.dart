@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
+import 'site_detail_page.dart';
+import 'site_map_page.dart';
 import 'site_page.dart';
 
 class SiteCloudPage extends StatefulWidget {
@@ -74,6 +76,9 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
         site.customerName,
         site.address,
         site.managerName,
+        site.nearestStation,
+        site.formalName,
+        site.representativeName,
         site.notes,
       ].join(' ').toLowerCase();
       return matchesStatus && (needle.isEmpty || haystack.contains(needle));
@@ -83,6 +88,17 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       appBar: AppBar(
         title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
         actions: [
+          IconButton(
+            tooltip: '現場マップ',
+            onPressed: _loading
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SiteMapPage(),
+                      ),
+                    ),
+            icon: const Icon(Icons.map_outlined),
+          ),
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
@@ -109,7 +125,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '現場名・得意先・担当者・住所で検索',
+                  hintText: '現場名・取引先・担当者・住所・最寄駅で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -165,7 +181,15 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                                       if (site.managerName.isNotEmpty) site.managerName,
                                     ].join(' / ')),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(site),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => SiteDetailPage(
+                                          site: site,
+                                          canManage: _canManageSites,
+                                          onComplete: () => _complete(site),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 );
                               },
@@ -199,43 +223,6 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     }
   }
 
-  void _showDetails(SiteRecord site) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(site.name, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              Text('得意先: ${site.customerName}'),
-              Text('状態: ${site.status.label}'),
-              if (site.managerName.isNotEmpty) Text('担当者: ${site.managerName}'),
-              if (site.address.isNotEmpty) Text('住所: ${site.address}'),
-              if (site.startDate.isNotEmpty) Text('開始日: ${site.startDate}'),
-              if (site.endDate.isNotEmpty) Text('終了日: ${site.endDate}'),
-              if (site.notes.isNotEmpty) Text('備考: ${site.notes}'),
-              const SizedBox(height: 16),
-              if (_canManageSites && site.status != SiteStatus.completed)
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.pop(sheetContext);
-                    await _complete(site);
-                  },
-                  icon: const Icon(Icons.archive_outlined),
-                  label: const Text('現場を終了'),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _complete(SiteRecord site) async {
     final repository = _repository;
     if (repository == null) return;
@@ -261,36 +248,18 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     );
     if (confirmed != true) return;
 
-    try {
-      await repository.complete(site.id);
-      if (!mounted) return;
-      setState(() {
-        final index = _sites.indexWhere((item) => item.id == site.id);
-        if (index >= 0) {
-          _sites[index] = SiteRecord(
-            id: site.id,
-            name: site.name,
-            customerName: site.customerName,
-            status: SiteStatus.completed,
-            address: site.address,
-            managerName: site.managerName,
-            startDate: site.startDate,
-            endDate: site.endDate,
-            notes: site.notes,
-          );
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場を終了できませんでした: $error')),
-      );
-    }
+    await repository.complete(site.id);
+    if (!mounted) return;
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
+    );
   }
+
+
 }
+
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
@@ -322,4 +291,6 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+
+
 }

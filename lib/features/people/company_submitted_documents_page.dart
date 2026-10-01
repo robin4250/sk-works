@@ -1,4 +1,4 @@
-// ignore_for_file: prefer_interpolation_to_compose_strings
+// ignore_for_file: prefer_interpolation_to_compose_strings, dead_code
 
 import 'dart:math';
 
@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../common/data_date_labels.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
+import 'company_transfer_send_page.dart';
 
 class CompanySubmittedDocumentsPage extends StatefulWidget {
   const CompanySubmittedDocumentsPage({super.key});
@@ -44,6 +45,20 @@ class _CompanySubmittedDocumentsPageState
     super.dispose();
   }
 
+  Future<void> _openCommonSend() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const CompanyTransferSendPage(
+          title: '会社提出書類を送信',
+          sourceKind: 'company',
+          subjectLabel: '会社提出書類',
+          workerIds: <String>{},
+          description: '会社単位の提出書類を、接続済み親会社へ全部または選択して送信します。',
+        ),
+      ),
+    );
+  }
+
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) return;
@@ -73,6 +88,11 @@ class _CompanySubmittedDocumentsPageState
       appBar: AppBar(
         title: const Text('会社提出書類'),
         actions: [
+          IconButton(
+            tooltip: '会社提出書類を送信',
+            onPressed: _busy ? null : _openCommonSend,
+            icon: const Icon(Icons.send_outlined),
+          ),
           IconButton(
             tooltip: '書類種類を追加',
             onPressed: _busy ? null : _create,
@@ -110,7 +130,7 @@ class _CompanySubmittedDocumentsPageState
                           ),
                         ),
                       for (final row in _documents) _documentCard(row),
-                      if (_selected.isNotEmpty) ...[
+                      if (false && _selected.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Text(
                           '上位会社へ送信（' + _selected.length.toString() + '件）',

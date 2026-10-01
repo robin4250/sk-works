@@ -1,7 +1,12 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import 'company_document_exchange_repository.dart';
 
@@ -15,14 +20,16 @@ class CompanyDeliveryInboxPage extends StatefulWidget {
 
 class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   final _repository = CompanyDocumentExchangeRepository.maybeCreate();
-  final _receiveCodeController = TextEditingController();
   final _noteController = TextEditingController();
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
+  Map<String, DateTime> _savedState = const {};
+  List<Map<String, dynamic>> _incomingConnections = const [];
   bool _loading = true;
   bool _forwarding = false;
-  String? _targetCompanyName;
+  List<Map<String, dynamic>> _transferTargets = const [];
+  String? _targetCompanyId;
   String? _error;
 
   @override
@@ -33,7 +40,6 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   @override
   void dispose() {
-    _receiveCodeController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -49,7 +55,23 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
 
     try {
-      final deliveries = await repository.listDeliveries();
+      final valuesTop = await Future.wait([
+        repository.listDeliveries(),
+        repository.listTransferTargets(),
+        repository.loadConnectionInbox(),
+        repository.loadSavedDeliveryState(),
+      ]);
+      final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
+      final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
+      final connectionInbox = valuesTop[2] as Map<String, dynamic>;
+      final savedState = valuesTop[3] as Map<String, DateTime>;
+      final incomingRaw = connectionInbox['incoming'];
+      final incomingConnections = incomingRaw is List
+          ? incomingRaw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
       final received = deliveries
           .where((row) => row['received'] == true)
           .toList(growable: false);
@@ -70,6 +92,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           loaded.add(
             _ReceivedTransferItem.file(
               row,
+              deliveryId: deliveryId,
+              savedAt: delivery['saved_at']?.toString() ?? '',
               fallbackCompany:
                   delivery['sender_name']?.toString() ?? '協力会社',
             ),
@@ -79,6 +103,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           loaded.add(
             _ReceivedTransferItem.data(
               row,
+              deliveryId: deliveryId,
+              savedAt: delivery['saved_at']?.toString() ?? '',
               fallbackCompany:
                   delivery['sender_name']?.toString() ?? '協力会社',
             ),
@@ -92,6 +118,18 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ..clear()
           ..addAll(loaded);
         _selectedKeys.clear();
+        _transferTargets = transferTargets;
+        _savedState = savedState;
+        _incomingConnections = incomingConnections;
+        if (_targetCompanyId != null &&
+            !transferTargets.any(
+              (row) => row['company_id']?.toString() == _targetCompanyId,
+            )) {
+          _targetCompanyId = null;
+        }
+        if (_targetCompanyId == null && transferTargets.length == 1) {
+          _targetCompanyId = transferTargets.first['company_id']?.toString();
+        }
         _loading = false;
         _error = null;
       });
@@ -104,79 +142,182 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
   }
 
-  Future<void> _issueReceiveCode() async {
+
+  Future<void> _openPrintPreview(
+    String title,
+    List<_ReceivedTransferItem> items,
+  ) async {
+    if (items.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ReceivedDataPdfPreview(
+          title: title,
+          items: items,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveReceivedItems(
+    Iterable<_ReceivedTransferItem> items,
+  ) async {
     final repository = _repository;
     if (repository == null) return;
-    try {
-      final result = await repository.issueReceiveCode();
-      final code = result['code']?.toString() ?? '';
-      final company = result['company_name']?.toString() ?? '';
-      if (!mounted || code.isEmpty) return;
+    final keys = items.map((item) => item.key).toList(growable: false);
+    if (keys.isEmpty) return;
+    await repository.saveDeliveryItems(keys);
+    final savedState = await repository.loadSavedDeliveryState();
+    if (!mounted) return;
+    setState(() => _savedState = savedState);
+  }
 
-      await showDialog<void>(
+  Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
+    final alreadySaved = _savedState.containsKey(item.key);
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(item.originCompany + 'からデータが届いています'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.title,
+                style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text(item.subtitle),
+            const SizedBox(height: 12),
+            Text(alreadySaved ? 'このデータは保存済みです。' : '保存しますか'),
+            const SizedBox(height: 4),
+            const Text('保存先：協力会社 → 出所会社 → データ種別'),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(dialogContext, false);
+              _openPrintPreview(item.title, [item]);
+            },
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('印刷プレビュー'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(alreadySaved ? '閉じる' : 'あとで'),
+          ),
+          if (!alreadySaved)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('保存する'),
+            ),
+        ],
+      ),
+    );
+    if (shouldSave != true) return;
+    try {
+      await _saveReceivedItems([item]);
+      if (!mounted) return;
+      final openSaved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('受取コード'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (company.isNotEmpty) Text('会社: $company'),
-              const SizedBox(height: 8),
-              SelectableText(
-                code,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text('このコードを送信元の会社へ伝えてください。有効期限は7日です。'),
-            ],
-          ),
+          title: const Text('保存しました'),
+          content: Text(item.originCompany + 'の協力会社フォルダへ保存しました。'),
           actions: [
-            TextButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: code));
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('受取コードをコピーしました')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('コピー'),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('閉じる'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('閉じる'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('保存したデータを開く'),
             ),
           ],
         ),
       );
+      if (openSaved == true && mounted) {
+        await _showReceivedDetail(item);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('受取コードを発行できませんでした: $error')),
+        SnackBar(content: Text('保存できませんでした: ' + error.toString())),
       );
     }
   }
 
-  Future<void> _resolveForwardTarget() async {
-    final repository = _repository;
-    final code = _receiveCodeController.text.trim();
-    if (repository == null || code.isEmpty) return;
-    try {
-      final result = await repository.resolveReceiveCode(code);
-      if (!mounted) return;
-      setState(() => _targetCompanyName = result['company_name']?.toString());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _targetCompanyName = null);
+  Future<void> _saveCompanyFolder(
+    String companyName,
+    List<_ReceivedTransferItem> items,
+  ) async {
+    final unsaved =
+        items.where((item) => !_savedState.containsKey(item.key)).toList();
+    if (unsaved.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('受取コードを確認できませんでした: $error')),
+        SnackBar(content: Text(companyName + 'のデータはすべて保存済みです')),
       );
+      return;
     }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('会社単位で一括保存'),
+        content: Text(
+          companyName +
+              'から受信した' +
+              unsaved.length.toString() +
+              '件を協力会社フォルダへ保存します。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('一括保存'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _saveReceivedItems(unsaved);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(companyName + 'のデータを一括保存しました')),
+    );
+  }
+
+  Future<void> _respondConnection(
+    Map<String, dynamic> request,
+    bool accept,
+  ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final id = request['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final name = request['child_company_name']?.toString() ?? '会社';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(accept ? '会社接続を承認しますか？' : '会社接続を拒否しますか？'),
+        content: Text(name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(accept ? '承認する' : '拒否する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repository.respondCompanyConnection(
+      connectionId: id,
+      accept: accept,
+    );
+    _reload();
   }
 
   @override
@@ -188,13 +329,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('協力会社から受け取ったデータ'),
+        title: const Text('協力会社'),
         actions: [
-          IconButton(
-            tooltip: '受取コードを発行',
-            onPressed: _issueReceiveCode,
-            icon: const Icon(Icons.key_outlined),
-          ),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _reload,
@@ -210,6 +346,46 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_incomingConnections.isNotEmpty) ...[
+                        const Text(
+                          '要対応',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final request in _incomingConnections)
+                          Card(
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.link_outlined),
+                              ),
+                              title: Text(
+                                request['child_company_name']?.toString() ??
+                                    '会社',
+                              ),
+                              subtitle: const Text('会社接続申請が届いています'),
+                              trailing: Wrap(
+                                children: [
+                                  IconButton(
+                                    tooltip: '拒否',
+                                    onPressed: () =>
+                                        _respondConnection(request, false),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                                  IconButton(
+                                    tooltip: '承認',
+                                    onPressed: () =>
+                                        _respondConnection(request, true),
+                                    icon: const Icon(Icons.check_circle_outline),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
                       const Text(
                         '出所会社ごとに整理しています。受け取った情報は出所を保持したまま上位会社へ再転送できます。',
                       ),
@@ -234,7 +410,29 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              subtitle: Text('${entry.value.length}件'),
+                              subtitle: Text(
+                                _companySubtitle(entry.value),
+                              ),
+                              trailing: Wrap(
+                                children: [
+                                  IconButton(
+                                    tooltip: '一覧を印刷',
+                                    onPressed: () => _openPrintPreview(
+                                      entry.key,
+                                      entry.value,
+                                    ),
+                                    icon: const Icon(Icons.print_outlined),
+                                  ),
+                                  IconButton(
+                                    tooltip: '会社単位で一括保存',
+                                    onPressed: () => _saveCompanyFolder(
+                                      entry.key,
+                                      entry.value,
+                                    ),
+                                    icon: const Icon(Icons.save_alt_outlined),
+                                  ),
+                                ],
+                              ),
                               children: [
                                 for (final category
                                     in _ReceivedTransferCategory.values)
@@ -279,7 +477,23 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
-                                        subtitle: Text(item.subtitle),
+                                        subtitle: Text(
+                                          _savedState.containsKey(item.key)
+                                              ? item.subtitle + ' / 保存済み'
+                                              : item.subtitle,
+                                        ),
+                                        secondary: IconButton(
+                                          tooltip: _savedState.containsKey(item.key)
+                                              ? '保存したデータを開く'
+                                              : '詳細・保存',
+                                          onPressed: () =>
+                                              _showReceivedDetail(item),
+                                          icon: Icon(
+                                            _savedState.containsKey(item.key)
+                                                ? Icons.folder_open_outlined
+                                                : Icons.download_outlined,
+                                          ),
+                                        ),
                                         controlAffinity:
                                             ListTileControlAffinity.leading,
                                       ),
@@ -297,40 +511,24 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: _receiveCodeController,
+                        DropdownButtonFormField<String>(
+                          initialValue: _targetCompanyId,
                           decoration: const InputDecoration(
-                            labelText: '上位会社の受取コード',
-                            prefixIcon: Icon(Icons.vpn_key_outlined),
+                            labelText: '接続済み親会社',
+                            border: OutlineInputBorder(),
                           ),
-                          onChanged: (_) =>
-                              setState(() => _targetCompanyName = null),
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _resolveForwardTarget,
-                          icon: const Icon(Icons.verified_outlined),
-                          label: const Text('再転送先の会社名を確認'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                          ),
-                        ),
-                        if (_targetCompanyName != null) ...[
-                          const SizedBox(height: 8),
-                          Card(
-                            child: ListTile(
-                              leading:
-                                  const Icon(Icons.business_outlined),
-                              title: const Text('再転送先'),
-                              subtitle: Text(
-                                _targetCompanyName!,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
+                          items: [
+                            for (final target in _transferTargets)
+                              DropdownMenuItem(
+                                value: target['company_id']?.toString(),
+                                child: Text(
+                                  target['company_name']?.toString() ?? '会社',
                                 ),
                               ),
-                            ),
-                          ),
-                        ],
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _targetCompanyId = value),
+                        ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _noteController,
@@ -342,8 +540,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                         ),
                         const SizedBox(height: 8),
                         FilledButton.icon(
-                          onPressed: _targetCompanyName == null ||
-                                  _forwarding
+                          onPressed: _targetCompanyId == null || _forwarding
                               ? null
                               : _confirmAndForward,
                           icon: const Icon(Icons.forward_to_inbox_outlined),
@@ -363,8 +560,14 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   Future<void> _confirmAndForward() async {
     final repository = _repository;
-    final target = _targetCompanyName;
-    if (repository == null || target == null) return;
+    final targetId = _targetCompanyId;
+    if (repository == null || targetId == null) return;
+    final targetRow = _transferTargets.where(
+      (row) => row['company_id']?.toString() == targetId,
+    );
+    if (targetRow.isEmpty) return;
+    final target =
+        targetRow.first['company_name']?.toString() ?? '選択した会社';
 
     final selected = _items
         .where((item) => _selectedKeys.contains(item.key))
@@ -405,9 +608,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
     setState(() => _forwarding = true);
     try {
-      await repository.send(
+      await repository.sendConnected(
         requestId: _newRequestId(),
-        receiveCode: _receiveCodeController.text,
+        targetCompanyId: targetId,
         items: [
           for (final item in selected)
             {
@@ -421,11 +624,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$targetへ再転送しました')),
       );
-      _receiveCodeController.clear();
       _noteController.clear();
       setState(() {
         _selectedKeys.clear();
-        _targetCompanyName = null;
       });
       await _load();
     } catch (error) {
@@ -436,6 +637,24 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     } finally {
       if (mounted) setState(() => _forwarding = false);
     }
+  }
+
+  String _companySubtitle(List<_ReceivedTransferItem> items) {
+    final saved = items
+        .map((item) => _savedState[item.key])
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    if (saved.isEmpty) return items.length.toString() + '件';
+    final latest = saved.last;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return items.length.toString() +
+        '件 / 最終データ保存日 ' +
+        latest.year.toString() +
+        '/' +
+        two(latest.month) +
+        '/' +
+        two(latest.day);
   }
 
   void _reload() {
@@ -456,10 +675,11 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 }
 
 enum _ReceivedTransferCategory {
-  personnel('従業員一覧'),
-  qualifications('資格証一覧'),
-  workerDocuments('従業員提出書類一覧'),
-  companyDocuments('会社提出書類一覧');
+  personnel('社員'),
+  qualifications('資格'),
+  workerDocuments('必要書類'),
+  companyDocuments('会社提出書類'),
+  signatures('サイン一覧');
 
   const _ReceivedTransferCategory(this.label);
 
@@ -469,6 +689,8 @@ enum _ReceivedTransferCategory {
 class _ReceivedTransferItem {
   const _ReceivedTransferItem({
     required this.id,
+    required this.deliveryId,
+    required this.savedAt,
     required this.isStructured,
     required this.category,
     required this.originCompany,
@@ -477,6 +699,8 @@ class _ReceivedTransferItem {
   });
 
   final String id;
+  final String deliveryId;
+  final String savedAt;
   final bool isStructured;
   final _ReceivedTransferCategory category;
   final String originCompany;
@@ -487,6 +711,8 @@ class _ReceivedTransferItem {
 
   factory _ReceivedTransferItem.file(
     Map<String, dynamic> row, {
+    required String deliveryId,
+    required String savedAt,
     required String fallbackCompany,
   }) {
     final path = _companyPath(row['company_path']);
@@ -502,6 +728,8 @@ class _ReceivedTransferItem {
     };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
+      deliveryId: deliveryId,
+      savedAt: savedAt,
       isStructured: false,
       category: category,
       originCompany: _origin(path, fallbackCompany),
@@ -515,6 +743,8 @@ class _ReceivedTransferItem {
 
   factory _ReceivedTransferItem.data(
     Map<String, dynamic> row, {
+    required String deliveryId,
+    required String savedAt,
     required String fallbackCompany,
   }) {
     final path = _companyPath(row['company_path']);
@@ -523,24 +753,31 @@ class _ReceivedTransferItem {
         : <String, dynamic>{};
     final kind = row['payload_kind']?.toString() ?? 'data';
     final title = switch (kind) {
-      'personnel' => payload['name']?.toString() ?? '人員情報',
+      'personnel' => payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
+      'signature' =>
+        (payload['report_date']?.toString() ?? '') + ' / ' +
+            (payload['site_name']?.toString() ?? '現場') + ' / ' +
+            (payload['signer_name']?.toString() ?? 'サイン'),
       _ => '受信データ',
     };
     final category = switch (kind) {
       'personnel' => _ReceivedTransferCategory.personnel,
       'qualification' => _ReceivedTransferCategory.qualifications,
+      'signature' => _ReceivedTransferCategory.signatures,
       _ => _ReceivedTransferCategory.personnel,
     };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
+      deliveryId: deliveryId,
+      savedAt: savedAt,
       isStructured: true,
       category: category,
       originCompany: _origin(path, fallbackCompany),
       title: title,
       subtitle: [
-        kind == 'personnel' ? '人員情報' : kind == 'qualification' ? '資格' : kind,
+        kind == 'personnel' ? '社員情報' : kind == 'qualification' ? '資格' : kind,
         if (path.isNotEmpty) '経路 ${path.join(' → ')}',
       ].join(' / '),
     );
@@ -554,6 +791,68 @@ class _ReceivedTransferItem {
   static String _origin(List<String> path, String fallback) {
     if (path.isEmpty) return fallback;
     return path.last;
+  }
+}
+
+class _ReceivedDataPdfPreview extends StatelessWidget {
+  const _ReceivedDataPdfPreview({
+    required this.title,
+    required this.items,
+  });
+
+  final String title;
+  final List<_ReceivedTransferItem> items;
+
+  Future<Uint8List> _buildPdf() async {
+    final regular = await PdfGoogleFonts.notoSansJPRegular();
+    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final document = pw.Document(
+      theme: pw.ThemeData.withFont(base: regular, bold: bold),
+    );
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        build: (_) => [
+          pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          for (final item in items)
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 7),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    item.title,
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.Text(item.category.label + ' / ' + item.originCompany),
+                  if (item.subtitle.isNotEmpty) pw.Text(item.subtitle),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    return document.save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('印刷プレビュー')),
+      body: PdfPreview(
+        build: (_) => _buildPdf(),
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        allowPrinting: true,
+        allowSharing: true,
+        pdfFileName: title + '.pdf',
+      ),
+    );
   }
 }
 

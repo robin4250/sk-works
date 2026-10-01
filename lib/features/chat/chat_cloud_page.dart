@@ -40,6 +40,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   ChatAppearance _appearance = const ChatAppearance();
   DateTime? _pendingLastRead;
   bool _positionInitialMessages = false;
+  bool _chatChromeVisible = true;
 
   String? _selectedGroupId;
   bool _canManagePartnerChat = false;
@@ -177,6 +178,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _pendingLastRead = DateTime.tryParse(rawLastRead ?? '');
       _positionInitialMessages = true;
       _appearance = appearance;
+      _chatChromeVisible = true;
       _unreadCounts = {..._unreadCounts, id: 0};
     });
     await _subscribeSelected();
@@ -736,7 +738,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final selected = _selectedGroup;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: selected != null && !_chatChromeVisible
+          ? null
+          : AppBar(
+        backgroundColor: Theme.of(context)
+            .colorScheme
+            .surface
+            .withValues(
+              alpha: selected == null ? 1 : _appearance.headerAlpha,
+            ),
         title: selected == null
             ? const Text(
                 'チャット',
@@ -938,7 +948,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         Expanded(
           child: _messages.isEmpty
               ? const Center(child: Text('まだメッセージはありません'))
-              : ListView.builder(
+              : NotificationListener<ScrollUpdateNotification>(
+                  onNotification: (notification) {
+                    final delta = notification.scrollDelta ?? 0;
+                    if (delta > 4 && _chatChromeVisible) {
+                      setState(() => _chatChromeVisible = false);
+                    } else if (delta < -4 && !_chatChromeVisible) {
+                      setState(() => _chatChromeVisible = true);
+                    }
+                    return false;
+                  },
+                  child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                   itemCount: _messages.length,
@@ -954,8 +974,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                     );
                   },
                 ),
+                ),
         ),
-        Container(
+        if (_chatChromeVisible)
+          Container(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           decoration: BoxDecoration(
             color: Theme.of(context)
