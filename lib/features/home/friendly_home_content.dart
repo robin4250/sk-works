@@ -389,23 +389,6 @@ class _AdminHome extends StatelessWidget {
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance'))
           const SizedBox(height: 12),
-        if (identity.can('can_approve_daily_report_edits')) ...[
-          Card(
-            child: ListTile(
-              leading: const CircleAvatar(
-                child: Icon(Icons.approval_outlined),
-              ),
-              title: const Text(
-                '要対応',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-              subtitle: const Text('承認・修正申請など、対応が必要なものを確認'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => onOpen('approvals'),
-            ),
-          ),
-          const SizedBox(height: 18),
-        ],
         const _SectionTitle('管理'),
         const SizedBox(height: 9),
         _ActionGrid(
