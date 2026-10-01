@@ -35,6 +35,7 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/operations/vehicle_route_page.dart';
+import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
@@ -534,6 +535,12 @@ class _HomePageState extends State<HomePage> {
           child: PayrollStatementsPage(),
         );
         break;
+      case 'payroll_settings':
+        page = const SecondaryProtectedPage(
+          title: '個別給与設定',
+          child: IndividualPayrollSettingsPage(),
+        );
+        break;
       case 'payroll_adjustments':
         page = SecondaryProtectedPage(
           title: _payrollAdjustmentLabel,
@@ -665,6 +672,13 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.payments_outlined,
           homeEligible: true,
           accessLabel: '本人・閲覧権限',
+        ),
+      if (_isAdmin || _identity.can('can_manage_payroll_adjustments'))
+        const _MenuAction(
+          key: 'payroll_settings',
+          label: '個別給与設定',
+          icon: Icons.manage_accounts_outlined,
+          accessLabel: '管理者・給与編集権限',
         ),
       if (_identity.can('can_view_payroll_adjustments'))
         _MenuAction(
