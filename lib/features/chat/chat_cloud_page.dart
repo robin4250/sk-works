@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../albums/albums_cloud_page.dart';
 import '../notes/notes_cloud_page.dart';
 import '../notifications/notification_bell.dart';
+import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
 
@@ -34,6 +36,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   List<String> _prioritizedSiteGroupIds = const [];
   Set<String> _blockedUserIds = <String>{};
   Map<String, int> _unreadCounts = const {};
+  final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+  ChatAppearance _appearance = const ChatAppearance();
+  DateTime? _pendingLastRead;
+  bool _positionInitialMessages = false;
 
   String? _selectedGroupId;
   bool _canManagePartnerChat = false;
@@ -133,8 +139,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     _subscription = repository.watchMessages(id).listen(
       (messages) {
         if (!mounted) return;
-        setState(() => _messages = messages);
-        _scrollToBottom();
+        setState(() {
+          _messages = messages;
+          for (final message in messages) {
+            final id = message['id']?.toString() ?? '';
+            if (id.isNotEmpty) {
+              _messageKeys.putIfAbsent(id, GlobalKey.new);
+            }
+          }
+        });
+        if (_positionInitialMessages) {
+          _positionInitialMessageView(messages);
+        } else if (_isNearBottom()) {
+          _scrollToBottom();
+          _markRead(id);
+        }
       },
       onError: (Object error) {
         if (!mounted) return;
@@ -148,12 +167,18 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       setState(() => _tab = _ChatTab.all);
       return;
     }
+    final prefs = await SharedPreferences.getInstance();
+    final rawLastRead = prefs.getString('sko_chat_last_read_$id');
+    final appearance = await ChatAppearanceStore.load(id);
+    if (!mounted) return;
     setState(() {
       _selectedGroupId = id;
       _tab = _ChatTab.all;
+      _pendingLastRead = DateTime.tryParse(rawLastRead ?? '');
+      _positionInitialMessages = true;
+      _appearance = appearance;
       _unreadCounts = {..._unreadCounts, id: 0};
     });
-    await _markRead(id);
     await _subscribeSelected();
   }
 
@@ -186,6 +211,67 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (_) {
       // Unread badges are supplemental and must not block chat loading.
     }
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels < 120;
+  }
+
+  void _positionInitialMessageView(List<Map<String, dynamic>> messages) {
+    final groupId = _selectedGroupId;
+    if (groupId == null) return;
+    final lastRead = _pendingLastRead;
+    Map<String, dynamic>? firstUnread;
+    if (lastRead != null) {
+      for (final message in messages) {
+        final sentAt = DateTime.tryParse(message['sent_at']?.toString() ?? '');
+        final sender = message['sender_user_id']?.toString();
+        if (sentAt != null &&
+            sentAt.isAfter(lastRead) &&
+            sender != _repository?.currentUserId) {
+          firstUnread = message;
+          break;
+        }
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final id = firstUnread?['id']?.toString();
+      final targetContext = id == null ? null : _messageKeys[id]?.currentContext;
+      if (targetContext != null) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.08,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollToBottom();
+      }
+      _positionInitialMessages = false;
+      _pendingLastRead = null;
+      await _markRead(groupId);
+      if (!mounted) return;
+      setState(() => _unreadCounts = {..._unreadCounts, groupId: 0});
+    });
+  }
+
+  Future<void> _openAppearance() async {
+    final groupId = _selectedGroupId;
+    if (groupId == null) return;
+    final value = await Navigator.of(context).push<ChatAppearance>(
+      MaterialPageRoute(
+        builder: (_) => ChatAppearancePage(
+          groupId: groupId,
+          initial: _appearance,
+        ),
+      ),
+    );
+    if (value == null || !mounted) return;
+    setState(() => _appearance = value);
   }
 
   void _scrollToBottom() {
@@ -696,6 +782,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 if (value == 'notes') _openNotes();
                 if (value == 'albums') _openAlbums();
                 if (value == 'block') _toggleBlockSelectedDirect();
+                if (value == 'appearance') _openAppearance();
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(
@@ -710,6 +797,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   child: ListTile(
                     leading: Icon(Icons.photo_album_outlined),
                     title: Text('アルバム'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'appearance',
+                  child: ListTile(
+                    leading: Icon(Icons.wallpaper_outlined),
+                    title: Text('背景・透明度'),
                   ),
                 ),
                 if (selected['group_type'] == 'direct')
@@ -798,8 +892,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     final archived = _selectedGroup?['archived_at'] != null;
 
-    return Column(
+    final wallpaperPath = _appearance.wallpaperPath;
+    return Stack(
+      fit: StackFit.expand,
       children: [
+        if (wallpaperPath != null && wallpaperPath.isNotEmpty)
+          Opacity(
+            opacity: _appearance.backgroundAlpha,
+            child: Image.file(
+              File(wallpaperPath),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        Column(
+          children: [
         if (archived)
           Container(
             width: double.infinity,
@@ -835,17 +942,26 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                   itemCount: _messages.length,
-                  itemBuilder: (context, index) => _MessageBubble(
-                    message: _messages[index],
-                    currentUserId: _repository?.currentUserId,
-                    onDelete: () => _confirmDeleteOwnMessage(_messages[index]),
-                  ),
+                  itemBuilder: (context, index) {
+                    final message = _messages[index];
+                    final messageId = message['id']?.toString() ?? '';
+                    return _MessageBubble(
+                      key: messageId.isEmpty ? null : _messageKeys[messageId],
+                      message: message,
+                      currentUserId: _repository?.currentUserId,
+                      bubbleOpacity: _appearance.bubbleAlpha,
+                      onDelete: () => _confirmDeleteOwnMessage(message),
+                    );
+                  },
                 ),
         ),
         Container(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+            color: Theme.of(context)
+                .colorScheme
+                .surface
+                .withValues(alpha: _appearance.footerAlpha),
             border: Border(
               top: BorderSide(color: Theme.of(context).dividerColor),
             ),
@@ -885,6 +1001,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               ),
             ],
           ),
+        ),
+          ],
         ),
       ],
     );
@@ -1020,13 +1138,16 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    super.key,
     required this.message,
     required this.currentUserId,
+    required this.bubbleOpacity,
     required this.onDelete,
   });
 
   final Map<String, dynamic> message;
   final String? currentUserId;
+  final double bubbleOpacity;
   final VoidCallback onDelete;
 
   @override
@@ -1056,9 +1177,10 @@ class _MessageBubble extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 300),
         padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         decoration: BoxDecoration(
-          color: own
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Theme.of(context).colorScheme.surfaceContainerHigh,
+          color: (own
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : Theme.of(context).colorScheme.surfaceContainerHigh)
+              .withValues(alpha: bubbleOpacity),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
