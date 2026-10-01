@@ -11,7 +11,7 @@ void main() {
       'supabase/migrations/20260920222500_restrict_customer_billing_details.sql',
     ).readAsStringSync();
 
-    expect(repo, contains("rpc('site_directory_rows')"));
+    expect(repo, contains("rpc('site_directory_rows_v2')"));
     expect(repo, isNot(contains('customers(name)')));
     expect(migration, contains("private.has_company_feature(company_id, 'can_view_invoices')"));
     expect(migration, contains("private.has_company_feature(company_id, 'can_manage_invoices')"));
