@@ -6,7 +6,7 @@ if [[ ! -f ios/Runner/Info.plist || ! -f ios/Runner.xcodeproj/project.pbxproj ]]
   exit 1
 fi
 
-EXPECTED_BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.robin4250.sko}"
+EXPECTED_BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
 
 python3 - "$EXPECTED_BUNDLE_ID" <<'PY'
 from pathlib import Path

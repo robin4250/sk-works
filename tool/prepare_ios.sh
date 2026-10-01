@@ -11,11 +11,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.robin4250.sko}"
+BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
 
 if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
   echo "SKO_IOS_BUNDLE_ID が不正です: $BUNDLE_ID"
-  echo "例: com.robin4250.sko"
+  echo "例: com.skworks.skWorks"
   exit 1
 fi
 
@@ -80,6 +80,47 @@ if "EXCLUDED_ARCHS[sdk=*]" not in podfile:
     )
 
 podfile_path.write_text(podfile)
+
+launch_storyboard_path = Path("ios/Runner/Base.lproj/LaunchScreen.storyboard")
+launch_storyboard_path.parent.mkdir(parents=True, exist_ok=True)
+launch_storyboard_path.write_text("""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="21701" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21679"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="System colors in document resources" minToolsVersion="11.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="EHf-IW-A2E">
+            <objects>
+                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="SKO" textAlignment="center" translatesAutoresizingMaskIntoConstraints="NO" id="sko-launch-title">
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="30"/>
+                                <color key="textColor" red="0.08" green="0.08" blue="0.08" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="sko-launch-title" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="sko-center-x"/>
+                            <constraint firstItem="sko-launch-title" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="sko-center-y"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="52" y="374"/>
+        </scene>
+    </scenes>
+</document>
+""")
 
 plist_path = Path("ios/Runner/Info.plist")
 with plist_path.open("rb") as f:
@@ -166,6 +207,7 @@ if scheme_path.exists():
 print("Info.plist に iOS 権限説明を追加しました。")
 print(f"Bundle Identifier を {bundle_id} に設定しました。")
 print("iOS Deployment Target 15.5 / 日本語OCRモデルを設定しました。")
+print("起動画面を固定レイアウトへ設定しました（アイコン全画面拡大なし）。")
 PY
 
 echo

@@ -23,10 +23,11 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
   exit 1
 fi
 
-if [[ ! -d ios/Runner.xcworkspace ]]; then
-  echo "iOSプロジェクトを準備します..."
-  bash tool/prepare_ios.sh
-fi
+echo "最新mainのiOS生成設定をMacへ再適用します..."
+bash tool/prepare_ios.sh
+
+echo "生成済みiOS設定を検証します..."
+bash tool/check_ios_generated_contract.sh
 
 echo "実機インストール前チェックを実行します..."
 if ! bash tool/ios_install_assistant.sh; then
@@ -37,9 +38,10 @@ fi
 
 DEVICE_ID="${1:-}"
 if [[ -z "$DEVICE_ID" ]]; then
-  selection="$(flutter devices --machine | python3 -c '
-import json, sys
-items = json.load(sys.stdin)
+  device_json="$(flutter devices --machine)"
+  selection="$(DEVICE_JSON="$device_json" python3 <<'PY'
+import json, os
+items = json.loads(os.environ.get("DEVICE_JSON", "[]"))
 physical = [
     item for item in items
     if str(item.get("targetPlatform", "")).startswith("ios")
@@ -62,7 +64,8 @@ elif physical:
         print(f"{item.get('id','')}\t{item.get('name','iOS device')}")
 else:
     print("NONE")
-')"
+PY
+)"
 
   first_line="$(printf '%s\n' "$selection" | head -n 1)"
   case "$first_line" in
@@ -158,11 +161,13 @@ xcrun devicectl device install app \
   --device "$DEVICE_ID" \
   "$APP_PATH"
 
+BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
+
 echo
-echo "インストール済みRelease版SKOを起動します..."
+echo "インストール済みRelease版SKOを起動します: $BUNDLE_ID"
 xcrun devicectl device process launch \
   --device "$DEVICE_ID" \
-  com.robin4250.sko
+  "$BUNDLE_ID"
 
 echo
 echo "✓ Release版SKOをインストールしました。"
