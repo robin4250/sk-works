@@ -126,6 +126,22 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
       return;
     }
 
+    final row = widget.vehicle;
+    final registrationReady = _registrationDoc != null ||
+        (row?['registration_document_path']?.toString().isNotEmpty == true);
+    final compulsoryReady = _compulsoryDoc != null ||
+        (row?['compulsory_insurance_path']?.toString().isNotEmpty == true);
+    final voluntaryReady = _voluntaryDoc != null ||
+        (row?['voluntary_insurance_path']?.toString().isNotEmpty == true);
+    if (!registrationReady || !compulsoryReady || !voluntaryReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('車検証・自賠責保険・任意保険証書の3点を登録してください'),
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
