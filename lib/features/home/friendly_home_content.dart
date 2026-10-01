@@ -65,55 +65,58 @@ class _GreetingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              identity.companyName,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'おはようございます、${identity.displayName}さん',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  identity.companyName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    identity.roleLabel,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${now.year}年${now.month}月${now.day}日',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-            ),
-          ],
-        ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  identity.roleLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  identity.displayName,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ),
+              Text(
+                '${now.year}年${now.month}月${now.day}日',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -130,37 +133,61 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preview = attention.missingNames.take(3).join('・');
-    final extra = attention.missingCount > 3
-        ? ' ほか${attention.missingCount - 3}件'
-        : '';
-    final guidance = <String>[
-      if (attention.needsLicense) '運転免許証',
-      if (attention.needsQualification) '資格証',
-    ];
-
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Theme.of(context).colorScheme.errorContainer,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: const CircleAvatar(
-          child: Icon(Icons.priority_high),
-        ),
-        title: const Text(
-          '大事なお知らせ：必要書類が未登録です',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        subtitle: Text(
-          [
-            '未登録 ${attention.missingCount}件',
-            if (preview.isNotEmpty) '$preview$extra',
-            if (guidance.isNotEmpty)
-              '${guidance.join('・')}の登録も確認してください',
-            'すべて登録するとこの通知は自動で消えます',
-          ].join('\n'),
-        ),
-        trailing: const Icon(Icons.chevron_right),
+      margin: EdgeInsets.zero,
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: scheme.primary, width: 1.5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () => onOpen('documents'),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(14),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.notifications_active_outlined,
+                  color: scheme.onPrimary,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '要対応',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      Text(
+                        '未対応 ${attention.missingCount}件',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -180,7 +207,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '自分の本日の勤務',
+              '本日の勤務報告',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -194,7 +221,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () => onOpen('footer_sites'),
               icon: const Icon(Icons.business_outlined),
-              label: const Text('自分の現場を選ぶ・確認する'),
+              label: const Text('出勤方法と現場を選択'),
             ),
             const SizedBox(height: 10),
             Row(
@@ -203,7 +230,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: () => onOpen('clock_in'),
                     icon: const Icon(Icons.login),
-                    label: const Text('本日の出勤'),
+                    label: const Text('出勤'),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -211,7 +238,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   child: FilledButton.tonalIcon(
                     onPressed: () => onOpen('clock_out'),
                     icon: const Icon(Icons.logout),
-                    label: const Text('本日の退勤'),
+                    label: const Text('退勤'),
                   ),
                 ),
               ],
@@ -455,11 +482,10 @@ class _ActionGrid extends StatelessWidget {
                   item.access == _HomeActionAccess.professional;
               final isProfessional =
                   item.access == _HomeActionAccess.professional;
-              final background =
-                  isSubAdmin ? scheme.primaryContainer : scheme.surfaceContainerLowest;
+              final background = scheme.surfaceContainerLowest;
               final borderColor =
-                  isAdmin ? scheme.primary : scheme.outlineVariant;
-              final borderWidth = isAdmin ? 2.0 : 1.0;
+                  (isSubAdmin || isAdmin) ? scheme.primary : scheme.outlineVariant;
+              final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
 
               return Material(
                 color: background,
