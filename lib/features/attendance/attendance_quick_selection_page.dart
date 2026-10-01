@@ -43,6 +43,9 @@ class _AttendanceQuickSelectionPageState
     try {
       final settings = await repository.loadSettings();
       final sites = await repository.loadSites();
+      final activeSites = sites
+          .where((site) => site['status']?.toString() == 'active')
+          .toList(growable: false);
       final preferredSiteId = await repository.loadPreferredSiteId();
       final canManage = await repository.canManageAttendance();
 
@@ -50,8 +53,9 @@ class _AttendanceQuickSelectionPageState
       setState(() {
         _mode = settings['mode']?.toString() ?? 'manual';
         _radiusM = (settings['proximity_radius_m'] as num?)?.toInt() ?? 300;
-        _sites = sites;
-        _siteId = sites.any((site) => site['id']?.toString() == preferredSiteId)
+        _sites = activeSites;
+        _siteId = activeSites
+                .any((site) => site['id']?.toString() == preferredSiteId)
             ? preferredSiteId
             : null;
         _canManage = canManage;
