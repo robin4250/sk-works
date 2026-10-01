@@ -28,6 +28,7 @@ void main() {
     expect(home, contains('..repeat(reverse: true)'));
     expect(home, contains('FadeTransition('));
     expect(home, contains('Icons.notifications_active_outlined'));
+    expect(home, isNot(contains('if (requiredDocumentAttention.hasMissing)')));
 
     expect(status, contains("PersonalAttendanceState.notClockedIn"));
     expect(status, contains("PersonalAttendanceState.working"));
