@@ -28,16 +28,18 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   head_sha="$(git rev-parse --short HEAD 2>/dev/null || true)"
   [[ -n "$branch_name" ]] && ok "Git branch: $branch_name @ $head_sha"
 
-  if [[ "$branch_name" != "main" ]]; then
-    fail "現在のbranchは main ではありません: ${branch_name:-detached HEAD}"
-    echo "  実機テストはレビュー済みの main から実行してください"
-  fi
-
   if git remote get-url origin >/dev/null 2>&1; then
     if git fetch --quiet origin main 2>/dev/null; then
       local_full="$(git rev-parse HEAD)"
       remote_full="$(git rev-parse origin/main)"
       if [[ "$local_full" == "$remote_full" ]]; then
+        if [[ "$branch_name" == "main" ]]; then
+          ok "Git branch: main @ $head_sha"
+        elif [[ -z "$branch_name" ]]; then
+          ok "detached HEADですが origin/main と同一コミット: $head_sha"
+        else
+          warn "branchは $branch_name ですがHEADは origin/main と同一です"
+        fi
         ok "ローカルHEADは origin/main と一致"
       elif git merge-base --is-ancestor "$local_full" "$remote_full" 2>/dev/null; then
         fail "ローカルmainがorigin/mainより古いです"
@@ -89,6 +91,8 @@ else
     "$SUPABASE_URL/rest/v1/" 2>/dev/null || true)"
   if [[ "$rest_code" == "200" ]]; then
     ok "Supabase REST reachable"
+  elif [[ "$rest_code" == "401" ]]; then
+    ok "Supabase REST reachable (HTTP 401: user認証前の応答)"
   else
     fail "Supabase RESTへ接続できません (HTTP ${rest_code:-none})"
   fi
@@ -97,12 +101,10 @@ fi
 echo
 echo "--- unsigned iOS build ---"
 if command -v flutter >/dev/null 2>&1; then
-  if [[ ! -d ios/Runner.xcworkspace ]]; then
-    if bash tool/prepare_ios.sh; then
-      ok "iOSプロジェクト生成"
-    else
-      fail "iOSプロジェクト生成に失敗しました"
-    fi
+  if bash tool/prepare_ios.sh; then
+    ok "最新iOS生成設定を再適用"
+  else
+    fail "iOSプロジェクト準備に失敗しました"
   fi
 
   if [[ -d ios/Runner.xcworkspace ]]; then
