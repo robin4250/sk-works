@@ -301,7 +301,11 @@ class _HomePageState extends State<HomePage> {
       'attendance' => 'attendance_sheet',
       'footer_sites' || 'site_register' => 'sites',
       'chat' => 'chat',
-      'clock_in' || 'clock_out' || 'attendance_verify' => 'attendance',
+      'clock_in' ||
+      'clock_out' ||
+      'attendance_verify' ||
+      'attendance_select' =>
+        'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
       'employee_onboarding_approvals' ||
@@ -323,7 +327,8 @@ class _HomePageState extends State<HomePage> {
     final featureKey = switch (key) {
       'clock_in' => 'clock_in',
       'clock_out' => 'clock_out',
-      'attendance' || 'attendance_verify' => 'attendance',
+      'attendance' || 'attendance_verify' || 'attendance_select' =>
+        'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
