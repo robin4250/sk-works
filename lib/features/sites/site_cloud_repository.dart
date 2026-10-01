@@ -216,7 +216,7 @@ class SiteCloudRepository {
           uploadPath,
           bytes,
           fileOptions: const FileOptions(
-            contentType: 'image/png',
+            contentType: 'image/jpeg',
             upsert: false,
           ),
         );
