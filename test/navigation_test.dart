@@ -66,8 +66,10 @@ void main() {
 
     final menuList = find.byType(ListView).last;
     for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
+      await tester.drag(menuList, const Offset(0, 5000));
+      await tester.pumpAndSettle();
       for (var attempt = 0;
-          attempt < 12 && find.text(label).evaluate().isEmpty;
+          attempt < 20 && find.text(label).evaluate().isEmpty;
           attempt++) {
         await tester.drag(menuList, const Offset(0, -220));
         await tester.pumpAndSettle();
