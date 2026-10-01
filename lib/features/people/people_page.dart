@@ -24,6 +24,8 @@ class PersonRecord {
     this.role = '',
     this.notes = '',
     this.active = true,
+    this.createdAt = '',
+    this.updatedAt = '',
   });
 
   final String id;
@@ -35,6 +37,8 @@ class PersonRecord {
   final String role;
   final String notes;
   final bool active;
+  final String createdAt;
+  final String updatedAt;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -46,6 +50,8 @@ class PersonRecord {
         'role': role,
         'notes': notes,
         'active': active,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
       };
 
   factory PersonRecord.fromJson(Map<String, dynamic> json) {
@@ -62,6 +68,8 @@ class PersonRecord {
       role: json['role']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
       active: json['active'] is bool ? json['active'] as bool : true,
+      createdAt: json['createdAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
     );
   }
 }
