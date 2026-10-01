@@ -692,28 +692,25 @@ class _WorkerDetailCard extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           if (worker.vehicleId != null) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: odometer,
-                    enabled: editable,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: '退勤時の走行距離',
-                      suffixText: 'km',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: editable ? onCaptureOdometer : null,
-                  icon: const Icon(Icons.camera_alt_outlined),
-                  label: const Text('メーターを撮影して読取'),
-                ),
-              ],
+            TextField(
+              controller: odometer,
+              enabled: editable,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '退勤時の走行距離',
+                suffixText: 'km',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: editable ? onCaptureOdometer : null,
+                icon: const Icon(Icons.camera_alt_outlined),
+                label: const Text('メーターを撮影して読取'),
+              ),
             ),
             const SizedBox(height: 10),
           ],
