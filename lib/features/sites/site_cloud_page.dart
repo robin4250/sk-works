@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
 import 'site_detail_page.dart';
+import 'site_map_page.dart';
 import 'site_page.dart';
 
 class SiteCloudPage extends StatefulWidget {
@@ -87,6 +88,17 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       appBar: AppBar(
         title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
         actions: [
+          IconButton(
+            tooltip: '現場マップ',
+            onPressed: _loading
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SiteMapPage(),
+                      ),
+                    ),
+            icon: const Icon(Icons.map_outlined),
+          ),
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
