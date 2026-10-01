@@ -13,10 +13,10 @@ void main() {
   testWidgets('admin home routes to people module', (tester) async {
     await pumpHome(tester);
 
-    expect(find.text('人員'), findsOneWidget);
-    await tester.ensureVisible(find.text('人員'));
+    expect(find.text('社員'), findsOneWidget);
+    await tester.ensureVisible(find.text('社員'));
     await tester.pump();
-    await tester.tap(find.text('人員'));
+    await tester.tap(find.text('社員'));
     await tester.pumpAndSettle();
 
     expect(find.text('新規登録'), findsOneWidget);

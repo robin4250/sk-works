@@ -98,7 +98,7 @@ class WorkerDocumentRepository {
 
     final requirements = await _client
         .from('document_requirements')
-        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order')
+        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at')
         .eq('company_id', companyId)
         .eq('is_active', true)
         .order('sort_order')
@@ -123,7 +123,7 @@ class WorkerDocumentRepository {
     final workers = await workersQuery.order('name');
     var statusesQuery = _client
         .from('worker_document_statuses')
-        .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at')
+        .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at')
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
       statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);

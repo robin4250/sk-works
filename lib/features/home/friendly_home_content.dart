@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../attendance/attendance_verification_repository.dart';
 import 'home_attention_repository.dart';
+import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
 class FriendlyHomeContent extends StatelessWidget {
@@ -12,7 +15,9 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
+    this.visibleHomeKeys = const <String>{},
     this.attendanceStatus = const HomeAttendanceStatus(),
+    this.appearance = const HomeAppearance(),
     required this.onOpen,
     required this.onRefresh,
   });
@@ -22,51 +27,80 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
   final HomeAttendanceStatus attendanceStatus;
+  final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
-        children: [
-          _GreetingCard(identity: identity),
-          if (requiredDocumentAttention.hasMissing) ...[
-            const SizedBox(height: 12),
-            _RequiredDocumentAttentionCard(
-              attention: requiredDocumentAttention,
-              onOpen: onOpen,
+    final wallpaperPath = appearance.wallpaperPath;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (wallpaperPath != null && File(wallpaperPath).existsSync())
+          Opacity(
+            opacity: appearance.wallpaperOpacity,
+            child: Image.file(
+              File(wallpaperPath),
+              fit: BoxFit.cover,
             ),
-          ],
-          if (moduleEnabled('attendance')) ...[
-            const SizedBox(height: 12),
-            _PersonalAttendanceCard(
-              status: attendanceStatus,
-              onOpen: onOpen,
-            ),
-          ],
-          const SizedBox(height: 14),
-          if (identity.isManagement)
-            _AdminHome(
-              identity: identity,
-              moduleEnabled: moduleEnabled,
-              gridColumns: gridColumns,
-              actionOrder: actionOrder,
-              onOpen: onOpen,
-            )
-          else
-            _WorkerHome(
-              moduleEnabled: moduleEnabled,
-              gridColumns: gridColumns,
-              actionOrder: actionOrder,
-              onOpen: onOpen,
-            ),
-        ],
-      ),
+          ),
+        RefreshIndicator(
+          onRefresh: onRefresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+            children: [
+              Opacity(
+                opacity: appearance.headerOpacity,
+                child: _GreetingCard(identity: identity),
+              ),
+              if (requiredDocumentAttention.hasMissing) ...[
+                const SizedBox(height: 12),
+                Opacity(
+                  opacity: appearance.cardOpacity,
+                  child: _RequiredDocumentAttentionCard(
+                    attention: requiredDocumentAttention,
+                    onOpen: onOpen,
+                  ),
+                ),
+              ],
+              if (moduleEnabled('attendance')) ...[
+                const SizedBox(height: 12),
+                Opacity(
+                  opacity: appearance.cardOpacity,
+                  child: _PersonalAttendanceCard(
+                    status: attendanceStatus,
+                    onOpen: onOpen,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              if (identity.isManagement)
+                _AdminHome(
+                  identity: identity,
+                  moduleEnabled: moduleEnabled,
+                  gridColumns: gridColumns,
+                  actionOrder: actionOrder,
+                  visibleHomeKeys: visibleHomeKeys,
+                  appearance: appearance,
+                  onOpen: onOpen,
+                )
+              else
+                _WorkerHome(
+                  moduleEnabled: moduleEnabled,
+                  gridColumns: gridColumns,
+                  actionOrder: actionOrder,
+                  visibleHomeKeys: visibleHomeKeys,
+                  appearance: appearance,
+                  onOpen: onOpen,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -336,12 +370,16 @@ class _WorkerHome extends StatelessWidget {
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
+    required this.visibleHomeKeys,
+    required this.appearance,
     required this.onOpen,
   });
 
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
+  final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -353,33 +391,38 @@ class _WorkerHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            const _HomeAction(
+            if (visibleHomeKeys.contains('payroll'))
+const _HomeAction(
               'payroll',
               '給与明細',
               Icons.payments_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('profile'))
+const _HomeAction(
               'profile',
               'プロフィール',
               Icons.account_circle_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('vehicle_routes'))
+const _HomeAction(
               'vehicle_routes',
               '車両・ルート',
               Icons.route_outlined,
             ),
-            if (moduleEnabled('sites'))
+            if (moduleEnabled('sites') && visibleHomeKeys.contains('site_register'))
               const _HomeAction(
                 'site_register',
                 '現場登録',
                 Icons.add_business_outlined,
               ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('settings'))
+const _HomeAction(
               'settings',
               '設定',
               Icons.settings_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('help'))
+const _HomeAction(
               'help',
               'ヘルプ',
               Icons.help_outline,
@@ -387,10 +430,13 @@ class _WorkerHome extends StatelessWidget {
           ],
           columns: gridColumns,
           actionOrder: actionOrder,
+          opacity: appearance.buttonOpacity,
           onOpen: onOpen,
         ),
         const SizedBox(height: 18),
-        Card(
+        Opacity(
+          opacity: appearance.cardOpacity,
+          child: Card(
           child: ListTile(
             leading: const CircleAvatar(
               child: Icon(Icons.auto_awesome_outlined),
@@ -406,6 +452,7 @@ class _WorkerHome extends StatelessWidget {
             onTap: () => onOpen('daily_report'),
           ),
         ),
+        ),
       ],
     );
   }
@@ -417,6 +464,8 @@ class _AdminHome extends StatelessWidget {
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
+    required this.visibleHomeKeys,
+    required this.appearance,
     required this.onOpen,
   });
 
@@ -424,6 +473,8 @@ class _AdminHome extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
+  final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -433,7 +484,9 @@ class _AdminHome extends StatelessWidget {
       children: [
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance'))
-          Card(
+          Opacity(
+            opacity: appearance.cardOpacity,
+            child: Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -459,6 +512,7 @@ class _AdminHome extends StatelessWidget {
             ),
           ),
         ),
+          ),
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance'))
           const SizedBox(height: 12),
@@ -466,41 +520,45 @@ class _AdminHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            if (identity.can('can_manage_people'))
+            if (identity.can('can_manage_people') && visibleHomeKeys.contains('people'))
               const _HomeAction(
                 'people',
-                '人員',
+                '社員',
                 Icons.groups_2_outlined,
                 access: _HomeActionAccess.subAdmin,
               ),
             if (moduleEnabled('invoices') &&
-                identity.can('can_view_invoices'))
+                identity.can('can_view_invoices') &&
+                visibleHomeKeys.contains('invoices'))
               const _HomeAction(
                 'invoices',
                 '請求書',
                 Icons.receipt_long_outlined,
                 access: _HomeActionAccess.professional,
               ),
-            if (identity.can('can_view_admin_site_data'))
+            if (identity.can('can_view_admin_site_data') &&
+                visibleHomeKeys.contains('admin_sites'))
               const _HomeAction(
                 'admin_sites',
                 '管理現場',
                 Icons.admin_panel_settings_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            if (identity.isAdmin)
+            if (identity.isAdmin && visibleHomeKeys.contains('company_documents'))
               const _HomeAction(
                 'company_documents',
                 '会社提出書類',
                 Icons.business_center_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            const _HomeAction(
-              'vehicle_routes',
-              '車両・ルート',
-              Icons.route_outlined,
-            ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('vehicle_routes'))
+              const _HomeAction(
+                'vehicle_routes',
+                '車両・ルート',
+                Icons.route_outlined,
+              ),
+            if (visibleHomeKeys.contains('settings'))
+              const _HomeAction(
               'settings',
               '設定',
               Icons.settings_outlined,
@@ -508,10 +566,13 @@ class _AdminHome extends StatelessWidget {
           ],
           columns: gridColumns,
           actionOrder: actionOrder,
+          opacity: appearance.buttonOpacity,
           onOpen: onOpen,
         ),
         const SizedBox(height: 18),
-        Card(
+        Opacity(
+          opacity: appearance.cardOpacity,
+          child: Card(
           child: ListTile(
             leading: const CircleAvatar(
               child: Icon(Icons.description_outlined),
@@ -525,6 +586,7 @@ class _AdminHome extends StatelessWidget {
             onTap: () => onOpen('daily_report'),
           ),
         ),
+        ),
       ],
     );
   }
@@ -535,12 +597,14 @@ class _ActionGrid extends StatelessWidget {
     required this.items,
     required this.columns,
     required this.actionOrder,
+    required this.opacity,
     required this.onOpen,
   });
 
   final List<_HomeAction> items;
   final int columns;
   final List<String> actionOrder;
+  final double opacity;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -564,7 +628,9 @@ class _ActionGrid extends StatelessWidget {
       _ => 0.68,
     };
 
-    return GridView.count(
+    return Opacity(
+      opacity: opacity,
+      child: GridView.count(
       crossAxisCount: columnCount,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -579,6 +645,7 @@ class _ActionGrid extends StatelessWidget {
             onOpen: onOpen,
           ),
       ],
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../domain/company_data_transfer.dart';
+import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 import 'worker_document_send_page.dart';
@@ -679,6 +680,10 @@ class _RequirementTile extends StatelessWidget {
             if (status?['original_verified'] == true) '原本確認済み',
             if ((status?['attachment_path']?.toString() ?? '').isNotEmpty)
               '写真あり',
+            ...DataDateLabels.labels(
+              createdAt: status?['created_at'] ?? requirement['created_at'],
+              updatedAt: status?['updated_at'] ?? requirement['updated_at'],
+            ),
           ].join(' / '),
         ),
         trailing: const Icon(Icons.chevron_right),

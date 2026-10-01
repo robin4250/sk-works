@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
+import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
@@ -249,6 +250,11 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               if (record.phone.isNotEmpty) Text('電話: ${record.phone}'),
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
+              for (final label in DataDateLabels.labels(
+                createdAt: record.createdAt,
+                updatedAt: record.updatedAt,
+              ))
+                Text(label),
               const SizedBox(height: 16),
               if (record.kind != PersonKind.partnerCompany) ...[
                 FilledButton.icon(
