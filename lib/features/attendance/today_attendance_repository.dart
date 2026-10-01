@@ -84,8 +84,10 @@ class TodayAttendanceRepository {
         .from('attendance_verifications')
         .select(
           'id, worker_id, site_id, event_type, confirmed_at, '
-          'workers(id, name, affiliation, partner_company_id, '
-          'partner_companies(name)), sites(id, name)',
+          'workers!attendance_verifications_worker_id_fkey('
+          'id, name, affiliation, partner_company_id, '
+          'partner_companies!workers_partner_company_id_fkey(name)), '
+          'sites!attendance_verifications_site_id_fkey(id, name)',
         )
         .eq('company_id', companyId)
         .gte('confirmed_at', localStart.toUtc().toIso8601String())
