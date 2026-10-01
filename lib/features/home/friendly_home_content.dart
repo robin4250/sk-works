@@ -487,8 +487,8 @@ class _ActionGrid extends StatelessWidget {
     final ratio = switch (columnCount) {
       1 => 4.2,
       2 => 1.55,
-      3 => 1.05,
-      _ => 0.82,
+      3 => 0.80,
+      _ => 0.68,
     };
 
     return GridView.count(
