@@ -428,7 +428,7 @@ const _HomeAction(
               'プロフィール',
               Icons.account_circle_outlined,
             ),
-            if (visibleHomeKeys.contains('vehicle_routes'))
+            if (moduleEnabled('vehicle_routes') && visibleHomeKeys.contains('vehicle_routes'))
 const _HomeAction(
               'vehicle_routes',
               '車両・ルート',
@@ -576,7 +576,7 @@ class _AdminHome extends StatelessWidget {
                 Icons.business_center_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            if (visibleHomeKeys.contains('vehicle_routes'))
+            if (moduleEnabled('vehicle_routes') && visibleHomeKeys.contains('vehicle_routes'))
               const _HomeAction(
                 'vehicle_routes',
                 '車両・ルート',
