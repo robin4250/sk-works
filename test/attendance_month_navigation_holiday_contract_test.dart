@@ -16,5 +16,6 @@ void main() {
     expect(page, contains('_changeMonth(-1)'));
     expect(page, contains('_changeMonth(1)'));
     expect(page, contains('repository.loadMonth(next)'));
+    expect(page, contains('holidayName'));
   });
 }
