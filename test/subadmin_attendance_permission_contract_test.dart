@@ -10,7 +10,12 @@ void main() {
       RegExp(r"_identity\.can\('can_manage_attendance'\)[\s\S]*?AttendanceCloudPage\(\)[\s\S]*?WorkerAttendanceSheetPage\(\)")
           .allMatches(source)
           .length,
-      greaterThanOrEqualTo(2),
+      greaterThanOrEqualTo(1),
+    );
+    expect(
+      RegExp(r"if \(key == 'attendance_today'\)[\s\S]*?_identity\.can\('can_manage_attendance'\)[\s\S]*?TodayAttendancePage\(\)")
+          .hasMatch(source),
+      isTrue,
     );
     expect(
       source,
