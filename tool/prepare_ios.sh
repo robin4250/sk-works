@@ -28,6 +28,57 @@ fi
 
 flutter pub get
 
+
+APPICON_DIR="ios/Runner/Assets.xcassets/AppIcon.appiconset"
+if [[ ! -d "$APPICON_DIR" || ! -f "$APPICON_DIR/Contents.json" ]]; then
+  echo "AppIcon asset catalog が見つかりません: $APPICON_DIR"
+  exit 1
+fi
+if ! command -v xcrun >/dev/null 2>&1 || ! command -v sips >/dev/null 2>&1; then
+  echo "SKOアイコン生成に必要なXcode/sipsが見つかりません。"
+  exit 1
+fi
+
+ICON_SOURCE="$APPICON_DIR/SKO-AppIcon-1024.png"
+xcrun swift tool/generate_ios_app_icon.swift "$ICON_SOURCE"
+
+python3 - "$APPICON_DIR" "$ICON_SOURCE" <<'PY'
+from pathlib import Path
+import json
+import subprocess
+import sys
+
+appicon_dir = Path(sys.argv[1])
+source = Path(sys.argv[2])
+contents_path = appicon_dir / "Contents.json"
+contents = json.loads(contents_path.read_text())
+
+generated = 0
+for entry in contents.get("images", []):
+    filename = entry.get("filename")
+    size = entry.get("size")
+    scale = entry.get("scale")
+    if not filename or not size or not scale:
+        continue
+    try:
+        points = float(str(size).split("x", 1)[0])
+        factor = float(str(scale).rstrip("x"))
+        pixels = round(points * factor)
+    except ValueError:
+        continue
+    target = appicon_dir / filename
+    subprocess.run(
+        ["sips", "-z", str(pixels), str(pixels), str(source), "--out", str(target)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    generated += 1
+
+if generated < 10:
+    raise SystemExit(f"AppIcon generation incomplete: {generated} files")
+print(f"SKO AppIconを{generated}サイズ生成しました。")
+PY
+
 python3 - "$BUNDLE_ID" <<'PY'
 from pathlib import Path
 import plistlib
