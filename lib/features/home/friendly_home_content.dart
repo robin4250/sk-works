@@ -120,6 +120,11 @@ class _GreetingCard extends StatelessWidget {
                       ),
                 ),
               ),
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 14,
+              ),
+              const SizedBox(width: 4),
               Text(
                 '${now.year}年${now.month}月${now.day}日',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
