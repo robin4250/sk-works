@@ -4,6 +4,41 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+enum HomeAttendancePhase {
+  notStarted,
+  working,
+  finished,
+}
+
+class HomeAttendanceStatus {
+  const HomeAttendanceStatus({
+    this.verificationMode = 'manual',
+    this.siteName,
+    this.clockIn,
+    this.clockOut,
+    this.phase = HomeAttendancePhase.notStarted,
+  });
+
+  final String verificationMode;
+  final String? siteName;
+  final DateTime? clockIn;
+  final DateTime? clockOut;
+  final HomeAttendancePhase phase;
+
+  String get verificationModeLabel => switch (verificationMode) {
+        'location' => '位置情報',
+        'location_photo' => '位置情報＋写真',
+        'photo' => '写真',
+        _ => '手動',
+      };
+
+  String get phaseLabel => switch (phase) {
+        HomeAttendancePhase.working => '出勤中',
+        HomeAttendancePhase.finished => '本日は退勤済',
+        HomeAttendancePhase.notStarted => '未出勤',
+      };
+}
+
 class AttendanceVerificationRepository {
   AttendanceVerificationRepository._(this._client);
 
@@ -51,6 +86,67 @@ class AttendanceVerificationRepository {
       };
     }
     return Map<String, dynamic>.from(row);
+  }
+
+  Future<HomeAttendanceStatus> loadHomeAttendanceStatus() async {
+    final settings = await loadSettings();
+    final configuredMode = settings['mode']?.toString() ?? 'manual';
+
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString();
+    if (workerId == null || workerId.isEmpty) {
+      return HomeAttendanceStatus(verificationMode: configuredMode);
+    }
+
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+    final rows = await _client
+        .from('attendance_verifications')
+        .select('event_type, verification_mode, confirmed_at, sites(name)')
+        .eq('worker_id', workerId)
+        .gte('confirmed_at', start.toUtc().toIso8601String())
+        .lt('confirmed_at', end.toUtc().toIso8601String())
+        .order('confirmed_at');
+
+    DateTime? clockIn;
+    DateTime? clockOut;
+    String? siteName;
+    String? latestEventType;
+
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw);
+      final confirmed =
+          DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
+      final eventType = row['event_type']?.toString();
+      final site = row['sites'];
+
+      if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
+        siteName = site['name'].toString();
+      }
+      if (eventType == 'clock_in' && confirmed != null) {
+        clockIn ??= confirmed;
+      } else if (eventType == 'clock_out' && confirmed != null) {
+        clockOut = confirmed;
+      }
+      if (eventType == 'clock_in' || eventType == 'clock_out') {
+        latestEventType = eventType;
+      }
+    }
+
+    final phase = switch (latestEventType) {
+      'clock_in' => HomeAttendancePhase.working,
+      'clock_out' => HomeAttendancePhase.finished,
+      _ => HomeAttendancePhase.notStarted,
+    };
+
+    return HomeAttendanceStatus(
+      verificationMode: configuredMode,
+      siteName: siteName,
+      clockIn: clockIn,
+      clockOut: clockOut,
+      phase: phase,
+    );
   }
 
   Future<void> saveSettings({
