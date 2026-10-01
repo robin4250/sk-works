@@ -11,7 +11,7 @@ void main() {
     expect(page, contains("personnel('社員')"));
     expect(page, contains("qualifications('資格')"));
     expect(page, contains("workerDocuments('必要書類')"));
-    expect(page, contains("companyDocuments('会社提出書類一覧')"));
+    expect(page, contains("companyDocuments('会社提出書類')"));
 
     expect(page, contains("'qualification-certificates'"));
     expect(page, contains("'worker-documents'"));
