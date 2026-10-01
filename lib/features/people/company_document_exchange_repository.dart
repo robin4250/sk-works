@@ -94,6 +94,22 @@ class CompanyDocumentExchangeRepository {
     ];
   }
 
+  Future<void> saveReceivedDelivery(String deliveryId) async {
+    if (deliveryId.isEmpty) return;
+    await _client.rpc(
+      'save_received_delivery',
+      params: {'p_delivery_id': deliveryId},
+    );
+  }
+
+  Future<String?> signedDeliveryFileUrl({
+    required String bucket,
+    required String path,
+  }) async {
+    if (bucket.isEmpty || path.isEmpty) return null;
+    return _client.storage.from(bucket).createSignedUrl(path, 3600);
+  }
+
   Future<Map<String, dynamic>> loadConnectionInbox() async {
     final value = await _client.rpc('company_connection_inbox');
     return value is Map
