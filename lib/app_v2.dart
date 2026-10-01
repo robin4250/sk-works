@@ -12,7 +12,10 @@ import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
+import 'features/attendance/attendance_verification_repository.dart';
+import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
+import 'features/attendance/worker_attendance_sheet_repository.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/auth/employee_onboarding_approvals_page.dart';
 import 'features/auth/employee_onboarding_repository.dart';
@@ -105,6 +108,10 @@ class _HomePageState extends State<HomePage> {
   final _payrollAdjustmentRepository =
       PayrollAdjustmentRepository.maybeCreate();
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
+  final _attendanceVerificationRepository =
+      AttendanceVerificationRepository.maybeCreate();
+  final _workerAttendanceSheetRepository =
+      WorkerAttendanceSheetRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
@@ -125,6 +132,10 @@ class _HomePageState extends State<HomePage> {
         needsLicense: false,
         needsQualification: false,
       );
+  PersonalAttendanceState _personalAttendanceState =
+      PersonalAttendanceState.notStarted;
+  String _attendanceModeLabel = '未設定';
+  String _attendanceSiteLabel = '未選択';
 
   bool get _isAdmin => _identity.isAdmin;
 
@@ -143,6 +154,7 @@ class _HomePageState extends State<HomePage> {
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
       _loadPayrollAdjustmentAccess(),
+      _loadPersonalAttendanceStatus(),
     ]);
   }
 
@@ -191,6 +203,65 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {
       // Keep the standard label until the payroll adjustment migration is ready.
     }
+  }
+
+  Future<void> _loadPersonalAttendanceStatus() async {
+    var state = PersonalAttendanceState.notStarted;
+    var siteLabel = '未選択';
+    var modeLabel = '未設定';
+
+    final sheetRepository = _workerAttendanceSheetRepository;
+    if (sheetRepository != null) {
+      try {
+        final now = DateTime.now();
+        final month = await sheetRepository.loadMonth(now);
+        final today = month.days[DateTime(now.year, now.month, now.day)];
+        if (today != null) {
+          if (today.clockOut != null) {
+            state = PersonalAttendanceState.finished;
+          } else if (today.clockIn != null) {
+            state = PersonalAttendanceState.working;
+          }
+          final site = today.siteName?.trim() ?? '';
+          if (site.isNotEmpty) siteLabel = site;
+        }
+      } catch (_) {
+        // Home must stay available even if attendance status cannot be enriched.
+      }
+    }
+
+    if (siteLabel == '未選択') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final savedSiteName =
+            prefs.getString('sko_attendance_selected_site_name')?.trim() ?? '';
+        if (savedSiteName.isNotEmpty) siteLabel = savedSiteName;
+      } catch (_) {
+        // Local selection is best-effort.
+      }
+    }
+
+    final verificationRepository = _attendanceVerificationRepository;
+    if (verificationRepository != null) {
+      try {
+        final settings = await verificationRepository.loadSettings();
+        modeLabel = switch (settings['mode']?.toString()) {
+          'location' => '位置情報',
+          'location_photo' => '位置情報＋写真',
+          'manual' => '手動',
+          _ => '未設定',
+        };
+      } catch (_) {
+        // Keep the current safe label when verification settings are unavailable.
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _personalAttendanceState = state;
+      _attendanceSiteLabel = siteLabel;
+      _attendanceModeLabel = modeLabel;
+    });
   }
 
   Future<void> _loadEmployeeOnboardingCapability() async {
@@ -426,7 +497,7 @@ class _HomePageState extends State<HomePage> {
       }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const AttendanceCloudPage(),
+          builder: (_) => const TodayAttendancePage(),
         ),
       );
       return;
@@ -560,6 +631,11 @@ class _HomePageState extends State<HomePage> {
       await _loadPayrollAdjustmentAccess();
       await _loadIdentity();
     }
+    if (key == 'clock_in' ||
+        key == 'clock_out' ||
+        key == 'attendance_verify') {
+      await _loadPersonalAttendanceStatus();
+    }
   }
 
   List<_MenuAction> get _menuItems {
@@ -692,6 +768,9 @@ class _HomePageState extends State<HomePage> {
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
+          personalAttendanceState: _personalAttendanceState,
+          attendanceModeLabel: _attendanceModeLabel,
+          attendanceSiteLabel: _attendanceSiteLabel,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
