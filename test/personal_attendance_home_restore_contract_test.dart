@@ -34,6 +34,8 @@ void main() {
     expect(status, contains("PersonalAttendanceState.clockedOut"));
     expect(status, contains("attendance_verification_settings"));
     expect(status, contains("attendance_verifications"));
+    expect(status, contains(".eq('company_id', companyId)"));
+    expect(status, contains(".eq('worker_id', id)"));
 
     expect(
       verificationRepository,
