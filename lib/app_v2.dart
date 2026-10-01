@@ -35,6 +35,7 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/operations/vehicle_route_page.dart';
+import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
@@ -430,6 +431,7 @@ class _HomePageState extends State<HomePage> {
       'notes' => 'notes',
       'albums' => 'albums',
       'today_line' || 'line_history' => 'line_bridge',
+      'vehicle_routes' || 'vehicle_route_select' => 'vehicle_routes',
       _ => null,
     };
     if (requiredModule != null && !_moduleEnabled(requiredModule)) {
@@ -517,6 +519,9 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'daily_report':
         page = const DailyReportPage();
+        break;
+      case 'vehicle_route_select':
+        page = const VehicleRouteSelectionPage();
         break;
       case 'employee_register':
         page = EmployeeInvitePage(
@@ -646,13 +651,14 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: '管理者・サブ管理者・閲覧権限',
         ),
-      const _MenuAction(
-        key: 'vehicle_routes',
-        label: '車両・ルート',
-        icon: Icons.route_outlined,
-        homeEligible: true,
-        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
-      ),
+      if (_moduleEnabled('vehicle_routes'))
+        const _MenuAction(
+          key: 'vehicle_routes',
+          label: '車両・ルート',
+          icon: Icons.route_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        ),
       const _MenuAction(
         key: 'employee_register',
         label: '従業員登録',
