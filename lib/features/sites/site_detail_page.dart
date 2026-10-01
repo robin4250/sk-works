@@ -3,7 +3,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../people/people_cloud_page.dart';
 import 'site_cloud_repository.dart';
 import 'site_page.dart';
 
@@ -91,6 +90,41 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
   }
 
+  Future<void> _showCreator() async {
+    final repository = _repository;
+    final creatorName = widget.site.creatorName.trim();
+    if (repository == null || creatorName.isEmpty) return;
+    final worker = await repository.loadCreatorEmployee(creatorName);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('登録者の社員情報'),
+        content: worker == null
+            ? Text('登録者：' + creatorName)
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('氏名：' + (worker['name']?.toString() ?? creatorName)),
+                  if ((worker['role']?.toString().isNotEmpty ?? false))
+                    Text('役割・職種：' + worker['role'].toString()),
+                  if ((worker['phone']?.toString().isNotEmpty ?? false))
+                    Text('電話：' + worker['phone'].toString()),
+                  if ((worker['email']?.toString().isNotEmpty ?? false))
+                    Text('メール：' + worker['email'].toString()),
+                ],
+              ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _edit() async {
     final result = await Navigator.of(context).push<Map<String, String>>(
       MaterialPageRoute(
@@ -101,6 +135,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final repository = _repository;
     if (repository == null) return;
 
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -214,9 +249,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               title: const Text('登録者'),
               subtitle: Text(site.creatorName),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PeopleCloudPage()),
-              ),
+              onTap: _showCreator,
             ),
           Text(
             site.formalName.isNotEmpty ? site.formalName : site.name,
@@ -370,7 +403,6 @@ class _SiteEditRequestPage extends StatefulWidget {
 
 class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
   late final TextEditingController _name;
-  late final TextEditingController _customer;
   late final TextEditingController _address;
   late final TextEditingController _station;
   late final TextEditingController _representative;
@@ -384,7 +416,6 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
     _name = TextEditingController(
       text: site.formalName.isNotEmpty ? site.formalName : site.name,
     );
-    _customer = TextEditingController(text: site.customerName);
     _address = TextEditingController(text: site.address);
     _station = TextEditingController(text: site.nearestStation);
     _representative = TextEditingController(
@@ -400,7 +431,6 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
   void dispose() {
     for (final controller in [
       _name,
-      _customer,
       _address,
       _station,
       _representative,
@@ -420,7 +450,6 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
         padding: const EdgeInsets.all(16),
         children: [
           _field(_name, '現場名'),
-          _field(_customer, '取引先'),
           _field(_address, '現場住所'),
           _field(_station, '最寄駅'),
           _field(_representative, '現場責任者名'),
@@ -430,13 +459,12 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop({
-              'formalName': _name.text.trim(),
               'name': _name.text.trim(),
-              'customerName': _customer.text.trim(),
+              'formal_name': _name.text.trim(),
               'address': _address.text.trim(),
-              'nearestStation': _station.text.trim(),
-              'representativeName': _representative.text.trim(),
-              'representativePhone': _phone.text.trim(),
+              'nearest_station': _station.text.trim(),
+              'representative_name': _representative.text.trim(),
+              'representative_phone': _phone.text.trim(),
               'notes': _notes.text.trim(),
             }),
             icon: const Icon(Icons.check),
