@@ -7,6 +7,10 @@ void main() {
     final repository =
         File('lib/features/sites/site_cloud_repository.dart').readAsStringSync();
     final model = File('lib/features/sites/site_page.dart').readAsStringSync();
+    final detail =
+        File('lib/features/sites/site_detail_page.dart').readAsStringSync();
+    final cloud =
+        File('lib/features/sites/site_cloud_page.dart').readAsStringSync();
 
     expect(repository, contains("rpc('site_directory_rows_v2')"));
     expect(repository, contains("rpc('site_directory_metadata')"));
@@ -21,5 +25,15 @@ void main() {
     expect(model, contains('creatorName'));
     expect(model, contains('createdAt'));
     expect(model, contains('updatedAt'));
+    expect(detail, contains("'取引先に共有'"));
+    expect(detail, contains("'編集／登録'"));
+    expect(detail, contains("'最寄駅'"));
+    expect(detail, contains("'現場責任者'"));
+    expect(detail, contains("scheme: 'tel'"));
+    expect(detail, contains("'maps.apple.com'"));
+    expect(detail, contains("'登録者'"));
+    expect(detail, contains('for (var slot = 1; slot <= 3; slot++)'));
+    expect(detail, contains("'変更申請を送信しました'"));
+    expect(cloud, contains('SiteDetailPage('));
   });
 }
