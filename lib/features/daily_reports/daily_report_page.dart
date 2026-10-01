@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../notifications/notification_bell.dart';
+import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
 import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
@@ -15,6 +17,8 @@ class DailyReportPage extends StatefulWidget {
 class _DailyReportPageState extends State<DailyReportPage> {
   final _repository = DailyReportRepository.maybeCreate();
   final _workDescription = TextEditingController();
+  final _picker = ImagePicker();
+  final _odometerRecognition = const OdometerTextRecognitionEngine();
 
   DateTime _date = DateTime.now();
   List<DailyReportSiteGroup> _groups = const [];
@@ -31,6 +35,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final Map<String, TextEditingController> _night = {};
   final Map<String, TextEditingController> _allowance = {};
   final Map<String, TextEditingController> _allowanceLabel = {};
+  final Map<String, TextEditingController> _odometer = {};
 
   bool get _signed => _report?.signed == true;
   bool get _editable => !_signed;
@@ -55,6 +60,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       ..._night.values,
       ..._allowance.values,
       ..._allowanceLabel.values,
+      ..._odometer.values,
     ]) {
       controller.dispose();
     }
@@ -63,6 +69,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _night.clear();
     _allowance.clear();
     _allowanceLabel.clear();
+    _odometer.clear();
   }
 
   Future<void> _loadDay() async {
@@ -163,6 +170,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
           TextEditingController(text: worker.allowanceAmount.toString());
       _allowanceLabel[worker.workerId] =
           TextEditingController(text: worker.allowanceLabel);
+      _odometer[worker.workerId] = TextEditingController(
+        text: worker.odometerKm == null ? '' : _number(worker.odometerKm!),
+      );
     }
   }
 
@@ -206,7 +216,100 @@ class _DailyReportPageState extends State<DailyReportPage> {
           int.tryParse(_allowance[worker.workerId]?.text ?? '') ?? 0;
       worker.allowanceLabel =
           _allowanceLabel[worker.workerId]?.text.trim() ?? '';
+      if (worker.vehicleId != null) {
+        worker.odometerKm = double.tryParse(
+          _odometer[worker.workerId]?.text.trim() ?? '',
+        );
+      }
     }
+  }
+
+  Future<void> _captureOdometer(
+    DailyReportWorkerDraft worker,
+  ) async {
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 92,
+      maxWidth: 2400,
+    );
+    if (photo == null) return;
+
+    OdometerRecognitionResult result;
+    try {
+      result = await _odometerRecognition.recognizeImagePath(photo.path);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('メーターを読み取れませんでした: $error')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: result.bestCandidate == null
+          ? ''
+          : _number(result.bestCandidate!),
+    );
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('メーター読取結果'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '数値が合っていれば登録してください。違う場合は手入力で修正するか、再撮影できます。',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '走行距離',
+                suffixText: 'km',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'retry'),
+            child: const Text('再撮影'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'use'),
+            child: const Text('この数値を登録'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'retry') {
+      controller.dispose();
+      await _captureOdometer(worker);
+      return;
+    }
+
+    if (action == 'use') {
+      final value = double.tryParse(controller.text.trim());
+      if (value == null || value < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('走行距離を数字で入力してください')),
+          );
+        }
+      } else {
+        _odometer[worker.workerId]?.text = _number(value);
+        worker.odometerKm = value;
+        if (mounted) setState(() {});
+      }
+    }
+    controller.dispose();
   }
 
   Future<String?> _saveDraft() async {
@@ -440,6 +543,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               allowance: _allowance[worker.workerId]!,
                               allowanceLabel:
                                   _allowanceLabel[worker.workerId]!,
+                              odometer: _odometer[worker.workerId]!,
+                              onCaptureOdometer: () =>
+                                  _captureOdometer(worker),
                             ),
                             const SizedBox(height: 8),
                           ],
@@ -533,6 +639,8 @@ class _WorkerDetailCard extends StatelessWidget {
     required this.night,
     required this.allowance,
     required this.allowanceLabel,
+    required this.odometer,
+    required this.onCaptureOdometer,
   });
 
   final DailyReportWorkerDraft worker;
@@ -542,6 +650,8 @@ class _WorkerDetailCard extends StatelessWidget {
   final TextEditingController night;
   final TextEditingController allowance;
   final TextEditingController allowanceLabel;
+  final TextEditingController odometer;
+  final VoidCallback onCaptureOdometer;
 
   @override
   Widget build(BuildContext context) {
@@ -552,9 +662,59 @@ class _WorkerDetailCard extends StatelessWidget {
           worker.workerName,
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        subtitle: const Text('個別の残業・早出・手当を設定'),
+        subtitle: Text(
+          [
+            '個別の残業・早出・手当を設定',
+            if (worker.vehicleName?.trim().isNotEmpty == true)
+              '車両：' + worker.vehicleName!,
+            if (worker.routeName?.trim().isNotEmpty == true)
+              'ルート：' + worker.routeName!,
+          ].join(' / '),
+        ),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         children: [
+          if (worker.vehicleName?.trim().isNotEmpty == true ||
+              worker.routeName?.trim().isNotEmpty == true) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                [
+                  if (worker.vehicleName?.trim().isNotEmpty == true)
+                    '車両：' + worker.vehicleName!,
+                  if (worker.routeName?.trim().isNotEmpty == true)
+                    'ルート：' + worker.routeName!,
+                ].join('　'),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (worker.vehicleId != null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: odometer,
+                    enabled: editable,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: '退勤時の走行距離',
+                      suffixText: 'km',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: editable ? onCaptureOdometer : null,
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('メーターを撮影して読取'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               Expanded(
