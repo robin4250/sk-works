@@ -48,7 +48,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final lon = row['longitude'] as num?;
     if (lat == null || lon == null) return;
     final uri = Uri.https('maps.apple.com', '/', {
-      'll': lat.toString() + ',' + lon.toString(),
+      'll': '$lat,$lon',
       'q': row[labelKey]?.toString() ?? 'SKO',
     });
     await launchUrl(uri, mode: LaunchMode.externalApplication);
