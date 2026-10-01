@@ -786,6 +786,7 @@ class _HomePageState extends State<HomePage> {
           key: 'signatures',
           label: 'サイン一覧',
           icon: Icons.draw_outlined,
+          accessLabel: '管理者',
         ),
       const _MenuAction(
         key: 'settings',
