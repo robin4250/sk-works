@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../daily_reports/daily_report_page.dart';
 import '../notifications/notification_bell.dart';
 import 'attendance_verification_repository.dart';
 
@@ -391,8 +392,19 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_eventType == 'clock_in' ? '出勤を確認しました' : '退勤を確認しました')),
+        SnackBar(
+          content: Text(
+            _eventType == 'clock_in' ? '出勤を確認しました' : '退勤を確認しました',
+          ),
+        ),
       );
+      if (_eventType == 'clock_out' && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const DailyReportPage(),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('確認を登録できませんでした: $e')));
