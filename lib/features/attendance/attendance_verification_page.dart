@@ -66,6 +66,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       final settings = await repository.loadSettings();
       final workers = await repository.loadWorkers();
       final sites = await repository.loadSites();
+      final preferredSiteId = await repository.loadPreferredSiteId();
       final recent = await repository.loadRecent();
       if (!mounted) return;
       setState(() {
@@ -76,7 +77,11 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
         _sites = sites;
         _recent = recent;
         _workerId ??= workers.isEmpty ? null : workers.first['id'] as String;
-        _siteId ??= sites.isEmpty ? null : sites.first['id'] as String;
+        final preferredExists = preferredSiteId != null &&
+            sites.any((site) => site['id']?.toString() == preferredSiteId);
+        _siteId ??= preferredExists
+            ? preferredSiteId
+            : (sites.isEmpty ? null : sites.first['id'] as String);
         _loading = false;
         _error = null;
       });
@@ -183,7 +188,12 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                                       child: Text(site['name'].toString()),
                                     ))
                                 .toList(),
-                            onChanged: _saving ? null : (value) => setState(() => _siteId = value),
+                            onChanged: _saving
+                                ? null
+                                : (value) async {
+                                    setState(() => _siteId = value);
+                                    await repository.savePreferredSiteId(value);
+                                  },
                           ),
                           if (_selectedSite != null) ...[
                             const SizedBox(height: 8),
