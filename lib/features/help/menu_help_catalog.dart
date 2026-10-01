@@ -1,0 +1,66 @@
+import 'manual_content.dart';
+
+class MenuHelpItem {
+  const MenuHelpItem({
+    required this.key,
+    required this.label,
+    required this.purpose,
+    required this.destination,
+    required this.access,
+    this.roles = const <ManualRole>{
+      ManualRole.general,
+      ManualRole.subAdmin,
+      ManualRole.admin,
+    },
+  });
+
+  final String key;
+  final String label;
+  final String purpose;
+  final String destination;
+  final String access;
+  final Set<ManualRole> roles;
+}
+
+class MenuHelpCatalog {
+  const MenuHelpCatalog._();
+
+  static const items = <MenuHelpItem>[
+    MenuHelpItem(key: 'attendance', label: '出勤表', purpose: '週間・月間の勤務実績、残業、早出、夜間、手当を確認します。', destination: '出勤表の週間画面へ移動します。月間・A4プレビューも開けます。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'daily_report', label: '日報', purpose: '作業内容、勤務時間、手当、責任者サインを記録します。', destination: '日報入力・確認画面へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'chat', label: 'チャット', purpose: '現場・個別・協力会社との連絡、写真、ファイルを扱います。', destination: 'チャット一覧へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'site_register', label: '現場登録', purpose: '新しい現場の基本情報、住所、最寄駅、責任者等を登録します。', destination: '現場登録画面へ移動します。', access: '現場登録を許可された利用者'),
+    MenuHelpItem(key: 'people', label: '社員', purpose: '自社社員の基本情報、資格、必要書類を確認・管理します。', destination: '社員一覧へ移動します。', access: '管理者・サブ管理者・社員閲覧権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'employee_register', label: '従業員登録', purpose: '名前と電話番号から初回利用者を登録し、QR/初期パスを案内します。', destination: '従業員登録画面へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'employee_onboarding_approvals', label: '本登録承認', purpose: '従業員の本人情報登録を確認して本登録を承認・拒否します。', destination: '本登録承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'payroll', label: '給与明細', purpose: '自分の給与明細を月別に確認し、プレビュー・印刷します。', destination: '第2認証後、給与明細一覧へ移動します。', access: '本人・給与明細閲覧権限'),
+    MenuHelpItem(key: 'payroll_settings', label: '個別給与設定', purpose: '社員ごとの日勤・夜勤・休日・残業・早出・手当・控除単価を設定します。', destination: '個別給与設定画面へ移動します。', access: '管理者・給与編集権限', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'payroll_adjustments', label: '給与調整', purpose: '給与の加算・控除項目を社員別・期間別に登録、修正、取消します。', destination: '給与調整一覧へ移動します。', access: '管理者・給与閲覧/編集権限', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'qualifications', label: '資格', purpose: '資格情報、資格証表裏、有効期限を確認・登録します。', destination: '資格一覧へ移動します。', access: '本人・管理者・サブ管理者・資格閲覧権限'),
+    MenuHelpItem(key: 'documents', label: '必要書類', purpose: '会社指定の必要書類を確認し、写真/PDFを登録します。', destination: '必要書類一覧へ移動します。', access: '本人・管理者・サブ管理者・書類閲覧権限'),
+    MenuHelpItem(key: 'company_documents', label: '会社提出書類', purpose: '会社単位で提出するPDF・画像を登録し、接続会社へ送信します。', destination: '会社提出書類一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'vehicle_routes', label: '車両・ルート', purpose: '車両と運行ルートを確認し、権限があれば登録・編集します。', destination: '車両・ルート一覧へ移動します。', access: '全社員閲覧、管理者/サブ管理者/委任者が編集'),
+    MenuHelpItem(key: 'profile', label: 'プロフィール', purpose: '自分の氏名、電話番号、写真、会社SKO ID等を確認します。', destination: 'プロフィール画面へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'notes', label: 'ノート', purpose: '業務メモと添付ファイルをチャット単位で管理します。', destination: 'ノート一覧へ移動します。', access: '会社設定と参加チャットの権限に従います'),
+    MenuHelpItem(key: 'albums', label: 'アルバム', purpose: '業務写真をアルバムとしてまとめて確認します。', destination: 'アルバム一覧へ移動します。', access: '会社設定と参加チャットの権限に従います'),
+    MenuHelpItem(key: 'approvals', label: '承認待ち', purpose: '日報修正等の承認申請を確認して承認・却下します。', destination: '承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'today_line', label: '本日のLINE出勤候補', purpose: 'LINE連携から取り込んだ出勤候補を確認します。', destination: '本日のLINE出勤候補画面へ移動します。', access: '管理者・勤怠管理権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります'),
+    MenuHelpItem(key: 'help', label: 'ヘルプ', purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。', destination: 'このヘルプ画面です。', access: '管理者・サブ管理者・一般・閲覧権限'),
+  ];
+
+  static List<MenuHelpItem> visibleFor({
+    required ManualRole role,
+    Set<String>? visibleKeys,
+  }) {
+    return [
+      for (final item in items)
+        if (item.roles.contains(role) &&
+            (visibleKeys == null || visibleKeys.contains(item.key)))
+          item,
+    ];
+  }
+}
