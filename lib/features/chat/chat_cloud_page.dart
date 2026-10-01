@@ -46,6 +46,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
   bool _sending = false;
+  bool _chatChromeVisible = true;
   String? _error;
 
   Map<String, dynamic>? get _selectedGroup {
@@ -174,6 +175,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     setState(() {
       _selectedGroupId = id;
       _tab = _ChatTab.all;
+      _chatChromeVisible = true;
       _pendingLastRead = DateTime.tryParse(rawLastRead ?? '');
       _positionInitialMessages = true;
       _appearance = appearance;
@@ -736,7 +738,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final selected = _selectedGroup;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: selected != null && !_chatChromeVisible
+          ? null
+          : AppBar(
         title: selected == null
             ? const Text(
                 'チャット',
@@ -880,6 +884,20 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     );
   }
 
+  bool _handleConversationScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification) {
+      if (_chatChromeVisible && mounted) {
+        setState(() => _chatChromeVisible = false);
+      }
+    } else if (notification is ScrollEndNotification) {
+      if (!_chatChromeVisible && mounted) {
+        setState(() => _chatChromeVisible = true);
+      }
+    }
+    return false;
+  }
+
   Widget _conversationView() {
     if (_selectedGroupId == null) {
       return const Center(
@@ -936,26 +954,30 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             ),
           ),
         Expanded(
-          child: _messages.isEmpty
-              ? const Center(child: Text('まだメッセージはありません'))
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final message = _messages[index];
-                    final messageId = message['id']?.toString() ?? '';
-                    return _MessageBubble(
-                      key: messageId.isEmpty ? null : _messageKeys[messageId],
-                      message: message,
-                      currentUserId: _repository?.currentUserId,
-                      bubbleOpacity: _appearance.bubbleAlpha,
-                      onDelete: () => _confirmDeleteOwnMessage(message),
-                    );
-                  },
-                ),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleConversationScroll,
+            child: _messages.isEmpty
+                ? const Center(child: Text('まだメッセージはありません'))
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      final messageId = message['id']?.toString() ?? '';
+                      return _MessageBubble(
+                        key: messageId.isEmpty ? null : _messageKeys[messageId],
+                        message: message,
+                        currentUserId: _repository?.currentUserId,
+                        bubbleOpacity: _appearance.bubbleAlpha,
+                        onDelete: () => _confirmDeleteOwnMessage(message),
+                      );
+                    },
+                  ),
+          ),
         ),
-        Container(
+        if (_chatChromeVisible)
+          Container(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           decoration: BoxDecoration(
             color: Theme.of(context)
