@@ -75,28 +75,47 @@ class HomeMembershipRepository {
       );
     }
 
+    // Membership role is authoritative. Once it is loaded, optional home
+    // enrichment must never downgrade owner/admin/manager to viewer.
     final companyId = rows.first['company_id'] as String;
     final role = rows.first['role']?.toString() ?? 'viewer';
 
-    final values = await Future.wait([
-      _client
+    List<dynamic> companies = const [];
+    try {
+      companies = await _client
           .from('companies')
           .select('name')
           .eq('id', companyId)
-          .limit(1),
-      _client
+          .limit(1);
+    } catch (_) {
+      // Company display data is optional for role resolution.
+    }
+
+    List<dynamic> profiles = const [];
+    try {
+      profiles = await _client
           .from('user_profiles')
           .select('display_name')
           .eq('user_id', user.id)
-          .limit(1),
-    ]);
+          .limit(1);
+    } catch (_) {
+      // Profile display data is optional for role resolution.
+    }
 
-    final companies = values[0] as List<dynamic>;
-    final profiles = values[1] as List<dynamic>;
+    dynamic permissionValue;
+    try {
+      permissionValue = await _client.rpc('current_feature_permissions');
+    } catch (_) {
+      // Feature permission enrichment must not erase the membership role.
+    }
 
-    final permissionValue = await _client.rpc('current_feature_permissions');
-    final payrollAdjustmentPermissionValue =
-        await _client.rpc('current_payroll_adjustment_permissions');
+    dynamic payrollAdjustmentPermissionValue;
+    try {
+      payrollAdjustmentPermissionValue =
+          await _client.rpc('current_payroll_adjustment_permissions');
+    } catch (_) {
+      // Payroll permission enrichment must not erase the membership role.
+    }
 
     final permissions = <String, bool>{
       if (permissionValue is Map)
