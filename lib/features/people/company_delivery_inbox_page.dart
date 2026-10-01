@@ -3,6 +3,9 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import 'company_document_exchange_repository.dart';
 
@@ -139,6 +142,21 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   }
 
 
+  Future<void> _openPrintPreview(
+    String title,
+    List<_ReceivedTransferItem> items,
+  ) async {
+    if (items.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ReceivedDataPdfPreview(
+          title: title,
+          items: items,
+        ),
+      ),
+    );
+  }
+
   Future<void> _saveReceivedItems(
     Iterable<_ReceivedTransferItem> items,
   ) async {
@@ -173,6 +191,14 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ],
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(dialogContext, false);
+              _openPrintPreview(item.title, [item]);
+            },
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('印刷プレビュー'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(alreadySaved ? '閉じる' : 'あとで'),
@@ -379,11 +405,25 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                               subtitle: Text(
                                 _companySubtitle(entry.value),
                               ),
-                              trailing: IconButton(
-                                tooltip: '会社単位で一括保存',
-                                onPressed: () =>
-                                    _saveCompanyFolder(entry.key, entry.value),
-                                icon: const Icon(Icons.save_alt_outlined),
+                              trailing: Wrap(
+                                children: [
+                                  IconButton(
+                                    tooltip: '一覧を印刷',
+                                    onPressed: () => _openPrintPreview(
+                                      entry.key,
+                                      entry.value,
+                                    ),
+                                    icon: const Icon(Icons.print_outlined),
+                                  ),
+                                  IconButton(
+                                    tooltip: '会社単位で一括保存',
+                                    onPressed: () => _saveCompanyFolder(
+                                      entry.key,
+                                      entry.value,
+                                    ),
+                                    icon: const Icon(Icons.save_alt_outlined),
+                                  ),
+                                ],
                               ),
                               children: [
                                 for (final category
@@ -737,6 +777,68 @@ class _ReceivedTransferItem {
   static String _origin(List<String> path, String fallback) {
     if (path.isEmpty) return fallback;
     return path.last;
+  }
+}
+
+class _ReceivedDataPdfPreview extends StatelessWidget {
+  const _ReceivedDataPdfPreview({
+    required this.title,
+    required this.items,
+  });
+
+  final String title;
+  final List<_ReceivedTransferItem> items;
+
+  Future<List<int>> _buildPdf() async {
+    final regular = await PdfGoogleFonts.notoSansJPRegular();
+    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final document = pw.Document(
+      theme: pw.ThemeData.withFont(base: regular, bold: bold),
+    );
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        build: (_) => [
+          pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          for (final item in items)
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 7),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    item.title,
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.Text(item.category.label + ' / ' + item.originCompany),
+                  if (item.subtitle.isNotEmpty) pw.Text(item.subtitle),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    return document.save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('印刷プレビュー')),
+      body: PdfPreview(
+        build: (_) => _buildPdf(),
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        allowPrinting: true,
+        allowSharing: true,
+        pdfFileName: title + '.pdf',
+      ),
+    );
   }
 }
 
