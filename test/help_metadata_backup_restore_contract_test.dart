@@ -37,6 +37,11 @@ void main() {
   });
 
   test('data pages use shared date labels', () {
+    final companyRepo = File(
+      'lib/features/people/company_submitted_document_repository.dart',
+    ).readAsStringSync();
+    expect(companyRepo, contains('created_at, updated_at'));
+
     for (final path in [
       'lib/features/people/people_cloud_page.dart',
       'lib/features/qualifications/qualification_cloud_page.dart',
