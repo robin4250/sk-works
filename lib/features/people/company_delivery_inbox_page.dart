@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -625,10 +627,10 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 }
 
 enum _ReceivedTransferCategory {
-  personnel('従業員一覧'),
-  qualifications('資格証一覧'),
-  workerDocuments('従業員提出書類一覧'),
-  companyDocuments('会社提出書類一覧');
+  personnel('社員'),
+  qualifications('資格'),
+  workerDocuments('必要書類'),
+  companyDocuments('会社提出書類');
 
   const _ReceivedTransferCategory(this.label);
 
@@ -692,6 +694,8 @@ class _ReceivedTransferItem {
 
   factory _ReceivedTransferItem.data(
     Map<String, dynamic> row, {
+    required String deliveryId,
+    required String savedAt,
     required String fallbackCompany,
   }) {
     final path = _companyPath(row['company_path']);
@@ -700,7 +704,7 @@ class _ReceivedTransferItem {
         : <String, dynamic>{};
     final kind = row['payload_kind']?.toString() ?? 'data';
     final title = switch (kind) {
-      'personnel' => payload['name']?.toString() ?? '人員情報',
+      'personnel' => payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
       _ => '受信データ',
@@ -719,7 +723,7 @@ class _ReceivedTransferItem {
       originCompany: _origin(path, fallbackCompany),
       title: title,
       subtitle: [
-        kind == 'personnel' ? '人員情報' : kind == 'qualification' ? '資格' : kind,
+        kind == 'personnel' ? '社員情報' : kind == 'qualification' ? '資格' : kind,
         if (path.isNotEmpty) '経路 ${path.join(' → ')}',
       ].join(' / '),
     );
