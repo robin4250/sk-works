@@ -36,6 +36,7 @@ import 'features/notifications/notification_bell.dart';
 import 'features/operations/vehicle_route_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
+import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_statements_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/company_submitted_documents_page.dart';
@@ -321,7 +322,7 @@ class _HomePageState extends State<HomePage> {
       'people' ||
       'company_deliveries' => 'people',
       'company_documents' => 'documents',
-      'payroll' || 'payroll_adjustments' => 'payroll',
+      'payroll' || 'payroll_settings' || 'payroll_adjustments' => 'payroll',
       'profile' => 'profile',
       'help' => 'help',
       'admin_sites' => 'sites',
@@ -513,6 +514,12 @@ class _HomePageState extends State<HomePage> {
           child: PayrollStatementsPage(),
         );
         break;
+      case 'payroll_settings':
+        page = const SecondaryProtectedPage(
+          title: '個別給与設定',
+          child: IndividualPayrollSettingsPage(),
+        );
+        break;
       case 'payroll_adjustments':
         page = SecondaryProtectedPage(
           title: _payrollAdjustmentLabel,
@@ -527,6 +534,7 @@ class _HomePageState extends State<HomePage> {
       case 'help':
         page = HelpPage(
           role: ManualContent.fromMembershipRole(_identity.role),
+          visibleFeatureKeys: _menuItems.map((item) => item.key).toSet(),
         );
         break;
       case 'admin_sites':
@@ -644,6 +652,14 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.payments_outlined,
           homeEligible: true,
           accessLabel: '本人・閲覧権限',
+        ),
+      if (_identity.isAdmin)
+        const _MenuAction(
+          key: 'payroll_settings',
+          label: '個別給与設定',
+          icon: Icons.manage_accounts_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・給与編集権限',
         ),
       if (_identity.can('can_view_payroll_adjustments'))
         _MenuAction(
