@@ -35,13 +35,11 @@ class FriendlyHomeContent extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
         children: [
           _GreetingCard(identity: identity),
-          if (requiredDocumentAttention.hasMissing) ...[
-            const SizedBox(height: 12),
-            _RequiredDocumentAttentionCard(
-              attention: requiredDocumentAttention,
-              onOpen: onOpen,
-            ),
-          ],
+          const SizedBox(height: 12),
+          _RequiredDocumentAttentionCard(
+            attention: requiredDocumentAttention,
+            onOpen: onOpen,
+          ),
           if (moduleEnabled('attendance')) ...[
             const SizedBox(height: 12),
             _PersonalAttendanceCard(
