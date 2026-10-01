@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../daily_reports/signature_capture_page.dart';
 import 'attendance_cloud_repository.dart';
 
 class BulkAttendancePage extends StatefulWidget {
@@ -157,27 +156,9 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
       return;
     }
 
-    final signature = await Navigator.of(context).push<SignatureResult>(
-      MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(),
-      ),
-    );
-    if (signature == null || !mounted) return;
-
-    final signedAt = DateTime.now().toUtc().toIso8601String();
-    final signedRecords = [
-      for (final record in records)
-        {
-          ...record,
-          'signerName': signature.signerName,
-          'signatureJson': signature.toJson(),
-          'signedAt': signedAt,
-        },
-    ];
-
     setState(() => _saving = true);
     try {
-      final saved = await widget.repository.insertMany(signedRecords);
+      final saved = await widget.repository.insertMany(records);
       if (!mounted) return;
       Navigator.of(context).pop(saved.length);
     } catch (error) {
@@ -290,7 +271,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.done_all),
-          label: Text(_saving ? '登録中…' : 'まとめてサインして登録'),
+          label: Text(_saving ? '登録中…' : 'まとめて登録'),
         ),
       ),
       body: SafeArea(
@@ -427,7 +408,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '「まとめてサインして登録」を押すと、次の画面で1回だけ責任者サインを入力し、選択した全件へ同じ署名をひも付けます。',
+                        '選択した日付・作業員の勤怠をまとめて登録します。責任者サインは日報で登録します。',
                       ),
                     ],
                   ),
