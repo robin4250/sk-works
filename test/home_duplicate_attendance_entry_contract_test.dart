@@ -9,7 +9,7 @@ void main() {
 
     expect(source, contains("'本日の出勤'"));
     expect(source, contains("'出勤状況を確認'"));
-    expect(source, contains("onOpen('attendance')"));
+    expect(source, contains("onOpen('attendance_today')"));
 
     expect(source, isNot(contains("'出勤・人区管理'")));
     expect(
