@@ -17,6 +17,7 @@ void main() {
     expect(app, contains("ホームとメニューを同じ一覧で管理します"));
     expect(app, contains("ButtonSegment(value: 1, label: Text('1列'))"));
     expect(app, contains("ButtonSegment(value: 4, label: Text('4列'))"));
+    expect(app, contains("label: '協力会社'"));
     expect(home, contains("visibleHomeKeys.contains('people')"));
     expect(home, contains("'社員'"));
   });
