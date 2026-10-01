@@ -11,7 +11,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-BUNDLE_ID="${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}"
+BUNDLE_ID="com.skworks.skWorks"
+if [[ -n "${SKO_IOS_BUNDLE_ID:-}" && "${SKO_IOS_BUNDLE_ID}" != "$BUNDLE_ID" ]]; then
+  echo "注意: SKO_IOS_BUNDLE_ID=${SKO_IOS_BUNDLE_ID} は無視します。元SKOのBundle ID $BUNDLE_ID を使用します。"
+fi
 
 if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
   echo "SKO_IOS_BUNDLE_ID が不正です: $BUNDLE_ID"
