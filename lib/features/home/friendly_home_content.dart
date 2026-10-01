@@ -12,6 +12,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
+    this.attendanceStatus = const HomeAttendanceStatus(),
     required this.onOpen,
     required this.onRefresh,
   });
