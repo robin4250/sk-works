@@ -11,10 +11,12 @@ class SiteDetailPage extends StatefulWidget {
     super.key,
     required this.site,
     required this.canManage,
+    this.onComplete,
   });
 
   final SiteRecord site;
   final bool canManage;
+  final Future<void> Function()? onComplete;
 
   @override
   State<SiteDetailPage> createState() => _SiteDetailPageState();
@@ -333,6 +335,19 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             icon: const Icon(Icons.edit_outlined),
             label: const Text('編集／登録'),
           ),
+          if (widget.canManage &&
+              widget.site.status != SiteStatus.completed &&
+              widget.onComplete != null) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await widget.onComplete!();
+                if (mounted) Navigator.of(context).pop();
+              },
+              icon: const Icon(Icons.archive_outlined),
+              label: const Text('現場を終了'),
+            ),
+          ],
         ],
       ),
     );
