@@ -50,7 +50,7 @@ class AttendancePdfService {
                   _number(day.overtimeHours),
                   _number(day.earlyHours),
                   _number(day.nightHours),
-                  day.allowanceYen == 0 ? '' : _yen(day.allowanceYen),
+                  day.allowanceYen == 0 ? '' : '1',
                 ],
             ],
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),

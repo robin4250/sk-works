@@ -285,10 +285,21 @@ class _AttendanceDayCard extends StatelessWidget {
     final faded = !inMonth;
     final holidayName = JapanHoliday.name(date);
     final isHoliday = holidayName != null;
+    final now = DateTime.now();
+    final isToday = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
 
     return Opacity(
       opacity: faded ? 0.42 : 1,
       child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isToday ? colors.primary : colors.outlineVariant,
+            width: isToday ? 2.5 : 1,
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
           child: Row(
@@ -604,6 +615,10 @@ class _MonthCalendarCell extends StatelessWidget {
     final shortSite = siteName.isEmpty
         ? ''
         : siteName.characters.take(2).toString();
+    final now = DateTime.now();
+    final isToday = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
 
     return Opacity(
       opacity: inMonth ? 1 : 0.35,
@@ -611,7 +626,12 @@ class _MonthCalendarCell extends StatelessWidget {
         margin: const EdgeInsets.all(1.5),
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          border: Border.all(color: Theme.of(context).dividerColor),
+          border: Border.all(
+            color: isToday
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).dividerColor,
+            width: isToday ? 2.5 : 1,
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -644,6 +664,13 @@ class _MonthCalendarCell extends StatelessWidget {
                     : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+            if ((day?.allowanceYen ?? 0) > 0)
+              const Text(
+                '手1',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900),
+              )
+            else
+              const SizedBox(height: 10),
             const Spacer(),
           ],
         ),
@@ -666,19 +693,23 @@ class _MonthlySummary extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
-            _SummaryPill(label: '出勤', value: '${data.workedDays}日'),
-            _SummaryPill(
-              label: '残業',
-              value: '${_number(data.overtimeHours)}時間',
-            ),
-            _SummaryPill(
-              label: '早出',
-              value: '${_number(data.earlyHours)}時間',
-            ),
-            _SummaryPill(
-              label: '夜間',
-              value: '${_number(data.nightHours)}時間',
-            ),
+            if (data.workedDays > 0)
+              _SummaryPill(label: '出勤', value: '${data.workedDays}日'),
+            if (data.overtimeHours > 0)
+              _SummaryPill(
+                label: '残業',
+                value: '${_number(data.overtimeHours)}時間',
+              ),
+            if (data.earlyHours > 0)
+              _SummaryPill(
+                label: '早出',
+                value: '${_number(data.earlyHours)}時間',
+              ),
+            if (data.nightHours > 0)
+              _SummaryPill(
+                label: '夜間',
+                value: '${_number(data.nightHours)}時間',
+              ),
             if (data.allowanceYen > 0)
               _SummaryPill(
                 label: '手当',
@@ -763,8 +794,19 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                         const SizedBox(height: 14),
-                        Text(
-                          '出勤 ${data.workedDays}日 / 残業 ${data.overtimeHours}時間',
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            if (data.workedDays > 0)
+                              Text('出勤 ${data.workedDays}日'),
+                            if (data.overtimeHours > 0)
+                              Text('残業 ${_number(data.overtimeHours)}時間'),
+                            if (data.earlyHours > 0)
+                              Text('早出 ${_number(data.earlyHours)}時間'),
+                            if (data.nightHours > 0)
+                              Text('夜間 ${_number(data.nightHours)}時間'),
+                          ],
                         ),
                         const Divider(height: 20),
                         Expanded(
@@ -778,7 +820,11 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                   child: Text(
                                     '${day.date.month}/${day.date.day}  '
                                     '${day.siteName ?? '休み'}  '
-                                    '${_time(day.clockIn)}〜${_time(day.clockOut)}',
+                                    '${_time(day.clockIn)}〜${_time(day.clockOut)}  '
+                                    '残${_number(day.overtimeHours)}  '
+                                    '早${_number(day.earlyHours)}  '
+                                    '夜${_number(day.nightHours)}  '
+                                    '手${day.allowanceYen > 0 ? '1' : ''}',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),
@@ -801,6 +847,14 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _number(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   static String _time(DateTime? value) {
