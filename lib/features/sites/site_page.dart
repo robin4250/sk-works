@@ -328,6 +328,10 @@ class _SiteFormPageState extends State<SiteFormPage> {
   final _customer = TextEditingController();
   final _address = TextEditingController();
   final _manager = TextEditingController();
+  final _formalName = TextEditingController();
+  final _nearestStation = TextEditingController();
+  final _representativeName = TextEditingController();
+  final _representativePhone = TextEditingController();
   final _startDate = TextEditingController();
   final _endDate = TextEditingController();
   final _notes = TextEditingController();
@@ -340,6 +344,10 @@ class _SiteFormPageState extends State<SiteFormPage> {
       _customer,
       _address,
       _manager,
+      _formalName,
+      _nearestStation,
+      _representativeName,
+      _representativePhone,
       _startDate,
       _endDate,
       _notes,
@@ -369,9 +377,9 @@ class _SiteFormPageState extends State<SiteFormPage> {
               const SizedBox(height: 14),
               TextFormField(
                 controller: _customer,
-                decoration: const InputDecoration(labelText: '得意先'),
+                decoration: const InputDecoration(labelText: '取引先'),
                 validator: (value) => value == null || value.trim().isEmpty
-                    ? '得意先を入力してください'
+                    ? '取引先を入力してください'
                     : null,
               ),
               const SizedBox(height: 14),
@@ -388,13 +396,34 @@ class _SiteFormPageState extends State<SiteFormPage> {
               ),
               const SizedBox(height: 14),
               TextField(
+                controller: _formalName,
+                decoration: const InputDecoration(labelText: '現場正式名称'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
                 controller: _manager,
                 decoration: const InputDecoration(labelText: '担当者'),
               ),
               const SizedBox(height: 14),
               TextField(
+                controller: _representativeName,
+                decoration: const InputDecoration(labelText: '現場責任者名'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _representativePhone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '現場責任者 電話番号'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
                 controller: _address,
-                decoration: const InputDecoration(labelText: '住所'),
+                decoration: const InputDecoration(labelText: '現場住所'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _nearestStation,
+                decoration: const InputDecoration(labelText: '最寄駅'),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -438,6 +467,10 @@ class _SiteFormPageState extends State<SiteFormPage> {
         startDate: _startDate.text.trim(),
         endDate: _endDate.text.trim(),
         notes: _notes.text.trim(),
+        formalName: _formalName.text.trim(),
+        nearestStation: _nearestStation.text.trim(),
+        representativeName: _representativeName.text.trim(),
+        representativePhone: _representativePhone.text.trim(),
       ),
     );
   }
