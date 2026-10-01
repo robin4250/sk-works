@@ -9,6 +9,8 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.identity,
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
+    required this.gridColumns,
+    required this.actionOrder,
     required this.onOpen,
     required this.onRefresh,
   });
@@ -16,6 +18,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final HomeIdentity identity;
   final RequiredDocumentAttention requiredDocumentAttention;
   final bool Function(String key) moduleEnabled;
+  final int gridColumns;
+  final List<String> actionOrder;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -44,11 +48,15 @@ class FriendlyHomeContent extends StatelessWidget {
             _AdminHome(
               identity: identity,
               moduleEnabled: moduleEnabled,
+              gridColumns: gridColumns,
+              actionOrder: actionOrder,
               onOpen: onOpen,
             )
           else
             _WorkerHome(
               moduleEnabled: moduleEnabled,
+              gridColumns: gridColumns,
+              actionOrder: actionOrder,
               onOpen: onOpen,
             ),
         ],
@@ -253,10 +261,14 @@ class _PersonalAttendanceCard extends StatelessWidget {
 class _WorkerHome extends StatelessWidget {
   const _WorkerHome({
     required this.moduleEnabled,
+    required this.gridColumns,
+    required this.actionOrder,
     required this.onOpen,
   });
 
   final bool Function(String key) moduleEnabled;
+  final int gridColumns;
+  final List<String> actionOrder;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -300,6 +312,8 @@ class _WorkerHome extends StatelessWidget {
               Icons.help_outline,
             ),
           ],
+          columns: gridColumns,
+          actionOrder: actionOrder,
           onOpen: onOpen,
         ),
         const SizedBox(height: 18),
@@ -328,11 +342,15 @@ class _AdminHome extends StatelessWidget {
   const _AdminHome({
     required this.identity,
     required this.moduleEnabled,
+    required this.gridColumns,
+    required this.actionOrder,
     required this.onOpen,
   });
 
   final HomeIdentity identity;
   final bool Function(String key) moduleEnabled;
+  final int gridColumns;
+  final List<String> actionOrder;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -432,6 +450,8 @@ class _AdminHome extends StatelessWidget {
               Icons.settings_outlined,
             ),
           ],
+          columns: gridColumns,
+          actionOrder: actionOrder,
           onOpen: onOpen,
         ),
         const SizedBox(height: 18),
@@ -457,76 +477,137 @@ class _AdminHome extends StatelessWidget {
 class _ActionGrid extends StatelessWidget {
   const _ActionGrid({
     required this.items,
+    required this.columns,
+    required this.actionOrder,
     required this.onOpen,
   });
 
   final List<_HomeAction> items;
+  final int columns;
+  final List<String> actionOrder;
   final Future<void> Function(String key) onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final columnCount = columns.clamp(1, 4);
+    final rank = <String, int>{
+      for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
+    };
+    final ordered = List<_HomeAction>.from(items);
+    ordered.sort((a, b) {
+      final ai = rank[a.key] ?? 100000;
+      final bi = rank[b.key] ?? 100000;
+      if (ai != bi) return ai.compareTo(bi);
+      return 0;
+    });
+
+    final ratio = switch (columnCount) {
+      1 => 4.2,
+      2 => 1.55,
+      3 => 1.05,
+      _ => 0.82,
+    };
+
     return GridView.count(
-      crossAxisCount: 2,
+      crossAxisCount: columnCount,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      childAspectRatio: 1.55,
+      childAspectRatio: ratio,
       children: [
-        for (final item in items)
-          Builder(
-            builder: (context) {
-              final scheme = Theme.of(context).colorScheme;
-              final isSubAdmin = item.access == _HomeActionAccess.subAdmin;
-              final isAdmin = item.access == _HomeActionAccess.admin ||
-                  item.access == _HomeActionAccess.professional;
-              final isProfessional =
-                  item.access == _HomeActionAccess.professional;
-              final background = scheme.surfaceContainerLowest;
-              final borderColor =
-                  (isSubAdmin || isAdmin) ? scheme.primary : scheme.outlineVariant;
-              final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
-
-              return Material(
-                color: background,
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => onOpen(item.key),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: borderColor,
-                        width: borderWidth,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(child: Icon(item.icon)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            item.label,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        if (isProfessional) ...[
-                          const _ProfessionalAccessMark(),
-                          const SizedBox(width: 4),
-                        ],
-                        const Icon(Icons.chevron_right),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+        for (final item in ordered)
+          _HomeActionTile(
+            item: item,
+            compact: columnCount >= 3,
+            onOpen: onOpen,
           ),
       ],
+    );
+  }
+}
+
+class _HomeActionTile extends StatelessWidget {
+  const _HomeActionTile({
+    required this.item,
+    required this.compact,
+    required this.onOpen,
+  });
+
+  final _HomeAction item;
+  final bool compact;
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isSubAdmin = item.access == _HomeActionAccess.subAdmin;
+    final isAdmin = item.access == _HomeActionAccess.admin ||
+        item.access == _HomeActionAccess.professional;
+    final isProfessional = item.access == _HomeActionAccess.professional;
+    final background = scheme.surfaceContainerLowest;
+    final borderColor =
+        (isSubAdmin || isAdmin) ? scheme.primary : scheme.outlineVariant;
+    final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
+
+    final icon = CircleAvatar(
+      radius: compact ? 16 : 20,
+      child: Icon(item.icon, size: compact ? 18 : 24),
+    );
+
+    final label = Text(
+      item.label,
+      maxLines: compact ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: compact ? TextAlign.center : TextAlign.start,
+      style: TextStyle(
+        fontWeight: FontWeight.w900,
+        fontSize: compact ? 11 : 14,
+      ),
+    );
+
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => onOpen(item.key),
+        child: Container(
+          padding: EdgeInsets.all(compact ? 8 : 14),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: borderColor,
+              width: borderWidth,
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: compact
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    icon,
+                    const SizedBox(height: 6),
+                    label,
+                    if (isProfessional) ...[
+                      const SizedBox(height: 4),
+                      const _ProfessionalAccessMark(),
+                    ],
+                  ],
+                )
+              : Row(
+                  children: [
+                    icon,
+                    const SizedBox(width: 10),
+                    Expanded(child: label),
+                    if (isProfessional) ...[
+                      const _ProfessionalAccessMark(),
+                      const SizedBox(width: 4),
+                    ],
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 }
