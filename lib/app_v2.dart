@@ -11,6 +11,7 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_quick_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
@@ -28,6 +29,7 @@ import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_membership_repository.dart';
+import 'features/home/personal_attendance_status_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
@@ -103,6 +105,8 @@ class _HomePageState extends State<HomePage> {
   final _employeeOnboardingRepository =
       EmployeeOnboardingRepository.maybeCreate();
   final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
+  final _personalAttendanceStatusRepository =
+      PersonalAttendanceStatusRepository.maybeCreate();
   final _payrollAdjustmentRepository =
       PayrollAdjustmentRepository.maybeCreate();
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
@@ -126,6 +130,8 @@ class _HomePageState extends State<HomePage> {
         needsLicense: false,
         needsQualification: false,
       );
+  PersonalAttendanceStatus _personalAttendanceStatus =
+      const PersonalAttendanceStatus.initial();
 
   bool get _isAdmin => _identity.isAdmin;
 
@@ -143,6 +149,7 @@ class _HomePageState extends State<HomePage> {
       _loadHomeLayout(),
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
+      _loadPersonalAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
     ]);
   }
@@ -179,6 +186,18 @@ class _HomePageState extends State<HomePage> {
       setState(() => _requiredDocumentAttention = value);
     } catch (_) {
       // Missing-document attention must not block the home screen.
+    }
+  }
+
+  Future<void> _loadPersonalAttendanceStatus() async {
+    final repository = _personalAttendanceStatusRepository;
+    if (repository == null) return;
+    try {
+      final value = await repository.load();
+      if (!mounted) return;
+      setState(() => _personalAttendanceStatus = value);
+    } catch (_) {
+      // Personal attendance summary must not block the home screen.
     }
   }
 
@@ -366,7 +385,11 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     final requiredModule = switch (key) {
-      'attendance' || 'attendance_verify' || 'clock_in' || 'clock_out' =>
+      'attendance' ||
+      'attendance_verify' ||
+      'attendance_select' ||
+      'clock_in' ||
+      'clock_out' =>
         'attendance',
       'footer_sites' || 'site_register' || 'sites' => 'sites',
       'chat' => 'chat',
@@ -430,6 +453,17 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => const TodayAttendancePage(),
         ),
       );
+      return;
+    }
+    if (key == 'attendance_select') {
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => const AttendanceQuickSelectionPage(),
+        ),
+      );
+      if (changed == true) {
+        await _loadPersonalAttendanceStatus();
+      }
       return;
     }
     if (key == 'footer_sites' || key == 'site_register') {
@@ -561,6 +595,11 @@ class _HomePageState extends State<HomePage> {
       await _loadPayrollAdjustmentAccess();
       await _loadIdentity();
     }
+    if (key == 'clock_in' ||
+        key == 'clock_out' ||
+        key == 'attendance_verify') {
+      await _loadPersonalAttendanceStatus();
+    }
   }
 
   List<_MenuAction> get _menuItems {
@@ -691,6 +730,7 @@ class _HomePageState extends State<HomePage> {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
+          attendanceStatus: _personalAttendanceStatus,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
           onOpen: _openHomeAction,
