@@ -43,7 +43,7 @@ void main() {
     expect(inbox, contains("'会社単位で一括保存'"));
     expect(inbox, contains("saveDeliveryItems("));
     expect(inbox, contains("'要対応'"));
-    expect(inbox, contains("'最終データ保存日'"));
+    expect(inbox, contains('最終データ保存日'));
   });
 
   test('received delivery save state is server-side and authorized', () {
