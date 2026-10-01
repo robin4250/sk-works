@@ -39,6 +39,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'qualifications', label: '資格', purpose: '資格情報、資格証表裏、有効期限を確認・登録します。', destination: '資格一覧へ移動します。', access: '本人・管理者・サブ管理者・資格閲覧権限'),
     MenuHelpItem(key: 'documents', label: '必要書類', purpose: '会社指定の必要書類を確認し、写真/PDFを登録します。', destination: '必要書類一覧へ移動します。', access: '本人・管理者・サブ管理者・書類閲覧権限'),
     MenuHelpItem(key: 'company_documents', label: '会社提出書類', purpose: '会社単位で提出するPDF・画像を登録し、接続会社へ送信します。', destination: '会社提出書類一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'signatures', label: 'サイン一覧', purpose: '日報に保存済みの責任者・代表者・監督者サインを確認し、接続済み親会社へ送信します。', destination: 'サイン一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
