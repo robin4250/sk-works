@@ -24,6 +24,10 @@ void main() {
     expect(home, contains("onOpen('attendance_select')"));
     expect(home, contains("status.shouldHighlightClockIn"));
     expect(home, contains("status.shouldHighlightClockOut"));
+    expect(home, contains('AnimationController('));
+    expect(home, contains('..repeat(reverse: true)'));
+    expect(home, contains('FadeTransition('));
+    expect(home, contains('Icons.notifications_active_outlined'));
 
     expect(status, contains("PersonalAttendanceState.notClockedIn"));
     expect(status, contains("PersonalAttendanceState.working"));
