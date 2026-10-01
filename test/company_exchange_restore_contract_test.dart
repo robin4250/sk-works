@@ -48,6 +48,7 @@ void main() {
     expect(inbox, isNot(contains("'上位会社の受取コード'")));
     expect(inbox, contains("'保存しますか'"));
     expect(inbox, contains("'保存したデータを開く'"));
+    expect(inbox, contains('openSaved == true'));
     expect(inbox, contains("'会社単位で一括保存'"));
     expect(inbox, contains("signatures('サイン一覧')"));
     expect(inbox, contains("saveDeliveryItems("));
