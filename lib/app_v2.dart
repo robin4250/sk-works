@@ -28,6 +28,7 @@ import 'features/help/help_page.dart';
 import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
 import 'features/home/home_attention_repository.dart';
+import 'features/home/home_appearance.dart';
 import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
@@ -115,6 +116,7 @@ class _HomePageState extends State<HomePage> {
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
   Set<String> _hiddenHomeActionKeys = <String>{};
+  HomeAppearance _homeAppearance = const HomeAppearance();
   HomeIdentity _identity = const HomeIdentity(
     role: 'viewer',
     companyName: 'SKO',
@@ -146,11 +148,30 @@ class _HomePageState extends State<HomePage> {
       _loadIdentity(),
       _loadUsage(),
       _loadHomeLayout(),
+      _loadHomeAppearance(),
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
       _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
     ]);
+  }
+
+  Future<void> _loadHomeAppearance() async {
+    final value = await HomeAppearanceRepository.load();
+    if (!mounted) return;
+    setState(() => _homeAppearance = value);
+  }
+
+  Future<void> _openHomeAppearanceSettings() async {
+    final value = await Navigator.of(context).push<HomeAppearance>(
+      MaterialPageRoute(
+        builder: (_) => HomeAppearanceSettingsPage(
+          initial: _homeAppearance,
+        ),
+      ),
+    );
+    if (value == null || !mounted) return;
+    setState(() => _homeAppearance = value);
   }
 
   Future<void> _loadIdentity() async {
@@ -773,6 +794,7 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     return Scaffold(
       appBar: AppBar(
+        toolbarOpacity: _homeAppearance.headerOpacity,
         title: const SizedBox.shrink(),
         actions: [
           const SkoNotificationBell(),
@@ -793,6 +815,7 @@ class _HomePageState extends State<HomePage> {
           actionOrder: _homeActionOrder,
           visibleHomeKeys: _homeLayoutItems.map((item) => item.key).toSet(),
           attendanceStatus: _homeAttendanceStatus,
+          appearance: _homeAppearance,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
@@ -852,6 +875,12 @@ class _HomePageState extends State<HomePage> {
                         if (values.isEmpty) return;
                         _setHomeGridColumns(values.first);
                       },
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _openHomeAppearanceSettings,
+                      icon: const Icon(Icons.wallpaper_outlined),
+                      label: const Text('壁紙・透明度を設定'),
                     ),
                   ],
                 ),
@@ -934,7 +963,9 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Opacity(
+        opacity: _homeAppearance.footerOpacity,
+        child: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           final module = switch (index) {
@@ -987,6 +1018,7 @@ class _HomePageState extends State<HomePage> {
             label: 'メニュー',
           ),
         ],
+        ),
       ),
     );
   }
