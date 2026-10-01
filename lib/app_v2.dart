@@ -619,7 +619,8 @@ class _HomePageState extends State<HomePage> {
 
     if (key == 'clock_in' ||
         key == 'clock_out' ||
-        key == 'attendance_verify') {
+        key == 'attendance_verify' ||
+        key == 'vehicle_route_select') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings') {
