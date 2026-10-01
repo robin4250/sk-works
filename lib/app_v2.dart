@@ -871,7 +871,7 @@ class _HomePageState extends State<HomePage> {
                     subtitle: Text('利用権限：${items[i].accessLabel}'),
                     onTap: () => _openHomeAction(items[i].key),
                     trailing: SizedBox(
-                      width: items[i].homeEligible ? 150 : 92,
+                      width: items[i].homeEligible ? 160 : 100,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
