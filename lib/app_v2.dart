@@ -674,10 +674,7 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _identity.companyName,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: const SizedBox.shrink(),
         actions: [
           const SkoNotificationBell(),
           if (widget.onSignOut != null)
