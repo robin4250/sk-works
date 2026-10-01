@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
 import 'attendance_verification_repository.dart';
@@ -68,6 +69,15 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       final sites = await repository.loadSites();
       final recent = await repository.loadRecent();
       if (!mounted) return;
+      final savedSiteId = await _loadSavedSiteId();
+      String? nextSiteId;
+      if (savedSiteId != null &&
+          sites.any((site) => site['id']?.toString() == savedSiteId)) {
+        nextSiteId = savedSiteId;
+      } else if (sites.isNotEmpty) {
+        nextSiteId = sites.first['id']?.toString();
+      }
+
       setState(() {
         _canManageAttendance = canManage;
         _mode = settings['mode']?.toString() ?? 'manual';
@@ -76,7 +86,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
         _sites = sites;
         _recent = recent;
         _workerId ??= workers.isEmpty ? null : workers.first['id'] as String;
-        _siteId ??= sites.isEmpty ? null : sites.first['id'] as String;
+        _siteId ??= nextSiteId;
         _loading = false;
         _error = null;
       });
@@ -183,7 +193,12 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                                       child: Text(site['name'].toString()),
                                     ))
                                 .toList(),
-                            onChanged: _saving ? null : (value) => setState(() => _siteId = value),
+                            onChanged: _saving
+                                ? null
+                                : (value) async {
+                                    setState(() => _siteId = value);
+                                    await _saveSelectedSite(value);
+                                  },
                           ),
                           if (_selectedSite != null) ...[
                             const SizedBox(height: 8),
@@ -266,6 +281,33 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       if (site['id'] == id) return site;
     }
     return null;
+  }
+
+  Future<String?> _loadSavedSiteId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('sko_attendance_selected_site_id');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveSelectedSite(String? siteId) async {
+    if (siteId == null || siteId.isEmpty) return;
+    final site = _sites.cast<Map<String, dynamic>?>().firstWhere(
+          (item) => item?['id']?.toString() == siteId,
+          orElse: () => null,
+        );
+    final name = site?['name']?.toString().trim() ?? '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sko_attendance_selected_site_id', siteId);
+      if (name.isNotEmpty) {
+        await prefs.setString('sko_attendance_selected_site_name', name);
+      }
+    } catch (_) {
+      // Selection persistence is best-effort and must not block attendance.
+    }
   }
 
   Future<void> _saveMode() async {
