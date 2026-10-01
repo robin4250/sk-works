@@ -136,7 +136,7 @@ class _GreetingCard extends StatelessWidget {
   }
 }
 
-class _RequiredDocumentAttentionCard extends StatelessWidget {
+class _RequiredDocumentAttentionCard extends StatefulWidget {
   const _RequiredDocumentAttentionCard({
     required this.attention,
     required this.onOpen,
@@ -144,6 +144,35 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 
   final RequiredDocumentAttention attention;
   final Future<void> Function(String key) onOpen;
+
+  @override
+  State<_RequiredDocumentAttentionCard> createState() =>
+      _RequiredDocumentAttentionCardState();
+}
+
+class _RequiredDocumentAttentionCardState
+    extends State<_RequiredDocumentAttentionCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.35, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +186,7 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => onOpen('documents'),
+        onTap: () => widget.onOpen('documents'),
         child: IntrinsicHeight(
           child: Row(
             children: [
@@ -170,9 +199,12 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
                   ),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.notifications_active_outlined,
-                  color: scheme.onPrimary,
+                child: FadeTransition(
+                  opacity: _opacity,
+                  child: Icon(
+                    Icons.notifications_active_outlined,
+                    color: scheme.onPrimary,
+                  ),
                 ),
               ),
               Expanded(
@@ -190,7 +222,7 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '未対応 ${attention.missingCount}件',
+                        '未対応 ${widget.attention.missingCount}件',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(width: 4),
