@@ -17,7 +17,7 @@ void main() {
     expect(
       app,
       contains(
-        'builder: (_) => const AttendanceCloudPage()',
+        'builder: (_) => const TodayAttendancePage()',
       ),
     );
 
