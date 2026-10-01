@@ -25,6 +25,13 @@ class SiteRecord {
     this.startDate = '',
     this.endDate = '',
     this.notes = '',
+    this.formalName = '',
+    this.nearestStation = '',
+    this.representativeName = '',
+    this.representativePhone = '',
+    this.creatorName = '',
+    this.createdAt = '',
+    this.updatedAt = '',
   });
 
   final String id;
@@ -36,6 +43,13 @@ class SiteRecord {
   final String startDate;
   final String endDate;
   final String notes;
+  final String formalName;
+  final String nearestStation;
+  final String representativeName;
+  final String representativePhone;
+  final String creatorName;
+  final String createdAt;
+  final String updatedAt;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -47,6 +61,13 @@ class SiteRecord {
         'startDate': startDate,
         'endDate': endDate,
         'notes': notes,
+        'formalName': formalName,
+        'nearestStation': nearestStation,
+        'representativeName': representativeName,
+        'representativePhone': representativePhone,
+        'creatorName': creatorName,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
       };
 
   factory SiteRecord.fromJson(Map<String, dynamic> json) {
@@ -63,6 +84,13 @@ class SiteRecord {
       startDate: json['startDate']?.toString() ?? '',
       endDate: json['endDate']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
+      formalName: json['formalName']?.toString() ?? '',
+      nearestStation: json['nearestStation']?.toString() ?? '',
+      representativeName: json['representativeName']?.toString() ?? '',
+      representativePhone: json['representativePhone']?.toString() ?? '',
+      creatorName: json['creatorName']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
     );
   }
 }
