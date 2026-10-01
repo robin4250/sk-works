@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'unified_company_data_send_page.dart';
+import 'company_transfer_send_page.dart';
 
 class PersonnelBundleSendPage extends StatelessWidget {
   const PersonnelBundleSendPage({
@@ -12,9 +12,12 @@ class PersonnelBundleSendPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return UnifiedCompanyDataSendPage(
-      kind: CompanyDataSendKind.personnel,
+    return CompanyTransferSendPage(
+      title: '社員データを送信',
+      sourceKind: 'worker_personnel',
+      subjectLabel: '社員',
       workerIds: workerIds,
+      description: '社員の基本情報・資格・必要書類を一式で送信します。出所会社情報も保持します。',
     );
   }
 }
