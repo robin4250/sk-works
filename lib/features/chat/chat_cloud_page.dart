@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../albums/albums_cloud_page.dart';
 import '../notes/notes_cloud_page.dart';
@@ -30,6 +31,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _messages = [];
   List<String> _prioritizedSiteGroupIds = const [];
+  Set<String> _blockedUserIds = <String>{};
+  Map<String, int> _unreadCounts = const {};
 
   String? _selectedGroupId;
   bool _canManagePartnerChat = false;
@@ -82,6 +85,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       final groups = await repository.loadGroups();
       final members = await repository.loadMembers();
       final priorities = await repository.prioritizedSiteGroupIds();
+      final blockedUserIds = await repository.loadBlockedUserIds();
 
       final previous = _selectedGroupId;
       final next = groups.any((g) => g['id']?.toString() == previous)
@@ -97,10 +101,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         _groups = groups;
         _members = members;
         _prioritizedSiteGroupIds = priorities;
+        _blockedUserIds = blockedUserIds;
         _selectedGroupId = next;
         _loading = false;
       });
 
+      await _refreshUnreadCounts(groups);
       await _subscribeSelected();
     } catch (error) {
       if (!mounted) return;
@@ -144,8 +150,41 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     setState(() {
       _selectedGroupId = id;
       _tab = _ChatTab.all;
+      _unreadCounts = {..._unreadCounts, id: 0};
     });
+    await _markRead(id);
     await _subscribeSelected();
+  }
+
+  Future<void> _markRead(String groupId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'sko_chat_last_read_$groupId',
+      DateTime.now().toUtc().toIso8601String(),
+    );
+  }
+
+  Future<void> _refreshUnreadCounts(
+    List<Map<String, dynamic>> groups,
+  ) async {
+    final repository = _repository;
+    if (repository == null || groups.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final lastRead = <String, DateTime>{};
+    final fallback = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    for (final group in groups) {
+      final id = group['id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      final raw = prefs.getString('sko_chat_last_read_$id');
+      lastRead[id] = DateTime.tryParse(raw ?? '') ?? fallback;
+    }
+    try {
+      final counts = await repository.loadUnreadCounts(lastRead);
+      if (!mounted) return;
+      setState(() => _unreadCounts = counts);
+    } catch (_) {
+      // Unread badges are supplemental and must not block chat loading.
+    }
   }
 
   void _scrollToBottom() {
@@ -243,6 +282,37 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _attachCamera() async {
+    final id = _selectedGroupId;
+    final repository = _repository;
+    if (id == null || repository == null) return;
+
+    final file = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 88,
+      maxWidth: 2000,
+    );
+    if (file == null) return;
+
+    setState(() => _sending = true);
+    try {
+      await repository.sendAttachment(
+        groupId: id,
+        bytes: await file.readAsBytes(),
+        filename: file.name,
+        mimeType: file.mimeType ?? 'image/jpeg',
+        isImage: true,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('カメラ写真を送信できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Future<void> _attachFile() async {
     final id = _selectedGroupId;
     final repository = _repository;
@@ -287,6 +357,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('カメラ'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _attachCamera();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.attach_file),
               title: const Text('ファイル'),
               onTap: () {
@@ -298,6 +376,86 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _toggleBlockSelectedDirect() async {
+    final repository = _repository;
+    final otherUserId = _selectedGroup?['direct_other_user_id']?.toString();
+    if (repository == null || otherUserId == null || otherUserId.isEmpty) {
+      return;
+    }
+    final currentlyBlocked = _blockedUserIds.contains(otherUserId);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(currentlyBlocked ? 'ブロックを解除しますか？' : 'この相手をブロックしますか？'),
+        content: Text(
+          currentlyBlocked
+              ? '解除後は再びメッセージを送受信できます。'
+              : 'ブロック中はこの相手とのやり取りを制限します。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(currentlyBlocked ? '解除する' : 'ブロックする'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repository.setBlocked(
+      userId: otherUserId,
+      blocked: !currentlyBlocked,
+    );
+    if (!mounted) return;
+    setState(() {
+      final next = <String>{..._blockedUserIds};
+      if (currentlyBlocked) {
+        next.remove(otherUserId);
+      } else {
+        next.add(otherUserId);
+      }
+      _blockedUserIds = next;
+    });
+  }
+
+  Future<void> _confirmDeleteOwnMessage(Map<String, dynamic> message) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final id = message['id']?.toString() ?? '';
+    final sender = message['sender_user_id']?.toString();
+    if (id.isEmpty || sender != repository.currentUserId) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('メッセージを削除しますか？'),
+        content: const Text('自分が送信したメッセージだけ削除できます。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await repository.deleteOwnMessage(id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('削除できませんでした: $error')),
+      );
+    }
   }
 
   Future<void> _openNotes() async {
@@ -525,22 +683,37 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               onSelected: (value) {
                 if (value == 'notes') _openNotes();
                 if (value == 'albums') _openAlbums();
+                if (value == 'block') _toggleBlockSelectedDirect();
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
+              itemBuilder: (_) => [
+                const PopupMenuItem(
                   value: 'notes',
                   child: ListTile(
                     leading: Icon(Icons.sticky_note_2_outlined),
                     title: Text('ノート'),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'albums',
                   child: ListTile(
                     leading: Icon(Icons.photo_album_outlined),
                     title: Text('アルバム'),
                   ),
                 ),
+                if (selected['group_type'] == 'direct')
+                  PopupMenuItem(
+                    value: 'block',
+                    child: ListTile(
+                      leading: const Icon(Icons.block_outlined),
+                      title: Text(
+                        _blockedUserIds.contains(
+                          selected['direct_other_user_id']?.toString(),
+                        )
+                            ? 'ブロック解除'
+                            : 'ブロック',
+                      ),
+                    ),
+                  ),
               ],
             ),
         ],
@@ -653,6 +826,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   itemBuilder: (context, index) => _MessageBubble(
                     message: _messages[index],
                     currentUserId: _repository?.currentUserId,
+                    onDelete: () => _confirmDeleteOwnMessage(_messages[index]),
                   ),
                 ),
         ),
@@ -746,9 +920,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   ? 'アーカイブ済み / \${_activityText(_lastActivity(group))}'
                   : _activityText(_lastActivity(group)),
             ),
-            trailing: selected
-                ? const Icon(Icons.chat_bubble)
-                : const Icon(Icons.chevron_right),
+            trailing: _unreadCounts[group['id']?.toString()] != null &&
+                    (_unreadCounts[group['id']?.toString()] ?? 0) > 0
+                ? Badge(
+                    label: Text(
+                      (_unreadCounts[group['id']?.toString()] ?? 0).toString(),
+                    ),
+                    child: const Icon(Icons.chat_bubble_outline),
+                  )
+                : selected
+                    ? const Icon(Icons.chat_bubble)
+                    : const Icon(Icons.chevron_right),
             onTap: () => _selectGroup(group['id'].toString()),
           ),
         );
@@ -828,10 +1010,12 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.currentUserId,
+    required this.onDelete,
   });
 
   final Map<String, dynamic> message;
   final String? currentUserId;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -934,7 +1118,9 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
 
-    return Padding(
+    return GestureDetector(
+      onLongPress: own ? onDelete : null,
+      child: Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment:
@@ -952,6 +1138,7 @@ class _MessageBubble extends StatelessWidget {
                 timeWidget,
               ],
       ),
+    ),
     );
   }
 
