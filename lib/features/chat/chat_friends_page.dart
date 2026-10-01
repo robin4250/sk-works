@@ -89,7 +89,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('検索できませんでした: ' + error.toString())),
+        SnackBar(content: Text('検索できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -106,7 +106,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('友達申請を送りますか？'),
-        content: Text(name + ' さんへ友達申請を送信します。'),
+        content: Text('$name さんへ友達申請を送信します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -134,7 +134,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('友達申請を送信できませんでした: ' + error.toString())),
+        SnackBar(content: Text('友達申請を送信できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
