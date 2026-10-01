@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -104,6 +105,30 @@ class AttendanceVerificationRepository {
         .eq('company_id', companyId)
         .order('name');
     return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String?> loadPreferredSiteId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    final companyId = await _companyId();
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(
+      'sko_attendance_site_${companyId}_${user.id}',
+    );
+  }
+
+  Future<void> savePreferredSiteId(String? siteId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+    final companyId = await _companyId();
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'sko_attendance_site_${companyId}_${user.id}';
+    final value = siteId?.trim() ?? '';
+    if (value.isEmpty) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, value);
+    }
   }
 
   Future<void> updateSiteLocation({
