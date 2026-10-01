@@ -741,6 +741,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       appBar: selected != null && !_chatChromeVisible
           ? null
           : AppBar(
+        backgroundColor: selected == null
+            ? null
+            : Theme.of(context)
+                .colorScheme
+                .surface
+                .withValues(alpha: _appearance.headerAlpha),
+        surfaceTintColor: selected == null ? null : Colors.transparent,
         title: selected == null
             ? const Text(
                 'チャット',
