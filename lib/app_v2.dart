@@ -573,11 +573,6 @@ class _HomePageState extends State<HomePage> {
         key == 'attendance_verify') {
       await _loadHomeAttendanceStatus();
     }
-    if (key == 'clock_in' ||
-        key == 'clock_out' ||
-        key == 'attendance_verify') {
-      await _loadHomeAttendanceStatus();
-    }
     if (key == 'settings') {
       await _loadModuleSettings();
     }
