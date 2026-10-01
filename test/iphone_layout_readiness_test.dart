@@ -51,21 +51,17 @@ void main() {
     await tester.pumpAndSettle();
 
     final menuList = find.byType(ListView).last;
-    for (var attempt = 0;
-        attempt < 12 && find.text('プロフィール').evaluate().isEmpty;
-        attempt++) {
-      await tester.drag(menuList, const Offset(0, -220));
+    for (final label in ['プロフィール', 'ヘルプ']) {
+      await tester.drag(menuList, const Offset(0, 5000));
       await tester.pumpAndSettle();
+      for (var attempt = 0;
+          attempt < 20 && find.text(label).evaluate().isEmpty;
+          attempt++) {
+        await tester.drag(menuList, const Offset(0, -220));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text(label), findsOneWidget);
     }
-    expect(find.text('プロフィール'), findsOneWidget);
-
-    for (var attempt = 0;
-        attempt < 12 && find.text('ヘルプ').evaluate().isEmpty;
-        attempt++) {
-      await tester.drag(menuList, const Offset(0, -220));
-      await tester.pumpAndSettle();
-    }
-    expect(find.text('ヘルプ'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
