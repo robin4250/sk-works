@@ -12,6 +12,7 @@ import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
+import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
@@ -103,6 +104,8 @@ class _HomePageState extends State<HomePage> {
   final _employeeOnboardingRepository =
       EmployeeOnboardingRepository.maybeCreate();
   final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
+  final _attendanceVerificationRepository =
+      AttendanceVerificationRepository.maybeCreate();
   final _payrollAdjustmentRepository =
       PayrollAdjustmentRepository.maybeCreate();
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
@@ -126,6 +129,7 @@ class _HomePageState extends State<HomePage> {
         needsLicense: false,
         needsQualification: false,
       );
+  HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
 
   bool get _isAdmin => _identity.isAdmin;
 
@@ -143,6 +147,7 @@ class _HomePageState extends State<HomePage> {
       _loadHomeLayout(),
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
+      _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
     ]);
   }
@@ -179,6 +184,18 @@ class _HomePageState extends State<HomePage> {
       setState(() => _requiredDocumentAttention = value);
     } catch (_) {
       // Missing-document attention must not block the home screen.
+    }
+  }
+
+  Future<void> _loadHomeAttendanceStatus() async {
+    final repository = _attendanceVerificationRepository;
+    if (repository == null) return;
+    try {
+      final value = await repository.loadHomeAttendanceStatus();
+      if (!mounted) return;
+      setState(() => _homeAttendanceStatus = value);
+    } catch (_) {
+      // Attendance status is supplemental and must not block the home screen.
     }
   }
 
@@ -693,6 +710,7 @@ class _HomePageState extends State<HomePage> {
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
+          attendanceStatus: _homeAttendanceStatus,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
