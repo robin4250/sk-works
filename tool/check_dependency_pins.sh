@@ -11,6 +11,7 @@ required=(
   "supabase_flutter: 2.17.2"
   "local_auth: 2.3.0"
   "geolocator: 14.0.3"
+  "google_mlkit_text_recognition: 0.17.1"
   "image_picker: 1.1.2"
   "mobile_scanner: 7.4.2"
   "qr_flutter: 4.1.0"
