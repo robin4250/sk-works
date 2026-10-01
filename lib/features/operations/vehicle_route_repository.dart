@@ -18,8 +18,19 @@ class VehicleRouteRepository {
   }
 
   Future<Map<String, dynamic>> permissions() async {
-    final value = await _client.rpc('current_feature_permissions');
-    return value is Map ? Map<String, dynamic>.from(value) : {};
+    final user = _client.auth.currentUser;
+    if (user == null) return const {};
+    final rows = await _client
+        .from('company_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .limit(1);
+    final role = rows.isEmpty ? '' : rows.first['role']?.toString() ?? '';
+    final canManage = role == 'owner' || role == 'admin' || role == 'manager';
+    return {
+      'can_manage_vehicles': canManage,
+      'can_manage_routes': canManage,
+    };
   }
 
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false}) async {
