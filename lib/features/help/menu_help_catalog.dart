@@ -42,7 +42,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
-    MenuHelpItem(key: 'vehicle_routes', label: '車両・ルート', purpose: '車両と運行ルートを確認し、権限があれば登録・編集します。', destination: '車両・ルート一覧へ移動します。', access: '全社員閲覧、管理者/サブ管理者/委任者が編集'),
+    MenuHelpItem(key: 'vehicle_routes', label: '車両・ルート', purpose: '車両番号・走行距離・車両書類と、複数地点の業務ルートを確認します。当日の勤務報告では車両とルートを選択できます。', destination: '車両・ルート一覧へ移動します。', access: '全社員が閲覧・当日選択、管理者/サブ管理者が登録・編集'),
     MenuHelpItem(key: 'profile', label: 'プロフィール', purpose: '自分の氏名、電話番号、写真、会社SKO ID等を確認します。', destination: 'プロフィール画面へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
     MenuHelpItem(key: 'notes', label: 'ノート', purpose: '業務メモと添付ファイルをチャット単位で管理します。', destination: 'ノート一覧へ移動します。', access: '会社設定と参加チャットの権限に従います'),
     MenuHelpItem(key: 'albums', label: 'アルバム', purpose: '業務写真をアルバムとしてまとめて確認します。', destination: 'アルバム一覧へ移動します。', access: '会社設定と参加チャットの権限に従います'),
