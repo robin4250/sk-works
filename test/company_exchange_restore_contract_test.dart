@@ -41,14 +41,17 @@ void main() {
     expect(inbox, contains("'保存しますか'"));
     expect(inbox, contains("'保存したデータを開く'"));
     expect(inbox, contains("'会社単位で一括保存'"));
-    expect(inbox, contains("saveReceivedDelivery("));
+    expect(inbox, contains("saveDeliveryItems("));
+    expect(inbox, contains("'要対応'"));
+    expect(inbox, contains("'最終データ保存日'"));
   });
 
   test('received delivery save state is server-side and authorized', () {
     final sql = File(
-      'supabase/migrations/20261001213703_add_received_delivery_save_state.sql',
+      'supabase/migrations/20261001214248_add_company_delivery_save_state.sql',
     ).readAsStringSync();
 
+    expect(sql, contains('private.company_delivery_saved_items'));
     expect(sql, contains('saved_at'));
     expect(sql, contains('saved_by'));
     expect(sql, contains('recipient_company_id=c'));
