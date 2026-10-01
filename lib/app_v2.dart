@@ -829,7 +829,7 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      '表示・並び・権限',
+                      'ホーム表示・並び順・権限',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
@@ -837,7 +837,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
+                      '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
                     ),
                     const SizedBox(height: 12),
                     SegmentedButton<int>(
