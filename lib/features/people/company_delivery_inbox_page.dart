@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -795,7 +796,7 @@ class _ReceivedDataPdfPreview extends StatelessWidget {
   final String title;
   final List<_ReceivedTransferItem> items;
 
-  Future<List<int>> _buildPdf() async {
+  Future<Uint8List> _buildPdf() async {
     final regular = await PdfGoogleFonts.notoSansJPRegular();
     final bold = await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
