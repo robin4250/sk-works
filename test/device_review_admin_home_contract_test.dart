@@ -16,6 +16,11 @@ void main() {
     expect(attention, greaterThanOrEqualTo(0));
     expect(management, greaterThan(attention));
 
+    expect(home, contains("'本日の勤務報告'"));
+    expect(home, isNot(contains("'おはようございます、")));
+    expect(home, contains("'未対応 ${attention.missingCount}件'"));
+    expect(home, contains('Icons.notifications_active_outlined'));
+
     expect(home, contains("'人員'"));
     expect(home, contains("'管理現場'"));
 
@@ -23,6 +28,8 @@ void main() {
     expect(home, contains('_HomeActionAccess.admin'));
     expect(home, contains('_HomeActionAccess.professional'));
     expect(home, contains('class _ProfessionalAccessMark'));
+    expect(home, contains('final background = scheme.surfaceContainerLowest;'));
+    expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));
 
     expect(app, isNot(contains("label: '運用準備チェック'")));
   });
