@@ -18,6 +18,7 @@ void main() {
     expect(selection, contains('_canManage && !_saving'));
     expect(selection, contains('saveSettings('));
     expect(selection, contains('savePreferredSiteId(_siteId)'));
+    expect(selection, contains("site['status']?.toString() == 'active'"));
     expect(selection, contains("'出勤方法と現場'"));
     expect(selection, contains("'現場を選択'"));
 
