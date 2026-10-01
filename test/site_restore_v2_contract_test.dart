@@ -25,6 +25,26 @@ void main() {
     expect(model, contains('creatorName'));
     expect(model, contains('createdAt'));
     expect(model, contains('updatedAt'));
+    final detail = File(
+      'lib/features/sites/site_cloud_detail_page.dart',
+    ).readAsStringSync();
+    final cloud =
+        File('lib/features/sites/site_cloud_page.dart').readAsStringSync();
+
+    expect(detail, contains("'取引先に共有'"));
+    expect(detail, contains("'編集／登録'"));
+    expect(detail, contains("'現場住所'"));
+    expect(detail, contains("'最寄駅'"));
+    expect(detail, contains("'現場責任者'"));
+    expect(detail, contains("'電話番号'"));
+    expect(detail, contains("'登録者の社員情報'"));
+    expect(detail, contains("'登録日'"));
+    expect(detail, contains("'最終更新日'"));
+    expect(detail, contains("Uri.https('maps.apple.com'"));
+    expect(detail, contains("Uri(scheme: 'tel'"));
+    expect(detail, contains("'確定して申請'"));
+    expect(detail, contains("for (var slot = 1; slot <= 3; slot++)"));
+    expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(detail, contains("'取引先に共有'"));
     expect(detail, contains("'編集／登録'"));
     expect(detail, contains("'最寄駅'"));
