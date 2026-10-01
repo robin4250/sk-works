@@ -13,8 +13,12 @@ void main() {
 
     expect(source, isNot(contains("'出勤・人区管理'")));
     expect(
-      RegExp(r"onOpen\('attendance'\)").allMatches(source).length,
+      RegExp(r"onOpen\('attendance_today'\)").allMatches(source).length,
       equals(1),
+    );
+    expect(
+      RegExp(r"onOpen\('attendance'\)").allMatches(source).length,
+      equals(0),
     );
 
     expect(source, contains("onOpen('clock_in')"));
