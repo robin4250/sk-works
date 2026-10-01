@@ -23,6 +23,8 @@ void main() {
     expect(common, contains("sendConnected("));
     expect(repo, contains("rpc('company_connection_targets')"));
     expect(repo, contains("'connected_parent_receive_code'"));
+    expect(repo, contains("'company_signature_sources'"));
+    expect(repo, contains("'send_connected_signature_data'"));
 
     for (final path in [
       'lib/features/people/personnel_bundle_send_page.dart',
@@ -41,6 +43,7 @@ void main() {
     expect(inbox, contains("'保存しますか'"));
     expect(inbox, contains("'保存したデータを開く'"));
     expect(inbox, contains("'会社単位で一括保存'"));
+    expect(inbox, contains("signatures('サイン一覧')"));
     expect(inbox, contains("saveDeliveryItems("));
     expect(inbox, contains("'要対応'"));
     expect(inbox, contains('最終データ保存日'));
