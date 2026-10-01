@@ -16,6 +16,19 @@ void main() {
     expect(page, contains('onTap: _showSelectedGroupMembers'));
   });
 
+  test('chat opens on the all-conversations list without auto-selecting', () {
+    final page = read('lib/features/chat/chat_cloud_page.dart');
+
+    expect(
+      page,
+      contains("final next = groups.any((g) => g['id']?.toString() == previous)"),
+    );
+    expect(page, contains(': null;'));
+    expect(page, contains('List<Map<String, dynamic>> get _allGroups'));
+    expect(page, contains("_ChatTab.all => _selectedGroupId == null"));
+    expect(page, isNot(contains("groups.first['id']?.toString()")));
+  });
+
   test('message time is outside the bubble like LINE', () {
     final page = read('lib/features/chat/chat_cloud_page.dart');
 

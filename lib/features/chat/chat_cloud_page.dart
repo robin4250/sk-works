@@ -86,7 +86,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       final previous = _selectedGroupId;
       final next = groups.any((g) => g['id']?.toString() == previous)
           ? previous
-          : (groups.isEmpty ? null : groups.first['id']?.toString());
+          : null;
 
       if (!mounted) return;
       setState(() {
@@ -397,6 +397,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  List<Map<String, dynamic>> get _allGroups {
+    final groups = List<Map<String, dynamic>>.from(_groups);
+    groups.sort(
+      (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
+    );
+    return groups;
+  }
+
   List<Map<String, dynamic>> get _siteGroups {
     final groups =
         _groups.where((g) => g['group_type'] == 'site').toList();
@@ -546,7 +554,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   const Divider(height: 1),
                   Expanded(
                     child: switch (_tab) {
-                      _ChatTab.all => _conversationView(),
+                      _ChatTab.all => _selectedGroupId == null
+                          ? _groupList(
+                              _allGroups,
+                              emptyText: 'トークはまだありません',
+                            )
+                          : _conversationView(),
                       _ChatTab.site => _groupList(
                           _siteGroups,
                           emptyText: '現場トークはまだありません',
