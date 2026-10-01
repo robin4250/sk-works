@@ -473,7 +473,7 @@ class _MiniTag extends StatelessWidget {
   }
 }
 
-class WorkerAttendanceMonthPage extends StatelessWidget {
+class WorkerAttendanceMonthPage extends StatefulWidget {
   const WorkerAttendanceMonthPage({
     super.key,
     required this.month,
@@ -484,10 +484,58 @@ class WorkerAttendanceMonthPage extends StatelessWidget {
   final WorkerAttendanceMonth data;
 
   @override
+  State<WorkerAttendanceMonthPage> createState() =>
+      _WorkerAttendanceMonthPageState();
+}
+
+class _WorkerAttendanceMonthPageState
+    extends State<WorkerAttendanceMonthPage> {
+  final _repository = WorkerAttendanceSheetRepository.maybeCreate();
+
+  late DateTime _month;
+  late WorkerAttendanceMonth _data;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _month = DateTime(widget.month.year, widget.month.month);
+    _data = widget.data;
+  }
+
+  Future<void> _changeMonth(int delta) async {
+    final repository = _repository;
+    if (repository == null || _loading) return;
+
+    final next = DateTime(_month.year, _month.month + delta);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await repository.loadMonth(next);
+      if (!mounted) return;
+      setState(() {
+        _month = next;
+        _data = data;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${month.year}年${month.month}月'),
+        title: Text('${_month.year}年${_month.month}月'),
         actions: [
           const SkoNotificationBell(),
         ],
@@ -496,19 +544,41 @@ class WorkerAttendanceMonthPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
           children: [
-            _MonthCalendar(month: month, data: data),
-            const SizedBox(height: 14),
-            _MonthlySummary(data: data),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => WorkerAttendancePrintPreviewPage(
-                    month: month,
-                    data: data,
-                  ),
+            _MonthHeader(
+              month: _month,
+              onPrevious: _loading ? () {} : () => _changeMonth(-1),
+              onNext: _loading ? () {} : () => _changeMonth(1),
+            ),
+            if (_loading) ...[
+              const SizedBox(height: 4),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
                 ),
               ),
+            ],
+            const SizedBox(height: 6),
+            _MonthCalendar(month: _month, data: _data),
+            const SizedBox(height: 14),
+            _MonthlySummary(data: _data),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => WorkerAttendancePrintPreviewPage(
+                            month: _month,
+                            data: _data,
+                          ),
+                        ),
+                      ),
               icon: const Icon(Icons.print_outlined),
               label: const Text('A4印刷プレビュー'),
             ),
@@ -615,6 +685,8 @@ class _MonthCalendarCell extends StatelessWidget {
     final shortSite = siteName.isEmpty
         ? ''
         : siteName.characters.take(2).toString();
+    final holidayName = JapanHoliday.name(date);
+    final isHoliday = holidayName != null;
     final now = DateTime.now();
     final isToday = date.year == now.year &&
         date.month == now.month &&
@@ -643,7 +715,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  color: date.weekday == DateTime.sunday
+                  color: isHoliday || date.weekday == DateTime.sunday
                       ? Theme.of(context).colorScheme.error
                       : date.weekday == DateTime.saturday
                           ? Colors.blue.shade700
@@ -651,6 +723,19 @@ class _MonthCalendarCell extends StatelessWidget {
                 ),
               ),
             ),
+            if (holidayName != null)
+              Text(
+                holidayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
             const Spacer(),
             Text(
               worked ? shortSite : '休',
