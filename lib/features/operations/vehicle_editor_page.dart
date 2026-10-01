@@ -64,8 +64,13 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('PDF・写真から選ぶ'),
+              title: const Text('PDF・ファイルから選ぶ'),
               onTap: () => Navigator.pop(context, 'file'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリから選ぶ'),
+              onTap: () => Navigator.pop(context, 'gallery'),
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
@@ -77,6 +82,20 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
       ),
     );
     if (source == null) return null;
+
+    if (source == 'gallery') {
+      final image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 92,
+        maxWidth: 2400,
+      );
+      if (image == null) return null;
+      return _PendingDocument(
+        bytes: await image.readAsBytes(),
+        filename: image.name,
+        contentType: image.mimeType ?? 'image/jpeg',
+      );
+    }
 
     if (source == 'camera') {
       final image = await _picker.pickImage(
