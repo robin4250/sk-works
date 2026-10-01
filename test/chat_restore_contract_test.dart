@@ -23,6 +23,10 @@ void main() {
     expect(page, contains('Badge('));
     expect(page, contains("sko_chat_last_read_"));
     expect(page, contains("'友達追加'"));
+    expect(page, contains('NotificationListener<ScrollNotification>'));
+    expect(page, contains('_chatChromeVisible'));
+    expect(page, contains('ScrollStartNotification'));
+    expect(page, contains('ScrollEndNotification'));
     expect(page, contains('_positionInitialMessageView'));
     expect(page, contains('Scrollable.ensureVisible'));
     expect(page, contains("'背景・透明度'"));
