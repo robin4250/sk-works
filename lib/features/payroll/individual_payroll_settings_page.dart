@@ -53,7 +53,7 @@ class _IndividualPayrollSettingsPageState
       _controllers[field.$1] = TextEditingController();
     }
     for (var i = 1; i <= 3; i++) {
-      _controllers['allowance_name_' + i.toString()] = TextEditingController();
+      _controllers['allowance_name_$i'] = TextEditingController();
     }
     _load();
   }
@@ -115,7 +115,7 @@ class _IndividualPayrollSettingsPageState
             setting.amount(field.$1).toStringAsFixed(0);
       }
       for (var i = 1; i <= 3; i++) {
-        final key = 'allowance_name_' + i.toString();
+        final key = 'allowance_name_$i';
         _controllers[key]!.text = setting.text(key);
       }
       if (!mounted) return;
@@ -163,21 +163,21 @@ class _IndividualPayrollSettingsPageState
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     final values = <String, dynamic>{};
     for (final field in _amountFields) {
       final parsed = num.tryParse(_controllers[field.$1]!.text.trim());
       if (parsed == null || parsed < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(field.$2 + 'は0以上の数字で入力してください')),
+          SnackBar(content: Text('${field.$2}は0以上の数字で入力してください')),
         );
         return;
       }
       values[field.$1] = parsed;
     }
     for (var i = 1; i <= 3; i++) {
-      final key = 'allowance_name_' + i.toString();
+      final key = 'allowance_name_$i';
       values[key] = _controllers[key]!.text.trim();
     }
 
@@ -192,7 +192,7 @@ class _IndividualPayrollSettingsPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: ' + error.toString())),
+        SnackBar(content: Text('保存できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -243,7 +243,7 @@ class _IndividualPayrollSettingsPageState
                       if (_updatedAt != null) ...[
                         const SizedBox(height: 6),
                         Text(
-                          '最終更新日：' + _dateTime(_updatedAt!),
+                          '最終更新日：${_dateTime(_updatedAt!)}',
                           textAlign: TextAlign.right,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
@@ -257,17 +257,17 @@ class _IndividualPayrollSettingsPageState
                       for (var i = 1; i <= 3; i++) ...[
                         TextFormField(
                           controller: _controllers[
-                              'allowance_name_' + i.toString()],
+                              'allowance_name_$i'],
                           enabled: workspace.canEdit,
                           maxLength: 100,
                           decoration: InputDecoration(
-                            labelText: '手当' + i.toString() + ' 名称',
+                            labelText: '手当$i 名称',
                             border: const OutlineInputBorder(),
                           ),
                         ),
                         _amountField(
-                          'allowance_' + i.toString(),
-                          '手当' + i.toString() + ' 金額',
+                          'allowance_$i',
+                          '手当$i 金額',
                         ),
                       ],
                       _amountField('family_monthly', '家族手当・月額'),
@@ -319,13 +319,9 @@ class _IndividualPayrollSettingsPageState
       );
 
   String _dateTime(DateTime value) =>
-      value.year.toString() +
-      '/' +
-      value.month.toString().padLeft(2, '0') +
-      '/' +
-      value.day.toString().padLeft(2, '0') +
-      ' ' +
-      value.hour.toString().padLeft(2, '0') +
-      ':' +
-      value.minute.toString().padLeft(2, '0');
+      '${value.year}/'
+      '${value.month.toString().padLeft(2, '0')}/'
+      '${value.day.toString().padLeft(2, '0')} '
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
 }
