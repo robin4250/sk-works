@@ -12,6 +12,7 @@ import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
+import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/auth/employee_onboarding_approvals_page.dart';
@@ -426,7 +427,7 @@ class _HomePageState extends State<HomePage> {
       }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const AttendanceCloudPage(),
+          builder: (_) => const TodayAttendancePage(),
         ),
       );
       return;
