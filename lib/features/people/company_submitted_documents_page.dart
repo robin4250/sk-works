@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../common/data_date_labels.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
 
@@ -193,6 +194,10 @@ class _CompanySubmittedDocumentsPageState
                 if (expires.isNotEmpty) '有効期限 ' + expires,
                 if ((row['notes']?.toString() ?? '').isNotEmpty)
                   row['notes'].toString(),
+                ...DataDateLabels.labels(
+                  createdAt: row['created_at'],
+                  updatedAt: row['updated_at'],
+                ),
               ].join(' / '),
             ),
             secondary: const Icon(Icons.business_center_outlined),
