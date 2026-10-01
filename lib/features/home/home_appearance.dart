@@ -93,7 +93,7 @@ class HomeAppearanceRepository {
     final wallpaperDir = Directory('${dir.path}/sko_wallpapers');
     if (!await wallpaperDir.exists()) await wallpaperDir.create(recursive: true);
     final extension = image.name.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
-    final target = File('${wallpaperDir.path}/${_userKey}$extension');
+    final target = File('${wallpaperDir.path}/$_userKey$extension');
     await File(image.path).copy(target.path);
     return target.path;
   }
