@@ -80,6 +80,7 @@ class PersonalAttendanceStatusRepository {
     }
 
     final settings = await _verificationRepository.loadSettings();
+    final companyId = settings['company_id']?.toString() ?? '';
     final preferredSiteId =
         await _verificationRepository.loadPreferredSiteId();
 
@@ -93,6 +94,7 @@ class PersonalAttendanceStatusRepository {
           'event_type, confirmed_at, site_id, '
           'sites!attendance_verifications_site_id_fkey(id, name)',
         )
+        .eq('company_id', companyId)
         .eq('worker_id', id)
         .gte('confirmed_at', start.toUtc().toIso8601String())
         .lt('confirmed_at', end.toUtc().toIso8601String())
@@ -133,12 +135,11 @@ class PersonalAttendanceStatusRepository {
     String? siteName = latestSiteId == siteId ? latestSiteName : null;
 
     if (siteId != null && siteId.isNotEmpty && siteName == null) {
-      final companyId = settings['company_id']?.toString();
       var siteQuery = _client
           .from('sites')
           .select('id, name')
           .eq('id', siteId);
-      if (companyId != null && companyId.isNotEmpty) {
+      if (companyId.isNotEmpty) {
         siteQuery = siteQuery.eq('company_id', companyId);
       }
       final site = await siteQuery.maybeSingle();
