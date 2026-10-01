@@ -342,7 +342,8 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             OutlinedButton.icon(
               onPressed: () async {
                 await widget.onComplete!();
-                if (mounted) Navigator.of(context).pop();
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
               },
               icon: const Icon(Icons.archive_outlined),
               label: const Text('現場を終了'),
