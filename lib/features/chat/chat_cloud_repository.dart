@@ -617,4 +617,48 @@ class ChatCloudRepository {
     return result;
   }
 
+
+  Future<Map<String, dynamic>> loadFriendWorkspace() async {
+    final raw = await _client.rpc('sko_friend_workspace');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>?> searchFriendBySkoId(String skoId) async {
+    final raw = await _client.rpc(
+      'search_personal_sko_id',
+      params: {'p_sko_id': skoId.trim()},
+    );
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  Future<void> sendFriendRequest(String skoId) async {
+    await _client.rpc(
+      'send_sko_friend_request',
+      params: {'p_sko_id': skoId.trim()},
+    );
+  }
+
+  Future<void> respondFriendRequest({
+    required String requestId,
+    required bool accept,
+  }) async {
+    await _client.rpc(
+      'respond_sko_friend_request',
+      params: {
+        'p_request_id': requestId,
+        'p_accept': accept,
+      },
+    );
+  }
+
+  Future<void> removeFriend(String userId) async {
+    await _client.rpc(
+      'remove_sko_friend',
+      params: {'p_user': userId},
+    );
+  }
+
 }
