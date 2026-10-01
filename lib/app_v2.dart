@@ -555,6 +555,7 @@ class _HomePageState extends State<HomePage> {
       case 'help':
         page = HelpPage(
           role: ManualContent.fromMembershipRole(_identity.role),
+          visibleFeatureKeys: _menuItems.map((item) => item.key).toSet(),
         );
         break;
       case 'admin_sites':
