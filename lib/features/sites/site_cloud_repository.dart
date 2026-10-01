@@ -259,6 +259,20 @@ class SiteCloudRepository {
     );
   }
 
+  Future<Map<String, dynamic>?> loadCreatorEmployee(String creatorName) async {
+    final name = creatorName.trim();
+    if (name.isEmpty) return null;
+    final member = await membership();
+    final rows = await _client
+        .from('workers')
+        .select('id,name,kana,phone,email,status,role,experience_years,created_at,updated_at')
+        .eq('company_id', member.companyId)
+        .eq('name', name)
+        .limit(1);
+    if (rows.isEmpty) return null;
+    return Map<String, dynamic>.from(rows.first);
+  }
+
   Future<void> complete(String id) async {
     if (id.isEmpty) return;
     await _client.from('sites').update({
