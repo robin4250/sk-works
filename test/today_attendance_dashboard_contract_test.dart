@@ -15,8 +15,8 @@ void main() {
     expect(repository, contains('workers!attendance_verifications_worker_id_fkey'));
     expect(repository, contains('sites!attendance_verifications_site_id_fkey'));
     expect(repository, contains('attendance_verifications'));
-    expect(repository, contains("event_type == 'clock_in'"));
-    expect(repository, contains("event_type == 'clock_out'"));
+    expect(repository, contains("eventType == 'clock_in'"));
+    expect(repository, contains("eventType == 'clock_out'"));
 
     expect(page, contains("'本日の出勤'"));
     expect(page, contains("'自社 "));
@@ -26,6 +26,8 @@ void main() {
     expect(page, contains("'退勤済'"));
 
     expect(app, contains("import 'features/attendance/today_attendance_page.dart';"));
+    expect(app, contains("if (key == 'attendance_today')"));
+    expect(app, contains("_identity.can('can_manage_attendance')"));
     expect(app, contains('builder: (_) => const TodayAttendancePage()'));
   });
 }
