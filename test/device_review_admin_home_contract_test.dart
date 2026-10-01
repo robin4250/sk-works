@@ -18,7 +18,7 @@ void main() {
 
     expect(home, contains("'本日の勤務報告'"));
     expect(home, isNot(contains("'おはようございます、")));
-    expect(home, contains("'未対応 ${attention.missingCount}件'"));
+    expect(home, contains("'未対応 \${attention.missingCount}件'"));
     expect(home, contains('Icons.notifications_active_outlined'));
 
     expect(home, contains("'人員'"));
