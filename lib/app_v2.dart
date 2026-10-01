@@ -42,6 +42,7 @@ import 'features/people/company_submitted_documents_page.dart';
 import 'features/people/employee_invite_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
+import 'features/people/signature_list_page.dart';
 import 'features/people/worker_document_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
@@ -532,6 +533,9 @@ class _HomePageState extends State<HomePage> {
       case 'company_documents':
         page = const CompanySubmittedDocumentsPage();
         break;
+      case 'signatures':
+        page = const SignatureListPage();
+        break;
       case 'today_line':
         page = const TodayLineAttendancePage();
         break;
@@ -673,6 +677,12 @@ class _HomePageState extends State<HomePage> {
           key: 'company_documents',
           label: '会社提出書類',
           icon: Icons.business_center_outlined,
+        ),
+      if (_isAdmin)
+        const _MenuAction(
+          key: 'signatures',
+          label: 'サイン一覧',
+          icon: Icons.draw_outlined,
         ),
       const _MenuAction(
         key: 'settings',
