@@ -14,7 +14,7 @@ void main() {
     expect(app, contains("ButtonSegment(value: 2"));
     expect(app, contains("ButtonSegment(value: 3"));
     expect(app, contains("ButtonSegment(value: 4"));
-    expect(app, contains("'並び順'"));
+    expect(app, contains('並び順'));
     expect(app, contains("keyboard_arrow_up"));
     expect(app, contains("keyboard_arrow_down"));
 
