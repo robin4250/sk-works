@@ -8,16 +8,18 @@ class HomeIdentity {
     required this.companyName,
     required this.displayName,
     this.permissions = const {},
+    this.isMasterAdmin = false,
   });
 
   final String role;
   final String companyName;
   final String displayName;
   final Map<String, bool> permissions;
+  final bool isMasterAdmin;
 
   bool get isAdmin => role == 'owner' || role == 'admin';
   bool get isSubAdmin => role == 'manager';
-  bool get isManagement => isAdmin || isSubAdmin;
+  bool get isManagement => isMasterAdmin || isAdmin || isSubAdmin;
 
   bool can(String key) {
     if (key == 'can_approve_daily_report_edits') {
@@ -27,12 +29,15 @@ class HomeIdentity {
     return permissions[key] ?? false;
   }
 
-  String get roleLabel => switch (role) {
-        'owner' => '管理者',
-        'admin' => '管理者',
-        'manager' => 'サブ管理者',
-        _ => '一般ユーザー',
-      };
+  String get roleLabel {
+    if (isMasterAdmin) return 'Master';
+    return switch (role) {
+      'owner' => '管理者',
+      'admin' => '管理者',
+      'manager' => 'サブ管理者',
+      _ => '一般ユーザー',
+    };
+  }
 }
 
 class HomeMembershipRepository {
@@ -60,6 +65,16 @@ class HomeMembershipRepository {
       );
     }
 
+    var isMasterAdmin = false;
+    try {
+      final masterStatus = await _client.rpc('current_master_admin_status');
+      if (masterStatus is Map) {
+        isMasterAdmin = masterStatus['is_master_admin'] == true;
+      }
+    } catch (_) {
+      // Master status is independent from company membership resolution.
+    }
+
     final rows = await _client
         .from('company_members')
         .select('company_id, role')
@@ -72,6 +87,7 @@ class HomeMembershipRepository {
         companyName: 'SKO',
         displayName: user.phone ?? user.email ?? 'ユーザー',
         permissions: const {},
+        isMasterAdmin: isMasterAdmin,
       );
     }
 
@@ -143,6 +159,7 @@ class HomeMembershipRepository {
       companyName: companyName,
       displayName: displayName,
       permissions: permissions,
+      isMasterAdmin: isMasterAdmin,
     );
   }
 }
