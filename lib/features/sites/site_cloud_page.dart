@@ -174,6 +174,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                                         builder: (_) => SiteDetailPage(
                                           site: site,
                                           canManage: _canManageSites,
+                                          onComplete: () => _complete(site),
                                         ),
                                       ),
                                     ),
@@ -243,4 +244,38 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _complete(SiteRecord site) async {
+    final repository = _repository;
+    if (repository == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('現場終了の確認'),
+        content: Text(
+          '「${site.name}」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('現場を終了'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await repository.complete(site.id);
+    if (!mounted) return;
+    await _load();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
+    );
+  }
+
 }
