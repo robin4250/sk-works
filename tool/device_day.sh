@@ -38,7 +38,8 @@ if [[ "$status" -ne 0 ]]; then
 fi
 
 echo
-echo "[3/4] 実機当日の一括プリフライトを実行します"
+echo "[3/4] 最新iOS設定を再適用して実機当日の一括プリフライトを実行します"
+bash tool/prepare_ios.sh
 set +e
 bash tool/device_day_preflight.sh
 status=$?
