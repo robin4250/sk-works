@@ -23,10 +23,11 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
   exit 1
 fi
 
-if [[ ! -d ios/Runner.xcworkspace ]]; then
-  echo "iOSプロジェクトを準備します..."
-  bash tool/prepare_ios.sh
-fi
+echo "最新mainのiOS生成設定をMacへ再適用します..."
+bash tool/prepare_ios.sh
+
+echo "生成済みiOS設定を検証します..."
+bash tool/check_ios_generated_contract.sh
 
 echo "実機インストール前チェックを実行します..."
 if ! bash tool/ios_install_assistant.sh; then
