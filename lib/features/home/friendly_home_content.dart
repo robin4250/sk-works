@@ -360,7 +360,7 @@ class _AdminHome extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: () => onOpen('attendance'),
+                  onPressed: () => onOpen('attendance_today'),
                   icon: const Icon(Icons.groups_outlined),
                   label: const Text('出勤状況を確認'),
                 ),

@@ -378,6 +378,20 @@ class _HomePageState extends State<HomePage> {
       setState(() => _selectedIndex = 1);
       return;
     }
+    if (key == 'attendance_today') {
+      if (!_identity.can('can_manage_attendance')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('この機能を利用する権限がありません')),
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const AttendanceCloudPage(),
+        ),
+      );
+      return;
+    }
     if (key == 'footer_sites' || key == 'site_register') {
       setState(() => _selectedIndex = 2);
       return;
@@ -695,9 +709,7 @@ class _HomePageState extends State<HomePage> {
     final pages = <Widget>[
       _homeDashboard(),
       _moduleEnabled('attendance')
-          ? (_identity.can('can_manage_attendance')
-              ? const AttendanceCloudPage()
-              : const WorkerAttendanceSheetPage())
+          ? const WorkerAttendanceSheetPage()
           : const _ModuleDisabledPage(label: '出勤表'),
       _moduleEnabled('sites')
           ? const SiteCloudPage()
