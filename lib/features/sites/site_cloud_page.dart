@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
+import 'site_detail_page.dart';
 import 'site_page.dart';
 
 class SiteCloudPage extends StatefulWidget {
@@ -109,7 +110,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '現場名・得意先・担当者・住所で検索',
+                  hintText: '現場名・取引先・担当者・住所で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -165,7 +166,14 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                                       if (site.managerName.isNotEmpty) site.managerName,
                                     ].join(' / ')),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(site),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => SiteDetailPage(
+                                          site: site,
+                                          canManage: _canManageSites,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 );
                               },
@@ -212,7 +220,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
             children: [
               Text(site.name, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
-              Text('得意先: ${site.customerName}'),
+              Text('取引先: ${site.customerName}'),
               Text('状態: ${site.status.label}'),
               if (site.managerName.isNotEmpty) Text('担当者: ${site.managerName}'),
               if (site.address.isNotEmpty) Text('住所: ${site.address}'),
