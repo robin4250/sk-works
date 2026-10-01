@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/company_data_transfer.dart';
+import '../common/data_date_labels.dart';
 import '../people/personnel_export_page.dart';
 import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
@@ -561,6 +562,11 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               if ((row['notes']?.toString() ?? '').isNotEmpty) Text('備考: ${row['notes']}'),
               if ((row['attachment_path']?.toString() ?? '').isNotEmpty)
                 const Text('証明書画像: 登録済み'),
+              for (final label in DataDateLabels.labels(
+                createdAt: row['created_at'],
+                updatedAt: row['updated_at'],
+              ))
+                Text(label),
               const SizedBox(height: 16),
               if (_canManageWorkerQualifications)
                 OutlinedButton.icon(

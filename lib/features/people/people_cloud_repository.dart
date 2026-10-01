@@ -64,8 +64,29 @@ class PeopleCloudRepository {
     final rows = await _client.rpc('people_management_records');
     if (rows is! List) return const <Map<String, dynamic>>[];
 
+    final companyId = await _companyId();
+    final workerDates = await _client
+        .from('workers')
+        .select('id,created_at,updated_at')
+        .eq('company_id', companyId);
+    final partnerDates = await _client
+        .from('partner_companies')
+        .select('id,created_at,updated_at')
+        .eq('company_id', companyId);
+    final datesById = <String, Map<String, dynamic>>{};
+    for (final row in workerDates) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isNotEmpty) datesById[id] = Map<String, dynamic>.from(row);
+    }
+    for (final row in partnerDates) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isNotEmpty) datesById[id] = Map<String, dynamic>.from(row);
+    }
+
     return rows.map<Map<String, dynamic>>((row) {
       final value = Map<String, dynamic>.from(row as Map);
+      final id = value['id']?.toString() ?? '';
+      final dates = datesById[id] ?? const <String, dynamic>{};
       return {
         'id': value['id'],
         'kind': value['kind'],
@@ -76,6 +97,8 @@ class PeopleCloudRepository {
         'role': value['role'] ?? '',
         'notes': value['notes'] ?? '',
         'active': value['active'] == true,
+        'createdAt': dates['created_at'] ?? '',
+        'updatedAt': dates['updated_at'] ?? '',
       };
     }).toList(growable: false);
   }
