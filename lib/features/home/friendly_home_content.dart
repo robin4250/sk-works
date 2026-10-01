@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../attendance/attendance_verification_repository.dart';
 import 'home_attention_repository.dart';
 import 'home_membership_repository.dart';
 
@@ -11,6 +12,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
+    this.attendanceStatus = const HomeAttendanceStatus(),
     required this.onOpen,
     required this.onRefresh,
   });
@@ -20,6 +22,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final HomeAttendanceStatus attendanceStatus;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -41,7 +44,10 @@ class FriendlyHomeContent extends StatelessWidget {
           ],
           if (moduleEnabled('attendance')) ...[
             const SizedBox(height: 12),
-            _PersonalAttendanceCard(onOpen: onOpen),
+            _PersonalAttendanceCard(
+              status: attendanceStatus,
+              onOpen: onOpen,
+            ),
           ],
           const SizedBox(height: 14),
           if (identity.isManagement)
@@ -202,52 +208,113 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 }
 
 class _PersonalAttendanceCard extends StatelessWidget {
-  const _PersonalAttendanceCard({required this.onOpen});
+  const _PersonalAttendanceCard({
+    required this.status,
+    required this.onOpen,
+  });
 
+  final HomeAttendanceStatus status;
   final Future<void> Function(String key) onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isWorking = status.phase == HomeAttendancePhase.working;
+    final isFinished = status.phase == HomeAttendancePhase.finished;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '本日の勤務報告',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '一般ユーザー・サブ管理者・管理者の全員が、自分自身の出勤・退勤を登録できます。'
-              '位置情報は登録ボタンを押した時だけ取得します。',
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: () => onOpen('footer_sites'),
-              icon: const Icon(Icons.business_outlined),
-              label: const Text('出勤方法と現場を選択'),
-            ),
-            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => onOpen('clock_in'),
-                    icon: const Icon(Icons.login),
-                    label: const Text('出勤'),
+                  child: Text(
+                    '本日の勤務報告',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => onOpen('clock_out'),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('退勤'),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isWorking
+                        ? colors.primaryContainer
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(99),
                   ),
+                  child: Text(
+                    status.phaseLabel,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
+            Text(
+              '選択中の出勤方法：${status.verificationModeLabel}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '選択中の現場：${status.siteName?.trim().isNotEmpty == true ? status.siteName : '未選択'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            if (status.clockIn != null || status.clockOut != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                '出勤 ${_time(status.clockIn)}　退勤 ${_time(status.clockOut)}',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => onOpen('attendance_verify'),
+              icon: const Icon(Icons.tune_outlined),
+              label: const Text('出勤方法と現場を選択'),
+            ),
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                Expanded(
+                  child: isWorking || isFinished
+                      ? OutlinedButton.icon(
+                          onPressed: () => onOpen('clock_in'),
+                          icon: const Icon(Icons.login),
+                          label: const Text('出勤'),
+                        )
+                      : FilledButton.icon(
+                          onPressed: () => onOpen('clock_in'),
+                          icon: const Icon(Icons.login),
+                          label: const Text('出勤'),
+                        ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: isWorking
+                      ? FilledButton.icon(
+                          onPressed: () => onOpen('clock_out'),
+                          icon: const Icon(Icons.logout),
+                          label: const Text('退勤'),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: () => onOpen('clock_out'),
+                          icon: const Icon(Icons.logout),
+                          label: const Text('退勤'),
+                        ),
                 ),
               ],
             ),
@@ -255,6 +322,12 @@ class _PersonalAttendanceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _time(DateTime? value) {
+    if (value == null) return '--:--';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(value.hour)}:${two(value.minute)}';
   }
 }
 
