@@ -94,6 +94,26 @@ class CompanyDocumentExchangeRepository {
     ];
   }
 
+  Future<Map<String, dynamic>> loadConnectionInbox() async {
+    final value = await _client.rpc('company_connection_inbox');
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> respondCompanyConnection({
+    required String connectionId,
+    required bool accept,
+  }) async {
+    await _client.rpc(
+      'respond_company_connection',
+      params: {
+        'p_connection_id': connectionId,
+        'p_accept': accept,
+      },
+    );
+  }
+
   Future<List<Map<String, dynamic>>> listTransferTargets() async {
     final value = await _client.rpc('company_connection_targets');
     if (value is! List) return const [];
