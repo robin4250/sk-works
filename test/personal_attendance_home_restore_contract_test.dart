@@ -17,6 +17,7 @@ void main() {
         File('lib/features/attendance/attendance_verification_repository.dart')
             .readAsStringSync();
 
+    expect(home, contains('Icons.calendar_today_outlined'));
     expect(home, contains("'本日の勤務報告'"));
     expect(home, contains("'選択中の出勤方法'"));
     expect(home, contains("'選択中の現場'"));
