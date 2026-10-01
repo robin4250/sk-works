@@ -18,7 +18,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
-  Set<String> _savedDeliveryIds = <String>{};
+  Map<String, DateTime> _savedState = const {};
   List<Map<String, dynamic>> _incomingConnections = const [];
   bool _loading = true;
   bool _forwarding = false;
@@ -53,15 +53,12 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
         repository.listDeliveries(),
         repository.listTransferTargets(),
         repository.loadConnectionInbox(),
+        repository.loadSavedDeliveryState(),
       ]);
       final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
       final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
       final connectionInbox = valuesTop[2] as Map<String, dynamic>;
-      final savedDeliveryIds = deliveries
-          .where((row) => row['received'] == true && row['saved_at'] != null)
-          .map((row) => row['id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
+      final savedState = valuesTop[3] as Map<String, DateTime>;
       final incomingRaw = connectionInbox['incoming'];
       final incomingConnections = incomingRaw is List
           ? incomingRaw
@@ -116,7 +113,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ..addAll(loaded);
         _selectedKeys.clear();
         _transferTargets = transferTargets;
-        _savedDeliveryIds = savedDeliveryIds;
+        _savedState = savedState;
         _incomingConnections = incomingConnections;
         if (_targetCompanyId != null &&
             !transferTargets.any(
@@ -145,21 +142,16 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   ) async {
     final repository = _repository;
     if (repository == null) return;
-    final deliveryIds =
-        items.map((item) => item.deliveryId).where((id) => id.isNotEmpty).toSet();
-    if (deliveryIds.isEmpty) return;
-    for (final deliveryId in deliveryIds) {
-      await repository.saveReceivedDelivery(deliveryId);
-    }
+    final keys = items.map((item) => item.key).toList(growable: false);
+    if (keys.isEmpty) return;
+    await repository.saveDeliveryItems(keys);
+    final savedState = await repository.loadSavedDeliveryState();
     if (!mounted) return;
-    setState(() => _savedDeliveryIds = {
-          ..._savedDeliveryIds,
-          ...deliveryIds,
-        });
+    setState(() => _savedState = savedState);
   }
 
   Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
-    final alreadySaved = _savedDeliveryIds.contains(item.deliveryId);
+    final alreadySaved = _savedState.containsKey(item.key);
     final shouldSave = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -221,7 +213,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     List<_ReceivedTransferItem> items,
   ) async {
     final unsaved =
-        items.where((item) => !_savedDeliveryIds.contains(item.deliveryId)).toList();
+        items.where((item) => !_savedState.containsKey(item.key)).toList();
     if (unsaved.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(companyName + 'のデータはすべて保存済みです')),
@@ -436,18 +428,18 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                           ),
                                         ),
                                         subtitle: Text(
-                                          _savedDeliveryIds.contains(item.deliveryId)
+                                          _savedState.containsKey(item.key)
                                               ? item.subtitle + ' / 保存済み'
                                               : item.subtitle,
                                         ),
                                         secondary: IconButton(
-                                          tooltip: _savedDeliveryIds.contains(item.deliveryId)
+                                          tooltip: _savedState.containsKey(item.key)
                                               ? '保存したデータを開く'
                                               : '詳細・保存',
                                           onPressed: () =>
                                               _showReceivedDetail(item),
                                           icon: Icon(
-                                            _savedDeliveryIds.contains(item.deliveryId)
+                                            _savedState.containsKey(item.key)
                                                 ? Icons.folder_open_outlined
                                                 : Icons.download_outlined,
                                           ),
@@ -599,8 +591,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   String _companySubtitle(List<_ReceivedTransferItem> items) {
     final saved = items
-        .where((item) => item.savedAt.isNotEmpty)
-        .map((item) => DateTime.tryParse(item.savedAt)?.toLocal())
+        .map((item) => _savedState[item.key])
         .whereType<DateTime>()
         .toList()
       ..sort();
