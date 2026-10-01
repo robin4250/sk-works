@@ -306,14 +306,16 @@ class _PersonalAttendanceCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            if (status.selectedVehicleName?.trim().isNotEmpty == true) ...[
+            if (vehicleRoutesEnabled &&
+                status.selectedVehicleName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               Text(
                 '選択中の車両：${status.selectedVehicleName}',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ],
-            if (status.selectedRouteName?.trim().isNotEmpty == true) ...[
+            if (vehicleRoutesEnabled &&
+                status.selectedRouteName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               Text(
                 '選択中のルート：${status.selectedRouteName}',
