@@ -723,14 +723,138 @@ class _MonthlySummary extends StatelessWidget {
 
   static String _number(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
-    var text = value.toStringAsFixed(2);
-    while (text.endsWith('0')) {
-      text = text.substring(0, text.length - 1);
-    }
-    if (text.endsWith('.')) {
-      text = text.substring(0, text.length - 1);
-    }
-    return text;
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+}
+
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
+        '$label  $value',
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class WorkerAttendancePrintPreviewPage extends StatelessWidget {
+  const WorkerAttendancePrintPreviewPage({
+    super.key,
+    required this.month,
+    required this.data,
+  });
+
+  final DateTime month;
+  final WorkerAttendanceMonth data;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = data.days.values.toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('A4プレビュー')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            AspectRatio(
+              aspectRatio: 1 / 1.414,
+              child: Card(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '出勤表  ${month.year}年${month.month}月',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            if (data.workedDays > 0)
+                              Text('出勤 ${data.workedDays}日'),
+                            if (data.overtimeHours > 0)
+                              Text('残業 ${_number(data.overtimeHours)}時間'),
+                            if (data.earlyHours > 0)
+                              Text('早出 ${_number(data.earlyHours)}時間'),
+                            if (data.nightHours > 0)
+                              Text('夜間 ${_number(data.nightHours)}時間'),
+                          ],
+                        ),
+                        const Divider(height: 20),
+                        Expanded(
+                          child: ListView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              for (final day in rows)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 2),
+                                  child: Text(
+                                    '${day.date.month}/${day.date.day}  '
+                                    '${day.siteName ?? '休み'}  '
+                                    '${_time(day.clockIn)}〜${_time(day.clockOut)}  '
+                                    '残${_number(day.overtimeHours)}  '
+                                    '早${_number(day.earlyHours)}  '
+                                    '夜${_number(day.nightHours)}  '
+                                    '手${day.allowanceYen > 0 ? '1' : ''}',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: () => AttendancePdfService.printMonth(month, data),
+              icon: const Icon(Icons.print),
+              label: const Text('印刷'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _number(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   static String _time(DateTime? value) {
