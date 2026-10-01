@@ -12,6 +12,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
+    this.visibleHomeKeys = const <String>{},
     this.attendanceStatus = const HomeAttendanceStatus(),
     required this.onOpen,
     required this.onRefresh,
@@ -22,6 +23,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
   final HomeAttendanceStatus attendanceStatus;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
@@ -56,6 +58,7 @@ class FriendlyHomeContent extends StatelessWidget {
               moduleEnabled: moduleEnabled,
               gridColumns: gridColumns,
               actionOrder: actionOrder,
+              visibleHomeKeys: visibleHomeKeys,
               onOpen: onOpen,
             )
           else
@@ -63,6 +66,7 @@ class FriendlyHomeContent extends StatelessWidget {
               moduleEnabled: moduleEnabled,
               gridColumns: gridColumns,
               actionOrder: actionOrder,
+              visibleHomeKeys: visibleHomeKeys,
               onOpen: onOpen,
             ),
         ],
@@ -336,12 +340,14 @@ class _WorkerHome extends StatelessWidget {
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
+    required this.visibleHomeKeys,
     required this.onOpen,
   });
 
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -353,33 +359,38 @@ class _WorkerHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            const _HomeAction(
+            if (visibleHomeKeys.contains('payroll'))
+const _HomeAction(
               'payroll',
               '給与明細',
               Icons.payments_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('profile'))
+const _HomeAction(
               'profile',
               'プロフィール',
               Icons.account_circle_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('vehicle_routes'))
+const _HomeAction(
               'vehicle_routes',
               '車両・ルート',
               Icons.route_outlined,
             ),
-            if (moduleEnabled('sites'))
+            if (moduleEnabled('sites') && visibleHomeKeys.contains('site_register'))
               const _HomeAction(
                 'site_register',
                 '現場登録',
                 Icons.add_business_outlined,
               ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('settings'))
+const _HomeAction(
               'settings',
               '設定',
               Icons.settings_outlined,
             ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('help'))
+const _HomeAction(
               'help',
               'ヘルプ',
               Icons.help_outline,
@@ -417,6 +428,7 @@ class _AdminHome extends StatelessWidget {
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
+    required this.visibleHomeKeys,
     required this.onOpen,
   });
 
@@ -424,6 +436,7 @@ class _AdminHome extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -466,41 +479,45 @@ class _AdminHome extends StatelessWidget {
         const SizedBox(height: 9),
         _ActionGrid(
           items: [
-            if (identity.can('can_manage_people'))
+            if (identity.can('can_manage_people') && visibleHomeKeys.contains('people'))
               const _HomeAction(
                 'people',
-                '人員',
+                '社員',
                 Icons.groups_2_outlined,
                 access: _HomeActionAccess.subAdmin,
               ),
             if (moduleEnabled('invoices') &&
-                identity.can('can_view_invoices'))
+                identity.can('can_view_invoices') &&
+                visibleHomeKeys.contains('invoices'))
               const _HomeAction(
                 'invoices',
                 '請求書',
                 Icons.receipt_long_outlined,
                 access: _HomeActionAccess.professional,
               ),
-            if (identity.can('can_view_admin_site_data'))
+            if (identity.can('can_view_admin_site_data') &&
+                visibleHomeKeys.contains('admin_sites'))
               const _HomeAction(
                 'admin_sites',
                 '管理現場',
                 Icons.admin_panel_settings_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            if (identity.isAdmin)
+            if (identity.isAdmin && visibleHomeKeys.contains('company_documents'))
               const _HomeAction(
                 'company_documents',
                 '会社提出書類',
                 Icons.business_center_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            const _HomeAction(
-              'vehicle_routes',
-              '車両・ルート',
-              Icons.route_outlined,
-            ),
-            const _HomeAction(
+            if (visibleHomeKeys.contains('vehicle_routes'))
+              const _HomeAction(
+                'vehicle_routes',
+                '車両・ルート',
+                Icons.route_outlined,
+              ),
+            if (visibleHomeKeys.contains('settings'))
+              const _HomeAction(
               'settings',
               '設定',
               Icons.settings_outlined,
