@@ -18,7 +18,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
-  Set<String> _savedKeys = <String>{};
+  Set<String> _savedDeliveryIds = <String>{};
+  List<Map<String, dynamic>> _incomingConnections = const [];
   bool _loading = true;
   bool _forwarding = false;
   List<Map<String, dynamic>> _transferTargets = const [];
@@ -51,11 +52,23 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
       final valuesTop = await Future.wait([
         repository.listDeliveries(),
         repository.listTransferTargets(),
-        repository.loadSavedDeliveryKeys(),
+        repository.loadConnectionInbox(),
       ]);
       final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
       final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
-      final savedKeys = valuesTop[2] as Set<String>;
+      final connectionInbox = valuesTop[2] as Map<String, dynamic>;
+      final savedDeliveryIds = deliveries
+          .where((row) => row['received'] == true && row['saved_at'] != null)
+          .map((row) => row['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final incomingRaw = connectionInbox['incoming'];
+      final incomingConnections = incomingRaw is List
+          ? incomingRaw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
       final received = deliveries
           .where((row) => row['received'] == true)
           .toList(growable: false);
@@ -76,6 +89,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           loaded.add(
             _ReceivedTransferItem.file(
               row,
+              deliveryId: deliveryId,
+              savedAt: delivery['saved_at']?.toString() ?? '',
               fallbackCompany:
                   delivery['sender_name']?.toString() ?? '協力会社',
             ),
@@ -85,6 +100,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           loaded.add(
             _ReceivedTransferItem.data(
               row,
+              deliveryId: deliveryId,
+              savedAt: delivery['saved_at']?.toString() ?? '',
               fallbackCompany:
                   delivery['sender_name']?.toString() ?? '協力会社',
             ),
@@ -99,7 +116,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ..addAll(loaded);
         _selectedKeys.clear();
         _transferTargets = transferTargets;
-        _savedKeys = savedKeys;
+        _savedDeliveryIds = savedDeliveryIds;
+        _incomingConnections = incomingConnections;
         if (_targetCompanyId != null &&
             !transferTargets.any(
               (row) => row['company_id']?.toString() == _targetCompanyId,
@@ -127,15 +145,21 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   ) async {
     final repository = _repository;
     if (repository == null) return;
-    final keys = items.map((item) => item.key).toList(growable: false);
-    if (keys.isEmpty) return;
-    await repository.saveDeliveryItems(keys);
+    final deliveryIds =
+        items.map((item) => item.deliveryId).where((id) => id.isNotEmpty).toSet();
+    if (deliveryIds.isEmpty) return;
+    for (final deliveryId in deliveryIds) {
+      await repository.saveReceivedDelivery(deliveryId);
+    }
     if (!mounted) return;
-    setState(() => _savedKeys = <String>{..._savedKeys, ...keys});
+    setState(() => _savedDeliveryIds = {
+          ..._savedDeliveryIds,
+          ...deliveryIds,
+        });
   }
 
   Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
-    final alreadySaved = _savedKeys.contains(item.key);
+    final alreadySaved = _savedDeliveryIds.contains(item.deliveryId);
     final shouldSave = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -197,7 +221,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     List<_ReceivedTransferItem> items,
   ) async {
     final unsaved =
-        items.where((item) => !_savedKeys.contains(item.key)).toList();
+        items.where((item) => !_savedDeliveryIds.contains(item.deliveryId)).toList();
     if (unsaved.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(companyName + 'のデータはすべて保存済みです')),
@@ -234,6 +258,40 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     );
   }
 
+  Future<void> _respondConnection(
+    Map<String, dynamic> request,
+    bool accept,
+  ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final id = request['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final name = request['child_company_name']?.toString() ?? '会社';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(accept ? '会社接続を承認しますか？' : '会社接続を拒否しますか？'),
+        content: Text(name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(accept ? '承認する' : '拒否する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repository.respondCompanyConnection(
+      connectionId: id,
+      accept: accept,
+    );
+    _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final grouped = <String, List<_ReceivedTransferItem>>{};
@@ -260,6 +318,46 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_incomingConnections.isNotEmpty) ...[
+                        const Text(
+                          '要対応',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final request in _incomingConnections)
+                          Card(
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.link_outlined),
+                              ),
+                              title: Text(
+                                request['child_company_name']?.toString() ??
+                                    '会社',
+                              ),
+                              subtitle: const Text('会社接続申請が届いています'),
+                              trailing: Wrap(
+                                children: [
+                                  IconButton(
+                                    tooltip: '拒否',
+                                    onPressed: () =>
+                                        _respondConnection(request, false),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                                  IconButton(
+                                    tooltip: '承認',
+                                    onPressed: () =>
+                                        _respondConnection(request, true),
+                                    icon: const Icon(Icons.check_circle_outline),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
                       const Text(
                         '出所会社ごとに整理しています。受け取った情報は出所を保持したまま上位会社へ再転送できます。',
                       ),
@@ -284,7 +382,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              subtitle: Text('${entry.value.length}件'),
+                              subtitle: Text(
+                                _companySubtitle(entry.value),
+                              ),
                               trailing: IconButton(
                                 tooltip: '会社単位で一括保存',
                                 onPressed: () =>
@@ -336,18 +436,18 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                           ),
                                         ),
                                         subtitle: Text(
-                                          _savedKeys.contains(item.key)
+                                          _savedDeliveryIds.contains(item.deliveryId)
                                               ? item.subtitle + ' / 保存済み'
                                               : item.subtitle,
                                         ),
                                         secondary: IconButton(
-                                          tooltip: _savedKeys.contains(item.key)
+                                          tooltip: _savedDeliveryIds.contains(item.deliveryId)
                                               ? '保存したデータを開く'
                                               : '詳細・保存',
                                           onPressed: () =>
                                               _showReceivedDetail(item),
                                           icon: Icon(
-                                            _savedKeys.contains(item.key)
+                                            _savedDeliveryIds.contains(item.deliveryId)
                                                 ? Icons.folder_open_outlined
                                                 : Icons.download_outlined,
                                           ),
@@ -497,6 +597,25 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
   }
 
+  String _companySubtitle(List<_ReceivedTransferItem> items) {
+    final saved = items
+        .where((item) => item.savedAt.isNotEmpty)
+        .map((item) => DateTime.tryParse(item.savedAt)?.toLocal())
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    if (saved.isEmpty) return items.length.toString() + '件';
+    final latest = saved.last;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return items.length.toString() +
+        '件 / 最終データ保存日 ' +
+        latest.year.toString() +
+        '/' +
+        two(latest.month) +
+        '/' +
+        two(latest.day);
+  }
+
   void _reload() {
     setState(() => _loading = true);
     _load();
@@ -528,6 +647,8 @@ enum _ReceivedTransferCategory {
 class _ReceivedTransferItem {
   const _ReceivedTransferItem({
     required this.id,
+    required this.deliveryId,
+    required this.savedAt,
     required this.isStructured,
     required this.category,
     required this.originCompany,
@@ -536,6 +657,8 @@ class _ReceivedTransferItem {
   });
 
   final String id;
+  final String deliveryId;
+  final String savedAt;
   final bool isStructured;
   final _ReceivedTransferCategory category;
   final String originCompany;
@@ -546,6 +669,8 @@ class _ReceivedTransferItem {
 
   factory _ReceivedTransferItem.file(
     Map<String, dynamic> row, {
+    required String deliveryId,
+    required String savedAt,
     required String fallbackCompany,
   }) {
     final path = _companyPath(row['company_path']);
@@ -561,6 +686,8 @@ class _ReceivedTransferItem {
     };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
+      deliveryId: deliveryId,
+      savedAt: savedAt,
       isStructured: false,
       category: category,
       originCompany: _origin(path, fallbackCompany),
@@ -594,6 +721,8 @@ class _ReceivedTransferItem {
     };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
+      deliveryId: deliveryId,
+      savedAt: savedAt,
       isStructured: true,
       category: category,
       originCompany: _origin(path, fallbackCompany),
