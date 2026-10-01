@@ -13,6 +13,12 @@ void main() {
     final inbox = File(
       'lib/features/people/company_delivery_inbox_page.dart',
     ).readAsStringSync();
+    final signatureList = File(
+      'lib/features/people/signature_list_page.dart',
+    ).readAsStringSync();
+    final signatureSend = File(
+      'lib/features/people/signature_send_page.dart',
+    ).readAsStringSync();
 
     expect(common, contains("'接続済み会社'"));
     expect(common, contains("'全部送る'"));
@@ -45,6 +51,10 @@ void main() {
     expect(inbox, contains("'会社単位で一括保存'"));
     expect(inbox, contains("signatures('サイン一覧')"));
     expect(inbox, contains("saveDeliveryItems("));
+    expect(signatureList, contains("'サイン一覧'"));
+    expect(signatureList, contains("'サイン一覧を送信'"));
+    expect(signatureList, contains('SignatureSendPage'));
+    expect(signatureSend, contains("sourceKind: 'daily_report_signature'"));
     expect(inbox, contains("'要対応'"));
     expect(inbox, contains('最終データ保存日'));
   });
