@@ -94,6 +94,37 @@ class CompanyDocumentExchangeRepository {
     ];
   }
 
+  Future<List<Map<String, dynamic>>> listTransferTargets() async {
+    final value = await _client.rpc('company_connection_targets');
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<String> sendConnected({
+    required String requestId,
+    required String targetCompanyId,
+    required List<Map<String, dynamic>> items,
+    String note = '',
+  }) async {
+    final code = await _client.rpc(
+      'connected_parent_receive_code',
+      params: {'p_parent_company_id': targetCompanyId},
+    );
+    final receiveCode = code?.toString() ?? '';
+    if (receiveCode.isEmpty) {
+      throw StateError('接続済み会社への送信準備に失敗しました。');
+    }
+    return send(
+      requestId: requestId,
+      receiveCode: receiveCode,
+      items: items,
+      note: note,
+    );
+  }
+
   Future<String> send({
     required String requestId,
     required String receiveCode,
