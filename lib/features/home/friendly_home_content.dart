@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'home_attention_repository.dart';
 import 'home_membership_repository.dart';
+import 'personal_attendance_status_repository.dart';
 
 class FriendlyHomeContent extends StatelessWidget {
   const FriendlyHomeContent({
@@ -9,6 +10,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.identity,
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
+    this.attendanceStatus = const PersonalAttendanceStatus.initial(),
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
     required this.onOpen,
@@ -18,6 +20,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final HomeIdentity identity;
   final RequiredDocumentAttention requiredDocumentAttention;
   final bool Function(String key) moduleEnabled;
+  final PersonalAttendanceStatus attendanceStatus;
   final int gridColumns;
   final List<String> actionOrder;
   final Future<void> Function(String key) onOpen;
@@ -41,7 +44,10 @@ class FriendlyHomeContent extends StatelessWidget {
           ],
           if (moduleEnabled('attendance')) ...[
             const SizedBox(height: 12),
-            _PersonalAttendanceCard(onOpen: onOpen),
+            _PersonalAttendanceCard(
+              status: attendanceStatus,
+              onOpen: onOpen,
+            ),
           ],
           const SizedBox(height: 14),
           if (identity.isManagement)
@@ -202,15 +208,19 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 }
 
 class _PersonalAttendanceCard extends StatelessWidget {
-  const _PersonalAttendanceCard({required this.onOpen});
+  const _PersonalAttendanceCard({
+    required this.status,
+    required this.onOpen,
+  });
 
+  final PersonalAttendanceStatus status;
   final Future<void> Function(String key) onOpen;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -220,33 +230,42 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '一般ユーザー・サブ管理者・管理者の全員が、自分自身の出勤・退勤を登録できます。'
-              '位置情報は登録ボタンを押した時だけ取得します。',
+            const SizedBox(height: 10),
+            _AttendanceSelectionLine(
+              label: '選択中の出勤方法',
+              value: status.modeLabel,
+              icon: Icons.verified_user_outlined,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 7),
+            _AttendanceSelectionLine(
+              label: '選択中の現場',
+              value: status.siteLabel,
+              icon: Icons.business_outlined,
+            ),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () => onOpen('footer_sites'),
-              icon: const Icon(Icons.business_outlined),
+              onPressed: () => onOpen('attendance_select'),
+              icon: const Icon(Icons.tune),
               label: const Text('出勤方法と現場を選択'),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
+                  child: _AttendanceActionButton(
+                    label: '出勤',
+                    icon: Icons.login,
+                    active: status.shouldHighlightClockIn,
                     onPressed: () => onOpen('clock_in'),
-                    icon: const Icon(Icons.login),
-                    label: const Text('出勤'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: FilledButton.tonalIcon(
+                  child: _AttendanceActionButton(
+                    label: '退勤',
+                    icon: Icons.logout,
+                    active: status.shouldHighlightClockOut,
                     onPressed: () => onOpen('clock_out'),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('退勤'),
                   ),
                 ),
               ],
@@ -254,6 +273,79 @@ class _PersonalAttendanceCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AttendanceSelectionLine extends StatelessWidget {
+  const _AttendanceSelectionLine({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 19, color: scheme.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AttendanceActionButton extends StatelessWidget {
+  const _AttendanceActionButton({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (active) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(label),
     );
   }
 }
