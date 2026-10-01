@@ -14,7 +14,7 @@ void main() {
     expect(app, contains("ButtonSegment(value: 2"));
     expect(app, contains("ButtonSegment(value: 3"));
     expect(app, contains("ButtonSegment(value: 4"));
-    expect(app, contains('表示・並び・権限'));
+    expect(app, contains('ホーム表示・並び順・権限'));
     expect(app, contains("keyboard_arrow_up"));
     expect(app, contains("keyboard_arrow_down"));
 
@@ -34,7 +34,7 @@ void main() {
     expect(
       app,
       contains(
-        'ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
+        '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
       ),
     );
   });
