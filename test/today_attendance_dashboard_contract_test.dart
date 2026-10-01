@@ -11,7 +11,9 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(repository, contains("'partner_company'"));
-    expect(repository, contains('partner_companies(name)'));
+    expect(repository, contains('partner_companies!workers_partner_company_id_fkey(name)'));
+    expect(repository, contains('workers!attendance_verifications_worker_id_fkey'));
+    expect(repository, contains('sites!attendance_verifications_site_id_fkey'));
     expect(repository, contains('attendance_verifications'));
     expect(repository, contains("event_type == 'clock_in'"));
     expect(repository, contains("event_type == 'clock_out'"));
