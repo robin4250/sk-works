@@ -175,10 +175,7 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
                   ),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.notifications_active_outlined,
-                  color: scheme.onPrimary,
-                ),
+                child: _AttentionBlinkingBell(color: scheme.onPrimary),
               ),
               Expanded(
                 child: Padding(
@@ -216,6 +213,47 @@ enum PersonalAttendanceState {
   notStarted,
   working,
   finished,
+}
+
+class _AttentionBlinkingBell extends StatefulWidget {
+  const _AttentionBlinkingBell({required this.color});
+
+  final Color color;
+
+  @override
+  State<_AttentionBlinkingBell> createState() => _AttentionBlinkingBellState();
+}
+
+class _AttentionBlinkingBellState extends State<_AttentionBlinkingBell>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.35,
+    end: 1,
+  ).animate(
+    CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: Icon(
+        Icons.notifications_active_outlined,
+        color: widget.color,
+      ),
+    );
+  }
 }
 
 class _PersonalAttendanceCard extends StatelessWidget {
