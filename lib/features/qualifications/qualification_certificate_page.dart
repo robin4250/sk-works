@@ -344,9 +344,9 @@ class _QualificationCertificatePageState
             else
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('未登録'),
+                child: Text('資格証写真はまだ登録されていません。'),
               ),
-            if (onCamera != null) ...[
+            if (_canManage) ...[
               const SizedBox(height: 10),
               FilledButton.icon(
                 onPressed: onCamera,
