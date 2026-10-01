@@ -230,6 +230,17 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
+    if (siteLabel == '未選択') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final savedSiteName =
+            prefs.getString('sko_attendance_selected_site_name')?.trim() ?? '';
+        if (savedSiteName.isNotEmpty) siteLabel = savedSiteName;
+      } catch (_) {
+        // Local selection is best-effort.
+      }
+    }
+
     final verificationRepository = _attendanceVerificationRepository;
     if (verificationRepository != null) {
       try {
