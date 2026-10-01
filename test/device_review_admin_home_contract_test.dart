@@ -15,6 +15,7 @@ void main() {
     final management = home.indexOf("const _SectionTitle('管理')");
     expect(attention, greaterThanOrEqualTo(0));
     expect(management, greaterThan(attention));
+    expect(RegExp(r"'要対応'").allMatches(home).length, equals(1));
 
     expect(home, contains("'本日の勤務報告'"));
     expect(home, isNot(contains("'おはようございます、")));
@@ -32,5 +33,6 @@ void main() {
     expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));
 
     expect(app, isNot(contains("label: '運用準備チェック'")));
+    expect(app, contains('title: const SizedBox.shrink()'));
   });
 }

@@ -108,6 +108,8 @@ class _HomePageState extends State<HomePage> {
 
   Map<String, bool> _moduleStates = const {};
   Map<String, int> _usage = const {};
+  int _homeGridColumns = 2;
+  List<String> _homeActionOrder = const [];
   HomeIdentity _identity = const HomeIdentity(
     role: 'viewer',
     companyName: 'SKO',
@@ -137,6 +139,7 @@ class _HomePageState extends State<HomePage> {
       _loadModuleSettings(),
       _loadIdentity(),
       _loadUsage(),
+      _loadHomeLayout(),
       _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
       _loadPayrollAdjustmentAccess(),
@@ -231,6 +234,42 @@ class _HomePageState extends State<HomePage> {
     setState(() => _usage = {..._usage, key: next});
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('$_usagePrefix$key', next);
+  }
+
+  Future<void> _loadHomeLayout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final columns = (prefs.getInt('sko_home_grid_columns') ?? 2).clamp(1, 4);
+    final order = prefs.getStringList('sko_home_action_order') ?? const <String>[];
+    if (!mounted) return;
+    setState(() {
+      _homeGridColumns = columns;
+      _homeActionOrder = List<String>.from(order);
+    });
+  }
+
+  Future<void> _setHomeGridColumns(int value) async {
+    final next = value.clamp(1, 4);
+    setState(() => _homeGridColumns = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('sko_home_grid_columns', next);
+  }
+
+  Future<void> _moveHomeAction(String key, int delta) async {
+    final visibleKeys = _homeLayoutItems.map((item) => item.key).toList();
+    final stored = [
+      for (final item in _homeActionOrder)
+        if (visibleKeys.contains(item)) item,
+      for (final item in visibleKeys)
+        if (!_homeActionOrder.contains(item)) item,
+    ];
+    final index = stored.indexOf(key);
+    final target = index + delta;
+    if (index < 0 || target < 0 || target >= stored.length) return;
+    final item = stored.removeAt(index);
+    stored.insert(target, item);
+    setState(() => _homeActionOrder = stored);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sko_home_action_order', stored);
   }
 
   void _recordCloudUsageForAction(String key) {
@@ -635,10 +674,7 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _identity.companyName,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: const SizedBox.shrink(),
         actions: [
           const SkoNotificationBell(),
           if (widget.onSignOut != null)
@@ -654,6 +690,8 @@ class _HomePageState extends State<HomePage> {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
+          gridColumns: _homeGridColumns,
+          actionOrder: _homeActionOrder,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
@@ -661,7 +699,55 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  List<_HomeLayoutItem> get _homeLayoutItems {
+    final items = <_HomeLayoutItem>[
+      if (_identity.can('can_manage_people'))
+        const _HomeLayoutItem('people', '人員', Icons.groups_2_outlined),
+      if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
+        const _HomeLayoutItem('invoices', '請求書', Icons.receipt_long_outlined),
+      if (_identity.can('can_view_admin_site_data'))
+        const _HomeLayoutItem(
+          'admin_sites',
+          '管理現場',
+          Icons.admin_panel_settings_outlined,
+        ),
+      if (_identity.isAdmin)
+        const _HomeLayoutItem(
+          'company_documents',
+          '会社提出書類',
+          Icons.business_center_outlined,
+        ),
+      if (!_identity.isManagement)
+        const _HomeLayoutItem('payroll', '給与明細', Icons.payments_outlined),
+      if (!_identity.isManagement)
+        const _HomeLayoutItem(
+          'profile',
+          'プロフィール',
+          Icons.account_circle_outlined,
+        ),
+      const _HomeLayoutItem('vehicle_routes', '車両・ルート', Icons.route_outlined),
+      if (!_identity.isManagement && _moduleEnabled('sites'))
+        const _HomeLayoutItem('site_register', '現場登録', Icons.add_business_outlined),
+      const _HomeLayoutItem('settings', '設定', Icons.settings_outlined),
+      if (!_identity.isManagement)
+        const _HomeLayoutItem('help', 'ヘルプ', Icons.help_outline),
+    ];
+
+    final rank = <String, int>{
+      for (var i = 0; i < _homeActionOrder.length; i++)
+        _homeActionOrder[i]: i,
+    };
+    items.sort((a, b) {
+      final ai = rank[a.key] ?? 100000;
+      final bi = rank[b.key] ?? 100000;
+      if (ai != bi) return ai.compareTo(bi);
+      return 0;
+    });
+    return items;
+  }
+
   Widget _menuPage() {
+    final layoutItems = _homeLayoutItems;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -671,34 +757,112 @@ class _HomePageState extends State<HomePage> {
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: ListView.separated(
+        child: ListView(
           padding: const EdgeInsets.all(12),
-          itemCount: _menuItems.length + 1,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return const Padding(
-                padding: EdgeInsets.fromLTRB(6, 4, 6, 6),
-                child: Text(
-                  'よく使う機能ほど上に表示されます',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'ホームボタン',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。',
+                    ),
+                    const SizedBox(height: 12),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 1, label: Text('1')),
+                        ButtonSegment(value: 2, label: Text('2')),
+                        ButtonSegment(value: 3, label: Text('3')),
+                        ButtonSegment(value: 4, label: Text('4')),
+                      ],
+                      selected: {_homeGridColumns},
+                      onSelectionChanged: (values) {
+                        if (values.isEmpty) return;
+                        _setHomeGridColumns(values.first);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      '並び順',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    for (var i = 0; i < layoutItems.length; i++)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          radius: 16,
+                          child: Icon(layoutItems[i].icon, size: 18),
+                        ),
+                        title: Text(
+                          layoutItems[i].label,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        trailing: Wrap(
+                          spacing: 2,
+                          children: [
+                            IconButton(
+                              tooltip: '上へ',
+                              onPressed: i == 0
+                                  ? null
+                                  : () => _moveHomeAction(
+                                        layoutItems[i].key,
+                                        -1,
+                                      ),
+                              icon: const Icon(Icons.keyboard_arrow_up),
+                            ),
+                            IconButton(
+                              tooltip: '下へ',
+                              onPressed: i == layoutItems.length - 1
+                                  ? null
+                                  : () => _moveHomeAction(
+                                        layoutItems[i].key,
+                                        1,
+                                      ),
+                              icon: const Icon(Icons.keyboard_arrow_down),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-              );
-            }
-
-            final item = _menuItems[index - 1];
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(child: Icon(item.icon)),
-                title: Text(
-                  item.label,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _openHomeAction(item.key),
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(6, 4, 6, 6),
+              child: Text(
+                'メニュー',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            for (final item in _menuItems)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  child: ListTile(
+                    leading: CircleAvatar(child: Icon(item.icon)),
+                    title: Text(
+                      item.label,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openHomeAction(item.key),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -801,6 +965,13 @@ class _MenuAction {
   final IconData icon;
 }
 
+class _HomeLayoutItem {
+  const _HomeLayoutItem(this.key, this.label, this.icon);
+
+  final String key;
+  final String label;
+  final IconData icon;
+}
 
 class _BackendUnavailableScreen extends StatelessWidget {
   const _BackendUnavailableScreen();

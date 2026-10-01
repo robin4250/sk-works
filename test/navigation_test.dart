@@ -64,12 +64,16 @@ void main() {
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
 
+    final menuList = find.byType(ListView).last;
     for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
-      await tester.scrollUntilVisible(
-        find.text(label),
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      await tester.drag(menuList, const Offset(0, 5000));
+      await tester.pumpAndSettle();
+      for (var attempt = 0;
+          attempt < 20 && find.text(label).evaluate().isEmpty;
+          attempt++) {
+        await tester.drag(menuList, const Offset(0, -220));
+        await tester.pumpAndSettle();
+      }
       expect(find.text(label), findsOneWidget);
     }
   });
