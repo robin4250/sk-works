@@ -153,15 +153,18 @@ class _QualificationRecognitionReviewPageState
               ],
             ),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _submit,
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('この内容で登録へ進む'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: FilledButton.icon(
+          onPressed: _submit,
+          icon: const Icon(Icons.check_circle_outline),
+          label: const Text('この内容で登録へ進む'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+          ),
         ),
       ),
     );
