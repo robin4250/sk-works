@@ -11,6 +11,13 @@ void main() {
         File('lib/features/sites/site_detail_page.dart').readAsStringSync();
     final cloud =
         File('lib/features/sites/site_cloud_page.dart').readAsStringSync();
+    final siteMap =
+        File('lib/features/sites/site_map_page.dart').readAsStringSync();
+    final siteMapRepo =
+        File('lib/features/sites/site_map_repository.dart').readAsStringSync();
+    final siteMapSql = File(
+      'supabase/migrations/20261001220418_add_site_map_workspace.sql',
+    ).readAsStringSync();
 
     expect(repository, contains("rpc('site_directory_rows_v2')"));
     expect(repository, contains("rpc('site_directory_metadata')"));
@@ -43,5 +50,10 @@ void main() {
     expect(detail, contains("'representative_phone'"));
     expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(cloud, contains('SiteDetailPage('));
+    expect(siteMap, contains("'現場マップ'"));
+    expect(siteMap, contains("'最新の打刻位置'"));
+    expect(siteMapRepo, contains("rpc('site_map_workspace')"));
+    expect(siteMapSql, contains("v_role in ('owner','admin','manager')"));
+    expect(siteMapSql, contains('a.worker_id=v_worker'));
   });
 }
