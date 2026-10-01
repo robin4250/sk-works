@@ -25,6 +25,7 @@ void main() {
     expect(page, contains("'友達追加'"));
     expect(page, contains('NotificationListener<ScrollNotification>'));
     expect(page, contains('_chatChromeVisible'));
+    expect(page, contains('_appearance.headerAlpha'));
     expect(page, contains('ScrollStartNotification'));
     expect(page, contains('ScrollEndNotification'));
     expect(page, contains('_positionInitialMessageView'));
