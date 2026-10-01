@@ -101,18 +101,18 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('登録者の社員情報'),
         content: worker == null
-            ? Text('登録者：' + creatorName)
+            ? Text('登録者：$creatorName')
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('氏名：' + (worker['name']?.toString() ?? creatorName)),
+                  Text('氏名：${worker['name']?.toString() ?? creatorName}'),
                   if ((worker['role']?.toString().isNotEmpty ?? false))
-                    Text('役割・職種：' + worker['role'].toString()),
+                    Text('役割・職種：${worker['role']}'),
                   if ((worker['phone']?.toString().isNotEmpty ?? false))
-                    Text('電話：' + worker['phone'].toString()),
+                    Text('電話：${worker['phone']}'),
                   if ((worker['email']?.toString().isNotEmpty ?? false))
-                    Text('メール：' + worker['email'].toString()),
+                    Text('メール：${worker['email']}'),
                 ],
               ),
         actions: [
@@ -182,6 +182,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
     if (image == null) return;
     final bytes = await image.readAsBytes();
+    if (!mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
