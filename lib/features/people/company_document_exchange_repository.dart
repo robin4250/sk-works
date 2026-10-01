@@ -130,6 +130,21 @@ class CompanyDocumentExchangeRepository {
     );
   }
 
+  Future<Set<String>> loadSavedDeliveryKeys() async {
+    final value = await _client.rpc('company_delivery_saved_keys');
+    if (value is! List) return <String>{};
+    return value.map((item) => item.toString()).toSet();
+  }
+
+  Future<void> saveDeliveryItems(Iterable<String> itemKeys) async {
+    final keys = itemKeys.where((key) => key.isNotEmpty).toList(growable: false);
+    if (keys.isEmpty) return;
+    await _client.rpc(
+      'save_company_delivery_items',
+      params: {'p_item_keys': keys},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> listTransferTargets() async {
     final value = await _client.rpc('company_connection_targets');
     if (value is! List) return const [];
