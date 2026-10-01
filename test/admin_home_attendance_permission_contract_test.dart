@@ -7,12 +7,10 @@ void main() {
     final source =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
-    expect(
-      source,
-      contains('一般ユーザー・サブ管理者・管理者の全員が、自分自身の出勤・退勤を登録できます。'),
-    );
+    expect(source, contains("'本日の勤務報告'"));
     expect(source, contains("onOpen('clock_in')"));
     expect(source, contains("onOpen('clock_out')"));
+    expect(source, contains("onOpen('attendance_verify')"));
 
     expect(
       source,
