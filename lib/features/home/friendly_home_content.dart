@@ -11,6 +11,9 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
+    this.personalAttendanceState = PersonalAttendanceState.notStarted,
+    this.attendanceModeLabel = '未設定',
+    this.attendanceSiteLabel = '未選択',
     required this.onOpen,
     required this.onRefresh,
   });
@@ -20,6 +23,9 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
+  final PersonalAttendanceState personalAttendanceState;
+  final String attendanceModeLabel;
+  final String attendanceSiteLabel;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -41,7 +47,12 @@ class FriendlyHomeContent extends StatelessWidget {
           ],
           if (moduleEnabled('attendance')) ...[
             const SizedBox(height: 12),
-            _PersonalAttendanceCard(onOpen: onOpen),
+            _PersonalAttendanceCard(
+              state: personalAttendanceState,
+              modeLabel: attendanceModeLabel,
+              siteLabel: attendanceSiteLabel,
+              onOpen: onOpen,
+            ),
           ],
           const SizedBox(height: 14),
           if (identity.isManagement)
@@ -164,10 +175,7 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
                   ),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.notifications_active_outlined,
-                  color: scheme.onPrimary,
-                ),
+                child: _AttentionBlinkingBell(color: scheme.onPrimary),
               ),
               Expanded(
                 child: Padding(
@@ -201,16 +209,106 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
   }
 }
 
-class _PersonalAttendanceCard extends StatelessWidget {
-  const _PersonalAttendanceCard({required this.onOpen});
+enum PersonalAttendanceState {
+  notStarted,
+  working,
+  finished,
+}
 
+class _AttentionBlinkingBell extends StatefulWidget {
+  const _AttentionBlinkingBell({required this.color});
+
+  final Color color;
+
+  @override
+  State<_AttentionBlinkingBell> createState() => _AttentionBlinkingBellState();
+}
+
+class _AttentionBlinkingBellState extends State<_AttentionBlinkingBell>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.35,
+    end: 1,
+  ).animate(
+    CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: Icon(
+        Icons.notifications_active_outlined,
+        color: widget.color,
+      ),
+    );
+  }
+}
+
+class _PersonalAttendanceCard extends StatelessWidget {
+  const _PersonalAttendanceCard({
+    required this.state,
+    required this.modeLabel,
+    required this.siteLabel,
+    required this.onOpen,
+  });
+
+  final PersonalAttendanceState state;
+  final String modeLabel;
+  final String siteLabel;
   final Future<void> Function(String key) onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final clockInActive = state != PersonalAttendanceState.working;
+    final clockOutActive = state == PersonalAttendanceState.working;
+
+    ButtonStyle activeStyle() => FilledButton.styleFrom(
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+        );
+    ButtonStyle inactiveStyle() => OutlinedButton.styleFrom(
+          foregroundColor: scheme.primary,
+          side: BorderSide(color: scheme.outlineVariant),
+        );
+
+    Widget actionButton({
+      required bool active,
+      required String label,
+      required IconData icon,
+      required String action,
+    }) {
+      if (active) {
+        return FilledButton.icon(
+          style: activeStyle(),
+          onPressed: () => onOpen(action),
+          icon: Icon(icon),
+          label: Text(label),
+        );
+      }
+      return OutlinedButton.icon(
+        style: inactiveStyle(),
+        onPressed: () => onOpen(action),
+        icon: Icon(icon),
+        label: Text(label),
+      );
+    }
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -220,33 +318,40 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '一般ユーザー・サブ管理者・管理者の全員が、自分自身の出勤・退勤を登録できます。'
-              '位置情報は登録ボタンを押した時だけ取得します。',
+            const SizedBox(height: 10),
+            _AttendanceSelectionLine(
+              label: '選択中の出勤方法',
+              value: modeLabel,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 5),
+            _AttendanceSelectionLine(
+              label: '選択中の現場',
+              value: siteLabel,
+            ),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () => onOpen('footer_sites'),
-              icon: const Icon(Icons.business_outlined),
+              onPressed: () => onOpen('attendance_verify'),
+              icon: const Icon(Icons.tune_outlined),
               label: const Text('出勤方法と現場を選択'),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => onOpen('clock_in'),
-                    icon: const Icon(Icons.login),
-                    label: const Text('出勤'),
+                  child: actionButton(
+                    active: clockInActive,
+                    label: '出勤',
+                    icon: Icons.login,
+                    action: 'clock_in',
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => onOpen('clock_out'),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('退勤'),
+                  child: actionButton(
+                    active: clockOutActive,
+                    label: '退勤',
+                    icon: Icons.logout,
+                    action: 'clock_out',
                   ),
                 ),
               ],
@@ -254,6 +359,41 @@ class _PersonalAttendanceCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AttendanceSelectionLine extends StatelessWidget {
+  const _AttendanceSelectionLine({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 126,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
     );
   }
 }
