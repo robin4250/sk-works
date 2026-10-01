@@ -81,17 +81,26 @@ class CompanyDocumentExchangeRepository {
   }
 
   Future<List<Map<String, dynamic>>> listSendableSources() async {
-    final value = await _client.rpc(
-      'company_document_exchange',
-      params: {
-        'p_action': 'sources',
-        'p_data': <String, dynamic>{},
-      },
-    );
-    return [
-      for (final item in value as List<dynamic>)
-        Map<String, dynamic>.from(item as Map),
-    ];
+    final values = await Future.wait([
+      _client.rpc(
+        'company_document_exchange',
+        params: {
+          'p_action': 'sources',
+          'p_data': <String, dynamic>{},
+        },
+      ),
+      _client.rpc('company_signature_sources'),
+    ]);
+    final result = <Map<String, dynamic>>[];
+    for (final value in values) {
+      if (value is! List) continue;
+      result.addAll(
+        value.whereType<Map>().map(
+              (item) => Map<String, dynamic>.from(item),
+            ),
+      );
+    }
+    return result;
   }
 
   Future<void> saveReceivedDelivery(String deliveryId) async {
@@ -170,6 +179,27 @@ class CompanyDocumentExchangeRepository {
     required List<Map<String, dynamic>> items,
     String note = '',
   }) async {
+    final signatureItems = items
+        .where((item) => item['kind'] == 'daily_report_signature')
+        .toList(growable: false);
+    if (signatureItems.isNotEmpty) {
+      if (signatureItems.length != items.length) {
+        throw StateError('サイン一覧と他データは分けて送信してください。');
+      }
+      final value = await _client.rpc(
+        'send_connected_signature_data',
+        params: {
+          'p_request_id': requestId,
+          'p_target_company_id': targetCompanyId,
+          'p_report_ids': [
+            for (final item in signatureItems) item['id']?.toString(),
+          ],
+          'p_note': note.trim(),
+        },
+      );
+      return value?.toString() ?? requestId;
+    }
+
     final code = await _client.rpc(
       'connected_parent_receive_code',
       params: {'p_parent_company_id': targetCompanyId},
