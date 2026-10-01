@@ -50,6 +50,10 @@ void main() {
     expect(detail, contains("'representative_phone'"));
     expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(cloud, contains('SiteDetailPage('));
+    expect(cloud, contains("tooltip: '現場マップ'"));
+    expect(cloud, contains('SiteMapPage()'));
+    expect(siteMap, contains("'社員全員の最新の打刻位置'"));
+    expect(siteMap, contains("'自分自身の最新の打刻位置'"));
     expect(siteMap, contains("'現場マップ'"));
     expect(siteMap, contains("'最新の打刻位置'"));
     expect(siteMapRepo, contains("rpc('site_map_workspace')"));
