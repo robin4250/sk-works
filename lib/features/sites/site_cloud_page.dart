@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'site_cloud_repository.dart';
-import 'site_cloud_detail_page.dart';
 import 'site_detail_page.dart';
 import 'site_page.dart';
 
@@ -114,7 +113,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '現場名・取引先・担当者・住所で検索',
+                  hintText: '現場名・取引先・担当者・住所・最寄駅で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -211,80 +210,8 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     }
   }
 
-  Future<void> _showDetails(SiteRecord site) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => SiteCloudDetailPage(
-          site: site,
-          canManage: _canManageSites,
-        ),
-      ),
-    );
-    await _load();
-  }
-
-  Future<void> _complete(SiteRecord site) async {
-    final repository = _repository;
-    if (repository == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('現場終了の確認'),
-        content: Text(
-          '「${site.name}」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('現場を終了'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    try {
-      await repository.complete(site.id);
-      if (!mounted) return;
-      setState(() {
-        final index = _sites.indexWhere((item) => item.id == site.id);
-        if (index >= 0) {
-          _sites[index] = SiteRecord(
-            id: site.id,
-            name: site.name,
-            customerName: site.customerName,
-            status: SiteStatus.completed,
-            address: site.address,
-            managerName: site.managerName,
-            startDate: site.startDate,
-            endDate: site.endDate,
-            notes: site.notes,
-            formalName: site.formalName,
-            nearestStation: site.nearestStation,
-            representativeName: site.representativeName,
-            representativePhone: site.representativePhone,
-            creatorName: site.creatorName,
-            createdAt: site.createdAt,
-            updatedAt: site.updatedAt,
-          );
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場を終了できませんでした: $error')),
-      );
-    }
-  }
 }
+
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
