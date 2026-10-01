@@ -216,19 +216,26 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     try {
       await _saveReceivedItems([item]);
       if (!mounted) return;
-      await showDialog<void>(
+      final openSaved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('保存しました'),
           content: Text(item.originCompany + 'の協力会社フォルダへ保存しました。'),
           actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('閉じる'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('保存したデータを開く'),
             ),
           ],
         ),
       );
+      if (openSaved == true && mounted) {
+        await _showReceivedDetail(item);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
