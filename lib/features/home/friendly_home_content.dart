@@ -73,6 +73,7 @@ class FriendlyHomeContent extends StatelessWidget {
                   opacity: appearance.cardOpacity,
                   child: _PersonalAttendanceCard(
                     status: attendanceStatus,
+                    vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
                     onOpen: onOpen,
                   ),
                 ),
@@ -244,10 +245,12 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
+    required this.vehicleRoutesEnabled,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
+  final bool vehicleRoutesEnabled;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -303,6 +306,20 @@ class _PersonalAttendanceCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            if (status.selectedVehicleName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                '選択中の車両：${status.selectedVehicleName}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+            if (status.selectedRouteName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                '選択中のルート：${status.selectedRouteName}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
             if (status.clockIn != null || status.clockOut != null) ...[
               const SizedBox(height: 5),
               Text(
@@ -320,6 +337,14 @@ class _PersonalAttendanceCard extends StatelessWidget {
               icon: const Icon(Icons.tune_outlined),
               label: const Text('出勤方法と現場を選択'),
             ),
+            if (vehicleRoutesEnabled) ...[
+              const SizedBox(height: 9),
+              OutlinedButton.icon(
+                onPressed: () => onOpen('vehicle_route_select'),
+                icon: const Icon(Icons.route_outlined),
+                label: const Text('車両とルートの選択'),
+              ),
+            ],
             const SizedBox(height: 9),
             Row(
               children: [
