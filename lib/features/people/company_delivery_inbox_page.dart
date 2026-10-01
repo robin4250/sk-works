@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'company_document_exchange_repository.dart';
 
@@ -15,14 +14,14 @@ class CompanyDeliveryInboxPage extends StatefulWidget {
 
 class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   final _repository = CompanyDocumentExchangeRepository.maybeCreate();
-  final _receiveCodeController = TextEditingController();
   final _noteController = TextEditingController();
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
   bool _loading = true;
   bool _forwarding = false;
-  String? _targetCompanyName;
+  List<Map<String, dynamic>> _transferTargets = const [];
+  String? _targetCompanyId;
   String? _error;
 
   @override
@@ -33,7 +32,6 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   @override
   void dispose() {
-    _receiveCodeController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -49,7 +47,12 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
 
     try {
-      final deliveries = await repository.listDeliveries();
+      final valuesTop = await Future.wait([
+        repository.listDeliveries(),
+        repository.listTransferTargets(),
+      ]);
+      final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
+      final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
       final received = deliveries
           .where((row) => row['received'] == true)
           .toList(growable: false);
@@ -92,6 +95,16 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ..clear()
           ..addAll(loaded);
         _selectedKeys.clear();
+        _transferTargets = transferTargets;
+        if (_targetCompanyId != null &&
+            !transferTargets.any(
+              (row) => row['company_id']?.toString() == _targetCompanyId,
+            )) {
+          _targetCompanyId = null;
+        }
+        if (_targetCompanyId == null && transferTargets.length == 1) {
+          _targetCompanyId = transferTargets.first['company_id']?.toString();
+        }
         _loading = false;
         _error = null;
       });
@@ -104,80 +117,6 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
   }
 
-  Future<void> _issueReceiveCode() async {
-    final repository = _repository;
-    if (repository == null) return;
-    try {
-      final result = await repository.issueReceiveCode();
-      final code = result['code']?.toString() ?? '';
-      final company = result['company_name']?.toString() ?? '';
-      if (!mounted || code.isEmpty) return;
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('受取コード'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (company.isNotEmpty) Text('会社: $company'),
-              const SizedBox(height: 8),
-              SelectableText(
-                code,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text('このコードを送信元の会社へ伝えてください。有効期限は7日です。'),
-            ],
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: code));
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('受取コードをコピーしました')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('コピー'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('閉じる'),
-            ),
-          ],
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('受取コードを発行できませんでした: $error')),
-      );
-    }
-  }
-
-  Future<void> _resolveForwardTarget() async {
-    final repository = _repository;
-    final code = _receiveCodeController.text.trim();
-    if (repository == null || code.isEmpty) return;
-    try {
-      final result = await repository.resolveReceiveCode(code);
-      if (!mounted) return;
-      setState(() => _targetCompanyName = result['company_name']?.toString());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _targetCompanyName = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('受取コードを確認できませんでした: $error')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,13 +127,8 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('協力会社から受け取ったデータ'),
+        title: const Text('協力会社'),
         actions: [
-          IconButton(
-            tooltip: '受取コードを発行',
-            onPressed: _issueReceiveCode,
-            icon: const Icon(Icons.key_outlined),
-          ),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _reload,
@@ -297,40 +231,24 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: _receiveCodeController,
+                        DropdownButtonFormField<String>(
+                          initialValue: _targetCompanyId,
                           decoration: const InputDecoration(
-                            labelText: '上位会社の受取コード',
-                            prefixIcon: Icon(Icons.vpn_key_outlined),
+                            labelText: '接続済み親会社',
+                            border: OutlineInputBorder(),
                           ),
-                          onChanged: (_) =>
-                              setState(() => _targetCompanyName = null),
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _resolveForwardTarget,
-                          icon: const Icon(Icons.verified_outlined),
-                          label: const Text('再転送先の会社名を確認'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                          ),
-                        ),
-                        if (_targetCompanyName != null) ...[
-                          const SizedBox(height: 8),
-                          Card(
-                            child: ListTile(
-                              leading:
-                                  const Icon(Icons.business_outlined),
-                              title: const Text('再転送先'),
-                              subtitle: Text(
-                                _targetCompanyName!,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
+                          items: [
+                            for (final target in _transferTargets)
+                              DropdownMenuItem(
+                                value: target['company_id']?.toString(),
+                                child: Text(
+                                  target['company_name']?.toString() ?? '会社',
                                 ),
                               ),
-                            ),
-                          ),
-                        ],
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _targetCompanyId = value),
+                        ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _noteController,
@@ -342,8 +260,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                         ),
                         const SizedBox(height: 8),
                         FilledButton.icon(
-                          onPressed: _targetCompanyName == null ||
-                                  _forwarding
+                          onPressed: _targetCompanyId == null || _forwarding
                               ? null
                               : _confirmAndForward,
                           icon: const Icon(Icons.forward_to_inbox_outlined),
@@ -363,8 +280,14 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   Future<void> _confirmAndForward() async {
     final repository = _repository;
-    final target = _targetCompanyName;
-    if (repository == null || target == null) return;
+    final targetId = _targetCompanyId;
+    if (repository == null || targetId == null) return;
+    final targetRow = _transferTargets.where(
+      (row) => row['company_id']?.toString() == targetId,
+    );
+    if (targetRow.isEmpty) return;
+    final target =
+        targetRow.first['company_name']?.toString() ?? '選択した会社';
 
     final selected = _items
         .where((item) => _selectedKeys.contains(item.key))
@@ -405,9 +328,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
     setState(() => _forwarding = true);
     try {
-      await repository.send(
+      await repository.sendConnected(
         requestId: _newRequestId(),
-        receiveCode: _receiveCodeController.text,
+        targetCompanyId: targetId,
         items: [
           for (final item in selected)
             {
@@ -421,11 +344,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$targetへ再転送しました')),
       );
-      _receiveCodeController.clear();
       _noteController.clear();
       setState(() {
         _selectedKeys.clear();
-        _targetCompanyName = null;
       });
       await _load();
     } catch (error) {
