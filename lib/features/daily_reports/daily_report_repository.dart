@@ -11,6 +11,11 @@ class DailyReportWorkerDraft {
     this.nightHours = 0,
     this.allowanceAmount = 0,
     this.allowanceLabel = '',
+    this.vehicleId,
+    this.vehicleName,
+    this.routeId,
+    this.routeName,
+    this.odometerKm,
   });
 
   final String workerId;
@@ -20,6 +25,11 @@ class DailyReportWorkerDraft {
   double nightHours;
   int allowanceAmount;
   String allowanceLabel;
+  String? vehicleId;
+  String? vehicleName;
+  String? routeId;
+  String? routeName;
+  double? odometerKm;
 
   Map<String, Object?> toRpcJson() => {
         'worker_id': workerId,
@@ -112,6 +122,48 @@ class DailyReportRepository {
       );
     }
 
+    final workerIds = bySite.values
+        .expand((group) => group.workers)
+        .map((worker) => worker.workerId)
+        .toSet()
+        .toList();
+
+    if (workerIds.isNotEmpty) {
+      final selections = await _client
+          .from('work_vehicle_route_selections')
+          .select(
+            'worker_id,vehicle_id,route_assignment_id,'
+            'vehicles(display_name,odometer_km),'
+            'route_assignments(route_name)',
+          )
+          .eq('work_date', _dbDate(date))
+          .inFilter('worker_id', workerIds);
+
+      final byWorker = <String, Map<String, dynamic>>{
+        for (final raw in selections)
+          raw['worker_id'].toString(): Map<String, dynamic>.from(raw),
+      };
+
+      for (final group in bySite.values) {
+        for (final worker in group.workers) {
+          final selection = byWorker[worker.workerId];
+          if (selection == null) continue;
+          final vehicle = selection['vehicles'];
+          final route = selection['route_assignments'];
+          worker.vehicleId = selection['vehicle_id']?.toString();
+          worker.routeId = selection['route_assignment_id']?.toString();
+          if (vehicle is Map) {
+            worker.vehicleName = vehicle['display_name']?.toString();
+            worker.odometerKm =
+                (vehicle['odometer_km'] as num?)?.toDouble();
+          }
+          if (route is Map) {
+            worker.routeName = route['route_name']?.toString();
+          }
+        }
+      }
+    }
+
     return bySite.values
         .map(
           (group) => DailyReportSiteGroup(
@@ -130,7 +182,7 @@ class DailyReportRepository {
     final rows = await _client
         .from('daily_reports')
         .select(
-          'id, site_id, report_date, work_description, status, signer_name, signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, workers(name))',
+          'id, site_id, report_date, work_description, status, signer_name, signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('site_id', siteId)
         .eq('report_date', _dbDate(date))
@@ -157,6 +209,15 @@ class DailyReportRepository {
             allowanceAmount:
                 (detail['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: detail['allowance_label']?.toString() ?? '',
+            vehicleId: detail['vehicle_id']?.toString(),
+            vehicleName: detail['vehicles'] is Map
+                ? detail['vehicles']['display_name']?.toString()
+                : null,
+            routeId: detail['route_assignment_id']?.toString(),
+            routeName: detail['route_assignments'] is Map
+                ? detail['route_assignments']['route_name']?.toString()
+                : null,
+            odometerKm: (detail['odometer_km'] as num?)?.toDouble(),
           ),
         );
       }
@@ -198,6 +259,20 @@ class DailyReportRepository {
     if (id == null || id.isEmpty) {
       throw StateError('日報IDを確認できません。');
     }
+
+    for (final worker in workers) {
+      await _client.rpc(
+        'save_daily_report_vehicle_usage',
+        params: {
+          'p_report_id': id,
+          'p_worker_id': worker.workerId,
+          'p_vehicle_id': worker.vehicleId,
+          'p_route_assignment_id': worker.routeId,
+          'p_odometer_km': worker.odometerKm,
+        },
+      );
+    }
+
     return id;
   }
 
