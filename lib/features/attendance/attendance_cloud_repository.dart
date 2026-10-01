@@ -88,7 +88,7 @@ class AttendanceCloudRepository {
     final companyId = await _companyId();
     final rows = await _client
         .from('attendance_entries')
-        .select('id, work_date, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, notes, signer_name, signature_json, signed_at, workers(name), sites(name)')
+        .select('id, work_date, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, notes, workers(name), sites(name)')
         .eq('company_id', companyId)
         .order('work_date', ascending: false)
         .order('created_at', ascending: false);
@@ -107,9 +107,11 @@ class AttendanceCloudRepository {
         'nightHours': _number(row['night_hours']),
         'allowanceYen': (row['allowance_amount'] as num?)?.toInt() ?? 0,
         'notes': row['notes'] ?? '',
-        'signerName': row['signer_name'],
-        'signatureJson': row['signature_json'],
-        'signedAt': row['signed_at'],
+        // Attendance signatures live with the current daily-report flow.
+        // Keep legacy model fields empty instead of querying removed columns.
+        'signerName': null,
+        'signatureJson': null,
+        'signedAt': null,
       };
     }).toList();
   }
@@ -164,9 +166,6 @@ class AttendanceCloudRepository {
           'night_hours': _number(record['nightHours']),
           'allowance_amount': (record['allowanceYen'] as num?)?.toInt() ?? 0,
           'notes': _nullable(record['notes']),
-          'signer_name': _nullable(record['signerName']),
-          'signature_json': record['signatureJson'],
-          'signed_at': _nullable(record['signedAt']),
           'created_by': userId,
           'updated_by': userId,
         })
