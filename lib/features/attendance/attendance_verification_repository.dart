@@ -16,6 +16,10 @@ class HomeAttendanceStatus {
     this.siteName,
     this.clockIn,
     this.clockOut,
+    this.selectedVehicleId,
+    this.selectedVehicleName,
+    this.selectedRouteId,
+    this.selectedRouteName,
     this.phase = HomeAttendancePhase.notStarted,
   });
 
@@ -23,6 +27,10 @@ class HomeAttendanceStatus {
   final String? siteName;
   final DateTime? clockIn;
   final DateTime? clockOut;
+  final String? selectedVehicleId;
+  final String? selectedVehicleName;
+  final String? selectedRouteId;
+  final String? selectedRouteName;
   final HomeAttendancePhase phase;
 
   String get verificationModeLabel => switch (verificationMode) {
@@ -99,6 +107,24 @@ class AttendanceVerificationRepository {
     }
 
     final now = DateTime.now();
+    final workDate =
+        now.year.toString().padLeft(4, '0') +
+        '-' +
+        now.month.toString().padLeft(2, '0') +
+        '-' +
+        now.day.toString().padLeft(2, '0');
+    final selection = await _client
+        .from('work_vehicle_route_selections')
+        .select(
+          'vehicle_id,route_assignment_id,'
+          'vehicles(display_name),route_assignments(route_name)',
+        )
+        .eq('worker_id', workerId)
+        .eq('work_date', workDate)
+        .maybeSingle();
+    final selectedVehicle = selection?['vehicles'];
+    final selectedRoute = selection?['route_assignments'];
+
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
     final rows = await _client
@@ -145,6 +171,12 @@ class AttendanceVerificationRepository {
       siteName: siteName,
       clockIn: clockIn,
       clockOut: clockOut,
+      selectedVehicleId: selection?['vehicle_id']?.toString(),
+      selectedVehicleName:
+          selectedVehicle is Map ? selectedVehicle['display_name']?.toString() : null,
+      selectedRouteId: selection?['route_assignment_id']?.toString(),
+      selectedRouteName:
+          selectedRoute is Map ? selectedRoute['route_name']?.toString() : null,
       phase: phase,
     );
   }
@@ -265,6 +297,21 @@ class AttendanceVerificationRepository {
           );
     }
 
+    final selection = await _client
+        .from('work_vehicle_route_selections')
+        .select('vehicle_id,route_assignment_id')
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq(
+          'work_date',
+          DateTime.now().year.toString().padLeft(4, '0') +
+              '-' +
+              DateTime.now().month.toString().padLeft(2, '0') +
+              '-' +
+              DateTime.now().day.toString().padLeft(2, '0'),
+        )
+        .maybeSingle();
+
     try {
       final row = await _client
           .from('attendance_verifications')
@@ -281,6 +328,8 @@ class AttendanceVerificationRepository {
             'proximity_status': proximityStatus,
             'photo_storage_path': storagePath,
             'note': _nullable(note),
+            'vehicle_id': selection?['vehicle_id'],
+            'route_assignment_id': selection?['route_assignment_id'],
             'created_by': _client.auth.currentUser?.id,
           })
           .select('id, confirmed_at')
