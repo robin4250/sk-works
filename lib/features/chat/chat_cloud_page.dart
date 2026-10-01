@@ -9,6 +9,7 @@ import '../albums/albums_cloud_page.dart';
 import '../notes/notes_cloud_page.dart';
 import '../notifications/notification_bell.dart';
 import 'chat_cloud_repository.dart';
+import 'chat_friends_page.dart';
 
 enum _ChatTab { all, site, direct, partner }
 
@@ -458,6 +459,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _openFriends() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
+    );
+  }
+
   Future<void> _openNotes() async {
     final id = _selectedGroupId;
     if (id == null) return;
@@ -676,6 +683,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 ),
               ),
         actions: [
+          IconButton(
+            tooltip: '友達追加',
+            onPressed: _openFriends,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+          ),
           const SkoNotificationBell(),
           if (selected != null)
             PopupMenuButton<String>(
