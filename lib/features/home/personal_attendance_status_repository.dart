@@ -133,11 +133,15 @@ class PersonalAttendanceStatusRepository {
     String? siteName = latestSiteId == siteId ? latestSiteName : null;
 
     if (siteId != null && siteId.isNotEmpty && siteName == null) {
-      final site = await _client
+      final companyId = settings['company_id']?.toString();
+      var siteQuery = _client
           .from('sites')
           .select('id, name')
-          .eq('id', siteId)
-          .maybeSingle();
+          .eq('id', siteId);
+      if (companyId != null && companyId.isNotEmpty) {
+        siteQuery = siteQuery.eq('company_id', companyId);
+      }
+      final site = await siteQuery.maybeSingle();
       if (site != null) {
         final text = site['name']?.toString().trim() ?? '';
         if (text.isNotEmpty) siteName = text;
