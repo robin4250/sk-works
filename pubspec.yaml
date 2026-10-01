@@ -17,6 +17,7 @@ dependencies:
   local_auth: 2.3.0
   mobile_scanner: 7.4.2
   pdf: 3.13.1
+  path_provider: 2.1.6
   qr_flutter: 4.1.0
   share_plus: 13.3.0
   printing: 5.15.1
