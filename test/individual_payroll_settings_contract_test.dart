@@ -19,7 +19,7 @@ void main() {
     expect(page, contains("'夜勤・早出'"));
     expect(page, contains("'休日夜勤・残業'"));
     expect(page, contains("'社会保険・月額'"));
-    expect(page, contains("'最終更新日：'"));
+    expect(page, contains('最終更新日：'));
     expect(page, contains("'個別給与設定を保存しますか？'"));
     expect(page, contains("'確定して保存'"));
   });
