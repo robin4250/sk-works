@@ -670,7 +670,8 @@ enum _ReceivedTransferCategory {
   personnel('社員'),
   qualifications('資格'),
   workerDocuments('必要書類'),
-  companyDocuments('会社提出書類');
+  companyDocuments('会社提出書類'),
+  signatures('サイン一覧');
 
   const _ReceivedTransferCategory(this.label);
 
@@ -747,11 +748,16 @@ class _ReceivedTransferItem {
       'personnel' => payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
+      'signature' =>
+        (payload['report_date']?.toString() ?? '') + ' / ' +
+            (payload['site_name']?.toString() ?? '現場') + ' / ' +
+            (payload['signer_name']?.toString() ?? 'サイン'),
       _ => '受信データ',
     };
     final category = switch (kind) {
       'personnel' => _ReceivedTransferCategory.personnel,
       'qualification' => _ReceivedTransferCategory.qualifications,
+      'signature' => _ReceivedTransferCategory.signatures,
       _ => _ReceivedTransferCategory.personnel,
     };
     return _ReceivedTransferItem(
