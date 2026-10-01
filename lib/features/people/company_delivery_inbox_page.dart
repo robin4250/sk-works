@@ -18,6 +18,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
+  Set<String> _savedKeys = <String>{};
   bool _loading = true;
   bool _forwarding = false;
   List<Map<String, dynamic>> _transferTargets = const [];
@@ -50,9 +51,11 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
       final valuesTop = await Future.wait([
         repository.listDeliveries(),
         repository.listTransferTargets(),
+        repository.loadSavedDeliveryKeys(),
       ]);
       final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
       final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
+      final savedKeys = valuesTop[2] as Set<String>;
       final received = deliveries
           .where((row) => row['received'] == true)
           .toList(growable: false);
@@ -96,6 +99,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ..addAll(loaded);
         _selectedKeys.clear();
         _transferTargets = transferTargets;
+        _savedKeys = savedKeys;
         if (_targetCompanyId != null &&
             !transferTargets.any(
               (row) => row['company_id']?.toString() == _targetCompanyId,
@@ -117,6 +121,118 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
   }
 
+
+  Future<void> _saveReceivedItems(
+    Iterable<_ReceivedTransferItem> items,
+  ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final keys = items.map((item) => item.key).toList(growable: false);
+    if (keys.isEmpty) return;
+    await repository.saveDeliveryItems(keys);
+    if (!mounted) return;
+    setState(() => _savedKeys = <String>{..._savedKeys, ...keys});
+  }
+
+  Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
+    final alreadySaved = _savedKeys.contains(item.key);
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(item.originCompany + 'からデータが届いています'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.title,
+                style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text(item.subtitle),
+            const SizedBox(height: 12),
+            Text(alreadySaved ? 'このデータは保存済みです。' : '保存しますか'),
+            const SizedBox(height: 4),
+            const Text('保存先：協力会社 → 出所会社 → データ種別'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(alreadySaved ? '閉じる' : 'あとで'),
+          ),
+          if (!alreadySaved)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('保存する'),
+            ),
+        ],
+      ),
+    );
+    if (shouldSave != true) return;
+    try {
+      await _saveReceivedItems([item]);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('保存しました'),
+          content: Text(item.originCompany + 'の協力会社フォルダへ保存しました。'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('保存したデータを開く'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存できませんでした: ' + error.toString())),
+      );
+    }
+  }
+
+  Future<void> _saveCompanyFolder(
+    String companyName,
+    List<_ReceivedTransferItem> items,
+  ) async {
+    final unsaved =
+        items.where((item) => !_savedKeys.contains(item.key)).toList();
+    if (unsaved.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(companyName + 'のデータはすべて保存済みです')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('会社単位で一括保存'),
+        content: Text(
+          companyName +
+              'から受信した' +
+              unsaved.length.toString() +
+              '件を協力会社フォルダへ保存します。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('一括保存'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _saveReceivedItems(unsaved);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(companyName + 'のデータを一括保存しました')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +285,12 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                 ),
                               ),
                               subtitle: Text('${entry.value.length}件'),
+                              trailing: IconButton(
+                                tooltip: '会社単位で一括保存',
+                                onPressed: () =>
+                                    _saveCompanyFolder(entry.key, entry.value),
+                                icon: const Icon(Icons.save_alt_outlined),
+                              ),
                               children: [
                                 for (final category
                                     in _ReceivedTransferCategory.values)
@@ -213,7 +335,23 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
-                                        subtitle: Text(item.subtitle),
+                                        subtitle: Text(
+                                          _savedKeys.contains(item.key)
+                                              ? item.subtitle + ' / 保存済み'
+                                              : item.subtitle,
+                                        ),
+                                        secondary: IconButton(
+                                          tooltip: _savedKeys.contains(item.key)
+                                              ? '保存したデータを開く'
+                                              : '詳細・保存',
+                                          onPressed: () =>
+                                              _showReceivedDetail(item),
+                                          icon: Icon(
+                                            _savedKeys.contains(item.key)
+                                                ? Icons.folder_open_outlined
+                                                : Icons.download_outlined,
+                                          ),
+                                        ),
                                         controlAffinity:
                                             ListTileControlAffinity.leading,
                                       ),
