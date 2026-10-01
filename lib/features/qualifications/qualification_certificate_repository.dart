@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -78,7 +80,7 @@ class QualificationCertificateRepository {
     var qualificationsQuery = _client
         .from('worker_qualifications')
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, notes',
+          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, notes',
         )
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
@@ -131,7 +133,7 @@ class QualificationCertificateRepository {
           .eq('company_id', companyId)
           .eq('id', qualificationId)
           .select(
-            'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, notes',
+            'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, notes',
           )
           .single();
 
@@ -143,6 +145,83 @@ class QualificationCertificateRepository {
       await _client.storage.from(_bucket).remove([storagePath]);
       rethrow;
     }
+  }
+
+  Future<Map<String, dynamic>> uploadCertificateBack({
+    required String qualificationId,
+    required String workerId,
+    required Uint8List bytes,
+    required String originalFilename,
+  }) async {
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    final existingRows = await _client
+        .from('worker_qualifications')
+        .select('attachment_back_path')
+        .eq('company_id', companyId)
+        .eq('id', qualificationId)
+        .limit(1);
+    if (existingRows.isEmpty) {
+      throw StateError('資格情報が見つかりません。');
+    }
+
+    final oldPath = existingRows.first['attachment_back_path']?.toString();
+    final extension = _extensionOf(originalFilename);
+    final objectName = DateTime.now().microsecondsSinceEpoch.toString() +
+        '_back' +
+        extension;
+    final storagePath = companyId +
+        '/' +
+        workerId +
+        '/' +
+        qualificationId +
+        '/' +
+        objectName;
+
+    await _client.storage.from(_bucket).uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(upsert: false),
+        );
+
+    try {
+      final updated = await _client
+          .from('worker_qualifications')
+          .update({'attachment_back_path': storagePath})
+          .eq('company_id', companyId)
+          .eq('id', qualificationId)
+          .select(
+            'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, notes',
+          )
+          .single();
+
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != storagePath) {
+        await _client.storage.from(_bucket).remove([oldPath]);
+      }
+      return Map<String, dynamic>.from(updated);
+    } catch (_) {
+      await _client.storage.from(_bucket).remove([storagePath]);
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> removeCertificateBack({
+    required String qualificationId,
+    required String storagePath,
+  }) async {
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    final updated = await _client
+        .from('worker_qualifications')
+        .update({'attachment_back_path': null})
+        .eq('company_id', companyId)
+        .eq('id', qualificationId)
+        .select(
+          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, notes',
+        )
+        .single();
+    await _client.storage.from(_bucket).remove([storagePath]);
+    return Map<String, dynamic>.from(updated);
   }
 
   Future<String> createSignedUrl(String storagePath) {
@@ -161,7 +240,7 @@ class QualificationCertificateRepository {
         .eq('company_id', companyId)
         .eq('id', qualificationId)
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, notes',
+          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, notes',
         )
         .single();
     await _client.storage.from(_bucket).remove([storagePath]);
