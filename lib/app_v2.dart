@@ -114,6 +114,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, int> _usage = const {};
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
+  Set<String> _hiddenHomeActionKeys = <String>{};
   HomeIdentity _identity = const HomeIdentity(
     role: 'viewer',
     companyName: 'SKO',
@@ -258,10 +259,12 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     final columns = (prefs.getInt('sko_home_grid_columns') ?? 2).clamp(1, 4);
     final order = prefs.getStringList('sko_home_action_order') ?? const <String>[];
+    final hidden = prefs.getStringList('sko_home_hidden_actions') ?? const <String>[];
     if (!mounted) return;
     setState(() {
       _homeGridColumns = columns;
       _homeActionOrder = List<String>.from(order);
+      _hiddenHomeActionKeys = hidden.toSet();
     });
   }
 
@@ -272,8 +275,20 @@ class _HomePageState extends State<HomePage> {
     await prefs.setInt('sko_home_grid_columns', next);
   }
 
+  Future<void> _setHomeActionVisible(String key, bool visible) async {
+    final next = <String>{..._hiddenHomeActionKeys};
+    if (visible) {
+      next.remove(key);
+    } else {
+      next.add(key);
+    }
+    setState(() => _hiddenHomeActionKeys = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sko_home_hidden_actions', next.toList()..sort());
+  }
+
   Future<void> _moveHomeAction(String key, int delta) async {
-    final visibleKeys = _homeLayoutItems.map((item) => item.key).toList();
+    final visibleKeys = _menuItems.map((item) => item.key).toList();
     final stored = [
       for (final item in _homeActionOrder)
         if (visibleKeys.contains(item)) item,
@@ -591,69 +606,93 @@ class _HomePageState extends State<HomePage> {
         key: 'daily_report',
         label: '日報',
         icon: Icons.description_outlined,
+        homeEligible: true,
+        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
       ),
+      if (_identity.can('can_manage_people'))
+        const _MenuAction(
+          key: 'people',
+          label: '社員',
+          icon: Icons.groups_2_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・サブ管理者・閲覧権限',
+        ),
       const _MenuAction(
         key: 'vehicle_routes',
         label: '車両・ルート',
         icon: Icons.route_outlined,
+        homeEligible: true,
+        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
       ),
       const _MenuAction(
         key: 'employee_register',
         label: '従業員登録',
         icon: Icons.person_add_alt_1,
+        accessLabel: '管理者・サブ管理者',
       ),
       if (_canReviewEmployeeOnboarding)
         const _MenuAction(
           key: 'employee_onboarding_approvals',
           label: '本登録承認',
           icon: Icons.verified_user_outlined,
+          accessLabel: '管理者・サブ管理者（承認権限）',
         ),
       if (!_isAdmin)
         const _MenuAction(
           key: 'payroll',
           label: '給与明細',
           icon: Icons.payments_outlined,
+          homeEligible: true,
+          accessLabel: '本人・閲覧権限',
         ),
       if (_identity.can('can_view_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_adjustments',
           label: _payrollAdjustmentLabel,
           icon: Icons.price_change_outlined,
+          accessLabel: '管理者・給与閲覧権限',
         ),
       const _MenuAction(
         key: 'profile',
         label: 'プロフィール',
         icon: Icons.account_circle_outlined,
+        homeEligible: true,
+        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
       ),
       if (_moduleEnabled('qualifications'))
         const _MenuAction(
           key: 'qualifications',
           label: '資格',
           icon: Icons.badge_outlined,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
         ),
       if (_moduleEnabled('documents'))
         const _MenuAction(
           key: 'documents',
           label: '必要書類',
           icon: Icons.fact_check_outlined,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
         ),
       if (_moduleEnabled('notes'))
         const _MenuAction(
           key: 'notes',
           label: 'ノート',
           icon: Icons.sticky_note_2_outlined,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
         ),
       if (_moduleEnabled('albums'))
         const _MenuAction(
           key: 'albums',
           label: 'アルバム',
           icon: Icons.photo_album_outlined,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
         ),
       if (_identity.can('can_approve_daily_report_edits'))
         const _MenuAction(
           key: 'approvals',
           label: '承認待ち',
           icon: Icons.approval_outlined,
+          accessLabel: '管理者・サブ管理者（承認権限）',
         ),
       if (_identity.can('can_manage_attendance') &&
           _moduleEnabled('line_bridge'))
@@ -661,34 +700,71 @@ class _HomePageState extends State<HomePage> {
           key: 'today_line',
           label: '本日のLINE出勤候補',
           icon: Icons.today_outlined,
+          accessLabel: '管理者・サブ管理者（勤怠権限）',
         ),
       if (_isAdmin)
         const _MenuAction(
           key: 'company_deliveries',
-          label: '協力会社から受け取ったデータ',
+          label: '協力会社',
           icon: Icons.folder_shared_outlined,
+          accessLabel: '管理者',
         ),
       if (_isAdmin)
         const _MenuAction(
           key: 'company_documents',
           label: '会社提出書類',
           icon: Icons.business_center_outlined,
+          homeEligible: true,
+          accessLabel: '管理者',
+        ),
+      if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
+        const _MenuAction(
+          key: 'invoices',
+          label: '請求書',
+          icon: Icons.receipt_long_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・請求書閲覧権限',
+        ),
+      if (_identity.can('can_view_admin_site_data'))
+        const _MenuAction(
+          key: 'admin_sites',
+          label: '管理現場',
+          icon: Icons.admin_panel_settings_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・現場閲覧権限',
+        ),
+      if (!_identity.isManagement && _moduleEnabled('sites'))
+        const _MenuAction(
+          key: 'site_register',
+          label: '現場登録',
+          icon: Icons.add_business_outlined,
+          homeEligible: true,
+          accessLabel: '一般・閲覧権限',
         ),
       const _MenuAction(
         key: 'settings',
         label: '設定',
         icon: Icons.settings_outlined,
+        homeEligible: true,
+        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
       ),
       const _MenuAction(
         key: 'help',
         label: 'ヘルプ',
         icon: Icons.help_outline,
+        homeEligible: true,
+        accessLabel: '表示中の権限に合わせて案内',
       ),
     ];
 
+    final rank = <String, int>{
+      for (var i = 0; i < _homeActionOrder.length; i++)
+        _homeActionOrder[i]: i,
+    };
     items.sort((a, b) {
-      final byUsage = (_usage[b.key] ?? 0).compareTo(_usage[a.key] ?? 0);
-      if (byUsage != 0) return byUsage;
+      final ai = rank[a.key] ?? 100000;
+      final bi = rank[b.key] ?? 100000;
+      if (ai != bi) return ai.compareTo(bi);
       return a.label.compareTo(b.label);
     });
     return items;
@@ -715,6 +791,7 @@ class _HomePageState extends State<HomePage> {
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
+          visibleHomeKeys: _homeLayoutItems.map((item) => item.key).toSet(),
           attendanceStatus: _homeAttendanceStatus,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
@@ -724,54 +801,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<_HomeLayoutItem> get _homeLayoutItems {
-    final items = <_HomeLayoutItem>[
-      if (_identity.can('can_manage_people'))
-        const _HomeLayoutItem('people', '人員', Icons.groups_2_outlined),
-      if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
-        const _HomeLayoutItem('invoices', '請求書', Icons.receipt_long_outlined),
-      if (_identity.can('can_view_admin_site_data'))
-        const _HomeLayoutItem(
-          'admin_sites',
-          '管理現場',
-          Icons.admin_panel_settings_outlined,
-        ),
-      if (_identity.isAdmin)
-        const _HomeLayoutItem(
-          'company_documents',
-          '会社提出書類',
-          Icons.business_center_outlined,
-        ),
-      if (!_identity.isManagement)
-        const _HomeLayoutItem('payroll', '給与明細', Icons.payments_outlined),
-      if (!_identity.isManagement)
-        const _HomeLayoutItem(
-          'profile',
-          'プロフィール',
-          Icons.account_circle_outlined,
-        ),
-      const _HomeLayoutItem('vehicle_routes', '車両・ルート', Icons.route_outlined),
-      if (!_identity.isManagement && _moduleEnabled('sites'))
-        const _HomeLayoutItem('site_register', '現場登録', Icons.add_business_outlined),
-      const _HomeLayoutItem('settings', '設定', Icons.settings_outlined),
-      if (!_identity.isManagement)
-        const _HomeLayoutItem('help', 'ヘルプ', Icons.help_outline),
+    return [
+      for (final item in _menuItems)
+        if (item.homeEligible && !_hiddenHomeActionKeys.contains(item.key))
+          _HomeLayoutItem(item.key, item.label, item.icon),
     ];
-
-    final rank = <String, int>{
-      for (var i = 0; i < _homeActionOrder.length; i++)
-        _homeActionOrder[i]: i,
-    };
-    items.sort((a, b) {
-      final ai = rank[a.key] ?? 100000;
-      final bi = rank[b.key] ?? 100000;
-      if (ai != bi) return ai.compareTo(bi);
-      return 0;
-    });
-    return items;
   }
 
   Widget _menuPage() {
-    final layoutItems = _homeLayoutItems;
+    final items = _menuItems;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -791,7 +829,7 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'ホームボタン',
+                      '表示・並び・権限',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
@@ -799,15 +837,15 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。',
+                      'ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
                     ),
                     const SizedBox(height: 12),
                     SegmentedButton<int>(
                       segments: const [
-                        ButtonSegment(value: 1, label: Text('1')),
-                        ButtonSegment(value: 2, label: Text('2')),
-                        ButtonSegment(value: 3, label: Text('3')),
-                        ButtonSegment(value: 4, label: Text('4')),
+                        ButtonSegment(value: 1, label: Text('1列')),
+                        ButtonSegment(value: 2, label: Text('2列')),
+                        ButtonSegment(value: 3, label: Text('3列')),
+                        ButtonSegment(value: 4, label: Text('4列')),
                       ],
                       selected: {_homeGridColumns},
                       onSelectionChanged: (values) {
@@ -815,74 +853,51 @@ class _HomePageState extends State<HomePage> {
                         _setHomeGridColumns(values.first);
                       },
                     ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      '並び順',
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 6),
-                    for (var i = 0; i < layoutItems.length; i++)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          radius: 16,
-                          child: Icon(layoutItems[i].icon, size: 18),
-                        ),
-                        title: Text(
-                          layoutItems[i].label,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        trailing: Wrap(
-                          spacing: 2,
-                          children: [
-                            IconButton(
-                              tooltip: '上へ',
-                              onPressed: i == 0
-                                  ? null
-                                  : () => _moveHomeAction(
-                                        layoutItems[i].key,
-                                        -1,
-                                      ),
-                              icon: const Icon(Icons.keyboard_arrow_up),
-                            ),
-                            IconButton(
-                              tooltip: '下へ',
-                              onPressed: i == layoutItems.length - 1
-                                  ? null
-                                  : () => _moveHomeAction(
-                                        layoutItems[i].key,
-                                        1,
-                                      ),
-                              icon: const Icon(Icons.keyboard_arrow_down),
-                            ),
-                          ],
-                        ),
-                      ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(6, 4, 6, 6),
-              child: Text(
-                'メニュー',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-            for (final item in _menuItems)
+            for (var i = 0; i < items.length; i++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Card(
                   child: ListTile(
-                    leading: CircleAvatar(child: Icon(item.icon)),
+                    leading: CircleAvatar(child: Icon(items[i].icon)),
                     title: Text(
-                      item.label,
+                      items[i].label,
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openHomeAction(item.key),
+                    subtitle: Text('利用権限：${items[i].accessLabel}'),
+                    onTap: () => _openHomeAction(items[i].key),
+                    trailing: SizedBox(
+                      width: items[i].homeEligible ? 150 : 92,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (items[i].homeEligible)
+                            Switch(
+                              value: !_hiddenHomeActionKeys.contains(items[i].key),
+                              onChanged: (value) =>
+                                  _setHomeActionVisible(items[i].key, value),
+                            ),
+                          IconButton(
+                            tooltip: '上へ',
+                            onPressed: i == 0
+                                ? null
+                                : () => _moveHomeAction(items[i].key, -1),
+                            icon: const Icon(Icons.keyboard_arrow_up),
+                          ),
+                          IconButton(
+                            tooltip: '下へ',
+                            onPressed: i == items.length - 1
+                                ? null
+                                : () => _moveHomeAction(items[i].key, 1),
+                            icon: const Icon(Icons.keyboard_arrow_down),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -982,11 +997,15 @@ class _MenuAction {
     required this.key,
     required this.label,
     required this.icon,
+    required this.accessLabel,
+    this.homeEligible = false,
   });
 
   final String key;
   final String label;
   final IconData icon;
+  final String accessLabel;
+  final bool homeEligible;
 }
 
 class _HomeLayoutItem {
