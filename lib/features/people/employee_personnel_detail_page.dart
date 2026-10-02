@@ -48,10 +48,21 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     final all = await _chooseScope(context, '送信');
     if (all == null || !context.mounted) return;
     final targets = all ? allEmployees : [record];
-    await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PersonnelBundleSendPage(
-          workerIds: targets.map((item) => item.id).toSet(),
+        builder: (_) => EmployeePersonnelPrintPage(
+          companyName: companyName,
+          records: targets,
+          action: EmployeePersonnelPreviewAction.send,
+          onConfirmSend: (previewContext) async {
+            await Navigator.of(previewContext).push<bool>(
+              MaterialPageRoute(
+                builder: (_) => PersonnelBundleSendPage(
+                  workerIds: targets.map((item) => item.id).toSet(),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
