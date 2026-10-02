@@ -12,7 +12,7 @@ void main() {
     expect(page, contains('isHoliday || date.weekday == DateTime.sunday'));
     expect(page, contains('color: Theme.of(context).colorScheme.error'));
     expect(page, contains("SkoLanguageController.tr('前の月')"));
-    expect(page, contains("tooltip: '次の月'"));
+    expect(page, contains("SkoLanguageController.tr('次の月')"));
     expect(page, contains('_changeMonth(-1)'));
     expect(page, contains('_changeMonth(1)'));
     expect(page, contains('repository.loadMonth(next)'));
