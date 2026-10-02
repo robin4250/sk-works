@@ -78,6 +78,7 @@ class SkWorksApp extends StatelessWidget {
       valueListenable: SkoThemeController.palette,
       builder: (context, palette, _) {
         return MaterialApp(
+          navigatorKey: SkoScrollChromeController.navigatorKey,
           debugShowCheckedModeBanner: false,
           title: ProductBrand.displayName,
           theme: SkoTheme.light(palette),
@@ -896,11 +897,13 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     final now = DateTime.now();
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? 68 : 0),
+        preferredSize: Size.fromHeight(_chromeVisible ? 88 : 0),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: _chromeVisible ? 68 : 0,
+          height: _chromeVisible ? 88 : 0,
           child: _chromeVisible
               ? AppBar(
                   backgroundColor: Theme.of(context)
@@ -908,6 +911,8 @@ class _HomePageState extends State<HomePage> {
                       .surface
                       .withValues(alpha: _homeAppearance.headerOpacity),
                   surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
                   titleSpacing: 12,
                   title: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -919,7 +924,7 @@ class _HomePageState extends State<HomePage> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,
-                            fontSize: 14,
+                            fontSize: 17,
                           ),
                         ),
                         Text(
@@ -951,8 +956,7 @@ class _HomePageState extends State<HomePage> {
               : const SizedBox.shrink(),
         ),
       ),
-      body: SafeArea(
-        child: FriendlyHomeContent(
+      body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
@@ -972,10 +976,10 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
+          contentTopInset: _chromeVisible ? 98 : 10,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
-      ),
     );
   }
 
@@ -1103,6 +1107,7 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -1115,7 +1120,7 @@ class _HomePageState extends State<HomePage> {
       ),
       bottomNavigationBar: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: _chromeVisible ? 80 : 0,
+        height: _chromeVisible ? 88 : 0,
         child: _chromeVisible
             ? NavigationBar(
                   backgroundColor: Theme.of(context)
