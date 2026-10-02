@@ -362,7 +362,7 @@ class _AttendanceVerificationPageState
                                 : Icons.logout,
                           ),
                           title: Text(
-                            _workerName(item) + ' / ' + _siteName(item),
+                            '${_workerName(item)} / ${_siteName(item)}',
                           ),
                           subtitle: Text(
                             '${_eventLabel(item['event_type'])} ・ '
