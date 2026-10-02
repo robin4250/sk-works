@@ -19,11 +19,11 @@ void main() {
     expect(home, contains('visibleHomeKeys'));
 
     expect(home, contains("'本日の勤務報告'"));
-    expect(home, contains(r"'未対応 ${widget.attention.missingCount}件'"));
+    expect(home, contains("SkoLanguageController.tr('未対応')"));
     expect(home, contains('Icons.notifications_active_outlined'));
     expect(home, contains('repeat(reverse: true)'));
 
-    expect(app, contains("label: '社員'"));
+    expect(app, contains("SkoLanguageController.tr('社員')"));
     expect(app, contains("label: '管理現場'"));
     expect(home, contains('_HomeActionAccess.subAdmin'));
     expect(home, contains('_HomeActionAccess.admin'));
