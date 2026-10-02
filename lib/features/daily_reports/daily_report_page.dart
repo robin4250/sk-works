@@ -317,7 +317,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: SkoLanguageController.tr('走行距離'),
                 suffixText: 'km',
                 border: OutlineInputBorder(),
@@ -420,7 +420,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     final result = await Navigator.of(context).push<SignatureResult>(
       MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(
+        builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
           submitLabel: SkoLanguageController.tr('報告者サインを保存'),
@@ -465,7 +465,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     final result = await Navigator.of(context).push<SignatureResult>(
       MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(
+        builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           submitLabel: SkoLanguageController.tr('責任者サインで確定'),
@@ -596,7 +596,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           SkoLanguageController.tr('日報'),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
@@ -630,7 +630,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 )
                                 .map((g) => g.destinationKey)
                                 .firstOrNull,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: SkoLanguageController.tr('現場／ルート'),
                               prefixIcon: Icon(Icons.route_outlined),
                             ),
@@ -685,7 +685,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             enabled: _editable,
                             minLines: 6,
                             maxLines: 12,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: SkoLanguageController.tr('作業内容'),
                               alignLabelWithHint: true,
                               hintText: SkoLanguageController.tr('本日の作業内容を入力'),
@@ -887,7 +887,7 @@ class _WorkerDetailCard extends StatelessWidget {
               enabled: editable,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: SkoLanguageController.tr('退勤時の走行距離'),
                 suffixText: 'km',
                 border: OutlineInputBorder(),
@@ -1342,7 +1342,7 @@ class _DailyReportPaper extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : '作 業 日 報',
                         style: TextStyle(
@@ -1413,9 +1413,9 @@ class _DailyReportPaper extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   SkoLanguageController.isEnglish ? 'WORKERS' : '作 業 者 名',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 2,
@@ -1473,10 +1473,10 @@ class _DailyReportPaper extends StatelessWidget {
                 const Spacer(),
                 const Divider(color: Colors.black87, height: 1),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   SkoLanguageController.tr('出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
                 ),
               ],
             ),
