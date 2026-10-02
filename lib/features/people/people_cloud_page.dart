@@ -97,14 +97,14 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '親会社に送る',
+            tooltip: 'A4横プレビュー確認後に送信',
             onPressed: _loading || _records.isEmpty
                 ? null
                 : () => _openExport(PersonnelExportOperation.send),
             icon: const Icon(Icons.send_outlined),
           ),
           IconButton(
-            tooltip: '印刷',
+            tooltip: 'A4横プレビュー・印刷',
             onPressed: _loading || _records.isEmpty
                 ? null
                 : () => _openExport(PersonnelExportOperation.print),
