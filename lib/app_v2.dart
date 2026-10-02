@@ -451,6 +451,13 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    if (key == 'people' && !_identity.isManagement) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('社員情報は管理者・サブ管理者のみ利用できます')),
+      );
+      return;
+    }
+
     if ((key == 'company_deliveries' || key == 'company_documents') &&
         !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -463,7 +470,8 @@ class _HomePageState extends State<HomePage> {
       'approvals': 'can_approve_daily_report_edits',
       'invoices': 'can_view_invoices',
       'admin_sites': 'can_view_admin_site_data',
-      'people': 'can_manage_people',
+      // 社員一覧・個人ページは管理者/サブ管理者だけ。
+
       'payroll_adjustments': 'can_view_payroll_adjustments',
     };
     final permission = restricted[key];
@@ -657,7 +665,7 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: '管理者・サブ管理者・一般・閲覧権限',
       ),
-      if (_identity.can('can_manage_people'))
+      if (_identity.isManagement)
         const _MenuAction(
           key: 'people',
           label: '社員',

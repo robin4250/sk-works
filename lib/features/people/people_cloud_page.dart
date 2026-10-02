@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
 import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
+import 'employee_personnel_detail_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
+import 'phone_display.dart';
 import 'worker_document_send_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
@@ -25,6 +28,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   PersonKind? _filter;
   bool _loading = true;
   bool _canManagePeople = false;
+  String _companyName = '';
   String? _error;
 
   @override
@@ -47,6 +51,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManagePeople(),
+        repository.companyName(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
@@ -56,6 +61,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           ..clear()
           ..addAll(loaded);
         _canManagePeople = values[1] as bool;
+        _companyName = values[2] as String;
         _loading = false;
         _error = null;
       });
@@ -86,7 +92,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('人員管理'),
+        title: const Text('社員'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -181,7 +187,6 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                   record.kind.label,
                                   if (record.companyName.isNotEmpty) record.companyName,
                                   if (record.role.isNotEmpty) record.role,
-                                  if (record.phone.isNotEmpty) record.phone,
                                 ];
                                 return Card(
                                   child: ListTile(
@@ -196,9 +201,87 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                       record.name,
                                       style: const TextStyle(fontWeight: FontWeight.w700),
                                     ),
-                                    subtitle: Text(subtitleParts.join(' / ')),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(record),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(subtitleParts.join(' / ')),
+                                        if (record.phone.isNotEmpty)
+                                          InkWell(
+                                            onTap: () => _callPhone(
+                                              record.phone,
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 4),
+                                              child: Row(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.phone_outlined,
+                                                    size: 16,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    domesticPhoneDisplay(
+                                                      record.phone,
+                                                    ),
+                                                    style: TextStyle(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary,
+                                                      decoration:
+                                                          TextDecoration
+                                                              .underline,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (record.phone.isNotEmpty)
+                                          IconButton(
+                                            tooltip: '電話をかける',
+                                            onPressed: () =>
+                                                _callPhone(record.phone),
+                                            icon: const Icon(Icons.phone_outlined),
+                                          ),
+                                        const Icon(Icons.chevron_right),
+                                      ],
+                                    ),
+                                    onTap: !_canManagePeople
+                                        ? null
+                                        : () {
+                                            if (record.kind ==
+                                                PersonKind.partnerCompany) {
+                                              _showDetails(record);
+                                              return;
+                                            }
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    EmployeePersonnelDetailPage(
+                                                  record: record,
+                                                  allEmployees: _records
+                                                      .where(
+                                                        (item) =>
+                                                            item.kind !=
+                                                            PersonKind.partnerCompany,
+                                                      )
+                                                      .toList(growable: false),
+                                                  companyName: _companyName,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                   ),
                                 );
                               },
@@ -247,7 +330,14 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               Text('区分: ${record.kind.label}'),
               if (record.companyName.isNotEmpty) Text('会社: ${record.companyName}'),
               if (record.role.isNotEmpty) Text('役割・職種: ${record.role}'),
-              if (record.phone.isNotEmpty) Text('電話: ${record.phone}'),
+              if (record.phone.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _callPhone(record.phone),
+                  icon: const Icon(Icons.phone_outlined),
+                  label: Text(
+                    '電話: ${domesticPhoneDisplay(record.phone)}',
+                  ),
+                ),
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
               for (final label in DataDateLabels.labels(
@@ -422,6 +512,18 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       MaterialPageRoute(builder: (_) => page),
     );
   }
+  Future<void> _callPhone(String phone) async {
+    final domestic = domesticPhoneDisplay(phone);
+    final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (dial.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: dial);
+    if (!await launchUrl(uri) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('電話を開始できませんでした')),
+      );
+    }
+  }
+
   Future<void> _delete(PersonRecord record) async {
     final repository = _repository;
     if (repository == null) return;

@@ -208,12 +208,30 @@ class CompanyDocumentExchangeRepository {
     if (receiveCode.isEmpty) {
       throw StateError('接続済み会社への送信準備に失敗しました。');
     }
-    return send(
+    final deliveryId = await send(
       requestId: requestId,
       receiveCode: receiveCode,
       items: items,
       note: note,
     );
+
+    final personnelWorkerIds = items
+        .where((item) => item['kind'] == 'worker_personnel')
+        .map((item) => item['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (personnelWorkerIds.isNotEmpty) {
+      await _client.rpc(
+        'append_employee_personnel_details',
+        params: {
+          'p_delivery_id': deliveryId,
+          'p_worker_ids': personnelWorkerIds,
+        },
+      );
+    }
+
+    return deliveryId;
   }
 
   Future<String> send({

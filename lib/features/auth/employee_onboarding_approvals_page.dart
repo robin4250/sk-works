@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../people/worker_personnel_change_approvals_page.dart';
 import 'employee_onboarding_repository.dart';
 
 class EmployeeOnboardingApprovalsPage extends StatefulWidget {
@@ -279,6 +280,15 @@ class _EmployeeOnboardingApprovalsPageState
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          IconButton(
+            tooltip: '社員個人情報の変更承認',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const WorkerPersonnelChangeApprovalsPage(),
+              ),
+            ),
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
           IconButton(
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
