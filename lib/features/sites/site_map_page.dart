@@ -46,12 +46,31 @@ class _SiteMapPageState extends State<SiteMapPage> {
   Future<void> _map(Map<String, dynamic> row, String labelKey) async {
     final lat = row['latitude'] as num?;
     final lon = row['longitude'] as num?;
-    if (lat == null || lon == null) return;
-    final uri = Uri.https('maps.apple.com', '/', {
-      'll': '$lat,$lon',
-      'q': row[labelKey]?.toString() ?? 'SKO',
+    final address = row['address']?.toString().trim() ?? '';
+    final query = lat != null && lon != null
+        ? '${lat.toDouble()},${lon.toDouble()}'
+        : address;
+    if (query.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Googleマップで開ける位置情報がありません')),
+      );
+      return;
+    }
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
     });
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${row[labelKey]?.toString() ?? 'SKO'}をGoogleマップで開けませんでした',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -59,7 +78,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final data = _data;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場マップ'),
+        title: const Text('Googleマップ'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -94,7 +113,31 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         trailing: const Icon(Icons.map_outlined),
                         onTap: () => _map(site, 'site_name'),
                       ),
-                    const _Heading('最新の打刻位置'),
+                    if (data.canViewAll) ...[
+                      const _Heading('取引会社'),
+                      for (final customer in data.customers)
+                        ListTile(
+                          leading: const Icon(Icons.business_center_outlined),
+                          title: Text(
+                            customer['customer_name']?.toString() ?? '取引会社',
+                          ),
+                          subtitle: Text(customer['address']?.toString() ?? ''),
+                          trailing: const Icon(Icons.map_outlined),
+                          onTap: () => _map(customer, 'customer_name'),
+                        ),
+                      const _Heading('下請け会社'),
+                      for (final partner in data.partners)
+                        ListTile(
+                          leading: const Icon(Icons.handshake_outlined),
+                          title: Text(
+                            partner['partner_name']?.toString() ?? '下請け会社',
+                          ),
+                          subtitle: Text(partner['address']?.toString() ?? ''),
+                          trailing: const Icon(Icons.map_outlined),
+                          onTap: () => _map(partner, 'partner_name'),
+                        ),
+                    ],
+                    const _Heading('社員の最新打刻位置'),
                     for (final worker in data.workers)
                       ListTile(
                         leading: const Icon(Icons.person_pin_circle_outlined),
