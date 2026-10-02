@@ -36,6 +36,12 @@ void main() {
     expect(appearance, contains("'チャット背景・透明度'"));
     expect(appearance, contains('min: 1'));
     expect(appearance, contains('max: 100'));
+    expect(appearance, contains('this.headerOpacity = 60'));
+    expect(appearance, contains('this.footerOpacity = 60'));
+    expect(appearance, contains('this.bubbleOpacity = 60'));
+    expect(page, contains('alpha: _appearance.headerAlpha'));
+    expect(page, contains('selected == null || _chatChromeVisible'));
+    expect(page, contains('alpha: _appearance.footerAlpha'));
     expect(appearance, contains("'このチャットだけの個人設定です。他のユーザーには反映されません。'"));
     expect(migration, contains('private.personal_sko_ids'));
     expect(migration, contains('private.sko_friend_requests'));
