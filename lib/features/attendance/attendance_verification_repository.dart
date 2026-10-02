@@ -158,7 +158,10 @@ class AttendanceVerificationRepository {
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString();
     if (workerId == null || workerId.isEmpty) {
-      return HomeAttendanceStatus(verificationMode: configuredMode);
+      final fallbackMode = settings['mode']?.toString() == 'location'
+          ? 'gps_auto'
+          : settings['mode']?.toString() ?? 'manual';
+      return HomeAttendanceStatus(verificationMode: fallbackMode);
     }
 
     final now = DateTime.now();
