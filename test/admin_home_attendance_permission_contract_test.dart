@@ -15,13 +15,10 @@ void main() {
     expect(source, contains("'選択中の出勤方法："));
     expect(source, contains("'選択中の現場："));
 
-    expect(
-      source,
-      contains(
-        "moduleEnabled('attendance') &&\n"
-        "            identity.can('can_manage_attendance')",
-      ),
-    );
+    expect(source, contains('identity.isManagement'));
+    expect(source, contains("identity.can('can_manage_attendance')"));
+    expect(source, contains("visibleHomeKeys.contains('attendance_today')"));
+    expect(source, contains('_TodayAttendanceHomeCard'));
     expect(source, contains('出勤状況を確認'));
   });
 }

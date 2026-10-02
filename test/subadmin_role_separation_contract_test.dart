@@ -41,7 +41,8 @@ void main() {
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
     final app = File('lib/app_v2.dart').readAsStringSync();
 
-    expect(home, contains('if (identity.isManagement)'));
+    expect(home, contains('_OrderedHomeContent'));
+    expect(home, contains('identity.isManagement'));
     expect(
       app,
       contains(

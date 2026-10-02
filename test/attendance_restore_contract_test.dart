@@ -13,7 +13,7 @@ void main() {
 
     expect(page, contains('final isToday = date.year == now.year'));
     expect(page, contains('width: isToday ? 2.5 : 1'));
-    expect(page, contains(r"'${name}1'"));
+    expect(page, contains("allowanceUnits[name] ?? '回'"));
     expect(page, contains('allowanceCounts'));
     expect(page, contains('if (data.workedDays > 0)'));
     expect(page, contains('if (data.overtimeHours > 0)'));
@@ -24,5 +24,6 @@ void main() {
     expect(page, contains('day.hasAllowance'));
     expect(pdf, contains('day.hasAllowance'));
     expect(pdf, contains('day.allowanceNames'));
+    expect(pdf, contains("data.allowanceUnits[entry.key] ?? '回'"));
   });
 }

@@ -32,6 +32,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.contentTopInset = 10,
     required this.onOpen,
     required this.onRefresh,
+    this.onReorderAction,
   });
 
   final HomeIdentity identity;
@@ -48,6 +49,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final double contentTopInset;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -79,41 +82,21 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               ],
-              if (moduleEnabled('attendance') &&
-                  showAttendanceReport) ...[
-                const SizedBox(height: 12),
-                Opacity(
-                  opacity: appearance.cardOpacity,
-                  child: _PersonalAttendanceCard(
-                    status: attendanceStatus,
-                    vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
-                    onOpen: onOpen,
-                  ),
-                ),
-              ],
               const SizedBox(height: 14),
-              if (identity.isManagement)
-                _AdminHome(
-                  identity: identity,
-                  moduleEnabled: moduleEnabled,
-                  gridColumns: gridColumns,
-                  actionOrder: actionOrder,
-                  visibleHomeKeys: visibleHomeKeys,
-                  shortcuts: shortcuts,
-                  showTodayAttendance: showTodayAttendance,
-                  appearance: appearance,
-                  onOpen: onOpen,
-                )
-              else
-                _WorkerHome(
-                  moduleEnabled: moduleEnabled,
-                  gridColumns: gridColumns,
-                  actionOrder: actionOrder,
-                  visibleHomeKeys: visibleHomeKeys,
-                  shortcuts: shortcuts,
-                  appearance: appearance,
-                  onOpen: onOpen,
-                ),
+              _OrderedHomeContent(
+                identity: identity,
+                moduleEnabled: moduleEnabled,
+                gridColumns: gridColumns,
+                actionOrder: actionOrder,
+                visibleHomeKeys: visibleHomeKeys,
+                shortcuts: shortcuts,
+                showAttendanceReport: showAttendanceReport,
+                showTodayAttendance: showTodayAttendance,
+                attendanceStatus: attendanceStatus,
+                appearance: appearance,
+                onOpen: onOpen,
+                onReorderAction: onReorderAction,
+              ),
             ],
           ),
         ),
@@ -229,11 +212,13 @@ class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
     required this.vehicleRoutesEnabled,
+    required this.buttonOpacity,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
   final bool vehicleRoutesEnabled;
+  final double buttonOpacity;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -374,48 +359,56 @@ class _PersonalAttendanceCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => onOpen('workplace_select'),
-              icon: const Icon(Icons.place_outlined),
-              label: const Text('現場の選択（1現場／複数現場）'),
-            ),
-            const SizedBox(height: 9),
-            OutlinedButton.icon(
-              onPressed: () => onOpen('attendance_method_vehicle'),
-              icon: const Icon(Icons.tune_outlined),
-              label: const Text('出勤方法と車両を選択'),
-            ),
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                Expanded(
-                  child: isWorking || isFinished
-                      ? OutlinedButton.icon(
-                          onPressed: () => onOpen('clock_in'),
-                          icon: const Icon(Icons.login),
-                          label: const Text('出勤'),
-                        )
-                      : FilledButton.icon(
-                          onPressed: () => onOpen('clock_in'),
-                          icon: const Icon(Icons.login),
-                          label: const Text('出勤'),
-                        ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: isWorking
-                      ? FilledButton.icon(
-                          onPressed: () => onOpen('clock_out'),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('退勤'),
-                        )
-                      : OutlinedButton.icon(
-                          onPressed: () => onOpen('clock_out'),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('退勤'),
-                        ),
-                ),
-              ],
+            Opacity(
+              opacity: buttonOpacity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => onOpen('workplace_select'),
+                    icon: const Icon(Icons.place_outlined),
+                    label: const Text('現場の選択（1現場／複数現場）'),
+                  ),
+                  const SizedBox(height: 9),
+                  OutlinedButton.icon(
+                    onPressed: () => onOpen('attendance_method_vehicle'),
+                    icon: const Icon(Icons.tune_outlined),
+                    label: const Text('出勤方法と車両を選択'),
+                  ),
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: isWorking || isFinished
+                            ? OutlinedButton.icon(
+                                onPressed: () => onOpen('clock_in'),
+                                icon: const Icon(Icons.login),
+                                label: const Text('出勤'),
+                              )
+                            : FilledButton.icon(
+                                onPressed: () => onOpen('clock_in'),
+                                icon: const Icon(Icons.login),
+                                label: const Text('出勤'),
+                              ),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: isWorking
+                            ? FilledButton.icon(
+                                onPressed: () => onOpen('clock_out'),
+                                icon: const Icon(Icons.logout),
+                                label: const Text('退勤'),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: () => onOpen('clock_out'),
+                                icon: const Icon(Icons.logout),
+                                label: const Text('退勤'),
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -449,63 +442,21 @@ class _PersonalAttendanceCard extends StatelessWidget {
   }
 }
 
-class _WorkerHome extends StatelessWidget {
-  const _WorkerHome({
-    required this.moduleEnabled,
-    required this.gridColumns,
-    required this.actionOrder,
-    required this.visibleHomeKeys,
-    required this.shortcuts,
-    required this.appearance,
-    required this.onOpen,
-  });
 
-  final bool Function(String key) moduleEnabled;
-  final int gridColumns;
-  final List<String> actionOrder;
-  final Set<String> visibleHomeKeys;
-  final List<HomeShortcut> shortcuts;
-  final HomeAppearance appearance;
-  final Future<void> Function(String key) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _SectionTitle('ホーム'),
-        const SizedBox(height: 9),
-        _ActionGrid(
-          items: [
-            for (final shortcut in shortcuts)
-              if (visibleHomeKeys.contains(shortcut.key))
-                _HomeAction(
-                  shortcut.key,
-                  shortcut.label,
-                  shortcut.icon,
-                ),
-          ],
-          columns: gridColumns,
-          actionOrder: actionOrder,
-          opacity: appearance.buttonOpacity,
-          onOpen: onOpen,
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminHome extends StatelessWidget {
-  const _AdminHome({
+class _OrderedHomeContent extends StatelessWidget {
+  const _OrderedHomeContent({
     required this.identity,
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
     required this.visibleHomeKeys,
     required this.shortcuts,
+    required this.showAttendanceReport,
     required this.showTodayAttendance,
+    required this.attendanceStatus,
     required this.appearance,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final HomeIdentity identity;
@@ -514,70 +465,222 @@ class _AdminHome extends StatelessWidget {
   final List<String> actionOrder;
   final Set<String> visibleHomeKeys;
   final List<HomeShortcut> shortcuts;
+  final bool showAttendanceReport;
   final bool showTodayAttendance;
+  final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (moduleEnabled('attendance') &&
-            identity.can('can_manage_attendance') &&
-            showTodayAttendance)
-          Opacity(
-            opacity: appearance.cardOpacity,
-            child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '本日の出勤',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '自社と下請けを分けて、現場ごとの出勤人数を確認できます。',
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () => onOpen('attendance_today'),
-                  icon: const Icon(Icons.groups_outlined),
-                  label: const Text('出勤状況を確認'),
-                ),
-              ],
-            ),
-          ),
-        ),
-          ),
-        if (moduleEnabled('attendance') &&
-            identity.can('can_manage_attendance') &&
-            showTodayAttendance)
-          const SizedBox(height: 12),
-        const _SectionTitle('管理'),
-        const SizedBox(height: 9),
+    final rank = <String, int>{
+      for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
+    };
+    final keys = <String>[
+      if (moduleEnabled('attendance') &&
+          showAttendanceReport &&
+          visibleHomeKeys.contains('attendance_verify'))
+        'attendance_verify',
+      if (identity.isManagement &&
+          moduleEnabled('attendance') &&
+          identity.can('can_manage_attendance') &&
+          showTodayAttendance &&
+          visibleHomeKeys.contains('attendance_today'))
+        'attendance_today',
+      for (final shortcut in shortcuts)
+        if (visibleHomeKeys.contains(shortcut.key) &&
+            shortcut.key != 'attendance_verify' &&
+            shortcut.key != 'attendance_today')
+          shortcut.key,
+    ];
+    final fallbackRank = <String, int>{
+      for (var i = 0; i < keys.length; i++) keys[i]: i,
+    };
+    keys.sort((a, b) {
+      final ai = rank[a] ?? 100000;
+      final bi = rank[b] ?? 100000;
+      if (ai != bi) return ai.compareTo(bi);
+      return (fallbackRank[a] ?? 0).compareTo(fallbackRank[b] ?? 0);
+    });
+
+    final shortcutByKey = <String, HomeShortcut>{
+      for (final shortcut in shortcuts) shortcut.key: shortcut,
+    };
+    final children = <Widget>[];
+    final pending = <_HomeAction>[];
+
+    void flushGrid() {
+      if (pending.isEmpty) return;
+      children.add(
         _ActionGrid(
-          items: [
-            for (final shortcut in shortcuts)
-              if (visibleHomeKeys.contains(shortcut.key))
-                _HomeAction(
-                  shortcut.key,
-                  shortcut.label,
-                  shortcut.icon,
-                  access: _shortcutAccess(shortcut.key),
-                ),
-          ],
+          items: List<_HomeAction>.from(pending),
           columns: gridColumns,
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
           onOpen: onOpen,
+          onReorderAction: onReorderAction,
         ),
-      ],
+      );
+      children.add(const SizedBox(height: 12));
+      pending.clear();
+    }
+
+    for (final key in keys) {
+      if (key == 'attendance_verify') {
+        flushGrid();
+        children.add(
+          _DraggableHomeCard(
+            keyName: 'attendance_verify',
+            onReorderAction: onReorderAction,
+            child: Opacity(
+              opacity: appearance.cardOpacity,
+              child: _PersonalAttendanceCard(
+                status: attendanceStatus,
+                vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
+                buttonOpacity: appearance.cardButtonOpacity,
+                onOpen: onOpen,
+              ),
+            ),
+          ),
+        );
+        children.add(const SizedBox(height: 12));
+        continue;
+      }
+      if (key == 'attendance_today') {
+        flushGrid();
+        children.add(
+          _DraggableHomeCard(
+            keyName: 'attendance_today',
+            onReorderAction: onReorderAction,
+            child: Opacity(
+              opacity: appearance.cardOpacity,
+              child: _TodayAttendanceHomeCard(
+                buttonOpacity: appearance.cardButtonOpacity,
+                onOpen: onOpen,
+              ),
+            ),
+          ),
+        );
+        children.add(const SizedBox(height: 12));
+        continue;
+      }
+
+      final shortcut = shortcutByKey[key];
+      if (shortcut != null) {
+        pending.add(
+          _HomeAction(
+            shortcut.key,
+            shortcut.label,
+            shortcut.icon,
+            access: identity.isManagement
+                ? _shortcutAccess(shortcut.key)
+                : _HomeActionAccess.general,
+          ),
+        );
+      }
+    }
+    flushGrid();
+
+    if (children.isNotEmpty && children.last is SizedBox) {
+      children.removeLast();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+}
+
+
+class _DraggableHomeCard extends StatelessWidget {
+  const _DraggableHomeCard({
+    required this.keyName,
+    required this.child,
+    required this.onReorderAction,
+  });
+
+  final String keyName;
+  final Widget child;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final reorder = onReorderAction;
+    if (reorder == null) return child;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != keyName,
+      onAcceptWithDetails: (details) {
+        reorder(details.data, keyName);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final highlighted = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: highlighted ? 1.015 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: LongPressDraggable<String>(
+            data: keyName,
+            delay: const Duration(milliseconds: 320),
+            feedback: SizedBox(
+              width: MediaQuery.sizeOf(context).width - 32,
+              child: Material(
+                color: Colors.transparent,
+                child: child,
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
+              child: child,
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TodayAttendanceHomeCard extends StatelessWidget {
+  const _TodayAttendanceHomeCard({
+    required this.buttonOpacity,
+    required this.onOpen,
+  });
+
+  final double buttonOpacity;
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '本日の出勤',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            const Text('自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
+            const SizedBox(height: 12),
+            Opacity(
+              opacity: buttonOpacity,
+              child: FilledButton.icon(
+                onPressed: () => onOpen('attendance_today'),
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('出勤状況を確認'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -589,6 +692,7 @@ class _ActionGrid extends StatelessWidget {
     required this.actionOrder,
     required this.opacity,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final List<_HomeAction> items;
@@ -596,6 +700,8 @@ class _ActionGrid extends StatelessWidget {
   final List<String> actionOrder;
   final double opacity;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -634,6 +740,7 @@ class _ActionGrid extends StatelessWidget {
             compact: columnCount >= 3,
             fourColumns: columnCount == 4,
             onOpen: onOpen,
+            onReorderAction: onReorderAction,
           ),
       ],
       ),
@@ -647,12 +754,15 @@ class _HomeActionTile extends StatelessWidget {
     required this.compact,
     required this.fourColumns,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final _HomeAction item;
   final bool compact;
   final bool fourColumns;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -685,12 +795,13 @@ class _HomeActionTile extends StatelessWidget {
       ),
     );
 
-    return Material(
-      color: background,
+    Widget tile({bool dragging = false}) => Material(
+      color: background.withValues(alpha: dragging ? 0.88 : 1),
+      elevation: dragging ? 8 : 0,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => onOpen(item.key),
+        onTap: dragging ? null : () => onOpen(item.key),
         child: Container(
           padding: EdgeInsets.all(compact ? 8 : 14),
           decoration: BoxDecoration(
@@ -740,6 +851,39 @@ class _HomeActionTile extends StatelessWidget {
                 ),
         ),
       ),
+    );
+
+    final reorder = onReorderAction;
+    if (reorder == null) return tile();
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != item.key,
+      onAcceptWithDetails: (details) {
+        reorder(details.data, item.key);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final highlighted = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: highlighted ? 1.04 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: LongPressDraggable<String>(
+            data: item.key,
+            delay: const Duration(milliseconds: 320),
+            feedback: SizedBox(
+              width: fourColumns ? 92 : (compact ? 120 : 220),
+              child: Material(
+                color: Colors.transparent,
+                child: tile(dragging: true),
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
+              child: tile(),
+            ),
+            child: tile(),
+          ),
+        );
+      },
     );
   }
 }
@@ -798,18 +942,3 @@ class _ProfessionalAccessMark extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
-    );
-  }
-}

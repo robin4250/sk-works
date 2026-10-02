@@ -22,10 +22,13 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
   final _holiday = TextEditingController();
   final _allowance1 = TextEditingController();
   final _allowance1Amount = TextEditingController();
+  final _allowance1Unit = TextEditingController(text: '回');
   final _allowance2 = TextEditingController();
   final _allowance2Amount = TextEditingController();
+  final _allowance2Unit = TextEditingController(text: '回');
   final _allowance3 = TextEditingController();
   final _allowance3Amount = TextEditingController();
+  final _allowance3Unit = TextEditingController(text: '回');
 
   bool _loading = true;
   bool _saving = false;
@@ -48,10 +51,13 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _holiday,
       _allowance1,
       _allowance1Amount,
+      _allowance1Unit,
       _allowance2,
       _allowance2Amount,
+      _allowance2Unit,
       _allowance3,
       _allowance3Amount,
+      _allowance3Unit,
     ]) {
       controller.dispose();
     }
@@ -83,10 +89,13 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _holiday.text = value.holidayDayRateYen.toString();
       _allowance1.text = value.allowance1Name;
       _allowance1Amount.text = value.allowance1AmountYen.toString();
+      _allowance1Unit.text = value.allowance1Unit;
       _allowance2.text = value.allowance2Name;
       _allowance2Amount.text = value.allowance2AmountYen.toString();
+      _allowance2Unit.text = value.allowance2Unit;
       _allowance3.text = value.allowance3Name;
       _allowance3Amount.text = value.allowance3AmountYen.toString();
+      _allowance3Unit.text = value.allowance3Unit;
       if (!mounted) return;
       setState(() => _loading = false);
     } catch (error) {
@@ -144,10 +153,13 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
           holidayDayRateYen: values[3]!,
           allowance1Name: _allowance1.text,
           allowance1AmountYen: values[4]!,
+          allowance1Unit: _allowance1Unit.text,
           allowance2Name: _allowance2.text,
           allowance2AmountYen: values[5]!,
+          allowance2Unit: _allowance2Unit.text,
           allowance3Name: _allowance3.text,
           allowance3AmountYen: values[6]!,
+          allowance3Unit: _allowance3Unit.text,
         ),
       );
       if (!mounted) return;
@@ -181,6 +193,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
     int number,
     TextEditingController name,
     TextEditingController amount,
+    TextEditingController unit,
   ) {
     return Card(
       child: Padding(
@@ -192,10 +205,29 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
               decoration: InputDecoration(labelText: '手当$number 名称'),
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: amount,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(labelText: '手当$number 金額（円）'),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: amount,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: '手当$number 金額（円）'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: unit,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      labelText: '表示単位',
+                      hintText: '日・回など',
+                      counterText: '',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -275,11 +307,26 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                             ),
                       ),
                       const SizedBox(height: 10),
-                      _allowanceBlock(1, _allowance1, _allowance1Amount),
+                      _allowanceBlock(
+                        1,
+                        _allowance1,
+                        _allowance1Amount,
+                        _allowance1Unit,
+                      ),
                       const SizedBox(height: 10),
-                      _allowanceBlock(2, _allowance2, _allowance2Amount),
+                      _allowanceBlock(
+                        2,
+                        _allowance2,
+                        _allowance2Amount,
+                        _allowance2Unit,
+                      ),
                       const SizedBox(height: 10),
-                      _allowanceBlock(3, _allowance3, _allowance3Amount),
+                      _allowanceBlock(
+                        3,
+                        _allowance3,
+                        _allowance3Amount,
+                        _allowance3Unit,
+                      ),
                       if (_error != null) ...[
                         const SizedBox(height: 12),
                         Text(

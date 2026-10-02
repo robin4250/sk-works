@@ -13,6 +13,7 @@ class WorkerAttendanceDay {
     this.nightHours = 0,
     this.allowanceYen = 0,
     this.allowanceNames = const <String>[],
+    this.allowanceUnits = const <String, String>{},
   });
 
   final DateTime date;
@@ -24,6 +25,7 @@ class WorkerAttendanceDay {
   final double nightHours;
   final int allowanceYen;
   final List<String> allowanceNames;
+  final Map<String, String> allowanceUnits;
 
   bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
 
@@ -36,11 +38,13 @@ class WorkerAttendanceMonth {
     required this.year,
     required this.month,
     required this.days,
+    this.allowanceUnits = const <String, String>{},
   });
 
   final int year;
   final int month;
   final Map<DateTime, WorkerAttendanceDay> days;
+  final Map<String, String> allowanceUnits;
 
   int get workedDays => days.values.where((day) => day.worked).length;
 
@@ -93,13 +97,16 @@ class WorkerAttendanceSheetRepository {
     return id;
   }
 
-  Future<({String reportId, String siteId})?> findDailyReportForDate(
+  Future<({String reportId, String? siteId, String? routeAssignmentId})?>
+      findDailyReportForDate(
     DateTime date,
   ) async {
     final workerId = await ensureCurrentWorkerId();
     final rows = await _client
         .from('daily_report_workers')
-        .select('report_id,daily_reports!inner(site_id,report_date)')
+        .select(
+          'report_id,daily_reports!inner(site_id,route_assignment_id,report_date)',
+        )
         .eq('worker_id', workerId)
         .eq('daily_reports.report_date', _dbDate(date))
         .limit(1);
@@ -108,9 +115,19 @@ class WorkerAttendanceSheetRepository {
     final report = row['daily_reports'];
     if (report is! Map) return null;
     final reportId = row['report_id']?.toString() ?? '';
-    final siteId = report['site_id']?.toString() ?? '';
-    if (reportId.isEmpty || siteId.isEmpty) return null;
-    return (reportId: reportId, siteId: siteId);
+    final siteId = report['site_id']?.toString();
+    final routeAssignmentId = report['route_assignment_id']?.toString();
+    if (reportId.isEmpty ||
+        ((siteId == null || siteId.isEmpty) &&
+            (routeAssignmentId == null || routeAssignmentId.isEmpty))) {
+      return null;
+    }
+    return (
+      reportId: reportId,
+      siteId: siteId?.isEmpty == true ? null : siteId,
+      routeAssignmentId:
+          routeAssignmentId?.isEmpty == true ? null : routeAssignmentId,
+    );
   }
 
   Future<WorkerAttendanceMonth> loadMonth(DateTime month) async {
@@ -191,12 +208,23 @@ class WorkerAttendanceSheetRepository {
       }
     }
 
+    final rawUnits = await _client.rpc('my_attendance_allowance_units');
+    final allowanceUnits = rawUnits is Map
+        ? {
+            for (final entry in rawUnits.entries)
+              entry.key.toString(): entry.value?.toString().trim().isNotEmpty == true
+                  ? entry.value.toString().trim()
+                  : '回',
+          }
+        : <String, String>{};
+
     return WorkerAttendanceMonth(
       year: month.year,
       month: month.month,
+      allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
       days: {
         for (final entry in drafts.entries)
-          entry.key: entry.value.toValue(),
+          entry.key: entry.value.toValue(allowanceUnits),
       },
     );
   }
@@ -233,7 +261,8 @@ class _DayDraft {
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
 
-  WorkerAttendanceDay toValue() => WorkerAttendanceDay(
+  WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
+      WorkerAttendanceDay(
         date: date,
         siteName: siteName,
         clockIn: clockIn,
@@ -243,5 +272,6 @@ class _DayDraft {
         nightHours: nightHours,
         allowanceYen: allowanceYen,
         allowanceNames: List<String>.unmodifiable(allowanceNames),
+        allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
       );
 }

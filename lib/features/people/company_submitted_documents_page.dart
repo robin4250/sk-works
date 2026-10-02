@@ -1,9 +1,11 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings, dead_code
 
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../common/data_date_labels.dart';
 import 'company_document_exchange_repository.dart';
@@ -22,9 +24,20 @@ class _CompanySubmittedDocumentsPageState
     extends State<CompanySubmittedDocumentsPage> {
   final _repository = CompanySubmittedDocumentRepository.maybeCreate();
   final _exchange = CompanyDocumentExchangeRepository.maybeCreate();
+  final _imagePicker = ImagePicker();
   final _selected = <String>{};
   final _receiveCode = TextEditingController();
   final _note = TextEditingController();
+  final _companyName = TextEditingController();
+  final _companyAddress = TextEditingController();
+  final _corporateNumber = TextEditingController();
+  final _companyPhone = TextEditingController();
+  final _companyFax = TextEditingController();
+  final _companyEmail = TextEditingController();
+  final _bankName = TextEditingController();
+  final _bankBranch = TextEditingController();
+  final _bankAccountNumber = TextEditingController();
+  final _bankAccountHolder = TextEditingController();
 
   List<Map<String, dynamic>> _documents = const [];
   bool _loading = true;
@@ -40,8 +53,22 @@ class _CompanySubmittedDocumentsPageState
 
   @override
   void dispose() {
-    _receiveCode.dispose();
-    _note.dispose();
+    for (final controller in [
+      _receiveCode,
+      _note,
+      _companyName,
+      _companyAddress,
+      _corporateNumber,
+      _companyPhone,
+      _companyFax,
+      _companyEmail,
+      _bankName,
+      _bankBranch,
+      _bankAccountNumber,
+      _bankAccountHolder,
+    ]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -63,8 +90,23 @@ class _CompanySubmittedDocumentsPageState
     final repository = _repository;
     if (repository == null) return;
     try {
-      final rows = await repository.listDocuments();
+      final results = await Future.wait<Object>([
+        repository.listDocuments(),
+        repository.loadCompanyData(),
+      ]);
+      final rows = List<Map<String, dynamic>>.from(results[0] as List);
+      final company = Map<String, dynamic>.from(results[1] as Map);
       if (!mounted) return;
+      _companyName.text = company['name']?.toString() ?? '';
+      _companyAddress.text = company['address']?.toString() ?? '';
+      _corporateNumber.text = company['corporate_number']?.toString() ?? '';
+      _companyPhone.text = company['phone']?.toString() ?? '';
+      _companyFax.text = company['fax']?.toString() ?? '';
+      _companyEmail.text = company['email']?.toString() ?? '';
+      _bankName.text = company['bank_name']?.toString() ?? '';
+      _bankBranch.text = company['bank_branch']?.toString() ?? '';
+      _bankAccountNumber.text = company['bank_account_number']?.toString() ?? '';
+      _bankAccountHolder.text = company['bank_account_holder']?.toString() ?? '';
       setState(() {
         _documents = rows;
         _selected.removeWhere(
@@ -86,7 +128,7 @@ class _CompanySubmittedDocumentsPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('会社提出書類'),
+        title: const Text('会社データ'),
         actions: [
           IconButton(
             tooltip: '会社提出書類を送信',
@@ -113,15 +155,25 @@ class _CompanySubmittedDocumentsPageState
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text(
-                            '自社が上位会社へ提出する会社単位の書類です。従業員個人の必要書類とは分けて管理します。',
+                      _companyDataCard(),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Text(
+                            '書類',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
                           ),
-                        ),
+                          const Spacer(),
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _create,
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('追加'),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       if (_documents.isEmpty)
                         const Card(
                           child: Padding(
@@ -186,6 +238,121 @@ class _CompanySubmittedDocumentsPageState
     );
   }
 
+  Widget _companyDataCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '会社情報',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            _companyField(_companyName, '会社名'),
+            _companyField(_companyAddress, '会社住所', maxLines: 2),
+            _companyField(
+              _corporateNumber,
+              '法人番号（13桁）',
+              keyboardType: TextInputType.number,
+            ),
+            _companyField(
+              _companyPhone,
+              '会社電話番号',
+              keyboardType: TextInputType.phone,
+            ),
+            _companyField(
+              _companyFax,
+              '会社FAX番号',
+              keyboardType: TextInputType.phone,
+            ),
+            _companyField(
+              _companyEmail,
+              'メールアドレス',
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const Divider(height: 26),
+            _companyField(_bankName, '銀行名'),
+            _companyField(_bankBranch, '支店名'),
+            _companyField(
+              _bankAccountNumber,
+              '口座番号',
+              keyboardType: TextInputType.number,
+            ),
+            _companyField(_bankAccountHolder, '口座名義'),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: _busy ? null : _saveCompanyData,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('会社データを保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _companyField(
+    TextEditingController controller,
+    String label, {
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveCompanyData() async {
+    final repository = _repository;
+    if (repository == null || _busy) return;
+    final corporate =
+        _corporateNumber.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (corporate.isNotEmpty && corporate.length != 13) {
+      setState(() => _error = '法人番号は13桁で入力してください。');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await repository.saveCompanyData(
+        name: _companyName.text,
+        address: _companyAddress.text,
+        corporateNumber: corporate,
+        phone: _companyPhone.text,
+        fax: _companyFax.text,
+        email: _companyEmail.text,
+        bankName: _bankName.text,
+        bankBranch: _bankBranch.text,
+        bankAccountNumber: _bankAccountNumber.text,
+        bankAccountHolder: _bankAccountHolder.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('会社データを保存しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = '会社データを保存できませんでした: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _documentCard(Map<String, dynamic> row) {
     final id = row['id']?.toString() ?? '';
     final path = row['attachment_path']?.toString() ?? '';
@@ -229,7 +396,7 @@ class _CompanySubmittedDocumentsPageState
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _pickFile(row),
                   icon: const Icon(Icons.upload_file_outlined),
-                  label: Text(path.isEmpty ? 'PDF等を登録' : 'ファイル差替'),
+                  label: Text(path.isEmpty ? 'カメラ・写真・ファイル' : '書類を差替'),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
@@ -362,21 +529,77 @@ class _CompanySubmittedDocumentsPageState
   }
 
   Future<void> _pickFile(Map<String, dynamic> row) async {
-    final repository = _repository;
-    if (repository == null) return;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('カメラで撮影'),
+              onTap: () => Navigator.pop(sheetContext, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリから選択'),
+              onTap: () => Navigator.pop(sheetContext, 'photo'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('PDF・ファイルから選択'),
+              onTap: () => Navigator.pop(sheetContext, 'file'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    if (source == 'camera' || source == 'photo') {
+      final image = await _imagePicker.pickImage(
+        source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        imageQuality: 90,
+        maxWidth: 2600,
+      );
+      if (image == null) return;
+      await _uploadDocumentBytes(
+        row: row,
+        bytes: await image.readAsBytes(),
+        filename: image.name,
+        contentType: image.mimeType ?? 'image/jpeg',
+      );
+      return;
+    }
+
     final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif'],
     );
     if (file == null) return;
-    final bytes = await file.readAsBytes();
+    await _uploadDocumentBytes(
+      row: row,
+      bytes: await file.readAsBytes(),
+      filename: file.name,
+      contentType: _contentType(file.extension),
+    );
+  }
+
+  Future<void> _uploadDocumentBytes({
+    required Map<String, dynamic> row,
+    required List<int> bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    final repository = _repository;
+    if (repository == null) return;
     setState(() => _busy = true);
     try {
       await repository.upload(
         id: row['id'].toString(),
-        bytes: bytes,
-        filename: file.name,
-        contentType: _contentType(file.extension),
+        bytes: Uint8List.fromList(bytes),
+        filename: filename,
+        contentType: contentType,
       );
       await _load();
     } finally {

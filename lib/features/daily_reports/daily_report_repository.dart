@@ -43,20 +43,27 @@ class DailyReportWorkerDraft {
 
 class DailyReportSiteGroup {
   const DailyReportSiteGroup({
-    required this.siteId,
     required this.siteName,
     required this.workers,
+    this.siteId,
+    this.routeAssignmentId,
   });
 
-  final String siteId;
+  final String? siteId;
+  final String? routeAssignmentId;
   final String siteName;
   final List<DailyReportWorkerDraft> workers;
+
+  String get destinationKey => siteId != null
+      ? 'site:$siteId'
+      : 'route:$routeAssignmentId';
 }
 
 class DailyReportRecord {
   const DailyReportRecord({
     required this.id,
-    required this.siteId,
+    this.siteId,
+    this.routeAssignmentId,
     required this.siteName,
     required this.date,
     required this.workDescription,
@@ -64,11 +71,16 @@ class DailyReportRecord {
     required this.workers,
     this.signerName,
     this.signatureJson,
+    this.reporterSignerName,
+    this.reporterSignatureJson,
+    this.responsibleSignerName,
+    this.responsibleSignatureJson,
     this.signedAt,
   });
 
   final String id;
-  final String siteId;
+  final String? siteId;
+  final String? routeAssignmentId;
   final String siteName;
   final DateTime date;
   final String workDescription;
@@ -76,6 +88,10 @@ class DailyReportRecord {
   final List<DailyReportWorkerDraft> workers;
   final String? signerName;
   final Object? signatureJson;
+  final String? reporterSignerName;
+  final Object? reporterSignatureJson;
+  final String? responsibleSignerName;
+  final Object? responsibleSignatureJson;
   final DateTime? signedAt;
 
   bool get signed => status == 'signed';
@@ -88,6 +104,9 @@ class DailyReportEvidenceRecord {
     required this.eventType,
     required this.confirmedAt,
     required this.storagePath,
+    this.latitude,
+    this.longitude,
+    this.accuracyM,
   });
 
   final String id;
@@ -95,6 +114,11 @@ class DailyReportEvidenceRecord {
   final String eventType;
   final DateTime confirmedAt;
   final String storagePath;
+  final double? latitude;
+  final double? longitude;
+  final double? accuracyM;
+
+  bool get hasLocation => latitude != null && longitude != null;
 }
 
 class DailyReportRepository {
@@ -111,23 +135,29 @@ class DailyReportRepository {
 
   Future<List<DailyReportSiteGroup>> loadClockedInGroups(DateTime date) async {
     final rows = await _client.rpc(
-      'daily_report_clocked_in_workers',
+      'daily_report_clocked_in_destinations',
       params: {'p_date': _dbDate(date)},
     );
 
-    final bySite = <String, _SiteGroupDraft>{};
+    final byDestination = <String, _SiteGroupDraft>{};
 
     for (final raw in (rows as List<dynamic>)) {
       final row = Map<String, dynamic>.from(raw as Map);
-      final siteId = row['site_id']?.toString() ?? '';
+      final siteId = row['site_id']?.toString();
+      final routeId = row['route_assignment_id']?.toString();
       final workerId = row['worker_id']?.toString() ?? '';
-      if (siteId.isEmpty || workerId.isEmpty) continue;
+      final destinationId = row['destination_id']?.toString() ?? '';
+      if (destinationId.isEmpty || workerId.isEmpty) continue;
 
-      final group = bySite.putIfAbsent(
-        siteId,
+      final key = siteId != null && siteId.isNotEmpty
+          ? 'site:$siteId'
+          : 'route:$routeId';
+      final group = byDestination.putIfAbsent(
+        key,
         () => _SiteGroupDraft(
-          siteId: siteId,
-          siteName: row['site_name']?.toString() ?? '',
+          siteId: siteId?.isEmpty == true ? null : siteId,
+          routeAssignmentId: routeId?.isEmpty == true ? null : routeId,
+          siteName: row['destination_name']?.toString() ?? '',
         ),
       );
       group.workers.add(
@@ -138,7 +168,7 @@ class DailyReportRepository {
       );
     }
 
-    final workerIds = bySite.values
+    final workerIds = byDestination.values
         .expand((group) => group.workers)
         .map((worker) => worker.workerId)
         .toSet()
@@ -160,7 +190,7 @@ class DailyReportRepository {
           raw['worker_id'].toString(): Map<String, dynamic>.from(raw),
       };
 
-      for (final group in bySite.values) {
+      for (final group in byDestination.values) {
         for (final worker in group.workers) {
           final selection = byWorker[worker.workerId];
           if (selection == null) continue;
@@ -180,10 +210,11 @@ class DailyReportRepository {
       }
     }
 
-    return bySite.values
+    return byDestination.values
         .map(
           (group) => DailyReportSiteGroup(
             siteId: group.siteId,
+            routeAssignmentId: group.routeAssignmentId,
             siteName: group.siteName,
             workers: group.workers,
           ),
@@ -193,21 +224,25 @@ class DailyReportRepository {
 
   Future<DailyReportRecord?> loadReport({
     required DateTime date,
-    required String siteId,
+    String? siteId,
+    String? routeAssignmentId,
   }) async {
-    final rows = await _client
+    var query = _client
         .from('daily_reports')
         .select(
-          'id, site_id, report_date, work_description, status, signer_name, signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
+          'id, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
-        .eq('site_id', siteId)
-        .eq('report_date', _dbDate(date))
-        .limit(1);
+        .eq('report_date', _dbDate(date));
+    query = siteId != null
+        ? query.eq('site_id', siteId)
+        : query.eq('route_assignment_id', routeAssignmentId!);
+    final rows = await query.limit(1);
 
     if (rows.isEmpty) return null;
 
     final row = Map<String, dynamic>.from(rows.first);
     final site = row['sites'];
+    final route = row['route_assignments'];
     final rawWorkers = row['daily_report_workers'];
 
     final workers = <DailyReportWorkerDraft>[];
@@ -241,13 +276,24 @@ class DailyReportRepository {
 
     return DailyReportRecord(
       id: row['id']?.toString() ?? '',
-      siteId: row['site_id']?.toString() ?? siteId,
-      siteName: site is Map ? site['name']?.toString() ?? '' : '',
+      siteId: row['site_id']?.toString(),
+      routeAssignmentId: row['route_assignment_id']?.toString(),
+      siteName: site is Map
+          ? site['name']?.toString() ?? ''
+          : route is Map
+              ? route['route_name']?.toString() ?? ''
+              : '',
       date: DateTime.tryParse(row['report_date']?.toString() ?? '') ?? date,
       workDescription: row['work_description']?.toString() ?? '',
       status: row['status']?.toString() ?? 'draft',
       signerName: row['signer_name']?.toString(),
       signatureJson: row['signature_json'],
+      reporterSignerName: row['representative_signer_name']?.toString(),
+      reporterSignatureJson: row['representative_signature_json'],
+      responsibleSignerName:
+          row['supervisor_signer_name']?.toString() ?? row['signer_name']?.toString(),
+      responsibleSignatureJson:
+          row['supervisor_signature_json'] ?? row['signature_json'],
       signedAt: DateTime.tryParse(row['signed_at']?.toString() ?? '')?.toLocal(),
       workers: workers,
     );
@@ -255,16 +301,18 @@ class DailyReportRepository {
 
   Future<String> saveDraft({
     String? reportId,
-    required String siteId,
+    String? siteId,
+    String? routeAssignmentId,
     required DateTime date,
     required String workDescription,
     required List<DailyReportWorkerDraft> workers,
   }) async {
     final value = await _client.rpc(
-      'save_daily_report_draft',
+      'save_daily_report_destination_draft',
       params: {
         'p_report_id': reportId,
         'p_site_id': siteId,
+        'p_route_assignment_id': routeAssignmentId,
         'p_report_date': _dbDate(date),
         'p_work_description': workDescription.trim(),
         'p_workers': workers.map((worker) => worker.toRpcJson()).toList(),
@@ -303,11 +351,28 @@ class DailyReportRepository {
     required Object signatureJson,
   }) async {
     await _client.rpc(
-      'sign_daily_report',
+      'save_daily_report_signature',
       params: {
         'p_report_id': reportId,
+        'p_role': 'supervisor',
         'p_signer_name': signerName.trim(),
-        'p_signature_json': signatureJson,
+        'p_signature_json': {'strokes': signatureJson},
+      },
+    );
+  }
+
+  Future<void> saveReporterSignature({
+    required String reportId,
+    required String signerName,
+    required Object signatureJson,
+  }) async {
+    await _client.rpc(
+      'save_daily_report_signature',
+      params: {
+        'p_report_id': reportId,
+        'p_role': 'representative',
+        'p_signer_name': signerName.trim(),
+        'p_signature_json': {'strokes': signatureJson},
       },
     );
   }
@@ -315,15 +380,18 @@ class DailyReportRepository {
   Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({
     String? reportId,
     required DateTime date,
-    required String siteId,
+    String? siteId,
+    String? routeAssignmentId,
   }) async {
     var query = _client
         .from('attendance_verifications')
         .select(
-          'id,event_type,confirmed_at,photo_storage_path,workers(name)',
+          'id,event_type,confirmed_at,photo_storage_path,latitude,longitude,accuracy_m,workers(name)',
         )
-        .eq('site_id', siteId)
         .not('photo_storage_path', 'is', null);
+    query = siteId != null
+        ? query.eq('site_id', siteId)
+        : query.eq('route_assignment_id', routeAssignmentId!);
 
     if (reportId != null && reportId.isNotEmpty) {
       query = query.eq('daily_report_id', reportId);
@@ -350,6 +418,9 @@ class DailyReportRepository {
                         ?.toLocal() ??
                     DateTime.fromMillisecondsSinceEpoch(0),
             storagePath: raw['photo_storage_path'].toString(),
+            latitude: (raw['latitude'] as num?)?.toDouble(),
+            longitude: (raw['longitude'] as num?)?.toDouble(),
+            accuracyM: (raw['accuracy_m'] as num?)?.toDouble(),
           ),
     ];
   }
@@ -412,11 +483,13 @@ class DailyReportRepository {
 
 class _SiteGroupDraft {
   _SiteGroupDraft({
-    required this.siteId,
     required this.siteName,
+    this.siteId,
+    this.routeAssignmentId,
   });
 
-  final String siteId;
+  final String? siteId;
+  final String? routeAssignmentId;
   final String siteName;
   final List<DailyReportWorkerDraft> workers = [];
 }

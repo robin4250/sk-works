@@ -12,6 +12,7 @@ class HomeAppearance {
     this.wallpaperPath,
     this.wallpaperOpacity = 1,
     this.buttonOpacity = 0.6,
+    this.cardButtonOpacity = 1,
     this.cardOpacity = 0.6,
     this.headerOpacity = 0.6,
     this.footerOpacity = 0.6,
@@ -20,6 +21,7 @@ class HomeAppearance {
   final String? wallpaperPath;
   final double wallpaperOpacity;
   final double buttonOpacity;
+  final double cardButtonOpacity;
   final double cardOpacity;
   final double headerOpacity;
   final double footerOpacity;
@@ -31,6 +33,7 @@ class HomeAppearance {
     bool clearWallpaper = false,
     double? wallpaperOpacity,
     double? buttonOpacity,
+    double? cardButtonOpacity,
     double? cardOpacity,
     double? headerOpacity,
     double? footerOpacity,
@@ -39,6 +42,8 @@ class HomeAppearance {
       wallpaperPath: clearWallpaper ? null : wallpaperPath ?? this.wallpaperPath,
       wallpaperOpacity: normalize(wallpaperOpacity ?? this.wallpaperOpacity),
       buttonOpacity: normalize(buttonOpacity ?? this.buttonOpacity),
+      cardButtonOpacity:
+          normalize(cardButtonOpacity ?? this.cardButtonOpacity),
       cardOpacity: normalize(cardOpacity ?? this.cardOpacity),
       headerOpacity: normalize(headerOpacity ?? this.headerOpacity),
       footerOpacity: normalize(footerOpacity ?? this.footerOpacity),
@@ -68,6 +73,11 @@ class HomeAppearanceRepository {
         fallback: 1,
       ),
       buttonOpacity: _read(prefs, 'button_opacity'),
+      cardButtonOpacity: _read(
+        prefs,
+        'card_button_opacity',
+        fallback: 1,
+      ),
       cardOpacity: _read(prefs, 'card_opacity'),
       headerOpacity: _read(prefs, 'header_opacity'),
       footerOpacity: _read(prefs, 'footer_opacity'),
@@ -83,6 +93,10 @@ class HomeAppearanceRepository {
     }
     await prefs.setDouble(_key('wallpaper_opacity'), value.wallpaperOpacity);
     await prefs.setDouble(_key('button_opacity'), value.buttonOpacity);
+    await prefs.setDouble(
+      _key('card_button_opacity'),
+      value.cardButtonOpacity,
+    );
     await prefs.setDouble(_key('card_opacity'), value.cardOpacity);
     await prefs.setDouble(_key('header_opacity'), value.headerOpacity);
     await prefs.setDouble(_key('footer_opacity'), value.footerOpacity);
@@ -181,8 +195,21 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
             ),
           ),
           _slider('壁紙の透明度', _value.wallpaperOpacity, (v) => _value = _value.copyWith(wallpaperOpacity: v)),
-          _slider('機能ボタンの透明度', _value.buttonOpacity, (v) => _value = _value.copyWith(buttonOpacity: v)),
-          _slider('カードの透明度', _value.cardOpacity, (v) => _value = _value.copyWith(cardOpacity: v)),
+          _slider(
+            '機能ボタンの透明度',
+            _value.buttonOpacity,
+            (v) => _value = _value.copyWith(buttonOpacity: v),
+          ),
+          _slider(
+            'カード上ボタンの透明度',
+            _value.cardButtonOpacity,
+            (v) => _value = _value.copyWith(cardButtonOpacity: v),
+          ),
+          _slider(
+            'カードの透明度',
+            _value.cardOpacity,
+            (v) => _value = _value.copyWith(cardOpacity: v),
+          ),
           _slider('ヘッダーの透明度', _value.headerOpacity, (v) => _value = _value.copyWith(headerOpacity: v)),
           _slider('フッターの透明度', _value.footerOpacity, (v) => _value = _value.copyWith(footerOpacity: v)),
           const SizedBox(height: 8),

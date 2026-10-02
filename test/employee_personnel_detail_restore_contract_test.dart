@@ -91,8 +91,10 @@ void main() {
     expect(preview, contains('EmployeePersonnelPreviewAction.send'));
     expect(preview, contains('このA4プレビュー内容で送信へ進む'));
     expect(preview, contains('このA4プレビュー内容を印刷'));
-    expect(preview, contains('allowPrinting: !_isSend'));
-    expect(preview, contains('allowSharing: false'));
+    expect(preview, contains('InteractiveViewer('));
+    expect(preview, contains('maxScale: 5'));
+    expect(preview, contains('constrained: false'));
+    expect(preview, contains('Printing.layoutPdf'));
 
     expect(detail, contains('EmployeePersonnelPreviewAction.send'));
     expect(detail, contains('EmployeePersonnelPrintPage('));

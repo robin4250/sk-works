@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,7 +11,12 @@ import 'site_map_repository.dart';
 enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
 
 class SiteMapPage extends StatefulWidget {
-  const SiteMapPage({super.key});
+  const SiteMapPage({
+    super.key,
+    this.allowEmployeeHomes = false,
+  });
+
+  final bool allowEmployeeHomes;
 
   @override
   State<SiteMapPage> createState() => _SiteMapPageState();
@@ -40,7 +48,12 @@ class _SiteMapPageState extends State<SiteMapPage> {
       if (!mounted) return;
       setState(() {
         _data = value;
-        if (!value.canViewAll) _layers.remove(_MapLayer.employeeHomes);
+        if (!value.canViewAll || !widget.allowEmployeeHomes) {
+          _layers.remove(_MapLayer.employeeHomes);
+        }
+        if (!widget.allowEmployeeHomes) {
+          _layers.remove(_MapLayer.home);
+        }
         _loading = false;
         _error = null;
       });
@@ -97,10 +110,14 @@ class _SiteMapPageState extends State<SiteMapPage> {
     if (_layers.contains(_MapLayer.company) && data.company != null) {
       places.add(data.company!);
     }
-    if (_layers.contains(_MapLayer.home) && data.home != null) {
+    if (widget.allowEmployeeHomes &&
+        _layers.contains(_MapLayer.home) &&
+        data.home != null) {
       places.add(data.home!);
     }
-    if (_layers.contains(_MapLayer.employeeHomes) && data.canViewAll) {
+    if (_layers.contains(_MapLayer.employeeHomes) &&
+        data.canViewAll &&
+        widget.allowEmployeeHomes) {
       places.addAll(data.employeeHomes);
     }
     return places.where((row) {
@@ -109,17 +126,6 @@ class _SiteMapPageState extends State<SiteMapPage> {
       final lon = row['longitude'] as num?;
       return address.isNotEmpty || (lat != null && lon != null);
     }).toList(growable: false);
-  }
-
-  String _locationText(Map<String, dynamic> row) {
-    final address = row['address']?.toString().trim() ?? '';
-    if (address.isNotEmpty) return address;
-    final lat = row['latitude'] as num?;
-    final lon = row['longitude'] as num?;
-    if (lat != null && lon != null) {
-      return '${lat.toDouble()},${lon.toDouble()}';
-    }
-    return '';
   }
 
   Future<void> _openSelectedTogether() async {
@@ -140,10 +146,29 @@ class _SiteMapPageState extends State<SiteMapPage> {
       // Current location is supplemental. Saved pins can still open.
     }
 
-    final points = <String>[
-      if (current != null) '${current.latitude},${current.longitude}',
-      ...selected.map(_locationText).where((value) => value.isNotEmpty),
-    ];
+    final points = <Map<String, dynamic>>[
+      if (current != null)
+        {
+          'name': '現在地',
+          'address': '',
+          'latitude': current.latitude,
+          'longitude': current.longitude,
+        },
+      for (final row in selected)
+        {
+          'name': _placeName(row),
+          'address': row['address']?.toString().trim() ?? '',
+          if (row['latitude'] is num)
+            'latitude': (row['latitude'] as num).toDouble(),
+          if (row['longitude'] is num)
+            'longitude': (row['longitude'] as num).toDouble(),
+        },
+    ].where((row) {
+      final address = row['address']?.toString().trim() ?? '';
+      return address.isNotEmpty ||
+          (row['latitude'] is num && row['longitude'] is num);
+    }).toList(growable: false);
+
     if (points.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,32 +177,53 @@ class _SiteMapPageState extends State<SiteMapPage> {
       return;
     }
 
-    Uri uri;
-    if (points.length == 1) {
-      uri = Uri.https('www.google.com', '/maps/search/', {
-        'api': '1',
-        'query': points.first,
-      });
-    } else {
-      final origin = points.first;
-      final destination = points.last;
-      final waypoints = points.length > 2
-          ? points.sublist(1, points.length - 1).take(20).join('|')
-          : '';
-      uri = Uri.https('www.google.com', '/maps/dir/', {
-        'api': '1',
-        'origin': origin,
-        'destination': destination,
-        if (waypoints.isNotEmpty) 'waypoints': waypoints,
-      });
+    if (Platform.isIOS) {
+      try {
+        await const MethodChannel('sko.multi_pin_map').invokeMethod<void>(
+          'show',
+          {
+            'title': '現場マップ',
+            'points': points,
+          },
+        );
+        return;
+      } on PlatformException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('複数ピン地図を開けませんでした: ${error.message ?? ''}')),
+        );
+      }
     }
 
+    // iOS以外では単一地点をGoogleマップで開く。ルート表示にはしない。
+    final first = points.first;
+    final query = (first['address']?.toString().trim().isNotEmpty ?? false)
+        ? first['address'].toString()
+        : '${first['latitude']},${first['longitude']}';
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Googleマップを開けませんでした')),
+        const SnackBar(content: Text('地図を開けませんでした')),
       );
     }
+  }
+
+  String _placeName(Map<String, dynamic> row) {
+    for (final key in const [
+      'site_name',
+      'customer_name',
+      'partner_name',
+      'company_name',
+      'worker_name',
+    ]) {
+      final value = row[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '地点';
   }
 
   Widget _check(_MapLayer layer, String label, {required bool enabled}) {
@@ -252,12 +298,13 @@ class _SiteMapPageState extends State<SiteMapPage> {
                               '自社',
                               enabled: data.company != null,
                             ),
-                            _check(
-                              _MapLayer.home,
-                              '自宅（本人）',
-                              enabled: data.home != null,
-                            ),
-                            if (data.canViewAll)
+                            if (widget.allowEmployeeHomes)
+                              _check(
+                                _MapLayer.home,
+                                '自宅（本人）',
+                                enabled: data.home != null,
+                              ),
+                            if (data.canViewAll && widget.allowEmployeeHomes)
                               _check(
                                 _MapLayer.employeeHomes,
                                 '全従業員の自宅',
@@ -267,13 +314,14 @@ class _SiteMapPageState extends State<SiteMapPage> {
                             FilledButton.icon(
                               onPressed: _openSelectedTogether,
                               icon: const Icon(Icons.map_outlined),
-                              label: const Text('選択項目＋現在地をGoogleマップで表示'),
+                              label: const Text('選択地点を複数ピンで地図表示'),
                             ),
                             const SizedBox(height: 6),
                             const Text(
-                              '現在地は位置情報が許可されている場合に自動で追加します。',
+                              'ルート表示ではなく、選択した地点を📍で同時表示します。iPhoneでは標準MapKitを使用します。',
                               style: TextStyle(fontSize: 12),
                             ),
+                            const SizedBox(height: 8),
                           ],
                         ),
                       ),
@@ -323,7 +371,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         onTap: () => _mapAddress(data.company!, 'company_name'),
                       ),
                     ],
-                    if (data.home != null) ...[
+                    if (widget.allowEmployeeHomes && data.home != null) ...[
                       const _Heading('自宅（本人）'),
                       ListTile(
                         leading: const Icon(Icons.home_outlined),
@@ -335,7 +383,9 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         onTap: () => _mapAddress(data.home!, 'worker_name'),
                       ),
                     ],
-                    if (data.canViewAll && data.employeeHomes.isNotEmpty) ...[
+                    if (data.canViewAll &&
+                        widget.allowEmployeeHomes &&
+                        data.employeeHomes.isNotEmpty) ...[
                       const _Heading('全従業員の自宅'),
                       for (final worker in data.employeeHomes)
                         ListTile(

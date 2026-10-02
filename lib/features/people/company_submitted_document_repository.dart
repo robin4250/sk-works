@@ -40,6 +40,45 @@ class CompanySubmittedDocumentRepository {
       throw StateError('会社提出書類は管理者のみ操作できます。');
     }
   }
+  Future<Map<String, dynamic>> loadCompanyData() async {
+    await requireAdmin();
+    final value = await _client.rpc('company_data_state');
+    if (value is! Map) {
+      throw StateError('会社データを読み込めませんでした。');
+    }
+    return Map<String, dynamic>.from(value);
+  }
+
+  Future<void> saveCompanyData({
+    required String name,
+    required String address,
+    required String corporateNumber,
+    required String phone,
+    required String fax,
+    required String email,
+    required String bankName,
+    required String bankBranch,
+    required String bankAccountNumber,
+    required String bankAccountHolder,
+  }) async {
+    await requireAdmin();
+    await _client.rpc(
+      'save_company_data',
+      params: {
+        'p_name': name.trim(),
+        'p_address': address.trim(),
+        'p_corporate_number': corporateNumber.trim(),
+        'p_phone': phone.trim(),
+        'p_fax': fax.trim(),
+        'p_email': email.trim(),
+        'p_bank_name': bankName.trim(),
+        'p_bank_branch': bankBranch.trim(),
+        'p_bank_account_number': bankAccountNumber.trim(),
+        'p_bank_account_holder': bankAccountHolder.trim(),
+      },
+    );
+  }
+
 
   Future<List<Map<String, dynamic>>> listDocuments() async {
     final value = await membership();

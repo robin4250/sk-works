@@ -12,10 +12,13 @@ class CompanyRateSettings {
     required this.holidayDayRateYen,
     required this.allowance1Name,
     required this.allowance1AmountYen,
+    this.allowance1Unit = '回',
     required this.allowance2Name,
     required this.allowance2AmountYen,
+    this.allowance2Unit = '回',
     required this.allowance3Name,
     required this.allowance3AmountYen,
+    this.allowance3Unit = '回',
   });
 
   final double taxRate;
@@ -26,10 +29,13 @@ class CompanyRateSettings {
   final int holidayDayRateYen;
   final String allowance1Name;
   final int allowance1AmountYen;
+  final String allowance1Unit;
   final String allowance2Name;
   final int allowance2AmountYen;
+  final String allowance2Unit;
   final String allowance3Name;
   final int allowance3AmountYen;
+  final String allowance3Unit;
 
   factory CompanyRateSettings.fromMap(Map<String, dynamic> row) {
     double number(Object? value) =>
@@ -46,10 +52,19 @@ class CompanyRateSettings {
       holidayDayRateYen: yen(row['holiday_day_rate_yen']),
       allowance1Name: row['allowance_1_name']?.toString() ?? '',
       allowance1AmountYen: yen(row['allowance_1_amount_yen']),
+      allowance1Unit: row['allowance_1_unit']?.toString().trim().isNotEmpty == true
+          ? row['allowance_1_unit'].toString().trim()
+          : '回',
       allowance2Name: row['allowance_2_name']?.toString() ?? '',
       allowance2AmountYen: yen(row['allowance_2_amount_yen']),
+      allowance2Unit: row['allowance_2_unit']?.toString().trim().isNotEmpty == true
+          ? row['allowance_2_unit'].toString().trim()
+          : '回',
       allowance3Name: row['allowance_3_name']?.toString() ?? '',
       allowance3AmountYen: yen(row['allowance_3_amount_yen']),
+      allowance3Unit: row['allowance_3_unit']?.toString().trim().isNotEmpty == true
+          ? row['allowance_3_unit'].toString().trim()
+          : '回',
     );
   }
 }
@@ -94,6 +109,20 @@ class CompanyRateSettingsRepository {
         'p_allowance_3_name':
             value.allowance3Name.trim().isEmpty ? null : value.allowance3Name.trim(),
         'p_allowance_3_amount_yen': value.allowance3AmountYen,
+      },
+    );
+    await _client.rpc(
+      'save_company_allowance_units',
+      params: {
+        'p_allowance_1_unit': value.allowance1Unit.trim().isEmpty
+            ? '回'
+            : value.allowance1Unit.trim(),
+        'p_allowance_2_unit': value.allowance2Unit.trim().isEmpty
+            ? '回'
+            : value.allowance2Unit.trim(),
+        'p_allowance_3_unit': value.allowance3Unit.trim().isEmpty
+            ? '回'
+            : value.allowance3Unit.trim(),
       },
     );
   }

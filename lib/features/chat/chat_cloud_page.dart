@@ -256,7 +256,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   bool _isNearBottom() {
     if (!_scrollController.hasClients) return true;
     final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels < 120;
+    return position.pixels < 120;
   }
 
   void _positionInitialMessageView(List<Map<String, dynamic>> messages) {
@@ -292,7 +292,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
       );
@@ -748,23 +748,42 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   @override
   Widget build(BuildContext context) {
     final selected = _selectedGroup;
+    final wallpaperPath =
+        selected == null ? null : _appearance.wallpaperPath?.trim();
 
-    return Listener(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(
+          color: Theme.of(context).colorScheme.surface,
+        ),
+        if (wallpaperPath != null && wallpaperPath.isNotEmpty)
+          Opacity(
+            opacity: _appearance.backgroundAlpha,
+            child: Image.file(
+              File(wallpaperPath),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _chatPointerDown,
       onPointerMove: _chatPointerMove,
       onPointerUp: _chatPointerEnd,
       onPointerCancel: _chatPointerEnd,
       child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: selected != null && !_chatChromeVisible
           ? null
           : AppBar(
         backgroundColor: Theme.of(context)
             .colorScheme
             .surface
-            .withValues(
-              alpha: _appearance.headerAlpha,
-            ),
+            .withValues(alpha: _appearance.headerAlpha),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
         leading: selected == null
             ? null
             : IconButton(
@@ -866,7 +885,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 children: [
                   if (selected == null || _chatChromeVisible) ...[
                     _tabs(),
-                    const Divider(height: 1),
+                    Divider(
+                      height: 1,
+                      color: Theme.of(context)
+                          .dividerColor
+                          .withValues(alpha: _appearance.headerAlpha),
+                    ),
                   ],
                   Expanded(
                     child: switch (_tab) {
@@ -891,19 +915,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               ),
       ),
       ),
+        ),
+      ],
     );
   }
 
   Widget _tabs() {
-    final tabs = <ButtonSegment<_ChatTab>>[
-      const ButtonSegment(value: _ChatTab.all, label: Text('すべて')),
-      const ButtonSegment(value: _ChatTab.site, label: Text('現場')),
-      const ButtonSegment(value: _ChatTab.direct, label: Text('個別')),
-      if (_canManagePartnerChat)
-        const ButtonSegment(
-          value: _ChatTab.partner,
-          label: Text('協力会社'),
-        ),
+    final tabs = <(_ChatTab, String)>[
+      (_ChatTab.all, 'すべて'),
+      (_ChatTab.site, '現場'),
+      (_ChatTab.direct, '個別'),
+      if (_canManagePartnerChat) (_ChatTab.partner, '協力会社'),
     ];
 
     return Container(
@@ -912,23 +934,53 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .colorScheme
           .surface
           .withValues(alpha: _appearance.headerAlpha),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-        child: SegmentedButton<_ChatTab>(
-          segments: tabs,
-          selected: {_tab},
-          style: ButtonStyle(
-            backgroundColor: WidgetStateProperty.resolveWith((states) {
-              final scheme = Theme.of(context).colorScheme;
-              final base = states.contains(WidgetState.selected)
-                  ? scheme.primaryContainer
-                  : scheme.surface;
-              return base.withValues(alpha: _appearance.headerAlpha);
-            }),
+      padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++) ...[
+            Expanded(
+              child: _chatTabButton(
+                tab: tabs[index].$1,
+                label: tabs[index].$2,
+              ),
+            ),
+            if (index < tabs.length - 1) const SizedBox(width: 5),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _chatTabButton({
+    required _ChatTab tab,
+    required String label,
+  }) {
+    final selected = _tab == tab;
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: (selected ? scheme.primaryContainer : scheme.surface)
+          .withValues(alpha: _appearance.headerAlpha),
+      surfaceTintColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _tab = tab),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+              color: selected
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurfaceVariant,
+            ),
           ),
-          onSelectionChanged: (value) =>
-              setState(() => _tab = value.first),
         ),
       ),
     );
@@ -946,19 +998,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     final archived = _selectedGroup?['archived_at'] != null;
 
-    final wallpaperPath = _appearance.wallpaperPath;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (wallpaperPath != null && wallpaperPath.isNotEmpty)
-          Opacity(
-            opacity: _appearance.backgroundAlpha,
-            child: Image.file(
-              File(wallpaperPath),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          ),
         Column(
           children: [
         if (archived)
@@ -1004,10 +1046,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   },
                   child: ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   itemCount: _messages.length,
                   itemBuilder: (context, index) {
-                    final message = _messages[index];
+                    final message = _messages[_messages.length - 1 - index];
                     final messageId = message['id']?.toString() ?? '';
                     return _MessageBubble(
                       key: messageId.isEmpty ? null : _messageKeys[messageId],

@@ -28,6 +28,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _picker = ImagePicker();
   final _name = TextEditingController();
   final _phone = TextEditingController();
+  final _personalSkoId = TextEditingController();
   final _personnelName = TextEditingController();
   final _personnelRole = TextEditingController();
   final _personnelPhone = TextEditingController();
@@ -56,6 +57,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _personalSkoId.dispose();
     _personnelName.dispose();
     _personnelRole.dispose();
     _personnelPhone.dispose();
@@ -93,6 +95,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       _name.text = data.displayName;
       _phone.text = data.phone;
+      _personalSkoId.text = data.personalSkoId;
       _workerId = personnel?['worker_id']?.toString();
       _personnelName.text =
           personnel?['name']?.toString() ?? data.displayName;
@@ -133,6 +136,27 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
         _error = error.toString();
       });
+    }
+  }
+
+  Future<void> _changePersonalSkoId() async {
+    final repository = _repository;
+    if (repository == null) return;
+    setState(() => _saving = true);
+    try {
+      final id = await repository.changePersonalSkoId(_personalSkoId.text);
+      if (!mounted) return;
+      _personalSkoId.text = id;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('個人SKO IDを変更しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -607,6 +631,25 @@ class _ProfilePageState extends State<ProfilePage> {
                                   subtitle: Text(data!.companyName),
                                 ),
                               ],
+                              const Divider(),
+                              TextField(
+                                controller: _personalSkoId,
+                                enabled: !_saving,
+                                textCapitalization: TextCapitalization.characters,
+                                decoration: InputDecoration(
+                                  labelText: '個人SKO ID',
+                                  helperText:
+                                      'プロフィールから変更できます。SKO-に続けて英数字4〜20文字。',
+                                  prefixIcon:
+                                      const Icon(Icons.alternate_email),
+                                  suffixIcon: IconButton(
+                                    tooltip: '個人SKO IDを変更',
+                                    onPressed:
+                                        _saving ? null : _changePersonalSkoId,
+                                    icon: const Icon(Icons.check_circle_outline),
+                                  ),
+                                ),
+                              ),
                               if ((data?.companyId ?? '').isNotEmpty) ...[
                                 const Divider(),
                                 ListTile(

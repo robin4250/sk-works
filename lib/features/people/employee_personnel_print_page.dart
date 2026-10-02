@@ -115,14 +115,18 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
       body: Column(
         children: [
           Expanded(
-            child: PdfPreview(
-              build: (_) => _buildPdf(),
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              allowPrinting: !_isSend,
-              allowSharing: false,
-              pdfFileName:
-                  records.length == 1 ? '社員データ.pdf' : '社員一覧.pdf',
+            child: ColoredBox(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              child: InteractiveViewer(
+                minScale: 0.65,
+                maxScale: 5,
+                boundaryMargin: const EdgeInsets.all(220),
+                constrained: false,
+                child: _EmployeePersonnelPreviewSheet(
+                  companyName: companyName,
+                  records: records,
+                ),
+              ),
             ),
           ),
           SafeArea(
@@ -158,4 +162,141 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class _EmployeePersonnelPreviewSheet extends StatelessWidget {
+  const _EmployeePersonnelPreviewSheet({
+    required this.companyName,
+    required this.records,
+  });
+
+  final String companyName;
+  final List<PersonRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final dateText =
+        '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}';
+    const headers = <String>[
+      '名前',
+      '区分',
+      '血液型',
+      '職種',
+      '電話番号',
+      '住所',
+      '緊急連絡先氏名',
+      '続柄',
+      '緊急電話番号',
+      '緊急住所',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Material(
+        color: Colors.white,
+        elevation: 2,
+        child: SizedBox(
+          width: 1188,
+          height: 840,
+          child: Padding(
+            padding: const EdgeInsets.all(42),
+            child: DefaultTextStyle(
+              style: const TextStyle(color: Colors.black, fontSize: 13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        companyName,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          dateText,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 26),
+                  Table(
+                    border: TableBorder.all(color: Colors.black54, width: 0.8),
+                    columnWidths: const {
+                      0: FlexColumnWidth(1.25),
+                      1: FlexColumnWidth(0.85),
+                      2: FlexColumnWidth(0.72),
+                      3: FlexColumnWidth(1.05),
+                      4: FlexColumnWidth(1.2),
+                      5: FlexColumnWidth(1.8),
+                      6: FlexColumnWidth(1.35),
+                      7: FlexColumnWidth(0.8),
+                      8: FlexColumnWidth(1.25),
+                      9: FlexColumnWidth(1.8),
+                    },
+                    children: [
+                      TableRow(
+                        decoration: const BoxDecoration(color: Color(0xFFE9E9E9)),
+                        children: [
+                          for (final header in headers)
+                            _previewCell(header, bold: true),
+                        ],
+                      ),
+                      for (final record in records)
+                        TableRow(
+                          children: [
+                            _previewCell(record.name),
+                            _previewCell(record.kind.label),
+                            _previewCell(record.bloodType),
+                            _previewCell(record.role),
+                            _previewCell(domesticPhoneDisplay(record.phone)),
+                            _previewCell(record.address),
+                            _previewCell(record.emergencyName),
+                            _previewCell(record.emergencyRelation),
+                            _previewCell(
+                              domesticPhoneDisplay(record.emergencyPhone),
+                            ),
+                            _previewCell(record.emergencyAddress),
+                          ],
+                        ),
+                    ],
+                  ),
+                  const Spacer(),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'ピンチ操作で拡大・縮小できます',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _previewCell(String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
+        child: Text(
+          value,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 11,
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
+          ),
+        ),
+      );
 }

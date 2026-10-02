@@ -45,7 +45,8 @@ void main() {
     expect(page, contains('alpha: _appearance.headerAlpha'));
     expect(page, contains('selected == null || _chatChromeVisible'));
     expect(page, contains('alpha: _appearance.footerAlpha'));
-    expect(page, contains('WidgetState.selected'));
+    expect(page, contains('_chatTabButton'));
+    expect(page, contains('_tab == tab'));
     expect(page, contains('delta > 4 && _chatChromeVisible'));
     expect(page, contains('delta < -4 && !_chatChromeVisible'));
     expect(appearance, contains("'このチャットだけの個人設定です。他のユーザーには反映されません。'"));

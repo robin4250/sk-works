@@ -12,10 +12,11 @@ void main() {
     expect(home, isNot(contains("'管理出勤'")));
 
     final attention = home.indexOf("'要対応'");
-    final management = home.indexOf("const _SectionTitle('管理')");
     expect(attention, greaterThanOrEqualTo(0));
-    expect(management, greaterThan(attention));
     expect(RegExp(r"'要対応'").allMatches(home).length, equals(1));
+    expect(home, contains('_OrderedHomeContent'));
+    expect(home, contains('actionOrder'));
+    expect(home, contains('visibleHomeKeys'));
 
     expect(home, contains("'本日の勤務報告'"));
     expect(home, contains(r"'未対応 ${widget.attention.missingCount}件'"));

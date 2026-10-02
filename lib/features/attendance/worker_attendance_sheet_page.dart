@@ -72,6 +72,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         builder: (_) => DailyReportPage(
           initialDate: date,
           initialSiteId: target.siteId,
+          initialRouteAssignmentId: target.routeAssignmentId,
         ),
       ),
     );
@@ -265,7 +266,7 @@ class _WeekList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       itemCount: week.length,
       separatorBuilder: (_, __) => const SizedBox(height: 7),
       itemBuilder: (context, index) {
@@ -318,7 +319,7 @@ class _AttendanceDayCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          clipBehavior: Clip.antiAlias,
+          clipBehavior: Clip.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -471,7 +472,8 @@ class _AttendanceDayCard extends StatelessWidget {
           ? const <String>['手当']
           : day.allowanceNames;
       for (final name in names) {
-        tags.add(_MiniTag('${name}1'));
+        final unit = day.allowanceUnits[name] ?? '回';
+        tags.add(_MiniTag('${name}1$unit'));
       }
     }
     return tags;
@@ -829,7 +831,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 (day!.allowanceNames.isEmpty
                         ? const <String>['手当']
                         : day!.allowanceNames)
-                    .map((name) => '${name}1')
+                    .map((name) => '${name}1${day!.allowanceUnits[name] ?? '回'}')
                     .join(' '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -881,7 +883,8 @@ class _MonthlySummary extends StatelessWidget {
             for (final entry in data.allowanceCounts.entries)
               _SummaryPill(
                 label: entry.key,
-                value: '${entry.value}回',
+                value:
+                    '${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
               ),
           ],
         ),

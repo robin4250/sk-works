@@ -16,7 +16,10 @@ void main() {
     expect(repository, contains("'scope': 'upstream'"));
     expect(repository, contains("update({'is_active': false})"));
 
-    expect(page, contains("title: const Text('会社提出書類')"));
+    expect(page, contains("title: const Text('会社データ')"));
+    expect(page, contains("'法人番号（13桁）'"));
+    expect(page, contains("'銀行名'"));
+    expect(page, contains("'口座名義'"));
     expect(page, contains("'kind': 'company'"));
     expect(page, contains('resolveReceiveCode'));
     expect(page, contains('送信内容の最終確認'));

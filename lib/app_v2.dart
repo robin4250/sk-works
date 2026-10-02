@@ -343,12 +343,45 @@ class _HomePageState extends State<HomePage> {
     if (oldIndex < 0 ||
         oldIndex >= items.length ||
         newIndex < 0 ||
-        newIndex >= items.length) {
+        newIndex > items.length) {
       return;
     }
     final ordered = items.map((item) => item.key).toList();
+    if (newIndex > oldIndex) newIndex -= 1;
     final moved = ordered.removeAt(oldIndex);
-    ordered.insert(newIndex, moved);
+    final insertIndex = newIndex.clamp(0, ordered.length);
+    ordered.insert(insertIndex, moved);
+    setState(() => _homeActionOrder = ordered);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sko_home_action_order', ordered);
+  }
+
+  Future<void> _reorderHomeActionByKey(
+    String draggedKey,
+    String targetKey,
+  ) async {
+    if (draggedKey == targetKey) return;
+
+    final available = _menuItems.map((item) => item.key).toList();
+    if (!available.contains(draggedKey) || !available.contains(targetKey)) {
+      return;
+    }
+
+    final ordered = <String>[
+      for (final key in _homeActionOrder)
+        if (available.contains(key)) key,
+      for (final key in available)
+        if (!_homeActionOrder.contains(key)) key,
+    ];
+
+    final oldIndex = ordered.indexOf(draggedKey);
+    final targetIndex = ordered.indexOf(targetKey);
+    if (oldIndex < 0 || targetIndex < 0) return;
+
+    final moved = ordered.removeAt(oldIndex);
+    final insertIndex = ordered.indexOf(targetKey);
+    ordered.insert(insertIndex < 0 ? ordered.length : insertIndex, moved);
+
     setState(() => _homeActionOrder = ordered);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_action_order', ordered);
@@ -609,7 +642,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'site_map':
-        page = const SiteMapPage();
+        page = const SiteMapPage(allowEmployeeHomes: true);
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
@@ -829,7 +862,7 @@ class _HomePageState extends State<HomePage> {
       if (_isAdmin)
         const _MenuAction(
           key: 'company_documents',
-          label: '会社提出書類',
+          label: '会社データ',
           icon: Icons.business_center_outlined,
           homeEligible: true,
           accessLabel: '管理者',
@@ -994,6 +1027,7 @@ class _HomePageState extends State<HomePage> {
           contentTopInset: _chromeVisible ? 98 : 10,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
+          onReorderAction: _reorderHomeActionByKey,
         ),
     );
   }

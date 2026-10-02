@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
 import '../operations/odometer_text_recognition_engine.dart';
@@ -14,10 +15,12 @@ class DailyReportPage extends StatefulWidget {
     super.key,
     this.initialDate,
     this.initialSiteId,
+    this.initialRouteAssignmentId,
   });
 
   final DateTime? initialDate;
   final String? initialSiteId;
+  final String? initialRouteAssignmentId;
 
   @override
   State<DailyReportPage> createState() => _DailyReportPageState();
@@ -32,6 +35,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   late DateTime _date;
   List<DailyReportSiteGroup> _groups = const [];
   String? _siteId;
+  String? _routeAssignmentId;
   String? _siteName;
   List<DailyReportWorkerDraft> _workers = [];
   DailyReportRecord? _report;
@@ -56,6 +60,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final initial = widget.initialDate ?? DateTime.now();
     _date = DateTime(initial.year, initial.month, initial.day);
     _siteId = widget.initialSiteId;
+    _routeAssignmentId = widget.initialRouteAssignmentId;
     _loadDay();
   }
 
@@ -104,20 +109,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final groups = await repository.loadClockedInGroups(_date);
       if (!mounted) return;
 
-      String? nextSite = _siteId;
-      if (nextSite == null || !groups.any((g) => g.siteId == nextSite)) {
-        nextSite = groups.isNotEmpty ? groups.first.siteId : null;
+      DailyReportSiteGroup? selected;
+      if (_siteId != null) {
+        selected = groups
+            .where((g) => g.siteId == _siteId)
+            .firstOrNull;
+      } else if (_routeAssignmentId != null) {
+        selected = groups
+            .where((g) => g.routeAssignmentId == _routeAssignmentId)
+            .firstOrNull;
       }
+      selected ??= groups.firstOrNull;
 
       setState(() {
         _groups = groups;
-        _siteId = nextSite;
-        _siteName = nextSite == null
-            ? null
-            : groups
-                .where((g) => g.siteId == nextSite)
-                .map((g) => g.siteName)
-                .firstOrNull;
+        _siteId = selected?.siteId;
+        _routeAssignmentId = selected?.routeAssignmentId;
+        _siteName = selected?.siteName;
       });
 
       await _loadSelectedSite();
@@ -133,7 +141,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Future<void> _loadSelectedSite() async {
     final repository = _repository;
     final siteId = _siteId;
-    if (repository == null || siteId == null) {
+    final routeAssignmentId = _routeAssignmentId;
+    if (repository == null ||
+        (siteId == null && routeAssignmentId == null)) {
       if (!mounted) return;
       setState(() {
         _report = null;
@@ -146,16 +156,26 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
 
     try {
-      final existing =
-          await repository.loadReport(date: _date, siteId: siteId);
+      final existing = await repository.loadReport(
+        date: _date,
+        siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
+      );
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
         date: _date,
         siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
       );
       if (!mounted) return;
 
-      final group = _groups.where((g) => g.siteId == siteId).firstOrNull;
+      final group = _groups
+          .where(
+            (g) =>
+                g.siteId == siteId &&
+                g.routeAssignmentId == routeAssignmentId,
+          )
+          .firstOrNull;
       final workers = existing?.workers.isNotEmpty == true
           ? existing!.workers
           : List<DailyReportWorkerDraft>.from(group?.workers ?? const []);
@@ -208,18 +228,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
     setState(() {
       _date = selected;
       _siteId = null;
+      _routeAssignmentId = null;
     });
     await _loadDay();
   }
 
-  Future<void> _selectSite(String? siteId) async {
-    if (siteId == null || siteId == _siteId) return;
+  Future<void> _selectSite(String? destinationKey) async {
+    if (destinationKey == null) return;
+    final group = _groups
+        .where((item) => item.destinationKey == destinationKey)
+        .firstOrNull;
+    if (group == null) return;
+    if (group.siteId == _siteId &&
+        group.routeAssignmentId == _routeAssignmentId) {
+      return;
+    }
     setState(() {
-      _siteId = siteId;
-      _siteName = _groups
-          .where((g) => g.siteId == siteId)
-          .map((g) => g.siteName)
-          .firstOrNull;
+      _siteId = group.siteId;
+      _routeAssignmentId = group.routeAssignmentId;
+      _siteName = group.siteName;
       _loading = true;
     });
     await _loadSelectedSite();
@@ -336,7 +363,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Future<String?> _saveDraft() async {
     final repository = _repository;
     final siteId = _siteId;
-    if (repository == null || siteId == null) return null;
+    final routeAssignmentId = _routeAssignmentId;
+    if (repository == null ||
+        (siteId == null && routeAssignmentId == null)) {
+      return null;
+    }
 
     _applyControllers();
 
@@ -360,6 +391,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final id = await repository.saveDraft(
         reportId: _report?.id,
         siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
         date: _date,
         workDescription: _workDescription.text,
         workers: _workers,
@@ -381,12 +413,63 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
-  Future<void> _sign() async {
+  Future<void> _signReporter() async {
     final reportId = _report?.id ?? await _saveDraft();
     if (reportId == null || !mounted) return;
 
     final result = await Navigator.of(context).push<SignatureResult>(
-      MaterialPageRoute(builder: (_) => const SignatureCapturePage()),
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(
+          title: '報告者サイン',
+          signerLabel: '報告者名',
+          submitLabel: '報告者サインを保存',
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final repository = _repository;
+    if (repository == null) return;
+    setState(() => _saving = true);
+    try {
+      await repository.saveReporterSignature(
+        reportId: reportId,
+        signerName: result.signerName,
+        signatureJson: result.toJson(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('報告者サインを保存しました')),
+      );
+      await _loadSelectedSite();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('報告者サインを保存できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _sign() async {
+    final reportId = _report?.id ?? await _saveDraft();
+    if (reportId == null || !mounted) return;
+    if (_report?.reporterSignatureJson == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('先に報告者サインを登録してください')),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<SignatureResult>(
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(
+          title: '責任者サイン',
+          signerLabel: '現場責任者名',
+          submitLabel: '責任者サインで確定',
+        ),
+      ),
     );
     if (result == null || !mounted) return;
 
@@ -482,13 +565,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _showSignature() async {
     final report = _report;
-    if (report?.signatureJson == null) return;
-    final strokes = SignatureResult.fromJson(report!.signatureJson);
+    if (report == null) return;
+    final signature =
+        report.responsibleSignatureJson ?? report.signatureJson;
+    if (signature == null) return;
+    final strokes = SignatureResult.fromJson(signature);
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('サイン済み：${report.signerName ?? ''}'),
+        title: Text(
+          '責任者サイン：${report.responsibleSignerName ?? report.signerName ?? ''}',
+        ),
         content: SizedBox(
           width: 460,
           child: SignaturePreview(strokes: strokes, height: 220),
@@ -532,16 +620,28 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
-                            initialValue: _siteId,
+                            initialValue: _groups
+                                .where(
+                                  (g) =>
+                                      g.siteId == _siteId &&
+                                      g.routeAssignmentId ==
+                                          _routeAssignmentId,
+                                )
+                                .map((g) => g.destinationKey)
+                                .firstOrNull,
                             decoration: const InputDecoration(
-                              labelText: '現場',
-                              prefixIcon: Icon(Icons.business_outlined),
+                              labelText: '現場／ルート',
+                              prefixIcon: Icon(Icons.route_outlined),
                             ),
                             items: [
                               for (final group in _groups)
                                 DropdownMenuItem(
-                                  value: group.siteId,
-                                  child: Text(group.siteName),
+                                  value: group.destinationKey,
+                                  child: Text(
+                                    group.routeAssignmentId == null
+                                        ? group.siteName
+                                        : 'ルート：${group.siteName}',
+                                  ),
                                 ),
                             ],
                             onChanged: _selectSite,
@@ -616,6 +716,31 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             const SizedBox(height: 8),
                           ],
                           const SizedBox(height: 8),
+                          Card(
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                child: Icon(
+                                  _report?.reporterSignatureJson == null
+                                      ? Icons.draw_outlined
+                                      : Icons.check,
+                                ),
+                              ),
+                              title: const Text(
+                                '報告者サイン',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              subtitle: Text(
+                                _report?.reporterSignatureJson == null
+                                    ? '日報を作成した報告者がサインします'
+                                    : _report?.reporterSignerName ?? '報告者サイン済み',
+                              ),
+                              trailing: _signed
+                                  ? null
+                                  : const Icon(Icons.chevron_right),
+                              onTap: _saving || _signed ? null : _signReporter,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           if (_signed)
                             Card(
                               child: ListTile(
@@ -623,11 +748,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   child: Icon(Icons.check),
                                 ),
                                 title: const Text(
-                                  'サイン済み・確定',
+                                  '責任者サイン済み・確定',
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
-                                  _report?.signerName ?? '責任者サイン済み',
+                                  _report?.responsibleSignerName ?? _report?.signerName ?? '責任者サイン済み',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _showSignature,
@@ -644,7 +769,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: const Text(
-                                  'サインをもらうと、この日報と出勤データが確定します',
+                                  '報告者サインの後、責任者サインで日報と出勤データを確定します',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _saving ? null : _sign,
@@ -968,6 +1093,24 @@ class DailyReportEvidencePage extends StatelessWidget {
   final String siteName;
   final List<DailyReportEvidenceRecord> items;
 
+  Future<void> _openEvidenceLocation(
+    BuildContext context,
+    DailyReportEvidenceRecord item,
+  ) async {
+    if (!item.hasLocation) return;
+    final query = '${item.latitude},${item.longitude}';
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('位置情報を地図で開けませんでした')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repository = DailyReportRepository.maybeCreate();
@@ -1013,6 +1156,18 @@ class DailyReportEvidencePage extends StatelessWidget {
                           ':' +
                           item.confirmedAt.minute.toString().padLeft(2, '0'),
                     ),
+                    if (item.hasLocation) ...[
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: () => _openEvidenceLocation(context, item),
+                        icon: const Icon(Icons.location_on_outlined),
+                        label: Text(
+                          item.accuracyM == null
+                              ? '位置を地図で確認'
+                              : '位置を地図で確認（精度 約${item.accuracyM!.round()}m）',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     if (repository != null)
                       FutureBuilder<String>(
@@ -1073,90 +1228,372 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strokes = SignatureResult.fromJson(report?.signatureJson);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('日報 A4プレビュー'),
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
-            AspectRatio(
-              aspectRatio: 1 / 1.414,
-              child: Card(
+            Expanded(
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
                 child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 4,
+                  minScale: 0.55,
+                  maxScale: 5,
+                  constrained: false,
+                  boundaryMargin: const EdgeInsets.all(240),
+                  clipBehavior: Clip.none,
                   child: Padding(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          '作 業 日 報',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text('日付  ${date.year}/${date.month}/${date.day}'),
-                        Text('現場  $siteName'),
-                        const Divider(height: 20),
-                        Text(
-                          '出勤メンバー（${workers.length}名）',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 6),
-                        for (final worker in workers)
-                          Text(
-                            '${worker.workerName}  '
-                            '残${worker.overtimeHours} 早${worker.earlyHours} '
-                            '${worker.allowanceLabel}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        const Divider(height: 20),
-                        const Text(
-                          '作業内容',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(workDescription),
-                        const Spacer(),
-                        if (report?.signed == true) ...[
-                          Text(
-                            '責任者：${report?.signerName ?? ''}',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 5),
-                          SignaturePreview(strokes: strokes, height: 90),
-                        ],
-                      ],
+                    padding: const EdgeInsets.all(24),
+                    child: _DailyReportPaper(
+                      date: date,
+                      siteName: siteName,
+                      workers: workers,
+                      workDescription: workDescription,
+                      report: report,
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: () => DailyReportPdfService.printReport(
-                date: date,
-                siteName: siteName,
-                workers: workers,
-                workDescription: workDescription,
-                report: report,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+              child: FilledButton.icon(
+                onPressed: () => DailyReportPdfService.printReport(
+                  date: date,
+                  siteName: siteName,
+                  workers: workers,
+                  workDescription: workDescription,
+                  report: report,
+                ),
+                icon: const Icon(Icons.print),
+                label: const Text('印刷'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
               ),
-              icon: const Icon(Icons.print),
-              label: const Text('印刷'),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+class _DailyReportPaper extends StatelessWidget {
+  const _DailyReportPaper({
+    required this.date,
+    required this.siteName,
+    required this.workers,
+    required this.workDescription,
+    required this.report,
+  });
+
+  final DateTime date;
+  final String siteName;
+  final List<DailyReportWorkerDraft> workers;
+  final String workDescription;
+  final DailyReportRecord? report;
+
+  @override
+  Widget build(BuildContext context) {
+    final reporterStrokes =
+        SignatureResult.fromJson(report?.reporterSignatureJson);
+    final supervisorStrokes = SignatureResult.fromJson(
+      report?.responsibleSignatureJson ?? report?.signatureJson,
+    );
+    final totalOvertime =
+        workers.fold<double>(0, (sum, worker) => sum + worker.overtimeHours);
+    final totalEarly =
+        workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
+    final totalNight =
+        workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
+
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      child: SizedBox(
+        width: 720,
+        height: 1018,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(38, 34, 38, 34),
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.black, fontSize: 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '作 業 日 報',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 4,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${date.year}年 ${date.month}月 ${date.day}日',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 118,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                    Expanded(
+                      flex: 5,
+                      child: _reportBox(
+                        label: '現場名',
+                        child: Text(
+                          siteName.isEmpty ? '未登録' : siteName,
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _signatureBox(
+                        label: '報告者サイン',
+                        name: report?.reporterSignerName ?? '',
+                        strokes: reporterStrokes,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _signatureBox(
+                        label: '責任者サイン',
+                        name: report?.responsibleSignerName ?? report?.signerName ?? '',
+                        strokes: supervisorStrokes,
+                      ),
+                    ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _reportBox(
+                  label: '作業内容',
+                  height: 210,
+                  child: Text(
+                    workDescription.trim().isEmpty
+                        ? '（記載なし）'
+                        : workDescription,
+                    style: const TextStyle(fontSize: 15, height: 1.55),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '作 業 者 名',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Table(
+                  border: TableBorder.all(color: Colors.black87, width: 1),
+                  columnWidths: const {
+                    0: FlexColumnWidth(2.2),
+                    1: FlexColumnWidth(0.9),
+                    2: FlexColumnWidth(0.9),
+                    3: FlexColumnWidth(0.9),
+                    4: FlexColumnWidth(1.8),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: const BoxDecoration(color: Color(0xFFF1F1F1)),
+                      children: [
+                        _tableCell('氏名', bold: true),
+                        _tableCell('早出', bold: true),
+                        _tableCell('残業', bold: true),
+                        _tableCell('夜間', bold: true),
+                        _tableCell('手当・車両等', bold: true),
+                      ],
+                    ),
+                    for (var index = 0; index < 9; index++)
+                      TableRow(
+                        children: index < workers.length
+                            ? _workerCells(workers[index])
+                            : [
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                              ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _summaryBox('計', '${workers.length}人工'),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '早出',
+                        totalEarly > 0 ? '${_num(totalEarly)}H' : '',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '残業',
+                        totalOvertime > 0 ? '${_num(totalOvertime)}H' : '',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '夜間',
+                        totalNight > 0 ? '${_num(totalNight)}H' : '',
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                const Divider(color: Colors.black87, height: 1),
+                const SizedBox(height: 8),
+                const Text(
+                  '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static List<Widget> _workerCells(DailyReportWorkerDraft worker) => [
+        _tableCell(worker.workerName),
+        _tableCell(worker.earlyHours > 0 ? _num(worker.earlyHours) : ''),
+        _tableCell(worker.overtimeHours > 0 ? _num(worker.overtimeHours) : ''),
+        _tableCell(worker.nightHours > 0 ? _num(worker.nightHours) : ''),
+        _tableCell(
+          [
+            if (worker.allowanceLabel.trim().isNotEmpty) worker.allowanceLabel,
+            if (worker.vehicleName?.trim().isNotEmpty == true)
+              worker.vehicleName!,
+            if (worker.routeName?.trim().isNotEmpty == true)
+              worker.routeName!,
+          ].join(' / '),
+        ),
+      ];
+
+  static Widget _reportBox({
+    required String label,
+    required Widget child,
+    double? height,
+  }) =>
+      Container(
+        height: height,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            Expanded(child: child),
+          ],
+        ),
+      );
+
+  static Widget _signatureBox({
+    required String label,
+    required String name,
+    required List<List<Offset>> strokes,
+  }) =>
+      Container(
+        height: 118,
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+            ),
+            if (name.isNotEmpty)
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10),
+              ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: strokes.isEmpty
+                  ? const SizedBox.shrink()
+                  : SignaturePreview(strokes: strokes, height: 72),
+            ),
+          ],
+        ),
+      );
+
+  static Widget _summaryBox(String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87),
+        ),
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const Spacer(),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
+          ],
+        ),
+      );
+
+  static Widget _tableCell(String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
+          ),
+        ),
+      );
+
+  static String _num(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 }
 

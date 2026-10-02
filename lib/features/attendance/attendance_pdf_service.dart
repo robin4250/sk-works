@@ -32,11 +32,7 @@ class AttendancePdfService {
             style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 8),
-          pw.Text(
-            '出勤 ${data.workedDays}日 / 残業 ${_number(data.overtimeHours)}時間 / '
-            '早出 ${_number(data.earlyHours)}時間 / 夜間 ${_number(data.nightHours)}時間'
-            '${data.allowanceCounts.isEmpty ? '' : ' / ${data.allowanceCounts.entries.map((e) => '${e.key} ${e.value}回').join(' / ')}'}',
-          ),
+          pw.Text(_summaryText(data)),
           pw.SizedBox(height: 12),
           pw.TableHelper.fromTextArray(
             headers: const ['日付', '現場', '出勤', '退勤', '残業', '早出', '夜間', '手当'],
@@ -47,13 +43,18 @@ class AttendancePdfService {
                   day.worked ? (day.siteName ?? '現場') : '休み',
                   _time(day.clockIn),
                   _time(day.clockOut),
-                  _number(day.overtimeHours),
-                  _number(day.earlyHours),
-                  _number(day.nightHours),
+                  _hoursCell(day.overtimeHours),
+                  _hoursCell(day.earlyHours),
+                  _hoursCell(day.nightHours),
                   day.hasAllowance
                       ? (day.allowanceNames.isEmpty
-                          ? '手当1'
-                          : day.allowanceNames.map((name) => '${name}1').join(' '))
+                          ? '手当1回'
+                          : day.allowanceNames
+                              .map(
+                                (name) =>
+                                    '${name}1${day.allowanceUnits[name] ?? '回'}',
+                              )
+                              .join(' '))
                       : '',
                 ],
             ],
@@ -97,6 +98,22 @@ class AttendancePdfService {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(value.hour)}:${two(value.minute)}';
   }
+
+  static String _summaryText(WorkerAttendanceMonth data) {
+    final parts = <String>[
+      if (data.workedDays > 0) '出勤 ${data.workedDays}日',
+      if (data.overtimeHours > 0) '残業 ${_number(data.overtimeHours)}時間',
+      if (data.earlyHours > 0) '早出 ${_number(data.earlyHours)}時間',
+      if (data.nightHours > 0) '夜間 ${_number(data.nightHours)}時間',
+      for (final entry in data.allowanceCounts.entries)
+        if (entry.value > 0)
+          '${entry.key} ${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
+    ];
+    return parts.isEmpty ? '集計なし' : parts.join(' / ');
+  }
+
+  static String _hoursCell(double value) =>
+      value > 0 ? _number(value) : '';
 
   static String _number(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
