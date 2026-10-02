@@ -25,6 +25,8 @@ class FriendlyHomeContent extends StatelessWidget {
     this.actionOrder = const <String>[],
     this.visibleHomeKeys = const <String>{},
     this.shortcuts = const <HomeShortcut>[],
+    this.showAttendanceReport = true,
+    this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.appearance = const HomeAppearance(),
     required this.onOpen,
@@ -38,6 +40,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final List<String> actionOrder;
   final Set<String> visibleHomeKeys;
   final List<HomeShortcut> shortcuts;
+  final bool showAttendanceReport;
+  final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
@@ -95,6 +99,7 @@ class FriendlyHomeContent extends StatelessWidget {
                   actionOrder: actionOrder,
                   visibleHomeKeys: visibleHomeKeys,
                   shortcuts: shortcuts,
+                  showTodayAttendance: showTodayAttendance,
                   appearance: appearance,
                   onOpen: onOpen,
                 )
@@ -408,6 +413,7 @@ class _WorkerHome extends StatelessWidget {
     required this.actionOrder,
     required this.visibleHomeKeys,
     required this.shortcuts,
+    required this.showTodayAttendance,
     required this.appearance,
     required this.onOpen,
   });
@@ -417,6 +423,7 @@ class _WorkerHome extends StatelessWidget {
   final List<String> actionOrder;
   final Set<String> visibleHomeKeys;
   final List<HomeShortcut> shortcuts;
+  final bool showTodayAttendance;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
 
