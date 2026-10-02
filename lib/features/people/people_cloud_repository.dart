@@ -30,11 +30,11 @@ class PeopleCloudRepository {
   }
 
   Future<String> companyName() async {
-    final membership = await membership();
+    final member = await membership();
     final row = await _client
         .from('companies')
         .select('name')
-        .eq('id', membership.companyId)
+        .eq('id', member.companyId)
         .maybeSingle();
     return row?['name']?.toString() ?? '';
   }
