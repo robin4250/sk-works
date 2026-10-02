@@ -28,6 +28,7 @@ void main() {
       'admin_sites',
       'vehicle_routes',
       'profile',
+      'appearance',
       'settings',
       'help',
     ]) {
