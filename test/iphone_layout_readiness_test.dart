@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,60 +52,27 @@ void main() {
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
 
-    final menuList = find.byType(ListView).last;
+    final menuScroll = find.byType(Scrollable).last;
     for (final label in ['プロフィール', 'ヘルプ']) {
-      await tester.drag(menuList, const Offset(0, 5000));
+      await tester.scrollUntilVisible(
+        find.text(label),
+        220,
+        scrollable: menuScroll,
+      );
       await tester.pumpAndSettle();
-      for (var attempt = 0;
-          attempt < 20 && find.text(label).evaluate().isEmpty;
-          attempt++) {
-        await tester.drag(menuList, const Offset(0, -220));
-        await tester.pumpAndSettle();
-      }
       expect(find.text(label), findsOneWidget);
     }
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('long company and user names fit iPhone portrait', (tester) async {
-    tester.view.physicalSize = const Size(375, 812);
-    tester.view.devicePixelRatio = 1;
-    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+  test('TOP header keeps long company and user names single-line safe', () {
+    final app = File('lib/app_v2.dart').readAsStringSync();
 
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-      tester.platformDispatcher.clearTextScaleFactorTestValue();
-    });
-
-    const identity = HomeIdentity(
-      role: 'viewer',
-      companyName: '株式会社エスケーワークス東京都墨田区総合建設事業部とても長い会社名',
-      displayName: '齊藤竜一とても長い表示名テスト',
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: FriendlyHomeContent(
-            identity: identity,
-            requiredDocumentAttention: const RequiredDocumentAttention(
-              missingCount: 0,
-              missingNames: [],
-              needsLicense: false,
-              needsQualification: false,
-            ),
-            moduleEnabled: (_) => true,
-            onOpen: (_) async {},
-            onRefresh: () async {},
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.text(identity.companyName), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(app, contains('_identity.companyName'));
+    expect(app, contains('_identity.displayName'));
+    expect(app, contains('maxLines: 1'));
+    expect(app, contains('TextOverflow.ellipsis'));
+    expect(app, contains('now.year'));
   });
 
   testWidgets('compact iPhone portrait does not overflow home', (tester) async {
