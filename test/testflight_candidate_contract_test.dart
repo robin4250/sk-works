@@ -6,7 +6,7 @@ void main() {
   test('TestFlight candidate builder fails closed around production release contract', () {
     final script = File('tool/testflight_candidate.sh').readAsStringSync();
 
-    expect(script, contains('branch != "main"'));
+    expect(script, contains(r'[[ "$branch" != "main" ]]'));
     expect(script, contains('git rev-parse origin/main'));
     expect(script, contains('bash tool/prepare_ios.sh'));
     expect(script, contains('bash tool/testflight_preflight.sh'));
