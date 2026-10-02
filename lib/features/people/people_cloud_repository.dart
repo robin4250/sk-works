@@ -40,11 +40,10 @@ class PeopleCloudRepository {
   }
 
   Future<bool> canManagePeople() async {
-    await membership();
-    final value = await _client.rpc('current_feature_permissions');
-    if (value is! Map) return false;
-    final permissions = Map<String, dynamic>.from(value);
-    return permissions['can_manage_people'] == true;
+    final member = await membership();
+    return member.role == 'owner' ||
+        member.role == 'admin' ||
+        member.role == 'manager';
   }
 
   Future<void> _requireManagePeople() async {
