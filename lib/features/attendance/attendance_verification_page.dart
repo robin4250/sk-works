@@ -41,6 +41,7 @@ class _AttendanceVerificationPageState
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
 
   String? _vehicleName;
+  String? _routeId;
   String? _routeName;
 
   bool _loading = true;
@@ -122,6 +123,7 @@ class _AttendanceVerificationPageState
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
         _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
         _vehicleName = status.selectedVehicleName;
+        _routeId = status.selectedRouteId;
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
         _loading = false;
@@ -250,7 +252,7 @@ class _AttendanceVerificationPageState
                     ),
                   ],
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  DropdownButtonFormField<String?>(
                     initialValue: _siteId,
                     decoration: const InputDecoration(
                       labelText: '現場',
@@ -258,8 +260,12 @@ class _AttendanceVerificationPageState
                       border: OutlineInputBorder(),
                     ),
                     items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('未登録（ルートで出勤）'),
+                      ),
                       for (final site in _sites)
-                        DropdownMenuItem(
+                        DropdownMenuItem<String?>(
                           value: site['id']?.toString(),
                           child: Text(site['name']?.toString() ?? '現場'),
                         ),
@@ -316,7 +322,7 @@ class _AttendanceVerificationPageState
                   FilledButton.icon(
                     onPressed: _saving ||
                             _workerId == null ||
-                            _siteId == null
+                            (_siteId == null && _routeId == null)
                         ? null
                         : _confirm,
                     icon: _saving
@@ -445,7 +451,18 @@ class _AttendanceVerificationPageState
     final repository = _repository;
     final workerId = _workerId;
     final siteId = _siteId;
-    if (repository == null || workerId == null || siteId == null) return;
+    if (repository == null ||
+        workerId == null ||
+        (siteId == null && _routeId == null)) {
+      return;
+    }
+
+    if (_mode == 'gps_auto' && siteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GPS自動出勤は現場の選択が必要です')),
+      );
+      return;
+    }
 
     if (_mode == 'gps_auto') {
       final allowed = await ensureGpsAutoLocationPermission(context);
@@ -505,7 +522,9 @@ class _AttendanceVerificationPageState
         final site = _selectedSite;
         final siteLatitude = _asDouble(site?['latitude']);
         final siteLongitude = _asDouble(site?['longitude']);
-        if (siteLatitude == null || siteLongitude == null) {
+        if (siteId == null) {
+          proximityStatus = 'not_checked';
+        } else if (siteLatitude == null || siteLongitude == null) {
           proximityStatus = 'site_location_missing';
         } else {
           distance = Geolocator.distanceBetween(
