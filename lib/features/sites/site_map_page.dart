@@ -27,7 +27,6 @@ class _SiteMapPageState extends State<SiteMapPage> {
   SiteMapWorkspace? _data;
   bool _loading = true;
   String? _error;
-  Position? _currentPosition;
   final Set<_MapLayer> _layers = {
     _MapLayer.sites,
     _MapLayer.customers,
@@ -58,31 +57,12 @@ class _SiteMapPageState extends State<SiteMapPage> {
         _loading = false;
         _error = null;
       });
-      _loadCurrentPosition();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = error.toString();
       });
-    }
-  }
-
-  Future<void> _loadCurrentPosition() async {
-    try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-      final position = await Geolocator.getCurrentPosition();
-      if (!mounted) return;
-      setState(() => _currentPosition = position);
-    } catch (_) {
-      // Current location is optional for the multi-pin preview.
     }
   }
 
@@ -146,17 +126,6 @@ class _SiteMapPageState extends State<SiteMapPage> {
       final lon = row['longitude'] as num?;
       return address.isNotEmpty || (lat != null && lon != null);
     }).toList(growable: false);
-  }
-
-  String _locationText(Map<String, dynamic> row) {
-    final address = row['address']?.toString().trim() ?? '';
-    if (address.isNotEmpty) return address;
-    final lat = row['latitude'] as num?;
-    final lon = row['longitude'] as num?;
-    if (lat != null && lon != null) {
-      return '${lat.toDouble()},${lon.toDouble()}';
-    }
-    return '';
   }
 
   Future<void> _openSelectedTogether() async {
