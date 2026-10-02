@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
@@ -186,7 +187,6 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                   record.kind.label,
                                   if (record.companyName.isNotEmpty) record.companyName,
                                   if (record.role.isNotEmpty) record.role,
-                                  if (record.phone.isNotEmpty) domesticPhoneDisplay(record.phone),
                                 ];
                                 return Card(
                                   child: ListTile(
@@ -201,7 +201,49 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                       record.name,
                                       style: const TextStyle(fontWeight: FontWeight.w700),
                                     ),
-                                    subtitle: Text(subtitleParts.join(' / ')),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(subtitleParts.join(' / ')),
+                                        if (record.phone.isNotEmpty)
+                                          InkWell(
+                                            onTap: () => _callPhone(
+                                              record.phone,
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 4),
+                                              child: Row(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.phone_outlined,
+                                                    size: 16,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    domesticPhoneDisplay(
+                                                      record.phone,
+                                                    ),
+                                                    style: TextStyle(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary,
+                                                      decoration:
+                                                          TextDecoration
+                                                              .underline,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                     trailing: const Icon(Icons.chevron_right),
                                     onTap: () {
                                       if (record.kind ==
@@ -274,7 +316,14 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               Text('区分: ${record.kind.label}'),
               if (record.companyName.isNotEmpty) Text('会社: ${record.companyName}'),
               if (record.role.isNotEmpty) Text('役割・職種: ${record.role}'),
-              if (record.phone.isNotEmpty) Text('電話: ${record.phone}'),
+              if (record.phone.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _callPhone(record.phone),
+                  icon: const Icon(Icons.phone_outlined),
+                  label: Text(
+                    '電話: ' + domesticPhoneDisplay(record.phone),
+                  ),
+                ),
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
               if (record.notes.isNotEmpty) Text('備考: ${record.notes}'),
               for (final label in DataDateLabels.labels(
@@ -449,6 +498,18 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       MaterialPageRoute(builder: (_) => page),
     );
   }
+  Future<void> _callPhone(String phone) async {
+    final domestic = domesticPhoneDisplay(phone);
+    final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (dial.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: dial);
+    if (!await launchUrl(uri) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('電話を開始できませんでした')),
+      );
+    }
+  }
+
   Future<void> _delete(PersonRecord record) async {
     final repository = _repository;
     if (repository == null) return;
