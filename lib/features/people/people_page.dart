@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'personnel_family_member.dart';
+
 enum PersonKind { employee, partnerCompany, partnerWorker }
 
 extension PersonKindLabel on PersonKind {
@@ -32,6 +34,8 @@ class PersonRecord {
     this.emergencyRelation = '',
     this.emergencyPhone = '',
     this.emergencyAddress = '',
+    this.familyComposition = '',
+    this.familyMembers = const [],
   });
 
   final String id;
@@ -51,6 +55,8 @@ class PersonRecord {
   final String emergencyRelation;
   final String emergencyPhone;
   final String emergencyAddress;
+  final String familyComposition;
+  final List<PersonnelFamilyMember> familyMembers;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -70,6 +76,8 @@ class PersonRecord {
         'emergencyRelation': emergencyRelation,
         'emergencyPhone': emergencyPhone,
         'emergencyAddress': emergencyAddress,
+        'familyComposition': familyComposition,
+        'familyMembers': familyMembers.map((item) => item.toJson()).toList(),
       };
 
   factory PersonRecord.fromJson(Map<String, dynamic> json) {
@@ -94,6 +102,16 @@ class PersonRecord {
       emergencyRelation: json['emergencyRelation']?.toString() ?? '',
       emergencyPhone: json['emergencyPhone']?.toString() ?? '',
       emergencyAddress: json['emergencyAddress']?.toString() ?? '',
+      familyComposition: json['familyComposition']?.toString() ?? '',
+      familyMembers: json['familyMembers'] is List
+          ? [
+              for (final item in json['familyMembers'] as List<dynamic>)
+                if (item is Map)
+                  PersonnelFamilyMember.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+            ]
+          : const [],
     );
   }
 }
