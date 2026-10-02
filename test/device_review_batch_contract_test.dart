@@ -20,6 +20,12 @@ void main() {
       'lib/features/sites/site_map_page.dart',
     ).readAsStringSync();
     final prepareIos = File('tool/prepare_ios.sh').readAsStringSync();
+    final sitesPage = File(
+      'lib/features/sites/site_cloud_page.dart',
+    ).readAsStringSync();
+    final attendanceRepository = File(
+      'lib/features/attendance/worker_attendance_sheet_repository.dart',
+    ).readAsStringSync();
     final report = File(
       'lib/features/daily_reports/daily_report_page.dart',
     ).readAsStringSync();
@@ -46,6 +52,7 @@ void main() {
     expect(attendance, contains('if (data.overtimeHours > 0)'));
     expect(attendancePdf, contains('_hoursCell'));
     expect(attendancePdf, contains('_summaryText'));
+    expect(attendanceRepository, contains("rpc('my_attendance_allowance_units')"));
 
     expect(chat, contains('reverse: true'));
     expect(chat, contains('_chatTabButton'));
@@ -55,6 +62,8 @@ void main() {
 
     expect(map, contains("MethodChannel('sko.multi_pin_map')"));
     expect(map, contains('allowEmployeeHomes'));
+    expect(map, contains('選択地点を複数ピンで地図表示'));
+    expect(sitesPage, contains('const SiteMapPage()'));
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
     expect(prepareIos, contains('showAnnotations'));
