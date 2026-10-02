@@ -6,6 +6,7 @@ import '../notifications/notification_bell.dart';
 import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
 import 'employee_personnel_detail_page.dart';
+import 'employee_personnel_print_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
@@ -96,17 +97,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '親会社に送る',
+            tooltip: 'A4横プレビュー確認後に送信',
             onPressed: _loading || _records.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.send),
+                : () => _openExportWithScope(PersonnelExportOperation.send),
             icon: const Icon(Icons.send_outlined),
           ),
           IconButton(
-            tooltip: '印刷',
+            tooltip: 'A4横プレビュー・印刷',
             onPressed: _loading || _records.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.print),
+                : () => _openExportWithScope(PersonnelExportOperation.print),
             icon: const Icon(Icons.print_outlined),
           ),
           if (_canManagePeople)
@@ -373,54 +374,108 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
   }
 
-  List<PersonnelExportWorker> get _exportWorkers => _records
-      .where((record) => record.kind != PersonKind.partnerCompany)
-      .map(
-        (record) => PersonnelExportWorker(
-          id: record.id,
-          name: record.name,
-          originCompanyName:
-              record.kind == PersonKind.partnerWorker ? record.companyName : null,
+  Future<void> _openExportWithScope(
+    PersonnelExportOperation operation,
+  ) async {
+    final employees = _records
+        .where((record) => record.kind != PersonKind.partnerCompany)
+        .toList(growable: false);
+    if (employees.isEmpty || !mounted) return;
+
+    final all = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.groups_2_outlined),
+              title: const Text('社員一覧'),
+              subtitle: const Text('全社員をA4横向きでプレビュー'),
+              onTap: () => Navigator.pop(sheetContext, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('個別'),
+              subtitle: const Text('社員を1名選んでA4横向きでプレビュー'),
+              onTap: () => Navigator.pop(sheetContext, false),
+            ),
+          ],
         ),
-      )
-      .toList(growable: false);
+      ),
+    );
+    if (all == null || !mounted) return;
+
+    if (all) {
+      await _openExport(operation);
+      return;
+    }
+
+    final selected = await showModalBottomSheet<PersonRecord>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+            itemCount: employees.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 6),
+            itemBuilder: (_, index) {
+              final record = employees[index];
+              return ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.person_outline),
+                ),
+                title: Text(record.name),
+                subtitle: Text(
+                  [
+                    record.kind.label,
+                    if (record.role.trim().isNotEmpty) record.role,
+                  ].join(' / '),
+                ),
+                onTap: () => Navigator.pop(sheetContext, record),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    await _openExport(operation, initialRecord: selected);
+  }
 
   Future<void> _openExport(
     PersonnelExportOperation operation, {
     PersonRecord? initialRecord,
   }) async {
-    final workers = initialRecord == null
-        ? _exportWorkers
-        : [
-            PersonnelExportWorker(
-              id: initialRecord.id,
-              name: initialRecord.name,
-              originCompanyName: initialRecord.kind == PersonKind.partnerWorker
-                  ? initialRecord.companyName
-                  : null,
-            ),
-          ];
-    if (workers.isEmpty || !mounted) return;
+    final records = initialRecord == null
+        ? _records
+            .where((record) => record.kind != PersonKind.partnerCompany)
+            .toList(growable: false)
+        : [initialRecord];
+    if (records.isEmpty || !mounted) return;
 
-    if (operation == PersonnelExportOperation.send && initialRecord == null) {
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => PersonnelBundleSendPage(
-            workerIds: workers.map((worker) => worker.id).toSet(),
-          ),
-        ),
-      );
-      return;
-    }
-
-    await Navigator.of(context).push<PersonnelExportResult>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PersonnelExportPage(
-          title: '人員データ',
-          workers: workers,
-          operation: operation,
-          initialWorkerIds:
-              initialRecord == null ? const [] : [initialRecord.id],
+        builder: (_) => EmployeePersonnelPrintPage(
+          companyName: _companyName,
+          records: records,
+          action: operation == PersonnelExportOperation.send
+              ? EmployeePersonnelPreviewAction.send
+              : EmployeePersonnelPreviewAction.print,
+          onConfirmSend: operation == PersonnelExportOperation.send
+              ? (previewContext) async {
+                  await Navigator.of(previewContext).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => PersonnelBundleSendPage(
+                        workerIds: records.map((record) => record.id).toSet(),
+                      ),
+                    ),
+                  );
+                }
+              : null,
         ),
       ),
     );

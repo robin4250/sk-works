@@ -88,17 +88,6 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       appBar: AppBar(
         title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
         actions: [
-          IconButton(
-            tooltip: '現場マップ',
-            onPressed: _loading
-                ? null
-                : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SiteMapPage(),
-                      ),
-                    ),
-            icon: const Icon(Icons.map_outlined),
-          ),
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
@@ -128,6 +117,27 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                   hintText: '現場名・取引先・担当者・住所・最寄駅で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: FilledButton.tonalIcon(
+                onPressed: _loading
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SiteMapPage(),
+                          ),
+                        ),
+                icon: const Icon(Icons.map_outlined),
+                label: Text(
+                  _canManageSites
+                      ? '現場・取引会社・下請け会社・社員をGoogleマップで確認'
+                      : '現場マップを開く',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
               ),
             ),
             SingleChildScrollView(

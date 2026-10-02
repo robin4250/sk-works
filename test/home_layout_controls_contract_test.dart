@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('home layout controls persist columns and ordering without moving fixed cards', () {
+  test('home layout controls persist columns and long-press ordering', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
     final home =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
@@ -15,27 +15,29 @@ void main() {
     expect(app, contains("ButtonSegment(value: 3"));
     expect(app, contains("ButtonSegment(value: 4"));
     expect(app, contains('ホーム表示・並び順・権限'));
-    expect(app, contains("keyboard_arrow_up"));
-    expect(app, contains("keyboard_arrow_down"));
+    expect(app, contains("key: 'attendance_verify'"));
+    expect(app, contains("label: '本日の勤務報告'"));
+    expect(app, contains("key: 'attendance_today'"));
+    expect(app, contains("label: '本日の出勤'"));
+    expect(app, contains('homeEligible: false'));
+    expect(home, contains('showAttendanceReport'));
+    expect(home, contains('showTodayAttendance'));
+    expect(app, contains("_hiddenHomeActionKeys.contains('attendance_verify')"));
+    expect(app, contains("_hiddenHomeActionKeys.contains('attendance_today')"));
+    expect(app, contains('ReorderableListView.builder'));
+    expect(app, contains('onReorderItem: _reorderHomeAction'));
+    expect(app, contains('長押しして上下へドラッグ'));
 
     expect(home, contains("final int gridColumns"));
     expect(home, contains("final List<String> actionOrder"));
     expect(home, contains("crossAxisCount: columnCount"));
     expect(home, contains("ordered.sort"));
-
-    final gridClass = home.indexOf('class _ActionGrid');
-    final attentionClass = home.indexOf('class _RequiredDocumentAttentionCard');
-    final personalClass = home.indexOf('class _PersonalAttendanceCard');
-    final adminClass = home.indexOf('class _AdminHome');
-    expect(gridClass, greaterThan(adminClass));
-    expect(attentionClass, lessThan(gridClass));
-    expect(personalClass, lessThan(gridClass));
+    expect(home, contains('3 => 1.12'));
+    expect(home, contains('_ => 1.05'));
 
     expect(
       app,
-      contains(
-        '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
-      ),
+      contains('ホームとメニューを同じ一覧で管理します。'),
     );
   });
 }

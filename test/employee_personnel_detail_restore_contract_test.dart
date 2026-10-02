@@ -72,17 +72,39 @@ void main() {
     expect(page, contains("'/maps/search/'"));
   });
 
-  test('personnel list print is A4 landscape with company and date', () {
-    final page = File(
+  test('personnel list and individual data use A4 landscape preview before output', () {
+    final preview = File(
       'lib/features/people/employee_personnel_print_page.dart',
     ).readAsStringSync();
+    final detail = File(
+      'lib/features/people/employee_personnel_detail_page.dart',
+    ).readAsStringSync();
+    final list = File(
+      'lib/features/people/people_cloud_page.dart',
+    ).readAsStringSync();
 
-    expect(page, contains('PdfPageFormat.a4.landscape'));
-    expect(page, contains('companyName'));
-    expect(page, contains('Alignment.centerRight'));
-    expect(page, contains("pdfFileName: '社員一覧.pdf'"));
-    expect(page, contains('allowPrinting: true'));
-    expect(page, contains('allowSharing: true'));
+    expect(preview, contains('PdfPageFormat.a4.landscape'));
+    expect(preview, contains('companyName'));
+    expect(preview, contains('Alignment.centerRight'));
+    expect(preview, contains("'社員一覧 A4横プレビュー'"));
+    expect(preview, contains("'社員データ A4横プレビュー'"));
+    expect(preview, contains('EmployeePersonnelPreviewAction.send'));
+    expect(preview, contains('このA4プレビュー内容で送信へ進む'));
+    expect(preview, contains('このA4プレビュー内容を印刷'));
+    expect(preview, contains('allowPrinting: !_isSend'));
+    expect(preview, contains('allowSharing: false'));
+
+    expect(detail, contains('EmployeePersonnelPreviewAction.send'));
+    expect(detail, contains('EmployeePersonnelPrintPage('));
+    expect(detail, contains('PersonnelBundleSendPage('));
+
+    expect(list, contains("'A4横プレビュー確認後に送信'"));
+    expect(list, contains("'A4横プレビュー・印刷'"));
+    expect(list, contains('EmployeePersonnelPreviewAction.send'));
+    expect(list, contains('EmployeePersonnelPreviewAction.print'));
+    expect(list, contains("title: const Text('社員一覧')"));
+    expect(list, contains("title: const Text('個別')"));
+    expect(list, contains('社員を1名選んでA4横向きでプレビュー'));
   });
 
   test('employee list renders domestic phone and exposes call action', () {

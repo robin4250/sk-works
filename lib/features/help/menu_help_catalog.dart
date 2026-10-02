@@ -42,6 +42,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'signatures', label: 'サイン一覧', purpose: '日報に保存済みの責任者・代表者・監督者サインを確認し、接続済み親会社へ送信します。', destination: 'サイン一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'site_map', label: '現場マップ', purpose: '現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。', destination: 'Googleマップ一覧へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'vehicle_routes', label: '車両・ルート', purpose: '車両番号・走行距離・車両書類と、複数地点の業務ルートを確認します。当日の勤務報告では車両とルートを選択できます。', destination: '車両・ルート一覧へ移動します。', access: '全社員が閲覧・当日選択、管理者/サブ管理者が登録・編集'),
     MenuHelpItem(key: 'profile', label: 'プロフィール', purpose: '自分の氏名、電話番号、写真、会社SKO ID等を確認します。', destination: 'プロフィール画面へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
@@ -49,6 +50,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'albums', label: 'アルバム', purpose: '業務写真をアルバムとしてまとめて確認します。', destination: 'アルバム一覧へ移動します。', access: '会社設定と参加チャットの権限に従います'),
     MenuHelpItem(key: 'approvals', label: '承認待ち', purpose: '日報修正等の承認申請を確認して承認・却下します。', destination: '承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'today_line', label: '本日のLINE出勤候補', purpose: 'LINE連携から取り込んだ出勤候補を確認します。', destination: '本日のLINE出勤候補画面へ移動します。', access: '管理者・勤怠管理権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'appearance', label: '背景・ヘッダー・フッター設定', purpose: '自分のホーム壁紙と、ボタン・カード・ヘッダー・フッターの透明度を調整します。', destination: '個人用のホーム外観設定画面へ移動します。', access: '本人のみ。ほかの利用者には影響しません'),
     MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります'),
     MenuHelpItem(key: 'help', label: 'ヘルプ', purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。', destination: 'このヘルプ画面です。', access: '管理者・サブ管理者・一般・閲覧権限'),
   ];

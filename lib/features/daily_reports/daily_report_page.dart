@@ -10,7 +10,14 @@ import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
 
 class DailyReportPage extends StatefulWidget {
-  const DailyReportPage({super.key});
+  const DailyReportPage({
+    super.key,
+    this.initialDate,
+    this.initialSiteId,
+  });
+
+  final DateTime? initialDate;
+  final String? initialSiteId;
 
   @override
   State<DailyReportPage> createState() => _DailyReportPageState();
@@ -22,7 +29,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final _picker = ImagePicker();
   final _odometerRecognition = const OdometerTextRecognitionEngine();
 
-  DateTime _date = DateTime.now();
+  late DateTime _date;
   List<DailyReportSiteGroup> _groups = const [];
   String? _siteId;
   String? _siteName;
@@ -46,6 +53,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialDate ?? DateTime.now();
+    _date = DateTime(initial.year, initial.month, initial.day);
+    _siteId = widget.initialSiteId;
     _loadDay();
   }
 

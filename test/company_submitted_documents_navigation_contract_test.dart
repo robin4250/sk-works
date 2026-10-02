@@ -18,8 +18,8 @@ void main() {
         "(key == 'company_deliveries' || key == 'company_documents')",
       ),
     );
-    expect(home, contains("'company_documents'"));
-    expect(home, contains("'会社提出書類'"));
-    expect(home, contains('access: _HomeActionAccess.admin'));
+    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(home, contains("_shortcutAccess(shortcut.key)"));
+    expect(home, contains("key == 'company_documents'"));
   });
 }

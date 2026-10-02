@@ -154,14 +154,11 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         (row?['compulsory_insurance_path']?.toString().isNotEmpty == true);
     final voluntaryReady = _voluntaryDoc != null ||
         (row?['voluntary_insurance_path']?.toString().isNotEmpty == true);
-    if (!registrationReady || !compulsoryReady || !voluntaryReady) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('車検証・自賠責保険・任意保険証書の3点を登録してください'),
-        ),
-      );
-      return;
-    }
+    final missingLabels = <String>[
+      if (!registrationReady) '車検証',
+      if (!compulsoryReady) '自賠責保険',
+      if (!voluntaryReady) '任意保険証書',
+    ];
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -173,7 +170,11 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
               _registration.text.trim() +
               ' / ' +
               _odometer.text.trim() +
-              ' km',
+              ' km' +
+              (missingLabels.isEmpty
+                  ? ''
+                  : '\n未登録書類は後から追加できます：' +
+                      missingLabels.join('・')),
         ),
         actions: [
           TextButton(
@@ -214,7 +215,19 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         );
       }
 
+      final missingAfterSave =
+          await repository.notifyMissingVehicleDocuments(vehicleId);
       if (!mounted) return;
+      if (missingAfterSave.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '車両を登録しました。未登録書類は後から追加してください：' +
+                  missingAfterSave.join('・'),
+            ),
+          ),
+        );
+      }
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
@@ -268,6 +281,10 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '書類は車両登録後に追加しても大丈夫です。未登録がある場合は管理者・サブ管理者へ通知します。',
           ),
           const SizedBox(height: 8),
           _documentTile(

@@ -745,7 +745,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             .colorScheme
             .surface
             .withValues(
-              alpha: selected == null ? 1 : _appearance.headerAlpha,
+              alpha: _appearance.headerAlpha,
             ),
         title: selected == null
             ? const Text(
@@ -839,8 +839,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             ? const Center(child: CircularProgressIndicator())
             : Column(
                 children: [
-                  _tabs(),
-                  const Divider(height: 1),
+                  if (selected == null || _chatChromeVisible) ...[
+                    _tabs(),
+                    const Divider(height: 1),
+                  ],
                   Expanded(
                     child: switch (_tab) {
                       _ChatTab.all => _selectedGroupId == null
@@ -878,14 +880,30 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         ),
     ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      child: SegmentedButton<_ChatTab>(
-        segments: tabs,
-        selected: {_tab},
-        onSelectionChanged: (value) =>
-            setState(() => _tab = value.first),
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context)
+          .colorScheme
+          .surface
+          .withValues(alpha: _appearance.headerAlpha),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        child: SegmentedButton<_ChatTab>(
+          segments: tabs,
+          selected: {_tab},
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              final scheme = Theme.of(context).colorScheme;
+              final base = states.contains(WidgetState.selected)
+                  ? scheme.primaryContainer
+                  : scheme.surface;
+              return base.withValues(alpha: _appearance.headerAlpha);
+            }),
+          ),
+          onSelectionChanged: (value) =>
+              setState(() => _tab = value.first),
+        ),
       ),
     );
   }

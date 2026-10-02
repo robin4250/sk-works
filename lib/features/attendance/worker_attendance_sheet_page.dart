@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'japan_holiday.dart';
 import 'worker_attendance_sheet_repository.dart';
@@ -59,6 +60,21 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _openDailyReport(DateTime date) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final target = await repository.findDailyReportForDate(date);
+    if (target == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DailyReportPage(
+          initialDate: date,
+          initialSiteId: target.siteId,
+        ),
+      ),
+    );
   }
 
   Future<void> _changeMonth(int delta) async {
@@ -132,6 +148,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
                           month: _month,
                           week: weeks[_selectedWeek],
                           data: _data!,
+                          onDateTap: _openDailyReport,
                         ),
             ),
           ],
@@ -235,11 +252,13 @@ class _WeekList extends StatelessWidget {
     required this.month,
     required this.week,
     required this.data,
+    required this.onDateTap,
   });
 
   final DateTime month;
   final List<DateTime> week;
   final WorkerAttendanceMonth data;
+  final ValueChanged<DateTime> onDateTap;
 
   static const _weekdayNames = ['月', '火', '水', '木', '金', '土', '日'];
 
@@ -259,6 +278,7 @@ class _WeekList extends StatelessWidget {
           weekday: _weekdayNames[index],
           inMonth: inMonth,
           day: day,
+          onTap: () => onDateTap(date),
         );
       },
     );
@@ -271,12 +291,14 @@ class _AttendanceDayCard extends StatelessWidget {
     required this.weekday,
     required this.inMonth,
     required this.day,
+    required this.onTap,
   });
 
   final DateTime date;
   final String weekday;
   final bool inMonth;
   final WorkerAttendanceDay? day;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -293,6 +315,14 @@ class _AttendanceDayCard extends StatelessWidget {
     return Opacity(
       opacity: faded ? 0.42 : 1,
       child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.zero,
+            child: Card(
+              elevation: 0,
+              margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
@@ -411,6 +441,9 @@ class _AttendanceDayCard extends StatelessWidget {
             ],
           ),
         ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -492,6 +525,21 @@ class _WorkerAttendanceMonthPageState
     extends State<WorkerAttendanceMonthPage> {
   final _repository = WorkerAttendanceSheetRepository.maybeCreate();
 
+  Future<void> _openDailyReport(DateTime date) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final target = await repository.findDailyReportForDate(date);
+    if (target == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DailyReportPage(
+          initialDate: date,
+          initialSiteId: target.siteId,
+        ),
+      ),
+    );
+  }
+
   late DateTime _month;
   late WorkerAttendanceMonth _data;
   bool _loading = false;
@@ -564,7 +612,11 @@ class _WorkerAttendanceMonthPageState
               ),
             ],
             const SizedBox(height: 6),
-            _MonthCalendar(month: _month, data: _data),
+            _MonthCalendar(
+              month: _month,
+              data: _data,
+              onDateTap: _openDailyReport,
+            ),
             const SizedBox(height: 14),
             _MonthlySummary(data: _data),
             const SizedBox(height: 16),
@@ -590,10 +642,15 @@ class _WorkerAttendanceMonthPageState
 }
 
 class _MonthCalendar extends StatelessWidget {
-  const _MonthCalendar({required this.month, required this.data});
+  const _MonthCalendar({
+    required this.month,
+    required this.data,
+    required this.onDateTap,
+  });
 
   final DateTime month;
   final WorkerAttendanceMonth data;
+  final ValueChanged<DateTime> onDateTap;
 
   static const _weekdays = ['月', '火', '水', '木', '金', '土', '日'];
 
@@ -657,6 +714,7 @@ class _MonthCalendar extends StatelessWidget {
                     date: date,
                     inMonth: date.month == month.month,
                     day: data.days[DateTime(date.year, date.month, date.day)],
+                    onTap: () => onDateTap(date),
                   ),
               ],
             ),
@@ -672,11 +730,13 @@ class _MonthCalendarCell extends StatelessWidget {
     required this.date,
     required this.inMonth,
     required this.day,
+    required this.onTap,
   });
 
   final DateTime date;
   final bool inMonth;
   final WorkerAttendanceDay? day;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -692,9 +752,12 @@ class _MonthCalendarCell extends StatelessWidget {
         date.month == now.month &&
         date.day == now.day;
 
-    return Opacity(
-      opacity: inMonth ? 1 : 0.35,
-      child: Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Opacity(
+        opacity: inMonth ? 1 : 0.35,
+        child: Container(
         margin: const EdgeInsets.all(1.5),
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
@@ -758,6 +821,7 @@ class _MonthCalendarCell extends StatelessWidget {
               const SizedBox(height: 10),
             const Spacer(),
           ],
+        ),
         ),
       ),
     );

@@ -46,12 +46,31 @@ class _SiteMapPageState extends State<SiteMapPage> {
   Future<void> _map(Map<String, dynamic> row, String labelKey) async {
     final lat = row['latitude'] as num?;
     final lon = row['longitude'] as num?;
-    if (lat == null || lon == null) return;
-    final uri = Uri.https('maps.apple.com', '/', {
-      'll': '$lat,$lon',
-      'q': row[labelKey]?.toString() ?? 'SKO',
+    final address = row['address']?.toString().trim() ?? '';
+    final query = lat != null && lon != null
+        ? '${lat.toDouble()},${lon.toDouble()}'
+        : address;
+    if (query.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Googleマップで開ける位置情報がありません')),
+      );
+      return;
+    }
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
     });
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${row[labelKey]?.toString() ?? 'SKO'}をGoogleマップで開けませんでした',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -80,8 +99,8 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         padding: const EdgeInsets.all(14),
                         child: Text(
                           data!.canViewAll
-                              ? '社員全員の最新の打刻位置を表示します。常時追跡は行いません。'
-                              : '自分自身の最新の打刻位置だけを表示します。',
+                              ? '現場・取引会社・下請け会社と、社員全員の最新の打刻位置をGoogleマップで開けます。常時追跡は行いません。'
+                              : '現場と自分自身の最新の打刻位置をGoogleマップで開けます。',
                         ),
                       ),
                     ),
@@ -94,6 +113,30 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         trailing: const Icon(Icons.map_outlined),
                         onTap: () => _map(site, 'site_name'),
                       ),
+                    if (data.canViewAll) ...[
+                      const _Heading('取引会社'),
+                      for (final customer in data.customers)
+                        ListTile(
+                          leading: const Icon(Icons.business_center_outlined),
+                          title: Text(
+                            customer['customer_name']?.toString() ?? '取引会社',
+                          ),
+                          subtitle: Text(customer['address']?.toString() ?? ''),
+                          trailing: const Icon(Icons.map_outlined),
+                          onTap: () => _map(customer, 'customer_name'),
+                        ),
+                      const _Heading('下請け会社'),
+                      for (final partner in data.partners)
+                        ListTile(
+                          leading: const Icon(Icons.handshake_outlined),
+                          title: Text(
+                            partner['partner_name']?.toString() ?? '下請け会社',
+                          ),
+                          subtitle: Text(partner['address']?.toString() ?? ''),
+                          trailing: const Icon(Icons.map_outlined),
+                          onTap: () => _map(partner, 'partner_name'),
+                        ),
+                    ],
                     const _Heading('最新の打刻位置'),
                     for (final worker in data.workers)
                       ListTile(

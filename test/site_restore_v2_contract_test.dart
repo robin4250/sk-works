@@ -23,6 +23,8 @@ void main() {
     expect(repository, contains("rpc('site_directory_metadata')"));
     expect(repository, contains("site_information_request"));
     expect(repository, contains("site_photo_request"));
+    expect(repository, contains('loadSiteShareTargets'));
+    expect(repository, contains('sendSiteShare'));
     expect(repository, contains("from('site_entrance_photos')"));
     expect(repository, contains("from('site-entrance-photos')"));
     expect(model, contains('nearestStation'));
@@ -31,7 +33,7 @@ void main() {
     expect(model, contains('creatorName'));
     expect(model, contains('createdAt'));
     expect(model, contains('updatedAt'));
-    expect(detail, contains("'取引先に共有'"));
+    expect(detail, contains("'下請け会社・取引会社に共有'"));
     expect(detail, contains("'編集／登録'"));
     expect(detail, contains("'現場住所'"));
     expect(detail, contains("'最寄駅'"));
@@ -44,13 +46,19 @@ void main() {
     expect(detail, contains("scheme: 'tel'"));
     expect(detail, contains("'確定して申請'"));
     expect(detail, contains("for (var slot = 1; slot <= 3; slot++)"));
+    expect(detail, contains("'カメラで撮影'"));
+    expect(detail, contains("'写真ライブラリから選択'"));
+    expect(detail, contains('ImageSource.gallery'));
+    expect(detail, contains('InteractiveViewer'));
+    expect(detail, contains("tooltip: '写真を変更'"));
+    expect(detail, contains("title: Text('現場写真\$slot')"));
     expect(detail, contains("'formal_name'"));
     expect(detail, contains("'nearest_station'"));
     expect(detail, contains("'representative_name'"));
     expect(detail, contains("'representative_phone'"));
     expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(cloud, contains('SiteDetailPage('));
-    expect(cloud, contains("tooltip: '現場マップ'"));
+    expect(cloud, contains("'現場・取引会社・下請け会社・社員をGoogleマップで確認'"));
     expect(cloud, contains('SiteMapPage()'));
     expect(siteMap, contains('社員全員の最新の打刻位置'));
     expect(siteMap, contains('自分自身の最新の打刻位置'));

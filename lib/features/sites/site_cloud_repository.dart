@@ -259,6 +259,57 @@ class SiteCloudRepository {
     );
   }
 
+  Future<List<Map<String, dynamic>>> loadSiteShareTargets() async {
+    final value = await _client.rpc('site_share_targets');
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<int> sendSiteShare({
+    required String siteId,
+    required Iterable<String> targetCompanyIds,
+  }) async {
+    final targets = targetCompanyIds
+        .where((id) => id.trim().isNotEmpty)
+        .toList(growable: false);
+    if (targets.isEmpty) return 0;
+    final value = await _client.rpc(
+      'send_site_share',
+      params: {
+        'p_site_id': siteId,
+        'p_target_company_ids': targets,
+      },
+    );
+    return (value as num?)?.toInt() ?? 0;
+  }
+
+  Future<List<Map<String, dynamic>>> loadSiteShareInbox() async {
+    final value = await _client.rpc('site_share_inbox');
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<String?> respondSiteShare({
+    required String dataItemId,
+    required bool accept,
+  }) async {
+    final value = await _client.rpc(
+      'respond_site_share',
+      params: {
+        'p_data_item_id': dataItemId,
+        'p_accept': accept,
+      },
+    );
+    final id = value?.toString() ?? '';
+    return id.isEmpty ? null : id;
+  }
+
   Future<Map<String, dynamic>?> loadCreatorEmployee(String creatorName) async {
     final name = creatorName.trim();
     if (name.isEmpty) return null;
