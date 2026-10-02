@@ -901,7 +901,7 @@ class _HomePageState extends State<HomePage> {
         preferredSize: Size.fromHeight(_chromeVisible ? 80 : 0),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: _chromeVisible ? 80 : 0,
+          height: _chromeVisible ? 88 : 0,
           child: _chromeVisible
               ? AppBar(
                   backgroundColor: Theme.of(context)
@@ -1116,7 +1116,7 @@ class _HomePageState extends State<HomePage> {
       ),
       bottomNavigationBar: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: _chromeVisible ? 80 : 0,
+        height: _chromeVisible ? 88 : 0,
         child: _chromeVisible
             ? NavigationBar(
                   backgroundColor: Theme.of(context)
