@@ -19,9 +19,11 @@ void main() {
     expect(page, contains("'任意保険証書'"));
     expect(page, contains('ImageSource.camera'));
     expect(page, contains("'pdf'"));
-    expect(page, contains('3点を登録してください'));
+    expect(page, contains('書類は車両登録後に追加しても大丈夫です'));
+    expect(page, contains('未登録書類は後から追加できます'));
     expect(repository, contains("'vehicle-documents'"));
     expect(repository, contains("'odometer_km'"));
+    expect(repository, contains("rpc('notify_missing_vehicle_documents'"));
   });
 
   test('route editor supports unlimited site or address stops', () {
