@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
 import '../sites/site_map_page.dart';
+import '../sites/site_share_approval_page.dart';
 import '../operations/vehicle_route_page.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -73,6 +74,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const SiteMapPage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'site_share_approval') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SiteShareApprovalPage(),
         ),
       );
       if (!mounted) return;
