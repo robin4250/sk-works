@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
 import '../operations/odometer_text_recognition_engine.dart';
@@ -381,6 +382,44 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  Future<void> _signReporter() async {
+    final reportId = _report?.id ?? await _saveDraft();
+    if (reportId == null || !mounted) return;
+
+    final result = await Navigator.of(context).push<SignatureResult>(
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(
+          title: '報告者サイン',
+          nameLabel: '報告者名',
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final repository = _repository;
+    if (repository == null) return;
+    setState(() => _saving = true);
+    try {
+      await repository.saveReporterSignature(
+        reportId: reportId,
+        signerName: result.signerName,
+        signatureJson: result.toJson(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('報告者サインを保存しました')),
+      );
+      await _loadSelectedSite();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('報告者サインを保存できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _sign() async {
     final reportId = _report?.id ?? await _saveDraft();
     if (reportId == null || !mounted) return;
@@ -615,6 +654,29 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                             const SizedBox(height: 8),
                           ],
+                          const SizedBox(height: 8),
+                          Card(
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                child: Icon(
+                                  _report?.reporterSignatureJson != null
+                                      ? Icons.check
+                                      : Icons.draw_outlined,
+                                ),
+                              ),
+                              title: const Text(
+                                '報告者サイン',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              subtitle: Text(
+                                _report?.reporterSignerName?.trim().isNotEmpty == true
+                                    ? _report!.reporterSignerName!
+                                    : '日報を作成した報告者がサインします',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: _signed || _saving ? null : _signReporter,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           if (_signed)
                             Card(
@@ -968,6 +1030,24 @@ class DailyReportEvidencePage extends StatelessWidget {
   final String siteName;
   final List<DailyReportEvidenceRecord> items;
 
+  Future<void> _openEvidenceLocation(
+    BuildContext context,
+    DailyReportEvidenceRecord item,
+  ) async {
+    if (!item.hasLocation) return;
+    final query = '${item.latitude},${item.longitude}';
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('位置情報を地図で開けませんでした')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repository = DailyReportRepository.maybeCreate();
@@ -1013,6 +1093,18 @@ class DailyReportEvidencePage extends StatelessWidget {
                           ':' +
                           item.confirmedAt.minute.toString().padLeft(2, '0'),
                     ),
+                    if (item.hasLocation) ...[
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: () => _openEvidenceLocation(context, item),
+                        icon: const Icon(Icons.location_on_outlined),
+                        label: Text(
+                          item.accuracyM == null
+                              ? '位置を地図で確認'
+                              : '位置を地図で確認（精度 約${item.accuracyM!.round()}m）',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     if (repository != null)
                       FutureBuilder<String>(
