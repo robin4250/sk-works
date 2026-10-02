@@ -108,6 +108,29 @@ class AttendanceVerificationRepository {
         'p_timezone': 'Asia/Tokyo',
       },
     );
+
+    if (siteId != null && siteId.trim().isNotEmpty) {
+      final workerValue = await _client.rpc('ensure_current_user_worker');
+      final workerId = workerValue?.toString() ?? '';
+      if (workerId.isNotEmpty) {
+        await _client
+            .from('work_vehicle_route_selections')
+            .update({
+              'route_assignment_id': null,
+              'updated_by': _client.auth.currentUser?.id,
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            })
+            .eq('worker_id', workerId)
+            .eq(
+              'work_date',
+              DateTime.now().year.toString().padLeft(4, '0') +
+                  '-' +
+                  DateTime.now().month.toString().padLeft(2, '0') +
+                  '-' +
+                  DateTime.now().day.toString().padLeft(2, '0'),
+            );
+      }
+    }
   }
 
   Future<Map<String, dynamic>> attemptGpsAutoAttendance({
