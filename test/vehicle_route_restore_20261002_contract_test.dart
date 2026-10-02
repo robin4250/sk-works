@@ -60,17 +60,17 @@ void main() {
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
 
-    expect(home, contains("'車両を選択'"));
-    expect(home, contains("'ルートを選択'"));
+    expect(home, contains("'現場の選択（固定現場／複数現場）'"));
+    expect(home, contains("'出勤方法と車両を選択'"));
     expect(home, contains('選択中の車両：'));
     expect(home, contains('選択中のルート：'));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
-    expect(selection, contains('VehicleRouteSelectionKind.vehicle'));
-    expect(selection, contains('VehicleRouteSelectionKind.route'));
-    expect(selection, contains("'車両の選択を解除'"));
-    expect(selection, contains("'ルートの選択を解除'"));
-    expect(app, contains("case 'vehicle_select':"));
-    expect(app, contains("case 'route_select':"));
+    expect(selection, contains('VehicleRouteSelectionMode.vehicle'));
+    expect(selection, contains('VehicleRouteSelectionMode.route'));
+    expect(selection, contains("'車両を使わない'"));
+    expect(selection, contains("'ルートを使わない'"));
+    expect(app, contains("case 'workplace_select':"));
+    expect(app, contains("case 'attendance_method_vehicle':"));
   });
 
   test('attendance and daily report carry vehicle route and odometer', () {
