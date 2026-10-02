@@ -9,7 +9,7 @@ void main() {
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
     expect(app, contains("'clock_in' || 'clock_out'"));
-    expect(app, contains("const _ModuleDisabledPage(label: '出勤表')"));
+    expect(app, contains("_ModuleDisabledPage(label: SkoLanguageController.tr('出勤表'))"));
     expect(app, contains("const _ModuleDisabledPage(label: '現場')"));
     expect(app, contains("const _ModuleDisabledPage(label: 'チャット')"));
     expect(app, contains('この機能は会社設定でOFFになっています'));
