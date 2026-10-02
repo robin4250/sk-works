@@ -4,6 +4,7 @@ import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
 import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
+import 'employee_personnel_detail_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
@@ -25,6 +26,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   PersonKind? _filter;
   bool _loading = true;
   bool _canManagePeople = false;
+  String _companyName = '';
   String? _error;
 
   @override
@@ -47,6 +49,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManagePeople(),
+        repository.companyName(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
@@ -56,6 +59,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           ..clear()
           ..addAll(loaded);
         _canManagePeople = values[1] as bool;
+        _companyName = values[2] as String;
         _loading = false;
         _error = null;
       });
@@ -86,7 +90,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('人員管理'),
+        title: const Text('社員'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -198,7 +202,29 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                     ),
                                     subtitle: Text(subtitleParts.join(' / ')),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(record),
+                                    onTap: () {
+                                      if (record.kind ==
+                                          PersonKind.partnerCompany) {
+                                        _showDetails(record);
+                                        return;
+                                      }
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              EmployeePersonnelDetailPage(
+                                            record: record,
+                                            allEmployees: _records
+                                                .where(
+                                                  (item) =>
+                                                      item.kind !=
+                                                      PersonKind.partnerCompany,
+                                                )
+                                                .toList(growable: false),
+                                            companyName: _companyName,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 );
                               },
