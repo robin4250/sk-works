@@ -70,7 +70,9 @@ void main() {
     expect(sitesPage, contains("title: const Text('現場データ')"));
     expect(sitesPage, contains("label: const Text('現場登録')"));
     expect(sitesPage, contains("label: const Text('現場マップ')"));
-    expect(sitesPage, contains('padding: const EdgeInsets.fromLTRB(16, 8, 16, 96)'));
+    expect(sitesPage, contains("heroTag: 'site_map'"));
+    expect(sitesPage, contains("heroTag: 'site_register'"));
+    expect(sitesPage, contains('floatingActionButton: Row('));
     expect(map, contains('title: Text(widget.title)'));
     expect(app, contains("title: '管理者用現場マップ'"));
     expect(prepareIos, contains('import MapKit'));
