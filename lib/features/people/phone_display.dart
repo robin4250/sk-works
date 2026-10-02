@@ -7,12 +7,12 @@ String domesticPhoneDisplay(String? value) {
     while (text.startsWith('-') || text.startsWith(' ')) {
       text = text.substring(1);
     }
-    return '0' + text;
+    return '0$text';
   }
 
   final compact = text.replaceAll(RegExp(r'\s+'), '');
   if (compact.startsWith('81') && compact.length >= 11) {
-    return '0' + compact.substring(2);
+    return '0${compact.substring(2)}';
   }
   return text;
 }
