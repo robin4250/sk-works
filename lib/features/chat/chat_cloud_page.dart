@@ -748,8 +748,25 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   @override
   Widget build(BuildContext context) {
     final selected = _selectedGroup;
+    final wallpaperPath =
+        selected == null ? null : _appearance.wallpaperPath?.trim();
 
-    return Listener(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(
+          color: Theme.of(context).colorScheme.surface,
+        ),
+        if (wallpaperPath != null && wallpaperPath.isNotEmpty)
+          Opacity(
+            opacity: _appearance.backgroundAlpha,
+            child: Image.file(
+              File(wallpaperPath),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _chatPointerDown,
       onPointerMove: _chatPointerMove,
@@ -762,9 +779,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         backgroundColor: Theme.of(context)
             .colorScheme
             .surface
-            .withValues(
-              alpha: _appearance.headerAlpha,
-            ),
+            .withValues(alpha: _appearance.headerAlpha),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
         leading: selected == null
             ? null
             : IconButton(
@@ -866,7 +884,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 children: [
                   if (selected == null || _chatChromeVisible) ...[
                     _tabs(),
-                    const Divider(height: 1),
+                    Divider(
+                      height: 1,
+                      color: Theme.of(context)
+                          .dividerColor
+                          .withValues(alpha: _appearance.headerAlpha),
+                    ),
                   ],
                   Expanded(
                     child: switch (_tab) {
@@ -891,6 +914,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               ),
       ),
       ),
+        ),
+      ],
     );
   }
 
@@ -932,8 +957,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final selected = _tab == tab;
     final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: (selected ? scheme.primaryContainer : scheme.surfaceContainerLow)
+      color: (selected ? scheme.primaryContainer : scheme.surface)
           .withValues(alpha: _appearance.headerAlpha),
+      surfaceTintColor: Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -975,15 +1001,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (wallpaperPath != null && wallpaperPath.isNotEmpty)
-          Opacity(
-            opacity: _appearance.backgroundAlpha,
-            child: Image.file(
-              File(wallpaperPath),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          ),
         Column(
           children: [
         if (archived)
