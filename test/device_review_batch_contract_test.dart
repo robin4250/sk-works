@@ -29,6 +29,15 @@ void main() {
     final companyData = File(
       'lib/features/people/company_submitted_documents_page.dart',
     ).readAsStringSync();
+    final profile = File(
+      'lib/features/profile/profile_page.dart',
+    ).readAsStringSync();
+    final profileRepository = File(
+      'lib/features/profile/profile_repository.dart',
+    ).readAsStringSync();
+    final home = File(
+      'lib/features/home/friendly_home_content.dart',
+    ).readAsStringSync();
 
     expect(employeePreview, contains('InteractiveViewer'));
     expect(employeePreview, contains('maxScale: 5'));
@@ -40,6 +49,8 @@ void main() {
 
     expect(chat, contains('reverse: true'));
     expect(chat, contains('_chatTabButton'));
+    expect(chat, contains('backgroundColor: Colors.transparent'));
+    expect(chat, contains('surfaceTintColor: Colors.transparent'));
     expect(chat, isNot(contains('SingleChildScrollView(\n        scrollDirection: Axis.horizontal')));
 
     expect(map, contains("MethodChannel('sko.multi_pin_map')"));
@@ -66,5 +77,14 @@ void main() {
     expect(companyData, contains("'口座名義'"));
     expect(companyData, contains("'カメラで撮影'"));
     expect(companyData, contains("'写真ライブラリから選択'"));
+
+    expect(profile, contains("'個人SKO ID'"));
+    expect(profileRepository, contains("'change_personal_sko_id'"));
+    expect(home, contains("'本日の出勤'"));
+    final todayIndex = home.indexOf("'本日の出勤'");
+    expect(
+      home.substring(todayIndex, todayIndex + 280),
+      contains('titleMedium'),
+    );
   });
 }
