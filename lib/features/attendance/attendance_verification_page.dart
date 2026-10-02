@@ -456,13 +456,6 @@ class _AttendanceVerificationPageState
       return;
     }
 
-    if (_mode == 'gps_auto' && siteId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GPS自動出勤は現場の選択が必要です')),
-      );
-      return;
-    }
-
     if (_mode == 'gps_auto') {
       final allowed = await ensureGpsAutoLocationPermission(context);
       if (!allowed || !mounted) return;
