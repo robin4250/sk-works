@@ -212,11 +212,13 @@ class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
     required this.vehicleRoutesEnabled,
+    required this.buttonOpacity,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
   final bool vehicleRoutesEnabled;
+  final double buttonOpacity;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -357,48 +359,56 @@ class _PersonalAttendanceCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => onOpen('workplace_select'),
-              icon: const Icon(Icons.place_outlined),
-              label: const Text('現場の選択（1現場／複数現場）'),
-            ),
-            const SizedBox(height: 9),
-            OutlinedButton.icon(
-              onPressed: () => onOpen('attendance_method_vehicle'),
-              icon: const Icon(Icons.tune_outlined),
-              label: const Text('出勤方法と車両を選択'),
-            ),
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                Expanded(
-                  child: isWorking || isFinished
-                      ? OutlinedButton.icon(
-                          onPressed: () => onOpen('clock_in'),
-                          icon: const Icon(Icons.login),
-                          label: const Text('出勤'),
-                        )
-                      : FilledButton.icon(
-                          onPressed: () => onOpen('clock_in'),
-                          icon: const Icon(Icons.login),
-                          label: const Text('出勤'),
-                        ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: isWorking
-                      ? FilledButton.icon(
-                          onPressed: () => onOpen('clock_out'),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('退勤'),
-                        )
-                      : OutlinedButton.icon(
-                          onPressed: () => onOpen('clock_out'),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('退勤'),
-                        ),
-                ),
-              ],
+            Opacity(
+              opacity: buttonOpacity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => onOpen('workplace_select'),
+                    icon: const Icon(Icons.place_outlined),
+                    label: const Text('現場の選択（1現場／複数現場）'),
+                  ),
+                  const SizedBox(height: 9),
+                  OutlinedButton.icon(
+                    onPressed: () => onOpen('attendance_method_vehicle'),
+                    icon: const Icon(Icons.tune_outlined),
+                    label: const Text('出勤方法と車両を選択'),
+                  ),
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: isWorking || isFinished
+                            ? OutlinedButton.icon(
+                                onPressed: () => onOpen('clock_in'),
+                                icon: const Icon(Icons.login),
+                                label: const Text('出勤'),
+                              )
+                            : FilledButton.icon(
+                                onPressed: () => onOpen('clock_in'),
+                                icon: const Icon(Icons.login),
+                                label: const Text('出勤'),
+                              ),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: isWorking
+                            ? FilledButton.icon(
+                                onPressed: () => onOpen('clock_out'),
+                                icon: const Icon(Icons.logout),
+                                label: const Text('退勤'),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: () => onOpen('clock_out'),
+                                icon: const Icon(Icons.logout),
+                                label: const Text('退勤'),
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -529,6 +539,7 @@ class _OrderedHomeContent extends StatelessWidget {
               child: _PersonalAttendanceCard(
                 status: attendanceStatus,
                 vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
+                buttonOpacity: appearance.cardButtonOpacity,
                 onOpen: onOpen,
               ),
             ),
@@ -545,7 +556,10 @@ class _OrderedHomeContent extends StatelessWidget {
             onReorderAction: onReorderAction,
             child: Opacity(
               opacity: appearance.cardOpacity,
-              child: _TodayAttendanceHomeCard(onOpen: onOpen),
+              child: _TodayAttendanceHomeCard(
+                buttonOpacity: appearance.cardButtonOpacity,
+                onOpen: onOpen,
+              ),
             ),
           ),
         );
@@ -631,8 +645,12 @@ class _DraggableHomeCard extends StatelessWidget {
 }
 
 class _TodayAttendanceHomeCard extends StatelessWidget {
-  const _TodayAttendanceHomeCard({required this.onOpen});
+  const _TodayAttendanceHomeCard({
+    required this.buttonOpacity,
+    required this.onOpen,
+  });
 
+  final double buttonOpacity;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -652,10 +670,13 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
             const SizedBox(height: 6),
             const Text('自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () => onOpen('attendance_today'),
-              icon: const Icon(Icons.groups_outlined),
-              label: const Text('出勤状況を確認'),
+            Opacity(
+              opacity: buttonOpacity,
+              child: FilledButton.icon(
+                onPressed: () => onOpen('attendance_today'),
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('出勤状況を確認'),
+              ),
             ),
           ],
         ),
