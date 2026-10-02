@@ -42,13 +42,14 @@ void main() {
     expect(homeEnd, greaterThan(homeStart));
     final homeDashboard = app.substring(homeStart, homeEnd);
     expect(homeDashboard, contains('extendBodyBehindAppBar: false'));
-    expect(homeDashboard, contains('preferredSize: const Size.fromHeight(64)'));
+    expect(homeDashboard, contains('preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0)'));
+    expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
     expect(homeDashboard, contains('contentTopInset: 8'));
     expect(homeDashboard, contains('forceMaterialTransparency: true'));
     expect(homeDashboard, contains('flexibleSpace: Stack('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
-    expect(homeDashboard, isNot(contains('_chromeVisible')));
+    expect(homeDashboard, contains('_chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
   });
 }
