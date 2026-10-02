@@ -177,8 +177,31 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   Future<void> _pickPhoto(int slot) async {
     final repository = _repository;
     if (repository == null) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('カメラで撮影'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリから選択'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
     final image = await _picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 88,
       maxWidth: 2200,
     );
