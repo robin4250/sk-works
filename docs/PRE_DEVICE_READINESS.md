@@ -10,7 +10,7 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Direct Flutter dependencies are pinned and `pubspec.lock` is committed.
 - Flutter analyze, tests, Android debug build, and unsigned iOS debug build are CI-covered.
 - iOS generation preserves an existing Xcode project instead of replacing signing settings.
-- Bundle ID is checked as `com.robin4250.sko`.
+- Bundle ID is checked as `com.skworks.skWorks`; alternate IDs are rejected.
 - iPhone UI is portrait-only.
 - Face ID, camera, photo library, and when-in-use location permission strings are CI-checked.
 - GPS自動出勤を使わない通常運用では、位置情報は操作時のみ取得します。

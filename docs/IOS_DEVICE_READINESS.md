@@ -57,7 +57,7 @@ Runner > Signing & Capabilities:
 
 - Automatically manage signing: ON
 - Team: Apple Account / Personal Team
-- Bundle Identifier: 通常は `com.robin4250.sko`
+- Bundle Identifier: `com.skworks.skWorks`（元SKOへ上書きする固定ID）
 
 会社のApple Developer Program登録完了前でも、まずPersonal Teamで自分のiPhoneへの動作確認を優先する。
 
@@ -103,7 +103,7 @@ bash tool/run_ios_device.sh
 - Android debug build
 - macOS runnerでiOSプロジェクト生成
 - Face ID / 位置情報 / カメラ / 写真ライブラリ説明文
-- Personal Team向けBundle Identifier
+- 元SKO固定Bundle Identifier `com.skworks.skWorks`
 - iOS debug unsigned build
 - iOS補助スクリプトのshell構文
 

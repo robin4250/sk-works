@@ -37,13 +37,41 @@ if [[ ! -d "$APPICON_DIR" || ! -f "$APPICON_DIR/Contents.json" ]]; then
   echo "AppIcon asset catalog が見つかりません: $APPICON_DIR"
   exit 1
 fi
-if ! command -v xcrun >/dev/null 2>&1 || ! command -v sips >/dev/null 2>&1; then
-  echo "SKOアイコン生成に必要なXcode/sipsが見つかりません。"
+if ! command -v sips >/dev/null 2>&1; then
+  echo "SKOアイコン生成に必要なsipsが見つかりません。"
   exit 1
 fi
 
+REPO_ICON_SOURCE="assets/branding/SKO正式アイコン.png"
+DOWNLOAD_ICON_SOURCE="$HOME/Downloads/SKO正式アイコン.png"
+ICON_INPUT="${SKO_APP_ICON_SOURCE:-}"
+
+if [[ -z "$ICON_INPUT" && -f "$REPO_ICON_SOURCE" ]]; then
+  ICON_INPUT="$REPO_ICON_SOURCE"
+fi
+if [[ -z "$ICON_INPUT" && -f "$DOWNLOAD_ICON_SOURCE" ]]; then
+  ICON_INPUT="$DOWNLOAD_ICON_SOURCE"
+fi
 ICON_SOURCE="$APPICON_DIR/SKO-AppIcon-1024.png"
-xcrun swift tool/generate_ios_app_icon.swift "$ICON_SOURCE"
+if [[ -z "$ICON_INPUT" || ! -f "$ICON_INPUT" ]]; then
+  if [[ "${CI:-}" == "true" ]]; then
+    echo "CIでは正式AppIcon元画像を配布せず、flutter createの非配布用AppIconをそのまま使います。"
+    echo "実機Release/TestFlightでは正式アイコンが無い限り必ず停止します。"
+    if [[ ! -f "$ICON_SOURCE" ]]; then
+      cp "$APPICON_DIR/Icon-App-1024x1024@1x.png" "$ICON_SOURCE"
+    fi
+  else
+    echo "正式AppIcon元画像が見つかりません。仮アイコンは生成しません。"
+    echo "次のいずれかへ「SKO正式アイコン.png」を置いてください:"
+    echo "  $REPO_ICON_SOURCE"
+    echo "  $DOWNLOAD_ICON_SOURCE"
+    echo "または SKO_APP_ICON_SOURCE=/path/to/SKO正式アイコン.png を指定してください。"
+    exit 1
+  fi
+else
+  sips -s format png -z 1024 1024 "$ICON_INPUT" --out "$ICON_SOURCE" >/dev/null
+  echo "正式SKOアイコンをAppIcon生成元へ固定しました: $ICON_INPUT"
+fi
 
 python3 - "$APPICON_DIR" "$ICON_SOURCE" <<'PY'
 from pathlib import Path

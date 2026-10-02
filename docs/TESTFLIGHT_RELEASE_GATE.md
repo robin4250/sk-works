@@ -12,9 +12,9 @@ This checklist is intentionally separate from feature development so release che
 
 ## Device gate
 - Latest main is pulled on the Mac before building.
-- Xcode signing team and bundle identifier are valid.
+- Xcode signing team is valid and Bundle ID is exactly `com.skworks.skWorks`.
 - iPhone is detected and trusted.
-- Clean iOS build succeeds before archive/distribution.
+- `SKO正式アイコン.png` is supplied as the AppIcon source; placeholder icon generation is forbidden for device/TestFlight builds.\n- Clean iOS build succeeds before archive/distribution.
 - Login, SMS flow, role home, attendance, daily report, payroll protection and qualification/document flows receive smoke checks.
 
 ## TestFlight gate
