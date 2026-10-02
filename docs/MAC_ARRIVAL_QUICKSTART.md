@@ -82,12 +82,12 @@ bash tool/prepare_ios.sh
 
 既にiOSプロジェクトがある場合は再生成せず再利用するため、Xcodeで設定済みのSigning Teamを保持したまま権限説明・Bundle Identifier等を更新する。
 
-SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説明文に加えて、Personal Team向けのBundle Identifier `com.robin4250.sko` も自動設定される。
+SKO表示名、Face ID、位置情報、カメラ、写真ライブラリの説明文に加えて、元SKO固定のBundle Identifier `com.skworks.skWorks` も自動設定される。
 
 もしApple側でBundle Identifierが重複すると表示された場合だけ、次のように任意の固有IDへ変更して再実行する。
 
 ```bash
-SKO_IOS_BUNDLE_ID=com.robin4250.sko.dev bash tool/prepare_ios.sh
+# Bundle Identifierは com.skworks.skWorks 固定。変更しない。
 ```
 
 ## 7. 実機当日の一括プリフライト
@@ -125,10 +125,10 @@ Xcodeで:
 - Signing & Capabilities
 - Automatically manage signing: ON
 - Team: 自分のApple Account / Personal Team
-- Bundle Identifierは通常 `com.robin4250.sko`
-- 重複エラー時のみ、上記 `SKO_IOS_BUNDLE_ID` で変更
+- Bundle Identifierは固定 `com.skworks.skWorks`
+- 別Bundle IDへ変更して二重インストールしない
 
-会社のApple Developer Teamが有効になったら、後でTeamと最終Bundle Identifierを切り替える。
+会社のApple Developer Teamが有効になったらTeamだけを切り替え、Bundle Identifier `com.skworks.skWorks` は維持する。
 
 ## 9. iPhone接続
 
@@ -182,7 +182,7 @@ bash tool/run_ios_device.sh <DEVICE_ID>
 - Android debug build: 成功
 - macOS GitHub runnerでiOSプロジェクト生成: 成功
 - iOS権限説明チェック: 成功
-- Personal Team用Bundle Identifier自動設定: 成功
+- 元SKO固定Bundle Identifier `com.skworks.skWorks` 自動設定: 成功
 - iOS debug build --no-codesign: 成功
 - iOS補助スクリプトの構文チェック: CI対象
 - Supabase最新DBマイグレーション: 適用済み
