@@ -75,6 +75,9 @@ void main() {
 
     expect(report, contains("'報告者サイン'"));
     expect(report, contains("'責任者サイン'"));
+    expect(report, contains("if (totalNight > 0) MapEntry('夜間'"));
+    expect(report, contains('allowanceCounts[label] ='));
+    expect(report, contains('MapEntry(entry.key, entry.value.toString())'));
     expect(report, contains("'現場／ルート'"));
     expect(report, contains('initialRouteAssignmentId'));
     expect(reportRepository, contains("rpc(\n      'daily_report_clocked_in_destinations'"));
