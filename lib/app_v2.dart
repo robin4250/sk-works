@@ -354,6 +354,37 @@ class _HomePageState extends State<HomePage> {
     await prefs.setStringList('sko_home_action_order', ordered);
   }
 
+  Future<void> _reorderHomeActionByKey(
+    String draggedKey,
+    String targetKey,
+  ) async {
+    if (draggedKey == targetKey) return;
+
+    final available = _menuItems.map((item) => item.key).toList();
+    if (!available.contains(draggedKey) || !available.contains(targetKey)) {
+      return;
+    }
+
+    final ordered = <String>[
+      for (final key in _homeActionOrder)
+        if (available.contains(key)) key,
+      for (final key in available)
+        if (!_homeActionOrder.contains(key)) key,
+    ];
+
+    final oldIndex = ordered.indexOf(draggedKey);
+    final targetIndex = ordered.indexOf(targetKey);
+    if (oldIndex < 0 || targetIndex < 0) return;
+
+    final moved = ordered.removeAt(oldIndex);
+    final insertIndex = ordered.indexOf(targetKey);
+    ordered.insert(insertIndex < 0 ? ordered.length : insertIndex, moved);
+
+    setState(() => _homeActionOrder = ordered);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sko_home_action_order', ordered);
+  }
+
   void _recordCloudUsageForAction(String key) {
     final repository = _usageAnalyticsRepository;
     if (repository == null) return;
@@ -994,6 +1025,7 @@ class _HomePageState extends State<HomePage> {
           contentTopInset: _chromeVisible ? 98 : 10,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
+          onReorderAction: _reorderHomeActionByKey,
         ),
     );
   }
