@@ -73,7 +73,8 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               ],
-              if (moduleEnabled('attendance')) ...[
+              if (moduleEnabled('attendance') &&
+                  visibleHomeKeys.contains('attendance_verify')) ...[
                 const SizedBox(height: 12),
                 Opacity(
                   opacity: appearance.cardOpacity,
@@ -472,7 +473,8 @@ class _AdminHome extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (moduleEnabled('attendance') &&
-            identity.can('can_manage_attendance'))
+            identity.can('can_manage_attendance') &&
+            visibleHomeKeys.contains('attendance_today'))
           Opacity(
             opacity: appearance.cardOpacity,
             child: Card(
@@ -503,7 +505,8 @@ class _AdminHome extends StatelessWidget {
         ),
           ),
         if (moduleEnabled('attendance') &&
-            identity.can('can_manage_attendance'))
+            identity.can('can_manage_attendance') &&
+            visibleHomeKeys.contains('attendance_today'))
           const SizedBox(height: 12),
         const _SectionTitle('管理'),
         const SizedBox(height: 9),
