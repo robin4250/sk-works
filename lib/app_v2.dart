@@ -343,12 +343,14 @@ class _HomePageState extends State<HomePage> {
     if (oldIndex < 0 ||
         oldIndex >= items.length ||
         newIndex < 0 ||
-        newIndex >= items.length) {
+        newIndex > items.length) {
       return;
     }
     final ordered = items.map((item) => item.key).toList();
+    if (newIndex > oldIndex) newIndex -= 1;
     final moved = ordered.removeAt(oldIndex);
-    ordered.insert(newIndex, moved);
+    final insertIndex = newIndex.clamp(0, ordered.length);
+    ordered.insert(insertIndex, moved);
     setState(() => _homeActionOrder = ordered);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_action_order', ordered);
