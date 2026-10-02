@@ -14,6 +14,7 @@ import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
+import 'features/attendance/gps_auto_attendance_service.dart';
 import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
@@ -143,6 +144,13 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadHomeData();
+    GpsAutoAttendanceService.instance.startIfConfigured();
+  }
+
+  @override
+  void dispose() {
+    GpsAutoAttendanceService.instance.stop();
+    super.dispose();
   }
 
   Future<void> _loadHomeData() async {
