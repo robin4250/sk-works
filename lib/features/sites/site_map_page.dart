@@ -14,9 +14,11 @@ class SiteMapPage extends StatefulWidget {
   const SiteMapPage({
     super.key,
     this.allowEmployeeHomes = false,
+    this.title = '現場マップ',
   });
 
   final bool allowEmployeeHomes;
+  final String title;
 
   @override
   State<SiteMapPage> createState() => _SiteMapPageState();
@@ -253,7 +255,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final data = _data;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場マップ'),
+        title: Text(widget.title),
         actions: [
           const SkoNotificationBell(),
           IconButton(
