@@ -21,11 +21,16 @@ void main() {
     expect(vehicleEditor, contains("'表示名'"));
     expect(vehicleEditor, contains("'車両番号'"));
     expect(vehicleEditor, contains("'走行距離'"));
+    expect(vehicleEditor, contains("'保管場所（駐車場の住所）'"));
     expect(vehicleEditor, contains("'車検証'"));
     expect(vehicleEditor, contains("'自賠責保険'"));
     expect(vehicleEditor, contains("'任意保険証書'"));
     expect(routeEditor, contains("'ルート名'"));
-    expect(routeEditor, contains("'現場名'"));
+    expect(routeEditor, contains("'登録済み地点から選択'"));
+    expect(routeEditor, contains("'現場："));
+    expect(routeEditor, contains("'取引会社："));
+    expect(routeEditor, contains("'下請け会社："));
+    expect(routeEditor, contains("'駐車場："));
     expect(routeEditor, contains("'住所'"));
     expect(routeEditor, contains("'地点を追加'"));
     expect(routeEditor, contains("'備考'"));
@@ -33,6 +38,10 @@ void main() {
     expect(routeEditor, isNot(contains("'運行日（YYYY-MM-DD）'")));
 
     expect(repository, contains("from('sites')"));
+    expect(repository, contains("from('customers')"));
+    expect(repository, contains("from('partner_companies')"));
+    expect(repository, contains("'storage_address'"));
+    expect(repository, contains("'source_kind'"));
     expect(repository, contains("from('route_stops')"));
     expect(repository, contains('setVehicleActive'));
     expect(repository, contains('setRouteActive'));
