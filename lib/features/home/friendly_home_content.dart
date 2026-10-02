@@ -521,12 +521,16 @@ class _OrderedHomeContent extends StatelessWidget {
       if (key == 'attendance_verify') {
         flushGrid();
         children.add(
-          Opacity(
-            opacity: appearance.cardOpacity,
-            child: _PersonalAttendanceCard(
-              status: attendanceStatus,
-              vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
-              onOpen: onOpen,
+          _DraggableHomeCard(
+            keyName: 'attendance_verify',
+            onReorderAction: onReorderAction,
+            child: Opacity(
+              opacity: appearance.cardOpacity,
+              child: _PersonalAttendanceCard(
+                status: attendanceStatus,
+                vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
+                onOpen: onOpen,
+              ),
             ),
           ),
         );
@@ -536,9 +540,13 @@ class _OrderedHomeContent extends StatelessWidget {
       if (key == 'attendance_today') {
         flushGrid();
         children.add(
-          Opacity(
-            opacity: appearance.cardOpacity,
-            child: _TodayAttendanceHomeCard(onOpen: onOpen),
+          _DraggableHomeCard(
+            keyName: 'attendance_today',
+            onReorderAction: onReorderAction,
+            child: Opacity(
+              opacity: appearance.cardOpacity,
+              child: _TodayAttendanceHomeCard(onOpen: onOpen),
+            ),
           ),
         );
         children.add(const SizedBox(height: 12));
@@ -568,6 +576,56 @@ class _OrderedHomeContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
+    );
+  }
+}
+
+
+class _DraggableHomeCard extends StatelessWidget {
+  const _DraggableHomeCard({
+    required this.keyName,
+    required this.child,
+    required this.onReorderAction,
+  });
+
+  final String keyName;
+  final Widget child;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final reorder = onReorderAction;
+    if (reorder == null) return child;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != keyName,
+      onAcceptWithDetails: (details) {
+        reorder(details.data, keyName);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final highlighted = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: highlighted ? 1.015 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: LongPressDraggable<String>(
+            data: keyName,
+            delay: const Duration(milliseconds: 320),
+            feedback: SizedBox(
+              width: MediaQuery.sizeOf(context).width - 32,
+              child: Material(
+                color: Colors.transparent,
+                child: child,
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
+              child: child,
+            ),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
