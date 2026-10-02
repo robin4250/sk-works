@@ -453,7 +453,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: TextFormField(
                     initialValue: member.name,
                     enabled: !_saving,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: SkoLanguageController.tr('氏名'),
                     ),
                     onChanged: (value) => member.name = value,
@@ -537,7 +537,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           SkoLanguageController.tr('プロフィール'),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
@@ -601,7 +601,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _name,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('氏名'),
                                   prefixIcon: Icon(Icons.person_outline),
                                 ),
@@ -611,7 +611,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _phone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('電話番号'),
                                   prefixIcon: Icon(Icons.phone_outlined),
                                 ),
@@ -673,7 +673,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const Text(
+                              Text(
                                 SkoLanguageController.tr('社員個人情報'),
                                 style: TextStyle(
                                   fontSize: 18,
@@ -688,14 +688,14 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _personnelName,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('名前'),
                                 ),
                               ),
                               const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 initialValue: _bloodType.isEmpty ? null : _bloodType,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('血液型'),
                                 ),
                                 items: const [
@@ -714,7 +714,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _personnelRole,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('職種'),
                                 ),
                               ),
@@ -723,7 +723,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _personnelPhone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('社員台帳の電話番号'),
                                 ),
                               ),
@@ -746,7 +746,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 14),
-                              const Text(
+                              Text(
                                 SkoLanguageController.tr('緊急連絡先'),
                                 style: TextStyle(fontWeight: FontWeight.w900),
                               ),
@@ -754,7 +754,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _emergencyName,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('氏名'),
                                 ),
                               ),
@@ -762,7 +762,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _emergencyRelation,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('続柄'),
                                 ),
                               ),
@@ -771,7 +771,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _emergencyPhone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('電話番号'),
                                 ),
                               ),
@@ -794,7 +794,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 18),
-                              const Text(
+                              Text(
                                 SkoLanguageController.tr('家族・扶養情報'),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
@@ -808,7 +808,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _familyComposition,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: SkoLanguageController.tr('家族構成'),
                                 ),
                               ),
@@ -827,7 +827,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: const Icon(
                                   Icons.person_add_alt_1_outlined,
                                 ),
-                                label: const Text(
+                                label: Text(
                                   SkoLanguageController.isEnglish ? 'Add spouse, child, or dependent' : '配偶者・子供・扶養家族を追加',
                                 ),
                               ),
