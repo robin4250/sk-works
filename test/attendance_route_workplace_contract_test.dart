@@ -6,22 +6,22 @@ void main() {
   test('attendance workplace is mutually exclusive site or route', () {
     final home =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
-    final selection =
+    final methodVehicle =
         File('lib/features/attendance/attendance_selection_page.dart').readAsStringSync();
+    final workplace = File(
+      'lib/features/attendance/work_destination_selection_page.dart',
+    ).readAsStringSync();
     final attendanceRepo = File(
       'lib/features/attendance/attendance_verification_repository.dart',
     ).readAsStringSync();
     final vehicleRepo = File(
       'lib/features/operations/vehicle_route_repository.dart',
     ).readAsStringSync();
-    final vehicleSelection = File(
-      'lib/features/operations/vehicle_route_selection_page.dart',
-    ).readAsStringSync();
     final selectionPage = File(
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
 
-    expect(selection, contains("child: Text('未登録')"));
+    expect(workplace, contains("child: Text('未登録')"));
     expect(home, contains("status.siteName?.trim().isNotEmpty == true"));
     expect(home, contains("'選択中の現場："));
     expect(home, contains("'選択中のルート："));
@@ -34,12 +34,12 @@ void main() {
     expect(selectionPage, contains("'車両を使わない'"));
     expect(selectionPage, contains("'ルートを使わない'"));
     expect(attendanceRepo, contains("'save_my_route_attendance_selection'"));
-    expect(selection, contains('固定の1つの現場'));
-    expect(vehicleSelection, contains('外回りで複数地点を回るルート'));
+    expect(workplace, contains('固定の1つの現場'));
+    expect(workplace, contains('複数の現場を回るルート'));
+    expect(methodVehicle, contains("'出勤方法と車両を選択'"));
+    expect(methodVehicle, contains("'車両（任意）'"));
     expect(vehicleRepo, contains('saveTodayVehicleSelection'));
     expect(vehicleRepo, contains('saveTodayRouteSelection'));
-    expect(vehicleSelection, contains('VehicleRouteSelectionKind.vehicle'));
-    expect(vehicleSelection, contains('VehicleRouteSelectionKind.route'));
   });
 
   test('route gps auto attendance uses registered route stop coordinates', () {
