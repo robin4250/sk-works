@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/auth_error_message.dart';
 import '../help/manual_content.dart';
@@ -357,6 +358,25 @@ class _ProfilePageState extends State<ProfilePage> {
     return result;
   }
 
+  Future<void> _openGoogleMap(String address) async {
+    final query = address.trim();
+    if (query.isEmpty) return;
+    final uri = Uri.https(
+      'www.google.com',
+      '/maps/search/',
+      {'api': '1', 'query': query},
+    );
+    if (!await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    ) &&
+        mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Googleマップを開けませんでした')),
+      );
+    }
+  }
+
   Future<void> _pickPhoto() async {
     final repository = _repository;
     if (repository == null) return;
@@ -665,8 +685,18 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _personnelAddress,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: '住所',
+                                  suffixIcon: IconButton(
+                                    tooltip: 'Googleマップで開く',
+                                    onPressed:
+                                        _personnelAddress.text.trim().isEmpty
+                                            ? null
+                                            : () => _openGoogleMap(
+                                                  _personnelAddress.text,
+                                                ),
+                                    icon: const Icon(Icons.map_outlined),
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 14),
@@ -703,8 +733,18 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _emergencyAddress,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: '住所',
+                                  suffixIcon: IconButton(
+                                    tooltip: 'Googleマップで開く',
+                                    onPressed:
+                                        _emergencyAddress.text.trim().isEmpty
+                                            ? null
+                                            : () => _openGoogleMap(
+                                                  _emergencyAddress.text,
+                                                ),
+                                    icon: const Icon(Icons.map_outlined),
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 18),
