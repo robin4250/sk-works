@@ -335,27 +335,8 @@ class _HomePageState extends State<HomePage> {
     await prefs.setStringList('sko_home_hidden_actions', next.toList()..sort());
   }
 
-  Future<void> _moveHomeAction(String key, int delta) async {
-    final visibleKeys = _menuItems.map((item) => item.key).toList();
-    final stored = [
-      for (final item in _homeActionOrder)
-        if (visibleKeys.contains(item)) item,
-      for (final item in visibleKeys)
-        if (!_homeActionOrder.contains(item)) item,
-    ];
-    final index = stored.indexOf(key);
-    final target = index + delta;
-    if (index < 0 || target < 0 || target >= stored.length) return;
-    final item = stored.removeAt(index);
-    stored.insert(target, item);
-    setState(() => _homeActionOrder = stored);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('sko_home_action_order', stored);
-  }
-
   Future<void> _reorderHomeAction(int oldIndex, int newIndex) async {
     final items = _menuItems;
-    if (newIndex > oldIndex) newIndex -= 1;
     if (oldIndex < 0 ||
         oldIndex >= items.length ||
         newIndex < 0 ||
@@ -1039,7 +1020,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           itemCount: items.length,
-          onReorder: _reorderHomeAction,
+          onReorderItem: _reorderHomeAction,
           itemBuilder: (context, i) {
             final item = items[i];
             return Padding(
@@ -1100,61 +1081,64 @@ class _HomePageState extends State<HomePage> {
         height: _chromeVisible ? 80 : 0,
         child: _chromeVisible
             ? Opacity(
-        opacity: _homeAppearance.footerOpacity,
-        child: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          final module = switch (index) {
-            1 => 'attendance',
-            2 => 'sites',
-            3 => 'chat',
-            _ => null,
-          };
-          if (module != null && !_moduleEnabled(module)) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('この機能は会社設定でOFFになっています')),
-            );
-            return;
-          }
-          final usageKey = switch (index) {
-            0 => 'footer_home',
-            1 => 'attendance',
-            2 => 'footer_sites',
-            3 => 'chat',
-            _ => null,
-          };
-          if (usageKey != null) {
-            _recordCloudUsageForAction(usageKey);
-          }
-          setState(() => _selectedIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'ホーム',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: '出勤表',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.business_outlined),
-            selectedIcon: Icon(Icons.business),
-            label: '現場',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'チャット',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu),
-            label: 'メニュー',
-          ),
-        ],
-        ),
+                opacity: _homeAppearance.footerOpacity,
+                child: NavigationBar(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) {
+                    final module = switch (index) {
+                      1 => 'attendance',
+                      2 => 'sites',
+                      3 => 'chat',
+                      _ => null,
+                    };
+                    if (module != null && !_moduleEnabled(module)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('この機能は会社設定でOFFになっています'),
+                        ),
+                      );
+                      return;
+                    }
+                    final usageKey = switch (index) {
+                      0 => 'footer_home',
+                      1 => 'attendance',
+                      2 => 'footer_sites',
+                      3 => 'chat',
+                      _ => null,
+                    };
+                    if (usageKey != null) {
+                      _recordCloudUsageForAction(usageKey);
+                    }
+                    setState(() => _selectedIndex = index);
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home),
+                      label: 'ホーム',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.calendar_month_outlined),
+                      selectedIcon: Icon(Icons.calendar_month),
+                      label: '出勤表',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.business_outlined),
+                      selectedIcon: Icon(Icons.business),
+                      label: '現場',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.chat_bubble_outline),
+                      selectedIcon: Icon(Icons.chat_bubble),
+                      label: 'チャット',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.menu),
+                      label: 'メニュー',
+                    ),
+                  ],
+                ),
+              )
             : const SizedBox.shrink(),
       ),
     );
