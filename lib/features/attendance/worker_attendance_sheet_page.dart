@@ -72,6 +72,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         builder: (_) => DailyReportPage(
           initialDate: date,
           initialSiteId: target.siteId,
+          initialRouteAssignmentId: target.routeAssignmentId,
         ),
       ),
     );
