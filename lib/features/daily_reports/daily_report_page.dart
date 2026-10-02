@@ -1310,6 +1310,20 @@ class _DailyReportPaper extends StatelessWidget {
         workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
     final totalNight =
         workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
+    final allowanceCounts = <String, int>{};
+    for (final worker in workers) {
+      final label = worker.allowanceLabel.trim();
+      if (label.isEmpty) continue;
+      allowanceCounts[label] = (allowanceCounts[label] ?? 0) + 1;
+    }
+    final summaryItems = <MapEntry<String, String>>[
+      MapEntry('計', '${workers.length}人工'),
+      if (totalEarly > 0) MapEntry('早出', '${_num(totalEarly)}H'),
+      if (totalOvertime > 0) MapEntry('残業', '${_num(totalOvertime)}H'),
+      if (totalNight > 0) MapEntry('夜間', '${_num(totalNight)}H'),
+      for (final entry in allowanceCounts.entries)
+        MapEntry(entry.key, entry.value.toString()),
+    ];
 
     return Material(
       color: Colors.white,
@@ -1444,30 +1458,15 @@ class _DailyReportPaper extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
-                      child: _summaryBox('計', '${workers.length}人工'),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _summaryBox(
-                        '早出',
-                        totalEarly > 0 ? '${_num(totalEarly)}H' : '',
+                    for (var index = 0; index < summaryItems.length; index++) ...[
+                      if (index > 0) const SizedBox(width: 8),
+                      Expanded(
+                        child: _summaryBox(
+                          summaryItems[index].key,
+                          summaryItems[index].value,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _summaryBox(
-                        '残業',
-                        totalOvertime > 0 ? '${_num(totalOvertime)}H' : '',
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _summaryBox(
-                        '夜間',
-                        totalNight > 0 ? '${_num(totalNight)}H' : '',
-                      ),
-                    ),
+                    ],
                   ],
                 ),
                 const Spacer(),
