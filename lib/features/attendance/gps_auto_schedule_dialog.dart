@@ -11,10 +11,7 @@ class GpsAutoScheduleDraft {
   final TimeOfDay time;
 
   String get dbTime =>
-      time.hour.toString().padLeft(2, '0') +
-      ':' +
-      time.minute.toString().padLeft(2, '0') +
-      ':00';
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
 
   String get label {
     const labels = <int, String>{
@@ -27,11 +24,7 @@ class GpsAutoScheduleDraft {
       7: '日',
     };
     final days = weekdays.map((day) => labels[day] ?? '').join('・');
-    return days +
-        ' / ' +
-        time.hour.toString().padLeft(2, '0') +
-        ':' +
-        time.minute.toString().padLeft(2, '0');
+    return '$days / ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -126,9 +119,7 @@ Future<GpsAutoScheduleDraft?> showGpsAutoScheduleDialog(
                 leading: const Icon(Icons.schedule_outlined),
                 title: const Text('GPS取得時間'),
                 subtitle: Text(
-                  time.hour.toString().padLeft(2, '0') +
-                      ':' +
-                      time.minute.toString().padLeft(2, '0'),
+                  '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
