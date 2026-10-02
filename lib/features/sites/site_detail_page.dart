@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'site_cloud_repository.dart';
@@ -76,20 +75,139 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   }
 
   Future<void> _share() async {
-    final site = widget.site;
-    final text = <String>[
-      site.formalName.isNotEmpty ? site.formalName : site.name,
-      if (site.customerName.isNotEmpty) '取引先: ${site.customerName}',
-      if (site.address.isNotEmpty) '住所: ${site.address}',
-      if (site.nearestStation.isNotEmpty) '最寄駅: ${site.nearestStation}',
-      if (site.representativeName.isNotEmpty)
-        '現場責任者: ${site.representativeName}',
-      if (site.representativePhone.isNotEmpty)
-        '電話: ${site.representativePhone}',
-    ].join('\n');
-    await SharePlus.instance.share(
-      ShareParams(text: text, subject: 'SKO 現場情報'),
+    final repository = _repository;
+    if (repository == null || widget.site.id.isEmpty) return;
+
+    List<Map<String, dynamic>> targets;
+    try {
+      targets = await repository.loadSiteShareTargets();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('送信先会社を読み込めませんでした: $error')),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('接続済みの下請け会社・取引会社がありません')),
+      );
+      return;
+    }
+
+    final selected = <String>{};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('下請け会社・取引会社に共有'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const Text('SKOアプリ内で接続済みの会社を選択してください。'),
+                const SizedBox(height: 8),
+                for (final target in targets)
+                  CheckboxListTile(
+                    value: selected.contains(
+                      target['company_id']?.toString() ?? '',
+                    ),
+                    title: Text(
+                      target['company_name']?.toString() ?? '会社',
+                    ),
+                    subtitle: Text(
+                      target['relation_label']?.toString() ?? '',
+                    ),
+                    onChanged: (value) {
+                      final id = target['company_id']?.toString() ?? '';
+                      if (id.isEmpty) return;
+                      setDialogState(() {
+                        if (value == true) {
+                          selected.add(id);
+                        } else {
+                          selected.remove(id);
+                        }
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: Text('選択した${selected.length}社へ送信'),
+            ),
+          ],
+        ),
+      ),
     );
+    if (confirmed != true || selected.isEmpty) return;
+
+    try {
+      final count = await repository.sendSiteShare(
+        siteId: widget.site.id,
+        targetCompanyIds: selected,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$count社へ現場データを送信しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('現場データを送信できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _requestComplete() async {
+    final repository = _repository;
+    if (repository == null || !widget.canManage) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('現場終了を申請しますか？'),
+        content: const Text('現場は承認後に終了扱いになります。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('承認申請を送る'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await repository.submitInformationChange(
+        siteId: widget.site.id,
+        values: const {'status': 'completed'},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('現場終了の承認申請を送信しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('現場終了を申請できませんでした: $error')),
+      );
+    }
   }
 
   Future<void> _showCreator() async {
@@ -312,7 +430,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         title: const Text('現場詳細'),
         actions: [
           IconButton(
-            tooltip: '取引先に共有',
+            tooltip: '下請け会社・取引会社に共有',
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
           ),
@@ -403,7 +521,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           FilledButton.icon(
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
-            label: const Text('取引先に共有'),
+            label: const Text('下請け会社・取引会社に共有'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -412,17 +530,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             label: const Text('編集／登録'),
           ),
           if (widget.canManage &&
-              widget.site.status != SiteStatus.completed &&
-              widget.onComplete != null) ...[
+              widget.site.status != SiteStatus.completed) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: () async {
-                await widget.onComplete!();
-                if (!context.mounted) return;
-                Navigator.of(context).pop();
-              },
+              onPressed: _requestComplete,
               icon: const Icon(Icons.archive_outlined),
-              label: const Text('現場を終了'),
+              label: const Text('現場終了を承認申請'),
             ),
           ],
         ],
