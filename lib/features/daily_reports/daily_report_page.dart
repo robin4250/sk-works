@@ -568,15 +568,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (report == null) return;
     final signature =
         report.responsibleSignatureJson ?? report.signatureJson;
-    if (signature == null || report == null) return;
-    final currentReport = report;
+    if (signature == null) return;
     final strokes = SignatureResult.fromJson(signature);
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          '責任者サイン：${currentReport.responsibleSignerName ?? currentReport.signerName ?? ''}',
+          '責任者サイン：${report.responsibleSignerName ?? report.signerName ?? ''}',
         ),
         content: SizedBox(
           width: 460,
