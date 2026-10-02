@@ -956,11 +956,7 @@ class _HomePageState extends State<HomePage> {
               : const SizedBox.shrink(),
         ),
       ),
-      body: Padding(
-        padding: EdgeInsets.only(top: _chromeVisible ? 88 : 0),
-        child: SafeArea(
-          top: false,
-          child: FriendlyHomeContent(
+      body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
@@ -980,11 +976,10 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
+          contentTopInset: _chromeVisible ? 98 : 10,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
-          ),
         ),
-      ),
     );
   }
 
