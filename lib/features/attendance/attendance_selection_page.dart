@@ -108,6 +108,26 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
     });
   }
 
+  Future<void> _showWorkDestinationGuide({required bool selectingSite}) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(selectingSite ? '固定の現場へ出勤' : '外回りのルートへ出勤'),
+        content: Text(
+          selectingSite
+              ? '勤務先は「固定の1つの現場」か「外回りで複数地点を回るルート」のどちらか一方です。現場を選ぶと、今日選択しているルートは解除されます。'
+              : '勤務先は「固定の1つの現場」か「外回りで複数地点を回るルート」のどちらか一方です。',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('確認'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     final siteId = _siteId;
@@ -241,7 +261,15 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                         ],
                         onChanged: _saving
                             ? null
-                            : (value) => setState(() => _siteId = value),
+                            : (value) async {
+                                if (value != _siteId && value != null) {
+                                  await _showWorkDestinationGuide(
+                                    selectingSite: true,
+                                  );
+                                }
+                                if (!mounted) return;
+                                setState(() => _siteId = value);
+                              },
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
