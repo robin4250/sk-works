@@ -978,7 +978,9 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                             if (data.nightHours > 0)
                               Text('夜間 ${_number(data.nightHours)}時間'),
                             for (final entry in data.allowanceCounts.entries)
-                              Text('${entry.key} ${entry.value}回'),
+                              Text(
+                                '${entry.key} ${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
+                              ),
                           ],
                         ),
                         const Divider(height: 20),
@@ -991,13 +993,24 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 2),
                                   child: Text(
-                                    '${day.date.month}/${day.date.day}  '
-                                    '${day.siteName ?? '休み'}  '
-                                    '${_time(day.clockIn)}〜${_time(day.clockOut)}  '
-                                    '残${_number(day.overtimeHours)}  '
-                                    '早${_number(day.earlyHours)}  '
-                                    '夜${_number(day.nightHours)}  '
-                                    '${day.hasAllowance ? (day.allowanceNames.isEmpty ? '手当1' : day.allowanceNames.map((name) => '${name}1').join(' ')) : ''}',
+                                    [
+                                      '${day.date.month}/${day.date.day}',
+                                      day.siteName ?? '休み',
+                                      '${_time(day.clockIn)}〜${_time(day.clockOut)}',
+                                      if (day.overtimeHours > 0)
+                                        '残${_number(day.overtimeHours)}',
+                                      if (day.earlyHours > 0)
+                                        '早${_number(day.earlyHours)}',
+                                      if (day.nightHours > 0)
+                                        '夜${_number(day.nightHours)}',
+                                      if (day.hasAllowance)
+                                        ...(day.allowanceNames.isEmpty
+                                            ? const <String>['手当1']
+                                            : day.allowanceNames.map(
+                                                (name) =>
+                                                    '${name}1${day.allowanceUnits[name] ?? ''}',
+                                              )),
+                                    ].join('  '),
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),
