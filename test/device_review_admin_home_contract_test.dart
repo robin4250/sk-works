@@ -18,7 +18,7 @@ void main() {
     expect(RegExp(r"'要対応'").allMatches(home).length, equals(1));
 
     expect(home, contains("'本日の勤務報告'"));
-    expect(home, contains("'未対応 ${widget.attention.missingCount}件'"));
+    expect(home, contains(r"'未対応 ${widget.attention.missingCount}件'"));
     expect(home, contains('Icons.notifications_active_outlined'));
     expect(home, contains('repeat(reverse: true)'));
 
