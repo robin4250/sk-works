@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -950,10 +951,28 @@ class _HomePageState extends State<HomePage> {
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(64),
         child: AppBar(
-          backgroundColor: Theme.of(context)
-              .colorScheme
-              .surface
-              .withValues(alpha: _homeAppearance.headerOpacity),
+          backgroundColor: Colors.transparent,
+          forceMaterialTransparency: true,
+          flexibleSpace: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_homeAppearance.wallpaperPath != null &&
+                  File(_homeAppearance.wallpaperPath!).existsSync())
+                Opacity(
+                  opacity: _homeAppearance.wallpaperOpacity,
+                  child: Image.file(
+                    File(_homeAppearance.wallpaperPath!),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ColoredBox(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: _homeAppearance.headerOpacity),
+              ),
+            ],
+          ),
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
           elevation: 0,
