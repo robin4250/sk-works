@@ -65,6 +65,24 @@ class _VehicleRouteSelectionPageState
     }
   }
 
+  Future<void> _showRouteGuide() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('外回りのルートへ出勤'),
+        content: const Text(
+          '勤務先は「固定の1つの現場」か「外回りで複数地点を回るルート」のどちらか一方です。ルートを選ぶと、今日選択している固定現場は解除されます。ルート名が勤務先名として表示されます。',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('確認'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     if (repository == null || _saving) return;
@@ -172,7 +190,13 @@ class _VehicleRouteSelectionPageState
                         ],
                         onChanged: _saving
                             ? null
-                            : (value) => setState(() => _routeId = value),
+                            : (value) async {
+                                if (value != null && value != _routeId) {
+                                  await _showRouteGuide();
+                                }
+                                if (!mounted) return;
+                                setState(() => _routeId = value);
+                              },
                       ),
                       const SizedBox(height: 18),
                       OutlinedButton.icon(
