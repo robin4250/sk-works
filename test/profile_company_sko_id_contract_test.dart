@@ -18,5 +18,8 @@ void main() {
     expect(page, contains('_changePersonalSkoId'));
     expect(repository, contains('personalSkoId'));
     expect(repository, contains("'change_personal_sko_id'"));
+    expect(repository, contains('domesticJapanesePhoneValue'));
+    expect(repository, contains("startsWith('+81')"));
+    expect(page, contains('ProfileRepository.domesticJapanesePhoneValue(data.phone)'));
   });
 }

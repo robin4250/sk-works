@@ -266,6 +266,14 @@ class ProfileRepository {
     return '+$digits';
   }
 
+  static String domesticJapanesePhoneValue(String raw) {
+    final normalized = normalizeJapanesePhoneValue(raw);
+    if (normalized.startsWith('+81') && normalized.length > 3) {
+      return '0${normalized.substring(3)}';
+    }
+    return raw.trim();
+  }
+
   static bool isSupportedJapaneseMobileValue(String raw) {
     final normalized = normalizeJapanesePhoneValue(raw);
     return normalized.length == 13 &&
