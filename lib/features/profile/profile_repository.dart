@@ -134,8 +134,20 @@ class ProfileRepository {
 
   Future<String> changePersonalSkoId(String raw) async {
     var value = raw.trim().toUpperCase();
-    if (!value.startsWith('SKO-')) value = 'SKO-$value';
-    if (!RegExp(r'^SKO-[A-Z0-9]{4,20}
+    if (!value.startsWith('SKO-')) value = 'SKO-' + value;
+    final suffix = value.length >= 4 ? value.substring(4) : '';
+    final invalidCharacter = RegExp(r'[^A-Z0-9]').hasMatch(suffix);
+    if (suffix.length < 4 || suffix.length > 20 || invalidCharacter) {
+      throw StateError('SKO IDはSKO-に続けて英数字4〜20文字で入力してください。');
+    }
+    final result = await _client.rpc(
+      'change_personal_sko_id',
+      params: {'p_sko_id': value},
+    );
+    final id = result?.toString() ?? '';
+    if (id.isEmpty) throw StateError('SKO IDを変更できませんでした。');
+    return id;
+  }
   Future<String> requestPhoneChange(String rawPhone) async {
     final normalized = _normalizeJapanesePhone(rawPhone);
     await _client.auth.updateUser(
