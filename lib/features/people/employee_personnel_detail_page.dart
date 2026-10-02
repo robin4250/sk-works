@@ -142,20 +142,15 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                       child: Icon(Icons.family_restroom_outlined),
                     ),
                     title: Text(
-                      member.name + '（' + member.relation + '）',
+                      '\${member.name}（\${member.relation}）',
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     subtitle: Text(
                       [
                         if (member.birthDate != null)
-                          '誕生日 ' +
-                              member.birthDate!.year.toString() +
-                              '/' +
-                              member.birthDate!.month.toString().padLeft(2, '0') +
-                              '/' +
-                              member.birthDate!.day.toString().padLeft(2, '0'),
+                          '誕生日 \${member.birthDate!.year}/\${member.birthDate!.month.toString().padLeft(2, '0')}/\${member.birthDate!.day.toString().padLeft(2, '0')}',
                         if (member.ageOn() != null)
-                          '現在 ' + member.ageOn().toString() + '歳',
+                          '現在 \${member.ageOn()}歳',
                         member.isDependent ? '扶養対象' : '扶養対象外',
                       ].join(' / '),
                     ),
