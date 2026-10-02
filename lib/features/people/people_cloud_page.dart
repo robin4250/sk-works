@@ -374,18 +374,6 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
   }
 
-  List<PersonnelExportWorker> get _exportWorkers => _records
-      .where((record) => record.kind != PersonKind.partnerCompany)
-      .map(
-        (record) => PersonnelExportWorker(
-          id: record.id,
-          name: record.name,
-          originCompanyName:
-              record.kind == PersonKind.partnerWorker ? record.companyName : null,
-        ),
-      )
-      .toList(growable: false);
-
   Future<void> _openExportWithScope(
     PersonnelExportOperation operation,
   ) async {
