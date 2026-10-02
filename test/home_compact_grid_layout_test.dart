@@ -87,6 +87,9 @@ void main() {
     final source = File('lib/features/home/friendly_home_content.dart').readAsStringSync();
     expect(source, contains('primary: false'));
     expect(source, contains('padding: EdgeInsets.zero'));
+    expect(source, contains('fourColumns\n              ? Column('));
+    expect(source, contains('maxLines: fourColumns ? 2'));
+    expect(source, contains('fontSize: fourColumns ? 9.5'));
     expect(tester.takeException(), isNull);
   });
 }
