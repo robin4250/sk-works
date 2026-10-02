@@ -80,7 +80,7 @@ void main() {
     expect(chat, contains('_messages.length - 1 - index'));
     expect(chat, contains('Expanded('));
     expect(chat, contains('_chatTabButton'));
-    expect(chat, contains("label: '協力会社'"));
+    expect(chat, contains("(_ChatTab.partner, '協力会社')"));
   });
 
   test('daily report restores reporter sign and photo location review', () {
