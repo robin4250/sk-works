@@ -273,6 +273,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         builder: (_) => RouteEditorPage(
           route: row,
           sites: _sites,
+          customers: _customers,
+          partners: _partners,
           vehicles: _vehicles,
         ),
       ),
