@@ -375,26 +375,16 @@ class _PersonalAttendanceCard extends StatelessWidget {
             ],
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => onOpen('attendance_verify'),
-              icon: const Icon(Icons.tune_outlined),
-              label: const Text('出勤方法と現場を選択'),
+              onPressed: () => onOpen('workplace_select'),
+              icon: const Icon(Icons.place_outlined),
+              label: const Text('現場の選択（固定現場／複数現場）'),
             ),
-            if (vehicleRoutesEnabled) ...[
-              const SizedBox(height: 9),
-              OutlinedButton.icon(
-                onPressed: () => onOpen('vehicle_select'),
-                icon: const Icon(Icons.directions_car_outlined),
-                label: const Text('車両を選択'),
-              ),
-            ],
-            if (vehicleRoutesEnabled) ...[
-              const SizedBox(height: 9),
-              OutlinedButton.icon(
-                onPressed: () => onOpen('route_select'),
-                icon: const Icon(Icons.route_outlined),
-                label: const Text('ルートを選択'),
-              ),
-            ],
+            const SizedBox(height: 9),
+            OutlinedButton.icon(
+              onPressed: () => onOpen('attendance_method_vehicle'),
+              icon: const Icon(Icons.tune_outlined),
+              label: const Text('出勤方法と車両を選択'),
+            ),
             const SizedBox(height: 9),
             Row(
               children: [
