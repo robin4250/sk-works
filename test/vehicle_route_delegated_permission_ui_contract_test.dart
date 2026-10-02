@@ -3,44 +3,22 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('vehicle and route delegated permissions are editable with confirmation', () {
+  test('vehicle and route management is not delegated to ordinary members', () {
     final page =
         File('lib/features/people/member_permission_page.dart').readAsStringSync();
     final repository = File(
-      'lib/features/people/member_permission_repository.dart',
+      'lib/features/operations/vehicle_route_repository.dart',
     ).readAsStringSync();
     final sql = File(
-      'supabase/migrations/20260930062000_add_vehicle_route_permission_rows.sql',
+      'supabase/migrations/'
+      '20261001232917_restrict_vehicle_route_management_to_management_roles.sql',
     ).readAsStringSync();
 
-    expect(page, contains("'can_manage_vehicles': '車両の登録・変更・休止'"));
-    expect(page, contains("'can_manage_routes': 'ルートの登録・変更・休止'"));
-    expect(page, contains('権限変更の確認'));
-    expect(page, contains('変更を確定'));
-
-    expect(
-      repository,
-      contains("rpc('company_member_vehicle_route_permission_rows')"),
-    );
-    expect(repository, contains("'can_manage_vehicles'"));
-    expect(repository, contains("'can_manage_routes'"));
-
-    expect(sql, contains('company_member_vehicle_route_permission_rows'));
-    expect(sql, contains("in ('owner','admin','manager') then true"));
-    expect(sql, contains('p.can_manage_vehicles'));
-    expect(sql, contains('p.can_manage_routes'));
-    expect(sql, contains('grant execute'));
-
-    final effectiveSql = File(
-      'supabase/migrations/20260930062500_fix_manager_vehicle_route_effective_permissions.sql',
-    ).readAsStringSync();
-    expect(
-      effectiveSql,
-      contains("'can_manage_vehicles',v_role='manager' or coalesce"),
-    );
-    expect(
-      effectiveSql,
-      contains("'can_manage_routes',v_role='manager' or coalesce"),
-    );
+    expect(page, isNot(contains("'can_manage_vehicles'")));
+    expect(page, isNot(contains("'can_manage_routes'")));
+    expect(repository, contains("role == 'owner'"));
+    expect(repository, contains("role == 'admin'"));
+    expect(repository, contains("role == 'manager'"));
+    expect(sql, contains("cm.role::text in ('owner','admin','manager')"));
   });
 }

@@ -75,6 +75,11 @@ class ProductModules {
       label: 'LINE連携',
       description: 'LINEグループ連携・出勤候補',
     ),
+    ProductModule(
+      key: 'vehicle_routes',
+      label: '車両・ルート',
+      description: '車両・保険書類・走行距離・業務ルート',
+    ),
   ];
 
   static final byKey = <String, ProductModule>{

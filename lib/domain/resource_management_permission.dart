@@ -14,7 +14,16 @@ class ResourceManagementPermission {
     required ManagedResource resource,
     Set<ManagedResource> delegated = const <ManagedResource>{},
   }) {
-    if (role == 'owner' || role == 'admin' || role == 'sub_admin') return true;
+    if (role == 'owner' ||
+        role == 'admin' ||
+        role == 'sub_admin' ||
+        role == 'manager') {
+      return true;
+    }
+    if (resource == ManagedResource.vehicle ||
+        resource == ManagedResource.route) {
+      return false;
+    }
     return delegated.contains(resource);
   }
 

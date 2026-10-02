@@ -11,6 +11,11 @@ class DailyReportWorkerDraft {
     this.nightHours = 0,
     this.allowanceAmount = 0,
     this.allowanceLabel = '',
+    this.vehicleId,
+    this.vehicleName,
+    this.routeId,
+    this.routeName,
+    this.odometerKm,
   });
 
   final String workerId;
@@ -20,6 +25,11 @@ class DailyReportWorkerDraft {
   double nightHours;
   int allowanceAmount;
   String allowanceLabel;
+  String? vehicleId;
+  String? vehicleName;
+  String? routeId;
+  String? routeName;
+  double? odometerKm;
 
   Map<String, Object?> toRpcJson() => {
         'worker_id': workerId,
@@ -71,6 +81,22 @@ class DailyReportRecord {
   bool get signed => status == 'signed';
 }
 
+class DailyReportEvidenceRecord {
+  const DailyReportEvidenceRecord({
+    required this.id,
+    required this.workerName,
+    required this.eventType,
+    required this.confirmedAt,
+    required this.storagePath,
+  });
+
+  final String id;
+  final String workerName;
+  final String eventType;
+  final DateTime confirmedAt;
+  final String storagePath;
+}
+
 class DailyReportRepository {
   DailyReportRepository._(this._client);
 
@@ -112,6 +138,48 @@ class DailyReportRepository {
       );
     }
 
+    final workerIds = bySite.values
+        .expand((group) => group.workers)
+        .map((worker) => worker.workerId)
+        .toSet()
+        .toList();
+
+    if (workerIds.isNotEmpty) {
+      final selections = await _client
+          .from('work_vehicle_route_selections')
+          .select(
+            'worker_id,vehicle_id,route_assignment_id,'
+            'vehicles(display_name,odometer_km),'
+            'route_assignments(route_name)',
+          )
+          .eq('work_date', _dbDate(date))
+          .inFilter('worker_id', workerIds);
+
+      final byWorker = <String, Map<String, dynamic>>{
+        for (final raw in selections)
+          raw['worker_id'].toString(): Map<String, dynamic>.from(raw),
+      };
+
+      for (final group in bySite.values) {
+        for (final worker in group.workers) {
+          final selection = byWorker[worker.workerId];
+          if (selection == null) continue;
+          final vehicle = selection['vehicles'];
+          final route = selection['route_assignments'];
+          worker.vehicleId = selection['vehicle_id']?.toString();
+          worker.routeId = selection['route_assignment_id']?.toString();
+          if (vehicle is Map) {
+            worker.vehicleName = vehicle['display_name']?.toString();
+            worker.odometerKm =
+                (vehicle['odometer_km'] as num?)?.toDouble();
+          }
+          if (route is Map) {
+            worker.routeName = route['route_name']?.toString();
+          }
+        }
+      }
+    }
+
     return bySite.values
         .map(
           (group) => DailyReportSiteGroup(
@@ -130,7 +198,7 @@ class DailyReportRepository {
     final rows = await _client
         .from('daily_reports')
         .select(
-          'id, site_id, report_date, work_description, status, signer_name, signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, workers(name))',
+          'id, site_id, report_date, work_description, status, signer_name, signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('site_id', siteId)
         .eq('report_date', _dbDate(date))
@@ -157,6 +225,15 @@ class DailyReportRepository {
             allowanceAmount:
                 (detail['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: detail['allowance_label']?.toString() ?? '',
+            vehicleId: detail['vehicle_id']?.toString(),
+            vehicleName: detail['vehicles'] is Map
+                ? detail['vehicles']['display_name']?.toString()
+                : null,
+            routeId: detail['route_assignment_id']?.toString(),
+            routeName: detail['route_assignments'] is Map
+                ? detail['route_assignments']['route_name']?.toString()
+                : null,
+            odometerKm: (detail['odometer_km'] as num?)?.toDouble(),
           ),
         );
       }
@@ -198,6 +275,25 @@ class DailyReportRepository {
     if (id == null || id.isEmpty) {
       throw StateError('日報IDを確認できません。');
     }
+
+    for (final worker in workers) {
+      await _client.rpc(
+        'save_daily_report_vehicle_usage',
+        params: {
+          'p_report_id': id,
+          'p_worker_id': worker.workerId,
+          'p_vehicle_id': worker.vehicleId,
+          'p_route_assignment_id': worker.routeId,
+          'p_odometer_km': worker.odometerKm,
+        },
+      );
+    }
+
+    await _client.rpc(
+      'link_daily_report_attendance_evidence',
+      params: {'p_report_id': id},
+    );
+
     return id;
   }
 
@@ -214,6 +310,54 @@ class DailyReportRepository {
         'p_signature_json': signatureJson,
       },
     );
+  }
+
+  Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({
+    String? reportId,
+    required DateTime date,
+    required String siteId,
+  }) async {
+    var query = _client
+        .from('attendance_verifications')
+        .select(
+          'id,event_type,confirmed_at,photo_storage_path,workers(name)',
+        )
+        .eq('site_id', siteId)
+        .not('photo_storage_path', 'is', null);
+
+    if (reportId != null && reportId.isNotEmpty) {
+      query = query.eq('daily_report_id', reportId);
+    } else {
+      final start = DateTime(date.year, date.month, date.day);
+      final end = start.add(const Duration(days: 1));
+      query = query
+          .gte('confirmed_at', start.toUtc().toIso8601String())
+          .lt('confirmed_at', end.toUtc().toIso8601String());
+    }
+
+    final rows = await query.order('confirmed_at');
+    return [
+      for (final raw in rows)
+        if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty)
+          DailyReportEvidenceRecord(
+            id: raw['id']?.toString() ?? '',
+            workerName: raw['workers'] is Map
+                ? raw['workers']['name']?.toString() ?? ''
+                : '',
+            eventType: raw['event_type']?.toString() ?? '',
+            confirmedAt:
+                DateTime.tryParse(raw['confirmed_at']?.toString() ?? '')
+                        ?.toLocal() ??
+                    DateTime.fromMillisecondsSinceEpoch(0),
+            storagePath: raw['photo_storage_path'].toString(),
+          ),
+    ];
+  }
+
+  Future<String> attendanceEvidenceUrl(String path) {
+    return _client.storage
+        .from('attendance-evidence')
+        .createSignedUrl(path, 3600);
   }
 
   Future<String> requestEdit({

@@ -73,6 +73,7 @@ class FriendlyHomeContent extends StatelessWidget {
                   opacity: appearance.cardOpacity,
                   child: _PersonalAttendanceCard(
                     status: attendanceStatus,
+                    vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
                     onOpen: onOpen,
                   ),
                 ),
@@ -244,10 +245,12 @@ class _RequiredDocumentAttentionCard extends StatelessWidget {
 class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
+    required this.vehicleRoutesEnabled,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
+  final bool vehicleRoutesEnabled;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -296,6 +299,19 @@ class _PersonalAttendanceCard extends StatelessWidget {
               '選択中の出勤方法：${status.verificationModeLabel}',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            if (status.verificationMode == 'gps_auto' &&
+                status.gpsTime?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                'GPS自動出勤：${_weekdayLabel(status.gpsWeekdays)} '
+                '${_shortTime(status.gpsTime!)}',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 3),
             Text(
               '選択中の現場：${status.siteName?.trim().isNotEmpty == true ? status.siteName : '未選択'}',
@@ -303,6 +319,22 @@ class _PersonalAttendanceCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            if (vehicleRoutesEnabled &&
+                status.selectedVehicleName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                '選択中の車両：${status.selectedVehicleName}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+            if (vehicleRoutesEnabled &&
+                status.selectedRouteName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                '選択中のルート：${status.selectedRouteName}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
             if (status.clockIn != null || status.clockOut != null) ...[
               const SizedBox(height: 5),
               Text(
@@ -320,6 +352,14 @@ class _PersonalAttendanceCard extends StatelessWidget {
               icon: const Icon(Icons.tune_outlined),
               label: const Text('出勤方法と現場を選択'),
             ),
+            if (vehicleRoutesEnabled) ...[
+              const SizedBox(height: 9),
+              OutlinedButton.icon(
+                onPressed: () => onOpen('vehicle_route_select'),
+                icon: const Icon(Icons.route_outlined),
+                label: const Text('車両とルートの選択'),
+              ),
+            ],
             const SizedBox(height: 9),
             Row(
               children: [
@@ -356,6 +396,25 @@ class _PersonalAttendanceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _weekdayLabel(List<int> days) {
+    const names = <int, String>{
+      1: '月',
+      2: '火',
+      3: '水',
+      4: '木',
+      5: '金',
+      6: '土',
+      7: '日',
+    };
+    return days.map((day) => names[day] ?? '').where((v) => v.isNotEmpty).join('・');
+  }
+
+  String _shortTime(String value) {
+    final parts = value.split(':');
+    if (parts.length < 2) return value;
+    return '${parts[0]}:${parts[1]}';
   }
 
   String _time(DateTime? value) {
@@ -403,7 +462,7 @@ const _HomeAction(
               'プロフィール',
               Icons.account_circle_outlined,
             ),
-            if (visibleHomeKeys.contains('vehicle_routes'))
+            if (moduleEnabled('vehicle_routes') && visibleHomeKeys.contains('vehicle_routes'))
 const _HomeAction(
               'vehicle_routes',
               '車両・ルート',
@@ -551,7 +610,7 @@ class _AdminHome extends StatelessWidget {
                 Icons.business_center_outlined,
                 access: _HomeActionAccess.admin,
               ),
-            if (visibleHomeKeys.contains('vehicle_routes'))
+            if (moduleEnabled('vehicle_routes') && visibleHomeKeys.contains('vehicle_routes'))
               const _HomeAction(
                 'vehicle_routes',
                 '車両・ルート',

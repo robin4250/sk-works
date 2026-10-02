@@ -126,6 +126,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSFaceIDUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSPhotoLibraryUsageDescription" ios/Runner/Info.plist
           python3 - <<'PY'
@@ -136,8 +137,8 @@ jobs:
               data = plistlib.load(f)
 
           assert "NSLocationAlwaysUsageDescription" not in data
-          assert "NSLocationAlwaysAndWhenInUseUsageDescription" not in data
-          assert "location" not in data.get("UIBackgroundModes", [])
+          assert "NSLocationAlwaysAndWhenInUseUsageDescription" in data
+          assert "location" in data.get("UIBackgroundModes", [])
           ats = data.get("NSAppTransportSecurity", {})
           assert ats.get("NSAllowsArbitraryLoads") is not True
           assert ats.get("NSAllowsArbitraryLoadsInWebContent") is not True
@@ -157,3 +158,6 @@ jobs:
 
       - name: Build iOS debug without codesigning
         run: flutter build ios --debug --no-codesign
+
+      - name: Build iOS release without codesigning
+        run: flutter build ios --release --no-codesign

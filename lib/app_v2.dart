@@ -11,8 +11,10 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
+import 'features/attendance/gps_auto_attendance_service.dart';
 import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
@@ -35,6 +37,7 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/operations/vehicle_route_page.dart';
+import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
@@ -142,6 +145,13 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadHomeData();
+    GpsAutoAttendanceService.instance.startIfConfigured();
+  }
+
+  @override
+  void dispose() {
+    GpsAutoAttendanceService.instance.stop();
+    super.dispose();
   }
 
   Future<void> _loadHomeData() async {
@@ -431,6 +441,7 @@ class _HomePageState extends State<HomePage> {
       'notes' => 'notes',
       'albums' => 'albums',
       'today_line' || 'line_history' => 'line_bridge',
+      'vehicle_routes' || 'vehicle_route_select' => 'vehicle_routes',
       _ => null,
     };
     if (requiredModule != null && !_moduleEnabled(requiredModule)) {
@@ -522,10 +533,13 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'attendance_verify':
-        page = const AttendanceVerificationPage();
+        page = const AttendanceSelectionPage();
         break;
       case 'daily_report':
         page = const DailyReportPage();
+        break;
+      case 'vehicle_route_select':
+        page = const VehicleRouteSelectionPage();
         break;
       case 'employee_register':
         page = EmployeeInvitePage(
@@ -626,7 +640,8 @@ class _HomePageState extends State<HomePage> {
 
     if (key == 'clock_in' ||
         key == 'clock_out' ||
-        key == 'attendance_verify') {
+        key == 'attendance_verify' ||
+        key == 'vehicle_route_select') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings') {
@@ -658,13 +673,14 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: '管理者・サブ管理者・閲覧権限',
         ),
-      const _MenuAction(
-        key: 'vehicle_routes',
-        label: '車両・ルート',
-        icon: Icons.route_outlined,
-        homeEligible: true,
-        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
-      ),
+      if (_moduleEnabled('vehicle_routes'))
+        const _MenuAction(
+          key: 'vehicle_routes',
+          label: '車両・ルート',
+          icon: Icons.route_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        ),
       const _MenuAction(
         key: 'employee_register',
         label: '従業員登録',
