@@ -5,6 +5,7 @@ import '../auth/auth_error_message.dart';
 import '../help/manual_content.dart';
 import '../help/manual_library_page.dart';
 import '../notifications/notification_bell.dart';
+import '../people/personnel_family_member.dart';
 import 'profile_repository.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -32,6 +33,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final _emergencyRelation = TextEditingController();
   final _emergencyPhone = TextEditingController();
   final _emergencyAddress = TextEditingController();
+  final _familyComposition = TextEditingController();
+  List<EditableFamilyMember> _familyMembers = <EditableFamilyMember>[];
   String _bloodType = '';
   String? _workerId;
 
@@ -58,6 +61,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _emergencyRelation.dispose();
     _emergencyPhone.dispose();
     _emergencyAddress.dispose();
+    _familyComposition.dispose();
     super.dispose();
   }
 
@@ -102,6 +106,20 @@ class _ProfilePageState extends State<ProfilePage> {
           personnel?['emergency_phone']?.toString() ?? '';
       _emergencyAddress.text =
           personnel?['emergency_address']?.toString() ?? '';
+      _familyComposition.text =
+          personnel?['family_composition']?.toString() ?? '';
+      final familyRaw = personnel?['family_members'];
+      _familyMembers = familyRaw is List
+          ? [
+              for (final item in familyRaw)
+                if (item is Map)
+                  EditableFamilyMember.fromValue(
+                    PersonnelFamilyMember.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  ),
+            ]
+          : <EditableFamilyMember>[];
       setState(() {
         _data = data;
         _loading = false;
@@ -243,6 +261,10 @@ class _ProfilePageState extends State<ProfilePage> {
           'emergency_relation': _emergencyRelation.text.trim(),
           'emergency_phone': _emergencyPhone.text.trim(),
           'emergency_address': _emergencyAddress.text.trim(),
+          'family_composition': _familyComposition.text.trim(),
+          'family_members': [
+            for (final member in _familyMembers) member.toValue().toJson(),
+          ],
         },
       );
       if (!mounted) return;
@@ -363,6 +385,101 @@ class _ProfilePageState extends State<ProfilePage> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Widget _profileFamilyMemberCard(int index) {
+    final member = _familyMembers[index];
+    final birth = member.birthDate;
+    final age = member.toValue().ageOn();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: member.name,
+                    enabled: !_saving,
+                    decoration: const InputDecoration(
+                      labelText: '氏名',
+                    ),
+                    onChanged: (value) => member.name = value,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '家族情報を削除',
+                  onPressed: _saving
+                      ? null
+                      : () => setState(
+                            () => _familyMembers.removeAt(index),
+                          ),
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              initialValue: member.relation,
+              enabled: !_saving,
+              decoration: const InputDecoration(
+                labelText: '続柄（夫・妻・子・扶養家族など）',
+              ),
+              onChanged: (value) => member.relation = value,
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cake_outlined),
+              title: const Text('誕生日'),
+              subtitle: Text(
+                birth == null
+                    ? '未登録'
+                    : birth.year.toString() +
+                        '/' +
+                        birth.month.toString().padLeft(2, '0') +
+                        '/' +
+                        birth.day.toString().padLeft(2, '0') +
+                        (age == null
+                            ? ''
+                            : '　現在 ' + age.toString() + '歳'),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _saving
+                  ? null
+                  : () async {
+                      final now = DateTime.now();
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate:
+                            birth ?? DateTime(now.year - 30),
+                        firstDate: DateTime(1900),
+                        lastDate: now,
+                      );
+                      if (selected == null || !mounted) return;
+                      setState(() => member.birthDate = selected);
+                    },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('扶養家族として登録'),
+              subtitle: const Text(
+                '社会保険等で扶養対象として扱う場合にON',
+              ),
+              value: member.isDependent,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(
+                        () => member.isDependent = value,
+                      ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -586,6 +703,44 @@ class _ProfilePageState extends State<ProfilePage> {
                                 enabled: !_saving,
                                 decoration: const InputDecoration(
                                   labelText: '住所',
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              const Text(
+                                '家族・扶養情報',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                '社員一覧には表示しません。社会保険等の本人手続きで使う個別情報です。',
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _familyComposition,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '家族構成',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              for (var i = 0;
+                                  i < _familyMembers.length;
+                                  i++)
+                                _profileFamilyMemberCard(i),
+                              OutlinedButton.icon(
+                                onPressed: _saving
+                                    ? null
+                                    : () => setState(
+                                          () => _familyMembers
+                                              .add(EditableFamilyMember()),
+                                        ),
+                                icon: const Icon(
+                                  Icons.person_add_alt_1_outlined,
+                                ),
+                                label: const Text(
+                                  '配偶者・子供・扶養家族を追加',
                                 ),
                               ),
                               const SizedBox(height: 14),
