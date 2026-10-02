@@ -10,8 +10,8 @@ void main() {
 
     expect(app, contains("'clock_in' || 'clock_out'"));
     expect(app, contains("_ModuleDisabledPage(label: SkoLanguageController.tr('出勤表'))"));
-    expect(app, contains("const _ModuleDisabledPage(label: '現場')"));
-    expect(app, contains("const _ModuleDisabledPage(label: 'チャット')"));
+    expect(app, contains("SkoLanguageController.tr('現場')"));
+    expect(app, contains("SkoLanguageController.tr('チャット')"));
     expect(app, contains('この機能は会社設定でOFFになっています'));
     expect(app, contains("_moduleEnabled('invoices')"));
     expect(app, contains("_moduleEnabled('vehicle_routes')"));
