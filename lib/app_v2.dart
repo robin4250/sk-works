@@ -966,34 +966,36 @@ class _HomePageState extends State<HomePage> {
     final dateLabel = SkoLanguageController.isEnglish
         ? '${now.month}/${now.day}/${now.year}'
         : '${now.year}年${now.month}月${now.day}日';
-    return Scaffold(
-      extendBodyBehindAppBar: false,
-      backgroundColor: Colors.transparent,
-      appBar: PreferredSize(
+    final wallpaperPath = _homeAppearance.wallpaperPath;
+    final bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+        if (wallpaperPath != null && File(wallpaperPath).existsSync())
+          Opacity(
+            opacity: _homeAppearance.wallpaperOpacity,
+            child: Image.file(
+              File(wallpaperPath),
+              fit: BoxFit.cover,
+            ),
+          ),
+        Scaffold(
+          extendBodyBehindAppBar: false,
+          backgroundColor: Colors.transparent,
+          appBar: PreferredSize(
         preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
         child: AppBar(
           toolbarHeight: _chromeVisible ? 64 : 0,
           backgroundColor: Colors.transparent,
           forceMaterialTransparency: true,
-          flexibleSpace: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_homeAppearance.wallpaperPath != null &&
-                  File(_homeAppearance.wallpaperPath!).existsSync())
-                Opacity(
-                  opacity: _homeAppearance.wallpaperOpacity,
-                  child: Image.file(
-                    File(_homeAppearance.wallpaperPath!),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ColoredBox(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surface
-                    .withValues(alpha: _homeAppearance.headerOpacity),
-              ),
-            ],
+          flexibleSpace: ColoredBox(
+            color: Theme.of(context)
+                .colorScheme
+                .surface
+                .withValues(alpha: _homeAppearance.headerOpacity),
           ),
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
@@ -1058,12 +1060,13 @@ class _HomePageState extends State<HomePage> {
           showTodayAttendance:
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
-          appearance: _homeAppearance,
+          appearance: bodyAppearance,
           contentTopInset: 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
         ),
+      ],
     );
   }
 
