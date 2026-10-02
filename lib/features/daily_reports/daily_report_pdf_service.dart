@@ -28,78 +28,203 @@ class DailyReportPdfService {
     document.addPage(
       pw.Page(
         pageFormat: format,
-        margin: const pw.EdgeInsets.all(18 * PdfPageFormat.mm),
+        margin: const pw.EdgeInsets.all(12 * PdfPageFormat.mm),
         build: (_) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            pw.Text(
-              '作 業 日 報',
-              textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Expanded(
+                  child: pw.Text(
+                    '作 業 日 報',
+                    style: pw.TextStyle(
+                      fontSize: 23,
+                      fontWeight: pw.FontWeight.bold,
+                      decoration: pw.TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                pw.Text(
+                  '${date.year}年 ${date.month}月 ${date.day}日',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+              ],
             ),
-            pw.SizedBox(height: 14),
-            pw.Text('日付  ${date.year}/${date.month}/${date.day}'),
-            pw.Text('現場  $siteName'),
+            pw.SizedBox(height: 12),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.8),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(2.2),
+                1: pw.FlexColumnWidth(1.2),
+                2: pw.FlexColumnWidth(1.2),
+              },
+              children: [
+                pw.TableRow(
+                  children: [
+                    _cell('現場名\n$siteName', height: 52),
+                    _cell(
+                      '報告者\n${report?.reporterSignerName ?? ''}',
+                      height: 52,
+                    ),
+                    _cell(
+                      '責任者\n${report?.signerName ?? ''}',
+                      height: 52,
+                    ),
+                  ],
+                ),
+              ],
+            ),
             pw.SizedBox(height: 10),
-            pw.Divider(),
             pw.Text(
-              '出勤メンバー（${workers.length}名）',
+              '作業内容',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             ),
-            pw.SizedBox(height: 6),
-            for (final worker in workers)
-              pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 3),
+            pw.Container(
+              height: 150,
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
+              ),
+              child: pw.Text(
+                workDescription.isEmpty ? '（記載なし）' : workDescription,
+                style: const pw.TextStyle(fontSize: 11),
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text(
+              '作業者名',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.8),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(2.0),
+                1: pw.FlexColumnWidth(0.9),
+                2: pw.FlexColumnWidth(0.9),
+                3: pw.FlexColumnWidth(0.9),
+                4: pw.FlexColumnWidth(1.6),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    _cell('氏名'),
+                    _cell('早出'),
+                    _cell('残業'),
+                    _cell('夜間'),
+                    _cell('手当・車両等'),
+                  ],
+                ),
+                for (final worker in workers)
+                  pw.TableRow(
+                    children: [
+                      _cell(worker.workerName),
+                      _cell(worker.earlyHours > 0
+                          ? _number(worker.earlyHours)
+                          : ''),
+                      _cell(worker.overtimeHours > 0
+                          ? _number(worker.overtimeHours)
+                          : ''),
+                      _cell(worker.nightHours > 0
+                          ? _number(worker.nightHours)
+                          : ''),
+                      _cell([
+                        if (worker.allowanceLabel.trim().isNotEmpty)
+                          worker.allowanceLabel,
+                        if (worker.vehicleName?.trim().isNotEmpty == true)
+                          '車両 ' + worker.vehicleName!,
+                        if (worker.routeName?.trim().isNotEmpty == true)
+                          'ルート ' + worker.routeName!,
+                        if (worker.odometerKm != null)
+                          '走行 ' + _number(worker.odometerKm!) + 'km',
+                      ].join(' / ')),
+                    ],
+                  ),
+              ],
+            ),
+            pw.Spacer(),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: _signatureBox(
+                    label: '報告者サイン',
+                    signerName: report?.reporterSignerName ?? '',
+                    signatureJson: report?.reporterSignatureJson,
+                  ),
+                ),
+                pw.SizedBox(width: 10),
+                pw.Expanded(
+                  child: _signatureBox(
+                    label: '責任者サイン',
+                    signerName: report?.signerName ?? '',
+                    signatureJson: report?.signatureJson,
+                  ),
+                ),
+              ],
+            ),
+            if (report?.signedAt != null) ...[
+              pw.SizedBox(height: 6),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
                 child: pw.Text(
-                  [
-                    worker.workerName,
-                    '残' + _number(worker.overtimeHours),
-                    '早' + _number(worker.earlyHours),
-                    '夜' + _number(worker.nightHours),
-                    if (worker.allowanceLabel.trim().isNotEmpty)
-                      worker.allowanceLabel,
-                    if (worker.vehicleName?.trim().isNotEmpty == true)
-                      '車両 ' + worker.vehicleName!,
-                    if (worker.routeName?.trim().isNotEmpty == true)
-                      'ルート ' + worker.routeName!,
-                    if (worker.odometerKm != null)
-                      '走行 ' + _number(worker.odometerKm!) + 'km',
-                  ].join('  '),
-                  style: const pw.TextStyle(fontSize: 10),
+                  '確定日時：${report!.signedAt!.toLocal()}',
+                  style: const pw.TextStyle(fontSize: 9),
                 ),
               ),
-            pw.SizedBox(height: 12),
-            pw.Divider(),
-            pw.Text('作業内容', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 6),
-            pw.Text(workDescription.isEmpty ? '（記載なし）' : workDescription),
-            pw.Spacer(),
-            if (report?.signed == true) ...[
-              pw.Divider(),
-              pw.Text(
-                '責任者：${report?.signerName ?? ''}',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              ),
-              if (signatureSvg(report?.signatureJson) case final svg?)
-                pw.Container(
-                  height: 72,
-                  margin: const pw.EdgeInsets.only(top: 6, bottom: 6),
-                  padding: const pw.EdgeInsets.all(4),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey500),
-                  ),
-                  child: pw.SvgImage(svg: svg),
-                )
-              else
-                pw.Text('サイン済み'),
-              if (report?.signedAt != null)
-                pw.Text('確定日時：${report!.signedAt!.toLocal()}'),
             ],
           ],
         ),
       ),
     );
     return document.save();
+  }
+
+  static pw.Widget _cell(String text, {double? height}) => pw.Container(
+        height: height,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        alignment: pw.Alignment.centerLeft,
+        child: pw.Text(text, style: const pw.TextStyle(fontSize: 9.5)),
+      );
+
+  static pw.Widget _signatureBox({
+    required String label,
+    required String signerName,
+    required Object? signatureJson,
+  }) {
+    final svg = signatureSvg(signatureJson);
+    return pw.Container(
+      height: 92,
+      padding: const pw.EdgeInsets.all(6),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            '$label  $signerName',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+          ),
+          pw.SizedBox(height: 4),
+          if (svg != null)
+            pw.Expanded(child: pw.SvgImage(svg: svg))
+          else
+            pw.Expanded(
+              child: pw.Center(
+                child: pw.Text(
+                  '未サイン',
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   static Future<bool> printReport({
@@ -186,6 +311,9 @@ class DailyReportPdfService {
         if (worker.odometerKm != null)
           '走行 ' + _number(worker.odometerKm!) + 'km',
       ].join(' / '));
+    }
+    if (report?.reporterSignatureJson != null) {
+      b.writeln('報告者サイン済み ${report?.reporterSignerName ?? ''}');
     }
     if (report?.signed == true) {
       b.writeln('責任者サイン済み ${report?.signerName ?? ''}');
