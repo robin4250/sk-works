@@ -4,6 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/people/phone_display.dart';
 
 void main() {
+  test('employee detail access is restricted to management roles', () {
+    final repository = File(
+      'lib/features/people/people_cloud_repository.dart',
+    ).readAsStringSync();
+    final page = File(
+      'lib/features/people/people_cloud_page.dart',
+    ).readAsStringSync();
+
+    expect(repository, contains("member.role == 'owner'"));
+    expect(repository, contains("member.role == 'admin'"));
+    expect(repository, contains("member.role == 'manager'"));
+    expect(page, contains("onTap: !_canManagePeople"));
+  });
+
   test('employee detail page exposes required personnel fields', () {
     final page = File(
       'lib/features/people/employee_personnel_detail_page.dart',
