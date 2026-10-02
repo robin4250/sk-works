@@ -420,12 +420,63 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
-  Future<void> _sign() async {
+  Future<void> _signReporter() async {
     final reportId = _report?.id ?? await _saveDraft();
     if (reportId == null || !mounted) return;
 
     final result = await Navigator.of(context).push<SignatureResult>(
-      MaterialPageRoute(builder: (_) => const SignatureCapturePage()),
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(
+          title: '報告者サイン',
+          signerLabel: '報告者名',
+          submitLabel: '報告者サインを保存',
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final repository = _repository;
+    if (repository == null) return;
+    setState(() => _saving = true);
+    try {
+      await repository.saveReporterSignature(
+        reportId: reportId,
+        signerName: result.signerName,
+        signatureJson: result.toJson(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('報告者サインを保存しました')),
+      );
+      await _loadSelectedSite();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('報告者サインを保存できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _sign() async {
+    final reportId = _report?.id ?? await _saveDraft();
+    if (reportId == null || !mounted) return;
+    if (_report?.reporterSignatureJson == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('先に報告者サインを登録してください')),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<SignatureResult>(
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(
+          title: '責任者サイン',
+          signerLabel: '現場責任者名',
+          submitLabel: '責任者サインで確定',
+        ),
+      ),
     );
     if (result == null || !mounted) return;
 
@@ -678,6 +729,31 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
+                          Card(
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                child: Icon(
+                                  _report?.reporterSignatureJson == null
+                                      ? Icons.draw_outlined
+                                      : Icons.check,
+                                ),
+                              ),
+                              title: const Text(
+                                '報告者サイン',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              subtitle: Text(
+                                _report?.reporterSignatureJson == null
+                                    ? '日報を作成した報告者がサインします'
+                                    : _report?.reporterSignerName ?? '報告者サイン済み',
+                              ),
+                              trailing: _signed
+                                  ? null
+                                  : const Icon(Icons.chevron_right),
+                              onTap: _saving || _signed ? null : _signReporter,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           if (_signed)
                             Card(
                               child: ListTile(
@@ -685,7 +761,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   child: Icon(Icons.check),
                                 ),
                                 title: const Text(
-                                  'サイン済み・確定',
+                                  '責任者サイン済み・確定',
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
@@ -706,7 +782,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: const Text(
-                                  'サインをもらうと、この日報と出勤データが確定します',
+                                  '報告者サインの後、責任者サインで日報と出勤データを確定します',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _saving ? null : _sign,
@@ -1165,7 +1241,9 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strokes = SignatureResult.fromJson(report?.signatureJson);
+    final reporterStrokes =
+        SignatureResult.fromJson(report?.reporterSignatureJson);
+    final supervisorStrokes = SignatureResult.fromJson(report?.signatureJson);
 
     return Scaffold(
       appBar: AppBar(
@@ -1187,18 +1265,41 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          '作 業 日 報',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '作 業 日 報',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${date.year}年 ${date.month}月 ${date.day}日',
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 14),
-                        Text('日付  ${date.year}/${date.month}/${date.day}'),
-                        Text('現場  $siteName'),
-                        const Divider(height: 20),
+                        const SizedBox(height: 12),
+                        Table(
+                          border: TableBorder.all(color: Colors.black54),
+                          children: [
+                            TableRow(
+                              children: [
+                                _dailyPreviewCell('現場名\n$siteName', flex: true),
+                                _dailyPreviewCell(
+                                  '報告者\n${report?.reporterSignerName ?? ''}',
+                                  flex: true,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                         Text(
                           '出勤メンバー（${workers.length}名）',
                           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -1219,14 +1320,47 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(workDescription),
                         const Spacer(),
-                        if (report?.signed == true) ...[
-                          Text(
-                            '責任者：${report?.signerName ?? ''}',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 5),
-                          SignaturePreview(strokes: strokes, height: 90),
-                        ],
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    '報告者：${report?.reporterSignerName ?? ''}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  SignaturePreview(
+                                    strokes: reporterStrokes,
+                                    height: 70,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    '責任者：${report?.signerName ?? ''}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  SignaturePreview(
+                                    strokes: supervisorStrokes,
+                                    height: 70,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -1251,6 +1385,15 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
     );
   }
 }
+
+
+Widget _dailyPreviewCell(String text, {bool flex = false}) => Padding(
+      padding: const EdgeInsets.all(8),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({
