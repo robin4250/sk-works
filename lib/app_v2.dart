@@ -59,6 +59,7 @@ import 'features/settings/settings_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_page.dart';
+import 'widgets/sko_scroll_chrome.dart';
 
 class SkWorksApp extends StatelessWidget {
   const SkWorksApp({
@@ -79,6 +80,9 @@ class SkWorksApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: ProductBrand.displayName,
           theme: SkoTheme.light(palette),
+          builder: (context, child) => SkoGlobalScrollChrome(
+            child: child ?? const SizedBox.shrink(),
+          ),
           home: SupabaseBackend.isInitialized
               ? SupabaseAuthGate(
                   homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
@@ -129,6 +133,7 @@ class _HomePageState extends State<HomePage> {
   );
   int _selectedIndex = 0;
   bool _chromeVisible = true;
+  VoidCallback? _chromeListener;
   bool _canReviewEmployeeOnboarding = false;
   String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
@@ -146,11 +151,20 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadHomeData();
+    _chromeListener = () {
+      if (!mounted) return;
+      final next = SkoScrollChromeController.visible.value;
+      if (_chromeVisible != next) setState(() => _chromeVisible = next);
+    };
+    SkoScrollChromeController.visible.addListener(_chromeListener!);
     GpsAutoAttendanceService.instance.startIfConfigured();
   }
 
   @override
   void dispose() {
+    if (_chromeListener != null) {
+      SkoScrollChromeController.visible.removeListener(_chromeListener!);
+    }
     GpsAutoAttendanceService.instance.stop();
     super.dispose();
   }
@@ -354,22 +368,6 @@ class _HomePageState extends State<HomePage> {
     setState(() => _homeActionOrder = ordered);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_action_order', ordered);
-  }
-
-  bool _handleRootScroll(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) return false;
-    if (notification is ScrollUpdateNotification) {
-      final delta = notification.scrollDelta ?? 0;
-      if (delta > 2 && _chromeVisible) {
-        setState(() => _chromeVisible = false);
-      } else if (delta < -2 && !_chromeVisible) {
-        setState(() => _chromeVisible = true);
-      }
-      if (notification.metrics.pixels <= 2 && !_chromeVisible) {
-        setState(() => _chromeVisible = true);
-      }
-    }
-    return false;
   }
 
   void _recordCloudUsageForAction(String key) {
@@ -1087,9 +1085,7 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _handleRootScroll,
-        child: IndexedStack(
+      body: IndexedStack(
         index: _selectedIndex,
         children: [
           for (var i = 0; i < pages.length; i++)
@@ -1098,7 +1094,6 @@ class _HomePageState extends State<HomePage> {
               child: pages[i],
             ),
         ],
-        ),
       ),
       bottomNavigationBar: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
