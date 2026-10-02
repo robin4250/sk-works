@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_personnel_edit_page.dart';
 import 'employee_personnel_print_page.dart';
@@ -70,6 +71,73 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     );
   }
 
+  Future<void> _callPhone(
+    BuildContext context,
+    String phone,
+  ) async {
+    final domestic = domesticPhoneDisplay(phone);
+    final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (dial.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: dial);
+    if (!await launchUrl(uri) && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('電話を開始できませんでした')),
+      );
+    }
+  }
+
+  Future<void> _openGoogleMap(
+    BuildContext context,
+    String address,
+  ) async {
+    final query = address.trim();
+    if (query.isEmpty) return;
+    final uri = Uri.https(
+      'www.google.com',
+      '/maps/search/',
+      {'api': '1', 'query': query},
+    );
+    if (!await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    ) &&
+        context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Googleマップを開けませんでした')),
+      );
+    }
+  }
+
+  Widget _actionCard(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback? onTap,
+  }) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(label),
+        subtitle: Text(
+          value.trim().isEmpty ? '未登録' : value,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: onTap == null
+                ? null
+                : Theme.of(context).colorScheme.primary,
+            decoration:
+                onTap == null ? null : TextDecoration.underline,
+          ),
+        ),
+        trailing: onTap == null
+            ? null
+            : const Icon(Icons.open_in_new),
+        onTap: onTap,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
@@ -77,12 +145,8 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       ('区分', record.kind.label),
       ('血液型', record.bloodType),
       ('職種', record.role),
-      ('電話番号', domesticPhoneDisplay(record.phone)),
-      ('住所', record.address),
       ('緊急連絡先氏名', record.emergencyName),
       ('続柄', record.emergencyRelation),
-      ('緊急連絡先電話番号', domesticPhoneDisplay(record.emergencyPhone)),
-      ('緊急連絡先住所', record.emergencyAddress),
     ];
 
     return Scaffold(
@@ -106,6 +170,45 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                   ),
                 ),
               ),
+            _actionCard(
+              context,
+              label: '電話番号',
+              value: domesticPhoneDisplay(record.phone),
+              icon: Icons.phone_outlined,
+              onTap: record.phone.trim().isEmpty
+                  ? null
+                  : () => _callPhone(context, record.phone),
+            ),
+            _actionCard(
+              context,
+              label: '住所',
+              value: record.address,
+              icon: Icons.map_outlined,
+              onTap: record.address.trim().isEmpty
+                  ? null
+                  : () => _openGoogleMap(context, record.address),
+            ),
+            _actionCard(
+              context,
+              label: '緊急連絡先電話番号',
+              value: domesticPhoneDisplay(record.emergencyPhone),
+              icon: Icons.phone_in_talk_outlined,
+              onTap: record.emergencyPhone.trim().isEmpty
+                  ? null
+                  : () => _callPhone(context, record.emergencyPhone),
+            ),
+            _actionCard(
+              context,
+              label: '緊急連絡先住所',
+              value: record.emergencyAddress,
+              icon: Icons.location_on_outlined,
+              onTap: record.emergencyAddress.trim().isEmpty
+                  ? null
+                  : () => _openGoogleMap(
+                        context,
+                        record.emergencyAddress,
+                      ),
+            ),
             const SizedBox(height: 18),
             const Text(
               '家族・扶養情報',
