@@ -190,7 +190,7 @@ class SkoTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: palette.background,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         foregroundColor: palette.textPrimary,
         iconTheme: IconThemeData(color: palette.iconPrimary),
