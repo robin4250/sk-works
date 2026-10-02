@@ -18,13 +18,12 @@ void main() {
     expect(RegExp(r"'要対応'").allMatches(home).length, equals(1));
 
     expect(home, contains("'本日の勤務報告'"));
-    expect(home, isNot(contains("'おはようございます、")));
-    expect(home, contains("'未対応 \${attention.missingCount}件'"));
+    expect(home, contains("'未対応 ${widget.attention.missingCount}件'"));
     expect(home, contains('Icons.notifications_active_outlined'));
+    expect(home, contains('repeat(reverse: true)'));
 
-    expect(home, contains("'社員'"));
-    expect(home, contains("'管理現場'"));
-
+    expect(app, contains("label: '社員'"));
+    expect(app, contains("label: '管理現場'"));
     expect(home, contains('_HomeActionAccess.subAdmin'));
     expect(home, contains('_HomeActionAccess.admin'));
     expect(home, contains('_HomeActionAccess.professional'));
@@ -33,6 +32,8 @@ void main() {
     expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));
 
     expect(app, isNot(contains("label: '運用準備チェック'")));
-    expect(app, contains('title: const SizedBox.shrink()'));
+    expect(app, contains('_identity.companyName'));
+    expect(app, contains('_identity.displayName'));
+    expect(app, contains('now.year'));
   });
 }
