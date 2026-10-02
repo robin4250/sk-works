@@ -95,9 +95,6 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
       return;
     }
 
-    final allowed = await ensureGpsAutoLocationPermission(context);
-    if (!allowed || !mounted) return;
-
     final schedule = await showGpsAutoScheduleDialog(
       context,
       initialWeekdays: _gpsWeekdays,
