@@ -453,7 +453,7 @@ class _AttendanceDayCard extends StatelessWidget {
                           ),
                         ],
                       )
-                    : const Text(
+                    : Text(
                         SkoLanguageController.tr('休み'),
                         textAlign: TextAlign.right,
                         style: TextStyle(fontWeight: FontWeight.w800),
@@ -1083,9 +1083,9 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off_outlined, size: 44),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               SkoLanguageController.tr('出勤表を読み込めませんでした'),
-              style: TextStyle(fontWeight: FontWeight.w900),
+              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
