@@ -948,60 +948,54 @@ class _HomePageState extends State<HomePage> {
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? 88 : 0),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: _chromeVisible ? 88 : 0,
-          child: _chromeVisible
-              ? AppBar(
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withValues(alpha: _homeAppearance.headerOpacity),
-                  surfaceTintColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  elevation: 0,
-                  titleSpacing: 12,
-                  title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _identity.companyName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 17,
-                          ),
-                        ),
-                        Text(
-                          '${_identity.displayName}　${now.year}年${now.month}月${now.day}日',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  actions: [
-                    IconButton(
-                      tooltip: '背景・ヘッダー・フッター設定',
-                      onPressed: _openHomeAppearanceSettings,
-                      icon: const Icon(Icons.wallpaper_outlined),
-                    ),
-                    const SkoNotificationBell(),
-                    if (widget.onSignOut != null)
-                      IconButton(
-                        tooltip: 'ログアウト',
-                        onPressed: widget.onSignOut,
-                        icon: const Icon(Icons.logout),
-                      ),
-                  ],
-                )
-              : const SizedBox.shrink(),
+        preferredSize: const Size.fromHeight(88),
+        child: AppBar(
+          backgroundColor: Theme.of(context)
+              .colorScheme
+              .surface
+              .withValues(alpha: _homeAppearance.headerOpacity),
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          elevation: 0,
+          titleSpacing: 12,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _identity.companyName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                ),
+              ),
+              Text(
+                '${_identity.displayName}　${now.year}年${now.month}月${now.day}日',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              tooltip: '背景・ヘッダー・フッター設定',
+              onPressed: _openHomeAppearanceSettings,
+              icon: const Icon(Icons.wallpaper_outlined),
+            ),
+            const SkoNotificationBell(),
+            if (widget.onSignOut != null)
+              IconButton(
+                tooltip: 'ログアウト',
+                onPressed: widget.onSignOut,
+                icon: const Icon(Icons.logout),
+              ),
+          ],
         ),
       ),
       body: FriendlyHomeContent(
@@ -1024,7 +1018,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
-          contentTopInset: _chromeVisible ? 98 : 10,
+          contentTopInset: 98,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
