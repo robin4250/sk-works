@@ -21,9 +21,10 @@ class SignatureResult {
       ];
 
   static List<List<Offset>> fromJson(Object? value) {
-    if (value is! List) return const [];
+    final rawValue = value is Map ? value['strokes'] : value;
+    if (rawValue is! List) return const [];
     final strokes = <List<Offset>>[];
-    for (final rawStroke in value) {
+    for (final rawStroke in rawValue) {
       if (rawStroke is! List) continue;
       final points = <Offset>[];
       for (final rawPoint in rawStroke) {
