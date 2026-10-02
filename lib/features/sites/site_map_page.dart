@@ -8,7 +8,12 @@ import 'site_map_repository.dart';
 enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
 
 class SiteMapPage extends StatefulWidget {
-  const SiteMapPage({super.key});
+  const SiteMapPage({
+    super.key,
+    this.allowEmployeeHomes = false,
+  });
+
+  final bool allowEmployeeHomes;
 
   @override
   State<SiteMapPage> createState() => _SiteMapPageState();
@@ -40,7 +45,9 @@ class _SiteMapPageState extends State<SiteMapPage> {
       if (!mounted) return;
       setState(() {
         _data = value;
-        if (!value.canViewAll) _layers.remove(_MapLayer.employeeHomes);
+        if (!value.canViewAll || !widget.allowEmployeeHomes) {
+          _layers.remove(_MapLayer.employeeHomes);
+        }
         _loading = false;
         _error = null;
       });
@@ -100,7 +107,9 @@ class _SiteMapPageState extends State<SiteMapPage> {
     if (_layers.contains(_MapLayer.home) && data.home != null) {
       places.add(data.home!);
     }
-    if (_layers.contains(_MapLayer.employeeHomes) && data.canViewAll) {
+    if (_layers.contains(_MapLayer.employeeHomes) &&
+        data.canViewAll &&
+        widget.allowEmployeeHomes) {
       places.addAll(data.employeeHomes);
     }
     return places.where((row) {
@@ -257,7 +266,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                               '自宅（本人）',
                               enabled: data.home != null,
                             ),
-                            if (data.canViewAll)
+                            if (data.canViewAll && widget.allowEmployeeHomes)
                               _check(
                                 _MapLayer.employeeHomes,
                                 '全従業員の自宅',
@@ -335,7 +344,9 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         onTap: () => _mapAddress(data.home!, 'worker_name'),
                       ),
                     ],
-                    if (data.canViewAll && data.employeeHomes.isNotEmpty) ...[
+                    if (data.canViewAll &&
+                        widget.allowEmployeeHomes &&
+                        data.employeeHomes.isNotEmpty) ...[
                       const _Heading('全従業員の自宅'),
                       for (final worker in data.employeeHomes)
                         ListTile(
