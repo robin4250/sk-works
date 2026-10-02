@@ -897,8 +897,10 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     final now = DateTime.now();
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? 80 : 0),
+        preferredSize: Size.fromHeight(_chromeVisible ? 88 : 0),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           height: _chromeVisible ? 88 : 0,
@@ -909,6 +911,8 @@ class _HomePageState extends State<HomePage> {
                       .surface
                       .withValues(alpha: _homeAppearance.headerOpacity),
                   surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
                   titleSpacing: 12,
                   title: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -952,8 +956,11 @@ class _HomePageState extends State<HomePage> {
               : const SizedBox.shrink(),
         ),
       ),
-      body: SafeArea(
-        child: FriendlyHomeContent(
+      body: Padding(
+        padding: EdgeInsets.only(top: _chromeVisible ? 88 : 0),
+        child: SafeArea(
+          top: false,
+          child: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
@@ -975,6 +982,7 @@ class _HomePageState extends State<HomePage> {
           appearance: _homeAppearance,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
+          ),
         ),
       ),
     );
@@ -1104,6 +1112,7 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
