@@ -44,13 +44,16 @@ void main() {
     expect(detail, contains("scheme: 'tel'"));
     expect(detail, contains("'確定して申請'"));
     expect(detail, contains("for (var slot = 1; slot <= 3; slot++)"));
+    expect(detail, contains("'カメラで撮影'"));
+    expect(detail, contains("'写真ライブラリから選択'"));
+    expect(detail, contains('ImageSource.gallery'));
     expect(detail, contains("'formal_name'"));
     expect(detail, contains("'nearest_station'"));
     expect(detail, contains("'representative_name'"));
     expect(detail, contains("'representative_phone'"));
     expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(cloud, contains('SiteDetailPage('));
-    expect(cloud, contains("tooltip: '現場マップ'"));
+    expect(cloud, contains("'現場・取引会社・下請け会社・社員をGoogleマップで確認'"));
     expect(cloud, contains('SiteMapPage()'));
     expect(siteMap, contains('社員全員の最新の打刻位置'));
     expect(siteMap, contains('自分自身の最新の打刻位置'));
