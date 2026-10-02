@@ -137,7 +137,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                           onTap: () => _map(partner, 'partner_name'),
                         ),
                     ],
-                    const _Heading('社員の最新打刻位置'),
+                    const _Heading('最新の打刻位置'),
                     for (final worker in data.workers)
                       ListTile(
                         leading: const Icon(Icons.person_pin_circle_outlined),
