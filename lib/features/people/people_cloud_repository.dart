@@ -257,6 +257,31 @@ class PeopleCloudRepository {
         : const <String, dynamic>{};
   }
 
+  Future<List<Map<String, dynamic>>> loadPendingPersonnelChanges() async {
+    final raw = await _client.rpc('pending_worker_personnel_changes');
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> decidePersonnelChange({
+    required String requestId,
+    required bool approve,
+  }) async {
+    final raw = await _client.rpc(
+      'decide_worker_personnel_change',
+      params: {
+        'p_request_id': requestId,
+        'p_approve': approve,
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
   Future<void> delete(Map<String, dynamic> record) async {
     await _requireManagePeople();
     final id = record['id']?.toString();
