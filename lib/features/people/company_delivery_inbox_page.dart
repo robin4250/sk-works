@@ -753,7 +753,8 @@ class _ReceivedTransferItem {
         : <String, dynamic>{};
     final kind = row['payload_kind']?.toString() ?? 'data';
     final title = switch (kind) {
-      'personnel' => payload['name']?.toString() ?? '社員情報',
+      'personnel' || 'personnel_detail' =>
+        payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
       'signature' =>
@@ -763,7 +764,8 @@ class _ReceivedTransferItem {
       _ => '受信データ',
     };
     final category = switch (kind) {
-      'personnel' => _ReceivedTransferCategory.personnel,
+      'personnel' || 'personnel_detail' =>
+        _ReceivedTransferCategory.personnel,
       'qualification' => _ReceivedTransferCategory.qualifications,
       'signature' => _ReceivedTransferCategory.signatures,
       _ => _ReceivedTransferCategory.personnel,
@@ -777,7 +779,11 @@ class _ReceivedTransferItem {
       originCompany: _origin(path, fallbackCompany),
       title: title,
       subtitle: [
-        kind == 'personnel' ? '社員情報' : kind == 'qualification' ? '資格' : kind,
+        kind == 'personnel' || kind == 'personnel_detail'
+            ? '社員情報'
+            : kind == 'qualification'
+                ? '資格'
+                : kind,
         if (path.isNotEmpty) '経路 ${path.join(' → ')}',
       ].join(' / '),
     );
