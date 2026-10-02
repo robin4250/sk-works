@@ -307,12 +307,12 @@ import CoreLocation
     GeneratedPluginRegistrant.register(with: self)
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-    if let controller = window?.rootViewController as? FlutterViewController {
+    if let registrar = self.registrar(forPlugin: "SkoMultiPinMap") {
       let channel = FlutterMethodChannel(
         name: "sko.multi_pin_map",
-        binaryMessenger: controller.binaryMessenger
+        binaryMessenger: registrar.messenger()
       )
-      channel.setMethodCallHandler { [weak controller] call, result in
+      channel.setMethodCallHandler { call, result in
         guard call.method == "show" else {
           result(FlutterMethodNotImplemented)
           return
@@ -330,13 +330,40 @@ import CoreLocation
           rawPoints: rawPoints
         )
         mapController.modalPresentationStyle = .fullScreen
-        controller?.present(mapController, animated: true)
-        result(nil)
+        DispatchQueue.main.async {
+          guard let presenter = self.skoTopViewController() else {
+            result(FlutterError(code: "no_presenter", message: "地図を表示する画面を確認できません", details: nil))
+            return
+          }
+          presenter.present(mapController, animated: true) {
+            result(nil)
+          }
+        }
       }
       skoMapChannel = channel
     }
 
     return launched
+  }
+
+  private func skoTopViewController() -> UIViewController? {
+    let sceneRoot = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+      .first(where: { $0.isKeyWindow })?
+      .rootViewController
+
+    var top = sceneRoot ?? window?.rootViewController
+    while let presented = top?.presentedViewController {
+      top = presented
+    }
+    if let navigation = top as? UINavigationController {
+      return navigation.visibleViewController ?? navigation
+    }
+    if let tab = top as? UITabBarController {
+      return tab.selectedViewController ?? tab
+    }
+    return top
   }
 }
 
