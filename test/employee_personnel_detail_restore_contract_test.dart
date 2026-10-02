@@ -105,7 +105,7 @@ void main() {
     expect(list, contains('EmployeePersonnelPreviewAction.send'));
     expect(list, contains('EmployeePersonnelPreviewAction.print'));
     expect(list, contains("SkoLanguageController.tr('社員一覧')"));
-    expect(list, contains("title: const Text('個別')"));
+    expect(list, contains("SkoLanguageController.tr('個別')"));
     expect(list, contains('社員を1名選んでA4横向きでプレビュー'));
   });
 
