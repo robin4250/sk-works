@@ -36,6 +36,9 @@ void main() {
     expect(app, contains("key: 'attendance_verify'"));
     expect(app, contains("key: 'attendance_today'"));
     expect(app, contains('_reorderHomeActionByKey'));
+    expect(app, contains('newIndex > items.length'));
+    expect(app, contains('if (newIndex > oldIndex) newIndex -= 1'));
+    expect(app, contains('newIndex.clamp(0, ordered.length)'));
     expect(app, contains("prefs.setStringList('sko_home_action_order'"));
   });
 }
