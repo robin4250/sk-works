@@ -23,6 +23,9 @@ void main() {
     final sitesPage = File(
       'lib/features/sites/site_cloud_page.dart',
     ).readAsStringSync();
+    final app = File(
+      'lib/app_v2.dart',
+    ).readAsStringSync();
     final attendanceRepository = File(
       'lib/features/attendance/worker_attendance_sheet_repository.dart',
     ).readAsStringSync();
