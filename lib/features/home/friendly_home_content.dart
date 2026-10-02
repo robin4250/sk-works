@@ -541,7 +541,9 @@ class _OrderedHomeContent extends StatelessWidget {
             shortcut.key,
             shortcut.label,
             shortcut.icon,
-            access: identity.isManagement ? _shortcutAccess(shortcut.key) : null,
+            access: identity.isManagement
+                ? _shortcutAccess(shortcut.key)
+                : _HomeActionAccess.general,
           ),
         );
       }
