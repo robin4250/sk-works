@@ -314,9 +314,15 @@ class _AttendanceDayCard extends StatelessWidget {
 
     return Opacity(
       opacity: faded ? 0.42 : 1,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: InkWell(
           onTap: onTap,
           child: Padding(
             padding: EdgeInsets.zero,
@@ -444,6 +450,7 @@ class _AttendanceDayCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
