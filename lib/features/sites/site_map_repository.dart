@@ -9,6 +9,9 @@ class SiteMapWorkspace {
     required this.customers,
     required this.partners,
     required this.workers,
+    required this.company,
+    required this.home,
+    required this.employeeHomes,
   });
 
   final bool canViewAll;
@@ -16,6 +19,9 @@ class SiteMapWorkspace {
   final List<Map<String, dynamic>> customers;
   final List<Map<String, dynamic>> partners;
   final List<Map<String, dynamic>> workers;
+  final Map<String, dynamic>? company;
+  final Map<String, dynamic>? home;
+  final List<Map<String, dynamic>> employeeHomes;
 }
 
 class SiteMapRepository {
@@ -45,12 +51,22 @@ class SiteMapRepository {
           .toList(growable: false);
     }
 
+    Map<String, dynamic>? object(String key) {
+      final rawObject = value[key];
+      if (rawObject is! Map) return null;
+      final map = Map<String, dynamic>.from(rawObject);
+      return map.isEmpty ? null : map;
+    }
+
     return SiteMapWorkspace(
       canViewAll: value['can_view_all'] == true,
       sites: rows('sites'),
       customers: rows('customers'),
       partners: rows('partners'),
       workers: rows('workers'),
+      company: object('company'),
+      home: object('home'),
+      employeeHomes: rows('employee_homes'),
     );
   }
 }
