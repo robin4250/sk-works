@@ -291,22 +291,42 @@ class VehicleRouteRepository {
     return row == null ? const {} : Map<String, dynamic>.from(row);
   }
 
-  Future<void> saveTodaySelection({
-    String? vehicleId,
-    String? routeId,
-  }) async {
+  Future<void> saveTodayVehicleSelection(String? vehicleId) async {
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
     if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
-
     final workDate = _date(DateTime.now());
+
+    final current = await loadTodaySelection();
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
         'worker_id': workerId,
         'work_date': workDate,
         'vehicle_id': _nullable(vehicleId),
+        'route_assignment_id': current['route_assignment_id'],
+        'updated_by': _client.auth.currentUser?.id,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'company_id,worker_id,work_date',
+    );
+  }
+
+  Future<void> saveTodayRouteSelection(String? routeId) async {
+    final companyId = await _membership();
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+    final workDate = _date(DateTime.now());
+
+    final current = await loadTodaySelection();
+    await _client.from('work_vehicle_route_selections').upsert(
+      {
+        'company_id': companyId,
+        'worker_id': workerId,
+        'work_date': workDate,
+        'vehicle_id': current['vehicle_id'],
         'route_assignment_id': _nullable(routeId),
         'updated_by': _client.auth.currentUser?.id,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -315,14 +335,15 @@ class VehicleRouteRepository {
     );
 
     if (routeId != null && routeId.trim().isNotEmpty) {
-      final current = await _client
+      final currentAttendance = await _client
           .from('work_attendance_selections')
           .select('verification_mode')
           .eq('company_id', companyId)
           .eq('worker_id', workerId)
           .eq('work_date', workDate)
           .maybeSingle();
-      final mode = current?['verification_mode']?.toString() ?? 'manual';
+      final mode =
+          currentAttendance?['verification_mode']?.toString() ?? 'manual';
       await _client.from('work_attendance_selections').upsert(
         {
           'company_id': companyId,
