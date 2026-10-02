@@ -75,25 +75,26 @@ class VehicleRouteRepository {
     return [for (final row in rows) Map<String, dynamic>.from(row)];
   }
 
-  Future<List<Map<String, dynamic>>> customers() async {
-    final companyId = await _membership();
-    final rows = await _client
-        .from('customers')
-        .select('id,name,billing_name,billing_address')
-        .eq('company_id', companyId)
-        .order('name');
-    return [for (final row in rows) Map<String, dynamic>.from(row)];
-  }
+  Future<Map<String, List<Map<String, dynamic>>>>
+      routeCompanyDirectories() async {
+    final raw = await _client.rpc('site_map_workspace');
+    final value = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
 
-  Future<List<Map<String, dynamic>>> partners() async {
-    final companyId = await _membership();
-    final rows = await _client
-        .from('partner_companies')
-        .select('id,name,address,status,trade_role')
-        .eq('company_id', companyId)
-        .neq('status', 'inactive')
-        .order('name');
-    return [for (final row in rows) Map<String, dynamic>.from(row)];
+    List<Map<String, dynamic>> rows(String key) {
+      final source = value[key];
+      if (source is! List) return const [];
+      return source
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+
+    return {
+      'customers': rows('customers'),
+      'partners': rows('partners'),
+    };
   }
 
   Future<String> saveVehicle({
