@@ -59,7 +59,7 @@ void main() {
     expect(detail, contains("'representative_phone'"));
     expect(cloud, contains("'現場名・取引先・担当者・住所・最寄駅で検索'"));
     expect(cloud, contains('SiteDetailPage('));
-    expect(cloud, contains("label: const Text('現場マップ')"));
+    expect(cloud, contains("SkoLanguageController.tr('現場マップ')"));
     expect(cloud, contains("label: const Text('現場登録')"));
     expect(cloud, contains('SiteMapPage()'));
     expect(siteMap, contains("'全従業員の自宅'"));
