@@ -66,6 +66,8 @@ class DailyReportRecord {
     this.signatureJson,
     this.reporterSignerName,
     this.reporterSignatureJson,
+    this.responsibleSignerName,
+    this.responsibleSignatureJson,
     this.signedAt,
   });
 
@@ -80,6 +82,8 @@ class DailyReportRecord {
   final Object? signatureJson;
   final String? reporterSignerName;
   final Object? reporterSignatureJson;
+  final String? responsibleSignerName;
+  final Object? responsibleSignatureJson;
   final DateTime? signedAt;
 
   bool get signed => status == 'signed';
@@ -210,7 +214,7 @@ class DailyReportRepository {
     final rows = await _client
         .from('daily_reports')
         .select(
-          'id, site_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
+          'id, site_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('site_id', siteId)
         .eq('report_date', _dbDate(date))
@@ -262,6 +266,10 @@ class DailyReportRepository {
       signatureJson: row['signature_json'],
       reporterSignerName: row['representative_signer_name']?.toString(),
       reporterSignatureJson: row['representative_signature_json'],
+      responsibleSignerName:
+          row['supervisor_signer_name']?.toString() ?? row['signer_name']?.toString(),
+      responsibleSignatureJson:
+          row['supervisor_signature_json'] ?? row['signature_json'],
       signedAt: DateTime.tryParse(row['signed_at']?.toString() ?? '')?.toLocal(),
       workers: workers,
     );
@@ -317,11 +325,12 @@ class DailyReportRepository {
     required Object signatureJson,
   }) async {
     await _client.rpc(
-      'sign_daily_report',
+      'save_daily_report_signature',
       params: {
         'p_report_id': reportId,
+        'p_role': 'supervisor',
         'p_signer_name': signerName.trim(),
-        'p_signature_json': signatureJson,
+        'p_signature_json': {'strokes': signatureJson},
       },
     );
   }
@@ -332,11 +341,12 @@ class DailyReportRepository {
     required Object signatureJson,
   }) async {
     await _client.rpc(
-      'save_daily_report_reporter_signature',
+      'save_daily_report_signature',
       params: {
         'p_report_id': reportId,
+        'p_role': 'representative',
         'p_signer_name': signerName.trim(),
-        'p_signature_json': signatureJson,
+        'p_signature_json': {'strokes': signatureJson},
       },
     );
   }
