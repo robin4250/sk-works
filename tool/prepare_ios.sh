@@ -290,6 +290,230 @@ print("iOS Deployment Target 15.5 / 日本語OCRモデルを設定しました�
 print("起動画面を固定レイアウトへ設定しました（アイコン全画面拡大なし）。")
 PY
 
+cat > ios/Runner/AppDelegate.swift <<'SWIFT'
+import Flutter
+import UIKit
+import MapKit
+import CoreLocation
+
+@main
+@objc class AppDelegate: FlutterAppDelegate {
+  private var skoMapChannel: FlutterMethodChannel?
+
+  override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    GeneratedPluginRegistrant.register(with: self)
+    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+
+    if let controller = window?.rootViewController as? FlutterViewController {
+      let channel = FlutterMethodChannel(
+        name: "sko.multi_pin_map",
+        binaryMessenger: controller.binaryMessenger
+      )
+      channel.setMethodCallHandler { [weak controller] call, result in
+        guard call.method == "show" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        guard
+          let args = call.arguments as? [String: Any],
+          let rawPoints = args["points"] as? [[String: Any]]
+        else {
+          result(FlutterError(code: "bad_args", message: "地図の地点情報を確認できません", details: nil))
+          return
+        }
+        let title = (args["title"] as? String) ?? "現場マップ"
+        let mapController = SkoMultiPinMapViewController(
+          titleText: title,
+          rawPoints: rawPoints
+        )
+        mapController.modalPresentationStyle = .fullScreen
+        controller?.present(mapController, animated: true)
+        result(nil)
+      }
+      skoMapChannel = channel
+    }
+
+    return launched
+  }
+}
+
+private final class SkoMapPointAnnotation: MKPointAnnotation {}
+
+private final class SkoMultiPinMapViewController: UIViewController, MKMapViewDelegate {
+  private let mapView = MKMapView(frame: .zero)
+  private let titleText: String
+  private let rawPoints: [[String: Any]]
+  private var pendingGeocodes = 0
+  private var hasFit = false
+
+  init(titleText: String, rawPoints: [[String: Any]]) {
+    self.titleText = titleText
+    self.rawPoints = rawPoints
+    super.init(nibName: nil, bundle: nil)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = .systemBackground
+    mapView.delegate = self
+    mapView.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(mapView)
+
+    let header = UIView()
+    header.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.94)
+    header.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(header)
+
+    let close = UIButton(type: .system)
+    close.setImage(UIImage(systemName: "xmark"), for: .normal)
+    close.accessibilityLabel = "閉じる"
+    close.addTarget(self, action: #selector(closeMap), for: .touchUpInside)
+    close.translatesAutoresizingMaskIntoConstraints = false
+    header.addSubview(close)
+
+    let titleLabel = UILabel()
+    titleLabel.text = titleText
+    titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+    titleLabel.textAlignment = .center
+    titleLabel.translatesAutoresizingMaskIntoConstraints = false
+    header.addSubview(titleLabel)
+
+    NSLayoutConstraint.activate([
+      header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      header.topAnchor.constraint(equalTo: view.topAnchor),
+      header.heightAnchor.constraint(equalToConstant: 92),
+
+      close.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
+      close.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -12),
+      close.widthAnchor.constraint(equalToConstant: 40),
+      close.heightAnchor.constraint(equalToConstant: 40),
+
+      titleLabel.leadingAnchor.constraint(equalTo: close.trailingAnchor, constant: 8),
+      titleLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -64),
+      titleLabel.centerYAnchor.constraint(equalTo: close.centerYAnchor),
+
+      mapView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      mapView.topAnchor.constraint(equalTo: header.bottomAnchor),
+      mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+    ])
+
+    loadPoints()
+  }
+
+  @objc private func closeMap() {
+    dismiss(animated: true)
+  }
+
+  private func loadPoints() {
+    for raw in rawPoints {
+      let name = (raw["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let address = (raw["address"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+      if
+        let lat = number(raw["latitude"]),
+        let lon = number(raw["longitude"]),
+        (-90...90).contains(lat),
+        (-180...180).contains(lon)
+      {
+        addAnnotation(
+          name: name?.isEmpty == false ? name! : address,
+          subtitle: address,
+          coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        )
+        continue
+      }
+
+      guard !address.isEmpty else { continue }
+      pendingGeocodes += 1
+      let geocoder = CLGeocoder()
+      geocoder.geocodeAddressString(address) { [weak self] placemarks, _ in
+        guard let self else { return }
+        defer {
+          self.pendingGeocodes -= 1
+          self.fitAnnotationsIfReady()
+        }
+        guard let coordinate = placemarks?.first?.location?.coordinate else { return }
+        self.addAnnotation(
+          name: name?.isEmpty == false ? name! : address,
+          subtitle: address,
+          coordinate: coordinate
+        )
+      }
+    }
+    fitAnnotationsIfReady()
+  }
+
+  private func number(_ value: Any?) -> Double? {
+    if let value = value as? NSNumber { return value.doubleValue }
+    if let value = value as? String { return Double(value) }
+    return nil
+  }
+
+  private func addAnnotation(
+    name: String,
+    subtitle: String,
+    coordinate: CLLocationCoordinate2D
+  ) {
+    let annotation = SkoMapPointAnnotation()
+    annotation.title = name
+    annotation.subtitle = subtitle
+    annotation.coordinate = coordinate
+    DispatchQueue.main.async { [weak self] in
+      self?.mapView.addAnnotation(annotation)
+      self?.fitAnnotationsIfReady()
+    }
+  }
+
+  private func fitAnnotationsIfReady() {
+    guard pendingGeocodes == 0 else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let annotations = self.mapView.annotations
+      guard !annotations.isEmpty else { return }
+      if annotations.count == 1, let first = annotations.first {
+        self.mapView.setRegion(
+          MKCoordinateRegion(
+            center: first.coordinate,
+            latitudinalMeters: 2500,
+            longitudinalMeters: 2500
+          ),
+          animated: true
+        )
+      } else {
+        self.mapView.showAnnotations(annotations, animated: true)
+      }
+      self.hasFit = true
+    }
+  }
+
+  func mapView(
+    _ mapView: MKMapView,
+    viewFor annotation: MKAnnotation
+  ) -> MKAnnotationView? {
+    let identifier = "sko-pin"
+    let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+      as? MKMarkerAnnotationView
+      ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+    view.annotation = annotation
+    view.canShowCallout = true
+    view.markerTintColor = .systemRed
+    view.glyphImage = UIImage(systemName: "mappin")
+    return view
+  }
+}
+SWIFT
+
+echo "iOS標準MapKitの複数ピン現場マップを設定しました。"
+
 echo
 echo "iOS準備完了。次は:"
 echo "1. open ios/Runner.xcworkspace"
