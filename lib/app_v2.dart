@@ -12,6 +12,7 @@ import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
+import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/gps_auto_attendance_service.dart';
@@ -362,7 +363,7 @@ class _HomePageState extends State<HomePage> {
       'attendance' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
-      'clock_in' || 'clock_out' || 'attendance_verify' => 'attendance',
+      'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
       'employee_onboarding_approvals' ||
@@ -384,7 +385,7 @@ class _HomePageState extends State<HomePage> {
     final featureKey = switch (key) {
       'clock_in' => 'clock_in',
       'clock_out' => 'clock_out',
-      'attendance' || 'attendance_verify' => 'attendance',
+      'attendance' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
@@ -548,7 +549,11 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'attendance_verify':
+      case 'attendance_method_vehicle':
         page = const AttendanceSelectionPage();
+        break;
+      case 'workplace_select':
+        page = const WorkDestinationSelectionPage();
         break;
       case 'daily_report':
         page = const DailyReportPage();
@@ -669,6 +674,8 @@ class _HomePageState extends State<HomePage> {
     if (key == 'clock_in' ||
         key == 'clock_out' ||
         key == 'attendance_verify' ||
+        key == 'attendance_method_vehicle' ||
+        key == 'workplace_select' ||
         key == 'vehicle_select' ||
         key == 'route_select') {
       await _loadHomeAttendanceStatus();
