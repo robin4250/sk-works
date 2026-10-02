@@ -81,6 +81,22 @@ class DailyReportRecord {
   bool get signed => status == 'signed';
 }
 
+class DailyReportEvidenceRecord {
+  const DailyReportEvidenceRecord({
+    required this.id,
+    required this.workerName,
+    required this.eventType,
+    required this.confirmedAt,
+    required this.storagePath,
+  });
+
+  final String id;
+  final String workerName;
+  final String eventType;
+  final DateTime confirmedAt;
+  final String storagePath;
+}
+
 class DailyReportRepository {
   DailyReportRepository._(this._client);
 
@@ -273,6 +289,11 @@ class DailyReportRepository {
       );
     }
 
+    await _client.rpc(
+      'link_daily_report_attendance_evidence',
+      params: {'p_report_id': id},
+    );
+
     return id;
   }
 
@@ -289,6 +310,54 @@ class DailyReportRepository {
         'p_signature_json': signatureJson,
       },
     );
+  }
+
+  Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({
+    String? reportId,
+    required DateTime date,
+    required String siteId,
+  }) async {
+    var query = _client
+        .from('attendance_verifications')
+        .select(
+          'id,event_type,confirmed_at,photo_storage_path,workers(name)',
+        )
+        .eq('site_id', siteId)
+        .not('photo_storage_path', 'is', null);
+
+    if (reportId != null && reportId.isNotEmpty) {
+      query = query.eq('daily_report_id', reportId);
+    } else {
+      final start = DateTime(date.year, date.month, date.day);
+      final end = start.add(const Duration(days: 1));
+      query = query
+          .gte('confirmed_at', start.toUtc().toIso8601String())
+          .lt('confirmed_at', end.toUtc().toIso8601String());
+    }
+
+    final rows = await query.order('confirmed_at');
+    return [
+      for (final raw in rows)
+        if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty)
+          DailyReportEvidenceRecord(
+            id: raw['id']?.toString() ?? '',
+            workerName: raw['workers'] is Map
+                ? raw['workers']['name']?.toString() ?? ''
+                : '',
+            eventType: raw['event_type']?.toString() ?? '',
+            confirmedAt:
+                DateTime.tryParse(raw['confirmed_at']?.toString() ?? '')
+                        ?.toLocal() ??
+                    DateTime.fromMillisecondsSinceEpoch(0),
+            storagePath: raw['photo_storage_path'].toString(),
+          ),
+    ];
+  }
+
+  Future<String> attendanceEvidenceUrl(String path) {
+    return _client.storage
+        .from('attendance-evidence')
+        .createSignedUrl(path, 3600);
   }
 
   Future<String> requestEdit({
