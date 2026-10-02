@@ -97,13 +97,16 @@ class WorkerAttendanceSheetRepository {
     return id;
   }
 
-  Future<({String reportId, String siteId})?> findDailyReportForDate(
+  Future<({String reportId, String? siteId, String? routeAssignmentId})?>
+      findDailyReportForDate(
     DateTime date,
   ) async {
     final workerId = await ensureCurrentWorkerId();
     final rows = await _client
         .from('daily_report_workers')
-        .select('report_id,daily_reports!inner(site_id,report_date)')
+        .select(
+          'report_id,daily_reports!inner(site_id,route_assignment_id,report_date)',
+        )
         .eq('worker_id', workerId)
         .eq('daily_reports.report_date', _dbDate(date))
         .limit(1);
@@ -112,9 +115,19 @@ class WorkerAttendanceSheetRepository {
     final report = row['daily_reports'];
     if (report is! Map) return null;
     final reportId = row['report_id']?.toString() ?? '';
-    final siteId = report['site_id']?.toString() ?? '';
-    if (reportId.isEmpty || siteId.isEmpty) return null;
-    return (reportId: reportId, siteId: siteId);
+    final siteId = report['site_id']?.toString();
+    final routeAssignmentId = report['route_assignment_id']?.toString();
+    if (reportId.isEmpty ||
+        ((siteId == null || siteId.isEmpty) &&
+            (routeAssignmentId == null || routeAssignmentId.isEmpty))) {
+      return null;
+    }
+    return (
+      reportId: reportId,
+      siteId: siteId?.isEmpty == true ? null : siteId,
+      routeAssignmentId:
+          routeAssignmentId?.isEmpty == true ? null : routeAssignmentId,
+    );
   }
 
   Future<WorkerAttendanceMonth> loadMonth(DateTime month) async {
