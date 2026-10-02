@@ -174,6 +174,59 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     }
   }
 
+  Future<void> _showPhotoPreview(
+    SitePhotoRecord photo,
+    int slot,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppBar(
+                automaticallyImplyLeading: false,
+                title: Text('現場写真$slot'),
+                actions: [
+                  if (widget.canManage)
+                    IconButton(
+                      tooltip: '写真を変更',
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _pickPhoto(slot);
+                      },
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  IconButton(
+                    tooltip: '閉じる',
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              Flexible(
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 5,
+                  child: Image.network(
+                    photo.signedUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Icon(Icons.broken_image_outlined, size: 48),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickPhoto(int slot) async {
     final repository = _repository;
     if (repository == null) return;
@@ -388,7 +441,9 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     return AspectRatio(
       aspectRatio: 1,
       child: InkWell(
-        onTap: widget.canManage ? () => _pickPhoto(slot) : null,
+        onTap: photo == null
+            ? (widget.canManage ? () => _pickPhoto(slot) : null)
+            : () => _showPhotoPreview(photo!, slot),
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: Theme.of(context).dividerColor),
