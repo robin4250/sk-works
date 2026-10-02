@@ -28,6 +28,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   String? _siteName;
   List<DailyReportWorkerDraft> _workers = [];
   DailyReportRecord? _report;
+  List<DailyReportEvidenceRecord> _evidence = const [];
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -127,6 +128,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       setState(() {
         _report = null;
         _workers = [];
+        _evidence = const [];
         _loading = false;
       });
       _resetWorkerControllers();
@@ -134,7 +136,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
 
     try {
-      final existing = await repository.loadReport(date: _date, siteId: siteId);
+      final existing =
+          await repository.loadReport(date: _date, siteId: siteId);
+      final evidence = await repository.loadAttendanceEvidence(
+        reportId: existing?.id,
+        date: _date,
+        siteId: siteId,
+      );
       if (!mounted) return;
 
       final group = _groups.where((g) => g.siteId == siteId).firstOrNull;
@@ -146,6 +154,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _report = existing;
         _siteName = existing?.siteName ?? group?.siteName ?? '';
         _workers = workers;
+        _evidence = evidence;
         _workDescription.text = existing?.workDescription ?? '';
         _loading = false;
       });
@@ -514,6 +523,36 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                           const SizedBox(height: 16),
                           _MemberSummary(workers: _workers),
+                          if (_evidence.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Card(
+                              child: ListTile(
+                                leading: const CircleAvatar(
+                                  child: Icon(Icons.photo_camera_outlined),
+                                ),
+                                title: const Text(
+                                  '出勤確認写真',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _evidence.length.toString() +
+                                      '枚 / この日報に紐付いています',
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => DailyReportEvidencePage(
+                                      date: _date,
+                                      siteName: _siteName ?? '',
+                                      items: _evidence,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           TextField(
                             controller: _workDescription,
@@ -887,6 +926,105 @@ class _EmptyDay extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class DailyReportEvidencePage extends StatelessWidget {
+  const DailyReportEvidencePage({
+    super.key,
+    required this.date,
+    required this.siteName,
+    required this.items,
+  });
+
+  final DateTime date;
+  final String siteName;
+  final List<DailyReportEvidenceRecord> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = DailyReportRepository.maybeCreate();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('出勤確認写真一覧'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.calendar_today_outlined),
+              title: Text(
+                date.year.toString() +
+                    '/' +
+                    date.month.toString().padLeft(2, '0') +
+                    '/' +
+                    date.day.toString().padLeft(2, '0'),
+              ),
+              subtitle: Text(siteName),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final item in items)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      item.workerName +
+                          ' / ' +
+                          (item.eventType == 'clock_out' ? '退勤' : '出勤'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.confirmedAt.hour.toString().padLeft(2, '0') +
+                          ':' +
+                          item.confirmedAt.minute.toString().padLeft(2, '0'),
+                    ),
+                    const SizedBox(height: 8),
+                    if (repository != null)
+                      FutureBuilder<String>(
+                        future:
+                            repository.attendanceEvidenceUrl(item.storagePath),
+                        builder: (context, snapshot) {
+                          final url = snapshot.data;
+                          if (url == null) {
+                            return const SizedBox(
+                              height: 180,
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+                          return InteractiveViewer(
+                            minScale: 1,
+                            maxScale: 5,
+                            child: Image.network(
+                              url,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox(
+                                height: 180,
+                                child: Center(
+                                  child: Icon(Icons.broken_image_outlined),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
