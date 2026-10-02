@@ -26,6 +26,13 @@ void main() {
     expect(home, contains('appearance.cardOpacity'));
     expect(app, contains('_homeAppearance.headerOpacity'));
     expect(app, contains('_homeAppearance.footerOpacity'));
+    expect(appearance, contains('this.buttonOpacity = 0.6'));
+    expect(appearance, contains('this.cardOpacity = 0.6'));
+    expect(appearance, contains('this.headerOpacity = 0.6'));
+    expect(appearance, contains('this.footerOpacity = 0.6'));
+    expect(appearance, contains('fallback = 0.6'));
+    expect(app, contains('withValues(alpha: _homeAppearance.headerOpacity)'));
+    expect(app, contains('withValues(alpha: _homeAppearance.footerOpacity)'));
     expect(app, contains("'背景・ヘッダー・フッター設定'"));
   });
 }
