@@ -365,11 +365,9 @@ class _AttendanceVerificationPageState
                             _workerName(item) + ' / ' + _siteName(item),
                           ),
                           subtitle: Text(
-                            _eventLabel(item['event_type']) +
-                                ' ・ ' +
-                                _modeLabel(item['verification_mode']) +
-                                '\n' +
-                                _statusLabel(item),
+                            '${_eventLabel(item['event_type'])} ・ '
+                            '${_modeLabel(item['verification_mode'])}\n'
+                            '${_statusLabel(item)}',
                           ),
                           isThreeLine: true,
                         ),
@@ -436,7 +434,7 @@ class _AttendanceVerificationPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場位置を登録できませんでした: ' + error.toString())),
+        SnackBar(content: Text('現場位置を登録できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -461,10 +459,7 @@ class _AttendanceVerificationPageState
         siteId: siteId,
         weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
         localTime: _mode == 'gps_auto'
-            ? (_gpsTime.hour.toString().padLeft(2, '0') +
-                ':' +
-                _gpsTime.minute.toString().padLeft(2, '0') +
-                ':00')
+            ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
       await GpsAutoAttendanceService.instance.refresh();
@@ -577,7 +572,7 @@ class _AttendanceVerificationPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('確認を登録できませんでした: ' + error.toString())),
+        SnackBar(content: Text('確認を登録できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -609,12 +604,12 @@ class _AttendanceVerificationPageState
         final distance = _asDouble(item['distance_to_site_m']);
         return distance == null
             ? '現場付近で確認'
-            : '現場付近で確認（約' + distance.round().toString() + 'm）';
+            : '現場付近で確認（約${distance.round()}m）';
       case 'outside_radius':
         final distance = _asDouble(item['distance_to_site_m']);
         return distance == null
             ? '基準範囲外'
-            : '基準範囲外（約' + distance.round().toString() + 'm）';
+            : '基準範囲外（約${distance.round()}m）';
       case 'site_location_missing':
         return '位置取得済み・現場基準位置未登録';
       default:
