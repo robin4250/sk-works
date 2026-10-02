@@ -11,11 +11,11 @@ class HomeAppearance {
   const HomeAppearance({
     this.wallpaperPath,
     this.wallpaperOpacity = 1,
-    this.buttonOpacity = 0.6,
+    this.buttonOpacity = 0.8,
     this.cardButtonOpacity = 1,
-    this.cardOpacity = 0.6,
-    this.headerOpacity = 0.6,
-    this.footerOpacity = 0.6,
+    this.cardOpacity = 0.8,
+    this.headerOpacity = 0.8,
+    this.footerOpacity = 0.8,
   });
 
   final String? wallpaperPath;
@@ -72,15 +72,15 @@ class HomeAppearanceRepository {
         'wallpaper_opacity',
         fallback: 1,
       ),
-      buttonOpacity: _read(prefs, 'button_opacity'),
+      buttonOpacity: _read(prefs, 'button_opacity', fallback: 0.8),
       cardButtonOpacity: _read(
         prefs,
         'card_button_opacity',
         fallback: 1,
       ),
-      cardOpacity: _read(prefs, 'card_opacity'),
-      headerOpacity: _read(prefs, 'header_opacity'),
-      footerOpacity: _read(prefs, 'footer_opacity'),
+      cardOpacity: _read(prefs, 'card_opacity', fallback: 0.8),
+      headerOpacity: _read(prefs, 'header_opacity', fallback: 0.8),
+      footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8),
     );
   }
 
