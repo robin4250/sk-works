@@ -174,6 +174,54 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     }
   }
 
+  Future<void> _openPhotoPreview(
+    SitePhotoRecord photo,
+    int slot,
+  ) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            title: Text('現場写真$slot'),
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            actions: [
+              if (widget.canManage)
+                IconButton(
+                  tooltip: '写真を変更',
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await _pickPhoto(slot);
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+            ],
+          ),
+          body: SafeArea(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 5,
+              child: Center(
+                child: Image.network(
+                  photo.signedUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white,
+                      size: 56,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickPhoto(int slot) async {
     final repository = _repository;
     if (repository == null) return;
@@ -388,7 +436,14 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     return AspectRatio(
       aspectRatio: 1,
       child: InkWell(
-        onTap: widget.canManage ? () => _pickPhoto(slot) : null,
+        onTap: photo != null
+            ? () => _openPhotoPreview(photo!, slot)
+            : widget.canManage
+                ? () => _pickPhoto(slot)
+                : null,
+        onLongPress: photo != null && widget.canManage
+            ? () => _pickPhoto(slot)
+            : null,
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: Theme.of(context).dividerColor),
