@@ -37,6 +37,24 @@ class PeopleCloudRepository {
     return permissions['can_manage_people'] == true;
   }
 
+  Future<bool> canOpenPartnerCompanyDirectory() async {
+    final value = await membership();
+    return value.role == 'owner' ||
+        value.role == 'admin' ||
+        value.role == 'manager';
+  }
+
+  Future<String> companyName() async {
+    final value = await membership();
+    final rows = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', value.companyId)
+        .limit(1);
+    if (rows.isEmpty) return '';
+    return rows.first['name']?.toString() ?? '';
+  }
+
   Future<void> _requireManagePeople() async {
     if (!await canManagePeople()) {
       throw StateError('人員管理を変更する権限がありません。');
@@ -73,6 +91,18 @@ class PeopleCloudRepository {
         .from('partner_companies')
         .select('id,created_at,updated_at')
         .eq('company_id', companyId);
+    final personnelProfiles = await _client
+        .from('worker_personnel_profiles')
+        .select(
+          'worker_id,blood_type,address,emergency_name,emergency_relation,'
+          'emergency_phone,emergency_address',
+        )
+        .eq('company_id', companyId);
+    final profilesByWorker = <String, Map<String, dynamic>>{
+      for (final row in personnelProfiles)
+        if ((row['worker_id']?.toString() ?? '').isNotEmpty)
+          row['worker_id'].toString(): Map<String, dynamic>.from(row),
+    };
     final datesById = <String, Map<String, dynamic>>{};
     for (final row in workerDates) {
       final id = row['id']?.toString() ?? '';
@@ -87,6 +117,7 @@ class PeopleCloudRepository {
       final value = Map<String, dynamic>.from(row as Map);
       final id = value['id']?.toString() ?? '';
       final dates = datesById[id] ?? const <String, dynamic>{};
+      final profile = profilesByWorker[id] ?? const <String, dynamic>{};
       return {
         'id': value['id'],
         'kind': value['kind'],
@@ -99,6 +130,12 @@ class PeopleCloudRepository {
         'active': value['active'] == true,
         'createdAt': dates['created_at'] ?? '',
         'updatedAt': dates['updated_at'] ?? '',
+        'bloodType': profile['blood_type'] ?? '',
+        'address': profile['address'] ?? '',
+        'emergencyName': profile['emergency_name'] ?? '',
+        'emergencyRelation': profile['emergency_relation'] ?? '',
+        'emergencyPhone': profile['emergency_phone'] ?? '',
+        'emergencyAddress': profile['emergency_address'] ?? '',
       };
     }).toList(growable: false);
   }
@@ -178,6 +215,67 @@ class PeopleCloudRepository {
     final table = kind == 'partnerCompany' ? 'partner_companies' : 'workers';
     await _client.from(table).delete().eq('id', id);
   }
+
+  Future<List<Map<String, dynamic>>> loadPartnerCompanyDirectory() async {
+    if (!await canOpenPartnerCompanyDirectory()) {
+      throw StateError('取引会社一覧は管理者・サブ管理者のみ利用できます。');
+    }
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('partner_companies')
+        .select(
+          'id,name,postal_code,address,phone,fax,email,president_name,'
+          'president_mobile,president_home_area,notes,status,created_at,updated_at',
+        )
+        .eq('company_id', companyId)
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<Map<String, dynamic>> savePartnerCompanyDirectoryEntry(
+    Map<String, dynamic> values, {
+    String? id,
+  }) async {
+    if (!await canOpenPartnerCompanyDirectory()) {
+      throw StateError('取引会社一覧は管理者・サブ管理者のみ変更できます。');
+    }
+    final companyId = await _companyId();
+    final data = <String, dynamic>{
+      'company_id': companyId,
+      'name': values['name']?.toString().trim(),
+      'postal_code': _nullable(values['postal_code']),
+      'address': _nullable(values['address']),
+      'phone': _nullable(values['phone']),
+      'fax': _nullable(values['fax']),
+      'email': _nullable(values['email']),
+      'president_name': _nullable(values['president_name']),
+      'president_mobile': _nullable(values['president_mobile']),
+      'president_home_area': _nullable(values['president_home_area']),
+      'notes': _nullable(values['notes']),
+      'status': 'active',
+    };
+    if ((data['name']?.toString() ?? '').isEmpty) {
+      throw StateError('会社名を入力してください。');
+    }
+
+    if (id == null || id.isEmpty) {
+      final row = await _client
+          .from('partner_companies')
+          .insert(data)
+          .select()
+          .single();
+      return Map<String, dynamic>.from(row);
+    }
+
+    final row = await _client
+        .from('partner_companies')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+    return Map<String, dynamic>.from(row);
+  }
+
 
   Object? _nullable(Object? value) {
     final text = value?.toString().trim() ?? '';
