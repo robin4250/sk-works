@@ -729,6 +729,8 @@ class _ActionGrid extends StatelessWidget {
       child: GridView.count(
       crossAxisCount: columnCount,
       shrinkWrap: true,
+      primary: false,
+      padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
