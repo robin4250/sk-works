@@ -51,7 +51,7 @@ void main() {
     expect(page, isNot(contains("'運転者'")));
   });
 
-  test('home daily report exposes optional vehicle and route selection', () {
+  test('home daily report separates optional vehicle from workplace route', () {
     final home = File(
       'lib/features/home/friendly_home_content.dart',
     ).readAsStringSync();
@@ -60,13 +60,17 @@ void main() {
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
 
-    expect(home, contains("'車両とルートの選択'"));
+    expect(home, contains("'車両を選択'"));
+    expect(home, contains("'ルートを選択'"));
     expect(home, contains('選択中の車両：'));
     expect(home, contains('選択中のルート：'));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
-    expect(selection, contains("'未選択'"));
-    expect(selection, contains("'車両とルートの選択を解除'"));
-    expect(app, contains("case 'vehicle_route_select':"));
+    expect(selection, contains('VehicleRouteSelectionKind.vehicle'));
+    expect(selection, contains('VehicleRouteSelectionKind.route'));
+    expect(selection, contains("'車両の選択を解除'"));
+    expect(selection, contains("'ルートの選択を解除'"));
+    expect(app, contains("case 'vehicle_select':"));
+    expect(app, contains("case 'route_select':"));
   });
 
   test('attendance and daily report carry vehicle route and odometer', () {
