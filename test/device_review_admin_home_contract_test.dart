@@ -46,7 +46,10 @@ void main() {
     expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
     expect(homeDashboard, contains('contentTopInset: 8'));
     expect(homeDashboard, contains('forceMaterialTransparency: true'));
-    expect(homeDashboard, contains('flexibleSpace: Stack('));
+    expect(homeDashboard, contains('return Stack('));
+    expect(homeDashboard, contains('surfaceContainerHighest'));
+    expect(homeDashboard, contains('bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true)'));
+    expect(homeDashboard, contains('flexibleSpace: ColoredBox('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, contains('_chromeVisible'));
