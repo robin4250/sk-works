@@ -64,7 +64,12 @@ void main() {
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
 
-    final menuScroll = find.byType(Scrollable).last;
+    final menuScroll = find.descendant(
+      of: find.byType(ReorderableListView),
+      matching: find.byType(Scrollable),
+    );
+    expect(menuScroll, findsOneWidget);
+
     for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
       await tester.scrollUntilVisible(
         find.text(label),
