@@ -299,6 +299,19 @@ class _PersonalAttendanceCard extends StatelessWidget {
               '選択中の出勤方法：${status.verificationModeLabel}',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            if (status.verificationMode == 'gps_auto' &&
+                status.gpsTime?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              Text(
+                'GPS自動出勤：${_weekdayLabel(status.gpsWeekdays)} '
+                '${_shortTime(status.gpsTime!)}',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 3),
             Text(
               '選択中の現場：${status.siteName?.trim().isNotEmpty == true ? status.siteName : '未選択'}',
@@ -383,6 +396,25 @@ class _PersonalAttendanceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _weekdayLabel(List<int> days) {
+    const names = <int, String>{
+      1: '月',
+      2: '火',
+      3: '水',
+      4: '木',
+      5: '金',
+      6: '土',
+      7: '日',
+    };
+    return days.map((day) => names[day] ?? '').where((v) => v.isNotEmpty).join('・');
+  }
+
+  String _shortTime(String value) {
+    final parts = value.split(':');
+    if (parts.length < 2) return value;
+    return parts[0] + ':' + parts[1];
   }
 
   String _time(DateTime? value) {
