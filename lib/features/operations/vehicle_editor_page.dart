@@ -37,131 +37,17 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   void initState() {
     super.initState();
     final row = widget.vehicle;
-    _name = TextEditingController(
-      text: row?['display_name']?.toString() ?? '',
-    );
-    _registration = TextEditingController(
-      text: row?['registration_number']?.toString() ?? '',
-    );
-    _odometer = TextEditingController(
-      text: _number(row?['odometer_km']),
-    );
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _registration.dispose();
-    _odometer.dispose();
-    super.dispose();
-  }
-
-  Future<_PendingDocument?> _pickDocument(String title) async {
-    final source = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('PDF・ファイルから選ぶ'),
-              onTap: () => Navigator.pop(context, 'file'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('写真ライブラリから選ぶ'),
-              onTap: () => Navigator.pop(context, 'gallery'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('カメラで撮影'),
-              onTap: () => Navigator.pop(context, 'camera'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return null;
-
-    if (source == 'gallery') {
-      final image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 92,
-        maxWidth: 2400,
-      );
-      if (image == null) return null;
-      return _PendingDocument(
-        bytes: await image.readAsBytes(),
-        filename: image.name,
-        contentType: image.mimeType ?? 'image/jpeg',
-      );
-    }
-
-    if (source == 'camera') {
-      final image = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 88,
-        maxWidth: 2400,
-      );
-      if (image == null) return null;
-      return _PendingDocument(
-        bytes: await image.readAsBytes(),
-        filename: image.name,
-        contentType: image.mimeType ?? 'image/jpeg',
-      );
-    }
-
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: const [
-        'pdf',
-        'jpg',
-        'jpeg',
-        'png',
-        'heic',
-        'heif',
-      ],
-    );
-    if (file == null) return null;
-    return _PendingDocument(
-      bytes: await file.readAsBytes(),
-      filename: file.name,
-      contentType: _contentType(file.extension),
-    );
-  }
-
-  Future<void> _save() async {
-    final repository = _repository;
-    if (repository == null || _saving) return;
-
-    final odometer = double.tryParse(_odometer.text.trim());
-    if (_name.text.trim().isEmpty ||
-        _registration.text.trim().isEmpty ||
-        odometer == null ||
-        odometer < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('表示名・車両番号・走行距離を確認してください'),
-        ),
-      );
-      return;
-    }
-
-    final row = widget.vehicle;
     final registrationReady = _registrationDoc != null ||
         (row?['registration_document_path']?.toString().isNotEmpty == true);
     final compulsoryReady = _compulsoryDoc != null ||
         (row?['compulsory_insurance_path']?.toString().isNotEmpty == true);
     final voluntaryReady = _voluntaryDoc != null ||
         (row?['voluntary_insurance_path']?.toString().isNotEmpty == true);
-    if (!registrationReady || !compulsoryReady || !voluntaryReady) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('車検証・自賠責保険・任意保険証書の3点を登録してください'),
-        ),
-      );
-      return;
-    }
+    final missingLabels = <String>[
+      if (!registrationReady) '車検証',
+      if (!compulsoryReady) '自賠責保険',
+      if (!voluntaryReady) '任意保険証書',
+    ];
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -173,7 +59,11 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
               _registration.text.trim() +
               ' / ' +
               _odometer.text.trim() +
-              ' km',
+              ' km' +
+              (missingLabels.isEmpty
+                  ? ''
+                  : '\n未登録書類は後から追加できます：' +
+                      missingLabels.join('・')),
         ),
         actions: [
           TextButton(
@@ -214,7 +104,19 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         );
       }
 
+      final missingAfterSave =
+          await repository.notifyMissingVehicleDocuments(vehicleId);
       if (!mounted) return;
+      if (missingAfterSave.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '車両を登録しました。未登録書類は後から追加してください：' +
+                  missingAfterSave.join('・'),
+            ),
+          ),
+        );
+      }
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
@@ -268,6 +170,10 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '書類は車両登録後に追加しても大丈夫です。未登録がある場合は管理者・サブ管理者へ通知します。',
           ),
           const SizedBox(height: 8),
           _documentTile(
