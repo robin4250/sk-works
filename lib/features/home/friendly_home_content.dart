@@ -78,8 +78,7 @@ class FriendlyHomeContent extends StatelessWidget {
                 ),
               ],
               if (moduleEnabled('attendance') &&
-                  (visibleHomeKeys.isEmpty ||
-                      visibleHomeKeys.contains('attendance_verify'))) ...[
+                  showAttendanceReport) ...[
                 const SizedBox(height: 12),
                 Opacity(
                   opacity: appearance.cardOpacity,
@@ -413,7 +412,6 @@ class _WorkerHome extends StatelessWidget {
     required this.actionOrder,
     required this.visibleHomeKeys,
     required this.shortcuts,
-    required this.showTodayAttendance,
     required this.appearance,
     required this.onOpen,
   });
@@ -423,7 +421,6 @@ class _WorkerHome extends StatelessWidget {
   final List<String> actionOrder;
   final Set<String> visibleHomeKeys;
   final List<HomeShortcut> shortcuts;
-  final bool showTodayAttendance;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
 
@@ -462,6 +459,7 @@ class _AdminHome extends StatelessWidget {
     required this.actionOrder,
     required this.visibleHomeKeys,
     required this.shortcuts,
+    required this.showTodayAttendance,
     required this.appearance,
     required this.onOpen,
   });
@@ -472,6 +470,7 @@ class _AdminHome extends StatelessWidget {
   final List<String> actionOrder;
   final Set<String> visibleHomeKeys;
   final List<HomeShortcut> shortcuts;
+  final bool showTodayAttendance;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
 
@@ -482,8 +481,7 @@ class _AdminHome extends StatelessWidget {
       children: [
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance') &&
-            (visibleHomeKeys.isEmpty ||
-                visibleHomeKeys.contains('attendance_today')))
+            showTodayAttendance)
           Opacity(
             opacity: appearance.cardOpacity,
             child: Card(
@@ -515,8 +513,7 @@ class _AdminHome extends StatelessWidget {
           ),
         if (moduleEnabled('attendance') &&
             identity.can('can_manage_attendance') &&
-            (visibleHomeKeys.isEmpty ||
-                visibleHomeKeys.contains('attendance_today')))
+            showTodayAttendance)
           const SizedBox(height: 12),
         const _SectionTitle('管理'),
         const SizedBox(height: 9),
