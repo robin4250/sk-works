@@ -86,87 +86,6 @@ class _SiteMapPageState extends State<SiteMapPage> {
     }
   }
 
-  List<({double lat, double lon, String label})> _mapPins(
-    SiteMapWorkspace data,
-  ) {
-    final pins = <({double lat, double lon, String label})>[];
-
-    void addRows(List<Map<String, dynamic>> rows, String labelKey) {
-      for (final row in rows) {
-        final lat = (row['latitude'] as num?)?.toDouble();
-        final lon = (row['longitude'] as num?)?.toDouble();
-        if (lat == null || lon == null) continue;
-        pins.add((
-          lat: lat,
-          lon: lon,
-          label: row[labelKey]?.toString() ?? '地点',
-        ));
-      }
-    }
-
-    if (_layers.contains(_MapLayer.sites)) {
-      addRows(data.sites, 'site_name');
-    }
-    if (_layers.contains(_MapLayer.customers)) {
-      addRows(data.customers, 'customer_name');
-    }
-    if (_layers.contains(_MapLayer.partners)) {
-      addRows(data.partners, 'partner_name');
-    }
-    if (_layers.contains(_MapLayer.company) && data.company != null) {
-      addRows([data.company!], 'company_name');
-    }
-    if (widget.allowEmployeeHomes &&
-        _layers.contains(_MapLayer.home) &&
-        data.home != null) {
-      addRows([data.home!], 'worker_name');
-    }
-    if (widget.allowEmployeeHomes &&
-        data.canViewAll &&
-        _layers.contains(_MapLayer.employeeHomes)) {
-      addRows(data.employeeHomes, 'worker_name');
-    }
-
-    return pins;
-  }
-
-  Uri? _staticMapUri(SiteMapWorkspace data) {
-    final pins = _mapPins(data);
-    if (_currentPosition != null) {
-      pins.insert(
-        0,
-        (
-          lat: _currentPosition!.latitude,
-          lon: _currentPosition!.longitude,
-          label: '現在地',
-        ),
-      );
-    }
-    if (pins.isEmpty) return null;
-
-    final markerParams = <String>[
-      for (final pin in pins.take(30))
-        '${pin.lat},${pin.lon},lightblue1',
-    ];
-    final centerLat =
-        pins.fold<double>(0, (sum, pin) => sum + pin.lat) / pins.length;
-    final centerLon =
-        pins.fold<double>(0, (sum, pin) => sum + pin.lon) / pins.length;
-
-    return Uri.https(
-      'staticmap.openstreetmap.de',
-      '/staticmap.php',
-      {
-        'center': '$centerLat,$centerLon',
-        'zoom': pins.length == 1 ? '15' : '11',
-        'size': '900x520',
-        'maptype': 'mapnik',
-        'markers': markerParams.join('|'),
-      },
-    );
-  }
-
-
   Future<void> _mapAddress(
     Map<String, dynamic> row,
     String labelKey, {
@@ -423,62 +342,17 @@ class _SiteMapPageState extends State<SiteMapPage> {
                                 enabled: data.employeeHomes.isNotEmpty,
                               ),
                             const SizedBox(height: 8),
-                            Builder(
-                              builder: (context) {
-                                final mapUri = _staticMapUri(data);
-                                if (mapUri == null) {
-                                  return const Card(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: Text(
-                                        '座標が登録されている地点を選択すると、ここに複数ピンの地図を表示します。',
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    AspectRatio(
-                                      aspectRatio: 1.72,
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(14),
-                                        child: InteractiveViewer(
-                                          minScale: 1,
-                                          maxScale: 5,
-                                          child: Image.network(
-                                            mapUri.toString(),
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const ColoredBox(
-                                              color: Color(0xFFE8EEF2),
-                                              child: Center(
-                                                child: Text(
-                                                  '複数ピン地図を読み込めませんでした',
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '選択中の登録座標を📍で同時表示しています。'
-                                      '${_currentPosition == null ? '' : ' 現在地も含みます。'}',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ],
-                                );
-                              },
+                            FilledButton.icon(
+                              onPressed: _openSelectedTogether,
+                              icon: const Icon(Icons.map_outlined),
+                              label: const Text('選択地点を複数ピンで地図表示'),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'ルート表示ではなく、選択した地点を📍で同時表示します。iPhoneでは標準MapKitを使用します。',
+                              style: TextStyle(fontSize: 12),
                             ),
                             const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: _openSelectedTogether,
-                              icon: const Icon(Icons.open_in_new),
-                              label: const Text('選択地点をGoogleマップで開く'),
-                            ),
                           ],
                         ),
                       ),
