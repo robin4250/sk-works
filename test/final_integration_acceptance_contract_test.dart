@@ -19,5 +19,9 @@ void main() {
     expect(doc, contains('A4横向き'));
     expect(doc, contains('日本の祝日の日付と祝日名が赤く表示される'));
     expect(doc, contains('月間カレンダーの◁/▷'));
+    expect(doc, contains('## J3. 給与管理フロー'));
+    expect(doc, contains('個別給与設定 → 給与調整 → 給与明細 → プレビュー → 印刷'));
+    expect(doc, contains('## P. 会社間送受信・協力会社'));
+    expect(doc, contains('## Q. 現場詳細・現場マップ'));
   });
 }
