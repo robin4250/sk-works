@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -255,10 +258,29 @@ class _SiteMapPageState extends State<SiteMapPage> {
       // Current location is supplemental. Saved pins can still open.
     }
 
-    final points = <String>[
-      if (current != null) '${current.latitude},${current.longitude}',
-      ...selected.map(_locationText).where((value) => value.isNotEmpty),
-    ];
+    final points = <Map<String, dynamic>>[
+      if (current != null)
+        {
+          'name': '現在地',
+          'address': '',
+          'latitude': current.latitude,
+          'longitude': current.longitude,
+        },
+      for (final row in selected)
+        {
+          'name': _placeName(row),
+          'address': row['address']?.toString().trim() ?? '',
+          if (row['latitude'] is num)
+            'latitude': (row['latitude'] as num).toDouble(),
+          if (row['longitude'] is num)
+            'longitude': (row['longitude'] as num).toDouble(),
+        },
+    ].where((row) {
+      final address = row['address']?.toString().trim() ?? '';
+      return address.isNotEmpty ||
+          (row['latitude'] is num && row['longitude'] is num);
+    }).toList(growable: false);
+
     if (points.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -267,32 +289,53 @@ class _SiteMapPageState extends State<SiteMapPage> {
       return;
     }
 
-    Uri uri;
-    if (points.length == 1) {
-      uri = Uri.https('www.google.com', '/maps/search/', {
-        'api': '1',
-        'query': points.first,
-      });
-    } else {
-      final origin = points.first;
-      final destination = points.last;
-      final waypoints = points.length > 2
-          ? points.sublist(1, points.length - 1).take(20).join('|')
-          : '';
-      uri = Uri.https('www.google.com', '/maps/dir/', {
-        'api': '1',
-        'origin': origin,
-        'destination': destination,
-        if (waypoints.isNotEmpty) 'waypoints': waypoints,
-      });
+    if (Platform.isIOS) {
+      try {
+        await const MethodChannel('sko.multi_pin_map').invokeMethod<void>(
+          'show',
+          {
+            'title': '現場マップ',
+            'points': points,
+          },
+        );
+        return;
+      } on PlatformException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('複数ピン地図を開けませんでした: ${error.message ?? ''}')),
+        );
+      }
     }
 
+    // iOS以外では単一地点をGoogleマップで開く。ルート表示にはしない。
+    final first = points.first;
+    final query = (first['address']?.toString().trim().isNotEmpty ?? false)
+        ? first['address'].toString()
+        : '${first['latitude']},${first['longitude']}';
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Googleマップを開けませんでした')),
+        const SnackBar(content: Text('地図を開けませんでした')),
       );
     }
+  }
+
+  String _placeName(Map<String, dynamic> row) {
+    for (final key in const [
+      'site_name',
+      'customer_name',
+      'partner_name',
+      'company_name',
+      'worker_name',
+    ]) {
+      final value = row[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '地点';
   }
 
   Widget _check(_MapLayer layer, String label, {required bool enabled}) {
