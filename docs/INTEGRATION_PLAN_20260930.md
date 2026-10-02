@@ -68,11 +68,17 @@ Required UI:
 
 ## 8. Vehicle and route management
 
-- All company employees can view/use vehicles and routes.
-- Owner/admin/sub-admin or explicitly delegated members can create/edit/disable.
+- All company employees can use active vehicles/routes when the company module is ON.
+- Only owner/admin/sub-admin may create, edit, disable, or register vehicle/route master data.
+- Admin can turn the entire vehicle/route module ON/OFF; OFF removes its home/menu/daily-work-report entry points.
 - Use soft-disable to preserve historical attendance/route references.
-- Vehicle: company, display name, registration number, type, capacity, notes, active state.
-- Route: company, service date, route name, vehicle, site, driver, notes.
+- Vehicle: display name, registration number, odometer, vehicle inspection certificate, compulsory insurance, voluntary insurance.
+- Vehicle documents accept PDF, photo library images, or camera capture and are stored in private Storage.
+- Route: route name, unlimited ordered stops where each stop is either a selected site or an address, plus notes.
+- Daily work report exposes a vehicle/route selector below the attendance-method/site selector. Each can be cleared to unselected.
+- Selected vehicle/route is copied into clock-in/out records and daily report worker rows.
+- If a vehicle is selected at clock-out, daily report entry exposes odometer camera OCR, confirmation/retry/manual correction, then updates the vehicle odometer on save.
+- Daily report A4 output prints selected vehicle, route, and odometer.
 - New pages follow shared SKO UI and confirmation rules.
 - Master page exposes vehicle/route status and reversible feature controls.
 
