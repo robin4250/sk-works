@@ -22,6 +22,7 @@ required = [
     "CFBundleDisplayName",
     "NSFaceIDUsageDescription",
     "NSLocationWhenInUseUsageDescription",
+    "NSLocationAlwaysAndWhenInUseUsageDescription",
     "NSCameraUsageDescription",
     "NSPhotoLibraryUsageDescription",
 ]
@@ -33,11 +34,11 @@ if data.get("CFBundleDisplayName") != "SKO":
     raise SystemExit("unexpected CFBundleDisplayName")
 
 if "NSLocationAlwaysUsageDescription" in data:
-    raise SystemExit("Always location permission must not exist")
-if "NSLocationAlwaysAndWhenInUseUsageDescription" in data:
-    raise SystemExit("Always location permission must not exist")
-if "location" in data.get("UIBackgroundModes", []):
-    raise SystemExit("background location mode must not exist")
+    raise SystemExit("legacy Always location permission key must not exist")
+if "NSLocationAlwaysAndWhenInUseUsageDescription" not in data:
+    raise SystemExit("GPS auto attendance Always location description is missing")
+if "location" not in data.get("UIBackgroundModes", []):
+    raise SystemExit("GPS auto attendance background location mode is missing")
 
 ats = data.get("NSAppTransportSecurity", {})
 if ats.get("NSAllowsArbitraryLoads") is True:
