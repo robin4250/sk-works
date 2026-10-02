@@ -53,8 +53,8 @@ void main() {
     ).readAsStringSync();
 
     expect(home, contains("'車両とルートの選択'"));
-    expect(home, contains("'選択中の車両：'"));
-    expect(home, contains("'選択中のルート：'"));
+    expect(home, contains('選択中の車両：'));
+    expect(home, contains('選択中のルート：'));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
     expect(selection, contains("'未選択'"));
     expect(selection, contains("'車両とルートの選択を解除'"));
