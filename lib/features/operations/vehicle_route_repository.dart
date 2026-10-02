@@ -161,6 +161,17 @@ class VehicleRouteRepository {
     }
   }
 
+  Future<List<String>> notifyMissingVehicleDocuments(
+    String vehicleId,
+  ) async {
+    final value = await _client.rpc(
+      'notify_missing_vehicle_documents',
+      params: {'p_vehicle_id': vehicleId},
+    );
+    if (value is! List) return const [];
+    return value.map((item) => item.toString()).toList(growable: false);
+  }
+
   Future<void> setVehicleActive(String id, bool active) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
