@@ -63,4 +63,40 @@ void main() {
     expect(chrome, contains('delta > 2'));
     expect(chrome, contains('delta < -2'));
   });
+  test('attendance linkage survives optional vehicle route lookup failures', () {
+    final repository = File(
+      'lib/features/attendance/attendance_verification_repository.dart',
+    ).readAsStringSync();
+    final grant = File(
+      'supabase/migrations/'
+      '20261002091236_fix_vehicle_route_rls_helper_execute.sql',
+    ).readAsStringSync();
+
+    expect(repository, contains("Map<String, dynamic>? selection"));
+    expect(grant, contains('private.can_manage_vehicle_routes(uuid,text)'));
+    expect(grant, contains('supabase_storage_admin'));
+  });
+
+  test('management map covers sites customers partners and workers in Google Maps', () {
+    final app = File('lib/app_v2.dart').readAsStringSync();
+    final page = File('lib/features/sites/site_map_page.dart').readAsStringSync();
+    final repository =
+        File('lib/features/sites/site_map_repository.dart').readAsStringSync();
+    final migration = File(
+      'supabase/migrations/'
+      '20261002091418_extend_site_map_management_directory.sql',
+    ).readAsStringSync();
+
+    expect(app, contains("key: 'site_map'"));
+    expect(app, contains("label: '現場マップ'"));
+    expect(page, contains("'www.google.com'"));
+    expect(page, contains("'/maps/search/'"));
+    expect(page, contains("'取引会社'"));
+    expect(page, contains("'下請け会社'"));
+    expect(page, contains("'社員の最新打刻位置'"));
+    expect(repository, contains("customers: rows('customers')"));
+    expect(repository, contains("partners: rows('partners')"));
+    expect(migration, contains("'customers',v_customers"));
+    expect(migration, contains("'partners',v_partners"));
+  });
 }
