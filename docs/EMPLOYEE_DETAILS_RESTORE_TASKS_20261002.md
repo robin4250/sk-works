@@ -20,8 +20,8 @@
 - [x] 一覧上中央に会社名
 - [x] 一覧右上に印刷日
 - [x] PDFプレビューから印刷・共有
-- [ ] Flutter CI
-- [ ] iOS CI
-- [ ] Secret Scan
-- [ ] 復旧本線へ統合
+- [x] Flutter CI
+- [x] iOS CI
+- [x] Secret Scan
+- [x] 復旧本線へ統合
 - [ ] Release版実機で社員個人ページとA4横一覧を確認
