@@ -198,7 +198,63 @@ class PeopleCloudRepository {
         })
         .select('id')
         .single();
+
+    final workerId = inserted['id']?.toString() ?? '';
+    if (workerId.isNotEmpty) {
+      await _client.rpc(
+        'save_worker_personnel_profile',
+        params: {
+          'p_worker_id': workerId,
+          'p_payload': {
+            'name': record['name']?.toString() ?? '',
+            'kind': kind,
+            'blood_type': record['bloodType']?.toString() ?? '',
+            'role': record['role']?.toString() ?? '',
+            'phone': record['phone']?.toString() ?? '',
+            'address': record['address']?.toString() ?? '',
+            'emergency_name': record['emergencyName']?.toString() ?? '',
+            'emergency_relation':
+                record['emergencyRelation']?.toString() ?? '',
+            'emergency_phone':
+                record['emergencyPhone']?.toString() ?? '',
+            'emergency_address':
+                record['emergencyAddress']?.toString() ?? '',
+          },
+        },
+      );
+    }
+
     return {...record, 'id': inserted['id']};
+  }
+
+  Future<Map<String, dynamic>> savePersonnelProfile(
+    Map<String, dynamic> record,
+  ) async {
+    final id = record['id']?.toString() ?? '';
+    if (id.isEmpty) throw StateError('社員情報を確認できません。');
+    final raw = await _client.rpc(
+      'save_worker_personnel_profile',
+      params: {
+        'p_worker_id': id,
+        'p_payload': {
+          'name': record['name']?.toString() ?? '',
+          'kind': record['kind']?.toString() ?? 'employee',
+          'blood_type': record['bloodType']?.toString() ?? '',
+          'role': record['role']?.toString() ?? '',
+          'phone': record['phone']?.toString() ?? '',
+          'address': record['address']?.toString() ?? '',
+          'emergency_name': record['emergencyName']?.toString() ?? '',
+          'emergency_relation':
+              record['emergencyRelation']?.toString() ?? '',
+          'emergency_phone': record['emergencyPhone']?.toString() ?? '',
+          'emergency_address':
+              record['emergencyAddress']?.toString() ?? '',
+        },
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
   }
 
   Future<void> delete(Map<String, dynamic> record) async {
