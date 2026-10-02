@@ -24,6 +24,16 @@ class _ProfilePageState extends State<ProfilePage> {
   final _picker = ImagePicker();
   final _name = TextEditingController();
   final _phone = TextEditingController();
+  final _personnelName = TextEditingController();
+  final _personnelRole = TextEditingController();
+  final _personnelPhone = TextEditingController();
+  final _personnelAddress = TextEditingController();
+  final _emergencyName = TextEditingController();
+  final _emergencyRelation = TextEditingController();
+  final _emergencyPhone = TextEditingController();
+  final _emergencyAddress = TextEditingController();
+  String _bloodType = '';
+  String? _workerId;
 
   ProfileData? _data;
   bool _loading = true;
@@ -40,6 +50,14 @@ class _ProfilePageState extends State<ProfilePage> {
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _personnelName.dispose();
+    _personnelRole.dispose();
+    _personnelPhone.dispose();
+    _personnelAddress.dispose();
+    _emergencyName.dispose();
+    _emergencyRelation.dispose();
+    _emergencyPhone.dispose();
+    _emergencyAddress.dispose();
     super.dispose();
   }
 
@@ -59,10 +77,31 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final data = await repository.load();
+      final values = await Future.wait([
+        repository.load(),
+        repository.loadPersonnelProfile(),
+      ]);
+      final data = values[0] as ProfileData;
+      final personnel = values[1] as Map<String, dynamic>?;
       if (!mounted) return;
       _name.text = data.displayName;
       _phone.text = data.phone;
+      _workerId = personnel?['worker_id']?.toString();
+      _personnelName.text =
+          personnel?['name']?.toString() ?? data.displayName;
+      _personnelRole.text = personnel?['role']?.toString() ?? '';
+      _personnelPhone.text =
+          personnel?['phone']?.toString() ?? data.phone;
+      _personnelAddress.text = personnel?['address']?.toString() ?? '';
+      _bloodType = personnel?['blood_type']?.toString() ?? '';
+      _emergencyName.text =
+          personnel?['emergency_name']?.toString() ?? '';
+      _emergencyRelation.text =
+          personnel?['emergency_relation']?.toString() ?? '';
+      _emergencyPhone.text =
+          personnel?['emergency_phone']?.toString() ?? '';
+      _emergencyAddress.text =
+          personnel?['emergency_address']?.toString() ?? '';
       setState(() {
         _data = data;
         _loading = false;
@@ -146,6 +185,82 @@ class _ProfilePageState extends State<ProfilePage> {
           : error.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('保存できませんでした: $message')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _savePersonnel() async {
+    final repository = _repository;
+    final workerId = _workerId;
+    if (repository == null || workerId == null || workerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('社員情報を確認できません')),
+      );
+      return;
+    }
+    if (_personnelName.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('名前を入力してください')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('社員個人情報を保存しますか？'),
+        content: const Text(
+          '未登録の個人情報はそのまま登録されます。登録済み情報の変更は承認者2名の承認後に反映されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('確定して保存'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final result = await repository.savePersonnelProfile(
+        workerId: workerId,
+        payload: {
+          'name': _personnelName.text.trim(),
+          'kind': 'employee',
+          'blood_type': _bloodType,
+          'role': _personnelRole.text.trim(),
+          'phone': _personnelPhone.text.trim(),
+          'address': _personnelAddress.text.trim(),
+          'emergency_name': _emergencyName.text.trim(),
+          'emergency_relation': _emergencyRelation.text.trim(),
+          'emergency_phone': _emergencyPhone.text.trim(),
+          'emergency_address': _emergencyAddress.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      final pending = result['requires_approval'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            pending
+                ? '変更申請を送信しました。2名の承認後に反映されます。'
+                : '社員個人情報を保存しました',
+          ),
+        ),
+      );
+      if (!pending) await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('社員個人情報を保存できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -362,6 +477,123 @@ class _ProfilePageState extends State<ProfilePage> {
                                   subtitle: SelectableText(data!.companyId),
                                 ),
                               ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                '社員個人情報',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                '未登録は直接保存できます。登録済み情報の変更は承認者2名の承認後に反映されます。',
+                              ),
+                              const SizedBox(height: 14),
+                              TextField(
+                                controller: _personnelName,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '名前',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              DropdownButtonFormField<String>(
+                                initialValue: _bloodType.isEmpty ? null : _bloodType,
+                                decoration: const InputDecoration(
+                                  labelText: '血液型',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(value: 'A', child: Text('A型')),
+                                  DropdownMenuItem(value: 'B', child: Text('B型')),
+                                  DropdownMenuItem(value: 'O', child: Text('O型')),
+                                  DropdownMenuItem(value: 'AB', child: Text('AB型')),
+                                  DropdownMenuItem(value: '不明', child: Text('不明')),
+                                ],
+                                onChanged: _saving
+                                    ? null
+                                    : (value) =>
+                                        setState(() => _bloodType = value ?? ''),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _personnelRole,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '職種',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _personnelPhone,
+                                enabled: !_saving,
+                                keyboardType: TextInputType.phone,
+                                decoration: const InputDecoration(
+                                  labelText: '社員台帳の電話番号',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _personnelAddress,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '住所',
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                '緊急連絡先',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _emergencyName,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '氏名',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _emergencyRelation,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '続柄',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _emergencyPhone,
+                                enabled: !_saving,
+                                keyboardType: TextInputType.phone,
+                                decoration: const InputDecoration(
+                                  labelText: '電話番号',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _emergencyAddress,
+                                enabled: !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '住所',
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              FilledButton.icon(
+                                onPressed: _saving ? null : _savePersonnel,
+                                icon: const Icon(Icons.badge_outlined),
+                                label: const Text('社員個人情報を保存'),
+                              ),
                             ],
                           ),
                         ),
