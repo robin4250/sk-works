@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/home/friendly_home_content.dart';
@@ -82,6 +84,9 @@ void main() {
     expect(find.text('要対応'), findsOneWidget);
     expect(find.text('本日の勤務報告'), findsOneWidget);
     expect(find.text('本日の出勤'), findsOneWidget);
+    final source = File('lib/features/home/friendly_home_content.dart').readAsStringSync();
+    expect(source, contains('primary: false'));
+    expect(source, contains('padding: EdgeInsets.zero'));
     expect(tester.takeException(), isNull);
   });
 }
