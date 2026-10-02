@@ -4,8 +4,15 @@ import 'package:flutter/material.dart';
 
 import 'vehicle_route_repository.dart';
 
+enum VehicleRouteSelectionKind { vehicle, route }
+
 class VehicleRouteSelectionPage extends StatefulWidget {
-  const VehicleRouteSelectionPage({super.key});
+  const VehicleRouteSelectionPage({
+    super.key,
+    required this.kind,
+  });
+
+  final VehicleRouteSelectionKind kind;
 
   @override
   State<VehicleRouteSelectionPage> createState() =>
@@ -90,9 +97,15 @@ class _VehicleRouteSelectionPageState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('車両とルートを保存しますか？'),
-        content: const Text(
-          '今日の出勤・退勤と日報へ、この選択を引き継ぎます。未選択のままでも保存できます。',
+        title: Text(
+          widget.kind == VehicleRouteSelectionKind.vehicle
+              ? '車両を保存しますか？'
+              : 'ルートを保存しますか？',
+        ),
+        content: Text(
+          widget.kind == VehicleRouteSelectionKind.vehicle
+              ? '車両は勤務先とは別の任意選択です。固定現場でもルート勤務でも、車両を使う場合だけ選択してください。日報へ引き継ぎます。'
+              : 'ルートは外回りなど複数地点を回る日の勤務先です。車両を使わなくても選択できます。固定現場との同時選択はできません。',
         ),
         actions: [
           TextButton(
@@ -110,10 +123,11 @@ class _VehicleRouteSelectionPageState
 
     setState(() => _saving = true);
     try {
-      await repository.saveTodaySelection(
-        vehicleId: _vehicleId,
-        routeId: _routeId,
-      );
+      if (widget.kind == VehicleRouteSelectionKind.vehicle) {
+        await repository.saveTodayVehicleSelection(_vehicleId);
+      } else {
+        await repository.saveTodayRouteSelection(_routeId);
+      }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -130,9 +144,11 @@ class _VehicleRouteSelectionPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '車両とルートの選択',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          widget.kind == VehicleRouteSelectionKind.vehicle
+              ? '車両の選択'
+              : 'ルートの選択',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: SafeArea(
@@ -143,6 +159,7 @@ class _VehicleRouteSelectionPageState
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
+                      if (widget.kind == VehicleRouteSelectionKind.vehicle) ...[
                       DropdownButtonFormField<String?>(
                         initialValue: _vehicleId,
                         decoration: const InputDecoration(
@@ -167,7 +184,7 @@ class _VehicleRouteSelectionPageState
                             ? null
                             : (value) => setState(() => _vehicleId = value),
                       ),
-                      const SizedBox(height: 14),
+                      ] else ...[
                       DropdownButtonFormField<String?>(
                         initialValue: _routeId,
                         decoration: const InputDecoration(
@@ -198,16 +215,25 @@ class _VehicleRouteSelectionPageState
                                 setState(() => _routeId = value);
                               },
                       ),
+                      ],
                       const SizedBox(height: 18),
                       OutlinedButton.icon(
                         onPressed: _saving
                             ? null
                             : () => setState(() {
-                                  _vehicleId = null;
-                                  _routeId = null;
+                                  if (widget.kind ==
+                                      VehicleRouteSelectionKind.vehicle) {
+                                    _vehicleId = null;
+                                  } else {
+                                    _routeId = null;
+                                  }
                                 }),
                         icon: const Icon(Icons.clear_all),
-                        label: const Text('車両とルートの選択を解除'),
+                        label: Text(
+                          widget.kind == VehicleRouteSelectionKind.vehicle
+                              ? '車両の選択を解除'
+                              : 'ルートの選択を解除',
+                        ),
                       ),
                       const SizedBox(height: 10),
                       FilledButton.icon(
