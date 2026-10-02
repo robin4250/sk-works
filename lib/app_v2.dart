@@ -12,6 +12,7 @@ import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
+import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/gps_auto_attendance_service.dart';
@@ -78,6 +79,7 @@ class SkWorksApp extends StatelessWidget {
       valueListenable: SkoThemeController.palette,
       builder: (context, palette, _) {
         return MaterialApp(
+          navigatorKey: SkoScrollChromeController.navigatorKey,
           debugShowCheckedModeBanner: false,
           title: ProductBrand.displayName,
           theme: SkoTheme.light(palette),
@@ -361,7 +363,7 @@ class _HomePageState extends State<HomePage> {
       'attendance' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
-      'clock_in' || 'clock_out' || 'attendance_verify' => 'attendance',
+      'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
       'employee_onboarding_approvals' ||
@@ -383,7 +385,7 @@ class _HomePageState extends State<HomePage> {
     final featureKey = switch (key) {
       'clock_in' => 'clock_in',
       'clock_out' => 'clock_out',
-      'attendance' || 'attendance_verify' => 'attendance',
+      'attendance' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
@@ -455,7 +457,7 @@ class _HomePageState extends State<HomePage> {
       'notes' => 'notes',
       'albums' => 'albums',
       'today_line' || 'line_history' => 'line_bridge',
-      'vehicle_routes' || 'vehicle_route_select' => 'vehicle_routes',
+      'vehicle_routes' || 'vehicle_select' || 'route_select' => 'vehicle_routes',
       _ => null,
     };
     if (requiredModule != null && !_moduleEnabled(requiredModule)) {
@@ -547,13 +549,24 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'attendance_verify':
+      case 'attendance_method_vehicle':
         page = const AttendanceSelectionPage();
+        break;
+      case 'workplace_select':
+        page = const WorkDestinationSelectionPage();
         break;
       case 'daily_report':
         page = const DailyReportPage();
         break;
-      case 'vehicle_route_select':
-        page = const VehicleRouteSelectionPage();
+      case 'vehicle_select':
+        page = const VehicleRouteSelectionPage(
+          mode: VehicleRouteSelectionMode.vehicle,
+        );
+        break;
+      case 'route_select':
+        page = const VehicleRouteSelectionPage(
+          mode: VehicleRouteSelectionMode.route,
+        );
         break;
       case 'employee_register':
         page = EmployeeInvitePage(
@@ -661,7 +674,10 @@ class _HomePageState extends State<HomePage> {
     if (key == 'clock_in' ||
         key == 'clock_out' ||
         key == 'attendance_verify' ||
-        key == 'vehicle_route_select') {
+        key == 'attendance_method_vehicle' ||
+        key == 'workplace_select' ||
+        key == 'vehicle_select' ||
+        key == 'route_select') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings') {
@@ -896,11 +912,13 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     final now = DateTime.now();
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? 68 : 0),
+        preferredSize: Size.fromHeight(_chromeVisible ? 88 : 0),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: _chromeVisible ? 68 : 0,
+          height: _chromeVisible ? 88 : 0,
           child: _chromeVisible
               ? AppBar(
                   backgroundColor: Theme.of(context)
@@ -908,6 +926,8 @@ class _HomePageState extends State<HomePage> {
                       .surface
                       .withValues(alpha: _homeAppearance.headerOpacity),
                   surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
                   titleSpacing: 12,
                   title: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -919,7 +939,7 @@ class _HomePageState extends State<HomePage> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,
-                            fontSize: 14,
+                            fontSize: 17,
                           ),
                         ),
                         Text(
@@ -951,8 +971,7 @@ class _HomePageState extends State<HomePage> {
               : const SizedBox.shrink(),
         ),
       ),
-      body: SafeArea(
-        child: FriendlyHomeContent(
+      body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
@@ -972,10 +991,10 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
+          contentTopInset: _chromeVisible ? 98 : 10,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
         ),
-      ),
     );
   }
 
@@ -1103,6 +1122,7 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -1115,7 +1135,7 @@ class _HomePageState extends State<HomePage> {
       ),
       bottomNavigationBar: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: _chromeVisible ? 80 : 0,
+        height: _chromeVisible ? 88 : 0,
         child: _chromeVisible
             ? NavigationBar(
                   backgroundColor: Theme.of(context)

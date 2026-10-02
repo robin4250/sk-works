@@ -55,7 +55,10 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   Future<void> _openMap(String query) async {
     final value = query.trim();
     if (value.isEmpty) return;
-    final uri = Uri.https('maps.apple.com', '/', {'q': value});
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': value,
+    });
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('地図を開けませんでした')),
@@ -109,7 +112,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               shrinkWrap: true,
               children: [
                 const Text('SKOアプリ内で接続済みの会社を選択してください。'),
-                const SizedBox(height: 8),
+                const SizedBox(height: 5),
                 for (final target in targets)
                   CheckboxListTile(
                     value: selected.contains(
@@ -437,24 +440,47 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
         children: [
           if (site.creatorName.isNotEmpty)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: const Text('登録者'),
-              subtitle: Text(site.creatorName),
-              trailing: const Icon(Icons.chevron_right),
+            InkWell(
               onTap: _showCreator,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_outline, size: 17),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '登録者 ',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
+                    Expanded(
+                      child: Text(
+                        site.creatorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, size: 17),
+                  ],
+                ),
+              ),
             ),
           Text(
             site.formalName.isNotEmpty ? site.formalName : site.name,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  height: 1.1,
                 ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           _linkRow(
             icon: Icons.business_outlined,
             label: '取引先',
@@ -493,19 +519,26 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                 ? null
                 : () => _call(site.representativePhone),
           ),
-          if (site.createdAt.isNotEmpty)
-            Text('登録日: ${site.createdAt}'),
-          if (site.updatedAt.isNotEmpty &&
-              site.updatedAt != site.createdAt)
-            Text('最終更新日: ${site.updatedAt}'),
-          const SizedBox(height: 18),
+          if (site.createdAt.isNotEmpty ||
+              (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt))
+            Text(
+              [
+                if (site.createdAt.isNotEmpty) '登録日: ${site.createdAt}',
+                if (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt)
+                  '最終更新日: ${site.updatedAt}',
+              ].join('　'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10),
+            ),
+          const SizedBox(height: 10),
           Text(
             '現場写真',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           if (_loadingPhotos)
             const Center(child: CircularProgressIndicator())
           else
@@ -517,25 +550,34 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                 ],
               ],
             ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: FilledButton.icon(
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
             label: const Text('下請け会社・取引会社に共有'),
+            ),
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 40,
+            child: OutlinedButton.icon(
             onPressed: _edit,
             icon: const Icon(Icons.edit_outlined),
             label: const Text('編集／登録'),
+            ),
           ),
           if (widget.canManage &&
               widget.site.status != SiteStatus.completed) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 40,
+              child: OutlinedButton.icon(
               onPressed: _requestComplete,
               icon: const Icon(Icons.archive_outlined),
               label: const Text('現場終了を承認申請'),
+              ),
             ),
           ],
         ],
@@ -552,7 +594,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       }
     }
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 1.55,
       child: InkWell(
         onTap: photo == null
             ? (widget.canManage ? () => _pickPhoto(slot) : null)
@@ -591,10 +633,21 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   }) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
     return ListTile(
+      dense: true,
+      visualDensity: const VisualDensity(vertical: -4),
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(label),
-      subtitle: Text(value),
+      minLeadingWidth: 24,
+      leading: Icon(icon, size: 18),
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+      ),
       trailing: onTap == null ? null : const Icon(Icons.open_in_new),
       onTap: onTap,
     );
@@ -664,7 +717,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
           _field(_phone, '電話番号',
               keyboardType: TextInputType.phone),
           _field(_notes, '備考', maxLines: 3),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop({
               'name': _name.text.trim(),

@@ -27,6 +27,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   late final TextEditingController _name;
   late final TextEditingController _registration;
   late final TextEditingController _odometer;
+  late final TextEditingController _storageAddress;
 
   _PendingDocument? _registrationDoc;
   _PendingDocument? _compulsoryDoc;
@@ -46,6 +47,9 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
     _odometer = TextEditingController(
       text: _number(row?['odometer_km']),
     );
+    _storageAddress = TextEditingController(
+      text: row?['storage_address']?.toString() ?? '',
+    );
   }
 
   @override
@@ -53,6 +57,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
     _name.dispose();
     _registration.dispose();
     _odometer.dispose();
+    _storageAddress.dispose();
     super.dispose();
   }
 
@@ -197,6 +202,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         name: _name.text,
         registrationNumber: _registration.text,
         odometerKm: odometer,
+        storageAddress: _storageAddress.text,
       );
 
       for (final entry in <(String, _PendingDocument?)>[
@@ -271,6 +277,15 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
             decoration: const InputDecoration(
               labelText: '走行距離',
               suffixText: 'km',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _storageAddress,
+            decoration: const InputDecoration(
+              labelText: '保管場所（駐車場の住所）',
+              hintText: '例：東京都墨田区○○1-2-3',
               border: OutlineInputBorder(),
             ),
           ),

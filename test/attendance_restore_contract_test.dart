@@ -13,14 +13,16 @@ void main() {
 
     expect(page, contains('final isToday = date.year == now.year'));
     expect(page, contains('width: isToday ? 2.5 : 1'));
-    expect(page, contains("'手1'"));
+    expect(page, contains(r"'${name}1'"));
+    expect(page, contains('allowanceCounts'));
     expect(page, contains('if (data.workedDays > 0)'));
     expect(page, contains('if (data.overtimeHours > 0)'));
     expect(page, contains('if (data.earlyHours > 0)'));
     expect(page, contains('if (data.nightHours > 0)'));
     expect(page, contains('day.overtimeHours'));
     expect(page, contains('day.earlyHours'));
-    expect(page, contains("day.allowanceYen > 0 ? '1' : ''"));
-    expect(pdf, contains("day.allowanceYen == 0 ? '' : '1'"));
+    expect(page, contains('day.hasAllowance'));
+    expect(pdf, contains('day.hasAllowance'));
+    expect(pdf, contains('day.allowanceNames'));
   });
 }

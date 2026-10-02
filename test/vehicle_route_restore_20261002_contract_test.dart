@@ -35,17 +35,23 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains("'ルート名'"));
-    expect(page, contains("'現場名'"));
+    expect(page, contains("'登録済み地点から選択'"));
+    expect(page, contains("'現場："));
+    expect(page, contains("'取引会社："));
+    expect(page, contains("'下請け会社："));
+    expect(page, contains("'駐車場："));
     expect(page, contains("'住所'"));
     expect(page, contains("'地点を追加'"));
     expect(page, contains("'備考'"));
     expect(repository, contains("from('route_stops')"));
     expect(repository, contains("'stop_order'"));
+    expect(repository, contains("'source_kind'"));
+    expect(repository, contains("'storage_address'"));
     expect(page, isNot(contains("'運行日（YYYY-MM-DD）'")));
     expect(page, isNot(contains("'運転者'")));
   });
 
-  test('home daily report exposes optional vehicle and route selection', () {
+  test('home daily report separates optional vehicle from workplace route', () {
     final home = File(
       'lib/features/home/friendly_home_content.dart',
     ).readAsStringSync();
@@ -54,13 +60,17 @@ void main() {
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
 
-    expect(home, contains("'車両とルートの選択'"));
+    expect(home, contains("'現場の選択（1現場／複数現場）'"));
+    expect(home, contains("'出勤方法と車両を選択'"));
     expect(home, contains('選択中の車両：'));
     expect(home, contains('選択中のルート：'));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
-    expect(selection, contains("'未選択'"));
-    expect(selection, contains("'車両とルートの選択を解除'"));
-    expect(app, contains("case 'vehicle_route_select':"));
+    expect(selection, contains('enum VehicleRouteSelectionMode { vehicle, route }'));
+    expect(selection, contains('VehicleRouteSelectionMode.vehicle'));
+    expect(selection, contains("'車両を使わない'"));
+    expect(selection, contains("'ルートを使わない'"));
+    expect(app, contains("case 'workplace_select':"));
+    expect(app, contains("case 'attendance_method_vehicle':"));
   });
 
   test('attendance and daily report carry vehicle route and odometer', () {

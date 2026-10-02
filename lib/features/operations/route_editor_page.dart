@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'vehicle_route_repository.dart';
 
@@ -8,10 +9,16 @@ class RouteEditorPage extends StatefulWidget {
   const RouteEditorPage({
     super.key,
     required this.sites,
+    required this.customers,
+    required this.partners,
+    required this.vehicles,
     this.route,
   });
 
   final List<Map<String, dynamic>> sites;
+  final List<Map<String, dynamic>> customers;
+  final List<Map<String, dynamic>> partners;
+  final List<Map<String, dynamic>> vehicles;
   final Map<String, dynamic>? route;
 
   @override
@@ -24,6 +31,44 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   late final TextEditingController _notes;
   late List<_StopDraft> _stops;
   bool _saving = false;
+
+  List<_StopChoice> get _choices {
+    final result = <_StopChoice>[
+      for (final site in widget.sites)
+        _StopChoice(
+          kind: 'site',
+          id: site['id']?.toString() ?? '',
+          label: '現場：${site['name']?.toString() ?? '現場'}',
+          address: site['address']?.toString() ?? '',
+          siteId: site['id']?.toString(),
+          latitude: (site['latitude'] as num?)?.toDouble(),
+          longitude: (site['longitude'] as num?)?.toDouble(),
+        ),
+      for (final customer in widget.customers)
+        _StopChoice(
+          kind: 'customer',
+          id: customer['id']?.toString() ?? '',
+          label: '取引会社：${customer['customer_name']?.toString() ?? '会社'}',
+          address: customer['address']?.toString() ?? '',
+        ),
+      for (final partner in widget.partners)
+        _StopChoice(
+          kind: 'partner',
+          id: partner['id']?.toString() ?? '',
+          label: '下請け会社：${partner['partner_name']?.toString() ?? '会社'}',
+          address: partner['address']?.toString() ?? '',
+        ),
+      for (final vehicle in widget.vehicles)
+        if ((vehicle['storage_address']?.toString().trim() ?? '').isNotEmpty)
+          _StopChoice(
+            kind: 'parking',
+            id: vehicle['id']?.toString() ?? '',
+            label: '駐車場：${vehicle['display_name']?.toString() ?? '車両'}',
+            address: vehicle['storage_address']?.toString() ?? '',
+          ),
+    ];
+    return result.where((choice) => choice.id.isNotEmpty).toList();
+  }
 
   @override
   void initState() {
@@ -39,17 +84,26 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     _stops = raw is List
         ? raw.whereType<Map>().map((row) {
             final site = row['sites'];
+            final siteId = row['site_id']?.toString();
+            final sourceKind = row['source_kind']?.toString();
+            final sourceId = row['source_id']?.toString();
             return _StopDraft(
-              siteId: row['site_id']?.toString(),
+              siteId: siteId,
+              sourceKind: sourceKind ?? (siteId != null ? 'site' : 'address'),
+              sourceId: sourceId ?? siteId,
+              sourceLabel: row['source_label']?.toString() ??
+                  (site is Map ? site['name']?.toString() ?? '' : ''),
               address: row['address']?.toString() ??
                   (site is Map ? site['address']?.toString() ?? '' : ''),
+              latitude: (row['latitude'] as num?)?.toDouble() ??
+                  (site is Map ? (site['latitude'] as num?)?.toDouble() : null),
+              longitude: (row['longitude'] as num?)?.toDouble() ??
+                  (site is Map ? (site['longitude'] as num?)?.toDouble() : null),
             );
           }).toList()
         : <_StopDraft>[];
 
-    if (_stops.isEmpty) {
-      _stops = [_StopDraft()];
-    }
+    if (_stops.isEmpty) _stops = [_StopDraft()];
   }
 
   @override
@@ -62,9 +116,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     super.dispose();
   }
 
-  void _addStop() {
-    setState(() => _stops.add(_StopDraft()));
-  }
+  void _addStop() => setState(() => _stops.add(_StopDraft()));
 
   void _removeStop(int index) {
     if (_stops.length == 1) {
@@ -76,11 +128,21 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     setState(() {});
   }
 
+  String? _selectedKey(_StopDraft stop) {
+    final kind = stop.sourceKind;
+    final id = stop.sourceId;
+    if (kind == null || id == null || id.isEmpty || kind == 'address') {
+      return null;
+    }
+    final key = '$kind:$id';
+    return _choices.any((choice) => choice.key == key) ? key : null;
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     if (repository == null || _saving) return;
 
-    final stops = <Map<String, String?>>[];
+    final stops = <Map<String, Object?>>[];
     for (final stop in _stops) {
       final siteId = stop.siteId?.trim();
       final address = stop.address.text.trim();
@@ -88,13 +150,20 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       stops.add({
         'site_id': siteId,
         'address': address.isEmpty ? null : address,
+        'source_kind': stop.sourceKind ?? 'address',
+        'source_id': stop.sourceId,
+        'source_label': stop.sourceLabel?.trim().isEmpty == true
+            ? null
+            : stop.sourceLabel,
+        'latitude': stop.latitude,
+        'longitude': stop.longitude,
       });
     }
 
     if (_name.text.trim().isEmpty || stops.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('ルート名と、現場または住所を1件以上登録してください'),
+          content: Text('ルート名と地点を1件以上登録してください'),
         ),
       );
       return;
@@ -162,17 +231,13 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           ),
           const SizedBox(height: 16),
           const Text(
-            '現場名の選択 または 住所',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
+            'ルート地点',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 6),
-          const Text('地点は必要な数だけ追加できます。'),
+          const Text('現場・取引会社・下請け会社・駐車場を選ぶか、住所を直接入力できます。'),
           const SizedBox(height: 10),
-          for (var i = 0; i < _stops.length; i++)
-            _stopCard(i, _stops[i]),
+          for (var i = 0; i < _stops.length; i++) _stopCard(i, _stops[i]),
           OutlinedButton.icon(
             onPressed: _saving ? null : _addStop,
             icon: const Icon(Icons.add_location_alt_outlined),
@@ -201,6 +266,31 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     );
   }
 
+  Future<void> _captureStopLocation(_StopDraft stop) async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('位置情報の許可が必要です')),
+      );
+      return;
+    }
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      stop.latitude = position.latitude;
+      stop.longitude = position.longitude;
+    });
+  }
+
   Widget _stopCard(int index, _StopDraft stop) {
     return Card(
       child: Padding(
@@ -216,36 +306,48 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButtonFormField<String?>(
-                    initialValue: stop.siteId,
+                    initialValue: _selectedKey(stop),
+                    isExpanded: true,
                     decoration: const InputDecoration(
-                      labelText: '現場名',
+                      labelText: '登録済み地点から選択',
                       border: OutlineInputBorder(),
                     ),
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('現場を選ばず住所を入力'),
+                        child: Text('住所を直接入力'),
                       ),
-                      for (final site in widget.sites)
+                      for (final choice in _choices)
                         DropdownMenuItem<String?>(
-                          value: site['id']?.toString(),
-                          child: Text(site['name']?.toString() ?? '現場'),
+                          value: choice.key,
+                          child: Text(
+                            choice.label,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                     ],
                     onChanged: _saving
                         ? null
                         : (value) {
                             setState(() {
-                              stop.siteId = value;
-                              if (value != null) {
-                                final site = widget.sites.where(
-                                  (row) => row['id']?.toString() == value,
-                                );
-                                if (site.isNotEmpty) {
-                                  stop.address.text =
-                                      site.first['address']?.toString() ?? '';
-                                }
+                              if (value == null) {
+                                stop.siteId = null;
+                                stop.sourceKind = 'address';
+                                stop.sourceId = null;
+                                stop.sourceLabel = null;
+                                stop.address.clear();
+                                return;
                               }
+                              final choice = _choices.firstWhere(
+                                (item) => item.key == value,
+                              );
+                              stop.siteId = choice.siteId;
+                              stop.sourceKind = choice.kind;
+                              stop.sourceId = choice.id;
+                              stop.sourceLabel = choice.label;
+                              stop.address.text = choice.address;
+                              stop.latitude = choice.latitude;
+                              stop.longitude = choice.longitude;
                             });
                           },
                   ),
@@ -261,11 +363,41 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             TextField(
               controller: stop.address,
               enabled: !_saving,
+              onChanged: (_) {
+                if (_selectedKey(stop) != null) {
+                  setState(() {
+                    stop.siteId = null;
+                    stop.sourceKind = 'address';
+                    stop.sourceId = null;
+                    stop.sourceLabel = null;
+                    stop.latitude = null;
+                    stop.longitude = null;
+                  });
+                }
+              },
               decoration: const InputDecoration(
                 labelText: '住所',
-                hintText: '現場を選ばない場合はこちらを入力',
+                hintText: '選択した地点の住所、または任意住所',
                 border: OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    stop.latitude != null && stop.longitude != null
+                        ? 'GPS基準位置 登録済み'
+                        : 'GPS基準位置 未登録',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : () => _captureStopLocation(stop),
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('現在地を登録'),
+                ),
+              ],
             ),
           ],
         ),
@@ -274,17 +406,54 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   }
 }
 
+class _StopChoice {
+  const _StopChoice({
+    required this.kind,
+    required this.id,
+    required this.label,
+    required this.address,
+    this.siteId,
+    this.latitude,
+    this.longitude,
+  });
+
+  final String kind;
+  final String id;
+  final String label;
+  final String address;
+  final String? siteId;
+  final double? latitude;
+  final double? longitude;
+
+  String get key => '$kind:$id';
+}
+
 class _StopDraft {
   _StopDraft({
     this.siteId,
+    this.sourceKind,
+    this.sourceId,
+    this.sourceLabel,
     String address = '',
+    this.latitude,
+    this.longitude,
   }) : address = TextEditingController(text: address);
 
   String? siteId;
+  String? sourceKind;
+  String? sourceId;
+  String? sourceLabel;
+  double? latitude;
+  double? longitude;
   final TextEditingController address;
 
   void clear() {
     siteId = null;
+    sourceKind = null;
+    sourceId = null;
+    sourceLabel = null;
+    latitude = null;
+    longitude = null;
     address.clear();
   }
 

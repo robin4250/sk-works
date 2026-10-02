@@ -29,6 +29,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.appearance = const HomeAppearance(),
+    this.contentTopInset = 10,
     required this.onOpen,
     required this.onRefresh,
   });
@@ -44,6 +45,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
+  final double contentTopInset;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -65,7 +67,7 @@ class FriendlyHomeContent extends StatelessWidget {
           onRefresh: onRefresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
@@ -293,27 +295,71 @@ class _PersonalAttendanceCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 3),
-            Text(
-              '選択中の現場：${status.siteName?.trim().isNotEmpty == true ? status.siteName : '未選択'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+            if (status.siteName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 3),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onOpen('workplace_select'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '選択中の現場：${status.siteName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             if (vehicleRoutesEnabled &&
                 status.selectedVehicleName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
-              Text(
-                '選択中の車両：${status.selectedVehicleName}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onOpen('attendance_method_vehicle'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '選択中の車両：${status.selectedVehicleName}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
               ),
             ],
             if (vehicleRoutesEnabled &&
                 status.selectedRouteName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
-              Text(
-                '選択中のルート：${status.selectedRouteName}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onOpen('workplace_select'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '選択中のルート：${status.selectedRouteName}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
               ),
             ],
             if (status.clockIn != null || status.clockOut != null) ...[
@@ -329,18 +375,16 @@ class _PersonalAttendanceCard extends StatelessWidget {
             ],
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => onOpen('attendance_verify'),
-              icon: const Icon(Icons.tune_outlined),
-              label: const Text('出勤方法と現場を選択'),
+              onPressed: () => onOpen('workplace_select'),
+              icon: const Icon(Icons.place_outlined),
+              label: const Text('現場の選択（1現場／複数現場）'),
             ),
-            if (vehicleRoutesEnabled) ...[
-              const SizedBox(height: 9),
-              OutlinedButton.icon(
-                onPressed: () => onOpen('vehicle_route_select'),
-                icon: const Icon(Icons.route_outlined),
-                label: const Text('車両とルートの選択'),
-              ),
-            ],
+            const SizedBox(height: 9),
+            OutlinedButton.icon(
+              onPressed: () => onOpen('attendance_method_vehicle'),
+              icon: const Icon(Icons.tune_outlined),
+              label: const Text('出勤方法と車両を選択'),
+            ),
             const SizedBox(height: 9),
             Row(
               children: [
@@ -588,6 +632,7 @@ class _ActionGrid extends StatelessWidget {
           _HomeActionTile(
             item: item,
             compact: columnCount >= 3,
+            fourColumns: columnCount == 4,
             onOpen: onOpen,
           ),
       ],
@@ -600,11 +645,13 @@ class _HomeActionTile extends StatelessWidget {
   const _HomeActionTile({
     required this.item,
     required this.compact,
+    required this.fourColumns,
     required this.onOpen,
   });
 
   final _HomeAction item;
   final bool compact;
+  final bool fourColumns;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -620,18 +667,21 @@ class _HomeActionTile extends StatelessWidget {
     final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
 
     final icon = CircleAvatar(
-      radius: compact ? 16 : 20,
-      child: Icon(item.icon, size: compact ? 18 : 24),
+      radius: fourColumns ? 12 : (compact ? 16 : 20),
+      child: Icon(item.icon, size: fourColumns ? 14 : (compact ? 18 : 24)),
     );
 
     final label = Text(
       item.label,
-      maxLines: compact ? 2 : 1,
+      maxLines: fourColumns ? 1 : (compact ? 2 : 1),
       overflow: TextOverflow.ellipsis,
-      textAlign: compact ? TextAlign.center : TextAlign.start,
+      textAlign: fourColumns
+          ? TextAlign.start
+          : (compact ? TextAlign.center : TextAlign.start),
       style: TextStyle(
         fontWeight: FontWeight.w900,
-        fontSize: compact ? 11 : 14,
+        fontSize: fourColumns ? 8.5 : (compact ? 11 : 14),
+        height: 1.05,
       ),
     );
 
@@ -650,20 +700,33 @@ class _HomeActionTile extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: compact
-              ? Column(
+          child: fourColumns
+              ? Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     icon,
-                    const SizedBox(height: 6),
-                    label,
+                    const SizedBox(width: 3),
+                    Flexible(child: label),
                     if (isProfessional) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(width: 2),
                       const _ProfessionalAccessMark(),
                     ],
                   ],
                 )
-              : Row(
+              : compact
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        icon,
+                        const SizedBox(height: 6),
+                        label,
+                        if (isProfessional) ...[
+                          const SizedBox(height: 4),
+                          const _ProfessionalAccessMark(),
+                        ],
+                      ],
+                    )
+                  : Row(
                   children: [
                     icon,
                     const SizedBox(width: 10),

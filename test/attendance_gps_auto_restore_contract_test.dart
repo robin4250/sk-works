@@ -7,14 +7,23 @@ void main() {
     final page = File(
       'lib/features/attendance/attendance_selection_page.dart',
     ).readAsStringSync();
+    final workplace = File(
+      'lib/features/attendance/work_destination_selection_page.dart',
+    ).readAsStringSync();
     final app = File('lib/app_v2.dart').readAsStringSync();
 
-    expect(page, contains("'出勤方法の選択'"));
-    expect(page, contains("'現場の選択'"));
-    expect(page, contains("'保存してTOPへ戻る'"));
+    expect(page, contains("'出勤方法と車両を選択'"));
+    expect(page, contains("labelText: '出勤方法'"));
+    expect(page, contains("labelText: '車両（任意）'"));
+    expect(page, contains("'確定して保存'"));
     expect(page, contains("mode: _mode"));
-    expect(app, contains("case 'attendance_verify':"));
+    expect(workplace, contains("'現場の選択'"));
+    expect(workplace, contains("labelText: '固定の1現場'"));
+    expect(workplace, contains("labelText: '複数現場のルート'"));
+    expect(app, contains("case 'attendance_method_vehicle':"));
+    expect(app, contains("case 'workplace_select':"));
     expect(app, contains('AttendanceSelectionPage()'));
+    expect(app, contains('WorkDestinationSelectionPage()'));
   });
 
   test('clock-in page follows requested field order and keeps recent confirmations', () {

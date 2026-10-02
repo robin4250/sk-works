@@ -35,7 +35,7 @@ class AttendancePdfService {
           pw.Text(
             '出勤 ${data.workedDays}日 / 残業 ${_number(data.overtimeHours)}時間 / '
             '早出 ${_number(data.earlyHours)}時間 / 夜間 ${_number(data.nightHours)}時間'
-            "${data.allowanceYen > 0 ? ' / 手当 ${_yen(data.allowanceYen)}' : ''}",
+            '${data.allowanceCounts.isEmpty ? '' : ' / ${data.allowanceCounts.entries.map((e) => '${e.key} ${e.value}回').join(' / ')}'}',
           ),
           pw.SizedBox(height: 12),
           pw.TableHelper.fromTextArray(
@@ -50,7 +50,11 @@ class AttendancePdfService {
                   _number(day.overtimeHours),
                   _number(day.earlyHours),
                   _number(day.nightHours),
-                  day.allowanceYen == 0 ? '' : '1',
+                  day.hasAllowance
+                      ? (day.allowanceNames.isEmpty
+                          ? '手当1'
+                          : day.allowanceNames.map((name) => '${name}1').join(' '))
+                      : '',
                 ],
             ],
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
@@ -99,14 +103,4 @@ class AttendancePdfService {
     return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
   }
 
-  static String _yen(int value) {
-    final negative = value < 0;
-    final digits = value.abs().toString();
-    final out = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
-      out.write(digits[i]);
-    }
-    return '${negative ? '-' : ''}¥$out';
-  }
 }

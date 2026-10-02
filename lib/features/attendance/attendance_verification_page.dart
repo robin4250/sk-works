@@ -41,6 +41,7 @@ class _AttendanceVerificationPageState
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
 
   String? _vehicleName;
+  String? _routeId;
   String? _routeName;
 
   bool _loading = true;
@@ -104,8 +105,7 @@ class _AttendanceVerificationPageState
 
       final sites = values[1] as List<Map<String, dynamic>>;
       final selectedSiteId = selection['site_id']?.toString() ??
-          schedule['site_id']?.toString() ??
-          (sites.isEmpty ? null : sites.first['id']?.toString());
+          schedule['site_id']?.toString();
 
       if (!mounted) return;
       setState(() {
@@ -122,6 +122,7 @@ class _AttendanceVerificationPageState
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
         _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
         _vehicleName = status.selectedVehicleName;
+        _routeId = status.selectedRouteId;
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
         _loading = false;
@@ -250,7 +251,7 @@ class _AttendanceVerificationPageState
                     ),
                   ],
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  DropdownButtonFormField<String?>(
                     initialValue: _siteId,
                     decoration: const InputDecoration(
                       labelText: '現場',
@@ -258,8 +259,12 @@ class _AttendanceVerificationPageState
                       border: OutlineInputBorder(),
                     ),
                     items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('未登録（ルートで出勤）'),
+                      ),
                       for (final site in _sites)
-                        DropdownMenuItem(
+                        DropdownMenuItem<String?>(
                           value: site['id']?.toString(),
                           child: Text(site['name']?.toString() ?? '現場'),
                         ),
@@ -316,7 +321,7 @@ class _AttendanceVerificationPageState
                   FilledButton.icon(
                     onPressed: _saving ||
                             _workerId == null ||
-                            _siteId == null
+                            (_siteId == null && _routeId == null)
                         ? null
                         : _confirm,
                     icon: _saving
@@ -445,7 +450,11 @@ class _AttendanceVerificationPageState
     final repository = _repository;
     final workerId = _workerId;
     final siteId = _siteId;
-    if (repository == null || workerId == null || siteId == null) return;
+    if (repository == null ||
+        workerId == null ||
+        (siteId == null && _routeId == null)) {
+      return;
+    }
 
     if (_mode == 'gps_auto') {
       final allowed = await ensureGpsAutoLocationPermission(context);
@@ -478,6 +487,8 @@ class _AttendanceVerificationPageState
           'outside_site' => '現場にいないようなのでGPS自動出勤は出勤を登録しませんでした',
           'site_location_missing' =>
             '現場の基準位置が未登録のためGPS自動出勤を登録しませんでした',
+          'route_location_missing' =>
+            'ルート内の駐車場・経由地にGPS基準位置がないため自動出勤を登録しませんでした',
           'already_recorded' => '本日の出勤はすでに登録されています',
           _ => 'GPS自動出勤の曜日・取得時間を保存しました',
         };
@@ -505,7 +516,9 @@ class _AttendanceVerificationPageState
         final site = _selectedSite;
         final siteLatitude = _asDouble(site?['latitude']);
         final siteLongitude = _asDouble(site?['longitude']);
-        if (siteLatitude == null || siteLongitude == null) {
+        if (siteId == null) {
+          proximityStatus = 'not_checked';
+        } else if (siteLatitude == null || siteLongitude == null) {
           proximityStatus = 'site_location_missing';
         } else {
           distance = Geolocator.distanceBetween(
@@ -595,7 +608,12 @@ class _AttendanceVerificationPageState
 
   String _siteName(Map<String, dynamic> item) {
     final site = item['sites'];
-    return site is Map ? site['name']?.toString() ?? '' : '';
+    final siteName = site is Map ? site['name']?.toString().trim() ?? '' : '';
+    if (siteName.isNotEmpty) return siteName;
+    final route = item['route_assignments'];
+    final routeName =
+        route is Map ? route['route_name']?.toString().trim() ?? '' : '';
+    return routeName.isNotEmpty ? routeName : '勤務先未登録';
   }
 
   String _statusLabel(Map<String, dynamic> item) {

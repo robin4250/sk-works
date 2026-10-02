@@ -19,6 +19,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
   List<Map<String, dynamic>> _vehicles = const [];
   List<Map<String, dynamic>> _routes = const [];
   List<Map<String, dynamic>> _sites = const [];
+  List<Map<String, dynamic>> _customers = const [];
+  List<Map<String, dynamic>> _partners = const [];
   bool _canManageVehicles = false;
   bool _canManageRoutes = false;
   bool _loading = true;
@@ -46,13 +48,18 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         repository.routes(),
         repository.permissions(),
         repository.sites(),
+        repository.routeCompanyDirectories(),
       ]);
       final permissions = values[2] as Map<String, dynamic>;
+      final directories =
+          values[4] as Map<String, List<Map<String, dynamic>>>;
       if (!mounted) return;
       setState(() {
         _vehicles = values[0] as List<Map<String, dynamic>>;
         _routes = values[1] as List<Map<String, dynamic>>;
         _sites = values[3] as List<Map<String, dynamic>>;
+        _customers = directories['customers'] ?? const [];
+        _partners = directories['partners'] ?? const [];
         _canManageVehicles = permissions['can_manage_vehicles'] == true;
         _canManageRoutes = permissions['can_manage_routes'] == true;
         _loading = false;
@@ -102,7 +109,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            '表示名・車両番号・走行距離と、車検証・自賠責保険・任意保険証書を管理します。',
+            '表示名・車両番号・走行距離・保管場所（駐車場住所）と、車検証・自賠責保険・任意保険証書を管理します。',
           ),
           const SizedBox(height: 12),
           if (_canManageVehicles)
@@ -142,6 +149,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                       if ((row['registration_number']?.toString() ?? '').isNotEmpty)
                         '車両番号 ' + row['registration_number'].toString(),
                       '走行距離 ' + _km(row['odometer_km']) + ' km',
+                      if ((row['storage_address']?.toString() ?? '').isNotEmpty)
+                        '駐車場 ' + row['storage_address'].toString(),
                       _documentSummary(row),
                       if (row['is_active'] != true) '休止中',
                     ].join(' / '),
@@ -179,7 +188,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'ルート名と、現場または住所を必要な数だけ順番に登録できます。',
+            'ルート名と、現場・登録車両の駐車場・住所を必要な数だけ順番に登録できます。',
           ),
           const SizedBox(height: 12),
           if (_canManageRoutes)
@@ -265,6 +274,9 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         builder: (_) => RouteEditorPage(
           route: row,
           sites: _sites,
+          customers: _customers,
+          partners: _partners,
+          vehicles: _vehicles,
         ),
       ),
     );
@@ -346,8 +358,11 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
       final site = value['sites'];
       final siteName =
           site is Map ? site['name']?.toString().trim() ?? '' : '';
+      final label = value['source_label']?.toString().trim() ?? '';
       final address = value['address']?.toString().trim() ?? '';
-      if (siteName.isNotEmpty) {
+      if (label.isNotEmpty) {
+        names.add(label);
+      } else if (siteName.isNotEmpty) {
         names.add(siteName);
       } else if (address.isNotEmpty) {
         names.add(address);

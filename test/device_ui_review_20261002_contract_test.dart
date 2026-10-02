@@ -56,7 +56,7 @@ void main() {
 
     expect(app, contains('SkoGlobalScrollChrome'));
     expect(app, contains('SkoScrollChromeController.visible.addListener'));
-    expect(app, contains("height: _chromeVisible ? 80 : 0"));
+    expect(app, contains("height: _chromeVisible ? 88 : 0"));
 
     expect(chrome, contains('NotificationListener<ScrollNotification>'));
     expect(chrome, contains('toolbarHeight: visible ? kToolbarHeight : 0'));

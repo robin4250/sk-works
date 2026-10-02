@@ -10,7 +10,8 @@ void main() {
     expect(source, contains("'本日の勤務報告'"));
     expect(source, contains("onOpen('clock_in')"));
     expect(source, contains("onOpen('clock_out')"));
-    expect(source, contains("onOpen('attendance_verify')"));
+    expect(source, contains("onOpen('workplace_select')"));
+    expect(source, contains("onOpen('attendance_method_vehicle')"));
     expect(source, contains("'選択中の出勤方法："));
     expect(source, contains("'選択中の現場："));
 

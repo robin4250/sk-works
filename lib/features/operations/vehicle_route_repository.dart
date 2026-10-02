@@ -37,7 +37,7 @@ class VehicleRouteRepository {
 
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false}) async {
     var query = _client.from('vehicles').select(
-      'id,display_name,registration_number,odometer_km,'
+      'id,display_name,registration_number,odometer_km,storage_address,'
       'registration_document_path,compulsory_insurance_path,'
       'voluntary_insurance_path,notes,is_active,created_at,updated_at',
     );
@@ -51,7 +51,7 @@ class VehicleRouteRepository {
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     var query = _client.from('route_assignments').select(
       'id,route_name,notes,is_active,created_at,updated_at,'
-      'route_stops(id,stop_order,site_id,address,sites(name,address))',
+      'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,latitude,longitude,sites(name,address,latitude,longitude))',
     );
     if (activeOnly) query = query.eq('is_active', true);
     final rows = await query
@@ -69,10 +69,32 @@ class VehicleRouteRepository {
   Future<List<Map<String, dynamic>>> sites() async {
     final rows = await _client
         .from('sites')
-        .select('id,name,address,status')
+        .select('id,name,address,latitude,longitude,status')
         .neq('status', 'completed')
         .order('name');
     return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>>
+      routeCompanyDirectories() async {
+    final raw = await _client.rpc('site_map_workspace');
+    final value = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+
+    List<Map<String, dynamic>> rows(String key) {
+      final source = value[key];
+      if (source is! List) return const [];
+      return source
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+
+    return {
+      'customers': rows('customers'),
+      'partners': rows('partners'),
+    };
   }
 
   Future<String> saveVehicle({
@@ -80,6 +102,7 @@ class VehicleRouteRepository {
     required String name,
     required String registrationNumber,
     required double odometerKm,
+    required String storageAddress,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
@@ -89,6 +112,7 @@ class VehicleRouteRepository {
       'display_name': name.trim(),
       'registration_number': _nullable(registrationNumber),
       'odometer_km': odometerKm,
+      'storage_address': _nullable(storageAddress),
       'updated_by': user.id,
     };
 
@@ -185,7 +209,7 @@ class VehicleRouteRepository {
     String? id,
     required String name,
     required String notes,
-    required List<Map<String, String?>> stops,
+    required List<Map<String, Object?>> stops,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
@@ -225,6 +249,11 @@ class VehicleRouteRepository {
             'stop_order': i,
             'site_id': _nullable(stops[i]['site_id']),
             'address': _nullable(stops[i]['address']),
+            'source_kind': _nullable(stops[i]['source_kind']),
+            'source_id': _nullable(stops[i]['source_id']),
+            'source_label': _nullable(stops[i]['source_label']),
+            'latitude': stops[i]['latitude'],
+            'longitude': stops[i]['longitude'],
             'created_by': user.id,
             'updated_by': user.id,
           },
@@ -262,27 +291,73 @@ class VehicleRouteRepository {
     return row == null ? const {} : Map<String, dynamic>.from(row);
   }
 
-  Future<void> saveTodaySelection({
-    String? vehicleId,
-    String? routeId,
-  }) async {
+  Future<void> saveTodayVehicleSelection(String? vehicleId) async {
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
     if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+    final workDate = _date(DateTime.now());
 
+    final current = await loadTodaySelection();
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
         'worker_id': workerId,
-        'work_date': _date(DateTime.now()),
+        'work_date': workDate,
         'vehicle_id': _nullable(vehicleId),
+        'route_assignment_id': current['route_assignment_id'],
+        'updated_by': _client.auth.currentUser?.id,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'company_id,worker_id,work_date',
+    );
+  }
+
+  Future<void> saveTodayRouteSelection(String? routeId) async {
+    final companyId = await _membership();
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+    final workDate = _date(DateTime.now());
+
+    final current = await loadTodaySelection();
+    await _client.from('work_vehicle_route_selections').upsert(
+      {
+        'company_id': companyId,
+        'worker_id': workerId,
+        'work_date': workDate,
+        'vehicle_id': current['vehicle_id'],
         'route_assignment_id': _nullable(routeId),
         'updated_by': _client.auth.currentUser?.id,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       onConflict: 'company_id,worker_id,work_date',
     );
+
+    if (routeId != null && routeId.trim().isNotEmpty) {
+      final currentAttendance = await _client
+          .from('work_attendance_selections')
+          .select('verification_mode')
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('work_date', workDate)
+          .maybeSingle();
+      final mode =
+          currentAttendance?['verification_mode']?.toString() ?? 'manual';
+      await _client.from('work_attendance_selections').upsert(
+        {
+          'company_id': companyId,
+          'worker_id': workerId,
+          'work_date': workDate,
+          'verification_mode': mode,
+          'site_id': null,
+          'route_assignment_id': routeId,
+          'updated_by': _client.auth.currentUser?.id,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'company_id,worker_id,work_date',
+      );
+    }
   }
 
   Future<void> updateOdometer({

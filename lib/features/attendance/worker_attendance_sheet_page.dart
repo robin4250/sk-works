@@ -314,9 +314,15 @@ class _AttendanceDayCard extends StatelessWidget {
 
     return Opacity(
       opacity: faded ? 0.42 : 1,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: InkWell(
           onTap: onTap,
           child: Padding(
             padding: EdgeInsets.zero,
@@ -445,6 +451,7 @@ class _AttendanceDayCard extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -459,8 +466,13 @@ class _AttendanceDayCard extends StatelessWidget {
     if (day.nightHours > 0) {
       tags.add(_MiniTag('夜${_number(day.nightHours)}'));
     }
-    if (day.allowanceYen > 0) {
-      tags.add(const _MiniTag('手1'));
+    if (day.hasAllowance) {
+      final names = day.allowanceNames.isEmpty
+          ? const <String>['手当']
+          : day.allowanceNames;
+      for (final name in names) {
+        tags.add(_MiniTag('${name}1'));
+      }
     }
     return tags;
   }
@@ -812,10 +824,17 @@ class _MonthCalendarCell extends StatelessWidget {
                     : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            if ((day?.allowanceYen ?? 0) > 0)
-              const Text(
-                '手1',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900),
+            if (day?.hasAllowance == true)
+              Text(
+                (day!.allowanceNames.isEmpty
+                        ? const <String>['手当']
+                        : day!.allowanceNames)
+                    .map((name) => '${name}1')
+                    .join(' '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900),
               )
             else
               const SizedBox(height: 10),
@@ -859,10 +878,10 @@ class _MonthlySummary extends StatelessWidget {
                 label: '夜間',
                 value: '${_number(data.nightHours)}時間',
               ),
-            if (data.allowanceYen > 0)
+            for (final entry in data.allowanceCounts.entries)
               _SummaryPill(
-                label: '手当',
-                value: '¥${data.allowanceYen}',
+                label: entry.key,
+                value: '${entry.value}回',
               ),
           ],
         ),
@@ -955,6 +974,8 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                               Text('早出 ${_number(data.earlyHours)}時間'),
                             if (data.nightHours > 0)
                               Text('夜間 ${_number(data.nightHours)}時間'),
+                            for (final entry in data.allowanceCounts.entries)
+                              Text('${entry.key} ${entry.value}回'),
                           ],
                         ),
                         const Divider(height: 20),
@@ -973,7 +994,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                     '残${_number(day.overtimeHours)}  '
                                     '早${_number(day.earlyHours)}  '
                                     '夜${_number(day.nightHours)}  '
-                                    '手${day.allowanceYen > 0 ? '1' : ''}',
+                                    '${day.hasAllowance ? (day.allowanceNames.isEmpty ? '手当1' : day.allowanceNames.map((name) => '${name}1').join(' ')) : ''}',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),

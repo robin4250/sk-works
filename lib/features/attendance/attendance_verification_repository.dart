@@ -94,19 +94,96 @@ class AttendanceVerificationRepository {
 
   Future<void> saveAttendanceSelection({
     required String mode,
-    required String siteId,
+    String? siteId,
     List<int>? weekdays,
     String? localTime,
   }) async {
-    await _client.rpc(
-      'save_my_attendance_selection',
-      params: {
-        'p_mode': mode,
-        'p_site_id': siteId,
-        'p_weekdays': weekdays,
-        'p_local_time': localTime,
-        'p_timezone': 'Asia/Tokyo',
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+
+    final companyId = await _companyId();
+    final workDate = DateTime.now().year.toString().padLeft(4, '0') +
+        '-' +
+        DateTime.now().month.toString().padLeft(2, '0') +
+        '-' +
+        DateTime.now().day.toString().padLeft(2, '0');
+
+    if (siteId != null && siteId.trim().isNotEmpty) {
+      await _client
+          .from('work_attendance_selections')
+          .update({
+            'route_assignment_id': null,
+            'updated_by': _client.auth.currentUser?.id,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('work_date', workDate);
+
+      await _client.rpc(
+        'save_my_attendance_selection',
+        params: {
+          'p_mode': mode,
+          'p_site_id': siteId,
+          'p_weekdays': weekdays,
+          'p_local_time': localTime,
+          'p_timezone': 'Asia/Tokyo',
+        },
+      );
+
+      await _client
+          .from('work_vehicle_route_selections')
+          .update({
+            'route_assignment_id': null,
+            'updated_by': _client.auth.currentUser?.id,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('work_date', workDate);
+      return;
+    }
+
+    final routeRow = await _client
+        .from('work_vehicle_route_selections')
+        .select('route_assignment_id')
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq('work_date', workDate)
+        .maybeSingle();
+    final routeId = routeRow?['route_assignment_id']?.toString();
+
+    if (routeId != null && routeId.isNotEmpty) {
+      await _client.rpc(
+        'save_my_route_attendance_selection',
+        params: {
+          'p_mode': mode,
+          'p_route_assignment_id': routeId,
+          'p_weekdays': weekdays,
+          'p_local_time': localTime,
+          'p_timezone': 'Asia/Tokyo',
+        },
+      );
+      return;
+    }
+
+    if (mode == 'gps_auto') {
+      throw StateError('GPS自動出勤は現場またはルートの選択が必要です。');
+    }
+
+    await _client.from('work_attendance_selections').upsert(
+      {
+        'company_id': companyId,
+        'worker_id': workerId,
+        'work_date': workDate,
+        'verification_mode': mode,
+        'site_id': null,
+        'route_assignment_id': null,
+        'updated_by': _client.auth.currentUser?.id,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
+      onConflict: 'company_id,worker_id,work_date',
     );
   }
 
@@ -332,7 +409,8 @@ class AttendanceVerificationRepository {
         .from('attendance_verifications')
         .select(
           'id, event_type, verification_mode, confirmed_at, '
-          'proximity_status, distance_to_site_m, workers(name), sites(name)',
+          'proximity_status, distance_to_site_m, workers(name), '
+          'sites(name), route_assignments(route_name)',
         )
         .eq('company_id', companyId)
         .order('confirmed_at', ascending: false)
@@ -342,7 +420,7 @@ class AttendanceVerificationRepository {
 
   Future<Map<String, dynamic>> createVerification({
     required String workerId,
-    required String siteId,
+    String? siteId,
     required String eventType,
     required String verificationMode,
     double? latitude,
@@ -355,20 +433,6 @@ class AttendanceVerificationRepository {
     String? note,
   }) async {
     final companyId = await _companyId();
-    String? storagePath;
-
-    if (photoBytes != null) {
-      final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
-      final objectName =
-          '${DateTime.now().microsecondsSinceEpoch}$extension';
-      storagePath =
-          '$companyId/attendance/$siteId/$workerId/$objectName';
-      await _client.storage.from(_bucket).uploadBinary(
-            storagePath,
-            photoBytes,
-            fileOptions: const FileOptions(upsert: false),
-          );
-    }
 
     Map<String, dynamic>? selection;
     try {
@@ -391,13 +455,34 @@ class AttendanceVerificationRepository {
       selection = null;
     }
 
+    final routeId = selection?['route_assignment_id']?.toString();
+    if ((siteId == null || siteId.trim().isEmpty) &&
+        (routeId == null || routeId.trim().isEmpty)) {
+      throw StateError('現場またはルートを選択してください。');
+    }
+
+    String? storagePath;
+
+    if (photoBytes != null) {
+      final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
+      final objectName =
+          '${DateTime.now().microsecondsSinceEpoch}$extension';
+      storagePath =
+          '$companyId/attendance/${siteId ?? routeId ?? 'route'}/$workerId/$objectName';
+      await _client.storage.from(_bucket).uploadBinary(
+            storagePath,
+            photoBytes,
+            fileOptions: const FileOptions(upsert: false),
+          );
+    }
+
     try {
       final row = await _client
           .from('attendance_verifications')
           .insert({
             'company_id': companyId,
             'worker_id': workerId,
-            'site_id': siteId,
+            'site_id': _nullable(siteId),
             'event_type': eventType,
             'verification_mode': verificationMode,
             'latitude': latitude,
