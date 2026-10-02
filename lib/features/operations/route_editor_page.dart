@@ -370,6 +370,8 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
                     stop.sourceKind = 'address';
                     stop.sourceId = null;
                     stop.sourceLabel = null;
+                    stop.latitude = null;
+                    stop.longitude = null;
                   });
                 }
               },
