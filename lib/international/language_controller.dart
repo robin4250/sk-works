@@ -13,6 +13,8 @@ class SkoLanguageController {
   static final ValueNotifier<LanguagePack> pack =
       ValueNotifier<LanguagePack>(LanguagePackRegistry.resolve('ja'));
 
+  static bool _hasLocalPreference = false;
+
   static String get languageCode => pack.value.languageCode;
   static bool get isEnglish => languageCode == 'en';
 
@@ -21,11 +23,12 @@ class SkoLanguageController {
   static Future<void> loadLocal() async {
     final prefs = await SharedPreferences.getInstance();
     final code = prefs.getString(_prefKey);
+    _hasLocalPreference = code != null && code.trim().isNotEmpty;
     pack.value = LanguagePackRegistry.resolve(code);
   }
 
   static Future<void> syncFromCloud() async {
-    if (!SupabaseBackend.isInitialized) return;
+    if (_hasLocalPreference || !SupabaseBackend.isInitialized) return;
     final user = SupabaseBackend.client.auth.currentUser;
     if (user == null) return;
 
@@ -85,6 +88,7 @@ class SkoLanguageController {
     final resolved = LanguagePackRegistry.resolve(code);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, resolved.languageCode);
+    _hasLocalPreference = true;
     if (pack.value.languageCode != resolved.languageCode) {
       pack.value = resolved;
     }
