@@ -198,52 +198,6 @@ class DailyReportPdfService {
     return document.save();
   }
 
-  static pw.Widget _cell(String text, {double? height}) => pw.Container(
-        height: height,
-        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-        alignment: pw.Alignment.centerLeft,
-        child: pw.Text(text, style: const pw.TextStyle(fontSize: 9.5)),
-      );
-
-  static pw.Widget _signatureBox({
-    required String label,
-    required String signerName,
-    required Object? signatureJson,
-  }) {
-    final svg = signatureSvg(signatureJson);
-    return pw.Container(
-      height: 92,
-      padding: const pw.EdgeInsets.all(6),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Text(
-            '$label  $signerName',
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-          ),
-          pw.SizedBox(height: 4),
-          if (svg != null)
-            pw.Expanded(child: pw.SvgImage(svg: svg))
-          else
-            pw.Expanded(
-              child: pw.Center(
-                child: pw.Text(
-                  '未サイン',
-                  style: const pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   static Future<bool> printReport({
     required DateTime date,
     required String siteName,
