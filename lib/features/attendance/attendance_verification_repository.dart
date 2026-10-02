@@ -22,6 +22,8 @@ class HomeAttendanceStatus {
     this.selectedVehicleName,
     this.selectedRouteId,
     this.selectedRouteName,
+    this.gpsWeekdays = const [],
+    this.gpsTime,
     this.phase = HomeAttendancePhase.notStarted,
   });
 
@@ -33,10 +35,12 @@ class HomeAttendanceStatus {
   final String? selectedVehicleName;
   final String? selectedRouteId;
   final String? selectedRouteName;
+  final List<int> gpsWeekdays;
+  final String? gpsTime;
   final HomeAttendancePhase phase;
 
   String get verificationModeLabel => switch (verificationMode) {
-        'location' => '位置情報',
+        'location' || 'gps_auto' => 'GPS自動出勤',
         'location_photo' => '位置情報＋写真',
         'photo' => '写真',
         _ => '手動',
@@ -81,6 +85,49 @@ class AttendanceVerificationRepository {
     return permissions['can_manage_attendance'] == true;
   }
 
+  Future<Map<String, dynamic>> loadAttendanceSelectionWorkspace() async {
+    final raw = await _client.rpc('my_attendance_selection_workspace');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> saveAttendanceSelection({
+    required String mode,
+    required String siteId,
+    List<int>? weekdays,
+    String? localTime,
+  }) async {
+    await _client.rpc(
+      'save_my_attendance_selection',
+      params: {
+        'p_mode': mode,
+        'p_site_id': siteId,
+        'p_weekdays': weekdays,
+        'p_local_time': localTime,
+        'p_timezone': 'Asia/Tokyo',
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> attemptGpsAutoAttendance({
+    required double latitude,
+    required double longitude,
+    required double accuracyM,
+  }) async {
+    final raw = await _client.rpc(
+      'attempt_gps_auto_attendance',
+      params: {
+        'p_latitude': latitude,
+        'p_longitude': longitude,
+        'p_accuracy_m': accuracyM,
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
   Future<Map<String, dynamic>> loadSettings() async {
     final companyId = await _companyId();
     final row = await _client
@@ -100,7 +147,13 @@ class AttendanceVerificationRepository {
 
   Future<HomeAttendanceStatus> loadHomeAttendanceStatus() async {
     final settings = await loadSettings();
-    final configuredMode = settings['mode']?.toString() ?? 'manual';
+    final workspace = await loadAttendanceSelectionWorkspace();
+    final dailySelection = workspace['selection'] is Map
+        ? Map<String, dynamic>.from(workspace['selection'] as Map)
+        : const <String, dynamic>{};
+    final gpsSchedule = workspace['gps_schedule'] is Map
+        ? Map<String, dynamic>.from(workspace['gps_schedule'] as Map)
+        : const <String, dynamic>{};
 
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString();
@@ -109,6 +162,19 @@ class AttendanceVerificationRepository {
     }
 
     final now = DateTime.now();
+    final scheduleWeekdays = gpsSchedule['weekdays'] is List
+        ? (gpsSchedule['weekdays'] as List)
+            .map((value) => (value as num).toInt())
+            .toList(growable: false)
+        : const <int>[];
+    final scheduledToday =
+        gpsSchedule['enabled'] == true && scheduleWeekdays.contains(now.weekday);
+    final configuredMode = dailySelection['mode']?.toString() ??
+        (scheduledToday
+            ? 'gps_auto'
+            : (settings['mode']?.toString() == 'location'
+                ? 'gps_auto'
+                : settings['mode']?.toString() ?? 'manual'));
     final workDate =
         now.year.toString().padLeft(4, '0') +
         '-' +
@@ -139,7 +205,10 @@ class AttendanceVerificationRepository {
 
     DateTime? clockIn;
     DateTime? clockOut;
-    String? siteName;
+    String? siteName = dailySelection['site_name']?.toString();
+    if ((siteName ?? '').isEmpty && scheduledToday) {
+      siteName = gpsSchedule['site_name']?.toString();
+    }
     String? latestEventType;
 
     for (final raw in rows) {
@@ -179,6 +248,8 @@ class AttendanceVerificationRepository {
       selectedRouteId: selection?['route_assignment_id']?.toString(),
       selectedRouteName:
           selectedRoute is Map ? selectedRoute['route_name']?.toString() : null,
+      gpsWeekdays: scheduleWeekdays,
+      gpsTime: gpsSchedule['local_time']?.toString(),
       phase: phase,
     );
   }
@@ -202,17 +273,6 @@ class AttendanceVerificationRepository {
 
   Future<List<Map<String, dynamic>>> loadWorkers() async {
     final companyId = await _companyId();
-
-    if (await canManageAttendance()) {
-      final rows = await _client
-          .from('workers')
-          .select('id, name')
-          .eq('company_id', companyId)
-          .eq('status', 'active')
-          .order('name');
-      return List<Map<String, dynamic>>.from(rows);
-    }
-
     final workerId = await _client.rpc('ensure_current_user_worker');
     final id = workerId?.toString();
     if (id == null || id.isEmpty) return const [];
