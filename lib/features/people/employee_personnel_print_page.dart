@@ -139,9 +139,6 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
                       }
                     : () => Printing.layoutPdf(
                           onLayout: (_) => _buildPdf(),
-                          name: records.length == 1
-                              ? '社員データ.pdf'
-                              : '社員一覧.pdf',
                         ),
                 icon: Icon(
                   _isSend ? Icons.send_outlined : Icons.print_outlined,
