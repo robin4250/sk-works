@@ -299,7 +299,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('attendance_selection'),
+                onTap: () => onOpen('attendance_verify'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -321,17 +321,45 @@ class _PersonalAttendanceCard extends StatelessWidget {
             if (vehicleRoutesEnabled &&
                 status.selectedVehicleName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
-              Text(
-                '選択中の車両：${status.selectedVehicleName}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onOpen('vehicle_route_select'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '選択中の車両：${status.selectedVehicleName}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
               ),
             ],
             if (vehicleRoutesEnabled &&
                 status.selectedRouteName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
-              Text(
-                '選択中のルート：${status.selectedRouteName}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onOpen('vehicle_route_select'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '選択中のルート：${status.selectedRouteName}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, size: 18),
+                    ],
+                  ),
+                ),
               ),
             ],
             if (status.clockIn != null || status.clockOut != null) ...[
