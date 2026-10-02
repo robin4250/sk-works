@@ -11,10 +11,10 @@ class HomeAppearance {
   const HomeAppearance({
     this.wallpaperPath,
     this.wallpaperOpacity = 1,
-    this.buttonOpacity = 1,
-    this.cardOpacity = 1,
-    this.headerOpacity = 1,
-    this.footerOpacity = 1,
+    this.buttonOpacity = 0.6,
+    this.cardOpacity = 0.6,
+    this.headerOpacity = 0.6,
+    this.footerOpacity = 0.6,
   });
 
   final String? wallpaperPath;
@@ -62,7 +62,11 @@ class HomeAppearanceRepository {
     final prefs = await SharedPreferences.getInstance();
     return HomeAppearance(
       wallpaperPath: prefs.getString(_key('wallpaper_path')),
-      wallpaperOpacity: _read(prefs, 'wallpaper_opacity'),
+      wallpaperOpacity: _read(
+        prefs,
+        'wallpaper_opacity',
+        fallback: 1,
+      ),
       buttonOpacity: _read(prefs, 'button_opacity'),
       cardOpacity: _read(prefs, 'card_opacity'),
       headerOpacity: _read(prefs, 'header_opacity'),
@@ -84,8 +88,14 @@ class HomeAppearanceRepository {
     await prefs.setDouble(_key('footer_opacity'), value.footerOpacity);
   }
 
-  static double _read(SharedPreferences prefs, String key) {
-    return HomeAppearance.normalize(prefs.getDouble(_key(key)) ?? 1);
+  static double _read(
+    SharedPreferences prefs,
+    String key, {
+    double fallback = 0.6,
+  }) {
+    return HomeAppearance.normalize(
+      prefs.getDouble(_key(key)) ?? fallback,
+    );
   }
 
   static Future<String?> storeWallpaper(XFile image) async {
