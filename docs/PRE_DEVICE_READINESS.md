@@ -13,9 +13,11 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Bundle ID is checked as `com.robin4250.sko`.
 - iPhone UI is portrait-only.
 - Face ID, camera, photo library, and when-in-use location permission strings are CI-checked.
-- Always/background location permission is stripped and forbidden by CI.
+- GPS自動出勤を使わない通常運用では、位置情報は操作時のみ取得します。
+- GPS自動出勤を有効にした場合だけ「常に許可」と Background Location を使い、指定曜日・指定時刻の前後で現場到着判定を行います。
+- GPS自動出勤を無効化するとバックグラウンド位置取得サービスも停止します。
+- 位置情報＋写真はGPS自動出勤と別機能で、出勤/退勤確定時にだけ現在地を1回取得します。
 - Broad ATS bypasses are stripped and forbidden.
-- GPS is action-only; continuous tracking is contract-tested.
 - Camera cancellation must not create attendance.
 - Secondary authentication is role-specific: general users and sub-admins use it for payroll statements; admins use it for invoices and admin-only site financial data.
 - Required documents and qualification certificates do not require the secondary password.
@@ -91,7 +93,7 @@ These cannot be proven by repository or cloud CI alone:
 9. Real SMS delivery for registration, phone change, and primary-password recovery.
 10. Real Face ID success/cancel/failure behavior.
 11. Real camera/photo-picker behavior.
-12. Real location permission and GPS accuracy.
+12. Real location permission and GPS accuracy, including GPS自動出勤の「常に許可」、背景取得、指定時刻±5分の現場内/現場外判定。
 13. Real AirPrint sheet.
 14. Real Files/Mail share-sheet destinations.
 15. Final visual/touch review on the user's exact iPhone.
