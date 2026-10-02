@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
+import 'personnel_family_member.dart';
 
 class EmployeePersonnelEditPage extends StatefulWidget {
   const EmployeePersonnelEditPage({
@@ -28,6 +29,8 @@ class _EmployeePersonnelEditPageState
   late final TextEditingController _emergencyRelation;
   late final TextEditingController _emergencyPhone;
   late final TextEditingController _emergencyAddress;
+  late final TextEditingController _familyComposition;
+  late List<EditableFamilyMember> _familyMembers;
   late String _bloodType;
   bool _saving = false;
 
@@ -44,6 +47,11 @@ class _EmployeePersonnelEditPageState
         TextEditingController(text: record.emergencyRelation);
     _emergencyPhone = TextEditingController(text: record.emergencyPhone);
     _emergencyAddress = TextEditingController(text: record.emergencyAddress);
+    _familyComposition =
+        TextEditingController(text: record.familyComposition);
+    _familyMembers = record.familyMembers
+        .map(EditableFamilyMember.fromValue)
+        .toList();
     _bloodType = record.bloodType;
   }
 
@@ -58,6 +66,7 @@ class _EmployeePersonnelEditPageState
       _emergencyRelation,
       _emergencyPhone,
       _emergencyAddress,
+      _familyComposition,
     ]) {
       controller.dispose();
     }
@@ -108,6 +117,10 @@ class _EmployeePersonnelEditPageState
         'emergencyRelation': _emergencyRelation.text.trim(),
         'emergencyPhone': _emergencyPhone.text.trim(),
         'emergencyAddress': _emergencyAddress.text.trim(),
+        'familyComposition': _familyComposition.text.trim(),
+        'familyMembers': [
+          for (final member in _familyMembers) member.toValue().toJson(),
+        ],
       });
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
@@ -189,6 +202,32 @@ class _EmployeePersonnelEditPageState
           ),
           const SizedBox(height: 10),
           _field(_emergencyAddress, '住所'),
+          const SizedBox(height: 20),
+          const Text(
+            '家族・扶養情報',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '社員一覧には表示しません。社会保険等の手続き用の個別情報です。',
+          ),
+          const SizedBox(height: 10),
+          _field(_familyComposition, '家族構成'),
+          const SizedBox(height: 10),
+          for (var i = 0; i < _familyMembers.length; i++)
+            _familyMemberCard(i),
+          OutlinedButton.icon(
+            onPressed: _saving
+                ? null
+                : () => setState(
+                      () => _familyMembers.add(EditableFamilyMember()),
+                    ),
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('配偶者・子供・扶養家族を追加'),
+          ),
           const SizedBox(height: 18),
           FilledButton.icon(
             onPressed: _saving ? null : _save,
@@ -196,6 +235,94 @@ class _EmployeePersonnelEditPageState
             label: Text(_saving ? '送信中…' : '変更申請を送る'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _familyMemberCard(int index) {
+    final member = _familyMembers[index];
+    final birth = member.birthDate;
+    final age = member.toValue().ageOn();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: member.name,
+                    enabled: !_saving,
+                    decoration: const InputDecoration(
+                      labelText: '氏名',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => member.name = value,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '家族情報を削除',
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _familyMembers.removeAt(index)),
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              initialValue: member.relation,
+              enabled: !_saving,
+              decoration: const InputDecoration(
+                labelText: '続柄（夫・妻・子・扶養家族など）',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) => member.relation = value,
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cake_outlined),
+              title: const Text('誕生日'),
+              subtitle: Text(
+                birth == null
+                    ? '未登録'
+                    : birth.year.toString() +
+                        '/' +
+                        birth.month.toString().padLeft(2, '0') +
+                        '/' +
+                        birth.day.toString().padLeft(2, '0') +
+                        (age == null ? '' : '　現在 ' + age.toString() + '歳'),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _saving
+                  ? null
+                  : () async {
+                      final now = DateTime.now();
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate: birth ?? DateTime(now.year - 30),
+                        firstDate: DateTime(1900),
+                        lastDate: now,
+                      );
+                      if (selected == null || !mounted) return;
+                      setState(() => member.birthDate = selected);
+                    },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('扶養家族として登録'),
+              subtitle: const Text('社会保険等で扶養対象として扱う場合にON'),
+              value: member.isDependent,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() => member.isDependent = value),
+            ),
+          ],
+        ),
       ),
     );
   }
