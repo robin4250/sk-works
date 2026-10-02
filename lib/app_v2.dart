@@ -456,7 +456,7 @@ class _HomePageState extends State<HomePage> {
       'notes' => 'notes',
       'albums' => 'albums',
       'today_line' || 'line_history' => 'line_bridge',
-      'vehicle_routes' || 'vehicle_route_select' => 'vehicle_routes',
+      'vehicle_routes' || 'vehicle_select' || 'route_select' => 'vehicle_routes',
       _ => null,
     };
     if (requiredModule != null && !_moduleEnabled(requiredModule)) {
@@ -553,8 +553,15 @@ class _HomePageState extends State<HomePage> {
       case 'daily_report':
         page = const DailyReportPage();
         break;
-      case 'vehicle_route_select':
-        page = const VehicleRouteSelectionPage();
+      case 'vehicle_select':
+        page = const VehicleRouteSelectionPage(
+          kind: VehicleRouteSelectionKind.vehicle,
+        );
+        break;
+      case 'route_select':
+        page = const VehicleRouteSelectionPage(
+          kind: VehicleRouteSelectionKind.route,
+        );
         break;
       case 'employee_register':
         page = EmployeeInvitePage(
@@ -662,7 +669,8 @@ class _HomePageState extends State<HomePage> {
     if (key == 'clock_in' ||
         key == 'clock_out' ||
         key == 'attendance_verify' ||
-        key == 'vehicle_route_select') {
+        key == 'vehicle_select' ||
+        key == 'route_select') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings') {
