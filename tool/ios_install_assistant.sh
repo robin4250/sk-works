@@ -104,7 +104,12 @@ fi
 
 if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
   bundle_id="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/' | grep -v '\$(' | grep -v '\.RunnerTests$' | head -n 1 || true)"
-  [[ -n "$bundle_id" ]] && ok "Bundle Identifier: $bundle_id" || warn "Bundle Identifierを確認できませんでした"
+  expected_bundle_id="com.skworks.skWorks"
+  if [[ "$bundle_id" == "$expected_bundle_id" ]]; then
+    ok "Bundle Identifier: $bundle_id"
+  else
+    fail "Bundle Identifierが不正です: ${bundle_id:-unknown}（必須: $expected_bundle_id）"
+  fi
 
   team_id="$(grep 'DEVELOPMENT_TEAM = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*DEVELOPMENT_TEAM = ([^;]*);.*/\1/' | grep -v '^$' | head -n 1 || true)"
   if [[ -n "$team_id" ]]; then
