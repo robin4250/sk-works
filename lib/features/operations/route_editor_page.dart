@@ -48,15 +48,14 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         _StopChoice(
           kind: 'customer',
           id: customer['id']?.toString() ?? '',
-          label:
-              '取引会社：${(customer['billing_name']?.toString().trim().isNotEmpty ?? false) ? customer['billing_name'] : customer['name']}',
-          address: customer['billing_address']?.toString() ?? '',
+          label: '取引会社：${customer['customer_name']?.toString() ?? '会社'}',
+          address: customer['address']?.toString() ?? '',
         ),
       for (final partner in widget.partners)
         _StopChoice(
           kind: 'partner',
           id: partner['id']?.toString() ?? '',
-          label: '下請け会社：${partner['name']?.toString() ?? '会社'}',
+          label: '下請け会社：${partner['partner_name']?.toString() ?? '会社'}',
           address: partner['address']?.toString() ?? '',
         ),
       for (final vehicle in widget.vehicles)
