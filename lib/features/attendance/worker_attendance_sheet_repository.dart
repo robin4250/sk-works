@@ -12,6 +12,7 @@ class WorkerAttendanceDay {
     this.earlyHours = 0,
     this.nightHours = 0,
     this.allowanceYen = 0,
+    this.allowanceNames = const <String>[],
   });
 
   final DateTime date;
@@ -22,6 +23,9 @@ class WorkerAttendanceDay {
   final double earlyHours;
   final double nightHours;
   final int allowanceYen;
+  final List<String> allowanceNames;
+
+  bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
 
   bool get worked =>
       (siteName?.trim().isNotEmpty ?? false) || clockIn != null || clockOut != null;
@@ -51,6 +55,21 @@ class WorkerAttendanceMonth {
 
   int get allowanceYen =>
       days.values.fold(0, (sum, day) => sum + day.allowanceYen);
+
+  Map<String, int> get allowanceCounts {
+    final counts = <String, int>{};
+    for (final day in days.values) {
+      final names = day.allowanceNames.isEmpty && day.allowanceYen > 0
+          ? const <String>['手当']
+          : day.allowanceNames;
+      for (final raw in names) {
+        final name = raw.trim();
+        if (name.isEmpty) continue;
+        counts[name] = (counts[name] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
 }
 
 class WorkerAttendanceSheetRepository {
@@ -104,7 +123,7 @@ class WorkerAttendanceSheetRepository {
     final attendanceRows = await _client
         .from('attendance_entries')
         .select(
-          'id, work_date, site_id, overtime_hours, early_hours, night_hours, allowance_amount, sites(name)',
+          'id, work_date, site_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
         )
         .eq('worker_id', workerId)
         .gte('work_date', startText)
@@ -138,6 +157,15 @@ class WorkerAttendanceSheetRepository {
       draft.earlyHours += _number(row['early_hours']);
       draft.nightHours += _number(row['night_hours']);
       draft.allowanceYen += (row['allowance_amount'] as num?)?.toInt() ?? 0;
+      final allowanceNames = row['allowance_names'];
+      if (allowanceNames is List) {
+        for (final value in allowanceNames) {
+          final name = value?.toString().trim() ?? '';
+          if (name.isNotEmpty && !draft.allowanceNames.contains(name)) {
+            draft.allowanceNames.add(name);
+          }
+        }
+      }
     }
 
     for (final raw in verificationRows) {
@@ -203,6 +231,7 @@ class _DayDraft {
   double earlyHours = 0;
   double nightHours = 0;
   int allowanceYen = 0;
+  final List<String> allowanceNames = <String>[];
 
   WorkerAttendanceDay toValue() => WorkerAttendanceDay(
         date: date,
@@ -213,5 +242,6 @@ class _DayDraft {
         earlyHours: earlyHours,
         nightHours: nightHours,
         allowanceYen: allowanceYen,
+        allowanceNames: List<String>.unmodifiable(allowanceNames),
       );
 }
