@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('iOS release scripts require the production SKO bundle identifier', () {
     final preflight = File('tool/testflight_preflight.sh').readAsStringSync();
-    final prepare = File('tool/prepare_ios.sh').readAsStringSync();\n    final assistant = File('tool/ios_install_assistant.sh').readAsStringSync();
+    final prepare = File('tool/prepare_ios.sh').readAsStringSync();
+    final assistant = File('tool/ios_install_assistant.sh').readAsStringSync();
 
     expect(preflight, contains('com.skworks.skWorks'));
-    expect(prepare, contains('BUNDLE_ID="com.skworks.skWorks"'));\n    expect(assistant, contains('expected_bundle_id="com.skworks.skWorks"'));
+    expect(prepare, contains('BUNDLE_ID="com.skworks.skWorks"'));
+    expect(assistant, contains('expected_bundle_id="com.skworks.skWorks"'));
     expect(
       preflight,
       isNot(contains(
