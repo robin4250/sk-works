@@ -471,7 +471,8 @@ class _AttendanceDayCard extends StatelessWidget {
           ? const <String>['手当']
           : day.allowanceNames;
       for (final name in names) {
-        tags.add(_MiniTag('${name}1'));
+        final unit = day.allowanceUnits[name] ?? '回';
+        tags.add(_MiniTag('${name}1$unit'));
       }
     }
     return tags;
@@ -829,7 +830,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 (day!.allowanceNames.isEmpty
                         ? const <String>['手当']
                         : day!.allowanceNames)
-                    .map((name) => '${name}1')
+                    .map((name) => '${name}1${day.allowanceUnits[name] ?? '回'}')
                     .join(' '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -881,7 +882,8 @@ class _MonthlySummary extends StatelessWidget {
             for (final entry in data.allowanceCounts.entries)
               _SummaryPill(
                 label: entry.key,
-                value: '${entry.value}回',
+                value:
+                    '${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
               ),
           ],
         ),
