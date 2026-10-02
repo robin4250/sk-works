@@ -67,6 +67,11 @@ void main() {
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
     expect(prepareIos, contains('showAnnotations'));
+    expect(prepareIos, contains('registrar(forPlugin: "SkoMultiPinMap")'));
+    expect(prepareIos, contains('connectedScenes'));
+    expect(prepareIos, contains('isKeyWindow'));
+    expect(prepareIos, isNot(contains('if let controller = window?.rootViewController')));
+    expect(map, contains('on MissingPluginException'));
 
     expect(report, contains("'報告者サイン'"));
     expect(report, contains("'責任者サイン'"));
