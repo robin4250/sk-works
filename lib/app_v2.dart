@@ -986,8 +986,8 @@ class _HomePageState extends State<HomePage> {
           extendBodyBehindAppBar: false,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
-        child: AppBar(
+            preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
+            child: AppBar(
           toolbarHeight: _chromeVisible ? 64 : 0,
           backgroundColor: Colors.transparent,
           forceMaterialTransparency: true,
@@ -1039,9 +1039,9 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.logout),
               ),
           ],
-        ),
-      ),
-      body: FriendlyHomeContent(
+            ),
+          ),
+          body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           moduleEnabled: _moduleEnabled,
@@ -1066,6 +1066,7 @@ class _HomePageState extends State<HomePage> {
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
         ),
+      ),
       ],
     );
   }
