@@ -41,6 +41,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   DateTime? _pendingLastRead;
   bool _positionInitialMessages = false;
   bool _chatChromeVisible = true;
+  int? _edgePointer;
+  Offset? _edgeStart;
+  bool _edgeTriggered = false;
 
   String? _selectedGroupId;
   bool _canManagePartnerChat = false;
@@ -184,6 +187,46 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     await _subscribeSelected();
   }
 
+  Future<void> _closeConversation() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    if (!mounted) return;
+    setState(() {
+      _selectedGroupId = null;
+      _messages = [];
+      _pendingLastRead = null;
+      _positionInitialMessages = false;
+      _chatChromeVisible = true;
+      _tab = _ChatTab.all;
+    });
+  }
+
+  void _chatPointerDown(PointerDownEvent event) {
+    if (_selectedGroupId == null || event.position.dx > 24) return;
+    _edgePointer = event.pointer;
+    _edgeStart = event.position;
+    _edgeTriggered = false;
+  }
+
+  void _chatPointerMove(PointerMoveEvent event) {
+    if (_edgePointer != event.pointer || _edgeTriggered) return;
+    final start = _edgeStart;
+    if (start == null) return;
+    final dx = event.position.dx - start.dx;
+    final dy = (event.position.dy - start.dy).abs();
+    if (dx >= 72 && dx > dy * 1.4) {
+      _edgeTriggered = true;
+      _closeConversation();
+    }
+  }
+
+  void _chatPointerEnd(PointerEvent event) {
+    if (_edgePointer != event.pointer) return;
+    _edgePointer = null;
+    _edgeStart = null;
+    _edgeTriggered = false;
+  }
+
   Future<void> _markRead(String groupId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -224,35 +267,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   void _positionInitialMessageView(List<Map<String, dynamic>> messages) {
     final groupId = _selectedGroupId;
     if (groupId == null) return;
-    final lastRead = _pendingLastRead;
-    Map<String, dynamic>? firstUnread;
-    if (lastRead != null) {
-      for (final message in messages) {
-        final sentAt = DateTime.tryParse(message['sent_at']?.toString() ?? '');
-        final sender = message['sender_user_id']?.toString();
-        if (sentAt != null &&
-            sentAt.isAfter(lastRead) &&
-            sender != _repository?.currentUserId) {
-          firstUnread = message;
-          break;
-        }
-      }
-    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final id = firstUnread?['id']?.toString();
-      final targetContext = id == null ? null : _messageKeys[id]?.currentContext;
-      if (targetContext != null) {
-        await Scrollable.ensureVisible(
-          targetContext,
-          alignment: 0.08,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-        );
-      } else {
-        _scrollToBottom();
-      }
+      _scrollToBottom();
       _positionInitialMessages = false;
       _pendingLastRead = null;
       await _markRead(groupId);
@@ -737,7 +755,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Widget build(BuildContext context) {
     final selected = _selectedGroup;
 
-    return Scaffold(
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _chatPointerDown,
+      onPointerMove: _chatPointerMove,
+      onPointerUp: _chatPointerEnd,
+      onPointerCancel: _chatPointerEnd,
+      child: Scaffold(
       appBar: selected != null && !_chatChromeVisible
           ? null
           : AppBar(
@@ -747,6 +771,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             .withValues(
               alpha: _appearance.headerAlpha,
             ),
+        leading: selected == null
+            ? null
+            : IconButton(
+                tooltip: 'トーク一覧に戻る',
+                onPressed: _closeConversation,
+                icon: const Icon(Icons.arrow_back_ios_new),
+              ),
         title: selected == null
             ? const Text(
                 'チャット',
@@ -864,6 +895,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   ),
                 ],
               ),
+      ),
       ),
     );
   }
