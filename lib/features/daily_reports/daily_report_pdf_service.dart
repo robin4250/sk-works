@@ -31,6 +31,20 @@ class DailyReportPdfService {
         workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
     final totalNight =
         workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
+    final allowanceCounts = <String, int>{};
+    for (final worker in workers) {
+      final label = worker.allowanceLabel.trim();
+      if (label.isEmpty) continue;
+      allowanceCounts[label] = (allowanceCounts[label] ?? 0) + 1;
+    }
+    final summaryItems = <MapEntry<String, String>>[
+      MapEntry('計', '${workers.length}人工'),
+      if (totalEarly > 0) MapEntry('早出', '${_number(totalEarly)}H'),
+      if (totalOvertime > 0) MapEntry('残業', '${_number(totalOvertime)}H'),
+      if (totalNight > 0) MapEntry('夜間', '${_number(totalNight)}H'),
+      for (final entry in allowanceCounts.entries)
+        MapEntry(entry.key, entry.value.toString()),
+    ];
 
     document.addPage(
       pw.Page(
@@ -157,28 +171,15 @@ class DailyReportPdfService {
             pw.SizedBox(height: 8),
             pw.Row(
               children: [
-                pw.Expanded(child: _summaryBox('計', '${workers.length}人工')),
-                pw.SizedBox(width: 4),
-                pw.Expanded(
-                  child: _summaryBox(
-                    '早出',
-                    totalEarly > 0 ? '${_number(totalEarly)}H' : '',
+                for (var index = 0; index < summaryItems.length; index++) ...[
+                  if (index > 0) pw.SizedBox(width: 4),
+                  pw.Expanded(
+                    child: _summaryBox(
+                      summaryItems[index].key,
+                      summaryItems[index].value,
+                    ),
                   ),
-                ),
-                pw.SizedBox(width: 4),
-                pw.Expanded(
-                  child: _summaryBox(
-                    '残業',
-                    totalOvertime > 0 ? '${_number(totalOvertime)}H' : '',
-                  ),
-                ),
-                pw.SizedBox(width: 4),
-                pw.Expanded(
-                  child: _summaryBox(
-                    '夜間',
-                    totalNight > 0 ? '${_number(totalNight)}H' : '',
-                  ),
-                ),
+                ],
               ],
             ),
             pw.Spacer(),
