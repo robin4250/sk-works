@@ -30,6 +30,9 @@ void main() {
     expect(page, contains("'背景・透明度'"));
     expect(repository, contains("rpc('chat_block_list')"));
     expect(repository, contains("'set_chat_block'"));
+    expect(repository, contains('userIds.add(currentUser.id)'));
+    expect(repository, contains("'display_name': currentUser.userMetadata?['display_name']"));
+    expect(page, contains(r"'参加メンバー  ${members.length}人'"));
     expect(repository, contains("'sko_friend_workspace'"));
     expect(repository, contains("'search_personal_sko_id'"));
     expect(friends, contains("'SKO ID検索'"));
