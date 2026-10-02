@@ -3,9 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sk_works/features/home/friendly_home_content.dart';
-import 'package:sk_works/features/home/home_attention_repository.dart';
-import 'package:sk_works/features/home/home_membership_repository.dart';
 import 'package:sk_works/main.dart';
 
 void main() {
