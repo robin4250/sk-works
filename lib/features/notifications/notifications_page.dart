@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
 import '../sites/site_map_page.dart';
+import '../operations/vehicle_route_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -72,6 +73,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const SiteMapPage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'vehicle_documents') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const VehicleRoutePage(),
         ),
       );
       if (!mounted) return;
