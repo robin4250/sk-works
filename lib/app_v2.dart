@@ -829,7 +829,7 @@ class _HomePageState extends State<HomePage> {
       if (_isAdmin)
         const _MenuAction(
           key: 'company_documents',
-          label: '会社提出書類',
+          label: '会社データ',
           icon: Icons.business_center_outlined,
           homeEligible: true,
           accessLabel: '管理者',
