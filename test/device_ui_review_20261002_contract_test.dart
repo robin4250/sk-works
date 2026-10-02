@@ -44,7 +44,7 @@ void main() {
     expect(app, contains('this.homeEligible = true'));
     expect(app, contains('ReorderableListView.builder'));
     expect(app, contains('buildDefaultDragHandles: true'));
-    expect(app, contains('onReorder: _reorderHomeAction'));
+    expect(app, contains('onReorderItem: _reorderHomeAction'));
     expect(app, contains('長押しして上下へドラッグ'));
     expect(app, contains("label: '背景・ヘッダー・フッター設定'"));
   });
