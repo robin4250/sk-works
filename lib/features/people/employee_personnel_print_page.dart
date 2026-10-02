@@ -8,15 +8,23 @@ import 'package:printing/printing.dart';
 import 'people_page.dart';
 import 'phone_display.dart';
 
+enum EmployeePersonnelPreviewAction { print, send }
+
 class EmployeePersonnelPrintPage extends StatelessWidget {
   const EmployeePersonnelPrintPage({
     super.key,
     required this.companyName,
     required this.records,
+    this.action = EmployeePersonnelPreviewAction.print,
+    this.onConfirmSend,
   });
 
   final String companyName;
   final List<PersonRecord> records;
+  final EmployeePersonnelPreviewAction action;
+  final Future<void> Function(BuildContext context)? onConfirmSend;
+
+  bool get _isSend => action == EmployeePersonnelPreviewAction.send;
 
   Future<Uint8List> _buildPdf() async {
     final regular = await PdfGoogleFonts.notoSansJPRegular();
@@ -98,15 +106,58 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('社員一覧 A4横プレビュー'),
+        title: Text(
+          records.length == 1
+              ? '社員データ A4横プレビュー'
+              : '社員一覧 A4横プレビュー',
+        ),
       ),
-      body: PdfPreview(
-        build: (_) => _buildPdf(),
-        canChangeOrientation: false,
-        canChangePageFormat: false,
-        allowPrinting: true,
-        allowSharing: true,
-        pdfFileName: '社員一覧.pdf',
+      body: Column(
+        children: [
+          Expanded(
+            child: PdfPreview(
+              build: (_) => _buildPdf(),
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              allowPrinting: !_isSend,
+              allowSharing: false,
+              pdfFileName:
+                  records.length == 1 ? '社員データ.pdf' : '社員一覧.pdf',
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton.icon(
+                onPressed: _isSend
+                    ? () async {
+                        final action = onConfirmSend;
+                        if (action != null) {
+                          await action(context);
+                        }
+                      }
+                    : () => Printing.layoutPdf(
+                          onLayout: (_) => _buildPdf(),
+                          name: records.length == 1
+                              ? '社員データ.pdf'
+                              : '社員一覧.pdf',
+                        ),
+                icon: Icon(
+                  _isSend ? Icons.send_outlined : Icons.print_outlined,
+                ),
+                label: Text(
+                  _isSend
+                      ? 'このA4プレビュー内容で送信へ進む'
+                      : 'このA4プレビュー内容を印刷',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
