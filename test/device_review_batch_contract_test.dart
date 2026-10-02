@@ -90,6 +90,9 @@ void main() {
     expect(profile, contains("'個人SKO ID'"));
     expect(profileRepository, contains("'change_personal_sko_id'"));
     expect(home, contains("'本日の出勤'"));
+    expect(home, contains('LongPressDraggable<String>'));
+    expect(home, contains('DragTarget<String>'));
+    expect(home, contains('onReorderAction'));
     final todayIndex = home.indexOf("'本日の出勤'");
     expect(
       home.substring(todayIndex, todayIndex + 280),
