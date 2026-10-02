@@ -29,6 +29,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.appearance = const HomeAppearance(),
+    this.contentTopInset = 10,
     required this.onOpen,
     required this.onRefresh,
   });
@@ -44,6 +45,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
+  final double contentTopInset;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -65,7 +67,7 @@ class FriendlyHomeContent extends StatelessWidget {
           onRefresh: onRefresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
@@ -588,6 +590,7 @@ class _ActionGrid extends StatelessWidget {
           _HomeActionTile(
             item: item,
             compact: columnCount >= 3,
+            fourColumns: columnCount == 4,
             onOpen: onOpen,
           ),
       ],
@@ -600,11 +603,13 @@ class _HomeActionTile extends StatelessWidget {
   const _HomeActionTile({
     required this.item,
     required this.compact,
+    required this.fourColumns,
     required this.onOpen,
   });
 
   final _HomeAction item;
   final bool compact;
+  final bool fourColumns;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -620,18 +625,21 @@ class _HomeActionTile extends StatelessWidget {
     final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
 
     final icon = CircleAvatar(
-      radius: compact ? 16 : 20,
-      child: Icon(item.icon, size: compact ? 18 : 24),
+      radius: fourColumns ? 12 : (compact ? 16 : 20),
+      child: Icon(item.icon, size: fourColumns ? 14 : (compact ? 18 : 24)),
     );
 
     final label = Text(
       item.label,
-      maxLines: compact ? 2 : 1,
+      maxLines: fourColumns ? 1 : (compact ? 2 : 1),
       overflow: TextOverflow.ellipsis,
-      textAlign: compact ? TextAlign.center : TextAlign.start,
+      textAlign: fourColumns
+          ? TextAlign.start
+          : (compact ? TextAlign.center : TextAlign.start),
       style: TextStyle(
         fontWeight: FontWeight.w900,
-        fontSize: compact ? 11 : 14,
+        fontSize: fourColumns ? 8.5 : (compact ? 11 : 14),
+        height: 1.05,
       ),
     );
 
@@ -650,20 +658,33 @@ class _HomeActionTile extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: compact
-              ? Column(
+          child: fourColumns
+              ? Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     icon,
-                    const SizedBox(height: 6),
-                    label,
+                    const SizedBox(width: 3),
+                    Flexible(child: label),
                     if (isProfessional) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(width: 2),
                       const _ProfessionalAccessMark(),
                     ],
                   ],
                 )
-              : Row(
+              : compact
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        icon,
+                        const SizedBox(height: 6),
+                        label,
+                        if (isProfessional) ...[
+                          const SizedBox(height: 4),
+                          const _ProfessionalAccessMark(),
+                        ],
+                      ],
+                    )
+                  : Row(
                   children: [
                     icon,
                     const SizedBox(width: 10),
