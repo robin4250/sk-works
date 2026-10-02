@@ -13,9 +13,11 @@ This file separates what has already been verified without a physical iPhone/Mac
 - Bundle ID is checked as `com.robin4250.sko`.
 - iPhone UI is portrait-only.
 - Face ID, camera, photo library, and when-in-use location permission strings are CI-checked.
-- Always/background location permission is stripped and forbidden by CI.
+- GPS自動出勤を使わない通常運用では、位置情報は操作時のみ取得します。
+- GPS自動出勤を有効にした場合だけ「常に許可」と Background Location を使い、指定曜日・指定時刻の前後で現場到着判定を行います。
+- GPS自動出勤を無効化するとバックグラウンド位置取得サービスも停止します。
+- 位置情報＋写真はGPS自動出勤と別機能で、出勤/退勤確定時にだけ現在地を1回取得します。
 - Broad ATS bypasses are stripped and forbidden.
-- GPS is action-only; continuous tracking is contract-tested.
 - Camera cancellation must not create attendance.
 - Secondary authentication is role-specific: general users and sub-admins use it for payroll statements; admins use it for invoices and admin-only site financial data.
 - Required documents and qualification certificates do not require the secondary password.
@@ -91,10 +93,17 @@ These cannot be proven by repository or cloud CI alone:
 9. Real SMS delivery for registration, phone change, and primary-password recovery.
 10. Real Face ID success/cancel/failure behavior.
 11. Real camera/photo-picker behavior.
-12. Real location permission and GPS accuracy.
+12. Real location permission and GPS accuracy, including GPS自動出勤の「常に許可」、背景取得、指定時刻±5分の現場内/現場外判定。
 13. Real AirPrint sheet.
 14. Real Files/Mail share-sheet destinations.
 15. Final visual/touch review on the user's exact iPhone.
+16. 社員個人ページ10項目、国内0始まり電話表示、社員一覧/個別送信、A4横一覧印刷。
+17. 車両登録（表示名・車両番号・走行距離・車検証・自賠責・任意保険）と複数地点ルート登録。
+18. 本日の勤務報告で車両/ルート選択・解除、出勤/退勤→日報引継ぎ。
+19. 退勤時の日報でメーター撮影OCR→本人確認→再撮影/手入力→走行距離更新。
+20. 出勤方法/現場選択を保存してTOPへ戻ること、出勤画面の並びとTOP反映。
+21. GPS自動出勤の曜日/時刻設定、±5分背景判定、現場外時の未登録通知。
+22. 位置情報＋写真の証拠画像が日報と紐付き、日報横・写真一覧・ピンチ拡大で確認できること.
 
 ## Mac arrival entry point
 

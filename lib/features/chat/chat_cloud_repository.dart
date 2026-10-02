@@ -573,4 +573,92 @@ class ChatCloudRepository {
 
     await _client.from('chat_messages').delete().eq('id', id);
   }
+
+  Future<Set<String>> loadBlockedUserIds() async {
+    final raw = await _client.rpc('chat_block_list');
+    final rows = raw is List ? raw : const <dynamic>[];
+    return {
+      for (final item in rows)
+        if (item is Map && item['user_id'] != null)
+          item['user_id'].toString(),
+    };
+  }
+
+  Future<void> setBlocked({
+    required String userId,
+    required bool blocked,
+  }) async {
+    if (userId.isEmpty) return;
+    await _client.rpc(
+      'set_chat_block',
+      params: {'p_user': userId, 'p_block': blocked},
+    );
+  }
+
+  Future<Map<String, int>> loadUnreadCounts(
+    Map<String, DateTime> lastReadByGroup,
+  ) async {
+    final userId = currentUserId;
+    if (userId == null) return const {};
+    final result = <String, int>{};
+
+    for (final entry in lastReadByGroup.entries) {
+      final rows = await _client
+          .from('chat_messages')
+          .select('id,sender_user_id,sent_at')
+          .eq('communication_group_id', entry.key)
+          .gt('sent_at', entry.value.toUtc().toIso8601String())
+          .limit(100);
+      result[entry.key] = rows.where((row) {
+        final sender = row['sender_user_id']?.toString();
+        return sender != null && sender != userId;
+      }).length;
+    }
+    return result;
+  }
+
+
+  Future<Map<String, dynamic>> loadFriendWorkspace() async {
+    final raw = await _client.rpc('sko_friend_workspace');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>?> searchFriendBySkoId(String skoId) async {
+    final raw = await _client.rpc(
+      'search_personal_sko_id',
+      params: {'p_sko_id': skoId.trim()},
+    );
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  Future<void> sendFriendRequest(String skoId) async {
+    await _client.rpc(
+      'send_sko_friend_request',
+      params: {'p_sko_id': skoId.trim()},
+    );
+  }
+
+  Future<void> respondFriendRequest({
+    required String requestId,
+    required bool accept,
+  }) async {
+    await _client.rpc(
+      'respond_sko_friend_request',
+      params: {
+        'p_request_id': requestId,
+        'p_accept': accept,
+      },
+    );
+  }
+
+  Future<void> removeFriend(String userId) async {
+    await _client.rpc(
+      'remove_sko_friend',
+      params: {'p_user': userId},
+    );
+  }
+
 }

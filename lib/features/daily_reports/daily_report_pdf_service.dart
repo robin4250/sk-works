@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -46,11 +48,25 @@ class DailyReportPdfService {
             ),
             pw.SizedBox(height: 6),
             for (final worker in workers)
-              pw.Text(
-                '${worker.workerName}  残${_number(worker.overtimeHours)} '
-                '早${_number(worker.earlyHours)} 夜${_number(worker.nightHours)} '
-                '${worker.allowanceLabel}',
-                style: const pw.TextStyle(fontSize: 10),
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 3),
+                child: pw.Text(
+                  [
+                    worker.workerName,
+                    '残' + _number(worker.overtimeHours),
+                    '早' + _number(worker.earlyHours),
+                    '夜' + _number(worker.nightHours),
+                    if (worker.allowanceLabel.trim().isNotEmpty)
+                      worker.allowanceLabel,
+                    if (worker.vehicleName?.trim().isNotEmpty == true)
+                      '車両 ' + worker.vehicleName!,
+                    if (worker.routeName?.trim().isNotEmpty == true)
+                      'ルート ' + worker.routeName!,
+                    if (worker.odometerKm != null)
+                      '走行 ' + _number(worker.odometerKm!) + 'km',
+                  ].join('  '),
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
               ),
             pw.SizedBox(height: 12),
             pw.Divider(),
@@ -161,7 +177,15 @@ class DailyReportPdfService {
       ..writeln(siteName)
       ..writeln(workDescription);
     for (final worker in workers) {
-      b.writeln(worker.workerName);
+      b.writeln([
+        worker.workerName,
+        if (worker.vehicleName?.trim().isNotEmpty == true)
+          '車両 ' + worker.vehicleName!,
+        if (worker.routeName?.trim().isNotEmpty == true)
+          'ルート ' + worker.routeName!,
+        if (worker.odometerKm != null)
+          '走行 ' + _number(worker.odometerKm!) + 'km',
+      ].join(' / '));
     }
     if (report?.signed == true) {
       b.writeln('責任者サイン済み ${report?.signerName ?? ''}');

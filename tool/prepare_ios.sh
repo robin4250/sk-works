@@ -184,7 +184,8 @@ entries = {
     "CFBundleDisplayName": "SKO",
     "CFBundleName": "SKO",
     "NSFaceIDUsageDescription": "SKOの請求書や管理者用データなど重要情報を保護するため、Face IDを使用します。",
-    "NSLocationWhenInUseUsageDescription": "SKOで出勤・退勤を登録する際、現場付近にいることを確認するため位置情報を使用します。常時追跡は行いません。",
+    "NSLocationWhenInUseUsageDescription": "SKOで出勤・退勤を登録する際、現場付近にいることを確認するため位置情報を使用します。GPS自動出勤を使わない場合はバックグラウンドで位置取得しません。",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "GPS自動出勤を本人が有効にした場合、指定した曜日と時刻の前後に現場付近にいるか確認するため、バックグラウンドでも位置情報を使用します。",
     "NSCameraUsageDescription": "SKOで出勤確認や資格証、現場写真を登録するためカメラを使用します。",
     "NSPhotoLibraryUsageDescription": "SKOでプロフィール写真や現場・チャットの写真を選択するため写真ライブラリを使用します。",
 }
@@ -198,18 +199,15 @@ data["UISupportedInterfaceOrientations"] = [
     "UIInterfaceOrientationPortrait",
 ]
 
-# SKO never needs Always/background location. Remove stale keys if an
-# existing Xcode project or plist carried them from an earlier experiment.
-data.pop("NSLocationAlwaysUsageDescription", None)
-data.pop("NSLocationAlwaysAndWhenInUseUsageDescription", None)
-
+# GPS automatic attendance uses background location only after the user
+# explicitly enables that feature. The app does not start background location
+# updates for normal manual / photo attendance.
 background_modes = data.get("UIBackgroundModes")
-if isinstance(background_modes, list):
-    filtered_modes = [mode for mode in background_modes if mode != "location"]
-    if filtered_modes:
-        data["UIBackgroundModes"] = filtered_modes
-    else:
-        data.pop("UIBackgroundModes", None)
+if not isinstance(background_modes, list):
+    background_modes = []
+if "location" not in background_modes:
+    background_modes.append("location")
+data["UIBackgroundModes"] = background_modes
 
 # SKO uses HTTPS endpoints. Never carry over a broad ATS bypass from an
 # older/reused Xcode project.
@@ -258,7 +256,7 @@ if scheme_path.exists():
     scheme_path.write_text(scheme)
     print("XcodeのRun構成をReleaseに設定しました（単体起動用）。")
 
-print("Info.plist に iOS 権限説明を追加しました。")
+print("Info.plist に iOS 権限説明とGPS自動出勤用Background Locationを追加しました。")
 print(f"Bundle Identifier を {bundle_id} に設定しました。")
 print("iOS Deployment Target 15.5 / 日本語OCRモデルを設定しました。")
 print("起動画面を固定レイアウトへ設定しました（アイコン全画面拡大なし）。")

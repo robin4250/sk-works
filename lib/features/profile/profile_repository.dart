@@ -102,6 +102,28 @@ class ProfileRepository {
     );
   }
 
+  Future<Map<String, dynamic>?> loadPersonnelProfile() async {
+    final raw = await _client.rpc('current_worker_personnel_profile');
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  Future<Map<String, dynamic>> savePersonnelProfile({
+    required String workerId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final raw = await _client.rpc(
+      'save_worker_personnel_profile',
+      params: {
+        'p_worker_id': workerId,
+        'p_payload': payload,
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
   String? get currentAuthPhone => _client.auth.currentUser?.phone;
 
   Future<String> requestPhoneChange(String rawPhone) async {

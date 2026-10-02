@@ -22,7 +22,7 @@ void main() {
     expect(home, contains("'未対応 \${attention.missingCount}件'"));
     expect(home, contains('Icons.notifications_active_outlined'));
 
-    expect(home, contains("'人員'"));
+    expect(home, contains("'社員'"));
     expect(home, contains("'管理現場'"));
 
     expect(home, contains('_HomeActionAccess.subAdmin'));

@@ -100,7 +100,7 @@ class QualificationCloudRepository {
     var qualificationsQuery = _client
         .from('worker_qualifications')
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes',
+          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
@@ -168,7 +168,7 @@ class QualificationCloudRepository {
           'attachment_path': _nullable(attachmentPath),
         })
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes',
+          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);
