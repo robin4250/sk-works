@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
 import 'employee_personnel_detail_page.dart';
@@ -93,7 +94,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('社員'),
+        title: Text(SkoLanguageController.tr('社員')),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -121,7 +122,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               icon: const Icon(Icons.manage_accounts_outlined),
             ),
           IconButton(
-            tooltip: '再読み込み',
+            tooltip: SkoLanguageController.tr('再読み込み'),
             onPressed: _loading ? null : () {
               setState(() => _loading = true);
               _load();
@@ -133,7 +134,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loading || !_canManagePeople ? null : _add,
         icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('新規登録'),
+        label: Text(SkoLanguageController.tr('新規登録')),
       ),
       body: SafeArea(
         child: Column(
@@ -143,7 +144,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '氏名・会社名・電話番号などで検索',
+                  hintText: SkoLanguageController.isEnglish ? 'Search by name, company, phone, etc.' : '氏名・会社名・電話番号などで検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -154,7 +155,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               child: Row(
                 children: [
                   ChoiceChip(
-                    label: const Text('すべて'),
+                    label: Text(SkoLanguageController.tr('すべて')),
                     selected: _filter == null,
                     onSelected: (_) => setState(() => _filter = null),
                   ),
@@ -177,7 +178,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                   : _error != null
                       ? _ErrorState(message: _error!, onRetry: _load)
                       : filtered.isEmpty
-                          ? const Center(child: Text('登録はまだありません'))
+                          ? Center(child: Text(SkoLanguageController.tr('登録はまだありません')))
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                               itemCount: filtered.length,
@@ -250,7 +251,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                       children: [
                                         if (record.phone.isNotEmpty)
                                           IconButton(
-                                            tooltip: '電話をかける',
+                                            tooltip: SkoLanguageController.isEnglish ? 'Call' : '電話をかける',
                                             onPressed: () =>
                                                 _callPhone(record.phone),
                                             icon: const Icon(Icons.phone_outlined),
@@ -354,7 +355,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                     _openPersonExport(record);
                   },
                   icon: const Icon(Icons.ios_share_outlined),
-                  label: const Text('送信・印刷'),
+                  label: Text(SkoLanguageController.tr('送信・印刷')),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -365,7 +366,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                   await _delete(record);
                 },
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('削除'),
+                label: Text(SkoLanguageController.tr('削除')),
               ),
             ],
           ),
@@ -390,13 +391,13 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.groups_2_outlined),
-              title: const Text('社員一覧'),
+              title: Text(SkoLanguageController.tr('社員一覧')),
               subtitle: const Text('全社員をA4横向きでプレビュー'),
               onTap: () => Navigator.pop(sheetContext, true),
             ),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: const Text('個別'),
+              title: Text(SkoLanguageController.tr('個別')),
               subtitle: const Text('社員を1名選んでA4横向きでプレビュー'),
               onTap: () => Navigator.pop(sheetContext, false),
             ),
@@ -490,7 +491,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.send_outlined),
-              title: const Text('親会社に送る'),
+              title: Text(SkoLanguageController.tr('親会社に送る')),
               subtitle: const Text('送信内容を選び、送信先を確認してから確定します'),
               onTap: () => Navigator.pop(
                 sheetContext,
@@ -499,7 +500,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ),
             ListTile(
               leading: const Icon(Icons.print_outlined),
-              title: const Text('印刷'),
+              title: Text(SkoLanguageController.tr('印刷')),
               subtitle: const Text('印刷内容を確認してから印刷画面を開きます'),
               onTap: () => Navigator.pop(
                 sheetContext,
@@ -525,7 +526,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.person_pin_outlined),
-              title: const Text('一式'),
+              title: Text(SkoLanguageController.tr('一式')),
               subtitle: const Text('基本情報＋資格＋元請向け書類'),
               onTap: () => Navigator.pop(
                 sheetContext,
@@ -534,7 +535,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ),
             ListTile(
               leading: const Icon(Icons.badge_outlined),
-              title: const Text('資格のみ'),
+              title: Text(SkoLanguageController.tr('資格のみ')),
               onTap: () => Navigator.pop(
                 sheetContext,
                 TransferPayloadKind.qualificationsOnly,
@@ -542,7 +543,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ),
             ListTile(
               leading: const Icon(Icons.description_outlined),
-              title: const Text('書類のみ'),
+              title: Text(SkoLanguageController.tr('書類のみ')),
               onTap: () => Navigator.pop(
                 sheetContext,
                 TransferPayloadKind.documentsOnly,
@@ -614,14 +615,14 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off_outlined, size: 42),
             const SizedBox(height: 12),
-            const Text('クラウドデータを読み込めませんでした'),
+            Text(SkoLanguageController.tr('クラウドデータを読み込めませんでした')),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
+              label: Text(SkoLanguageController.tr('再試行')),
             ),
           ],
         ),
