@@ -79,41 +79,20 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               ],
-              if (moduleEnabled('attendance') &&
-                  showAttendanceReport) ...[
-                const SizedBox(height: 12),
-                Opacity(
-                  opacity: appearance.cardOpacity,
-                  child: _PersonalAttendanceCard(
-                    status: attendanceStatus,
-                    vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
-                    onOpen: onOpen,
-                  ),
-                ),
-              ],
               const SizedBox(height: 14),
-              if (identity.isManagement)
-                _AdminHome(
-                  identity: identity,
-                  moduleEnabled: moduleEnabled,
-                  gridColumns: gridColumns,
-                  actionOrder: actionOrder,
-                  visibleHomeKeys: visibleHomeKeys,
-                  shortcuts: shortcuts,
-                  showTodayAttendance: showTodayAttendance,
-                  appearance: appearance,
-                  onOpen: onOpen,
-                )
-              else
-                _WorkerHome(
-                  moduleEnabled: moduleEnabled,
-                  gridColumns: gridColumns,
-                  actionOrder: actionOrder,
-                  visibleHomeKeys: visibleHomeKeys,
-                  shortcuts: shortcuts,
-                  appearance: appearance,
-                  onOpen: onOpen,
-                ),
+              _OrderedHomeContent(
+                identity: identity,
+                moduleEnabled: moduleEnabled,
+                gridColumns: gridColumns,
+                actionOrder: actionOrder,
+                visibleHomeKeys: visibleHomeKeys,
+                shortcuts: shortcuts,
+                showAttendanceReport: showAttendanceReport,
+                showTodayAttendance: showTodayAttendance,
+                attendanceStatus: attendanceStatus,
+                appearance: appearance,
+                onOpen: onOpen,
+              ),
             ],
           ),
         ),
@@ -446,6 +425,168 @@ class _PersonalAttendanceCard extends StatelessWidget {
     if (value == null) return '--:--';
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(value.hour)}:${two(value.minute)}';
+  }
+}
+
+
+class _OrderedHomeContent extends StatelessWidget {
+  const _OrderedHomeContent({
+    required this.identity,
+    required this.moduleEnabled,
+    required this.gridColumns,
+    required this.actionOrder,
+    required this.visibleHomeKeys,
+    required this.shortcuts,
+    required this.showAttendanceReport,
+    required this.showTodayAttendance,
+    required this.attendanceStatus,
+    required this.appearance,
+    required this.onOpen,
+  });
+
+  final HomeIdentity identity;
+  final bool Function(String key) moduleEnabled;
+  final int gridColumns;
+  final List<String> actionOrder;
+  final Set<String> visibleHomeKeys;
+  final List<HomeShortcut> shortcuts;
+  final bool showAttendanceReport;
+  final bool showTodayAttendance;
+  final HomeAttendanceStatus attendanceStatus;
+  final HomeAppearance appearance;
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final rank = <String, int>{
+      for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
+    };
+    final keys = <String>[
+      if (moduleEnabled('attendance') &&
+          showAttendanceReport &&
+          visibleHomeKeys.contains('attendance_verify'))
+        'attendance_verify',
+      if (identity.isManagement &&
+          moduleEnabled('attendance') &&
+          identity.can('can_manage_attendance') &&
+          showTodayAttendance &&
+          visibleHomeKeys.contains('attendance_today'))
+        'attendance_today',
+      for (final shortcut in shortcuts)
+        if (visibleHomeKeys.contains(shortcut.key)) shortcut.key,
+    ];
+    keys.sort((a, b) {
+      final ai = rank[a] ?? 100000;
+      final bi = rank[b] ?? 100000;
+      if (ai != bi) return ai.compareTo(bi);
+      return keys.indexOf(a).compareTo(keys.indexOf(b));
+    });
+
+    final shortcutByKey = <String, HomeShortcut>{
+      for (final shortcut in shortcuts) shortcut.key: shortcut,
+    };
+    final children = <Widget>[];
+    final pending = <_HomeAction>[];
+
+    void flushGrid() {
+      if (pending.isEmpty) return;
+      children.add(
+        _ActionGrid(
+          items: List<_HomeAction>.from(pending),
+          columns: gridColumns,
+          actionOrder: actionOrder,
+          opacity: appearance.buttonOpacity,
+          onOpen: onOpen,
+        ),
+      );
+      children.add(const SizedBox(height: 12));
+      pending.clear();
+    }
+
+    for (final key in keys) {
+      if (key == 'attendance_verify') {
+        flushGrid();
+        children.add(
+          Opacity(
+            opacity: appearance.cardOpacity,
+            child: _PersonalAttendanceCard(
+              status: attendanceStatus,
+              vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
+              onOpen: onOpen,
+            ),
+          ),
+        );
+        children.add(const SizedBox(height: 12));
+        continue;
+      }
+      if (key == 'attendance_today') {
+        flushGrid();
+        children.add(
+          Opacity(
+            opacity: appearance.cardOpacity,
+            child: _TodayAttendanceHomeCard(onOpen: onOpen),
+          ),
+        );
+        children.add(const SizedBox(height: 12));
+        continue;
+      }
+
+      final shortcut = shortcutByKey[key];
+      if (shortcut != null) {
+        pending.add(
+          _HomeAction(
+            shortcut.key,
+            shortcut.label,
+            shortcut.icon,
+            access: identity.isManagement ? _shortcutAccess(shortcut.key) : null,
+          ),
+        );
+      }
+    }
+    flushGrid();
+
+    if (children.isNotEmpty && children.last is SizedBox) {
+      children.removeLast();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+}
+
+class _TodayAttendanceHomeCard extends StatelessWidget {
+  const _TodayAttendanceHomeCard({required this.onOpen});
+
+  final Future<void> Function(String key) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '本日の出勤',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            const Text('自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => onOpen('attendance_today'),
+              icon: const Icon(Icons.groups_outlined),
+              label: const Text('出勤状況を確認'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
