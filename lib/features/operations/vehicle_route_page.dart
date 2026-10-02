@@ -19,6 +19,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
   List<Map<String, dynamic>> _vehicles = const [];
   List<Map<String, dynamic>> _routes = const [];
   List<Map<String, dynamic>> _sites = const [];
+  List<Map<String, dynamic>> _customers = const [];
+  List<Map<String, dynamic>> _partners = const [];
   bool _canManageVehicles = false;
   bool _canManageRoutes = false;
   bool _loading = true;
@@ -46,6 +48,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         repository.routes(),
         repository.permissions(),
         repository.sites(),
+        repository.customers(),
+        repository.partners(),
       ]);
       final permissions = values[2] as Map<String, dynamic>;
       if (!mounted) return;
@@ -53,6 +57,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         _vehicles = values[0] as List<Map<String, dynamic>>;
         _routes = values[1] as List<Map<String, dynamic>>;
         _sites = values[3] as List<Map<String, dynamic>>;
+        _customers = values[4] as List<Map<String, dynamic>>;
+        _partners = values[5] as List<Map<String, dynamic>>;
         _canManageVehicles = permissions['can_manage_vehicles'] == true;
         _canManageRoutes = permissions['can_manage_routes'] == true;
         _loading = false;
@@ -349,8 +355,11 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
       final site = value['sites'];
       final siteName =
           site is Map ? site['name']?.toString().trim() ?? '' : '';
+      final label = value['source_label']?.toString().trim() ?? '';
       final address = value['address']?.toString().trim() ?? '';
-      if (siteName.isNotEmpty) {
+      if (label.isNotEmpty) {
+        names.add(label);
+      } else if (siteName.isNotEmpty) {
         names.add(siteName);
       } else if (address.isNotEmpty) {
         names.add(address);
