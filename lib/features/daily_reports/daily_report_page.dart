@@ -1358,9 +1358,11 @@ class _DailyReportPaper extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+                SizedBox(
+                  height: 118,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     Expanded(
                       flex: 5,
                       child: _reportBox(
@@ -1392,7 +1394,8 @@ class _DailyReportPaper extends StatelessWidget {
                         strokes: supervisorStrokes,
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
                 _reportBox(
