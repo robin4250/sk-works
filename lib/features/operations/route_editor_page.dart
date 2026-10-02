@@ -57,12 +57,12 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           address: partner['address']?.toString() ?? '',
         ),
       for (final vehicle in widget.vehicles)
-        if ((vehicle['parking_address']?.toString().trim() ?? '').isNotEmpty)
+        if ((vehicle['storage_address']?.toString().trim() ?? '').isNotEmpty)
           _StopChoice(
             kind: 'parking',
             id: vehicle['id']?.toString() ?? '',
             label: '駐車場：${vehicle['display_name']?.toString() ?? '車両'}',
-            address: vehicle['parking_address']?.toString() ?? '',
+            address: vehicle['storage_address']?.toString() ?? '',
           ),
     ];
     return result.where((choice) => choice.id.isNotEmpty).toList();
