@@ -892,6 +892,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         child: SegmentedButton<_ChatTab>(
           segments: tabs,
           selected: {_tab},
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              final scheme = Theme.of(context).colorScheme;
+              final base = states.contains(WidgetState.selected)
+                  ? scheme.primaryContainer
+                  : scheme.surface;
+              return base.withValues(alpha: _appearance.headerAlpha);
+            }),
+          ),
           onSelectionChanged: (value) =>
               setState(() => _tab = value.first),
         ),
