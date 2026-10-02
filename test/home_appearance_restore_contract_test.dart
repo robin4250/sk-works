@@ -24,7 +24,7 @@ void main() {
     expect(home, contains('appearance.wallpaperOpacity'));
     expect(home, contains('appearance.buttonOpacity'));
     expect(home, contains('appearance.cardOpacity'));
-    expect(home, contains('appearance.headerOpacity'));
+    expect(app, contains('_homeAppearance.headerOpacity'));
     expect(app, contains('_homeAppearance.footerOpacity'));
     expect(app, contains("'壁紙・透明度を設定'"));
   });
