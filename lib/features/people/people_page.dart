@@ -26,6 +26,12 @@ class PersonRecord {
     this.active = true,
     this.createdAt = '',
     this.updatedAt = '',
+    this.bloodType = '',
+    this.address = '',
+    this.emergencyName = '',
+    this.emergencyRelation = '',
+    this.emergencyPhone = '',
+    this.emergencyAddress = '',
   });
 
   final String id;
@@ -39,6 +45,12 @@ class PersonRecord {
   final bool active;
   final String createdAt;
   final String updatedAt;
+  final String bloodType;
+  final String address;
+  final String emergencyName;
+  final String emergencyRelation;
+  final String emergencyPhone;
+  final String emergencyAddress;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -52,6 +64,12 @@ class PersonRecord {
         'active': active,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
+        'bloodType': bloodType,
+        'address': address,
+        'emergencyName': emergencyName,
+        'emergencyRelation': emergencyRelation,
+        'emergencyPhone': emergencyPhone,
+        'emergencyAddress': emergencyAddress,
       };
 
   factory PersonRecord.fromJson(Map<String, dynamic> json) {
@@ -70,6 +88,12 @@ class PersonRecord {
       active: json['active'] is bool ? json['active'] as bool : true,
       createdAt: json['createdAt']?.toString() ?? '',
       updatedAt: json['updatedAt']?.toString() ?? '',
+      bloodType: json['bloodType']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      emergencyName: json['emergencyName']?.toString() ?? '',
+      emergencyRelation: json['emergencyRelation']?.toString() ?? '',
+      emergencyPhone: json['emergencyPhone']?.toString() ?? '',
+      emergencyAddress: json['emergencyAddress']?.toString() ?? '',
     );
   }
 }
