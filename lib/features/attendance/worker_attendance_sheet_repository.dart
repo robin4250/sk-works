@@ -74,6 +74,26 @@ class WorkerAttendanceSheetRepository {
     return id;
   }
 
+  Future<({String reportId, String siteId})?> findDailyReportForDate(
+    DateTime date,
+  ) async {
+    final workerId = await ensureCurrentWorkerId();
+    final rows = await _client
+        .from('daily_report_workers')
+        .select('report_id,daily_reports!inner(site_id,report_date)')
+        .eq('worker_id', workerId)
+        .eq('daily_reports.report_date', _dbDate(date))
+        .limit(1);
+    if (rows.isEmpty) return null;
+    final row = Map<String, dynamic>.from(rows.first);
+    final report = row['daily_reports'];
+    if (report is! Map) return null;
+    final reportId = row['report_id']?.toString() ?? '';
+    final siteId = report['site_id']?.toString() ?? '';
+    if (reportId.isEmpty || siteId.isEmpty) return null;
+    return (reportId: reportId, siteId: siteId);
+  }
+
   Future<WorkerAttendanceMonth> loadMonth(DateTime month) async {
     final workerId = await ensureCurrentWorkerId();
     final start = DateTime(month.year, month.month, 1);
