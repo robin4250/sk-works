@@ -24,7 +24,9 @@ void main() {
     expect(page, contains("sko_chat_last_read_"));
     expect(page, contains("'友達追加'"));
     expect(page, contains('_positionInitialMessageView'));
-    expect(page, contains('Scrollable.ensureVisible'));
+    expect(page, contains('_scrollToBottom()'));
+    expect(page, contains("'トーク一覧に戻る'"));
+    expect(page, contains('_chatPointerMove'));
     expect(page, contains("'背景・透明度'"));
     expect(repository, contains("rpc('chat_block_list')"));
     expect(repository, contains("'set_chat_block'"));
