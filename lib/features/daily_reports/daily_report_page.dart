@@ -935,9 +935,11 @@ class _WorkerDetailCard extends StatelessWidget {
           TextField(
             controller: allowanceLabel,
             enabled: editable,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: SkoLanguageController.tr('手当名'),
-              hintText: '例：鉄骨、PC',
+              hintText: SkoLanguageController.isEnglish
+                  ? 'e.g. Steel, PC'
+                  : '例：鉄骨、PC',
             ),
           ),
           const SizedBox(height: 10),
