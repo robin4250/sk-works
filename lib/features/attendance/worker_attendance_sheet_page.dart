@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'japan_holiday.dart';
@@ -34,7 +35,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = 'クラウド接続を確認できません。';
+        _error = SkoLanguageController.tr('クラウド接続を確認できません。');
       });
       return;
     }
@@ -113,13 +114,13 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '出勤表',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.tr('出勤表'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
           IconButton(
-            tooltip: '月間カレンダー',
+            tooltip: SkoLanguageController.tr('月間カレンダー'),
             onPressed: _loading ? null : _showMonthCalendar,
             icon: const Icon(Icons.calendar_month_outlined),
           ),
@@ -191,13 +192,15 @@ class _MonthHeader extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            tooltip: '前の月',
+            tooltip: SkoLanguageController.tr('前の月'),
             onPressed: onPrevious,
             icon: const Icon(Icons.chevron_left),
           ),
           Expanded(
             child: Text(
-              '${month.year}年${month.month}月',
+              SkoLanguageController.isEnglish
+                  ? '${month.month}/${month.year}'
+                  : '${month.year}年${month.month}月',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
@@ -205,7 +208,7 @@ class _MonthHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: '次の月',
+            tooltip: SkoLanguageController.tr('次の月'),
             onPressed: onNext,
             icon: const Icon(Icons.chevron_right),
           ),
@@ -238,7 +241,7 @@ class _WeekTabs extends StatelessWidget {
         itemBuilder: (context, index) {
           final active = index == selected;
           return ChoiceChip(
-            label: Text('${index + 1}週'),
+            label: Text(SkoLanguageController.isEnglish ? 'Week ${index + 1}' : '${index + 1}週'),
             selected: active,
             onSelected: (_) => onChanged(index),
           );
@@ -261,7 +264,8 @@ class _WeekList extends StatelessWidget {
   final WorkerAttendanceMonth data;
   final ValueChanged<DateTime> onDateTap;
 
-  static const _weekdayNames = ['月', '火', '水', '木', '金', '土', '日'];
+  static const _weekdayNamesJa = ['月', '火', '水', '木', '金', '土', '日'];
+  static const _weekdayNamesEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +287,7 @@ class _WeekList extends StatelessWidget {
 
             return _AttendanceDayCard(
               date: date,
-              weekday: _weekdayNames[index],
+              weekday: (SkoLanguageController.isEnglish ? _weekdayNamesEn : _weekdayNamesJa)[index],
               inMonth: inMonth,
               day: day,
               onTap: () => onDateTap(date),
@@ -403,7 +407,7 @@ class _AttendanceDayCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      worked ? (day?.siteName ?? '現場') : '休み',
+                      worked ? (day?.siteName ?? SkoLanguageController.tr('現場')) : SkoLanguageController.tr('休み'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -433,7 +437,7 @@ class _AttendanceDayCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '出 ${_time(day?.clockIn)}',
+                            SkoLanguageController.isEnglish ? 'In ${_time(day?.clockIn)}' : '出 ${_time(day?.clockIn)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
@@ -441,7 +445,7 @@ class _AttendanceDayCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '退 ${_time(day?.clockOut)}',
+                            SkoLanguageController.isEnglish ? 'Out ${_time(day?.clockOut)}' : '退 ${_time(day?.clockOut)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
@@ -450,7 +454,7 @@ class _AttendanceDayCard extends StatelessWidget {
                         ],
                       )
                     : const Text(
-                        '休み',
+                        SkoLanguageController.tr('休み'),
                         textAlign: TextAlign.right,
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
@@ -469,17 +473,17 @@ class _AttendanceDayCard extends StatelessWidget {
   List<Widget> _tags(WorkerAttendanceDay day) {
     final tags = <Widget>[];
     if (day.overtimeHours > 0) {
-      tags.add(_MiniTag('残${_number(day.overtimeHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'OT ${_number(day.overtimeHours)}' : '残${_number(day.overtimeHours)}'));
     }
     if (day.earlyHours > 0) {
-      tags.add(_MiniTag('早${_number(day.earlyHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Early ${_number(day.earlyHours)}' : '早${_number(day.earlyHours)}'));
     }
     if (day.nightHours > 0) {
-      tags.add(_MiniTag('夜${_number(day.nightHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Night ${_number(day.nightHours)}' : '夜${_number(day.nightHours)}'));
     }
     if (day.hasAllowance) {
       final names = day.allowanceNames.isEmpty
-          ? const <String>['手当']
+          ? <String>[SkoLanguageController.tr('手当')]
           : day.allowanceNames;
       for (final name in names) {
         final unit = day.allowanceUnits[name] ?? '回';
@@ -607,7 +611,7 @@ class _WorkerAttendanceMonthPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${_month.year}年${_month.month}月'),
+        title: Text(SkoLanguageController.isEnglish ? '${_month.month}/${_month.year}' : '${_month.year}年${_month.month}月'),
         actions: [
           const SkoNotificationBell(),
         ],
@@ -656,7 +660,7 @@ class _WorkerAttendanceMonthPageState
                         ),
                       ),
               icon: const Icon(Icons.print_outlined),
-              label: const Text('A4印刷プレビュー'),
+              label: Text(SkoLanguageController.tr('A4印刷プレビュー')),
             ),
           ],
         ),
@@ -676,7 +680,8 @@ class _MonthCalendar extends StatelessWidget {
   final WorkerAttendanceMonth data;
   final ValueChanged<DateTime> onDateTap;
 
-  static const _weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+  static const _weekdaysJa = ['月', '火', '水', '木', '金', '土', '日'];
+  static const _weekdaysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   List<DateTime> _days() {
     final first = DateTime(month.year, month.month, 1);
@@ -710,7 +715,7 @@ class _MonthCalendar extends StatelessWidget {
               physics: const NeverScrollableScrollPhysics(),
               childAspectRatio: 1.9,
               children: [
-                for (final label in _weekdays)
+                for (final label in (SkoLanguageController.isEnglish ? _weekdaysEn : _weekdaysJa))
                   Center(
                     child: Text(
                       label,
@@ -874,21 +879,21 @@ class _MonthlySummary extends StatelessWidget {
           runSpacing: 10,
           children: [
             if (data.workedDays > 0)
-              _SummaryPill(label: '出勤', value: '${data.workedDays}日'),
+              _SummaryPill(label: SkoLanguageController.tr('出勤'), value: SkoLanguageController.isEnglish ? '${data.workedDays} days' : '${data.workedDays}日'),
             if (data.overtimeHours > 0)
               _SummaryPill(
-                label: '残業',
-                value: '${_number(data.overtimeHours)}時間',
+                label: SkoLanguageController.tr('残業'),
+                value: SkoLanguageController.isEnglish ? '${_number(data.overtimeHours)} hours' : '${_number(data.overtimeHours)}時間',
               ),
             if (data.earlyHours > 0)
               _SummaryPill(
-                label: '早出',
-                value: '${_number(data.earlyHours)}時間',
+                label: SkoLanguageController.tr('早出'),
+                value: SkoLanguageController.isEnglish ? '${_number(data.earlyHours)} hours' : '${_number(data.earlyHours)}時間',
               ),
             if (data.nightHours > 0)
               _SummaryPill(
-                label: '夜間',
-                value: '${_number(data.nightHours)}時間',
+                label: SkoLanguageController.tr('夜間'),
+                value: SkoLanguageController.isEnglish ? '${_number(data.nightHours)} hours' : '${_number(data.nightHours)}時間',
               ),
             for (final entry in data.allowanceCounts.entries)
               _SummaryPill(
@@ -950,7 +955,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
       ..sort((a, b) => a.date.compareTo(b.date));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('A4プレビュー')),
+      appBar: AppBar(title: Text(SkoLanguageController.tr('A4プレビュー'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -967,7 +972,9 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '出勤表  ${month.year}年${month.month}月',
+                          SkoLanguageController.isEnglish
+                              ? 'Attendance  ${month.month}/${month.year}'
+                              : '出勤表  ${month.year}年${month.month}月',
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
@@ -980,13 +987,13 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                           runSpacing: 4,
                           children: [
                             if (data.workedDays > 0)
-                              Text('出勤 ${data.workedDays}日'),
+                              Text(SkoLanguageController.isEnglish ? 'Attendance ${data.workedDays} days' : '出勤 ${data.workedDays}日'),
                             if (data.overtimeHours > 0)
-                              Text('残業 ${_number(data.overtimeHours)}時間'),
+                              Text(SkoLanguageController.isEnglish ? 'Overtime ${_number(data.overtimeHours)} hours' : '残業 ${_number(data.overtimeHours)}時間'),
                             if (data.earlyHours > 0)
-                              Text('早出 ${_number(data.earlyHours)}時間'),
+                              Text(SkoLanguageController.isEnglish ? 'Early ${_number(data.earlyHours)} hours' : '早出 ${_number(data.earlyHours)}時間'),
                             if (data.nightHours > 0)
-                              Text('夜間 ${_number(data.nightHours)}時間'),
+                              Text(SkoLanguageController.isEnglish ? 'Night ${_number(data.nightHours)} hours' : '夜間 ${_number(data.nightHours)}時間'),
                             for (final entry in data.allowanceCounts.entries)
                               Text(
                                 '${entry.key} ${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
@@ -1005,7 +1012,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                   child: Text(
                                     [
                                       '${day.date.month}/${day.date.day}',
-                                      day.siteName ?? '休み',
+                                      day.siteName ?? SkoLanguageController.tr('休み'),
                                       '${_time(day.clockIn)}〜${_time(day.clockOut)}',
                                       if (day.overtimeHours > 0)
                                         '残${_number(day.overtimeHours)}',
@@ -1037,7 +1044,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => AttendancePdfService.printMonth(month, data),
               icon: const Icon(Icons.print),
-              label: const Text('印刷'),
+              label: Text(SkoLanguageController.tr('印刷')),
             ),
           ],
         ),
@@ -1077,7 +1084,7 @@ class _ErrorState extends StatelessWidget {
             const Icon(Icons.cloud_off_outlined, size: 44),
             const SizedBox(height: 12),
             const Text(
-              '出勤表を読み込めませんでした',
+              SkoLanguageController.tr('出勤表を読み込めませんでした'),
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
@@ -1086,7 +1093,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再読み込み'),
+              label: Text(SkoLanguageController.tr('再読み込み')),
             ),
           ],
         ),
