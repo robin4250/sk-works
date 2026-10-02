@@ -44,6 +44,28 @@ void main() {
     expect(page, contains("'個別'"));
     expect(page, contains("'電話番号'"));
     expect(page, contains("'緊急連絡先電話番号'"));
+    final nameIndex = page.indexOf("'名前'");
+    final kindIndex = page.indexOf("'区分'");
+    final bloodIndex = page.indexOf("'血液型'");
+    final roleIndex = page.indexOf("'職種'");
+    final phoneIndex = page.indexOf("label: '電話番号'");
+    final addressIndex = page.indexOf("label: '住所'");
+    final emergencyNameIndex = page.indexOf("'緊急連絡先氏名'");
+    final relationIndex = page.indexOf("'続柄'");
+    final emergencyPhoneIndex =
+        page.indexOf("label: '緊急連絡先電話番号'");
+    final emergencyAddressIndex =
+        page.indexOf("label: '緊急連絡先住所'");
+    expect(nameIndex, lessThan(kindIndex));
+    expect(kindIndex, lessThan(bloodIndex));
+    expect(bloodIndex, lessThan(roleIndex));
+    expect(roleIndex, lessThan(phoneIndex));
+    expect(phoneIndex, lessThan(addressIndex));
+    expect(addressIndex, lessThan(emergencyNameIndex));
+    expect(emergencyNameIndex, lessThan(relationIndex));
+    expect(relationIndex, lessThan(emergencyPhoneIndex));
+    expect(emergencyPhoneIndex, lessThan(emergencyAddressIndex));
+
     expect(page, contains("'Googleマップを開けませんでした'"));
     expect(page, contains("scheme: 'tel'"));
     expect(page, contains("'www.google.com'"));
