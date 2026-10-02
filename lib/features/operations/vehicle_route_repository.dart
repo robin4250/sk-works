@@ -51,7 +51,7 @@ class VehicleRouteRepository {
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     var query = _client.from('route_assignments').select(
       'id,route_name,notes,is_active,created_at,updated_at,'
-      'route_stops(id,stop_order,site_id,address,sites(name,address))',
+      'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,sites(name,address))',
     );
     if (activeOnly) query = query.eq('is_active', true);
     final rows = await query
@@ -71,6 +71,27 @@ class VehicleRouteRepository {
         .from('sites')
         .select('id,name,address,status')
         .neq('status', 'completed')
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<List<Map<String, dynamic>>> customers() async {
+    final companyId = await _membership();
+    final rows = await _client
+        .from('customers')
+        .select('id,name,billing_name,billing_address')
+        .eq('company_id', companyId)
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<List<Map<String, dynamic>>> partners() async {
+    final companyId = await _membership();
+    final rows = await _client
+        .from('partner_companies')
+        .select('id,name,address,status,trade_role')
+        .eq('company_id', companyId)
+        .neq('status', 'inactive')
         .order('name');
     return [for (final row in rows) Map<String, dynamic>.from(row)];
   }
@@ -227,6 +248,9 @@ class VehicleRouteRepository {
             'stop_order': i,
             'site_id': _nullable(stops[i]['site_id']),
             'address': _nullable(stops[i]['address']),
+            'source_kind': _nullable(stops[i]['source_kind']),
+            'source_id': _nullable(stops[i]['source_id']),
+            'source_label': _nullable(stops[i]['source_label']),
             'created_by': user.id,
             'updated_by': user.id,
           },
