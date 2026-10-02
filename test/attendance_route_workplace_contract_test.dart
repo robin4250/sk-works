@@ -29,8 +29,8 @@ void main() {
     expect(vehicleRepo, contains("'site_id': null"));
     expect(vehicleRepo, contains('saveTodayVehicleSelection'));
     expect(vehicleRepo, contains('saveTodayRouteSelection'));
+    expect(selectionPage, contains('enum VehicleRouteSelectionMode { vehicle, route }'));
     expect(selectionPage, contains('VehicleRouteSelectionMode.vehicle'));
-    expect(selectionPage, contains('VehicleRouteSelectionMode.route'));
     expect(selectionPage, contains("'車両を使わない'"));
     expect(selectionPage, contains("'ルートを使わない'"));
     expect(attendanceRepo, contains("'save_my_route_attendance_selection'"));
