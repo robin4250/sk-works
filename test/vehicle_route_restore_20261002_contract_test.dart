@@ -60,7 +60,7 @@ void main() {
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
 
-    expect(home, contains("'現場の選択（固定現場／複数現場）'"));
+    expect(home, contains("'現場の選択（1現場／複数現場）'"));
     expect(home, contains("'出勤方法と車両を選択'"));
     expect(home, contains('選択中の車両：'));
     expect(home, contains('選択中のルート：'));
