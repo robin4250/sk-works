@@ -609,7 +609,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'site_map':
-        page = const SiteMapPage();
+        page = const SiteMapPage(allowEmployeeHomes: true);
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
