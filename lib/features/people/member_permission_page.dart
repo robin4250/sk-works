@@ -22,8 +22,6 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
     'can_manage_attendance': '出勤・人区管理',
     'can_manage_people': '人員管理',
     'can_manage_partner_chat': '協力会社チャット',
-    'can_manage_vehicles': '車両の登録・変更・休止',
-    'can_manage_routes': 'ルートの登録・変更・休止',
     'can_view_payroll_adjustments': '給与調整を閲覧',
     'can_manage_payroll_adjustments': '給与調整を登録・編集',
   };
