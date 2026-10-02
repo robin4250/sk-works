@@ -96,7 +96,7 @@ void main() {
     expect(reportPage, contains("'メーターを撮影して読取'"));
     expect(reportPage, contains("'再撮影'"));
     expect(reportPage, contains("'この数値を登録'"));
-    expect(pdf, contains("'車両 ' + worker.vehicleName!"));
+    expect(pdf, contains("SkoLanguageController.tr('車両') + ' ' + worker.vehicleName!"));
     expect(pdf, contains("'ルート ' + worker.routeName!"));
     expect(pdf, contains("'走行 ' + _number(worker.odometerKm!) + 'km'"));
     expect(ocr, contains('TextRecognizer'));
