@@ -3,11 +3,14 @@ import 'package:sk_works/domain/resource_management_permission.dart';
 
 void main() {
   test('all company members can view and use resources', () {
-    expect(ResourceManagementPermission.canViewOrUse(isCompanyMember: true), isTrue);
+    expect(
+      ResourceManagementPermission.canViewOrUse(isCompanyMember: true),
+      isTrue,
+    );
   });
 
-  test('admin sub-admin and delegated members can manage', () {
-    for (final role in <String>['owner', 'admin', 'sub_admin']) {
+  test('management roles can manage vehicles and routes', () {
+    for (final role in <String>['owner', 'admin', 'sub_admin', 'manager']) {
       expect(
         ResourceManagementPermission.canManage(
           role: role,
@@ -15,25 +18,47 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        ResourceManagementPermission.canManage(
+          role: role,
+          resource: ManagedResource.route,
+        ),
+        isTrue,
+      );
     }
+  });
+
+  test('ordinary members cannot manage vehicles or routes even if delegated', () {
+    expect(
+      ResourceManagementPermission.canManage(
+        role: 'member',
+        resource: ManagedResource.vehicle,
+        delegated: const <ManagedResource>{ManagedResource.vehicle},
+      ),
+      isFalse,
+    );
     expect(
       ResourceManagementPermission.canManage(
         role: 'member',
         resource: ManagedResource.route,
         delegated: const <ManagedResource>{ManagedResource.route},
       ),
+      isFalse,
+    );
+    expect(
+      ResourceManagementPermission.shouldSoftDisableInsteadOfDelete(),
       isTrue,
     );
   });
 
-  test('ordinary members cannot manage without delegated permission', () {
+  test('other resource delegation remains available where supported', () {
     expect(
       ResourceManagementPermission.canManage(
         role: 'member',
-        resource: ManagedResource.vehicle,
+        resource: ManagedResource.site,
+        delegated: const <ManagedResource>{ManagedResource.site},
       ),
-      isFalse,
+      isTrue,
     );
-    expect(ResourceManagementPermission.shouldSoftDisableInsteadOfDelete(), isTrue);
   });
 }
