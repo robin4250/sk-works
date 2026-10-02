@@ -36,5 +36,14 @@ void main() {
     expect(app, contains('_identity.companyName'));
     expect(app, contains('_identity.displayName'));
     expect(app, contains('now.year'));
+    final homeStart = app.indexOf('Widget _homeDashboard()');
+    final homeEnd = app.indexOf('List<_HomeLayoutItem> get _homeLayoutItems');
+    expect(homeStart, greaterThanOrEqualTo(0));
+    expect(homeEnd, greaterThan(homeStart));
+    final homeDashboard = app.substring(homeStart, homeEnd);
+    expect(homeDashboard, contains('preferredSize: const Size.fromHeight(88)'));
+    expect(homeDashboard, contains('contentTopInset: 98'));
+    expect(homeDashboard, isNot(contains('_chromeVisible')));
+    expect(homeDashboard, isNot(contains('AnimatedContainer(')));
   });
 }
