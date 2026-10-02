@@ -414,7 +414,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
   String _shortTime(String value) {
     final parts = value.split(':');
     if (parts.length < 2) return value;
-    return parts[0] + ':' + parts[1];
+    return '${parts[0]}:${parts[1]}';
   }
 
   String _time(DateTime? value) {
