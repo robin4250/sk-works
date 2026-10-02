@@ -529,7 +529,7 @@ class _AttendanceVerificationPageState
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('写真撮影をキャンセルしたため登録していません'),
+              content: Text('写真撮影をキャンセルしたため、確認は登録していません。'),
             ),
           );
           return;
