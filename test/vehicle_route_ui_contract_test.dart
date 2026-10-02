@@ -38,8 +38,9 @@ void main() {
     expect(routeEditor, isNot(contains("'運行日（YYYY-MM-DD）'")));
 
     expect(repository, contains("from('sites')"));
-    expect(repository, contains("from('customers')"));
-    expect(repository, contains("from('partner_companies')"));
+    expect(repository, contains("rpc('site_map_workspace')"));
+    expect(repository, contains("'customers': rows('customers')"));
+    expect(repository, contains("'partners': rows('partners')"));
     expect(repository, contains("'storage_address'"));
     expect(repository, contains("'source_kind'"));
     expect(repository, contains("from('route_stops')"));
