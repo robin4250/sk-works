@@ -29,6 +29,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.appearance = const HomeAppearance(),
+    this.contentTopInset = 10,
     required this.onOpen,
     required this.onRefresh,
   });
@@ -44,6 +45,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
+  final double contentTopInset;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
 
@@ -65,7 +67,7 @@ class FriendlyHomeContent extends StatelessWidget {
           onRefresh: onRefresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
