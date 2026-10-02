@@ -102,6 +102,9 @@ void main() {
     expect(list, contains("'A4横プレビュー・印刷'"));
     expect(list, contains('EmployeePersonnelPreviewAction.send'));
     expect(list, contains('EmployeePersonnelPreviewAction.print'));
+    expect(list, contains("title: const Text('社員一覧')"));
+    expect(list, contains("title: const Text('個別')"));
+    expect(list, contains('社員を1名選んでA4横向きでプレビュー'));
   });
 
   test('employee list renders domestic phone and exposes call action', () {
