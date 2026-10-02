@@ -48,8 +48,13 @@ class AttendancePdfService {
                   _hoursCell(day.nightHours),
                   day.hasAllowance
                       ? (day.allowanceNames.isEmpty
-                          ? '手当1'
-                          : day.allowanceNames.map((name) => '${name}1').join(' '))
+                          ? '手当1回'
+                          : day.allowanceNames
+                              .map(
+                                (name) =>
+                                    '${name}1${day.allowanceUnits[name] ?? '回'}',
+                              )
+                              .join(' '))
                       : '',
                 ],
             ],
@@ -101,7 +106,8 @@ class AttendancePdfService {
       if (data.earlyHours > 0) '早出 ${_number(data.earlyHours)}時間',
       if (data.nightHours > 0) '夜間 ${_number(data.nightHours)}時間',
       for (final entry in data.allowanceCounts.entries)
-        if (entry.value > 0) '${entry.key} ${entry.value}回',
+        if (entry.value > 0)
+          '${entry.key} ${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
     ];
     return parts.isEmpty ? '集計なし' : parts.join(' / ');
   }
