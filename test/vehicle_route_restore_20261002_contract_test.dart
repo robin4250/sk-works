@@ -65,8 +65,8 @@ void main() {
     expect(home, contains('選択中の車両：'));
     expect(home, contains('選択中のルート：'));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
+    expect(selection, contains('enum VehicleRouteSelectionMode { vehicle, route }'));
     expect(selection, contains('VehicleRouteSelectionMode.vehicle'));
-    expect(selection, contains('VehicleRouteSelectionMode.route'));
     expect(selection, contains("'車両を使わない'"));
     expect(selection, contains("'ルートを使わない'"));
     expect(app, contains("case 'workplace_select':"));
