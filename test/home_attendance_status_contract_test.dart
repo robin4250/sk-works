@@ -22,8 +22,10 @@ void main() {
     expect(home, contains("'本日の勤務報告'"));
     expect(home, contains("'選択中の出勤方法："));
     expect(home, contains("'選択中の現場："));
-    expect(home, contains("'出勤方法と現場を選択'"));
-    expect(home, contains("onOpen('attendance_verify')"));
+    expect(home, contains("'現場の選択（1現場／複数現場）'"));
+    expect(home, contains("'出勤方法と車両を選択'"));
+    expect(home, contains("onOpen('workplace_select')"));
+    expect(home, contains("onOpen('attendance_method_vehicle')"));
     expect(home, contains('HomeAttendancePhase.working'));
     expect(home, contains('HomeAttendancePhase.finished'));
 
