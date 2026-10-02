@@ -49,6 +49,43 @@ void main() {
     expect(domesticPhoneDisplay('090-1234-5678'), '090-1234-5678');
   });
 
+  test('profile and employee registration share two-approver personnel workflow', () {
+    final profile = File(
+      'lib/features/profile/profile_page.dart',
+    ).readAsStringSync();
+    final peopleForm = File(
+      'lib/features/people/people_page.dart',
+    ).readAsStringSync();
+    final edit = File(
+      'lib/features/people/employee_personnel_edit_page.dart',
+    ).readAsStringSync();
+    final approvals = File(
+      'lib/features/people/worker_personnel_change_approvals_page.dart',
+    ).readAsStringSync();
+    final migration = File(
+      'supabase/migrations/'
+      '20261002012754_add_worker_personnel_two_approver_edits.sql',
+    ).readAsStringSync();
+    final firstFill = File(
+      'supabase/migrations/'
+      '20261002013353_allow_unregistered_personnel_fields_without_approval.sql',
+    ).readAsStringSync();
+
+    expect(profile, contains("'社員個人情報'"));
+    expect(profile, contains('savePersonnelProfile'));
+    expect(peopleForm, contains("'血液型'"));
+    expect(peopleForm, contains("'緊急連絡先'"));
+    expect(edit, contains("'変更申請を送る'"));
+    expect(approvals, contains("'承認 2/2 名'"), isFalse);
+    expect(approvals, contains("'承認 '"));
+    expect(approvals, contains("'/2 名'"));
+    expect(migration, contains('worker_personnel_change_requests'));
+    expect(migration, contains('worker_personnel_change_approvals'));
+    expect(migration, contains('v_count>=2'));
+    expect(migration, contains('自分の申請は承認できません'));
+    expect(firstFill, contains('if not v_requires_approval then'));
+  });
+
   test('employee details reuse approved onboarding data', () {
     final repository = File(
       'lib/features/people/people_cloud_repository.dart',
