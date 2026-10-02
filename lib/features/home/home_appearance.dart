@@ -65,6 +65,16 @@ class HomeAppearanceRepository {
 
   static Future<HomeAppearance> load() async {
     final prefs = await SharedPreferences.getInstance();
+    final defaultsMigrationKey = _key('defaults_20261003');
+    if (!(prefs.getBool(defaultsMigrationKey) ?? false)) {
+      await prefs.setDouble(_key('wallpaper_opacity'), 1.0);
+      await prefs.setDouble(_key('button_opacity'), 0.8);
+      await prefs.setDouble(_key('card_button_opacity'), 1.0);
+      await prefs.setDouble(_key('card_opacity'), 0.8);
+      await prefs.setDouble(_key('header_opacity'), 0.8);
+      await prefs.setDouble(_key('footer_opacity'), 0.8);
+      await prefs.setBool(defaultsMigrationKey, true);
+    }
     return HomeAppearance(
       wallpaperPath: prefs.getString(_key('wallpaper_path')),
       wallpaperOpacity: _read(
