@@ -335,11 +335,29 @@ class _PersonFormPageState extends State<PersonFormPage> {
   final _email = TextEditingController();
   final _role = TextEditingController();
   final _notes = TextEditingController();
+  final _address = TextEditingController();
+  final _emergencyName = TextEditingController();
+  final _emergencyRelation = TextEditingController();
+  final _emergencyPhone = TextEditingController();
+  final _emergencyAddress = TextEditingController();
+  String _bloodType = '';
   PersonKind _kind = PersonKind.employee;
 
   @override
   void dispose() {
-    for (final controller in [_name, _company, _phone, _email, _role, _notes]) {
+    for (final controller in [
+      _name,
+      _company,
+      _phone,
+      _email,
+      _role,
+      _notes,
+      _address,
+      _emergencyName,
+      _emergencyRelation,
+      _emergencyPhone,
+      _emergencyAddress,
+    ]) {
       controller.dispose();
     }
     super.dispose();
@@ -398,6 +416,53 @@ class _PersonFormPageState extends State<PersonFormPage> {
                 decoration: const InputDecoration(labelText: 'メールアドレス'),
               ),
               const SizedBox(height: 14),
+              if (_kind != PersonKind.partnerCompany) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _bloodType.isEmpty ? null : _bloodType,
+                  decoration: const InputDecoration(labelText: '血液型'),
+                  items: const [
+                    DropdownMenuItem(value: 'A', child: Text('A型')),
+                    DropdownMenuItem(value: 'B', child: Text('B型')),
+                    DropdownMenuItem(value: 'O', child: Text('O型')),
+                    DropdownMenuItem(value: 'AB', child: Text('AB型')),
+                    DropdownMenuItem(value: '不明', child: Text('不明')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _bloodType = value ?? ''),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _address,
+                  decoration: const InputDecoration(labelText: '住所'),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '緊急連絡先',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _emergencyName,
+                  decoration: const InputDecoration(labelText: '氏名'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emergencyRelation,
+                  decoration: const InputDecoration(labelText: '続柄'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emergencyPhone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: '電話番号'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emergencyAddress,
+                  decoration: const InputDecoration(labelText: '住所'),
+                ),
+                const SizedBox(height: 14),
+              ],
               TextField(
                 controller: _notes,
                 maxLines: 3,
@@ -428,6 +493,12 @@ class _PersonFormPageState extends State<PersonFormPage> {
         email: _email.text.trim(),
         role: _role.text.trim(),
         notes: _notes.text.trim(),
+        bloodType: _bloodType,
+        address: _address.text.trim(),
+        emergencyName: _emergencyName.text.trim(),
+        emergencyRelation: _emergencyRelation.text.trim(),
+        emergencyPhone: _emergencyPhone.text.trim(),
+        emergencyAddress: _emergencyAddress.text.trim(),
       ),
     );
   }
