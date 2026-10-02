@@ -29,6 +29,16 @@ class PeopleCloudRepository {
     );
   }
 
+  Future<String> companyName() async {
+    final membership = await membership();
+    final row = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', membership.companyId)
+        .maybeSingle();
+    return row?['name']?.toString() ?? '';
+  }
+
   Future<bool> canManagePeople() async {
     await membership();
     final value = await _client.rpc('current_feature_permissions');
@@ -64,6 +74,19 @@ class PeopleCloudRepository {
     final rows = await _client.rpc('people_management_records');
     if (rows is! List) return const <Map<String, dynamic>>[];
 
+    final personnelRaw = await _client.rpc('employee_personnel_rows');
+    final personnelRows = personnelRaw is List
+        ? personnelRaw
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+    final personnelByWorker = <String, Map<String, dynamic>>{
+      for (final row in personnelRows)
+        if ((row['worker_id']?.toString() ?? '').isNotEmpty)
+          row['worker_id'].toString(): row,
+    };
+
     final companyId = await _companyId();
     final workerDates = await _client
         .from('workers')
@@ -87,6 +110,8 @@ class PeopleCloudRepository {
       final value = Map<String, dynamic>.from(row as Map);
       final id = value['id']?.toString() ?? '';
       final dates = datesById[id] ?? const <String, dynamic>{};
+      final personnel =
+          personnelByWorker[id] ?? const <String, dynamic>{};
       return {
         'id': value['id'],
         'kind': value['kind'],
@@ -99,6 +124,12 @@ class PeopleCloudRepository {
         'active': value['active'] == true,
         'createdAt': dates['created_at'] ?? '',
         'updatedAt': dates['updated_at'] ?? '',
+        'bloodType': personnel['blood_type'] ?? '',
+        'address': personnel['address'] ?? '',
+        'emergencyName': personnel['emergency_name'] ?? '',
+        'emergencyRelation': personnel['emergency_relation'] ?? '',
+        'emergencyPhone': personnel['emergency_phone'] ?? '',
+        'emergencyAddress': personnel['emergency_address'] ?? '',
       };
     }).toList(growable: false);
   }
