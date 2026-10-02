@@ -70,8 +70,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
             (schedule['enabled'] == true ? 'gps_auto' : 'manual');
         if (_mode == 'location') _mode = 'gps_auto';
         _siteId = selection['site_id']?.toString() ??
-            schedule['site_id']?.toString() ??
-            (_sites.isEmpty ? null : _sites.first['id']?.toString());
+            schedule['site_id']?.toString();
         _gpsWeekdays = scheduleDays.isEmpty
             ? const [1, 2, 3, 4, 5]
             : scheduleDays;
@@ -215,7 +214,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      DropdownButtonFormField<String>(
+                      DropdownButtonFormField<String?>(
                         initialValue: _siteId,
                         decoration: const InputDecoration(
                           labelText: '現場の選択',
@@ -223,8 +222,12 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                           border: OutlineInputBorder(),
                         ),
                         items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('未登録'),
+                          ),
                           for (final site in _sites)
-                            DropdownMenuItem(
+                            DropdownMenuItem<String?>(
                               value: site['id']?.toString(),
                               child: Text(site['name']?.toString() ?? '現場'),
                             ),
@@ -235,8 +238,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed:
-                            _saving || _siteId == null ? null : _save,
+                        onPressed: _saving ? null : _save,
                         icon: const Icon(Icons.check),
                         label: Text(_saving ? '保存中…' : '保存してTOPへ戻る'),
                         style: FilledButton.styleFrom(
