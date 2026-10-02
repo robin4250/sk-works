@@ -78,7 +78,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final data = _data;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Googleマップ'),
+        title: const Text('現場マップ'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -99,8 +99,8 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         padding: const EdgeInsets.all(14),
                         child: Text(
                           data!.canViewAll
-                              ? '社員全員の最新の打刻位置を表示します。常時追跡は行いません。'
-                              : '自分自身の最新の打刻位置だけを表示します。',
+                              ? '現場・取引会社・下請け会社と、社員全員の最新打刻位置をGoogleマップで開けます。常時追跡は行いません。'
+                              : '現場と自分自身の最新打刻位置をGoogleマップで開けます。',
                         ),
                       ),
                     ),
