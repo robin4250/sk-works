@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../daily_reports/daily_report_page.dart';
 import '../notifications/notification_bell.dart';
 import 'attendance_verification_repository.dart';
+import 'gps_auto_attendance_service.dart';
+import 'gps_auto_schedule_dialog.dart';
 
 class AttendanceVerificationPage extends StatefulWidget {
   const AttendanceVerificationPage({
@@ -17,22 +19,30 @@ class AttendanceVerificationPage extends StatefulWidget {
   final String? initialEventType;
 
   @override
-  State<AttendanceVerificationPage> createState() => _AttendanceVerificationPageState();
+  State<AttendanceVerificationPage> createState() =>
+      _AttendanceVerificationPageState();
 }
 
-class _AttendanceVerificationPageState extends State<AttendanceVerificationPage> {
+class _AttendanceVerificationPageState
+    extends State<AttendanceVerificationPage> {
   final _repository = AttendanceVerificationRepository.maybeCreate();
   final _picker = ImagePicker();
   final _noteController = TextEditingController();
 
-  List<Map<String, dynamic>> _workers = [];
-  List<Map<String, dynamic>> _sites = [];
-  List<Map<String, dynamic>> _recent = [];
+  List<Map<String, dynamic>> _workers = const [];
+  List<Map<String, dynamic>> _sites = const [];
+  List<Map<String, dynamic>> _recent = const [];
+
   String _mode = 'manual';
-  int _radiusM = 300;
   String? _workerId;
   String? _siteId;
   late String _eventType;
+  List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
+  TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+
+  String? _vehicleName;
+  String? _routeName;
+
   bool _loading = true;
   bool _saving = false;
   bool _canManageAttendance = false;
@@ -41,9 +51,8 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
   @override
   void initState() {
     super.initState();
-    _eventType = widget.initialEventType == 'clock_out'
-        ? 'clock_out'
-        : 'clock_in';
+    _eventType =
+        widget.initialEventType == 'clock_out' ? 'clock_out' : 'clock_in';
     _load();
   }
 
@@ -62,39 +71,105 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       });
       return;
     }
+
     try {
-      final canManage = await repository.canManageAttendance();
-      final settings = await repository.loadSettings();
-      final workers = await repository.loadWorkers();
-      final sites = await repository.loadSites();
-      final recent = await repository.loadRecent();
+      final values = await Future.wait([
+        repository.loadWorkers(),
+        repository.loadSites(),
+        repository.loadRecent(),
+        repository.loadAttendanceSelectionWorkspace(),
+        repository.loadHomeAttendanceStatus(),
+        repository.canManageAttendance(),
+      ]);
+
+      final workspace = values[3] as Map<String, dynamic>;
+      final selection = workspace['selection'] is Map
+          ? Map<String, dynamic>.from(workspace['selection'] as Map)
+          : const <String, dynamic>{};
+      final schedule = workspace['gps_schedule'] is Map
+          ? Map<String, dynamic>.from(workspace['gps_schedule'] as Map)
+          : const <String, dynamic>{};
+      final status = values[4] as HomeAttendanceStatus;
+
+      final scheduleDays = schedule['weekdays'] is List
+          ? (schedule['weekdays'] as List)
+              .whereType<num>()
+              .map((value) => value.toInt())
+              .toList(growable: false)
+          : const <int>[1, 2, 3, 4, 5];
+
+      var selectedMode = selection['mode']?.toString() ??
+          (schedule['enabled'] == true ? 'gps_auto' : 'manual');
+      if (selectedMode == 'location') selectedMode = 'gps_auto';
+
+      final sites = values[1] as List<Map<String, dynamic>>;
+      final selectedSiteId = selection['site_id']?.toString() ??
+          schedule['site_id']?.toString() ??
+          (sites.isEmpty ? null : sites.first['id']?.toString());
+
       if (!mounted) return;
       setState(() {
-        _canManageAttendance = canManage;
-        _mode = settings['mode']?.toString() ?? 'manual';
-        _radiusM = (settings['proximity_radius_m'] as num?)?.toInt() ?? 300;
-        _workers = workers;
-        _sites = sites;
-        _recent = recent;
-        _workerId ??= workers.isEmpty ? null : workers.first['id'] as String;
-        _siteId ??= sites.isEmpty ? null : sites.first['id'] as String;
+        _workers = values[0] as List<Map<String, dynamic>>;
+        _sites = sites
+            .where((row) => row['status']?.toString() != 'completed')
+            .toList(growable: false);
+        _recent = values[2] as List<Map<String, dynamic>>;
+        _workerId =
+            _workers.isEmpty ? null : _workers.first['id']?.toString();
+        _siteId = selectedSiteId;
+        _mode = selectedMode;
+        _gpsWeekdays =
+            scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
+        _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
+        _vehicleName = status.selectedVehicleName;
+        _routeName = status.selectedRouteName;
+        _canManageAttendance = values[5] == true;
         _loading = false;
         _error = null;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = error.toString();
       });
     }
   }
 
+  Future<void> _changeMode(String? value) async {
+    if (value == null) return;
+    if (value != 'gps_auto') {
+      setState(() => _mode = value);
+      return;
+    }
+
+    final allowed = await ensureGpsAutoLocationPermission(context);
+    if (!allowed || !mounted) return;
+
+    final schedule = await showGpsAutoScheduleDialog(
+      context,
+      initialWeekdays: _gpsWeekdays,
+      initialTime: _gpsTime,
+    );
+    if (schedule == null || !mounted) return;
+
+    setState(() {
+      _mode = 'gps_auto';
+      _gpsWeekdays = schedule.weekdays;
+      _gpsTime = schedule.time;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isClockOut = _eventType == 'clock_out';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('出勤・退勤確認'),
+        title: Text(
+          isClockOut ? '退勤' : '出勤',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -116,141 +191,189 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           _error!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
                       ),
                     ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('確認方法', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _mode,
-                            decoration: const InputDecoration(prefixIcon: Icon(Icons.verified_user_outlined)),
-                            items: const [
-                              DropdownMenuItem(value: 'manual', child: Text('手動のみ')),
-                              DropdownMenuItem(value: 'location', child: Text('位置情報')),
-                              DropdownMenuItem(value: 'location_photo', child: Text('位置情報＋写真')),
-                            ],
-                            onChanged: _saving || !_canManageAttendance
-                                ? null
-                                : (value) async {
-                                    if (value == null) return;
-                                    setState(() => _mode = value);
-                                    await _saveMode();
-                                  },
-                          ),
-                          const SizedBox(height: 10),
-                          Text(_modeDescription(_mode)),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '位置情報は出勤・退勤ボタンを押した時だけ取得します。常時GPS追跡はしません。',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ],
+                  DropdownButtonFormField<String>(
+                    initialValue: _mode,
+                    decoration: const InputDecoration(
+                      labelText: '出勤方法',
+                      prefixIcon: Icon(Icons.tune_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'manual',
+                        child: Text('手動'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'gps_auto',
+                        child: Text('GPS自動出勤'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'location_photo',
+                        child: Text('位置情報＋写真'),
+                      ),
+                    ],
+                    onChanged: _saving ? null : _changeMode,
+                  ),
+                  if (_mode == 'gps_auto') ...[
+                    const SizedBox(height: 8),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.schedule_outlined),
+                        title: const Text('選択中の曜日とGPS取得時間'),
+                        subtitle: Text(
+                          GpsAutoScheduleDraft(
+                            weekdays: _gpsWeekdays,
+                            time: _gpsTime,
+                          ).label,
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _saving
+                            ? null
+                            : () async {
+                                final schedule =
+                                    await showGpsAutoScheduleDialog(
+                                  context,
+                                  initialWeekdays: _gpsWeekdays,
+                                  initialTime: _gpsTime,
+                                );
+                                if (schedule != null && mounted) {
+                                  setState(() {
+                                    _gpsWeekdays = schedule.weekdays;
+                                    _gpsTime = schedule.time;
+                                  });
+                                }
+                              },
                       ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 12),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            initialValue: _workerId,
-                            decoration: const InputDecoration(labelText: '作業員', prefixIcon: Icon(Icons.person_outline)),
-                            items: _workers
-                                .map((worker) => DropdownMenuItem<String>(
-                                      value: worker['id'] as String,
-                                      child: Text(worker['name'].toString()),
-                                    ))
-                                .toList(),
-                            onChanged: _saving || !_canManageAttendance
-                                ? null
-                                : (value) => setState(() => _workerId = value),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            initialValue: _siteId,
-                            decoration: const InputDecoration(labelText: '現場', prefixIcon: Icon(Icons.location_city_outlined)),
-                            items: _sites
-                                .map((site) => DropdownMenuItem<String>(
-                                      value: site['id'] as String,
-                                      child: Text(site['name'].toString()),
-                                    ))
-                                .toList(),
-                            onChanged: _saving ? null : (value) => setState(() => _siteId = value),
-                          ),
-                          if (_selectedSite != null) ...[
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(_siteLocationText(_selectedSite!)),
-                            ),
-                            if (_canManageAttendance)
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed:
-                                      _saving ? null : _setSelectedSiteLocation,
-                                  icon: const Icon(Icons.my_location),
-                                  label: const Text(
-                                    'この現場の基準位置を現在地で登録',
-                                  ),
-                                ),
-                              ),
-                          ],
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _eventType,
-                            decoration: const InputDecoration(labelText: '確認', prefixIcon: Icon(Icons.schedule_outlined)),
-                            items: const [
-                              DropdownMenuItem(value: 'clock_in', child: Text('出勤')),
-                              DropdownMenuItem(value: 'clock_out', child: Text('退勤')),
-                            ],
-                            onChanged: _saving ? null : (value) => setState(() => _eventType = value ?? 'clock_in'),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _noteController,
-                            enabled: !_saving,
-                            decoration: const InputDecoration(labelText: 'メモ（任意）', prefixIcon: Icon(Icons.notes_outlined)),
-                          ),
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: _saving || _workerId == null || _siteId == null ? null : _confirm,
-                              icon: _saving
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : Icon(_eventType == 'clock_in' ? Icons.login : Icons.logout),
-                              label: Text(_saving ? '確認中…' : (_eventType == 'clock_in' ? '出勤を確認する' : '退勤を確認する')),
-                            ),
-                          ),
-                        ],
+                  DropdownButtonFormField<String>(
+                    initialValue: _siteId,
+                    decoration: const InputDecoration(
+                      labelText: '現場',
+                      prefixIcon: Icon(Icons.business_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final site in _sites)
+                        DropdownMenuItem(
+                          value: site['id']?.toString(),
+                          child: Text(site['name']?.toString() ?? '現場'),
+                        ),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _siteId = value),
+                  ),
+                  if (_selectedSite != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _siteLocationText(_selectedSite!),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (_canManageAttendance)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed:
+                              _saving ? null : _setSelectedSiteLocation,
+                          icon: const Icon(Icons.my_location),
+                          label: const Text('この現場の基準位置を現在地で登録'),
+                        ),
                       ),
+                  ],
+                  if ((_vehicleName ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _ReadOnlySelectionCard(
+                      icon: Icons.directions_car_outlined,
+                      label: '車両',
+                      value: _vehicleName!,
+                    ),
+                  ],
+                  if ((_routeName ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _ReadOnlySelectionCard(
+                      icon: Icons.route_outlined,
+                      label: 'ルート',
+                      value: _routeName!,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _noteController,
+                    enabled: !_saving,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'メモ',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: _saving ||
+                            _workerId == null ||
+                            _siteId == null
+                        ? null
+                        : _confirm,
+                    icon: _saving
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(isClockOut ? Icons.logout : Icons.login),
+                    label: Text(
+                      _saving
+                          ? '確認中…'
+                          : isClockOut
+                              ? '退勤を確定'
+                              : '出勤を確定',
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text('最近の確認', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    '最近の確認',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 8),
                   if (_recent.isEmpty)
-                    const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('確認履歴はまだありません。')))
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('確認履歴はまだありません。'),
+                      ),
+                    )
                   else
                     for (final item in _recent)
                       Card(
                         child: ListTile(
-                          leading: Icon(item['event_type'] == 'clock_in' ? Icons.login : Icons.logout),
-                          title: Text('${_workerName(item)} / ${_siteName(item)}'),
-                          subtitle: Text('${_eventLabel(item['event_type'])} ・ ${_modeLabel(item['verification_mode'])}\n${_statusLabel(item)}'),
+                          leading: Icon(
+                            item['event_type'] == 'clock_in'
+                                ? Icons.login
+                                : Icons.logout,
+                          ),
+                          title: Text(
+                            _workerName(item) + ' / ' + _siteName(item),
+                          ),
+                          subtitle: Text(
+                            _eventLabel(item['event_type']) +
+                                ' ・ ' +
+                                _modeLabel(item['verification_mode']) +
+                                '\n' +
+                                _statusLabel(item),
+                          ),
                           isThreeLine: true,
                         ),
                       ),
@@ -264,27 +387,16 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
     final id = _siteId;
     if (id == null) return null;
     for (final site in _sites) {
-      if (site['id'] == id) return site;
+      if (site['id']?.toString() == id) return site;
     }
     return null;
   }
 
-  Future<void> _saveMode() async {
-    final repository = _repository;
-    if (repository == null) return;
-    try {
-      await repository.saveSettings(mode: _mode, proximityRadiusM: _radiusM);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('確認方法を保存しました')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('設定を保存できませんでした: $e')));
-    }
-  }
-
   Future<Position> _currentPosition() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
-    if (!enabled) throw StateError('端末の位置情報サービスをONにしてください。');
+    if (!enabled) {
+      throw StateError('端末の位置情報サービスをONにしてください。');
+    }
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -294,11 +406,15 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       throw StateError('位置情報の許可が必要です。');
     }
     if (permission == LocationPermission.deniedForever) {
-      throw StateError('位置情報が常に拒否されています。端末の設定からこのアプリの位置情報を許可してください。');
+      throw StateError(
+        '位置情報が拒否されています。iPhone設定からSKOの位置情報を許可してください。',
+      );
     }
 
     return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
     );
   }
 
@@ -306,6 +422,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
     final repository = _repository;
     final siteId = _siteId;
     if (repository == null || siteId == null) return;
+
     setState(() => _saving = true);
     try {
       final position = await _currentPosition();
@@ -316,10 +433,14 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       );
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('現場の基準位置を登録しました')));
-    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('現場の基準位置を登録しました')),
+      );
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('現場位置を登録できませんでした: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('現場位置を登録できませんでした: ' + error.toString())),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -331,8 +452,50 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
     final siteId = _siteId;
     if (repository == null || workerId == null || siteId == null) return;
 
+    if (_mode == 'gps_auto') {
+      final allowed = await ensureGpsAutoLocationPermission(context);
+      if (!allowed || !mounted) return;
+    }
+
     setState(() => _saving = true);
     try {
+      await repository.saveAttendanceSelection(
+        mode: _mode,
+        siteId: siteId,
+        weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
+        localTime: _mode == 'gps_auto'
+            ? (_gpsTime.hour.toString().padLeft(2, '0') +
+                ':' +
+                _gpsTime.minute.toString().padLeft(2, '0') +
+                ':00')
+            : null,
+      );
+
+      if (_mode == 'gps_auto' && _eventType == 'clock_in') {
+        await GpsAutoAttendanceService.instance.refresh();
+        final position = await _currentPosition();
+        final result = await repository.attemptGpsAutoAttendance(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracyM: position.accuracy,
+        );
+        if (!mounted) return;
+        final status = result['status']?.toString() ?? '';
+        final message = switch (status) {
+          'clocked_in' => 'GPS自動出勤で出勤を記録しました',
+          'outside_site' => '現場にいないようなのでGPS自動出勤は出勤を登録しませんでした',
+          'site_location_missing' =>
+            '現場の基準位置が未登録のためGPS自動出勤を登録しませんでした',
+          'already_recorded' => '本日の出勤はすでに登録されています',
+          _ => 'GPS自動出勤の曜日・取得時間を保存しました',
+        };
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+        Navigator.of(context).pop(true);
+        return;
+      }
+
       double? latitude;
       double? longitude;
       double? accuracy;
@@ -341,7 +504,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
       Uint8List? photoBytes;
       String? photoFilename;
 
-      if (_mode != 'manual') {
+      if (_mode == 'location_photo' || _mode == 'gps_auto') {
         final position = await _currentPosition();
         latitude = position.latitude;
         longitude = position.longitude;
@@ -359,15 +522,24 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
             siteLatitude,
             siteLongitude,
           );
-          proximityStatus = distance <= _radiusM ? 'near_site' : 'outside_radius';
+          proximityStatus =
+              distance <= 300 ? 'near_site' : 'outside_radius';
         }
       }
 
       if (_mode == 'location_photo') {
-        final photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+        final photo = await _picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 85,
+          maxWidth: 2200,
+        );
         if (photo == null) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('写真撮影をキャンセルしたため、確認は登録していません。')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('写真撮影をキャンセルしたため登録していません'),
+            ),
+          );
           return;
         }
         photoBytes = await photo.readAsBytes();
@@ -388,8 +560,7 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
         photoFilename: photoFilename,
         note: _noteController.text,
       );
-      _noteController.clear();
-      await _load();
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -398,44 +569,32 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
           ),
         ),
       );
-      if (_eventType == 'clock_out' && mounted) {
+
+      if (_eventType == 'clock_out') {
         await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const DailyReportPage(),
-          ),
+          MaterialPageRoute(builder: (_) => const DailyReportPage()),
         );
+      } else {
+        Navigator.of(context).pop(true);
       }
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('確認を登録できませんでした: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('確認を登録できませんでした: ' + error.toString())),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  String _modeDescription(String mode) {
-    switch (mode) {
-      case 'location':
-        return '確認時に現在地を1回だけ取得して記録します。';
-      case 'location_photo':
-        return '確認時に現在地を1回だけ取得し、その場で写真を1枚撮影します。';
-      default:
-        return '位置情報や写真を使わず、本人の操作だけで確認します。';
-    }
-  }
+  String _modeLabel(Object? mode) => switch (mode?.toString()) {
+        'gps_auto' || 'location' => 'GPS自動出勤',
+        'location_photo' => '位置情報＋写真',
+        _ => '手動',
+      };
 
-  String _modeLabel(Object? mode) {
-    switch (mode) {
-      case 'location':
-        return '位置情報';
-      case 'location_photo':
-        return '位置情報＋写真';
-      default:
-        return '手動';
-    }
-  }
-
-  String _eventLabel(Object? eventType) => eventType == 'clock_out' ? '退勤' : '出勤';
+  String _eventLabel(Object? eventType) =>
+      eventType == 'clock_out' ? '退勤' : '出勤';
 
   String _workerName(Map<String, dynamic> item) {
     final worker = item['workers'];
@@ -451,10 +610,14 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
     switch (item['proximity_status']) {
       case 'near_site':
         final distance = _asDouble(item['distance_to_site_m']);
-        return distance == null ? '現場付近で確認' : '現場付近で確認（約${distance.round()}m）';
+        return distance == null
+            ? '現場付近で確認'
+            : '現場付近で確認（約' + distance.round().toString() + 'm）';
       case 'outside_radius':
         final distance = _asDouble(item['distance_to_site_m']);
-        return distance == null ? '基準範囲外' : '基準範囲外（約${distance.round()}m）';
+        return distance == null
+            ? '基準範囲外'
+            : '基準範囲外（約' + distance.round().toString() + 'm）';
       case 'site_location_missing':
         return '位置取得済み・現場基準位置未登録';
       default:
@@ -466,11 +629,37 @@ class _AttendanceVerificationPageState extends State<AttendanceVerificationPage>
     final lat = _asDouble(site['latitude']);
     final lon = _asDouble(site['longitude']);
     if (lat == null || lon == null) return '基準位置: 未登録';
-    return '基準位置: 登録済み / 判定半径 ${_radiusM}m';
+    return '基準位置: 登録済み / GPS判定半径 300m';
   }
 
   double? _asDouble(Object? value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '');
+  }
+}
+
+class _ReadOnlySelectionCard extends StatelessWidget {
+  const _ReadOnlySelectionCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(label),
+        subtitle: Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+    );
   }
 }
