@@ -377,7 +377,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () => onOpen('workplace_select'),
               icon: const Icon(Icons.place_outlined),
-              label: const Text('現場の選択（固定現場／複数現場）'),
+              label: const Text('現場の選択（1現場／複数現場）'),
             ),
             const SizedBox(height: 9),
             OutlinedButton.icon(
