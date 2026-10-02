@@ -26,6 +26,7 @@ void main() {
       'company_deliveries',
       'invoices',
       'admin_sites',
+      'site_map',
       'vehicle_routes',
       'profile',
       'appearance',
