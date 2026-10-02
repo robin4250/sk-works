@@ -13,7 +13,9 @@ void main() {
     expect(app, contains("const _ModuleDisabledPage(label: '現場')"));
     expect(app, contains("const _ModuleDisabledPage(label: 'チャット')"));
     expect(app, contains('この機能は会社設定でOFFになっています'));
+    expect(app, contains("_moduleEnabled('invoices')"));
+    expect(app, contains("_moduleEnabled('vehicle_routes')"));
     expect(home, contains("moduleEnabled('attendance')"));
-    expect(home, contains("moduleEnabled('invoices')"));
+    expect(home, contains("moduleEnabled('vehicle_routes')"));
   });
 }
