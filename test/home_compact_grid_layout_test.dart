@@ -45,7 +45,11 @@ void main() {
             ),
             moduleEnabled: (_) => true,
             gridColumns: columns,
-            actionOrder: const [],
+            actionOrder: const ['attendance_verify', 'attendance_today'],
+            visibleHomeKeys: const {
+              'attendance_verify',
+              'attendance_today',
+            },
             onOpen: (_) async {},
             onRefresh: () async {},
           ),
