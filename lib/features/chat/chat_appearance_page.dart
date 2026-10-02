@@ -9,9 +9,9 @@ class ChatAppearance {
   const ChatAppearance({
     this.wallpaperPath,
     this.backgroundOpacity = 100,
-    this.headerOpacity = 60,
-    this.footerOpacity = 60,
-    this.bubbleOpacity = 60,
+    this.headerOpacity = 80,
+    this.footerOpacity = 80,
+    this.bubbleOpacity = 80,
   });
 
   final String? wallpaperPath;
@@ -39,11 +39,11 @@ class ChatAppearanceStore {
       backgroundOpacity:
           (prefs.getInt(_key(groupId, 'background')) ?? 100).clamp(1, 100),
       headerOpacity:
-          (prefs.getInt(_key(groupId, 'header')) ?? 60).clamp(1, 100),
+          (prefs.getInt(_key(groupId, 'header')) ?? 80).clamp(1, 100),
       footerOpacity:
-          (prefs.getInt(_key(groupId, 'footer')) ?? 60).clamp(1, 100),
+          (prefs.getInt(_key(groupId, 'footer')) ?? 80).clamp(1, 100),
       bubbleOpacity:
-          (prefs.getInt(_key(groupId, 'bubble')) ?? 60).clamp(1, 100),
+          (prefs.getInt(_key(groupId, 'bubble')) ?? 80).clamp(1, 100),
     );
   }
 
