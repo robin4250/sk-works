@@ -37,7 +37,7 @@ class VehicleRouteRepository {
 
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false}) async {
     var query = _client.from('vehicles').select(
-      'id,display_name,registration_number,odometer_km,'
+      'id,display_name,registration_number,odometer_km,storage_address,'
       'registration_document_path,compulsory_insurance_path,'
       'voluntary_insurance_path,notes,is_active,created_at,updated_at',
     );
@@ -80,6 +80,7 @@ class VehicleRouteRepository {
     required String name,
     required String registrationNumber,
     required double odometerKm,
+    required String storageAddress,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
@@ -89,6 +90,7 @@ class VehicleRouteRepository {
       'display_name': name.trim(),
       'registration_number': _nullable(registrationNumber),
       'odometer_km': odometerKm,
+      'storage_address': _nullable(storageAddress),
       'updated_by': user.id,
     };
 
