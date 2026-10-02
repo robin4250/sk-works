@@ -265,21 +265,30 @@ class _WeekList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-      itemCount: week.length,
-      separatorBuilder: (_, __) => const SizedBox.shrink(),
-      itemBuilder: (context, index) {
-        final date = week[index];
-        final inMonth = date.month == month.month && date.year == month.year;
-        final day = data.days[DateTime(date.year, date.month, date.day)];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final verticalPadding = 4.0;
+        final itemHeight =
+            (constraints.maxHeight - verticalPadding) / week.length;
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          physics: const NeverScrollableScrollPhysics(),
+          itemExtent: itemHeight,
+          itemCount: week.length,
+          itemBuilder: (context, index) {
+            final date = week[index];
+            final inMonth =
+                date.month == month.month && date.year == month.year;
+            final day = data.days[DateTime(date.year, date.month, date.day)];
 
-        return _AttendanceDayCard(
-          date: date,
-          weekday: _weekdayNames[index],
-          inMonth: inMonth,
-          day: day,
-          onTap: () => onDateTap(date),
+            return _AttendanceDayCard(
+              date: date,
+              weekday: _weekdayNames[index],
+              inMonth: inMonth,
+              day: day,
+              onTap: () => onDateTap(date),
+            );
+          },
         );
       },
     );
@@ -343,12 +352,13 @@ class _AttendanceDayCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(
-                width: 52,
+                width: 46,
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       '${date.day}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w900,
                             color: isHoliday || date.weekday == DateTime.sunday
                                 ? colors.error
@@ -398,7 +408,7 @@ class _AttendanceDayCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        fontSize: 15,
+                        fontSize: 14,
                         color: worked
                             ? colors.onSurface
                             : colors.onSurfaceVariant,
@@ -426,7 +436,7 @@ class _AttendanceDayCard extends StatelessWidget {
                             '出 ${_time(day?.clockIn)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                              fontSize: 11,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -434,7 +444,7 @@ class _AttendanceDayCard extends StatelessWidget {
                             '退 ${_time(day?.clockOut)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                              fontSize: 11,
                             ),
                           ),
                         ],
