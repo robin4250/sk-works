@@ -43,13 +43,25 @@
 - [x] A4日報PDFへ車両・ルート・走行距離を明記
 
 ## 最終確認
-- [ ] Flutter CI
-- [ ] iOS CI
-- [ ] Secret Scan
-- [ ] 本番Supabase migration整合
-- [ ] Releaseビルド
+- [x] Flutter CI — PR #497 final HEAD: success
+- [x] iOS CI — PR #497 final HEAD: success
+- [x] Secret Scan — PR #497 final HEAD: success
+- [x] 本番Supabase migration整合 — vehicle/GPS/employee restore migrations verified present
+- [x] Releaseビルド（CI / no-codesign）— success
+- [ ] 署名済みReleaseを対象iPhoneへインストールして単体起動
 - [ ] iPhone実機で車両登録3書類
 - [ ] iPhone実機で複数地点ルート登録
 - [ ] ホームで車両/ルート選択・解除
 - [ ] 出勤→退勤→日報へ引継ぎ
 - [ ] 実機カメラOCR→数値確認→走行距離更新
+
+
+## 2026-10-02 final automated gate snapshot
+
+- main: `acefae39be782c5342ab7e34ab1378aaf9f17002`
+- Restore integration PR: #497 merged into main.
+- Flutter CI run 1708: success.
+- iOS CI run 1130: success (includes iOS Release build without codesigning).
+- Secret Scan run 3062: success.
+- Production Supabase contains the vehicle/route, GPS auto-attendance, and employee personnel restore migrations.
+- Final restore completion remains blocked on signed Release installation and the physical iPhone route; do not mark restore complete before that.
