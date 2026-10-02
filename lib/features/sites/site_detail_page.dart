@@ -525,7 +525,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               [
                 if (site.createdAt.isNotEmpty) '登録日: ${site.createdAt}',
                 if (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt)
-                  '更新: ${site.updatedAt}',
+                  '最終更新日: ${site.updatedAt}',
               ].join('　'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
