@@ -183,7 +183,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                           ),
                           DropdownMenuItem(
                             value: 'location_photo',
-                            child: Text('位置情報＋写真'),
+                            child: Text('位置情報＋写真（確定時のみ）'),
                           ),
                         ],
                         onChanged: _saving ? null : _chooseMode,
