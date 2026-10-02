@@ -142,8 +142,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: TextField(
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
                   hintText: SkoLanguageController.isEnglish ? 'Search by name, company, phone, etc.' : '氏名・会社名・電話番号などで検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
