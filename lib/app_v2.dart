@@ -555,12 +555,12 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'vehicle_select':
         page = const VehicleRouteSelectionPage(
-          kind: VehicleRouteSelectionKind.vehicle,
+          mode: VehicleRouteSelectionMode.vehicle,
         );
         break;
       case 'route_select':
         page = const VehicleRouteSelectionPage(
-          kind: VehicleRouteSelectionKind.route,
+          mode: VehicleRouteSelectionMode.route,
         );
         break;
       case 'employee_register':
