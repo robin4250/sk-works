@@ -187,11 +187,18 @@ class _SiteMapPageState extends State<SiteMapPage> {
           },
         );
         return;
+      } on MissingPluginException {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('iPhone地図機能を読み込めませんでした。アプリを更新してください。')),
+        );
+        return;
       } on PlatformException catch (error) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('複数ピン地図を開けませんでした: ${error.message ?? ''}')),
         );
+        return;
       }
     }
 
