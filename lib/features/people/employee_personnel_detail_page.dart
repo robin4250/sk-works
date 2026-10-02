@@ -145,8 +145,6 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       ('区分', record.kind.label),
       ('血液型', record.bloodType),
       ('職種', record.role),
-      ('緊急連絡先氏名', record.emergencyName),
-      ('続柄', record.emergencyRelation),
     ];
 
     return Scaffold(
@@ -205,6 +203,28 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
               onTap: record.address.trim().isEmpty
                   ? null
                   : () => _openGoogleMap(context, record.address),
+            ),
+            Card(
+              child: ListTile(
+                title: const Text('緊急連絡先氏名'),
+                subtitle: Text(
+                  record.emergencyName.trim().isEmpty
+                      ? '未登録'
+                      : record.emergencyName,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                title: const Text('続柄'),
+                subtitle: Text(
+                  record.emergencyRelation.trim().isEmpty
+                      ? '未登録'
+                      : record.emergencyRelation,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
             ),
             _actionCard(
               context,
