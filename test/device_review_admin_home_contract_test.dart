@@ -44,6 +44,10 @@ void main() {
     expect(homeDashboard, contains('extendBodyBehindAppBar: false'));
     expect(homeDashboard, contains('preferredSize: const Size.fromHeight(64)'));
     expect(homeDashboard, contains('contentTopInset: 8'));
+    expect(homeDashboard, contains('forceMaterialTransparency: true'));
+    expect(homeDashboard, contains('flexibleSpace: Stack('));
+    expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
+    expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, isNot(contains('_chromeVisible')));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
   });
