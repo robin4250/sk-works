@@ -37,6 +37,117 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   void initState() {
     super.initState();
     final row = widget.vehicle;
+    _name = TextEditingController(
+      text: row?['display_name']?.toString() ?? '',
+    );
+    _registration = TextEditingController(
+      text: row?['registration_number']?.toString() ?? '',
+    );
+    _odometer = TextEditingController(
+      text: _number(row?['odometer_km']),
+    );
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _registration.dispose();
+    _odometer.dispose();
+    super.dispose();
+  }
+
+  Future<_PendingDocument?> _pickDocument(String title) async {
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('PDF・ファイルから選ぶ'),
+              onTap: () => Navigator.pop(context, 'file'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリから選ぶ'),
+              onTap: () => Navigator.pop(context, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('カメラで撮影'),
+              onTap: () => Navigator.pop(context, 'camera'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return null;
+
+    if (source == 'gallery') {
+      final image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 92,
+        maxWidth: 2400,
+      );
+      if (image == null) return null;
+      return _PendingDocument(
+        bytes: await image.readAsBytes(),
+        filename: image.name,
+        contentType: image.mimeType ?? 'image/jpeg',
+      );
+    }
+
+    if (source == 'camera') {
+      final image = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 88,
+        maxWidth: 2400,
+      );
+      if (image == null) return null;
+      return _PendingDocument(
+        bytes: await image.readAsBytes(),
+        filename: image.name,
+        contentType: image.mimeType ?? 'image/jpeg',
+      );
+    }
+
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'pdf',
+        'jpg',
+        'jpeg',
+        'png',
+        'heic',
+        'heif',
+      ],
+    );
+    if (file == null) return null;
+    return _PendingDocument(
+      bytes: await file.readAsBytes(),
+      filename: file.name,
+      contentType: _contentType(file.extension),
+    );
+  }
+
+  Future<void> _save() async {
+    final repository = _repository;
+    if (repository == null || _saving) return;
+
+    final odometer = double.tryParse(_odometer.text.trim());
+    if (_name.text.trim().isEmpty ||
+        _registration.text.trim().isEmpty ||
+        odometer == null ||
+        odometer < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('表示名・車両番号・走行距離を確認してください'),
+        ),
+      );
+      return;
+    }
+
+    final row = widget.vehicle;
     final registrationReady = _registrationDoc != null ||
         (row?['registration_document_path']?.toString().isNotEmpty == true);
     final compulsoryReady = _compulsoryDoc != null ||
