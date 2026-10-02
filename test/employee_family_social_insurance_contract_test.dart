@@ -15,7 +15,7 @@ void main() {
     expect(member.ageOn(DateTime(2026, 10, 3)), 16);
   });
 
-  test('family details appear only in personal detail/profile surfaces', () {
+  test('family details stay in profile and out of employee detail/list print', () {
     final detail = File(
       'lib/features/people/employee_personnel_detail_page.dart',
     ).readAsStringSync();
@@ -25,8 +25,8 @@ void main() {
       'lib/features/people/employee_personnel_print_page.dart',
     ).readAsStringSync();
 
-    expect(detail, contains("'家族・扶養情報'"));
-    expect(detail, contains("'扶養対象'"));
+    expect(detail, isNot(contains("'家族・扶養情報'")));
+    expect(detail, isNot(contains("'扶養対象'")));
     expect(profile, contains("'家族・扶養情報'"));
     expect(profile, contains("'配偶者・子供・扶養家族を追加'"));
     expect(printPage, isNot(contains("'家族・扶養情報'")));
