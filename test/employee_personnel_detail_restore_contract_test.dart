@@ -28,6 +28,12 @@ void main() {
     expect(page, contains("'印刷'"));
     expect(page, contains("'社員一覧'"));
     expect(page, contains("'個別'"));
+    expect(page, contains("'電話番号'"));
+    expect(page, contains("'緊急連絡先電話番号'"));
+    expect(page, contains("'Googleマップを開けませんでした'"));
+    expect(page, contains("scheme: 'tel'"));
+    expect(page, contains("'www.google.com'"));
+    expect(page, contains("'maps/search/'"));
   });
 
   test('personnel list print is A4 landscape with company and date', () {
@@ -41,6 +47,15 @@ void main() {
     expect(page, contains("pdfFileName: '社員一覧.pdf'"));
     expect(page, contains('allowPrinting: true'));
     expect(page, contains('allowSharing: true'));
+  });
+
+  test('employee list renders domestic phone and exposes call action', () {
+    final list = File(
+      'lib/features/people/people_cloud_page.dart',
+    ).readAsStringSync();
+    expect(list, contains('domesticPhoneDisplay(record.phone)'));
+    expect(list, contains("tooltip: '電話をかける'"));
+    expect(list, contains("scheme: 'tel'"));
   });
 
   test('phone display converts +81 to domestic leading zero', () {
