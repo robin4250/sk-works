@@ -15,10 +15,12 @@ class DailyReportPage extends StatefulWidget {
     super.key,
     this.initialDate,
     this.initialSiteId,
+    this.initialRouteAssignmentId,
   });
 
   final DateTime? initialDate;
   final String? initialSiteId;
+  final String? initialRouteAssignmentId;
 
   @override
   State<DailyReportPage> createState() => _DailyReportPageState();
@@ -58,6 +60,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final initial = widget.initialDate ?? DateTime.now();
     _date = DateTime(initial.year, initial.month, initial.day);
     _siteId = widget.initialSiteId;
+    _routeAssignmentId = widget.initialRouteAssignmentId;
     _loadDay();
   }
 
