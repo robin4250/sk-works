@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -642,7 +643,10 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'site_map':
-        page = const SiteMapPage(allowEmployeeHomes: true);
+        page = const SiteMapPage(
+          allowEmployeeHomes: true,
+          title: '管理者用現場マップ',
+        );
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
@@ -948,12 +952,31 @@ class _HomePageState extends State<HomePage> {
       extendBodyBehindAppBar: false,
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(64),
+        preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
         child: AppBar(
-          backgroundColor: Theme.of(context)
-              .colorScheme
-              .surface
-              .withValues(alpha: _homeAppearance.headerOpacity),
+          toolbarHeight: _chromeVisible ? 64 : 0,
+          backgroundColor: Colors.transparent,
+          forceMaterialTransparency: true,
+          flexibleSpace: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_homeAppearance.wallpaperPath != null &&
+                  File(_homeAppearance.wallpaperPath!).existsSync())
+                Opacity(
+                  opacity: _homeAppearance.wallpaperOpacity,
+                  child: Image.file(
+                    File(_homeAppearance.wallpaperPath!),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ColoredBox(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: _homeAppearance.headerOpacity),
+              ),
+            ],
+          ),
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
           elevation: 0,

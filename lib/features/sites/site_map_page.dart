@@ -14,9 +14,11 @@ class SiteMapPage extends StatefulWidget {
   const SiteMapPage({
     super.key,
     this.allowEmployeeHomes = false,
+    this.title = '現場マップ',
   });
 
   final bool allowEmployeeHomes;
+  final String title;
 
   @override
   State<SiteMapPage> createState() => _SiteMapPageState();
@@ -51,9 +53,8 @@ class _SiteMapPageState extends State<SiteMapPage> {
         if (!value.canViewAll || !widget.allowEmployeeHomes) {
           _layers.remove(_MapLayer.employeeHomes);
         }
-        if (!widget.allowEmployeeHomes) {
-          _layers.remove(_MapLayer.home);
-        }
+        // The footer map must still show the signed-in user's own home.
+        // Only other employees' homes are restricted by allowEmployeeHomes.
         _loading = false;
         _error = null;
       });
@@ -110,9 +111,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     if (_layers.contains(_MapLayer.company) && data.company != null) {
       places.add(data.company!);
     }
-    if (widget.allowEmployeeHomes &&
-        _layers.contains(_MapLayer.home) &&
-        data.home != null) {
+    if (_layers.contains(_MapLayer.home) && data.home != null) {
       places.add(data.home!);
     }
     if (_layers.contains(_MapLayer.employeeHomes) &&
@@ -256,7 +255,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final data = _data;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場マップ'),
+        title: Text(widget.title),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -378,7 +377,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         onTap: () => _mapAddress(data.company!, 'company_name'),
                       ),
                     ],
-                    if (widget.allowEmployeeHomes && data.home != null) ...[
+                    if (data.home != null) ...[
                       const _Heading('自宅（本人）'),
                       ListTile(
                         leading: const Icon(Icons.home_outlined),

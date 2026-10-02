@@ -23,6 +23,9 @@ void main() {
     final sitesPage = File(
       'lib/features/sites/site_cloud_page.dart',
     ).readAsStringSync();
+    final app = File(
+      'lib/app_v2.dart',
+    ).readAsStringSync();
     final attendanceRepository = File(
       'lib/features/attendance/worker_attendance_sheet_repository.dart',
     ).readAsStringSync();
@@ -62,8 +65,19 @@ void main() {
 
     expect(map, contains("MethodChannel('sko.multi_pin_map')"));
     expect(map, contains('allowEmployeeHomes'));
+    expect(map, contains("Only other employees' homes are restricted by allowEmployeeHomes"));
+    expect(map, contains("if (_layers.contains(_MapLayer.home) && data.home != null)"));
+    expect(map, contains("if (data.home != null) ...["));
     expect(map, contains('選択地点を複数ピンで地図表示'));
     expect(sitesPage, contains('const SiteMapPage()'));
+    expect(sitesPage, contains("title: const Text('現場データ')"));
+    expect(sitesPage, contains("label: const Text('現場登録')"));
+    expect(sitesPage, contains("label: const Text('現場マップ')"));
+    expect(sitesPage, contains("heroTag: 'site_map'"));
+    expect(sitesPage, contains("heroTag: 'site_register'"));
+    expect(sitesPage, contains('floatingActionButton: Row('));
+    expect(map, contains('title: Text(widget.title)'));
+    expect(app, contains("title: '管理者用現場マップ'"));
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
     expect(prepareIos, contains('showAnnotations'));
