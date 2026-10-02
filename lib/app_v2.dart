@@ -62,6 +62,7 @@ import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_map_page.dart';
 import 'features/sites/site_page.dart';
+import 'international/language_controller.dart';
 import 'widgets/sko_scroll_chrome.dart';
 
 class SkWorksApp extends StatelessWidget {
@@ -76,24 +77,29 @@ class SkWorksApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<SkoPalette>(
-      valueListenable: SkoThemeController.palette,
-      builder: (context, palette, _) {
-        return MaterialApp(
-          navigatorKey: SkoScrollChromeController.navigatorKey,
-          debugShowCheckedModeBanner: false,
-          title: ProductBrand.displayName,
-          theme: SkoTheme.light(palette),
-          builder: (context, child) => SkoGlobalScrollChrome(
-            child: child ?? const SizedBox.shrink(),
-          ),
-          home: SupabaseBackend.isInitialized
-              ? SupabaseAuthGate(
-                  homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
-                )
-              : allowLocalFallback
-                  ? const HomePage()
-                  : const _BackendUnavailableScreen(),
+    return ValueListenableBuilder(
+      valueListenable: SkoLanguageController.pack,
+      builder: (context, language, _) {
+        return ValueListenableBuilder<SkoPalette>(
+          valueListenable: SkoThemeController.palette,
+          builder: (context, palette, _) {
+            return MaterialApp(
+              navigatorKey: SkoScrollChromeController.navigatorKey,
+              debugShowCheckedModeBanner: false,
+              title: ProductBrand.displayName,
+              theme: SkoTheme.light(palette),
+              builder: (context, child) => SkoGlobalScrollChrome(
+                child: child ?? const SizedBox.shrink(),
+              ),
+              home: SupabaseBackend.isInitialized
+                  ? SupabaseAuthGate(
+                      homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
+                    )
+                  : allowLocalFallback
+                      ? const HomePage()
+                      : const _BackendUnavailableScreen(),
+            );
+          },
         );
       },
     );
@@ -184,7 +190,16 @@ class _HomePageState extends State<HomePage> {
       _loadRequiredDocumentAttention(),
       _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
+      _syncLanguage(),
     ]);
+  }
+
+  Future<void> _syncLanguage() async {
+    try {
+      await SkoLanguageController.syncFromCloud();
+    } catch (_) {
+      // Language sync is supplemental and must never block the home screen.
+    }
   }
 
   Future<void> _loadHomeAppearance() async {
