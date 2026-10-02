@@ -10,6 +10,7 @@ import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
+import 'phone_display.dart';
 import 'worker_document_send_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
@@ -185,7 +186,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                   record.kind.label,
                                   if (record.companyName.isNotEmpty) record.companyName,
                                   if (record.role.isNotEmpty) record.role,
-                                  if (record.phone.isNotEmpty) record.phone,
+                                  if (record.phone.isNotEmpty) domesticPhoneDisplay(record.phone),
                                 ];
                                 return Card(
                                   child: ListTile(
