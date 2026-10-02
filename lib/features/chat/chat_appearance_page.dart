@@ -34,6 +34,14 @@ class ChatAppearanceStore {
 
   static Future<ChatAppearance> load(String groupId) async {
     final prefs = await SharedPreferences.getInstance();
+    final defaultsMigrationKey = _key(groupId, 'defaults_20261003');
+    if (!(prefs.getBool(defaultsMigrationKey) ?? false)) {
+      await prefs.setInt(_key(groupId, 'background'), 100);
+      await prefs.setInt(_key(groupId, 'header'), 80);
+      await prefs.setInt(_key(groupId, 'footer'), 80);
+      await prefs.setInt(_key(groupId, 'bubble'), 80);
+      await prefs.setBool(defaultsMigrationKey, true);
+    }
     return ChatAppearance(
       wallpaperPath: prefs.getString(_key(groupId, 'wallpaper')),
       backgroundOpacity:
