@@ -14,6 +14,9 @@ void main() {
     final vehicleRepo = File(
       'lib/features/operations/vehicle_route_repository.dart',
     ).readAsStringSync();
+    final selectionPage = File(
+      'lib/features/operations/vehicle_route_selection_page.dart',
+    ).readAsStringSync();
 
     expect(selection, contains("child: Text('未登録')"));
     expect(home, contains("status.siteName?.trim().isNotEmpty == true"));
@@ -21,6 +24,12 @@ void main() {
     expect(home, contains("'選択中のルート："));
     expect(attendanceRepo, contains("'route_assignment_id': null"));
     expect(vehicleRepo, contains("'site_id': null"));
+    expect(vehicleRepo, contains('saveTodayVehicleSelection'));
+    expect(vehicleRepo, contains('saveTodayRouteSelection'));
+    expect(selectionPage, contains('VehicleRouteSelectionMode.vehicle'));
+    expect(selectionPage, contains('VehicleRouteSelectionMode.route'));
+    expect(selectionPage, contains("'車両を使わない'"));
+    expect(selectionPage, contains("'ルートを使わない'"));
     expect(attendanceRepo, contains("'save_my_route_attendance_selection'"));
   });
 
