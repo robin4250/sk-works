@@ -35,12 +35,18 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains("'ルート名'"));
-    expect(page, contains("'現場名'"));
+    expect(page, contains("'登録済み地点から選択'"));
+    expect(page, contains("'現場："));
+    expect(page, contains("'取引会社："));
+    expect(page, contains("'下請け会社："));
+    expect(page, contains("'駐車場："));
     expect(page, contains("'住所'"));
     expect(page, contains("'地点を追加'"));
     expect(page, contains("'備考'"));
     expect(repository, contains("from('route_stops')"));
     expect(repository, contains("'stop_order'"));
+    expect(repository, contains("'source_kind'"));
+    expect(repository, contains("'storage_address'"));
     expect(page, isNot(contains("'運行日（YYYY-MM-DD）'")));
     expect(page, isNot(contains("'運転者'")));
   });
