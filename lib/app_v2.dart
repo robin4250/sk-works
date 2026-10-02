@@ -886,11 +886,13 @@ class _HomePageState extends State<HomePage> {
           height: _chromeVisible ? 68 : 0,
           child: _chromeVisible
               ? AppBar(
-                  toolbarOpacity: _homeAppearance.headerOpacity,
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surface
+                      .withValues(alpha: _homeAppearance.headerOpacity),
+                  surfaceTintColor: Colors.transparent,
                   titleSpacing: 12,
-                  title: Opacity(
-                    opacity: _homeAppearance.headerOpacity,
-                    child: Column(
+                  title: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -914,7 +916,6 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ],
                     ),
-                  ),
                   actions: [
                     IconButton(
                       tooltip: '背景・ヘッダー・フッター設定',
@@ -1092,9 +1093,12 @@ class _HomePageState extends State<HomePage> {
         duration: const Duration(milliseconds: 180),
         height: _chromeVisible ? 80 : 0,
         child: _chromeVisible
-            ? Opacity(
-                opacity: _homeAppearance.footerOpacity,
-                child: NavigationBar(
+            ? NavigationBar(
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surface
+                      .withValues(alpha: _homeAppearance.footerOpacity),
+                  surfaceTintColor: Colors.transparent,
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: (index) {
                     final module = switch (index) {
@@ -1149,8 +1153,7 @@ class _HomePageState extends State<HomePage> {
                       label: 'メニュー',
                     ),
                   ],
-                ),
-              )
+                )
             : const SizedBox.shrink(),
       ),
     );
