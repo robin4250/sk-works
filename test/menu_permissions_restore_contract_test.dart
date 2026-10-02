@@ -18,7 +18,8 @@ void main() {
     expect(app, contains("ButtonSegment(value: 1, label: Text('1列'))"));
     expect(app, contains("ButtonSegment(value: 4, label: Text('4列'))"));
     expect(app, contains("label: '協力会社'"));
-    expect(home, contains("visibleHomeKeys.contains('people')"));
-    expect(home, contains("'社員'"));
+    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(home, contains('for (final shortcut in shortcuts)'));
+    expect(home, contains('_shortcutAccess(shortcut.key)'));
   });
 }
