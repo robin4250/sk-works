@@ -102,29 +102,32 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
           ),
         ],
       ),
-      floatingActionButton: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'site_map',
-            onPressed: _loading
-                ? null
-                : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SiteMapPage(),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 88),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.extended(
+              heroTag: 'site_map',
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SiteMapPage(),
+                        ),
                       ),
-                    ),
-            icon: const Icon(Icons.map_outlined),
-            label: Text(SkoLanguageController.tr('現場マップ')),
-          ),
-          const SizedBox(width: 10),
-          FloatingActionButton.extended(
-            heroTag: 'site_register',
-            onPressed: _loading || !_canCreateSites ? null : _add,
-            icon: const Icon(Icons.add_business),
-            label: Text(SkoLanguageController.tr('現場登録')),
-          ),
-        ],
+              icon: const Icon(Icons.map_outlined),
+              label: Text(SkoLanguageController.tr('現場マップ')),
+            ),
+            const SizedBox(width: 10),
+            FloatingActionButton.extended(
+              heroTag: 'site_register',
+              onPressed: _loading || !_canCreateSites ? null : _add,
+              icon: const Icon(Icons.add_business),
+              label: Text(SkoLanguageController.tr('現場登録')),
+            ),
+          ],
+        ),
       ),
       body: SafeArea(
         child: Column(

@@ -75,7 +75,8 @@ void main() {
     expect(sitesPage, contains("SkoLanguageController.tr('現場マップ')"));
     expect(sitesPage, contains("heroTag: 'site_map'"));
     expect(sitesPage, contains("heroTag: 'site_register'"));
-    expect(sitesPage, contains('floatingActionButton: Row('));
+    expect(sitesPage, contains('floatingActionButton: Padding('));
+    expect(sitesPage, contains('padding: const EdgeInsets.only(bottom: 88)'));
     expect(map, contains("title: Text(SkoLanguageController.tr(widget.title))"));
     expect(app, contains("title: '管理者用現場マップ'"));
     expect(prepareIos, contains('import MapKit'));
