@@ -247,56 +247,6 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                         record.emergencyAddress,
                       ),
             ),
-            const SizedBox(height: 18),
-            const Text(
-              '家族・扶養情報',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '社員一覧には表示しません。社会保険など本人に関する手続きで使う個別情報です。',
-            ),
-            const SizedBox(height: 8),
-            Card(
-              child: ListTile(
-                title: const Text('家族構成'),
-                subtitle: Text(
-                  record.familyComposition.trim().isEmpty
-                      ? '未登録'
-                      : record.familyComposition,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-            ),
-            if (record.familyMembers.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('配偶者・子供・扶養家族は未登録です'),
-                ),
-              )
-            else
-              for (final member in record.familyMembers)
-                Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.family_restroom_outlined),
-                    ),
-                    title: Text(
-                      '${member.name}（${member.relation}）',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      [
-                        if (member.birthDate != null)
-                          '誕生日 ${member.birthDate!.year}/${member.birthDate!.month.toString().padLeft(2, '0')}/${member.birthDate!.day.toString().padLeft(2, '0')}',
-                        if (member.ageOn() != null)
-                          '現在 ${member.ageOn()}歳',
-                        member.isDependent ? '扶養対象' : '扶養対象外',
-                      ].join(' / '),
-                    ),
-                  ),
-                ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).push<bool>(
