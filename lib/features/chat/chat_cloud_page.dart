@@ -38,7 +38,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Map<String, int> _unreadCounts = const {};
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
   ChatAppearance _appearance = const ChatAppearance();
-  DateTime? _pendingLastRead;
   bool _positionInitialMessages = false;
   bool _chatChromeVisible = true;
   int? _edgePointer;
@@ -171,14 +170,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       setState(() => _tab = _ChatTab.all);
       return;
     }
-    final prefs = await SharedPreferences.getInstance();
-    final rawLastRead = prefs.getString('sko_chat_last_read_$id');
     final appearance = await ChatAppearanceStore.load(id);
     if (!mounted) return;
     setState(() {
       _selectedGroupId = id;
       _tab = _ChatTab.all;
-      _pendingLastRead = DateTime.tryParse(rawLastRead ?? '');
       _positionInitialMessages = true;
       _appearance = appearance;
       _chatChromeVisible = true;
@@ -194,7 +190,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     setState(() {
       _selectedGroupId = null;
       _messages = [];
-      _pendingLastRead = null;
       _positionInitialMessages = false;
       _chatChromeVisible = true;
       _tab = _ChatTab.all;
@@ -272,7 +267,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       if (!mounted) return;
       _scrollToBottom();
       _positionInitialMessages = false;
-      _pendingLastRead = null;
       await _markRead(groupId);
       if (!mounted) return;
       setState(() => _unreadCounts = {..._unreadCounts, groupId: 0});
