@@ -48,7 +48,7 @@ class PeopleCloudRepository {
 
   Future<void> _requireManagePeople() async {
     if (!await canManagePeople()) {
-      throw StateError('人員管理を変更する権限がありません。');
+      throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
     }
   }
 
