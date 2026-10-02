@@ -138,6 +138,37 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     );
   }
 
+  Future<void> _callPhone(BuildContext context, String rawPhone) async {
+    final phone = domesticPhoneDisplay(rawPhone)
+        .replaceAll(RegExp(r'[^0-9+]'), '');
+    if (phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (!await launchUrl(uri) && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('電話を開始できませんでした')),
+      );
+    }
+  }
+
+  Future<void> _openGoogleMap(
+    BuildContext context,
+    String address,
+  ) async {
+    final value = address.trim();
+    if (value.isEmpty) return;
+    final uri = Uri.https(
+      'www.google.com',
+      '/maps/search/',
+      {'api': '1', 'query': value},
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Googleマップを開けませんでした')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
@@ -168,6 +199,24 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                     row.$2.trim().isEmpty ? '未登録' : row.$2,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
+                  trailing: switch (row.$1) {
+                    '電話番号' || '緊急連絡先電話番号'
+                        when row.$2.trim().isNotEmpty =>
+                      const Icon(Icons.phone_outlined),
+                    '住所' || '緊急連絡先住所'
+                        when row.$2.trim().isNotEmpty =>
+                      const Icon(Icons.map_outlined),
+                    _ => null,
+                  },
+                  onTap: switch (row.$1) {
+                    '電話番号' || '緊急連絡先電話番号'
+                        when row.$2.trim().isNotEmpty =>
+                      () => _callPhone(context, row.$2),
+                    '住所' || '緊急連絡先住所'
+                        when row.$2.trim().isNotEmpty =>
+                      () => _openGoogleMap(context, row.$2),
+                    _ => null,
+                  },
                 ),
               ),
             _actionCard(
