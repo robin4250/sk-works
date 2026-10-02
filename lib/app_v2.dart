@@ -945,10 +945,10 @@ class _HomePageState extends State<HomePage> {
   Widget _homeDashboard() {
     final now = DateTime.now();
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: false,
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(88),
+        preferredSize: const Size.fromHeight(64),
         child: AppBar(
           backgroundColor: Theme.of(context)
               .colorScheme
@@ -968,7 +968,7 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 17,
+                  fontSize: 16,
                 ),
               ),
               Text(
@@ -977,7 +977,7 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 11,
+                  fontSize: 10,
                 ),
               ),
             ],
@@ -1018,7 +1018,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
-          contentTopInset: 98,
+          contentTopInset: 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,

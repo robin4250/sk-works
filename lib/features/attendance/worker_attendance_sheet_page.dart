@@ -265,21 +265,30 @@ class _WeekList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-      itemCount: week.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 7),
-      itemBuilder: (context, index) {
-        final date = week[index];
-        final inMonth = date.month == month.month && date.year == month.year;
-        final day = data.days[DateTime(date.year, date.month, date.day)];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final verticalPadding = 4.0;
+        final itemHeight =
+            (constraints.maxHeight - verticalPadding) / week.length;
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          physics: const NeverScrollableScrollPhysics(),
+          itemExtent: itemHeight,
+          itemCount: week.length,
+          itemBuilder: (context, index) {
+            final date = week[index];
+            final inMonth =
+                date.month == month.month && date.year == month.year;
+            final day = data.days[DateTime(date.year, date.month, date.day)];
 
-        return _AttendanceDayCard(
-          date: date,
-          weekday: _weekdayNames[index],
-          inMonth: inMonth,
-          day: day,
-          onTap: () => onDateTap(date),
+            return _AttendanceDayCard(
+              date: date,
+              weekday: _weekdayNames[index],
+              inMonth: inMonth,
+              day: day,
+              onTap: () => onDateTap(date),
+            );
+          },
         );
       },
     );
@@ -316,9 +325,9 @@ class _AttendanceDayCard extends StatelessWidget {
     return Opacity(
       opacity: faded ? 0.42 : 1,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: EdgeInsets.zero,
         child: Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: EdgeInsets.zero,
           clipBehavior: Clip.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -338,17 +347,18 @@ class _AttendanceDayCard extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(
-                width: 52,
+                width: 46,
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       '${date.day}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w900,
                             color: isHoliday || date.weekday == DateTime.sunday
                                 ? colors.error
@@ -398,17 +408,17 @@ class _AttendanceDayCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        fontSize: 15,
+                        fontSize: 14,
                         color: worked
                             ? colors.onSurface
                             : colors.onSurfaceVariant,
                       ),
                     ),
                     if (worked) ...[
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 2),
                       Wrap(
                         spacing: 4,
-                        runSpacing: 4,
+                        runSpacing: 2,
                         children: _tags(day!),
                       ),
                     ],
@@ -426,7 +436,7 @@ class _AttendanceDayCard extends StatelessWidget {
                             '出 ${_time(day?.clockIn)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                              fontSize: 11,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -434,7 +444,7 @@ class _AttendanceDayCard extends StatelessWidget {
                             '退 ${_time(day?.clockOut)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                              fontSize: 11,
                             ),
                           ),
                         ],
@@ -978,7 +988,9 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                             if (data.nightHours > 0)
                               Text('夜間 ${_number(data.nightHours)}時間'),
                             for (final entry in data.allowanceCounts.entries)
-                              Text('${entry.key} ${entry.value}回'),
+                              Text(
+                                '${entry.key} ${entry.value}${data.allowanceUnits[entry.key] ?? '回'}',
+                              ),
                           ],
                         ),
                         const Divider(height: 20),
@@ -991,13 +1003,24 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 2),
                                   child: Text(
-                                    '${day.date.month}/${day.date.day}  '
-                                    '${day.siteName ?? '休み'}  '
-                                    '${_time(day.clockIn)}〜${_time(day.clockOut)}  '
-                                    '残${_number(day.overtimeHours)}  '
-                                    '早${_number(day.earlyHours)}  '
-                                    '夜${_number(day.nightHours)}  '
-                                    '${day.hasAllowance ? (day.allowanceNames.isEmpty ? '手当1' : day.allowanceNames.map((name) => '${name}1').join(' ')) : ''}',
+                                    [
+                                      '${day.date.month}/${day.date.day}',
+                                      day.siteName ?? '休み',
+                                      '${_time(day.clockIn)}〜${_time(day.clockOut)}',
+                                      if (day.overtimeHours > 0)
+                                        '残${_number(day.overtimeHours)}',
+                                      if (day.earlyHours > 0)
+                                        '早${_number(day.earlyHours)}',
+                                      if (day.nightHours > 0)
+                                        '夜${_number(day.nightHours)}',
+                                      if (day.hasAllowance)
+                                        ...(day.allowanceNames.isEmpty
+                                            ? const <String>['手当1']
+                                            : day.allowanceNames.map(
+                                                (name) =>
+                                                    '${name}1${day.allowanceUnits[name] ?? ''}',
+                                              )),
+                                    ].join('  '),
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),

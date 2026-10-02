@@ -197,7 +197,10 @@ class ChatCloudRepository {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet();
-    if (userIds.isEmpty) return const [];
+    final currentUser = _client.auth.currentUser;
+    if (currentUser != null) {
+      userIds.add(currentUser.id);
+    }
 
     final profileRows =
         await _client.rpc('company_member_profiles') as List<dynamic>;
@@ -254,6 +257,20 @@ class ChatCloudRepository {
         'avatar_url': avatarUrl,
         'company_name': companyName,
         'last_message_at': lastMessageByUser[userId],
+      });
+    }
+
+    if (currentUser != null &&
+        !result.any((row) => row['user_id']?.toString() == currentUser.id)) {
+      result.add({
+        'user_id': currentUser.id,
+        'display_name': currentUser.userMetadata?['display_name']?.toString() ??
+            currentUser.phone ??
+            currentUser.email ??
+            '自分',
+        'avatar_url': null,
+        'company_name': companyName,
+        'last_message_at': lastMessageByUser[currentUser.id],
       });
     }
 

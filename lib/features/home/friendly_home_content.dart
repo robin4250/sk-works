@@ -785,14 +785,14 @@ class _HomeActionTile extends StatelessWidget {
 
     final label = Text(
       item.label,
-      maxLines: fourColumns ? 1 : (compact ? 2 : 1),
+      maxLines: fourColumns ? 2 : (compact ? 2 : 1),
       overflow: TextOverflow.ellipsis,
       textAlign: fourColumns
-          ? TextAlign.start
+          ? TextAlign.center
           : (compact ? TextAlign.center : TextAlign.start),
       style: TextStyle(
         fontWeight: FontWeight.w900,
-        fontSize: fourColumns ? 8.5 : (compact ? 11 : 14),
+        fontSize: fourColumns ? 9.5 : (compact ? 11 : 14),
         height: 1.05,
       ),
     );
@@ -814,14 +814,14 @@ class _HomeActionTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
           ),
           child: fourColumns
-              ? Row(
+              ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     icon,
-                    const SizedBox(width: 3),
+                    const SizedBox(height: 4),
                     Flexible(child: label),
                     if (isProfessional) ...[
-                      const SizedBox(width: 2),
+                      const SizedBox(height: 2),
                       const _ProfessionalAccessMark(),
                     ],
                   ],

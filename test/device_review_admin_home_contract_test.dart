@@ -41,8 +41,9 @@ void main() {
     expect(homeStart, greaterThanOrEqualTo(0));
     expect(homeEnd, greaterThan(homeStart));
     final homeDashboard = app.substring(homeStart, homeEnd);
-    expect(homeDashboard, contains('preferredSize: const Size.fromHeight(88)'));
-    expect(homeDashboard, contains('contentTopInset: 98'));
+    expect(homeDashboard, contains('extendBodyBehindAppBar: false'));
+    expect(homeDashboard, contains('preferredSize: const Size.fromHeight(64)'));
+    expect(homeDashboard, contains('contentTopInset: 8'));
     expect(homeDashboard, isNot(contains('_chromeVisible')));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
   });
