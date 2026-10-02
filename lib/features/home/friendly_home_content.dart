@@ -579,7 +579,7 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
           children: [
             Text(
               '本日の出勤',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
             ),
