@@ -42,7 +42,7 @@ class GpsAutoAttendanceService {
 
       if (_subscription != null) return;
 
-      const settings = AppleSettings(
+      final settings = AppleSettings(
         accuracy: LocationAccuracy.high,
         activityType: ActivityType.otherNavigation,
         distanceFilter: 0,
