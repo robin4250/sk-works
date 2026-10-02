@@ -390,44 +390,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
       MaterialPageRoute(
         builder: (_) => const SignatureCapturePage(
           title: '報告者サイン',
-          nameLabel: '報告者名',
-        ),
-      ),
-    );
-    if (result == null || !mounted) return;
-
-    final repository = _repository;
-    if (repository == null) return;
-    setState(() => _saving = true);
-    try {
-      await repository.saveReporterSignature(
-        reportId: reportId,
-        signerName: result.signerName,
-        signatureJson: result.toJson(),
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('報告者サインを保存しました')),
-      );
-      await _loadSelectedSite();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('報告者サインを保存できませんでした: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<void> _signReporter() async {
-    final reportId = _report?.id ?? await _saveDraft();
-    if (reportId == null || !mounted) return;
-
-    final result = await Navigator.of(context).push<SignatureResult>(
-      MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(
-          title: '報告者サイン',
           signerLabel: '報告者名',
           submitLabel: '報告者サインを保存',
         ),
@@ -710,29 +672,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             child: ListTile(
                               leading: CircleAvatar(
                                 child: Icon(
-                                  _report?.reporterSignatureJson != null
-                                      ? Icons.check
-                                      : Icons.draw_outlined,
-                                ),
-                              ),
-                              title: const Text(
-                                '報告者サイン',
-                                style: TextStyle(fontWeight: FontWeight.w900),
-                              ),
-                              subtitle: Text(
-                                _report?.reporterSignerName?.trim().isNotEmpty == true
-                                    ? _report!.reporterSignerName!
-                                    : '日報を作成した報告者がサインします',
-                              ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: _signed || _saving ? null : _signReporter,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Card(
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                child: Icon(
                                   _report?.reporterSignatureJson == null
                                       ? Icons.draw_outlined
                                       : Icons.check,
@@ -765,7 +704,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
-                                  _report?.signerName ?? '責任者サイン済み',
+                                  _report?.responsibleSignerName ?? _report?.signerName ?? '責任者サイン済み',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _showSignature,
@@ -1314,7 +1253,9 @@ class _DailyReportPaper extends StatelessWidget {
   Widget build(BuildContext context) {
     final reporterStrokes =
         SignatureResult.fromJson(report?.reporterSignatureJson);
-    final supervisorStrokes = SignatureResult.fromJson(report?.signatureJson);
+    final supervisorStrokes = SignatureResult.fromJson(
+      report?.responsibleSignatureJson ?? report?.signatureJson,
+    );
     final totalOvertime =
         workers.fold<double>(0, (sum, worker) => sum + worker.overtimeHours);
     final totalEarly =
@@ -1390,7 +1331,7 @@ class _DailyReportPaper extends StatelessWidget {
                       flex: 3,
                       child: _signatureBox(
                         label: '責任者サイン',
-                        name: report?.signerName ?? '',
+                        name: report?.responsibleSignerName ?? report?.signerName ?? '',
                         strokes: supervisorStrokes,
                       ),
                     ),
