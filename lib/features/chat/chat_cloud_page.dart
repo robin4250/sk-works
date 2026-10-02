@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../albums/albums_cloud_page.dart';
 import '../notes/notes_cloud_page.dart';
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
@@ -80,7 +81,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = 'チャットを利用できません。';
+        _error = SkoLanguageController.tr('チャットを利用できません。');
       });
       return;
     }
@@ -313,7 +314,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('送信できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('送信できませんでした')}: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -347,7 +348,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('個別トークを開始できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('個別トークを開始できませんでした')}: $error')),
       );
     }
   }
@@ -376,7 +377,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('写真を送信できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('写真を送信できませんでした')}: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -407,7 +408,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('カメラ写真を送信できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('カメラ写真を送信できませんでした')}: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -435,7 +436,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ファイルを送信できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('ファイルを送信できませんでした')}: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -451,7 +452,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_outlined),
-              title: const Text('写真'),
+              title: Text(SkoLanguageController.tr('写真')),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _attachPhoto();
@@ -459,7 +460,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('カメラ'),
+              title: Text(SkoLanguageController.tr('カメラ')),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _attachCamera();
@@ -467,7 +468,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             ),
             ListTile(
               leading: const Icon(Icons.attach_file),
-              title: const Text('ファイル'),
+              title: Text(SkoLanguageController.tr('ファイル')),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _attachFile();
@@ -498,7 +499,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+            child: Text(SkoLanguageController.tr('戻る')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -534,8 +535,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('メッセージを削除しますか？'),
-        content: const Text('自分が送信したメッセージだけ削除できます。'),
+        title: Text(SkoLanguageController.isEnglish ? 'Delete this message?' : 'メッセージを削除しますか？'),
+        content: Text(SkoLanguageController.isEnglish ? 'You can only delete messages you sent.' : '自分が送信したメッセージだけ削除できます。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -543,7 +544,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('削除する'),
+            child: Text(SkoLanguageController.isEnglish ? 'Delete' : '削除する'),
           ),
         ],
       ),
@@ -554,7 +555,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('削除できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('削除できませんでした')}: $error')),
       );
     }
   }
@@ -615,7 +616,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 const Divider(height: 1),
                 Expanded(
                   child: members.isEmpty
-                      ? const Center(child: Text('参加メンバーはいません'))
+                      ? Center(child: Text(SkoLanguageController.tr('参加メンバーはいません')))
                       : ListView.separated(
                           padding: const EdgeInsets.all(10),
                           itemCount: members.length,
@@ -637,7 +638,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                               ),
                               title: Text(
                                 member['display_name']?.toString() ??
-                                    'メンバー',
+                                    SkoLanguageController.tr('メンバー'),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -657,7 +658,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('参加メンバーを読み込めませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('参加メンバーを読み込めませんでした')}: $error')),
       );
     }
   }
@@ -787,7 +788,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         leading: selected == null
             ? null
             : IconButton(
-                tooltip: 'トーク一覧に戻る',
+                tooltip: SkoLanguageController.tr('トーク一覧に戻る'),
                 onPressed: _closeConversation,
                 icon: const Icon(Icons.arrow_back_ios_new),
               ),
@@ -809,7 +810,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                     children: [
                       Flexible(
                         child: Text(
-                          selected['display_name']?.toString() ?? 'チャット',
+                          selected['display_name']?.toString() ?? SkoLanguageController.tr('チャット'),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,
@@ -824,14 +825,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               ),
         actions: [
           IconButton(
-            tooltip: '友達追加',
+            tooltip: SkoLanguageController.tr('友達追加'),
             onPressed: _openFriends,
             icon: const Icon(Icons.person_add_alt_1_outlined),
           ),
           const SkoNotificationBell(),
           if (selected != null)
             PopupMenuButton<String>(
-              tooltip: 'トーク機能',
+              tooltip: SkoLanguageController.tr('トーク機能'),
               onSelected: (value) {
                 if (value == 'notes') _openNotes();
                 if (value == 'albums') _openAlbums();
@@ -843,21 +844,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   value: 'notes',
                   child: ListTile(
                     leading: Icon(Icons.sticky_note_2_outlined),
-                    title: Text('ノート'),
+                    title: Text(SkoLanguageController.tr('ノート')),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'albums',
                   child: ListTile(
                     leading: Icon(Icons.photo_album_outlined),
-                    title: Text('アルバム'),
+                    title: Text(SkoLanguageController.tr('アルバム')),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'appearance',
                   child: ListTile(
                     leading: Icon(Icons.wallpaper_outlined),
-                    title: Text('背景・透明度'),
+                    title: Text(SkoLanguageController.tr('背景・透明度')),
                   ),
                 ),
                 if (selected['group_type'] == 'direct')
@@ -869,8 +870,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                         _blockedUserIds.contains(
                           selected['direct_other_user_id']?.toString(),
                         )
-                            ? 'ブロック解除'
-                            : 'ブロック',
+                            ? SkoLanguageController.tr('ブロック解除')
+                            : SkoLanguageController.tr('ブロック'),
                       ),
                     ),
                   ),
@@ -897,17 +898,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                       _ChatTab.all => _selectedGroupId == null
                           ? _groupList(
                               _allGroups,
-                              emptyText: 'トークはまだありません',
+                              emptyText: SkoLanguageController.tr('トークはまだありません'),
                             )
                           : _conversationView(),
                       _ChatTab.site => _groupList(
                           _siteGroups,
-                          emptyText: '現場トークはまだありません',
+                          emptyText: SkoLanguageController.tr('現場トークはまだありません'),
                         ),
                       _ChatTab.direct => _directList(),
                       _ChatTab.partner => _groupList(
                           _partnerGroups,
-                          emptyText: '協力会社トークはまだありません',
+                          emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
                         ),
                     },
                   ),
@@ -922,10 +923,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   Widget _tabs() {
     final tabs = <(_ChatTab, String)>[
-      (_ChatTab.all, 'すべて'),
-      (_ChatTab.site, '現場'),
-      (_ChatTab.direct, '個別'),
-      if (_canManagePartnerChat) (_ChatTab.partner, '協力会社'),
+      (_ChatTab.all, SkoLanguageController.tr('すべて')),
+      (_ChatTab.site, SkoLanguageController.tr('現場')),
+      (_ChatTab.direct, SkoLanguageController.tr('個別')),
+      if (_canManagePartnerChat)
+        (_ChatTab.partner, SkoLanguageController.tr('協力会社')),
     ];
 
     return Container(
@@ -990,7 +992,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     if (_selectedGroupId == null) {
       return const Center(
         child: Text(
-          'トークを選択してください',
+          SkoLanguageController.tr('トークを選択してください'),
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       );
@@ -1033,7 +1035,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           ),
         Expanded(
           child: _messages.isEmpty
-              ? const Center(child: Text('まだメッセージはありません'))
+              ? Center(child: Text(SkoLanguageController.tr('まだメッセージはありません')))
               : NotificationListener<ScrollUpdateNotification>(
                   onNotification: (notification) {
                     final delta = notification.scrollDelta ?? 0;
@@ -1079,7 +1081,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
-                tooltip: '写真・ファイル',
+                tooltip: SkoLanguageController.tr('写真・ファイル'),
                 onPressed: _sending || archived ? null : _showAttachMenu,
                 icon: const Icon(Icons.add_circle_outline),
               ),
@@ -1090,14 +1092,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                   maxLines: 5,
                   enabled: !archived,
                   decoration: InputDecoration(
-                    hintText: archived ? 'アーカイブ済み' : 'メッセージ',
+                    hintText: archived ? SkoLanguageController.tr('アーカイブ済み') : SkoLanguageController.tr('メッセージ'),
                     isDense: true,
                   ),
                 ),
               ),
               const SizedBox(width: 6),
               IconButton.filled(
-                tooltip: '送信',
+                tooltip: SkoLanguageController.tr('送信'),
                 onPressed: _sending || archived ? null : _send,
                 icon: _sending
                     ? const SizedBox.square(
@@ -1187,15 +1189,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             controller: _memberSearch,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              labelText: '社員を検索',
-              hintText: '名前を入力',
+              labelText: SkoLanguageController.tr('社員を検索'),
+              hintText: SkoLanguageController.tr('名前を入力'),
             ),
             onChanged: (_) => setState(() {}),
           ),
         ),
         Expanded(
           child: members.isEmpty
-              ? const Center(child: Text('該当するメンバーはいません'))
+              ? Center(child: Text(SkoLanguageController.tr('該当するメンバーはいません')))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
                   itemCount: members.length,
@@ -1217,7 +1219,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                         ),
                         title: Text(
                           member['display_name']?.toString() ??
-                              'メンバー',
+                              SkoLanguageController.tr('メンバー'),
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,
                           ),
@@ -1238,7 +1240,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   String _activityText(DateTime value) {
-    if (value.millisecondsSinceEpoch == 0) return 'まだ会話はありません';
+    if (value.millisecondsSinceEpoch == 0) return SkoLanguageController.tr('まだ会話はありません');
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(value.month)}/${two(value.day)} '
         '${two(value.hour)}:${two(value.minute)}';
@@ -1268,11 +1270,11 @@ class _MessageBubble extends StatelessWidget {
         senderUserId == currentUserId;
 
     final sender = own
-        ? '自分'
+        ? SkoLanguageController.tr('自分')
         : (message['sender_display_name']?.toString().trim().isNotEmpty ==
                 true
             ? message['sender_display_name'].toString()
-            : 'メンバー');
+            : SkoLanguageController.tr('メンバー'));
 
     final attachments = message['attachments'] is List
         ? List<Map<String, dynamic>>.from(
@@ -1338,7 +1340,7 @@ class _MessageBubble extends StatelessWidget {
                       Flexible(
                         child: Text(
                           attachment['original_filename']?.toString() ??
-                              'ファイル',
+                              SkoLanguageController.tr('ファイル'),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
