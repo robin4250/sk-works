@@ -22,6 +22,8 @@ void main() {
     expect(page, contains('day.overtimeHours'));
     expect(page, contains('day.earlyHours'));
     expect(page, contains('day.hasAllowance'));
+    expect(page, contains('separatorBuilder: (_, __) => const SizedBox.shrink()'));
+    expect(page, contains('padding: const EdgeInsets.fromLTRB(10, 5, 10, 5)'));
     expect(pdf, contains('day.hasAllowance'));
     expect(pdf, contains('day.allowanceNames'));
     expect(pdf, contains("data.allowanceUnits[entry.key] ?? '回'"));
