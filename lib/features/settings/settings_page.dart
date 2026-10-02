@@ -5,6 +5,7 @@ import '../notifications/notification_bell.dart';
 import '../../branding/product_brand.dart';
 import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
+import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'master_device_management_page.dart';
@@ -32,6 +33,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _companyId;
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
+  String _languageCode = SkoLanguageController.languageCode;
 
   bool get _usesCloud => SupabaseBackend.isInitialized;
 
@@ -107,6 +109,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _detailMode = _fromDatabaseDetailMode(
       company['default_invoice_detail_mode'] as String?,
     );
+    _languageCode = SkoLanguageController.languageCode;
   }
 
   Future<void> _loadFromLocal() async {
@@ -117,6 +120,7 @@ class _SettingsPageState extends State<SettingsPage> {
         prefs.getInt('settings_default_unit_price')?.toString() ?? '25000';
     _detailMode = prefs.getString('settings_invoice_detail_mode') ??
         'siteBreakdownOnInvoice';
+    _languageCode = SkoLanguageController.languageCode;
   }
 
   Future<void> _save() async {
@@ -191,6 +195,26 @@ class _SettingsPageState extends State<SettingsPage> {
     };
   }
 
+  Future<void> _setLanguage(String code) async {
+    if (_languageCode == code) return;
+    setState(() => _languageCode = code);
+    try {
+      await SkoLanguageController.setLanguage(
+        code,
+        saveCloud: _usesCloud && _canManageCompany,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${SkoLanguageController.tr('設定の保存に失敗しました')}: $error',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _companyName.dispose();
@@ -203,7 +227,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('設定'),
+        title: Text(SkoLanguageController.tr('設定')),
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
@@ -232,7 +256,36 @@ class _SettingsPageState extends State<SettingsPage> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       Text(
-                        '表示カラー',
+                        SkoLanguageController.tr('表示言語'),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment<String>(
+                                value: 'ja',
+                                label: Text('日本語'),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'en',
+                                label: Text('English'),
+                              ),
+                            ],
+                            selected: {_languageCode},
+                            onSelectionChanged: (values) {
+                              if (values.isNotEmpty) {
+                                _setLanguage(values.first);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        SkoLanguageController.tr('表示カラー'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 10),
@@ -245,8 +298,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
-                                    'テーマカラー',
+                                  Text(
+                                    SkoLanguageController.tr('テーマカラー'),
                                     style: TextStyle(
                                       fontWeight: FontWeight.w900,
                                     ),
