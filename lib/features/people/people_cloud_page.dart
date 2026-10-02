@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import '../../domain/company_data_transfer.dart';
 import '../notifications/notification_bell.dart';
 import '../common/data_date_labels.dart';
+import '../common/japanese_phone.dart';
 import '../qualifications/qualification_send_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
 import 'people_page.dart';
+import 'partner_company_directory_page.dart';
 import 'worker_document_send_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
@@ -25,6 +27,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   PersonKind? _filter;
   bool _loading = true;
   bool _canManagePeople = false;
+  bool _canOpenPartnerDirectory = false;
+  String _companyName = '';
   String? _error;
 
   @override
@@ -47,6 +51,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManagePeople(),
+        repository.canOpenPartnerCompanyDirectory(),
+        repository.companyName(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
@@ -56,6 +62,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           ..clear()
           ..addAll(loaded);
         _canManagePeople = values[1] as bool;
+        _canOpenPartnerDirectory = values[2] as bool;
+        _companyName = values[3] as String;
         _loading = false;
         _error = null;
       });
@@ -71,7 +79,10 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   @override
   Widget build(BuildContext context) {
     final needle = _query.trim().toLowerCase();
-    final filtered = _records.where((record) {
+    final employees = _records
+        .where((record) => record.kind != PersonKind.partnerCompany)
+        .toList(growable: false);
+    final filtered = employees.where((record) {
       final matchesKind = _filter == null || record.kind == _filter;
       final haystack = [
         record.name,
@@ -86,21 +97,25 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('人員管理'),
+        title: const Text('社員'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '親会社に送る',
-            onPressed: _loading || _records.isEmpty
+            tooltip: '送信',
+            onPressed: _loading || employees.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.send),
+                : () => _openDirectoryAction(
+                      PersonnelExportOperation.send,
+                    ),
             icon: const Icon(Icons.send_outlined),
           ),
           IconButton(
             tooltip: '印刷',
-            onPressed: _loading || _records.isEmpty
+            onPressed: _loading || employees.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.print),
+                : () => _openDirectoryAction(
+                      PersonnelExportOperation.print,
+                    ),
             icon: const Icon(Icons.print_outlined),
           ),
           if (_canManagePeople)
@@ -141,6 +156,22 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                 onChanged: (value) => setState(() => _query = value),
               ),
             ),
+            if (_canOpenPartnerDirectory)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PartnerCompanyDirectoryPage(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.business_outlined),
+                  label: const Text('取引会社一覧'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -152,7 +183,9 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                     onSelected: (_) => setState(() => _filter = null),
                   ),
                   const SizedBox(width: 8),
-                  for (final kind in PersonKind.values) ...[
+                  for (final kind in PersonKind.values.where(
+                    (kind) => kind != PersonKind.partnerCompany,
+                  )) ...[
                     ChoiceChip(
                       label: Text(kind.label),
                       selected: _filter == kind,
@@ -181,7 +214,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                   record.kind.label,
                                   if (record.companyName.isNotEmpty) record.companyName,
                                   if (record.role.isNotEmpty) record.role,
-                                  if (record.phone.isNotEmpty) record.phone,
+                                  if (record.phone.isNotEmpty)
+                                    japaneseDomesticPhone(record.phone),
                                 ];
                                 return Card(
                                   child: ListTile(
@@ -198,13 +232,103 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                     ),
                                     subtitle: Text(subtitleParts.join(' / ')),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(record),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => EmployeeDetailPage(
+                                          record: record,
+                                          allEmployees: employees,
+                                          companyName: _companyName,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 );
                               },
                             ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDirectoryAction(
+    PersonnelExportOperation operation,
+  ) async {
+    final employees = _records
+        .where((record) => record.kind != PersonKind.partnerCompany)
+        .toList(growable: false);
+    if (employees.isEmpty) return;
+
+    final all = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.table_rows_outlined),
+              title: const Text('社員一覧'),
+              subtitle: Text(
+                operation == PersonnelExportOperation.send
+                    ? '社員一覧を送信対象にします'
+                    : '社員一覧をA4横向きで印刷します',
+              ),
+              onTap: () => Navigator.pop(context, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_search_outlined),
+              title: const Text('個別'),
+              subtitle: const Text('社員を1名選びます'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (all == null || !mounted) return;
+
+    PersonRecord? selected;
+    if (!all) {
+      selected = await showModalBottomSheet<PersonRecord>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final record in employees)
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(record.name),
+                  subtitle: Text(record.kind.label),
+                  onTap: () => Navigator.pop(context, record),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+    }
+
+    final targets = all ? employees : <PersonRecord>[selected!];
+
+    if (operation == PersonnelExportOperation.send) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PersonnelBundleSendPage(
+            workerIds: targets.map((item) => item.id).toSet(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => EmployeeDirectoryPrintPreviewPage(
+          companyName: _companyName,
+          records: targets,
         ),
       ),
     );
