@@ -997,7 +997,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     final archived = _selectedGroup?['archived_at'] != null;
 
-    final wallpaperPath = _appearance.wallpaperPath;
     return Stack(
       fit: StackFit.expand,
       children: [
