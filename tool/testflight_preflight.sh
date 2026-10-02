@@ -52,7 +52,7 @@ echo
 echo "--- Release project contract ---"
 if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
   bundle="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/' | grep -v '\$(' | grep -v '\.RunnerTests$' | head -n 1 || true)"
-  [[ "$bundle" == "com.robin4250.sko" ]] && ok "Bundle Identifier: $bundle" || fail "Bundle Identifierを確認: ${bundle:-unknown}"
+  [[ "$bundle" == "com.skworks.skWorks" ]] && ok "Bundle Identifier: $bundle" || fail "Bundle Identifierを確認: ${bundle:-unknown}（必須: com.skworks.skWorks）"
 
   team="$(grep 'DEVELOPMENT_TEAM = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*DEVELOPMENT_TEAM = ([^;]*);.*/\1/' | grep -v '^$' | head -n 1 || true)"
   [[ -n "$team" ]] && ok "Signing Team: $team" || warn "Signing Teamが未設定です"
