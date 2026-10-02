@@ -25,10 +25,17 @@ class DailyReportPdfService {
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
 
+    final totalOvertime =
+        workers.fold<double>(0, (sum, worker) => sum + worker.overtimeHours);
+    final totalEarly =
+        workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
+    final totalNight =
+        workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
+
     document.addPage(
       pw.Page(
         pageFormat: format,
-        margin: const pw.EdgeInsets.all(12 * PdfPageFormat.mm),
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
         build: (_) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
@@ -39,9 +46,8 @@ class DailyReportPdfService {
                   child: pw.Text(
                     '作 業 日 報',
                     style: pw.TextStyle(
-                      fontSize: 23,
+                      fontSize: 25,
                       fontWeight: pw.FontWeight.bold,
-                      decoration: pw.TextDecoration.underline,
                     ),
                   ),
                 ),
@@ -51,129 +57,140 @@ class DailyReportPdfService {
                 ),
               ],
             ),
-            pw.SizedBox(height: 12),
-            pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.8),
-              columnWidths: const {
-                0: pw.FlexColumnWidth(2.2),
-                1: pw.FlexColumnWidth(1.2),
-                2: pw.FlexColumnWidth(1.2),
-              },
+            pw.SizedBox(height: 8),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
-                pw.TableRow(
-                  children: [
-                    _cell('現場名\n$siteName', height: 52),
-                    _cell(
-                      '報告者\n${report?.reporterSignerName ?? ''}',
-                      height: 52,
+                pw.Expanded(
+                  flex: 5,
+                  child: _boxed(
+                    '現場名',
+                    pw.Text(
+                      siteName.isEmpty ? '未登録' : siteName,
+                      style: pw.TextStyle(
+                        fontSize: 15,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
-                    _cell(
-                      '責任者\n${report?.signerName ?? ''}',
-                      height: 52,
-                    ),
-                  ],
+                    height: 78,
+                  ),
+                ),
+                pw.SizedBox(width: 5),
+                pw.Expanded(
+                  flex: 3,
+                  child: _signatureBox(
+                    '報告者サイン',
+                    report?.reporterSignerName ?? '',
+                    report?.reporterSignatureJson,
+                  ),
+                ),
+                pw.SizedBox(width: 5),
+                pw.Expanded(
+                  flex: 3,
+                  child: _signatureBox(
+                    '責任者サイン',
+                    report?.signerName ?? '',
+                    report?.signatureJson,
+                  ),
                 ),
               ],
             ),
-            pw.SizedBox(height: 10),
-            pw.Text(
+            pw.SizedBox(height: 7),
+            _boxed(
               '作業内容',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Container(
-              height: 150,
-              padding: const pw.EdgeInsets.all(8),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey700, width: 0.8),
-              ),
-              child: pw.Text(
-                workDescription.isEmpty ? '（記載なし）' : workDescription,
+              pw.Text(
+                workDescription.trim().isEmpty ? '（記載なし）' : workDescription,
                 style: const pw.TextStyle(fontSize: 11),
               ),
+              height: 150,
             ),
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: 8),
             pw.Text(
-              '作業者名',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              '作 業 者 名',
+              style: pw.TextStyle(
+                fontSize: 13,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
-            pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.8),
+            pw.SizedBox(height: 4),
+            pw.TableHelper.fromTextArray(
+              headers: const ['氏名', '早出', '残業', '夜間', '手当・車両等'],
+              data: [
+                for (final worker in workers)
+                  [
+                    worker.workerName,
+                    worker.earlyHours > 0 ? _number(worker.earlyHours) : '',
+                    worker.overtimeHours > 0
+                        ? _number(worker.overtimeHours)
+                        : '',
+                    worker.nightHours > 0 ? _number(worker.nightHours) : '',
+                    [
+                      if (worker.allowanceLabel.trim().isNotEmpty)
+                        worker.allowanceLabel,
+                      if (worker.vehicleName?.trim().isNotEmpty == true)
+                        worker.vehicleName!,
+                      if (worker.routeName?.trim().isNotEmpty == true)
+                        worker.routeName!,
+                    ].join(' / '),
+                  ],
+                for (var i = workers.length; i < 9; i++)
+                  const ['', '', '', '', ''],
+              ],
+              headerStyle: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8.5),
+              headerDecoration:
+                  const pw.BoxDecoration(color: PdfColors.grey200),
+              border: pw.TableBorder.all(width: 0.7),
+              cellPadding:
+                  const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
               columnWidths: const {
-                0: pw.FlexColumnWidth(2.0),
+                0: pw.FlexColumnWidth(2.2),
                 1: pw.FlexColumnWidth(0.9),
                 2: pw.FlexColumnWidth(0.9),
                 3: pw.FlexColumnWidth(0.9),
-                4: pw.FlexColumnWidth(1.6),
+                4: pw.FlexColumnWidth(2.2),
               },
+            ),
+            pw.SizedBox(height: 8),
+            pw.Row(
               children: [
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                  children: [
-                    _cell('氏名'),
-                    _cell('早出'),
-                    _cell('残業'),
-                    _cell('夜間'),
-                    _cell('手当・車両等'),
-                  ],
-                ),
-                for (final worker in workers)
-                  pw.TableRow(
-                    children: [
-                      _cell(worker.workerName),
-                      _cell(worker.earlyHours > 0
-                          ? _number(worker.earlyHours)
-                          : ''),
-                      _cell(worker.overtimeHours > 0
-                          ? _number(worker.overtimeHours)
-                          : ''),
-                      _cell(worker.nightHours > 0
-                          ? _number(worker.nightHours)
-                          : ''),
-                      _cell([
-                        if (worker.allowanceLabel.trim().isNotEmpty)
-                          worker.allowanceLabel,
-                        if (worker.vehicleName?.trim().isNotEmpty == true)
-                          '車両 ' + worker.vehicleName!,
-                        if (worker.routeName?.trim().isNotEmpty == true)
-                          'ルート ' + worker.routeName!,
-                        if (worker.odometerKm != null)
-                          '走行 ' + _number(worker.odometerKm!) + 'km',
-                      ].join(' / ')),
-                    ],
+                pw.Expanded(child: _summaryBox('計', '${workers.length}人工')),
+                pw.SizedBox(width: 4),
+                pw.Expanded(
+                  child: _summaryBox(
+                    '早出',
+                    totalEarly > 0 ? '${_number(totalEarly)}H' : '',
                   ),
+                ),
+                pw.SizedBox(width: 4),
+                pw.Expanded(
+                  child: _summaryBox(
+                    '残業',
+                    totalOvertime > 0 ? '${_number(totalOvertime)}H' : '',
+                  ),
+                ),
+                pw.SizedBox(width: 4),
+                pw.Expanded(
+                  child: _summaryBox(
+                    '夜間',
+                    totalNight > 0 ? '${_number(totalNight)}H' : '',
+                  ),
+                ),
               ],
             ),
             pw.Spacer(),
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: _signatureBox(
-                    label: '報告者サイン',
-                    signerName: report?.reporterSignerName ?? '',
-                    signatureJson: report?.reporterSignatureJson,
-                  ),
-                ),
-                pw.SizedBox(width: 10),
-                pw.Expanded(
-                  child: _signatureBox(
-                    label: '責任者サイン',
-                    signerName: report?.signerName ?? '',
-                    signatureJson: report?.signatureJson,
-                  ),
-                ),
-              ],
-            ),
-            if (report?.signedAt != null) ...[
-              pw.SizedBox(height: 6),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Text(
-                  '確定日時：${report!.signedAt!.toLocal()}',
-                  style: const pw.TextStyle(fontSize: 9),
-                ),
+            pw.Divider(thickness: 0.8),
+            pw.Text(
+              '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。',
+              textAlign: pw.TextAlign.center,
+              style: const pw.TextStyle(
+                fontSize: 8.5,
+                color: PdfColors.grey700,
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -247,6 +264,98 @@ class DailyReportPdfService {
       ),
     );
   }
+
+  static pw.Widget _boxed(
+    String label,
+    pw.Widget child, {
+    double? height,
+  }) {
+    return pw.Container(
+      height: height,
+      padding: const pw.EdgeInsets.all(7),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(width: 0.8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 3),
+          pw.Expanded(child: child),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _signatureBox(
+    String label,
+    String name,
+    Object? signatureJson,
+  ) {
+    final svg = signatureSvg(signatureJson);
+    return pw.Container(
+      height: 78,
+      padding: const pw.EdgeInsets.all(5),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(width: 0.8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          if (name.trim().isNotEmpty)
+            pw.Text(
+              name.trim(),
+              maxLines: 1,
+              style: const pw.TextStyle(fontSize: 7.5),
+            ),
+          pw.SizedBox(height: 2),
+          if (svg != null)
+            pw.Expanded(child: pw.SvgImage(svg: svg))
+          else
+            pw.Spacer(),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _summaryBox(String label, String value) => pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(width: 0.8),
+        ),
+        child: pw.Row(
+          children: [
+            pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.Spacer(),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
 
   static String? signatureSvg(Object? value) {
     if (value is! List) return null;
