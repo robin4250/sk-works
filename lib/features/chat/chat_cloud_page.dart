@@ -606,7 +606,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                   child: Text(
-                    '参加メンバー  ${members.length}人',
+                    '${SkoLanguageController.tr('参加メンバー')}  ${members.length}${SkoLanguageController.isEnglish ? '' : '人'}',
                     style: Theme.of(sheetContext)
                         .textTheme
                         .titleLarge
