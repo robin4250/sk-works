@@ -9,6 +9,7 @@ void main() {
     final home =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
     final app = File('lib/app_v2.dart').readAsStringSync();
+    final theme = File('lib/branding/sko_theme.dart').readAsStringSync();
 
     expect(appearance, contains("sko_home_appearance_"));
     expect(appearance, contains('getApplicationSupportDirectory'));
@@ -31,7 +32,9 @@ void main() {
     expect(appearance, contains('this.headerOpacity = 0.6'));
     expect(appearance, contains('this.footerOpacity = 0.6'));
     expect(appearance, contains('fallback = 0.6'));
-    expect(app, contains('withValues(alpha: _homeAppearance.headerOpacity)'));
+    expect(app, contains('Colors.white.withValues('));
+    expect(app, contains('alpha: _homeAppearance.headerOpacity'));
+    expect(theme, contains('backgroundColor: Colors.white'));
     expect(app, contains('withValues(alpha: _homeAppearance.footerOpacity)'));
     expect(app, contains("'背景・ヘッダー・フッター設定'"));
   });
