@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 class PersonnelFamilyMember {
   const PersonnelFamilyMember({
     this.id,
@@ -53,14 +55,11 @@ class PersonnelFamilyMember {
 
 class EditableFamilyMember {
   EditableFamilyMember({
-    String name = '',
-    String relation = '',
-    DateTime? birthDate,
-    bool isDependent = false,
-  })  : name = name,
-        relation = relation,
-        birthDate = birthDate,
-        isDependent = isDependent;
+    this.name = '',
+    this.relation = '',
+    this.birthDate,
+    this.isDependent = false,
+  });
 
   String name;
   String relation;
