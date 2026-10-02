@@ -102,7 +102,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            '表示名・車両番号・走行距離と、車検証・自賠責保険・任意保険証書を管理します。',
+            '表示名・車両番号・走行距離・保管場所（駐車場住所）と、車検証・自賠責保険・任意保険証書を管理します。',
           ),
           const SizedBox(height: 12),
           if (_canManageVehicles)
@@ -142,6 +142,8 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
                       if ((row['registration_number']?.toString() ?? '').isNotEmpty)
                         '車両番号 ' + row['registration_number'].toString(),
                       '走行距離 ' + _km(row['odometer_km']) + ' km',
+                      if ((row['storage_address']?.toString() ?? '').isNotEmpty)
+                        '駐車場 ' + row['storage_address'].toString(),
                       _documentSummary(row),
                       if (row['is_active'] != true) '休止中',
                     ].join(' / '),
@@ -179,7 +181,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'ルート名と、現場または住所を必要な数だけ順番に登録できます。',
+            'ルート名と、現場・登録車両の駐車場・住所を必要な数だけ順番に登録できます。',
           ),
           const SizedBox(height: 12),
           if (_canManageRoutes)
@@ -265,6 +267,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         builder: (_) => RouteEditorPage(
           route: row,
           sites: _sites,
+          vehicles: _vehicles,
         ),
       ),
     );
