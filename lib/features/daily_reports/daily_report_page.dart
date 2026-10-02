@@ -330,6 +330,21 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     _applyControllers();
 
+    final missingOdometer = _workers.where(
+      (worker) => worker.vehicleId != null && worker.odometerKm == null,
+    );
+    if (missingOdometer.isNotEmpty) {
+      final names = missingOdometer.map((worker) => worker.workerName).join('、');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            names + ' の退勤時走行距離を入力してください',
+          ),
+        ),
+      );
+      return null;
+    }
+
     setState(() => _saving = true);
     try {
       final id = await repository.saveDraft(
