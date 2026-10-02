@@ -28,7 +28,6 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   late final TextEditingController _registration;
   late final TextEditingController _odometer;
   late final TextEditingController _storageAddress;
-  late final TextEditingController _storageAddress;
 
   _PendingDocument? _registrationDoc;
   _PendingDocument? _compulsoryDoc;
@@ -47,9 +46,6 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
     );
     _odometer = TextEditingController(
       text: _number(row?['odometer_km']),
-    );
-    _storageAddress = TextEditingController(
-      text: row?['storage_address']?.toString() ?? '',
     );
     _storageAddress = TextEditingController(
       text: row?['storage_address']?.toString() ?? '',
