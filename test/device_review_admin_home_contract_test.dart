@@ -51,6 +51,7 @@ void main() {
     expect(homeDashboard, contains('bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true)'));
     expect(homeDashboard, contains('flexibleSpace: ColoredBox('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
+    expect(homeDashboard, contains('Colors.white.withValues('));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, contains('_chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
