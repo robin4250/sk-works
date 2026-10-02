@@ -773,6 +773,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       onPointerUp: _chatPointerEnd,
       onPointerCancel: _chatPointerEnd,
       child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: selected != null && !_chatChromeVisible
           ? null
           : AppBar(
