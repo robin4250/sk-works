@@ -215,7 +215,7 @@ class _AttendanceVerificationPageState
                       ),
                       DropdownMenuItem(
                         value: 'location_photo',
-                        child: Text('位置情報＋写真'),
+                        child: Text('位置情報＋写真（確定時のみ）'),
                       ),
                     ],
                     onChanged: _saving ? null : _changeMode,
@@ -470,9 +470,9 @@ class _AttendanceVerificationPageState
                 ':00')
             : null,
       );
+      await GpsAutoAttendanceService.instance.refresh();
 
       if (_mode == 'gps_auto' && _eventType == 'clock_in') {
-        await GpsAutoAttendanceService.instance.refresh();
         final position = await _currentPosition();
         final result = await repository.attemptGpsAutoAttendance(
           latitude: position.latitude,
