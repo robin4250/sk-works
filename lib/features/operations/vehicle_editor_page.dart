@@ -111,7 +111,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
       );
     }
 
-    final result = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const [
         'pdf',
@@ -121,17 +121,10 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         'heic',
         'heif',
       ],
-      allowMultiple: false,
-      withData: true,
     );
-    if (result == null || result.files.isEmpty) return null;
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      throw StateError('選択したファイルを読み込めませんでした');
-    }
+    if (file == null) return null;
     return _PendingDocument(
-      bytes: bytes,
+      bytes: await file.readAsBytes(),
       filename: file.name,
       contentType: _contentType(file.extension),
     );
