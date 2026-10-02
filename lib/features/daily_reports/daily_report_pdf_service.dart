@@ -89,8 +89,8 @@ class DailyReportPdfService {
                   flex: 3,
                   child: _signatureBox(
                     '責任者サイン',
-                    report?.signerName ?? '',
-                    report?.signatureJson,
+                    report?.responsibleSignerName ?? report?.signerName ?? '',
+                    report?.responsibleSignatureJson ?? report?.signatureJson,
                   ),
                 ),
               ],
