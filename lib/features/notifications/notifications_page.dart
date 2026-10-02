@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import '../sites/site_map_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -67,7 +68,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
     if (!mounted) return;
 
-    // Specific destinations are wired as each approval/document flow is added.
+    if (item.actionKey == 'site_map') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SiteMapPage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
