@@ -27,13 +27,13 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.groups_2_outlined),
               title: const Text('社員一覧'),
-              subtitle: Text('社員一覧を' + action),
+              subtitle: Text('社員一覧を$action'),
               onTap: () => Navigator.pop(sheetContext, true),
             ),
             ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('個別'),
-              subtitle: Text(record.name + 'さんだけを' + action),
+              subtitle: Text('${record.name}さんだけを$action'),
               onTap: () => Navigator.pop(sheetContext, false),
             ),
           ],
