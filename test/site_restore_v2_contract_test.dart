@@ -42,7 +42,8 @@ void main() {
     expect(detail, contains("'登録者の社員情報'"));
     expect(detail, contains("'登録日:"));
     expect(detail, contains("'最終更新日:"));
-    expect(detail, contains("Uri.https('maps.apple.com'"));
+    expect(detail, contains("Uri.https('www.google.com'"));
+    expect(detail, contains("'/maps/search/'"));
     expect(detail, contains("scheme: 'tel'"));
     expect(detail, contains("'確定して申請'"));
     expect(detail, contains("for (var slot = 1; slot <= 3; slot++)"));
@@ -60,8 +61,8 @@ void main() {
     expect(cloud, contains('SiteDetailPage('));
     expect(cloud, contains("'現場・取引会社・下請け会社・社員をGoogleマップで確認'"));
     expect(cloud, contains('SiteMapPage()'));
-    expect(siteMap, contains('社員全員の最新の打刻位置'));
-    expect(siteMap, contains('自分自身の最新の打刻位置'));
+    expect(siteMap, contains("'全従業員の自宅'"));
+    expect(siteMap, contains("'自宅（本人）'"));
     expect(siteMap, contains("'現場マップ'"));
     expect(siteMap, contains("'最新の打刻位置'"));
     expect(siteMapRepo, contains("rpc('site_map_workspace')"));
