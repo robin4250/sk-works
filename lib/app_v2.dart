@@ -128,6 +128,7 @@ class _HomePageState extends State<HomePage> {
     displayName: 'ユーザー',
   );
   int _selectedIndex = 0;
+  bool _chromeVisible = true;
   bool _canReviewEmployeeOnboarding = false;
   String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
@@ -338,6 +339,39 @@ class _HomePageState extends State<HomePage> {
     await prefs.setStringList('sko_home_action_order', stored);
   }
 
+  Future<void> _reorderHomeAction(int oldIndex, int newIndex) async {
+    final items = _menuItems;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex < 0 ||
+        oldIndex >= items.length ||
+        newIndex < 0 ||
+        newIndex >= items.length) {
+      return;
+    }
+    final ordered = items.map((item) => item.key).toList();
+    final moved = ordered.removeAt(oldIndex);
+    ordered.insert(newIndex, moved);
+    setState(() => _homeActionOrder = ordered);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sko_home_action_order', ordered);
+  }
+
+  bool _handleRootScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (delta > 2 && _chromeVisible) {
+        setState(() => _chromeVisible = false);
+      } else if (delta < -2 && !_chromeVisible) {
+        setState(() => _chromeVisible = true);
+      }
+      if (notification.metrics.pixels <= 2 && !_chromeVisible) {
+        setState(() => _chromeVisible = true);
+      }
+    }
+    return false;
+  }
+
   void _recordCloudUsageForAction(String key) {
     final repository = _usageAnalyticsRepository;
     if (repository == null) return;
@@ -361,7 +395,7 @@ class _HomePageState extends State<HomePage> {
       'qualification_certificates' || 'qualifications' => 'qualifications',
       'documents' => 'documents',
       'vehicle_routes' => 'vehicle_routes',
-      'settings' || 'rollout' => 'settings',
+      'settings' || 'appearance' || 'rollout' => 'settings',
       'invoices' => 'invoice',
       _ => null,
     };
@@ -620,6 +654,9 @@ class _HomePageState extends State<HomePage> {
       case 'vehicle_routes':
         page = const VehicleRoutePage();
         break;
+      case 'appearance':
+        await _openHomeAppearanceSettings();
+        return;
       case 'settings':
         page = const SettingsPage();
         break;
@@ -813,6 +850,13 @@ class _HomePageState extends State<HomePage> {
           accessLabel: '管理者',
         ),
       const _MenuAction(
+        key: 'appearance',
+        label: '背景・ヘッダー・フッター設定',
+        icon: Icons.wallpaper_outlined,
+        homeEligible: true,
+        accessLabel: '本人のみ',
+      ),
+      const _MenuAction(
         key: 'settings',
         label: '設定',
         icon: Icons.settings_outlined,
@@ -842,19 +886,61 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _homeDashboard() {
+    final now = DateTime.now();
     return Scaffold(
-      appBar: AppBar(
-        toolbarOpacity: _homeAppearance.headerOpacity,
-        title: const SizedBox.shrink(),
-        actions: [
-          const SkoNotificationBell(),
-          if (widget.onSignOut != null)
-            IconButton(
-              tooltip: 'ログアウト',
-              onPressed: widget.onSignOut,
-              icon: const Icon(Icons.logout),
-            ),
-        ],
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(_chromeVisible ? 68 : 0),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: _chromeVisible ? 68 : 0,
+          child: _chromeVisible
+              ? AppBar(
+                  toolbarOpacity: _homeAppearance.headerOpacity,
+                  titleSpacing: 12,
+                  title: Opacity(
+                    opacity: _homeAppearance.headerOpacity,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _identity.companyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          '${_identity.displayName}　${now.year}年${now.month}月${now.day}日',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    IconButton(
+                      tooltip: '背景・ヘッダー・フッター設定',
+                      onPressed: _openHomeAppearanceSettings,
+                      icon: const Icon(Icons.wallpaper_outlined),
+                    ),
+                    const SkoNotificationBell(),
+                    if (widget.onSignOut != null)
+                      IconButton(
+                        tooltip: 'ログアウト',
+                        onPressed: widget.onSignOut,
+                        icon: const Icon(Icons.logout),
+                      ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+        ),
       ),
       body: SafeArea(
         child: FriendlyHomeContent(
@@ -884,103 +970,97 @@ class _HomePageState extends State<HomePage> {
   Widget _menuPage() {
     final items = _menuItems;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'メニュー',
-          style: TextStyle(fontWeight: FontWeight.w900),
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(_chromeVisible ? kToolbarHeight : 0),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: _chromeVisible ? kToolbarHeight : 0,
+          child: _chromeVisible
+              ? AppBar(
+                  title: const Text(
+                    'メニュー',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  actions: const [SkoNotificationBell()],
+                )
+              : const SizedBox.shrink(),
         ),
-        actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: ListView(
+        child: ReorderableListView.builder(
           padding: const EdgeInsets.all(12),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'ホーム表示・並び順・権限',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
+          buildDefaultDragHandles: true,
+          header: Column(
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'ホーム表示・並び順・権限',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '通常の小ボタンだけを変更します。要対応・本日の勤務報告・本日の出勤は固定です。ホームとメニューを同じ一覧で管理します。ホーム対象は表示ON/OFF、上下移動、1〜4列表示を変更できます。',
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(value: 1, label: Text('1列')),
-                        ButtonSegment(value: 2, label: Text('2列')),
-                        ButtonSegment(value: 3, label: Text('3列')),
-                        ButtonSegment(value: 4, label: Text('4列')),
-                      ],
-                      selected: {_homeGridColumns},
-                      onSelectionChanged: (values) {
-                        if (values.isEmpty) return;
-                        _setHomeGridColumns(values.first);
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _openHomeAppearanceSettings,
-                      icon: const Icon(Icons.wallpaper_outlined),
-                      label: const Text('壁紙・透明度を設定'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < items.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Card(
-                  child: ListTile(
-                    leading: CircleAvatar(child: Icon(items[i].icon)),
-                    title: Text(
-                      items[i].label,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text('利用権限：${items[i].accessLabel}'),
-                    onTap: () => _openHomeAction(items[i].key),
-                    trailing: SizedBox(
-                      width: items[i].homeEligible ? 160 : 100,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (items[i].homeEligible)
-                            Switch(
-                              value: !_hiddenHomeActionKeys.contains(items[i].key),
-                              onChanged: (value) =>
-                                  _setHomeActionVisible(items[i].key, value),
-                            ),
-                          IconButton(
-                            tooltip: '上へ',
-                            onPressed: i == 0
-                                ? null
-                                : () => _moveHomeAction(items[i].key, -1),
-                            icon: const Icon(Icons.keyboard_arrow_up),
-                          ),
-                          IconButton(
-                            tooltip: '下へ',
-                            onPressed: i == items.length - 1
-                                ? null
-                                : () => _moveHomeAction(items[i].key, 1),
-                            icon: const Icon(Icons.keyboard_arrow_down),
-                          ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        '管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
+                      ),
+                      const SizedBox(height: 12),
+                      SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 1, label: Text('1列')),
+                          ButtonSegment(value: 2, label: Text('2列')),
+                          ButtonSegment(value: 3, label: Text('3列')),
+                          ButtonSegment(value: 4, label: Text('4列')),
                         ],
+                        selected: {_homeGridColumns},
+                        onSelectionChanged: (values) {
+                          if (values.isEmpty) return;
+                          _setHomeGridColumns(values.first);
+                        },
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      FilledButton.tonalIcon(
+                        onPressed: _openHomeAppearanceSettings,
+                        icon: const Icon(Icons.wallpaper_outlined),
+                        label: const Text('背景・ヘッダー・フッター設定'),
+                      ),
+                    ],
                   ),
                 ),
               ),
-          ],
+              const SizedBox(height: 12),
+            ],
+          ),
+          itemCount: items.length,
+          onReorder: _reorderHomeAction,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            return Padding(
+              key: ValueKey('menu_${item.key}'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.drag_handle),
+                  title: Text(
+                    item.label,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text('利用権限：${item.accessLabel}'),
+                  onTap: () => _openHomeAction(item.key),
+                  trailing: Switch(
+                    value: !_hiddenHomeActionKeys.contains(item.key),
+                    onChanged: (value) =>
+                        _setHomeActionVisible(item.key, value),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1003,7 +1083,9 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _handleRootScroll,
+        child: IndexedStack(
         index: _selectedIndex,
         children: [
           for (var i = 0; i < pages.length; i++)
@@ -1012,8 +1094,13 @@ class _HomePageState extends State<HomePage> {
               child: pages[i],
             ),
         ],
+        ),
       ),
-      bottomNavigationBar: Opacity(
+      bottomNavigationBar: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: _chromeVisible ? 80 : 0,
+        child: _chromeVisible
+            ? Opacity(
         opacity: _homeAppearance.footerOpacity,
         child: NavigationBar(
         selectedIndex: _selectedIndex,
@@ -1069,6 +1156,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
         ),
+            : const SizedBox.shrink(),
       ),
     );
   }
@@ -1080,7 +1168,7 @@ class _MenuAction {
     required this.label,
     required this.icon,
     required this.accessLabel,
-    this.homeEligible = false,
+    this.homeEligible = true,
   });
 
   final String key;
