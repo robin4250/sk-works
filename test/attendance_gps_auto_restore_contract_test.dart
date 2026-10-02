@@ -54,6 +54,25 @@ void main() {
     expect(ios, contains('background_modes.append("location")'));
   });
 
+  test('location photo never keeps GPS auto background schedule enabled', () {
+    final confirmPage = File(
+      'lib/features/attendance/attendance_verification_page.dart',
+    ).readAsStringSync();
+    final selectionPage = File(
+      'lib/features/attendance/attendance_selection_page.dart',
+    ).readAsStringSync();
+    final sql = File(
+      'supabase/migrations/'
+      '20261002004813_separate_gps_auto_from_location_photo.sql',
+    ).readAsStringSync();
+
+    expect(confirmPage, contains('位置情報＋写真（確定時のみ）'));
+    expect(selectionPage, contains('位置情報＋写真（確定時のみ）'));
+    expect(confirmPage, contains('GpsAutoAttendanceService.instance.refresh()'));
+    expect(sql, contains("if v_mode='gps_auto' then"));
+    expect(sql, contains('set enabled=false'));
+  });
+
   test('location photo evidence links to and displays beside daily report', () {
     final repo = File(
       'lib/features/daily_reports/daily_report_repository.dart',
