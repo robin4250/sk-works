@@ -94,7 +94,7 @@ class AttendanceVerificationRepository {
 
   Future<void> saveAttendanceSelection({
     required String mode,
-    required String siteId,
+    String? siteId,
     List<int>? weekdays,
     String? localTime,
   }) async {
@@ -102,7 +102,7 @@ class AttendanceVerificationRepository {
       'save_my_attendance_selection',
       params: {
         'p_mode': mode,
-        'p_site_id': siteId,
+        'p_site_id': _nullable(siteId),
         'p_weekdays': weekdays,
         'p_local_time': localTime,
         'p_timezone': 'Asia/Tokyo',
@@ -332,7 +332,8 @@ class AttendanceVerificationRepository {
         .from('attendance_verifications')
         .select(
           'id, event_type, verification_mode, confirmed_at, '
-          'proximity_status, distance_to_site_m, workers(name), sites(name)',
+          'proximity_status, distance_to_site_m, workers(name), '
+          'sites(name), route_assignments(route_name)',
         )
         .eq('company_id', companyId)
         .order('confirmed_at', ascending: false)
@@ -342,7 +343,7 @@ class AttendanceVerificationRepository {
 
   Future<Map<String, dynamic>> createVerification({
     required String workerId,
-    required String siteId,
+    String? siteId,
     required String eventType,
     required String verificationMode,
     double? latitude,
@@ -355,20 +356,6 @@ class AttendanceVerificationRepository {
     String? note,
   }) async {
     final companyId = await _companyId();
-    String? storagePath;
-
-    if (photoBytes != null) {
-      final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
-      final objectName =
-          '${DateTime.now().microsecondsSinceEpoch}$extension';
-      storagePath =
-          '$companyId/attendance/$siteId/$workerId/$objectName';
-      await _client.storage.from(_bucket).uploadBinary(
-            storagePath,
-            photoBytes,
-            fileOptions: const FileOptions(upsert: false),
-          );
-    }
 
     Map<String, dynamic>? selection;
     try {
@@ -391,13 +378,34 @@ class AttendanceVerificationRepository {
       selection = null;
     }
 
+    final routeId = selection?['route_assignment_id']?.toString();
+    if ((siteId == null || siteId.trim().isEmpty) &&
+        (routeId == null || routeId.trim().isEmpty)) {
+      throw StateError('現場またはルートを選択してください。');
+    }
+
+    String? storagePath;
+
+    if (photoBytes != null) {
+      final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
+      final objectName =
+          '${DateTime.now().microsecondsSinceEpoch}$extension';
+      storagePath =
+          '$companyId/attendance/${siteId ?? routeId ?? 'route'}/$workerId/$objectName';
+      await _client.storage.from(_bucket).uploadBinary(
+            storagePath,
+            photoBytes,
+            fileOptions: const FileOptions(upsert: false),
+          );
+    }
+
     try {
       final row = await _client
           .from('attendance_verifications')
           .insert({
             'company_id': companyId,
             'worker_id': workerId,
-            'site_id': siteId,
+            'site_id': _nullable(siteId),
             'event_type': eventType,
             'verification_mode': verificationMode,
             'latitude': latitude,
