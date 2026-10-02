@@ -47,7 +47,7 @@ void main() {
     expect(page, contains("'Googleマップを開けませんでした'"));
     expect(page, contains("scheme: 'tel'"));
     expect(page, contains("'www.google.com'"));
-    expect(page, contains("'maps/search/'"));
+    expect(page, contains("'/maps/search/'"));
   });
 
   test('personnel list print is A4 landscape with company and date', () {
@@ -105,7 +105,7 @@ void main() {
     expect(peopleForm, contains("'血液型'"));
     expect(peopleForm, contains("'緊急連絡先'"));
     expect(edit, contains("'変更申請を送る'"));
-    expect(approvals, contains("'承認 '"));
+    expect(approvals, contains("'承認 \$approvalCount/2 名'"));
     expect(approvals, contains('approvalCount/2 名'));
     expect(migration, contains('worker_personnel_change_requests'));
     expect(migration, contains('worker_personnel_change_approvals'));
