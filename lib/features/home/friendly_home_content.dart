@@ -184,14 +184,14 @@ class _RequiredDocumentAttentionCardState
                     ),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             SkoLanguageController.tr('要対応'),
-                            style: TextStyle(fontWeight: FontWeight.w900),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                         ),
                         Text(
-                          '未対応 ${widget.attention.missingCount}件',
+                          '${SkoLanguageController.tr('未対応')} ${widget.attention.missingCount}${SkoLanguageController.isEnglish ? '' : '件'}',
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(width: 4),
