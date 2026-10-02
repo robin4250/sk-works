@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'attendance_verification_repository.dart';
+import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
 
 class AttendanceSelectionPage extends StatefulWidget {
@@ -134,6 +135,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                 ':00')
             : null,
       );
+      await GpsAutoAttendanceService.instance.refresh();
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
