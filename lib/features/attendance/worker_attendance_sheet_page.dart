@@ -266,9 +266,9 @@ class _WeekList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       itemCount: week.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 7),
+      separatorBuilder: (_, __) => const SizedBox.shrink(),
       itemBuilder: (context, index) {
         final date = week[index];
         final inMonth = date.month == month.month && date.year == month.year;
@@ -316,9 +316,9 @@ class _AttendanceDayCard extends StatelessWidget {
     return Opacity(
       opacity: faded ? 0.42 : 1,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: EdgeInsets.zero,
         child: Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: EdgeInsets.zero,
           clipBehavior: Clip.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -338,7 +338,7 @@ class _AttendanceDayCard extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -405,10 +405,10 @@ class _AttendanceDayCard extends StatelessWidget {
                       ),
                     ),
                     if (worked) ...[
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 2),
                       Wrap(
                         spacing: 4,
-                        runSpacing: 4,
+                        runSpacing: 2,
                         children: _tags(day!),
                       ),
                     ],
