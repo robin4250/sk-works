@@ -950,6 +950,10 @@ class _HomePageState extends State<HomePage> {
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
           visibleHomeKeys: _homeLayoutItems.map((item) => item.key).toSet(),
+          shortcuts: [
+            for (final item in _homeLayoutItems)
+              HomeShortcut(item.key, item.label, item.icon),
+          ],
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
           onOpen: _openHomeAction,
