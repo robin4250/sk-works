@@ -76,7 +76,7 @@ void main() {
     expect(sitesPage, contains("heroTag: 'site_map'"));
     expect(sitesPage, contains("heroTag: 'site_register'"));
     expect(sitesPage, contains('floatingActionButton: Row('));
-    expect(map, contains('title: Text(widget.title)'));
+    expect(map, contains("title: Text(SkoLanguageController.tr(widget.title))"));
     expect(app, contains("title: '管理者用現場マップ'"));
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
