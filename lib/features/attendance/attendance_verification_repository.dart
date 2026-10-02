@@ -218,7 +218,9 @@ class AttendanceVerificationRepository {
       final eventType = row['event_type']?.toString();
       final site = row['sites'];
 
-      if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
+      if ((siteName ?? '').isEmpty &&
+          site is Map &&
+          (site['name']?.toString().trim().isNotEmpty ?? false)) {
         siteName = site['name'].toString();
       }
       if (eventType == 'clock_in' && confirmed != null) {
