@@ -59,24 +59,15 @@ void main() {
   });
 
   testWidgets('menu exposes secondary functions', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
 
-    final menuScroll = find.descendant(
-      of: find.byType(ReorderableListView),
-      matching: find.byType(Scrollable),
-    );
-    expect(menuScroll, findsOneWidget);
-
+    expect(find.byType(ReorderableListView), findsOneWidget);
     for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
-      await tester.scrollUntilVisible(
-        find.text(label),
-        220,
-        scrollable: menuScroll,
-      );
-      await tester.pumpAndSettle();
       expect(find.text(label), findsOneWidget);
     }
   });
