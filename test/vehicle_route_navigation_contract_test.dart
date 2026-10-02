@@ -11,8 +11,9 @@ void main() {
     expect(app, contains("case 'vehicle_routes':"));
     expect(app, contains('page = const VehicleRoutePage();'));
     expect(app, contains("key: 'vehicle_routes'"));
-    expect(home, contains("'vehicle_routes'"));
-    expect(home, contains("'車両・ルート'"));
-    expect(home, contains('Icons.route_outlined'));
+    expect(app, contains("label: '車両・ルート'"));
+    expect(app, contains('icon: Icons.route_outlined'));
+    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(home, contains('for (final shortcut in shortcuts)'));
   });
 }
