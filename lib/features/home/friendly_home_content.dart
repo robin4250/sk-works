@@ -475,11 +475,14 @@ class _OrderedHomeContent extends StatelessWidget {
       for (final shortcut in shortcuts)
         if (visibleHomeKeys.contains(shortcut.key)) shortcut.key,
     ];
+    final fallbackRank = <String, int>{
+      for (var i = 0; i < keys.length; i++) keys[i]: i,
+    };
     keys.sort((a, b) {
       final ai = rank[a] ?? 100000;
       final bi = rank[b] ?? 100000;
       if (ai != bi) return ai.compareTo(bi);
-      return keys.indexOf(a).compareTo(keys.indexOf(b));
+      return (fallbackRank[a] ?? 0).compareTo(fallbackRank[b] ?? 0);
     });
 
     final shortcutByKey = <String, HomeShortcut>{
