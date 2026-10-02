@@ -265,7 +265,7 @@ class _WeekList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       itemCount: week.length,
       separatorBuilder: (_, __) => const SizedBox(height: 7),
       itemBuilder: (context, index) {
@@ -318,7 +318,7 @@ class _AttendanceDayCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          clipBehavior: Clip.antiAlias,
+          clipBehavior: Clip.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
