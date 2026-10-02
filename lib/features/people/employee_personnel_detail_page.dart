@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'employee_personnel_edit_page.dart';
 import 'employee_personnel_print_page.dart';
 import 'people_page.dart';
 import 'personnel_bundle_send_page.dart';
@@ -106,6 +107,19 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => EmployeePersonnelEditPage(record: record),
+                ),
+              ),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('編集'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
