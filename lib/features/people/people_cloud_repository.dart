@@ -29,17 +29,26 @@ class PeopleCloudRepository {
     );
   }
 
+  Future<String> companyName() async {
+    final member = await membership();
+    final row = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', member.companyId)
+        .maybeSingle();
+    return row?['name']?.toString() ?? '';
+  }
+
   Future<bool> canManagePeople() async {
-    await membership();
-    final value = await _client.rpc('current_feature_permissions');
-    if (value is! Map) return false;
-    final permissions = Map<String, dynamic>.from(value);
-    return permissions['can_manage_people'] == true;
+    final member = await membership();
+    return member.role == 'owner' ||
+        member.role == 'admin' ||
+        member.role == 'manager';
   }
 
   Future<void> _requireManagePeople() async {
     if (!await canManagePeople()) {
-      throw StateError('人員管理を変更する権限がありません。');
+      throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
     }
   }
 
@@ -64,6 +73,19 @@ class PeopleCloudRepository {
     final rows = await _client.rpc('people_management_records');
     if (rows is! List) return const <Map<String, dynamic>>[];
 
+    final personnelRaw = await _client.rpc('employee_personnel_rows');
+    final personnelRows = personnelRaw is List
+        ? personnelRaw
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+    final personnelByWorker = <String, Map<String, dynamic>>{
+      for (final row in personnelRows)
+        if ((row['worker_id']?.toString() ?? '').isNotEmpty)
+          row['worker_id'].toString(): row,
+    };
+
     final companyId = await _companyId();
     final workerDates = await _client
         .from('workers')
@@ -87,6 +109,8 @@ class PeopleCloudRepository {
       final value = Map<String, dynamic>.from(row as Map);
       final id = value['id']?.toString() ?? '';
       final dates = datesById[id] ?? const <String, dynamic>{};
+      final personnel =
+          personnelByWorker[id] ?? const <String, dynamic>{};
       return {
         'id': value['id'],
         'kind': value['kind'],
@@ -99,6 +123,16 @@ class PeopleCloudRepository {
         'active': value['active'] == true,
         'createdAt': dates['created_at'] ?? '',
         'updatedAt': dates['updated_at'] ?? '',
+        'bloodType': personnel['blood_type'] ?? '',
+        'address': personnel['address'] ?? '',
+        'emergencyName': personnel['emergency_name'] ?? '',
+        'emergencyRelation': personnel['emergency_relation'] ?? '',
+        'emergencyPhone': personnel['emergency_phone'] ?? '',
+        'emergencyAddress': personnel['emergency_address'] ?? '',
+        'familyComposition': personnel['family_composition'] ?? '',
+        'familyMembers': personnel['family_members'] is List
+            ? personnel['family_members']
+            : const <dynamic>[],
       };
     }).toList(growable: false);
   }
@@ -167,7 +201,98 @@ class PeopleCloudRepository {
         })
         .select('id')
         .single();
+
+    final workerId = inserted['id']?.toString() ?? '';
+    if (workerId.isNotEmpty) {
+      await _client.rpc(
+        'save_worker_personnel_profile',
+        params: {
+          'p_worker_id': workerId,
+          'p_payload': {
+            'name': record['name']?.toString() ?? '',
+            'kind': kind,
+            'blood_type': record['bloodType']?.toString() ?? '',
+            'role': record['role']?.toString() ?? '',
+            'phone': record['phone']?.toString() ?? '',
+            'address': record['address']?.toString() ?? '',
+            'emergency_name': record['emergencyName']?.toString() ?? '',
+            'emergency_relation':
+                record['emergencyRelation']?.toString() ?? '',
+            'emergency_phone':
+                record['emergencyPhone']?.toString() ?? '',
+            'emergency_address':
+                record['emergencyAddress']?.toString() ?? '',
+            'family_composition':
+                record['familyComposition']?.toString() ?? '',
+            'family_members': record['familyMembers'] is List
+                ? record['familyMembers']
+                : const <dynamic>[],
+          },
+        },
+      );
+    }
+
     return {...record, 'id': inserted['id']};
+  }
+
+  Future<Map<String, dynamic>> savePersonnelProfile(
+    Map<String, dynamic> record,
+  ) async {
+    final id = record['id']?.toString() ?? '';
+    if (id.isEmpty) throw StateError('社員情報を確認できません。');
+    final raw = await _client.rpc(
+      'save_worker_personnel_profile',
+      params: {
+        'p_worker_id': id,
+        'p_payload': {
+          'name': record['name']?.toString() ?? '',
+          'kind': record['kind']?.toString() ?? 'employee',
+          'blood_type': record['bloodType']?.toString() ?? '',
+          'role': record['role']?.toString() ?? '',
+          'phone': record['phone']?.toString() ?? '',
+          'address': record['address']?.toString() ?? '',
+          'emergency_name': record['emergencyName']?.toString() ?? '',
+          'emergency_relation':
+              record['emergencyRelation']?.toString() ?? '',
+          'emergency_phone': record['emergencyPhone']?.toString() ?? '',
+          'emergency_address':
+              record['emergencyAddress']?.toString() ?? '',
+          'family_composition':
+              record['familyComposition']?.toString() ?? '',
+          'family_members': record['familyMembers'] is List
+              ? record['familyMembers']
+              : const <dynamic>[],
+        },
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<List<Map<String, dynamic>>> loadPendingPersonnelChanges() async {
+    final raw = await _client.rpc('pending_worker_personnel_changes');
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> decidePersonnelChange({
+    required String requestId,
+    required bool approve,
+  }) async {
+    final raw = await _client.rpc(
+      'decide_worker_personnel_change',
+      params: {
+        'p_request_id': requestId,
+        'p_approve': approve,
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
   }
 
   Future<void> delete(Map<String, dynamic> record) async {
