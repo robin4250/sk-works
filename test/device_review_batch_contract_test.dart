@@ -67,6 +67,9 @@ void main() {
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
     expect(prepareIos, contains('showAnnotations'));
+    expect(prepareIos, contains('let fallbackLat = number(raw["latitude"])'));
+    expect(prepareIos, contains('if !address.isEmpty'));
+    expect(prepareIos, contains('geocodeAddressString(address)'));
     expect(prepareIos, contains('registrar(forPlugin: "SkoMultiPinMap")'));
     expect(prepareIos, contains('connectedScenes'));
     expect(prepareIos, contains('isKeyWindow'));
