@@ -126,10 +126,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
         siteId: siteId,
         weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
         localTime: _mode == 'gps_auto'
-            ? (_gpsTime.hour.toString().padLeft(2, '0') +
-                ':' +
-                _gpsTime.minute.toString().padLeft(2, '0') +
-                ':00')
+            ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
       await GpsAutoAttendanceService.instance.refresh();
@@ -138,7 +135,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: ' + error.toString())),
+        SnackBar(content: Text('保存できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
