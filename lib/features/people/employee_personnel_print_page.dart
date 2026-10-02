@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -16,7 +18,7 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
   final String companyName;
   final List<PersonRecord> records;
 
-  Future<List<int>> _buildPdf() async {
+  Future<Uint8List> _buildPdf() async {
     final regular = await PdfGoogleFonts.notoSansJPRegular();
     final bold = await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
@@ -24,9 +26,7 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
     );
     final now = DateTime.now();
     final dateText =
-        now.year.toString() + '/' +
-        now.month.toString().padLeft(2, '0') + '/' +
-        now.day.toString().padLeft(2, '0');
+        '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}';
 
     document.addPage(
       pw.MultiPage(
