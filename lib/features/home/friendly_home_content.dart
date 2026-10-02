@@ -473,7 +473,10 @@ class _OrderedHomeContent extends StatelessWidget {
           visibleHomeKeys.contains('attendance_today'))
         'attendance_today',
       for (final shortcut in shortcuts)
-        if (visibleHomeKeys.contains(shortcut.key)) shortcut.key,
+        if (visibleHomeKeys.contains(shortcut.key) &&
+            shortcut.key != 'attendance_verify' &&
+            shortcut.key != 'attendance_today')
+          shortcut.key,
     ];
     final fallbackRank = <String, int>{
       for (var i = 0; i < keys.length; i++) keys[i]: i,
