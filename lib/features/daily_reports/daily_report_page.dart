@@ -33,6 +33,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   late DateTime _date;
   List<DailyReportSiteGroup> _groups = const [];
   String? _siteId;
+  String? _routeAssignmentId;
   String? _siteName;
   List<DailyReportWorkerDraft> _workers = [];
   DailyReportRecord? _report;
@@ -105,20 +106,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final groups = await repository.loadClockedInGroups(_date);
       if (!mounted) return;
 
-      String? nextSite = _siteId;
-      if (nextSite == null || !groups.any((g) => g.siteId == nextSite)) {
-        nextSite = groups.isNotEmpty ? groups.first.siteId : null;
+      DailyReportSiteGroup? selected;
+      if (_siteId != null) {
+        selected = groups
+            .where((g) => g.siteId == _siteId)
+            .firstOrNull;
+      } else if (_routeAssignmentId != null) {
+        selected = groups
+            .where((g) => g.routeAssignmentId == _routeAssignmentId)
+            .firstOrNull;
       }
+      selected ??= groups.firstOrNull;
 
       setState(() {
         _groups = groups;
-        _siteId = nextSite;
-        _siteName = nextSite == null
-            ? null
-            : groups
-                .where((g) => g.siteId == nextSite)
-                .map((g) => g.siteName)
-                .firstOrNull;
+        _siteId = selected?.siteId;
+        _routeAssignmentId = selected?.routeAssignmentId;
+        _siteName = selected?.siteName;
       });
 
       await _loadSelectedSite();
@@ -134,7 +138,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Future<void> _loadSelectedSite() async {
     final repository = _repository;
     final siteId = _siteId;
-    if (repository == null || siteId == null) {
+    final routeAssignmentId = _routeAssignmentId;
+    if (repository == null ||
+        (siteId == null && routeAssignmentId == null)) {
       if (!mounted) return;
       setState(() {
         _report = null;
@@ -147,16 +153,26 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
 
     try {
-      final existing =
-          await repository.loadReport(date: _date, siteId: siteId);
+      final existing = await repository.loadReport(
+        date: _date,
+        siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
+      );
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
         date: _date,
         siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
       );
       if (!mounted) return;
 
-      final group = _groups.where((g) => g.siteId == siteId).firstOrNull;
+      final group = _groups
+          .where(
+            (g) =>
+                g.siteId == siteId &&
+                g.routeAssignmentId == routeAssignmentId,
+          )
+          .firstOrNull;
       final workers = existing?.workers.isNotEmpty == true
           ? existing!.workers
           : List<DailyReportWorkerDraft>.from(group?.workers ?? const []);
@@ -209,18 +225,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
     setState(() {
       _date = selected;
       _siteId = null;
+      _routeAssignmentId = null;
     });
     await _loadDay();
   }
 
-  Future<void> _selectSite(String? siteId) async {
-    if (siteId == null || siteId == _siteId) return;
+  Future<void> _selectSite(String? destinationKey) async {
+    if (destinationKey == null) return;
+    final group = _groups
+        .where((item) => item.destinationKey == destinationKey)
+        .firstOrNull;
+    if (group == null) return;
+    if (group.siteId == _siteId &&
+        group.routeAssignmentId == _routeAssignmentId) {
+      return;
+    }
     setState(() {
-      _siteId = siteId;
-      _siteName = _groups
-          .where((g) => g.siteId == siteId)
-          .map((g) => g.siteName)
-          .firstOrNull;
+      _siteId = group.siteId;
+      _routeAssignmentId = group.routeAssignmentId;
+      _siteName = group.siteName;
       _loading = true;
     });
     await _loadSelectedSite();
@@ -337,7 +360,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Future<String?> _saveDraft() async {
     final repository = _repository;
     final siteId = _siteId;
-    if (repository == null || siteId == null) return null;
+    final routeAssignmentId = _routeAssignmentId;
+    if (repository == null ||
+        (siteId == null && routeAssignmentId == null)) {
+      return null;
+    }
 
     _applyControllers();
 
@@ -361,6 +388,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final id = await repository.saveDraft(
         reportId: _report?.id,
         siteId: siteId,
+        routeAssignmentId: routeAssignmentId,
         date: _date,
         workDescription: _workDescription.text,
         workers: _workers,
@@ -584,16 +612,28 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
-                            initialValue: _siteId,
+                            initialValue: _groups
+                                .where(
+                                  (g) =>
+                                      g.siteId == _siteId &&
+                                      g.routeAssignmentId ==
+                                          _routeAssignmentId,
+                                )
+                                .map((g) => g.destinationKey)
+                                .firstOrNull,
                             decoration: const InputDecoration(
-                              labelText: '現場',
-                              prefixIcon: Icon(Icons.business_outlined),
+                              labelText: '現場／ルート',
+                              prefixIcon: Icon(Icons.route_outlined),
                             ),
                             items: [
                               for (final group in _groups)
                                 DropdownMenuItem(
-                                  value: group.siteId,
-                                  child: Text(group.siteName),
+                                  value: group.destinationKey,
+                                  child: Text(
+                                    group.routeAssignmentId == null
+                                        ? group.siteName
+                                        : 'ルート：${group.siteName}',
+                                  ),
                                 ),
                             ],
                             onChanged: _selectSite,
