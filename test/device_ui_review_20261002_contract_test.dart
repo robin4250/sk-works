@@ -93,7 +93,7 @@ void main() {
     expect(page, contains("'/maps/search/'"));
     expect(page, contains("'取引会社'"));
     expect(page, contains("'下請け会社'"));
-    expect(page, contains("'社員の最新打刻位置'"));
+    expect(page, contains("'最新の打刻位置'"));
     expect(repository, contains("customers: rows('customers')"));
     expect(repository, contains("partners: rows('partners')"));
     expect(migration, contains("'customers',v_customers"));
