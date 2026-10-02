@@ -14,6 +14,9 @@ void main() {
     final vehicleRepo = File(
       'lib/features/operations/vehicle_route_repository.dart',
     ).readAsStringSync();
+    final vehicleSelection = File(
+      'lib/features/operations/vehicle_route_selection_page.dart',
+    ).readAsStringSync();
     final selectionPage = File(
       'lib/features/operations/vehicle_route_selection_page.dart',
     ).readAsStringSync();
@@ -31,6 +34,12 @@ void main() {
     expect(selectionPage, contains("'車両を使わない'"));
     expect(selectionPage, contains("'ルートを使わない'"));
     expect(attendanceRepo, contains("'save_my_route_attendance_selection'"));
+    expect(selection, contains('固定の1つの現場'));
+    expect(vehicleSelection, contains('外回りで複数地点を回るルート'));
+    expect(vehicleRepo, contains('saveTodayVehicleSelection'));
+    expect(vehicleRepo, contains('saveTodayRouteSelection'));
+    expect(vehicleSelection, contains('VehicleRouteSelectionKind.vehicle'));
+    expect(vehicleSelection, contains('VehicleRouteSelectionKind.route'));
   });
 
   test('route gps auto attendance uses registered route stop coordinates', () {
