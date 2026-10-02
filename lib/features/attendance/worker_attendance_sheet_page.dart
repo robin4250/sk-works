@@ -752,9 +752,12 @@ class _MonthCalendarCell extends StatelessWidget {
         date.month == now.month &&
         date.day == now.day;
 
-    return Opacity(
-      opacity: inMonth ? 1 : 0.35,
-      child: Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Opacity(
+        opacity: inMonth ? 1 : 0.35,
+        child: Container(
         margin: const EdgeInsets.all(1.5),
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
@@ -819,7 +822,7 @@ class _MonthCalendarCell extends StatelessWidget {
             const Spacer(),
           ],
         ),
-      ),
+        ),
       ),
     );
   }
