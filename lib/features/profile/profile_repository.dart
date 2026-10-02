@@ -12,6 +12,7 @@ class ProfileData {
     required this.companyName,
     required this.companyId,
     required this.role,
+    required this.personalSkoId,
     this.avatarPath,
     this.avatarUrl,
   });
@@ -22,6 +23,7 @@ class ProfileData {
   final String companyName;
   final String companyId;
   final String role;
+  final String personalSkoId;
   final String? avatarPath;
   final String? avatarUrl;
 }
@@ -87,6 +89,9 @@ class ProfileRepository {
       }
     }
 
+    final personalSkoId =
+        (await _client.rpc('ensure_personal_sko_id'))?.toString() ?? '';
+
     return ProfileData(
       displayName: profile['display_name']?.toString() ??
           user.phone ??
@@ -97,6 +102,7 @@ class ProfileRepository {
       companyName: companyName,
       companyId: companyId,
       role: role,
+      personalSkoId: personalSkoId,
       avatarPath: avatarPath,
       avatarUrl: avatarUrl,
     );
@@ -129,18 +135,7 @@ class ProfileRepository {
   Future<String> changePersonalSkoId(String raw) async {
     var value = raw.trim().toUpperCase();
     if (!value.startsWith('SKO-')) value = 'SKO-$value';
-    if (!RegExp(r'^SKO-[A-Z0-9]{4,20}$').hasMatch(value)) {
-      throw StateError('SKO IDはSKO-に続けて英数字4〜20文字で入力してください。');
-    }
-    final result = await _client.rpc(
-      'change_personal_sko_id',
-      params: {'p_sko_id': value},
-    );
-    final id = result?.toString() ?? '';
-    if (id.isEmpty) throw StateError('SKO IDを変更できませんでした。');
-    return id;
-  }
-
+    if (!RegExp(r'^SKO-[A-Z0-9]{4,20}
   Future<String> requestPhoneChange(String rawPhone) async {
     final normalized = _normalizeJapanesePhone(rawPhone);
     await _client.auth.updateUser(
