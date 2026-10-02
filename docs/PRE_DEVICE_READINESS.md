@@ -97,6 +97,13 @@ These cannot be proven by repository or cloud CI alone:
 13. Real AirPrint sheet.
 14. Real Files/Mail share-sheet destinations.
 15. Final visual/touch review on the user's exact iPhone.
+16. 社員個人ページ10項目、国内0始まり電話表示、社員一覧/個別送信、A4横一覧印刷。
+17. 車両登録（表示名・車両番号・走行距離・車検証・自賠責・任意保険）と複数地点ルート登録。
+18. 本日の勤務報告で車両/ルート選択・解除、出勤/退勤→日報引継ぎ。
+19. 退勤時の日報でメーター撮影OCR→本人確認→再撮影/手入力→走行距離更新。
+20. 出勤方法/現場選択を保存してTOPへ戻ること、出勤画面の並びとTOP反映。
+21. GPS自動出勤の曜日/時刻設定、±5分背景判定、現場外時の未登録通知。
+22. 位置情報＋写真の証拠画像が日報と紐付き、日報横・写真一覧・ピンチ拡大で確認できること.
 
 ## Mac arrival entry point
 
