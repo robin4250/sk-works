@@ -840,21 +840,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 if (value == 'appearance') _openAppearance();
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'notes',
                   child: ListTile(
                     leading: Icon(Icons.sticky_note_2_outlined),
                     title: Text(SkoLanguageController.tr('ノート')),
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'albums',
                   child: ListTile(
                     leading: Icon(Icons.photo_album_outlined),
                     title: Text(SkoLanguageController.tr('アルバム')),
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'appearance',
                   child: ListTile(
                     leading: Icon(Icons.wallpaper_outlined),
@@ -990,10 +990,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   Widget _conversationView() {
     if (_selectedGroupId == null) {
-      return const Center(
+      return Center(
         child: Text(
           SkoLanguageController.tr('トークを選択してください'),
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       );
     }
@@ -1187,8 +1187,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 5),
           child: TextField(
             controller: _memberSearch,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
               labelText: SkoLanguageController.tr('社員を検索'),
               hintText: SkoLanguageController.tr('名前を入力'),
             ),
