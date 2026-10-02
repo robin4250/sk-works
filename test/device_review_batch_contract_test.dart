@@ -70,13 +70,13 @@ void main() {
     expect(map, contains("if (data.home != null) ...["));
     expect(map, contains('選択地点を複数ピンで地図表示'));
     expect(sitesPage, contains('const SiteMapPage()'));
-    expect(sitesPage, contains("title: const Text('現場データ')"));
-    expect(sitesPage, contains("label: const Text('現場登録')"));
-    expect(sitesPage, contains("label: const Text('現場マップ')"));
+    expect(sitesPage, contains("SkoLanguageController.tr('現場データ')"));
+    expect(sitesPage, contains("SkoLanguageController.tr('現場登録')"));
+    expect(sitesPage, contains("SkoLanguageController.tr('現場マップ')"));
     expect(sitesPage, contains("heroTag: 'site_map'"));
     expect(sitesPage, contains("heroTag: 'site_register'"));
     expect(sitesPage, contains('floatingActionButton: Row('));
-    expect(map, contains('title: Text(widget.title)'));
+    expect(map, contains("title: Text(SkoLanguageController.tr(widget.title))"));
     expect(app, contains("title: '管理者用現場マップ'"));
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
@@ -92,7 +92,7 @@ void main() {
 
     expect(report, contains("'報告者サイン'"));
     expect(report, contains("'責任者サイン'"));
-    expect(report, contains("if (totalNight > 0) MapEntry('夜間'"));
+    expect(report, contains("if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間')"));
     expect(report, contains('allowanceCounts[label] ='));
     expect(report, contains('MapEntry(entry.key, entry.value.toString())'));
     expect(report, contains("'現場／ルート'"));

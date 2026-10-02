@@ -104,8 +104,8 @@ void main() {
     expect(list, contains("'A4横プレビュー・印刷'"));
     expect(list, contains('EmployeePersonnelPreviewAction.send'));
     expect(list, contains('EmployeePersonnelPreviewAction.print'));
-    expect(list, contains("title: const Text('社員一覧')"));
-    expect(list, contains("title: const Text('個別')"));
+    expect(list, contains("SkoLanguageController.tr('社員一覧')"));
+    expect(list, contains("SkoLanguageController.tr('個別')"));
     expect(list, contains('社員を1名選んでA4横向きでプレビュー'));
   });
 
@@ -114,7 +114,7 @@ void main() {
       'lib/features/people/people_cloud_page.dart',
     ).readAsStringSync();
     expect(list, contains('domesticPhoneDisplay(record.phone)'));
-    expect(list, contains("tooltip: '電話をかける'"));
+    expect(list, contains("SkoLanguageController.isEnglish ? 'Call' : '電話をかける'"));
     expect(list, contains("scheme: 'tel'"));
   });
 

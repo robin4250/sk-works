@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../attendance/attendance_verification_repository.dart';
+import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
@@ -183,14 +184,14 @@ class _RequiredDocumentAttentionCardState
                     ),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            '要対応',
-                            style: TextStyle(fontWeight: FontWeight.w900),
+                            SkoLanguageController.tr('要対応'),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                         ),
                         Text(
-                          '未対応 ${widget.attention.missingCount}件',
+                          '${SkoLanguageController.tr('未対応')} ${widget.attention.missingCount}${SkoLanguageController.isEnglish ? '' : '件'}',
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(width: 4),
@@ -237,7 +238,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '本日の勤務報告',
+                    SkoLanguageController.tr('本日の勤務報告'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -367,13 +368,13 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: () => onOpen('workplace_select'),
                     icon: const Icon(Icons.place_outlined),
-                    label: const Text('現場の選択（1現場／複数現場）'),
+                    label: Text(SkoLanguageController.tr('現場の選択（1現場／複数現場）')),
                   ),
                   const SizedBox(height: 9),
                   OutlinedButton.icon(
                     onPressed: () => onOpen('attendance_method_vehicle'),
                     icon: const Icon(Icons.tune_outlined),
-                    label: const Text('出勤方法と車両を選択'),
+                    label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
                   const SizedBox(height: 9),
                   Row(
@@ -383,12 +384,12 @@ class _PersonalAttendanceCard extends StatelessWidget {
                             ? OutlinedButton.icon(
                                 onPressed: () => onOpen('clock_in'),
                                 icon: const Icon(Icons.login),
-                                label: const Text('出勤'),
+                                label: Text(SkoLanguageController.tr('出勤')),
                               )
                             : FilledButton.icon(
                                 onPressed: () => onOpen('clock_in'),
                                 icon: const Icon(Icons.login),
-                                label: const Text('出勤'),
+                                label: Text(SkoLanguageController.tr('出勤')),
                               ),
                       ),
                       const SizedBox(width: 9),
@@ -397,12 +398,12 @@ class _PersonalAttendanceCard extends StatelessWidget {
                             ? FilledButton.icon(
                                 onPressed: () => onOpen('clock_out'),
                                 icon: const Icon(Icons.logout),
-                                label: const Text('退勤'),
+                                label: Text(SkoLanguageController.tr('退勤')),
                               )
                             : OutlinedButton.icon(
                                 onPressed: () => onOpen('clock_out'),
                                 icon: const Icon(Icons.logout),
-                                label: const Text('退勤'),
+                                label: Text(SkoLanguageController.tr('退勤')),
                               ),
                       ),
                     ],
@@ -662,20 +663,20 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '本日の出勤',
+              SkoLanguageController.tr('本日の出勤'),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
             ),
             const SizedBox(height: 6),
-            const Text('自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
+            Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
             const SizedBox(height: 12),
             Opacity(
               opacity: buttonOpacity,
               child: FilledButton.icon(
                 onPressed: () => onOpen('attendance_today'),
                 icon: const Icon(Icons.groups_outlined),
-                label: const Text('出勤状況を確認'),
+                label: Text(SkoLanguageController.tr('出勤状況を確認')),
               ),
             ),
           ],

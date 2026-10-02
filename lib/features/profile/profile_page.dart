@@ -8,6 +8,7 @@ import '../auth/auth_error_message.dart';
 import '../help/manual_content.dart';
 import '../help/manual_library_page.dart';
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import '../people/personnel_family_member.dart';
 import 'profile_repository.dart';
 
@@ -75,7 +76,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = 'プロフィールを利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Profile is unavailable.' : 'プロフィールを利用できません。';
       });
       return;
     }
@@ -150,7 +151,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       _personalSkoId.text = id;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('個人SKO IDを変更しました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Personal SKO ID updated' : '個人SKO IDを変更しました')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -223,7 +224,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('プロフィールを保存しました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Profile saved' : 'プロフィールを保存しました')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -264,11 +265,11 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+            child: Text(SkoLanguageController.tr('戻る')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('確定して保存'),
+            child: Text(SkoLanguageController.tr('確定して保存')),
           ),
         ],
       ),
@@ -367,7 +368,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('キャンセル'),
+            child: Text(SkoLanguageController.tr('キャンセル')),
           ),
           FilledButton(
             onPressed: () {
@@ -375,7 +376,7 @@ class _ProfilePageState extends State<ProfilePage> {
               if (code.length != 6) return;
               Navigator.of(dialogContext).pop(code);
             },
-            child: const Text('確認'),
+            child: Text(SkoLanguageController.tr('確認')),
           ),
         ],
       ),
@@ -452,8 +453,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: TextFormField(
                     initialValue: member.name,
                     enabled: !_saving,
-                    decoration: const InputDecoration(
-                      labelText: '氏名',
+                    decoration: InputDecoration(
+                      labelText: SkoLanguageController.tr('氏名'),
                     ),
                     onChanged: (value) => member.name = value,
                   ),
@@ -482,7 +483,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.cake_outlined),
-              title: const Text('誕生日'),
+              title: Text(SkoLanguageController.tr('誕生日')),
               subtitle: Text(
                 birth == null
                     ? '未登録'
@@ -513,7 +514,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('扶養家族として登録'),
+              title: Text(SkoLanguageController.tr('扶養家族として登録')),
               subtitle: const Text(
                 '社会保険等で扶養対象として扱う場合にON',
               ),
@@ -536,9 +537,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'プロフィール',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.tr('プロフィール'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -557,7 +558,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           FilledButton.icon(
                             onPressed: _load,
                             icon: const Icon(Icons.refresh),
-                            label: const Text('再読み込み'),
+                            label: Text(SkoLanguageController.tr('再読み込み')),
                           ),
                         ],
                       ),
@@ -600,8 +601,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _name,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '本人氏名',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('氏名'),
                                   prefixIcon: Icon(Icons.person_outline),
                                 ),
                               ),
@@ -610,8 +611,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _phone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
-                                  labelText: '電話番号',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('電話番号'),
                                   prefixIcon: Icon(Icons.phone_outlined),
                                 ),
                               ),
@@ -620,7 +621,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const Icon(Icons.email_outlined),
-                                  title: const Text('メールアドレス'),
+                                  title: Text(SkoLanguageController.tr('メールアドレス')),
                                   subtitle: Text(data!.email),
                                 ),
                               ],
@@ -629,7 +630,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const Icon(Icons.business_outlined),
-                                  title: const Text('所属会社'),
+                                  title: Text(SkoLanguageController.tr('所属会社')),
                                   subtitle: Text(data!.companyName),
                                 ),
                               ],
@@ -639,7 +640,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 enabled: !_saving,
                                 textCapitalization: TextCapitalization.characters,
                                 decoration: InputDecoration(
-                                  labelText: '個人SKO ID',
+                                  labelText: SkoLanguageController.tr('個人SKO ID'),
                                   helperText:
                                       'プロフィールから変更できます。SKO-に続けて英数字4〜20文字。',
                                   prefixIcon:
@@ -657,7 +658,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const Icon(Icons.badge_outlined),
-                                  title: const Text('SKO会社ID'),
+                                  title: Text(SkoLanguageController.tr('SKO会社ID')),
                                   subtitle: SelectableText(data!.companyId),
                                 ),
                               ],
@@ -672,8 +673,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const Text(
-                                '社員個人情報',
+                              Text(
+                                SkoLanguageController.tr('社員個人情報'),
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w900,
@@ -687,15 +688,15 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _personnelName,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '名前',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('名前'),
                                 ),
                               ),
                               const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 initialValue: _bloodType.isEmpty ? null : _bloodType,
-                                decoration: const InputDecoration(
-                                  labelText: '血液型',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('血液型'),
                                 ),
                                 items: const [
                                   DropdownMenuItem(value: 'A', child: Text('A型')),
@@ -713,8 +714,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _personnelRole,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '職種',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('職種'),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -722,8 +723,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _personnelPhone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
-                                  labelText: '社員台帳の電話番号',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('社員台帳の電話番号'),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -731,9 +732,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _personnelAddress,
                                 enabled: !_saving,
                                 decoration: InputDecoration(
-                                  labelText: '住所',
+                                  labelText: SkoLanguageController.tr('住所'),
                                   suffixIcon: IconButton(
-                                    tooltip: 'Googleマップで開く',
+                                    tooltip: SkoLanguageController.isEnglish ? 'Open in Google Maps' : 'Googleマップで開く',
                                     onPressed:
                                         _personnelAddress.text.trim().isEmpty
                                             ? null
@@ -745,24 +746,24 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 14),
-                              const Text(
-                                '緊急連絡先',
+                              Text(
+                                SkoLanguageController.tr('緊急連絡先'),
                                 style: TextStyle(fontWeight: FontWeight.w900),
                               ),
                               const SizedBox(height: 8),
                               TextField(
                                 controller: _emergencyName,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '氏名',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('氏名'),
                                 ),
                               ),
                               const SizedBox(height: 10),
                               TextField(
                                 controller: _emergencyRelation,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '続柄',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('続柄'),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -770,8 +771,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _emergencyPhone,
                                 enabled: !_saving,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
-                                  labelText: '電話番号',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('電話番号'),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -779,7 +780,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 controller: _emergencyAddress,
                                 enabled: !_saving,
                                 decoration: InputDecoration(
-                                  labelText: '住所',
+                                  labelText: SkoLanguageController.tr('住所'),
                                   suffixIcon: IconButton(
                                     tooltip: 'Googleマップで開く',
                                     onPressed:
@@ -793,8 +794,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 18),
-                              const Text(
-                                '家族・扶養情報',
+                              Text(
+                                SkoLanguageController.tr('家族・扶養情報'),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -807,8 +808,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               TextField(
                                 controller: _familyComposition,
                                 enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: '家族構成',
+                                decoration: InputDecoration(
+                                  labelText: SkoLanguageController.tr('家族構成'),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -826,15 +827,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: const Icon(
                                   Icons.person_add_alt_1_outlined,
                                 ),
-                                label: const Text(
-                                  '配偶者・子供・扶養家族を追加',
+                                label: Text(
+                                  SkoLanguageController.isEnglish ? 'Add spouse, child, or dependent' : '配偶者・子供・扶養家族を追加',
                                 ),
                               ),
                               const SizedBox(height: 14),
                               FilledButton.icon(
                                 onPressed: _saving ? null : _savePersonnel,
                                 icon: const Icon(Icons.badge_outlined),
-                                label: const Text('社員個人情報を保存'),
+                                label: Text(SkoLanguageController.tr('社員個人情報を保存')),
                               ),
                             ],
                           ),
@@ -866,7 +867,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       FilledButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: const Icon(Icons.save_outlined),
-                        label: Text(_saving ? '保存中...' : 'プロフィールを保存'),
+                        label: Text(SkoLanguageController.isEnglish ? (_saving ? 'Saving...' : 'Save Profile') : (_saving ? '保存中...' : 'プロフィールを保存')),
                       ),
                     ],
                   ),

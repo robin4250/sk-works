@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+
+import '../../international/language_controller.dart';
 import 'package:printing/printing.dart';
 
 import 'daily_report_repository.dart';
@@ -38,10 +40,10 @@ class DailyReportPdfService {
       allowanceCounts[label] = (allowanceCounts[label] ?? 0) + 1;
     }
     final summaryItems = <MapEntry<String, String>>[
-      MapEntry('計', '${workers.length}人工'),
-      if (totalEarly > 0) MapEntry('早出', '${_number(totalEarly)}H'),
-      if (totalOvertime > 0) MapEntry('残業', '${_number(totalOvertime)}H'),
-      if (totalNight > 0) MapEntry('夜間', '${_number(totalNight)}H'),
+      MapEntry(SkoLanguageController.tr('計'), SkoLanguageController.isEnglish ? '${workers.length} workers' : '${workers.length}人工'),
+      if (totalEarly > 0) MapEntry(SkoLanguageController.tr('早出'), '${_number(totalEarly)}H'),
+      if (totalOvertime > 0) MapEntry(SkoLanguageController.tr('残業'), '${_number(totalOvertime)}H'),
+      if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間'), '${_number(totalNight)}H'),
       for (final entry in allowanceCounts.entries)
         MapEntry(entry.key, entry.value.toString()),
     ];
@@ -58,7 +60,7 @@ class DailyReportPdfService {
               children: [
                 pw.Expanded(
                   child: pw.Text(
-                    '作 業 日 報',
+                    SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : '作 業 日 報',
                     style: pw.TextStyle(
                       fontSize: 25,
                       fontWeight: pw.FontWeight.bold,
@@ -78,9 +80,9 @@ class DailyReportPdfService {
                 pw.Expanded(
                   flex: 5,
                   child: _boxed(
-                    '現場名',
+                    SkoLanguageController.tr('現場名'),
                     pw.Text(
-                      siteName.isEmpty ? '未登録' : siteName,
+                      siteName.isEmpty ? SkoLanguageController.tr('未登録') : siteName,
                       style: pw.TextStyle(
                         fontSize: 15,
                         fontWeight: pw.FontWeight.bold,
@@ -93,7 +95,7 @@ class DailyReportPdfService {
                 pw.Expanded(
                   flex: 3,
                   child: _signatureBox(
-                    '報告者サイン',
+                    SkoLanguageController.tr('報告者サイン'),
                     report?.reporterSignerName ?? '',
                     report?.reporterSignatureJson,
                   ),
@@ -102,7 +104,7 @@ class DailyReportPdfService {
                 pw.Expanded(
                   flex: 3,
                   child: _signatureBox(
-                    '責任者サイン',
+                    SkoLanguageController.tr('責任者サイン'),
                     report?.responsibleSignerName ?? report?.signerName ?? '',
                     report?.responsibleSignatureJson ?? report?.signatureJson,
                   ),
@@ -111,16 +113,16 @@ class DailyReportPdfService {
             ),
             pw.SizedBox(height: 7),
             _boxed(
-              '作業内容',
+              SkoLanguageController.tr('作業内容'),
               pw.Text(
-                workDescription.trim().isEmpty ? '（記載なし）' : workDescription,
+                workDescription.trim().isEmpty ? SkoLanguageController.tr('（記載なし）') : workDescription,
                 style: const pw.TextStyle(fontSize: 11),
               ),
               height: 150,
             ),
             pw.SizedBox(height: 8),
             pw.Text(
-              '作 業 者 名',
+              SkoLanguageController.isEnglish ? 'WORKERS' : '作 業 者 名',
               style: pw.TextStyle(
                 fontSize: 13,
                 fontWeight: pw.FontWeight.bold,
@@ -128,7 +130,7 @@ class DailyReportPdfService {
             ),
             pw.SizedBox(height: 4),
             pw.TableHelper.fromTextArray(
-              headers: const ['氏名', '早出', '残業', '夜間', '手当・車両等'],
+              headers: [for (final label in ['氏名', '早出', '残業', '夜間', '手当・車両等']) SkoLanguageController.tr(label)],
               data: [
                 for (final worker in workers)
                   [
@@ -185,7 +187,7 @@ class DailyReportPdfService {
             pw.Spacer(),
             pw.Divider(thickness: 0.8),
             pw.Text(
-              '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。',
+              SkoLanguageController.tr('出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'),
               textAlign: pw.TextAlign.center,
               style: const pw.TextStyle(
                 fontSize: 8.5,
@@ -361,7 +363,7 @@ class DailyReportPdfService {
     required DailyReportRecord? report,
   }) {
     final b = StringBuffer()
-      ..writeln('作業日報')
+      ..writeln(SkoLanguageController.tr('作業日報'))
       ..writeln('${date.year}/${date.month}/${date.day}')
       ..writeln(siteName)
       ..writeln(workDescription);
@@ -369,18 +371,18 @@ class DailyReportPdfService {
       b.writeln([
         worker.workerName,
         if (worker.vehicleName?.trim().isNotEmpty == true)
-          '車両 ' + worker.vehicleName!,
+          SkoLanguageController.tr('車両') + ' ' + worker.vehicleName!,
         if (worker.routeName?.trim().isNotEmpty == true)
-          'ルート ' + worker.routeName!,
+          SkoLanguageController.tr('ルート') + ' ' + worker.routeName!,
         if (worker.odometerKm != null)
-          '走行 ' + _number(worker.odometerKm!) + 'km',
+          SkoLanguageController.tr('走行') + ' ' + _number(worker.odometerKm!) + 'km',
       ].join(' / '));
     }
     if (report?.reporterSignatureJson != null) {
-      b.writeln('報告者サイン済み ${report?.reporterSignerName ?? ''}');
+      b.writeln('${SkoLanguageController.tr('報告者サイン済み')} ${report?.reporterSignerName ?? ''}');
     }
     if (report?.signed == true) {
-      b.writeln('責任者サイン済み ${report?.signerName ?? ''}');
+      b.writeln('${SkoLanguageController.tr('責任者サイン済み')} ${report?.signerName ?? ''}');
     }
     return b.toString();
   }

@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'site_map_repository.dart';
 
 enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
@@ -45,7 +46,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
   Future<void> _load() async {
     try {
       final repository = _repository;
-      if (repository == null) throw StateError('現場マップを利用できません');
+      if (repository == null) throw StateError(SkoLanguageController.tr('現場マップを利用できません'));
       final value = await repository.load();
       if (!mounted) return;
       setState(() {
@@ -83,7 +84,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     if (query.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Googleマップで開ける位置情報がありません')),
+        SnackBar(content: Text(SkoLanguageController.tr('Googleマップで開ける位置情報がありません'))),
       );
       return;
     }
@@ -148,7 +149,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final points = <Map<String, dynamic>>[
       if (current != null)
         {
-          'name': '現在地',
+          'name': SkoLanguageController.tr('現在地'),
           'address': '',
           'latitude': current.latitude,
           'longitude': current.longitude,
@@ -171,7 +172,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     if (points.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('表示する地点を選択してください')),
+        SnackBar(content: Text(SkoLanguageController.tr('表示する地点を選択してください'))),
       );
       return;
     }
@@ -181,7 +182,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
         await const MethodChannel('sko.multi_pin_map').invokeMethod<void>(
           'show',
           {
-            'title': '現場マップ',
+            'title': SkoLanguageController.tr('現場マップ'),
             'points': points,
           },
         );
@@ -189,13 +190,13 @@ class _SiteMapPageState extends State<SiteMapPage> {
       } on MissingPluginException {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('iPhone地図機能を読み込めませんでした。アプリを更新してください。')),
+          SnackBar(content: Text(SkoLanguageController.tr('iPhone地図機能を読み込めませんでした。アプリを更新してください。'))),
         );
         return;
       } on PlatformException catch (error) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('複数ピン地図を開けませんでした: ${error.message ?? ''}')),
+          SnackBar(content: Text('${SkoLanguageController.tr('複数ピン地図を開けませんでした')}: ${error.message ?? ''}')),
         );
         return;
       }
@@ -213,7 +214,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('地図を開けませんでした')),
+        SnackBar(content: Text(SkoLanguageController.tr('地図を開けませんでした'))),
       );
     }
   }
@@ -229,7 +230,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
       final value = row[key]?.toString().trim() ?? '';
       if (value.isNotEmpty) return value;
     }
-    return '地点';
+    return SkoLanguageController.tr('地点');
   }
 
   Widget _check(_MapLayer layer, String label, {required bool enabled}) {
@@ -255,7 +256,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final data = _data;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(SkoLanguageController.tr(widget.title)),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -277,50 +278,50 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const Text(
-                              '同時に表示する項目',
-                              style: TextStyle(
+                            Text(
+                              SkoLanguageController.tr('同時に表示する項目'),
+                              style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
                             _check(
                               _MapLayer.sites,
-                              '登録済みの現場全部',
+                              SkoLanguageController.tr('登録済みの現場全部'),
                               enabled: data!.sites.isNotEmpty,
                             ),
                             _check(
                               _MapLayer.customers,
-                              '取引会社',
+                              SkoLanguageController.tr('取引会社'),
                               enabled: data.customers.isNotEmpty,
                             ),
                             _check(
                               _MapLayer.partners,
-                              '下請け会社',
+                              SkoLanguageController.tr('下請け会社'),
                               enabled: data.partners.isNotEmpty,
                             ),
                             _check(
                               _MapLayer.company,
-                              '自社',
+                              SkoLanguageController.tr('自社'),
                               enabled: data.company != null,
                             ),
                             if (widget.allowEmployeeHomes)
                               _check(
                                 _MapLayer.home,
-                                '自宅（本人）',
+                                SkoLanguageController.tr('自宅（本人）'),
                                 enabled: data.home != null,
                               ),
                             if (data.canViewAll && widget.allowEmployeeHomes)
                               _check(
                                 _MapLayer.employeeHomes,
-                                '全従業員の自宅',
+                                SkoLanguageController.tr('全従業員の自宅'),
                                 enabled: data.employeeHomes.isNotEmpty,
                               ),
                             const SizedBox(height: 8),
                             FilledButton.icon(
                               onPressed: _openSelectedTogether,
                               icon: const Icon(Icons.map_outlined),
-                              label: const Text('選択地点を複数ピンで地図表示'),
+                              label: Text(SkoLanguageController.tr('選択地点を複数ピンで地図表示')),
                             ),
                             const SizedBox(height: 6),
                             const Text(
@@ -332,7 +333,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         ),
                       ),
                     ),
-                    const _Heading('現場'),
+                    _Heading(SkoLanguageController.tr('現場')),
                     for (final site in data.sites)
                       ListTile(
                         leading: const Icon(Icons.business_outlined),
@@ -341,7 +342,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         trailing: const Icon(Icons.map_outlined),
                         onTap: () => _mapAddress(site, 'site_name'),
                       ),
-                    const _Heading('取引会社'),
+                    _Heading(SkoLanguageController.tr('取引会社')),
                     for (final customer in data.customers)
                       ListTile(
                         leading: const Icon(Icons.business_center_outlined),
@@ -353,7 +354,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         onTap: () => _mapAddress(customer, 'customer_name'),
                       ),
                     if (data.partners.isNotEmpty) ...[
-                      const _Heading('下請け会社'),
+                      _Heading(SkoLanguageController.tr('下請け会社')),
                       for (final partner in data.partners)
                         ListTile(
                           leading: const Icon(Icons.handshake_outlined),
@@ -366,7 +367,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         ),
                     ],
                     if (data.company != null) ...[
-                      const _Heading('自社'),
+                      _Heading(SkoLanguageController.tr('自社')),
                       ListTile(
                         leading: const Icon(Icons.apartment_outlined),
                         title: Text(
@@ -378,7 +379,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                       ),
                     ],
                     if (data.home != null) ...[
-                      const _Heading('自宅（本人）'),
+                      _Heading(SkoLanguageController.tr('自宅（本人）')),
                       ListTile(
                         leading: const Icon(Icons.home_outlined),
                         title: Text(
@@ -392,7 +393,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                     if (data.canViewAll &&
                         widget.allowEmployeeHomes &&
                         data.employeeHomes.isNotEmpty) ...[
-                      const _Heading('全従業員の自宅'),
+                      _Heading(SkoLanguageController.tr('全従業員の自宅')),
                       for (final worker in data.employeeHomes)
                         ListTile(
                           leading: const Icon(Icons.home_work_outlined),
@@ -404,7 +405,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                           onTap: () => _mapAddress(worker, 'worker_name'),
                         ),
                     ],
-                    const _Heading('最新の打刻位置'),
+                    _Heading(SkoLanguageController.tr('最新の打刻位置')),
                     for (final worker in data.workers)
                       ListTile(
                         leading: const Icon(Icons.person_pin_circle_outlined),

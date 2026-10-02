@@ -11,7 +11,7 @@ void main() {
     expect(app, contains("case 'company_documents':"));
     expect(app, contains('page = const CompanySubmittedDocumentsPage();'));
     expect(app, contains("key: 'company_documents'"));
-    expect(app, contains("label: '会社データ'"));
+    expect(app, contains("SkoLanguageController.tr('会社データ')"));
     expect(
       app,
       contains(

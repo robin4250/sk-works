@@ -47,7 +47,7 @@ void main() {
       app,
       contains(
         "if (!_isAdmin)\n"
-        "        const _MenuAction(\n"
+        "        _MenuAction(\n"
         "          key: 'payroll',",
       ),
     );

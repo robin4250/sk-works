@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'site_cloud_repository.dart';
 import 'site_detail_page.dart';
 import 'site_map_page.dart';
@@ -86,11 +87,11 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場データ'),
+        title: Text(SkoLanguageController.tr('現場データ')),
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '再読み込み',
+            tooltip: SkoLanguageController.tr('再読み込み'),
             onPressed: _loading
                 ? null
                 : () {
@@ -114,14 +115,14 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                       ),
                     ),
             icon: const Icon(Icons.map_outlined),
-            label: const Text('現場マップ'),
+            label: Text(SkoLanguageController.tr('現場マップ')),
           ),
           const SizedBox(width: 10),
           FloatingActionButton.extended(
             heroTag: 'site_register',
             onPressed: _loading || !_canCreateSites ? null : _add,
             icon: const Icon(Icons.add_business),
-            label: const Text('現場登録'),
+            label: Text(SkoLanguageController.tr('現場登録')),
           ),
         ],
       ),
@@ -131,9 +132,11 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: TextField(
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: '現場名・取引先・担当者・住所・最寄駅で検索',
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: SkoLanguageController.tr(
+                    '現場名・取引先・担当者・住所・最寄駅で検索',
+                  ),
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -144,7 +147,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               child: Row(
                 children: [
                   ChoiceChip(
-                    label: const Text('すべて'),
+                    label: Text(SkoLanguageController.tr('すべて')),
                     selected: _filter == null,
                     onSelected: (_) => setState(() => _filter = null),
                   ),
@@ -167,7 +170,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                   : _error != null
                       ? _ErrorState(message: _error!, onRetry: _load)
                       : filtered.isEmpty
-                          ? const Center(child: Text('登録はまだありません'))
+                          ? Center(child: Text(SkoLanguageController.tr('登録はまだありません')))
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                               itemCount: filtered.length,
@@ -221,12 +224,12 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
       if (!mounted) return;
       setState(() => _sites.insert(0, saved));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現場をクラウドに登録しました')),
+        SnackBar(content: Text(SkoLanguageController.tr('現場をクラウドに登録しました'))),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登録できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error')),
       );
     }
   }
@@ -238,18 +241,18 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('現場終了の確認'),
+        title: Text(SkoLanguageController.tr('現場終了の確認')),
         content: Text(
           '「${site.name}」を終了します。現場チャットは削除せず、履歴を残したままアーカイブします。',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
+            child: Text(SkoLanguageController.tr('戻る')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('現場を終了'),
+            child: Text(SkoLanguageController.tr('現場を終了')),
           ),
         ],
       ),
@@ -261,7 +264,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('現場を終了し、チャットをアーカイブしました')),
+      SnackBar(content: Text(SkoLanguageController.tr('現場を終了し、チャットをアーカイブしました'))),
     );
   }
 
@@ -285,14 +288,14 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off_outlined, size: 42),
             const SizedBox(height: 12),
-            const Text('クラウドデータを読み込めませんでした'),
+            Text(SkoLanguageController.tr('クラウドデータを読み込めませんでした')),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
+              label: Text(SkoLanguageController.tr('再試行')),
             ),
           ],
         ),

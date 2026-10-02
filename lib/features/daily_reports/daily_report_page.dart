@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
 import 'daily_report_repository.dart';
@@ -95,7 +96,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = '日報機能を利用できません。';
+        _error = SkoLanguageController.tr('日報機能を利用できません。');
       });
       return;
     }
@@ -303,7 +304,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('メーター読取結果'),
+        title: Text(SkoLanguageController.tr('メーター読取結果')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -316,8 +317,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: '走行距離',
+              decoration: InputDecoration(
+                labelText: SkoLanguageController.tr('走行距離'),
                 suffixText: 'km',
                 border: OutlineInputBorder(),
               ),
@@ -327,11 +328,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'retry'),
-            child: const Text('再撮影'),
+            child: Text(SkoLanguageController.tr('再撮影')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, 'use'),
-            child: const Text('この数値を登録'),
+            child: Text(SkoLanguageController.tr('この数値を登録')),
           ),
         ],
       ),
@@ -398,14 +399,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
       );
       if (!mounted) return id;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('日報を登録しました')),
+        SnackBar(content: Text(SkoLanguageController.tr('日報を登録しました'))),
       );
       await _loadSelectedSite();
       return id;
     } catch (error) {
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登録できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error')),
       );
       return null;
     } finally {
@@ -419,10 +420,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     final result = await Navigator.of(context).push<SignatureResult>(
       MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(
-          title: '報告者サイン',
-          signerLabel: '報告者名',
-          submitLabel: '報告者サインを保存',
+        builder: (_) => SignatureCapturePage(
+          title: SkoLanguageController.tr('報告者サイン'),
+          signerLabel: SkoLanguageController.tr('報告者名'),
+          submitLabel: SkoLanguageController.tr('報告者サインを保存'),
         ),
       ),
     );
@@ -439,7 +440,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('報告者サインを保存しました')),
+        SnackBar(content: Text(SkoLanguageController.tr('報告者サインを保存しました'))),
       );
       await _loadSelectedSite();
     } catch (error) {
@@ -457,17 +458,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (reportId == null || !mounted) return;
     if (_report?.reporterSignatureJson == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先に報告者サインを登録してください')),
+        SnackBar(content: Text(SkoLanguageController.tr('先に報告者サインを登録してください'))),
       );
       return;
     }
 
     final result = await Navigator.of(context).push<SignatureResult>(
       MaterialPageRoute(
-        builder: (_) => const SignatureCapturePage(
-          title: '責任者サイン',
-          signerLabel: '現場責任者名',
-          submitLabel: '責任者サインで確定',
+        builder: (_) => SignatureCapturePage(
+          title: SkoLanguageController.tr('責任者サイン'),
+          signerLabel: SkoLanguageController.tr('現場責任者名'),
+          submitLabel: SkoLanguageController.tr('責任者サインで確定'),
         ),
       ),
     );
@@ -485,7 +486,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('責任者サインで日報を確定しました')),
+        SnackBar(content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました'))),
       );
       await _loadSelectedSite();
     } catch (error) {
@@ -507,7 +508,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('確定済み日報を修正'),
+        title: Text(SkoLanguageController.tr('確定済み日報を修正')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -518,18 +519,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
             TextField(
               controller: reason,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: '修正理由（任意）'),
+              decoration: InputDecoration(labelText: SkoLanguageController.tr('修正理由（任意）')),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('キャンセル'),
+            child: Text(SkoLanguageController.tr('キャンセル')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('承認依頼を送る'),
+            child: Text(SkoLanguageController.tr('承認依頼を送る')),
           ),
         ],
       ),
@@ -595,9 +596,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '日報',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.tr('日報'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -613,7 +614,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                         children: [
                           _HeaderField(
                             icon: Icons.calendar_today_outlined,
-                            label: '日付',
+                            label: SkoLanguageController.tr('日付'),
                             value:
                                 '${_date.year}/${_two(_date.month)}/${_two(_date.day)}',
                             onTap: _pickDate,
@@ -629,8 +630,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 )
                                 .map((g) => g.destinationKey)
                                 .firstOrNull,
-                            decoration: const InputDecoration(
-                              labelText: '現場／ルート',
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.tr('現場／ルート'),
                               prefixIcon: Icon(Icons.route_outlined),
                             ),
                             items: [
@@ -684,15 +685,15 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             enabled: _editable,
                             minLines: 6,
                             maxLines: 12,
-                            decoration: const InputDecoration(
-                              labelText: '作業内容',
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.tr('作業内容'),
                               alignLabelWithHint: true,
-                              hintText: '本日の作業内容を入力',
+                              hintText: SkoLanguageController.tr('本日の作業内容を入力'),
                             ),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'メンバー別 残業・早出・手当',
+                            SkoLanguageController.tr('メンバー別 残業・早出・手当'),
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -780,13 +781,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             FilledButton.icon(
                               onPressed: _saving ? null : _saveDraft,
                               icon: const Icon(Icons.save_outlined),
-                              label: const Text('登録'),
+                              label: Text(SkoLanguageController.tr('登録')),
                             ),
                           if (_signed)
                             FilledButton.tonalIcon(
                               onPressed: _saving ? null : _requestEdit,
                               icon: const Icon(Icons.edit_outlined),
-                              label: const Text('編集・修正を申請'),
+                              label: Text(SkoLanguageController.tr('編集・修正を申請')),
                             ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
@@ -802,7 +803,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               ),
                             ),
                             icon: const Icon(Icons.print_outlined),
-                            label: const Text('A4印刷プレビュー'),
+                            label: Text(SkoLanguageController.tr('A4印刷プレビュー')),
                           ),
                         ],
                       ),
@@ -886,8 +887,8 @@ class _WorkerDetailCard extends StatelessWidget {
               enabled: editable,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: '退勤時の走行距離',
+              decoration: InputDecoration(
+                labelText: SkoLanguageController.tr('退勤時の走行距離'),
                 suffixText: 'km',
                 border: OutlineInputBorder(),
               ),
@@ -898,7 +899,7 @@ class _WorkerDetailCard extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: editable ? onCaptureOdometer : null,
                 icon: const Icon(Icons.camera_alt_outlined),
-                label: const Text('メーターを撮影して読取'),
+                label: Text(SkoLanguageController.tr('メーターを撮影して読取')),
               ),
             ),
             const SizedBox(height: 10),
@@ -934,9 +935,11 @@ class _WorkerDetailCard extends StatelessWidget {
           TextField(
             controller: allowanceLabel,
             enabled: editable,
-            decoration: const InputDecoration(
-              labelText: '手当名',
-              hintText: '例：鉄骨、PC',
+            decoration: InputDecoration(
+              labelText: SkoLanguageController.tr('手当名'),
+              hintText: SkoLanguageController.isEnglish
+                  ? 'e.g. Steel, PC'
+                  : '例：鉄骨、PC',
             ),
           ),
           const SizedBox(height: 10),
@@ -944,7 +947,7 @@ class _WorkerDetailCard extends StatelessWidget {
             controller: allowance,
             enabled: editable,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '手当金額（円）'),
+            decoration: InputDecoration(labelText: SkoLanguageController.tr('手当金額（円）')),
           ),
         ],
       ),
@@ -1072,7 +1075,7 @@ class _EmptyDay extends StatelessWidget {
             FilledButton.icon(
               onPressed: onPickDate,
               icon: const Icon(Icons.calendar_today),
-              label: const Text('日付を変更'),
+              label: Text(SkoLanguageController.tr('日付を変更')),
             ),
           ],
         ),
@@ -1116,7 +1119,7 @@ class DailyReportEvidencePage extends StatelessWidget {
     final repository = DailyReportRepository.maybeCreate();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('出勤確認写真一覧'),
+        title: Text(SkoLanguageController.tr('出勤確認写真一覧')),
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -1230,7 +1233,7 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('日報 A4プレビュー'),
+        title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
@@ -1269,7 +1272,7 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
                   report: report,
                 ),
                 icon: const Icon(Icons.print),
-                label: const Text('印刷'),
+                label: Text(SkoLanguageController.tr('印刷')),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
                 ),
@@ -1317,10 +1320,10 @@ class _DailyReportPaper extends StatelessWidget {
       allowanceCounts[label] = (allowanceCounts[label] ?? 0) + 1;
     }
     final summaryItems = <MapEntry<String, String>>[
-      MapEntry('計', '${workers.length}人工'),
-      if (totalEarly > 0) MapEntry('早出', '${_num(totalEarly)}H'),
-      if (totalOvertime > 0) MapEntry('残業', '${_num(totalOvertime)}H'),
-      if (totalNight > 0) MapEntry('夜間', '${_num(totalNight)}H'),
+      MapEntry(SkoLanguageController.tr('計'), SkoLanguageController.isEnglish ? '${workers.length} workers' : '${workers.length}人工'),
+      if (totalEarly > 0) MapEntry(SkoLanguageController.tr('早出'), '${_num(totalEarly)}H'),
+      if (totalOvertime > 0) MapEntry(SkoLanguageController.tr('残業'), '${_num(totalOvertime)}H'),
+      if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間'), '${_num(totalNight)}H'),
       for (final entry in allowanceCounts.entries)
         MapEntry(entry.key, entry.value.toString()),
     ];
@@ -1341,9 +1344,9 @@ class _DailyReportPaper extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '作 業 日 報',
+                        SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : '作 業 日 報',
                         style: TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w900,
@@ -1369,9 +1372,9 @@ class _DailyReportPaper extends StatelessWidget {
                     Expanded(
                       flex: 5,
                       child: _reportBox(
-                        label: '現場名',
+                        label: SkoLanguageController.tr('現場名'),
                         child: Text(
-                          siteName.isEmpty ? '未登録' : siteName,
+                          siteName.isEmpty ? SkoLanguageController.tr('未登録') : siteName,
                           style: const TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w900,
@@ -1383,7 +1386,7 @@ class _DailyReportPaper extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: _signatureBox(
-                        label: '報告者サイン',
+                        label: SkoLanguageController.tr('報告者サイン'),
                         name: report?.reporterSignerName ?? '',
                         strokes: reporterStrokes,
                       ),
@@ -1392,7 +1395,7 @@ class _DailyReportPaper extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: _signatureBox(
-                        label: '責任者サイン',
+                        label: SkoLanguageController.tr('責任者サイン'),
                         name: report?.responsibleSignerName ?? report?.signerName ?? '',
                         strokes: supervisorStrokes,
                       ),
@@ -1402,19 +1405,19 @@ class _DailyReportPaper extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 _reportBox(
-                  label: '作業内容',
+                  label: SkoLanguageController.tr('作業内容'),
                   height: 210,
                   child: Text(
                     workDescription.trim().isEmpty
-                        ? '（記載なし）'
+                        ? SkoLanguageController.tr('（記載なし）')
                         : workDescription,
                     style: const TextStyle(fontSize: 15, height: 1.55),
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  '作 業 者 名',
-                  style: TextStyle(
+                Text(
+                  SkoLanguageController.isEnglish ? 'WORKERS' : '作 業 者 名',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 2,
@@ -1434,11 +1437,11 @@ class _DailyReportPaper extends StatelessWidget {
                     TableRow(
                       decoration: const BoxDecoration(color: Color(0xFFF1F1F1)),
                       children: [
-                        _tableCell('氏名', bold: true),
-                        _tableCell('早出', bold: true),
-                        _tableCell('残業', bold: true),
-                        _tableCell('夜間', bold: true),
-                        _tableCell('手当・車両等', bold: true),
+                        _tableCell(SkoLanguageController.tr('氏名'), bold: true),
+                        _tableCell(SkoLanguageController.tr('早出'), bold: true),
+                        _tableCell(SkoLanguageController.tr('残業'), bold: true),
+                        _tableCell(SkoLanguageController.tr('夜間'), bold: true),
+                        _tableCell(SkoLanguageController.tr('手当・車両等'), bold: true),
                       ],
                     ),
                     for (var index = 0; index < 9; index++)
@@ -1472,10 +1475,10 @@ class _DailyReportPaper extends StatelessWidget {
                 const Spacer(),
                 const Divider(color: Colors.black87, height: 1),
                 const SizedBox(height: 8),
-                const Text(
-                  '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。',
+                Text(
+                  SkoLanguageController.tr('出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
                 ),
               ],
             ),
@@ -1620,7 +1623,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再読み込み'),
+              label: Text(SkoLanguageController.tr('再読み込み')),
             ),
           ],
         ),

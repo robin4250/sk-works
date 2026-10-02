@@ -8,7 +8,7 @@ void main() {
     final repository =
         File('lib/features/profile/profile_repository.dart').readAsStringSync();
 
-    expect(page, contains("title: const Text('SKO会社ID')"));
+    expect(page, contains("SkoLanguageController.tr('SKO会社ID')"));
     expect(page, contains('SelectableText(data!.companyId)'));
     expect(repository, contains('required this.companyId'));
     expect(repository, contains("memberships.first['company_id']"));

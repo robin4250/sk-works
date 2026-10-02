@@ -16,9 +16,9 @@ void main() {
     expect(app, contains("ButtonSegment(value: 4"));
     expect(app, contains('ホーム表示・並び順・権限'));
     expect(app, contains("key: 'attendance_verify'"));
-    expect(app, contains("label: '本日の勤務報告'"));
+    expect(app, contains("SkoLanguageController.tr('本日の勤務報告')"));
     expect(app, contains("key: 'attendance_today'"));
-    expect(app, contains("label: '本日の出勤'"));
+    expect(app, contains("SkoLanguageController.tr('本日の出勤')"));
     expect(app, contains('homeEligible: false'));
     expect(home, contains('showAttendanceReport'));
     expect(home, contains('showTodayAttendance'));

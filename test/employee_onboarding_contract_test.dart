@@ -12,7 +12,7 @@ void main() {
     expect(edge, contains('company_members?user_id=eq.'));
     expect(edge, isNot(contains('can_manage_people')));
     expect(app, contains("key: 'employee_register'"));
-    expect(app, contains("label: '従業員登録'"));
+    expect(app, contains("SkoLanguageController.tr('従業員登録')"));
   });
 
   test('employee invite supports temporary password share and QR', () {

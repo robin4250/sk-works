@@ -1,4 +1,5 @@
 import 'core/language_pack.dart';
+import 'languages/en/english_language_pack.dart';
 import 'languages/ja/japanese_language_pack.dart';
 
 class LanguagePackRegistry {
@@ -6,6 +7,7 @@ class LanguagePackRegistry {
 
   static const Map<String, LanguagePack> supported = <String, LanguagePack>{
     'ja': japaneseLanguagePack,
+    'en': englishLanguagePack,
   };
 
   static LanguagePack resolve(String? languageCode) {

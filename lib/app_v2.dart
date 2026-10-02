@@ -62,6 +62,7 @@ import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_map_page.dart';
 import 'features/sites/site_page.dart';
+import 'international/language_controller.dart';
 import 'widgets/sko_scroll_chrome.dart';
 
 class SkWorksApp extends StatelessWidget {
@@ -76,24 +77,29 @@ class SkWorksApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<SkoPalette>(
-      valueListenable: SkoThemeController.palette,
-      builder: (context, palette, _) {
-        return MaterialApp(
-          navigatorKey: SkoScrollChromeController.navigatorKey,
-          debugShowCheckedModeBanner: false,
-          title: ProductBrand.displayName,
-          theme: SkoTheme.light(palette),
-          builder: (context, child) => SkoGlobalScrollChrome(
-            child: child ?? const SizedBox.shrink(),
-          ),
-          home: SupabaseBackend.isInitialized
-              ? SupabaseAuthGate(
-                  homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
-                )
-              : allowLocalFallback
-                  ? const HomePage()
-                  : const _BackendUnavailableScreen(),
+    return ValueListenableBuilder(
+      valueListenable: SkoLanguageController.pack,
+      builder: (context, language, _) {
+        return ValueListenableBuilder<SkoPalette>(
+          valueListenable: SkoThemeController.palette,
+          builder: (context, palette, _) {
+            return MaterialApp(
+              navigatorKey: SkoScrollChromeController.navigatorKey,
+              debugShowCheckedModeBanner: false,
+              title: ProductBrand.displayName,
+              theme: SkoTheme.light(palette),
+              builder: (context, child) => SkoGlobalScrollChrome(
+                child: child ?? const SizedBox.shrink(),
+              ),
+              home: SupabaseBackend.isInitialized
+                  ? SupabaseAuthGate(
+                      homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
+                    )
+                  : allowLocalFallback
+                      ? const HomePage()
+                      : const _BackendUnavailableScreen(),
+            );
+          },
         );
       },
     );
@@ -184,7 +190,16 @@ class _HomePageState extends State<HomePage> {
       _loadRequiredDocumentAttention(),
       _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
+      _syncLanguage(),
     ]);
+  }
+
+  Future<void> _syncLanguage() async {
+    try {
+      await SkoLanguageController.syncFromCloud();
+    } catch (_) {
+      // Language sync is supplemental and must never block the home screen.
+    }
   }
 
   Future<void> _loadHomeAppearance() async {
@@ -496,14 +511,14 @@ class _HomePageState extends State<HomePage> {
     };
     if (requiredModule != null && !_moduleEnabled(requiredModule)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('この機能は会社設定でOFFになっています')),
+        SnackBar(content: Text(SkoLanguageController.tr('この機能は会社設定でOFFになっています'))),
       );
       return;
     }
 
     if (key == 'people' && !_identity.isManagement) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('社員情報は管理者・サブ管理者のみ利用できます')),
+        SnackBar(content: Text(SkoLanguageController.tr('社員情報は管理者・サブ管理者のみ利用できます'))),
       );
       return;
     }
@@ -511,7 +526,7 @@ class _HomePageState extends State<HomePage> {
     if ((key == 'company_deliveries' || key == 'company_documents') &&
         !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('この機能は管理者のみ利用できます')),
+        SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者のみ利用できます'))),
       );
       return;
     }
@@ -527,7 +542,7 @@ class _HomePageState extends State<HomePage> {
     final permission = restricted[key];
     if (permission != null && !_identity.can(permission)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('この機能を利用する権限がありません')),
+        SnackBar(content: Text(SkoLanguageController.tr('この機能を利用する権限がありません'))),
       );
       return;
     }
@@ -732,204 +747,204 @@ class _HomePageState extends State<HomePage> {
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
       if (_moduleEnabled('attendance'))
-        const _MenuAction(
+        _MenuAction(
           key: 'attendance_verify',
-          label: '本日の勤務報告',
+          label: SkoLanguageController.tr('本日の勤務報告'),
           icon: Icons.fact_check_outlined,
           homeEligible: false,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_moduleEnabled('attendance') &&
           _identity.can('can_manage_attendance'))
-        const _MenuAction(
+        _MenuAction(
           key: 'attendance_today',
-          label: '本日の出勤',
+          label: SkoLanguageController.tr('本日の出勤'),
           icon: Icons.groups_outlined,
           homeEligible: false,
-          accessLabel: '管理者・サブ管理者（勤怠権限）',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
-      const _MenuAction(
+      _MenuAction(
         key: 'daily_report',
-        label: '日報',
+        label: SkoLanguageController.tr('日報'),
         icon: Icons.description_outlined,
         homeEligible: true,
-        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
       if (_identity.isManagement)
-        const _MenuAction(
+        _MenuAction(
           key: 'people',
-          label: '社員',
+          label: SkoLanguageController.tr('社員'),
           icon: Icons.groups_2_outlined,
           homeEligible: true,
-          accessLabel: '管理者・サブ管理者・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・閲覧権限'),
         ),
       if (_moduleEnabled('vehicle_routes'))
-        const _MenuAction(
+        _MenuAction(
           key: 'vehicle_routes',
-          label: '車両・ルート',
+          label: SkoLanguageController.tr('車両・ルート'),
           icon: Icons.route_outlined,
           homeEligible: true,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      const _MenuAction(
+      _MenuAction(
         key: 'employee_register',
-        label: '従業員登録',
+        label: SkoLanguageController.tr('従業員登録'),
         icon: Icons.person_add_alt_1,
-        accessLabel: '管理者・サブ管理者',
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
       ),
       if (_canReviewEmployeeOnboarding)
-        const _MenuAction(
+        _MenuAction(
           key: 'employee_onboarding_approvals',
-          label: '本登録承認',
+          label: SkoLanguageController.tr('本登録承認'),
           icon: Icons.verified_user_outlined,
-          accessLabel: '管理者・サブ管理者（承認権限）',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
         ),
       if (!_isAdmin)
-        const _MenuAction(
+        _MenuAction(
           key: 'payroll',
-          label: '給与明細',
+          label: SkoLanguageController.tr('給与明細'),
           icon: Icons.payments_outlined,
           homeEligible: true,
-          accessLabel: '本人・閲覧権限',
+          accessLabel: SkoLanguageController.tr('本人・閲覧権限'),
         ),
       if (_isAdmin || _identity.can('can_manage_payroll_adjustments'))
-        const _MenuAction(
+        _MenuAction(
           key: 'payroll_settings',
-          label: '個別給与設定',
+          label: SkoLanguageController.tr('個別給与設定'),
           icon: Icons.manage_accounts_outlined,
-          accessLabel: '管理者・給与編集権限',
+          accessLabel: SkoLanguageController.tr('管理者・給与編集権限'),
         ),
       if (_identity.can('can_view_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_adjustments',
           label: _payrollAdjustmentLabel,
           icon: Icons.price_change_outlined,
-          accessLabel: '管理者・給与閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・給与閲覧権限'),
         ),
-      const _MenuAction(
+      _MenuAction(
         key: 'profile',
-        label: 'プロフィール',
+        label: SkoLanguageController.tr('プロフィール'),
         icon: Icons.account_circle_outlined,
         homeEligible: true,
-        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
       if (_moduleEnabled('qualifications'))
-        const _MenuAction(
+        _MenuAction(
           key: 'qualifications',
-          label: '資格',
+          label: SkoLanguageController.tr('資格'),
           icon: Icons.badge_outlined,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_moduleEnabled('documents'))
-        const _MenuAction(
+        _MenuAction(
           key: 'documents',
-          label: '必要書類',
+          label: SkoLanguageController.tr('必要書類'),
           icon: Icons.fact_check_outlined,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_moduleEnabled('notes'))
-        const _MenuAction(
+        _MenuAction(
           key: 'notes',
-          label: 'ノート',
+          label: SkoLanguageController.tr('ノート'),
           icon: Icons.sticky_note_2_outlined,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_moduleEnabled('albums'))
-        const _MenuAction(
+        _MenuAction(
           key: 'albums',
-          label: 'アルバム',
+          label: SkoLanguageController.tr('アルバム'),
           icon: Icons.photo_album_outlined,
-          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_identity.can('can_approve_daily_report_edits'))
-        const _MenuAction(
+        _MenuAction(
           key: 'approvals',
-          label: '承認待ち',
+          label: SkoLanguageController.tr('承認待ち'),
           icon: Icons.approval_outlined,
-          accessLabel: '管理者・サブ管理者（承認権限）',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
         ),
       if (_identity.can('can_manage_attendance') &&
           _moduleEnabled('line_bridge'))
-        const _MenuAction(
+        _MenuAction(
           key: 'today_line',
-          label: '本日のLINE出勤候補',
+          label: SkoLanguageController.tr('本日のLINE出勤候補'),
           icon: Icons.today_outlined,
-          accessLabel: '管理者・サブ管理者（勤怠権限）',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
       if (_isAdmin)
-        const _MenuAction(
+        _MenuAction(
           key: 'company_deliveries',
-          label: '協力会社',
+          label: SkoLanguageController.tr('協力会社'),
           icon: Icons.folder_shared_outlined,
-          accessLabel: '管理者',
+          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_isAdmin)
-        const _MenuAction(
+        _MenuAction(
           key: 'company_documents',
-          label: '会社データ',
+          label: SkoLanguageController.tr('会社データ'),
           icon: Icons.business_center_outlined,
           homeEligible: true,
-          accessLabel: '管理者',
+          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
-        const _MenuAction(
+        _MenuAction(
           key: 'invoices',
-          label: '請求書',
+          label: SkoLanguageController.tr('請求書'),
           icon: Icons.receipt_long_outlined,
           homeEligible: true,
-          accessLabel: '管理者・請求書閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・請求書閲覧権限'),
         ),
       if (_identity.can('can_view_admin_site_data'))
-        const _MenuAction(
+        _MenuAction(
           key: 'admin_sites',
-          label: '管理現場',
+          label: SkoLanguageController.tr('管理現場'),
           icon: Icons.admin_panel_settings_outlined,
           homeEligible: true,
-          accessLabel: '管理者・現場閲覧権限',
+          accessLabel: SkoLanguageController.tr('管理者・現場閲覧権限'),
         ),
       if (_identity.isManagement && _moduleEnabled('sites'))
-        const _MenuAction(
+        _MenuAction(
           key: 'site_map',
-          label: '現場マップ',
+          label: SkoLanguageController.tr('現場マップ'),
           icon: Icons.map_outlined,
           homeEligible: true,
-          accessLabel: '管理者・サブ管理者',
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (!_identity.isManagement && _moduleEnabled('sites'))
-        const _MenuAction(
+        _MenuAction(
           key: 'site_register',
-          label: '現場登録',
+          label: SkoLanguageController.tr('現場登録'),
           icon: Icons.add_business_outlined,
           homeEligible: true,
-          accessLabel: '一般・閲覧権限',
+          accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
         ),
       if (_isAdmin)
-        const _MenuAction(
+        _MenuAction(
           key: 'signatures',
-          label: 'サイン一覧',
+          label: SkoLanguageController.tr('サイン一覧'),
           icon: Icons.draw_outlined,
-          accessLabel: '管理者',
+          accessLabel: SkoLanguageController.tr('管理者'),
         ),
-      const _MenuAction(
+      _MenuAction(
         key: 'appearance',
-        label: '背景・ヘッダー・フッター設定',
+        label: SkoLanguageController.tr('背景・ヘッダー・フッター設定'),
         icon: Icons.wallpaper_outlined,
         homeEligible: true,
-        accessLabel: '本人のみ',
+        accessLabel: SkoLanguageController.tr('本人のみ'),
       ),
-      const _MenuAction(
+      _MenuAction(
         key: 'settings',
-        label: '設定',
+        label: SkoLanguageController.tr('設定'),
         icon: Icons.settings_outlined,
         homeEligible: true,
-        accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
-      const _MenuAction(
+      _MenuAction(
         key: 'help',
-        label: 'ヘルプ',
+        label: SkoLanguageController.tr('ヘルプ'),
         icon: Icons.help_outline,
         homeEligible: true,
-        accessLabel: '表示中の権限に合わせて案内',
+        accessLabel: SkoLanguageController.tr('表示中の権限に合わせて案内'),
       ),
     ];
 
@@ -948,6 +963,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _homeDashboard() {
     final now = DateTime.now();
+    final dateLabel = SkoLanguageController.isEnglish
+        ? '${now.month}/${now.day}/${now.year}'
+        : '${now.year}年${now.month}月${now.day}日';
     return Scaffold(
       extendBodyBehindAppBar: false,
       backgroundColor: Colors.transparent,
@@ -995,7 +1013,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               Text(
-                '${_identity.displayName}　${now.year}年${now.month}月${now.day}日',
+                '${_identity.displayName}　$dateLabel',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -1007,14 +1025,14 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             IconButton(
-              tooltip: '背景・ヘッダー・フッター設定',
+              tooltip: SkoLanguageController.tr('背景・ヘッダー・フッター設定'),
               onPressed: _openHomeAppearanceSettings,
               icon: const Icon(Icons.wallpaper_outlined),
             ),
             const SkoNotificationBell(),
             if (widget.onSignOut != null)
               IconButton(
-                tooltip: 'ログアウト',
+                tooltip: SkoLanguageController.tr('ログアウト'),
                 onPressed: widget.onSignOut,
                 icon: const Icon(Icons.logout),
               ),
@@ -1067,9 +1085,9 @@ class _HomePageState extends State<HomePage> {
           height: _chromeVisible ? kToolbarHeight : 0,
           child: _chromeVisible
               ? AppBar(
-                  title: const Text(
-                    'メニュー',
-                    style: TextStyle(fontWeight: FontWeight.w900),
+                  title: Text(
+                    SkoLanguageController.tr('メニュー'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                   actions: const [SkoNotificationBell()],
                 )
@@ -1088,24 +1106,26 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'ホーム表示・並び順・権限',
-                        style: TextStyle(
+                      Text(
+                        SkoLanguageController.tr('ホーム表示・並び順・権限'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 16,
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
+                      Text(
+                        SkoLanguageController.isEnglish
+                            ? 'Manage Home and Menu in one list. Toggle visibility, drag to reorder, and choose 1–4 columns.'
+                            : 'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
                       ),
                       const SizedBox(height: 12),
                       SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 1, label: Text('1列')),
-                          ButtonSegment(value: 2, label: Text('2列')),
-                          ButtonSegment(value: 3, label: Text('3列')),
-                          ButtonSegment(value: 4, label: Text('4列')),
+                        segments: [
+                          ButtonSegment(value: 1, label: Text(SkoLanguageController.tr('1列'))),
+                          ButtonSegment(value: 2, label: Text(SkoLanguageController.tr('2列'))),
+                          ButtonSegment(value: 3, label: Text(SkoLanguageController.tr('3列'))),
+                          ButtonSegment(value: 4, label: Text(SkoLanguageController.tr('4列'))),
                         ],
                         selected: {_homeGridColumns},
                         onSelectionChanged: (values) {
@@ -1117,7 +1137,7 @@ class _HomePageState extends State<HomePage> {
                       FilledButton.tonalIcon(
                         onPressed: _openHomeAppearanceSettings,
                         icon: const Icon(Icons.wallpaper_outlined),
-                        label: const Text('背景・ヘッダー・フッター設定'),
+                        label: Text(SkoLanguageController.tr('背景・ヘッダー・フッター設定')),
                       ),
                     ],
                   ),
@@ -1140,7 +1160,7 @@ class _HomePageState extends State<HomePage> {
                     item.label,
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  subtitle: Text('利用権限：${item.accessLabel}'),
+                  subtitle: Text('${SkoLanguageController.tr('利用権限')}：${item.accessLabel}'),
                   onTap: () => _openHomeAction(item.key),
                   trailing: Switch(
                     value: !_hiddenHomeActionKeys.contains(item.key),
@@ -1162,13 +1182,13 @@ class _HomePageState extends State<HomePage> {
       _homeDashboard(),
       _moduleEnabled('attendance')
           ? const WorkerAttendanceSheetPage()
-          : const _ModuleDisabledPage(label: '出勤表'),
+          : _ModuleDisabledPage(label: SkoLanguageController.tr('出勤表')),
       _moduleEnabled('sites')
           ? const SiteCloudPage()
-          : const _ModuleDisabledPage(label: '現場'),
+          : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
           ? const ChatCloudPage()
-          : const _ModuleDisabledPage(label: 'チャット'),
+          : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];
 
@@ -1204,8 +1224,8 @@ class _HomePageState extends State<HomePage> {
                     };
                     if (module != null && !_moduleEnabled(module)) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('この機能は会社設定でOFFになっています'),
+                        SnackBar(
+                          content: Text(SkoLanguageController.tr('この機能は会社設定でOFFになっています')),
                         ),
                       );
                       return;
@@ -1222,30 +1242,30 @@ class _HomePageState extends State<HomePage> {
                     }
                     setState(() => _selectedIndex = index);
                   },
-                  destinations: const [
+                  destinations: [
                     NavigationDestination(
                       icon: Icon(Icons.home_outlined),
                       selectedIcon: Icon(Icons.home),
-                      label: 'ホーム',
+                      label: SkoLanguageController.tr('ホーム'),
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.calendar_month_outlined),
                       selectedIcon: Icon(Icons.calendar_month),
-                      label: '出勤表',
+                      label: SkoLanguageController.tr('出勤表'),
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.business_outlined),
                       selectedIcon: Icon(Icons.business),
-                      label: '現場',
+                      label: SkoLanguageController.tr('現場'),
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.chat_bubble_outline),
                       selectedIcon: Icon(Icons.chat_bubble),
-                      label: 'チャット',
+                      label: SkoLanguageController.tr('チャット'),
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.menu),
-                      label: 'メニュー',
+                      label: SkoLanguageController.tr('メニュー'),
                     ),
                   ],
                 )
@@ -1256,7 +1276,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 class _MenuAction {
-  const _MenuAction({
+  _MenuAction({
     required this.key,
     required this.label,
     required this.icon,
