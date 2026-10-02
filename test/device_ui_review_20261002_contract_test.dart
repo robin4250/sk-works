@@ -49,13 +49,18 @@ void main() {
     expect(app, contains("label: '背景・ヘッダー・フッター設定'"));
   });
 
-  test('root header and footer react to vertical scroll', () {
+  test('all route headers and root footer react to vertical scroll', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
+    final chrome =
+        File('lib/widgets/sko_scroll_chrome.dart').readAsStringSync();
 
-    expect(app, contains('NotificationListener<ScrollNotification>'));
-    expect(app, contains('_handleRootScroll'));
-    expect(app, contains('_chromeVisible = false'));
-    expect(app, contains('_chromeVisible = true'));
+    expect(app, contains('SkoGlobalScrollChrome'));
+    expect(app, contains('SkoScrollChromeController.visible.addListener'));
     expect(app, contains("height: _chromeVisible ? 80 : 0"));
+
+    expect(chrome, contains('NotificationListener<ScrollNotification>'));
+    expect(chrome, contains('toolbarHeight: visible ? kToolbarHeight : 0'));
+    expect(chrome, contains('delta > 2'));
+    expect(chrome, contains('delta < -2'));
   });
 }
