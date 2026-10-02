@@ -828,7 +828,7 @@ class _MonthCalendarCell extends StatelessWidget {
               Text(
                 (day!.allowanceNames.isEmpty
                         ? const <String>['手当']
-                        : day.allowanceNames)
+                        : day!.allowanceNames)
                     .map((name) => '${name}1')
                     .join(' '),
                 maxLines: 2,
