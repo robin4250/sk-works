@@ -24,7 +24,7 @@ void main() {
     expect(home, contains('repeat(reverse: true)'));
 
     expect(app, contains("SkoLanguageController.tr('社員')"));
-    expect(app, contains("label: '管理現場'"));
+    expect(app, contains("SkoLanguageController.tr('管理現場')"));
     expect(home, contains('_HomeActionAccess.subAdmin'));
     expect(home, contains('_HomeActionAccess.admin'));
     expect(home, contains('_HomeActionAccess.professional'));
