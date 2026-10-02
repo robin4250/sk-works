@@ -8,10 +8,12 @@ class RouteEditorPage extends StatefulWidget {
   const RouteEditorPage({
     super.key,
     required this.sites,
+    required this.vehicles,
     this.route,
   });
 
   final List<Map<String, dynamic>> sites;
+  final List<Map<String, dynamic>> vehicles;
   final Map<String, dynamic>? route;
 
   @override
@@ -162,7 +164,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           ),
           const SizedBox(height: 16),
           const Text(
-            '現場名の選択 または 住所',
+            '現場・駐車場の選択 または 住所',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
@@ -224,8 +226,17 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('現場を選ばず住所を入力'),
+                        child: Text('現場・駐車場を選ばず住所を入力'),
                       ),
+                      for (final vehicle in widget.vehicles)
+                        if ((vehicle['storage_address']?.toString() ?? '').isNotEmpty)
+                          DropdownMenuItem<String?>(
+                            value: 'parking:' + vehicle['id'].toString(),
+                            child: Text(
+                              '駐車場：' +
+                                  (vehicle['display_name']?.toString() ?? '車両'),
+                            ),
+                          ),
                       for (final site in widget.sites)
                         DropdownMenuItem<String?>(
                           value: site['id']?.toString(),
@@ -236,14 +247,27 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
                         ? null
                         : (value) {
                             setState(() {
-                              stop.siteId = value;
-                              if (value != null) {
-                                final site = widget.sites.where(
-                                  (row) => row['id']?.toString() == value,
+                              if (value != null && value.startsWith('parking:')) {
+                                stop.siteId = null;
+                                final vehicleId =
+                                    value.substring('parking:'.length);
+                                final vehicle = widget.vehicles.where(
+                                  (row) => row['id']?.toString() == vehicleId,
                                 );
-                                if (site.isNotEmpty) {
+                                if (vehicle.isNotEmpty) {
                                   stop.address.text =
-                                      site.first['address']?.toString() ?? '';
+                                      vehicle.first['storage_address']?.toString() ?? '';
+                                }
+                              } else {
+                                stop.siteId = value;
+                                if (value != null) {
+                                  final site = widget.sites.where(
+                                    (row) => row['id']?.toString() == value,
+                                  );
+                                  if (site.isNotEmpty) {
+                                    stop.address.text =
+                                        site.first['address']?.toString() ?? '';
+                                  }
                                 }
                               }
                             });
@@ -263,7 +287,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
               enabled: !_saving,
               decoration: const InputDecoration(
                 labelText: '住所',
-                hintText: '現場を選ばない場合はこちらを入力',
+                hintText: '現場・駐車場を選ばない場合はこちらを入力',
                 border: OutlineInputBorder(),
               ),
             ),
