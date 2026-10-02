@@ -614,7 +614,12 @@ class _AttendanceVerificationPageState
 
   String _siteName(Map<String, dynamic> item) {
     final site = item['sites'];
-    return site is Map ? site['name']?.toString() ?? '' : '';
+    final siteName = site is Map ? site['name']?.toString().trim() ?? '' : '';
+    if (siteName.isNotEmpty) return siteName;
+    final route = item['route_assignments'];
+    final routeName =
+        route is Map ? route['route_name']?.toString().trim() ?? '' : '';
+    return routeName.isNotEmpty ? routeName : '勤務先未登録';
   }
 
   String _statusLabel(Map<String, dynamic> item) {
