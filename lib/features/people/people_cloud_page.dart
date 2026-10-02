@@ -257,29 +257,31 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                         const Icon(Icons.chevron_right),
                                       ],
                                     ),
-                                    onTap: () {
-                                      if (record.kind ==
-                                          PersonKind.partnerCompany) {
-                                        _showDetails(record);
-                                        return;
-                                      }
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              EmployeePersonnelDetailPage(
-                                            record: record,
-                                            allEmployees: _records
-                                                .where(
-                                                  (item) =>
-                                                      item.kind !=
-                                                      PersonKind.partnerCompany,
-                                                )
-                                                .toList(growable: false),
-                                            companyName: _companyName,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                    onTap: !_canManagePeople
+                                        ? null
+                                        : () {
+                                            if (record.kind ==
+                                                PersonKind.partnerCompany) {
+                                              _showDetails(record);
+                                              return;
+                                            }
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    EmployeePersonnelDetailPage(
+                                                  record: record,
+                                                  allEmployees: _records
+                                                      .where(
+                                                        (item) =>
+                                                            item.kind !=
+                                                            PersonKind.partnerCompany,
+                                                      )
+                                                      .toList(growable: false),
+                                                  companyName: _companyName,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                   ),
                                 );
                               },
