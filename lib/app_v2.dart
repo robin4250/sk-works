@@ -58,6 +58,7 @@ import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
+import 'features/sites/site_map_page.dart';
 import 'features/sites/site_page.dart';
 import 'widgets/sko_scroll_chrome.dart';
 
@@ -358,7 +359,7 @@ class _HomePageState extends State<HomePage> {
     final surfaceKey = switch (key) {
       'footer_home' => 'home',
       'attendance' => 'attendance_sheet',
-      'footer_sites' || 'site_register' => 'sites',
+      'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
       'clock_in' || 'clock_out' || 'attendance_verify' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
@@ -446,7 +447,7 @@ class _HomePageState extends State<HomePage> {
     final requiredModule = switch (key) {
       'attendance' || 'attendance_verify' || 'clock_in' || 'clock_out' =>
         'attendance',
-      'footer_sites' || 'site_register' || 'sites' => 'sites',
+      'footer_sites' || 'site_register' || 'site_map' || 'sites' => 'sites',
       'chat' => 'chat',
       'invoices' => 'invoices',
       'qualifications' || 'qualification_certificates' => 'qualifications',
@@ -593,6 +594,9 @@ class _HomePageState extends State<HomePage> {
           role: ManualContent.fromMembershipRole(_identity.role),
           visibleFeatureKeys: _menuItems.map((item) => item.key).toSet(),
         );
+        break;
+      case 'site_map':
+        page = const SiteMapPage();
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
@@ -812,6 +816,14 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.admin_panel_settings_outlined,
           homeEligible: true,
           accessLabel: '管理者・現場閲覧権限',
+        ),
+      if (_identity.isManagement && _moduleEnabled('sites'))
+        const _MenuAction(
+          key: 'site_map',
+          label: '現場マップ',
+          icon: Icons.map_outlined,
+          homeEligible: true,
+          accessLabel: '管理者・サブ管理者',
         ),
       if (!_identity.isManagement && _moduleEnabled('sites'))
         const _MenuAction(
