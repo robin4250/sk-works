@@ -966,6 +966,10 @@ class _HomePageState extends State<HomePage> {
             for (final item in _homeLayoutItems)
               HomeShortcut(item.key, item.label, item.icon),
           ],
+          showAttendanceReport:
+              !_hiddenHomeActionKeys.contains('attendance_verify'),
+          showTodayAttendance:
+              !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: _homeAppearance,
           onOpen: _openHomeAction,
