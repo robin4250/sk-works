@@ -190,7 +190,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
               child: FilledButton.icon(
                 onPressed: _submit,
                 icon: const Icon(Icons.check_circle_outline),
-                label: const Text('このサインで確定'),
+                label: Text(widget.submitLabel),
               ),
             ),
           ],
