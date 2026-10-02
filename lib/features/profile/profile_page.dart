@@ -94,22 +94,24 @@ class _ProfilePageState extends State<ProfilePage> {
       final personnel = values[1] as Map<String, dynamic>?;
       if (!mounted) return;
       _name.text = data.displayName;
-      _phone.text = data.phone;
+      _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
       _workerId = personnel?['worker_id']?.toString();
       _personnelName.text =
           personnel?['name']?.toString() ?? data.displayName;
       _personnelRole.text = personnel?['role']?.toString() ?? '';
-      _personnelPhone.text =
-          personnel?['phone']?.toString() ?? data.phone;
+      _personnelPhone.text = ProfileRepository.domesticJapanesePhoneValue(
+        personnel?['phone']?.toString() ?? data.phone,
+      );
       _personnelAddress.text = personnel?['address']?.toString() ?? '';
       _bloodType = personnel?['blood_type']?.toString() ?? '';
       _emergencyName.text =
           personnel?['emergency_name']?.toString() ?? '';
       _emergencyRelation.text =
           personnel?['emergency_relation']?.toString() ?? '';
-      _emergencyPhone.text =
-          personnel?['emergency_phone']?.toString() ?? '';
+      _emergencyPhone.text = ProfileRepository.domesticJapanesePhoneValue(
+        personnel?['emergency_phone']?.toString() ?? '',
+      );
       _emergencyAddress.text =
           personnel?['emergency_address']?.toString() ?? '';
       _familyComposition.text =
