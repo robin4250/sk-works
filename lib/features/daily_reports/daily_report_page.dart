@@ -565,8 +565,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _showSignature() async {
     final report = _report;
+    if (report == null) return;
     final signature =
-        report?.responsibleSignatureJson ?? report?.signatureJson;
+        report.responsibleSignatureJson ?? report.signatureJson;
     if (signature == null) return;
     final strokes = SignatureResult.fromJson(signature);
 
