@@ -47,6 +47,8 @@ void main() {
     expect(detail, contains("'カメラで撮影'"));
     expect(detail, contains("'写真ライブラリから選択'"));
     expect(detail, contains('ImageSource.gallery'));
+    expect(detail, contains('InteractiveViewer'));
+    expect(detail, contains("tooltip: '写真を変更'"));
     expect(detail, contains("'formal_name'"));
     expect(detail, contains("'nearest_station'"));
     expect(detail, contains("'representative_name'"));
