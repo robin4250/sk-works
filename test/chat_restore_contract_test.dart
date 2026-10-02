@@ -32,7 +32,7 @@ void main() {
     expect(repository, contains("'set_chat_block'"));
     expect(repository, contains('userIds.add(currentUser.id)'));
     expect(repository, contains("'display_name': currentUser.userMetadata?['display_name']"));
-    expect(page, contains(r"'参加メンバー  ${members.length}人'"));
+    expect(page, contains("SkoLanguageController.tr('参加メンバー')"));
     expect(repository, contains("'sko_friend_workspace'"));
     expect(repository, contains("'search_personal_sko_id'"));
     expect(friends, contains("'SKO ID検索'"));
@@ -42,9 +42,9 @@ void main() {
     expect(appearance, contains("'ヘッダー・タブの透明度'"));
     expect(appearance, contains('min: 1'));
     expect(appearance, contains('max: 100'));
-    expect(appearance, contains('this.headerOpacity = 60'));
-    expect(appearance, contains('this.footerOpacity = 60'));
-    expect(appearance, contains('this.bubbleOpacity = 60'));
+    expect(appearance, contains('this.headerOpacity = 80'));
+    expect(appearance, contains('this.footerOpacity = 80'));
+    expect(appearance, contains('this.bubbleOpacity = 80'));
     expect(page, contains('alpha: _appearance.headerAlpha'));
     expect(page, contains('selected == null || _chatChromeVisible'));
     expect(page, contains('alpha: _appearance.footerAlpha'));
