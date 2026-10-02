@@ -76,9 +76,8 @@ void main() {
     expect(peopleForm, contains("'血液型'"));
     expect(peopleForm, contains("'緊急連絡先'"));
     expect(edit, contains("'変更申請を送る'"));
-    expect(approvals, contains("'承認 2/2 名'"), isFalse);
     expect(approvals, contains("'承認 '"));
-    expect(approvals, contains("'/2 名'"));
+    expect(approvals, contains('approvalCount/2 名'));
     expect(migration, contains('worker_personnel_change_requests'));
     expect(migration, contains('worker_personnel_change_approvals'));
     expect(migration, contains('v_count>=2'));
