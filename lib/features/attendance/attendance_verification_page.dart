@@ -143,9 +143,6 @@ class _AttendanceVerificationPageState
       return;
     }
 
-    final allowed = await ensureGpsAutoLocationPermission(context);
-    if (!allowed || !mounted) return;
-
     final schedule = await showGpsAutoScheduleDialog(
       context,
       initialWeekdays: _gpsWeekdays,
