@@ -1,9 +1,11 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings, dead_code
 
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../common/data_date_labels.dart';
 import 'company_document_exchange_repository.dart';
@@ -22,6 +24,7 @@ class _CompanySubmittedDocumentsPageState
     extends State<CompanySubmittedDocumentsPage> {
   final _repository = CompanySubmittedDocumentRepository.maybeCreate();
   final _exchange = CompanyDocumentExchangeRepository.maybeCreate();
+  final _imagePicker = ImagePicker();
   final _selected = <String>{};
   final _receiveCode = TextEditingController();
   final _note = TextEditingController();
@@ -393,7 +396,7 @@ class _CompanySubmittedDocumentsPageState
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _pickFile(row),
                   icon: const Icon(Icons.upload_file_outlined),
-                  label: Text(path.isEmpty ? 'PDF等を登録' : 'ファイル差替'),
+                  label: Text(path.isEmpty ? 'カメラ・写真・ファイル' : '書類を差替'),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
@@ -526,21 +529,77 @@ class _CompanySubmittedDocumentsPageState
   }
 
   Future<void> _pickFile(Map<String, dynamic> row) async {
-    final repository = _repository;
-    if (repository == null) return;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('カメラで撮影'),
+              onTap: () => Navigator.pop(sheetContext, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリから選択'),
+              onTap: () => Navigator.pop(sheetContext, 'photo'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('PDF・ファイルから選択'),
+              onTap: () => Navigator.pop(sheetContext, 'file'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    if (source == 'camera' || source == 'photo') {
+      final image = await _imagePicker.pickImage(
+        source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        imageQuality: 90,
+        maxWidth: 2600,
+      );
+      if (image == null) return;
+      await _uploadDocumentBytes(
+        row: row,
+        bytes: await image.readAsBytes(),
+        filename: image.name,
+        contentType: image.mimeType ?? 'image/jpeg',
+      );
+      return;
+    }
+
     final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif'],
     );
     if (file == null) return;
-    final bytes = await file.readAsBytes();
+    await _uploadDocumentBytes(
+      row: row,
+      bytes: await file.readAsBytes(),
+      filename: file.name,
+      contentType: _contentType(file.extension),
+    );
+  }
+
+  Future<void> _uploadDocumentBytes({
+    required Map<String, dynamic> row,
+    required List<int> bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    final repository = _repository;
+    if (repository == null) return;
     setState(() => _busy = true);
     try {
       await repository.upload(
         id: row['id'].toString(),
-        bytes: bytes,
-        filename: file.name,
-        contentType: _contentType(file.extension),
+        bytes: Uint8List.fromList(bytes),
+        filename: filename,
+        contentType: contentType,
       );
       await _load();
     } finally {
