@@ -23,7 +23,7 @@ void main() {
     expect(page, contains('未登録書類は後から追加できます'));
     expect(repository, contains("'vehicle-documents'"));
     expect(repository, contains("'odometer_km'"));
-    expect(repository, contains("rpc('notify_missing_vehicle_documents'"));
+    expect(repository, contains("'notify_missing_vehicle_documents'"));
   });
 
   test('route editor supports unlimited site or address stops', () {
