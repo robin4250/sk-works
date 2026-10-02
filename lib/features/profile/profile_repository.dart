@@ -134,7 +134,7 @@ class ProfileRepository {
 
   Future<String> changePersonalSkoId(String raw) async {
     var value = raw.trim().toUpperCase();
-    if (!value.startsWith('SKO-')) value = 'SKO-${value}';
+    if (!value.startsWith('SKO-')) value = 'SKO-$value';
     final suffix = value.length >= 4 ? value.substring(4) : '';
     final invalidCharacter = RegExp(r'[^A-Z0-9]').hasMatch(suffix);
     if (suffix.length < 4 || suffix.length > 20 || invalidCharacter) {
