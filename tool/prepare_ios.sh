@@ -445,34 +445,52 @@ private final class SkoMultiPinMapViewController: UIViewController, MKMapViewDel
       let name = (raw["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
       let address = (raw["address"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
+      let fallbackLat = number(raw["latitude"])
+      let fallbackLon = number(raw["longitude"])
+
+      if !address.isEmpty {
+        pendingGeocodes += 1
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(address) { [weak self] placemarks, _ in
+          guard let self else { return }
+          defer {
+            self.pendingGeocodes -= 1
+            self.fitAnnotationsIfReady()
+          }
+          if let coordinate = placemarks?.first?.location?.coordinate {
+            self.addAnnotation(
+              name: name?.isEmpty == false ? name! : address,
+              subtitle: address,
+              coordinate: coordinate
+            )
+            return
+          }
+          if
+            let lat = fallbackLat,
+            let lon = fallbackLon,
+            (-90...90).contains(lat),
+            (-180...180).contains(lon)
+          {
+            self.addAnnotation(
+              name: name?.isEmpty == false ? name! : address,
+              subtitle: address,
+              coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            )
+          }
+        }
+        continue
+      }
+
       if
-        let lat = number(raw["latitude"]),
-        let lon = number(raw["longitude"]),
+        let lat = fallbackLat,
+        let lon = fallbackLon,
         (-90...90).contains(lat),
         (-180...180).contains(lon)
       {
         addAnnotation(
-          name: name?.isEmpty == false ? name! : address,
-          subtitle: address,
+          name: name?.isEmpty == false ? name! : "地点",
+          subtitle: "",
           coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)
-        )
-        continue
-      }
-
-      guard !address.isEmpty else { continue }
-      pendingGeocodes += 1
-      let geocoder = CLGeocoder()
-      geocoder.geocodeAddressString(address) { [weak self] placemarks, _ in
-        guard let self else { return }
-        defer {
-          self.pendingGeocodes -= 1
-          self.fitAnnotationsIfReady()
-        }
-        guard let coordinate = placemarks?.first?.location?.coordinate else { return }
-        self.addAnnotation(
-          name: name?.isEmpty == false ? name! : address,
-          subtitle: address,
-          coordinate: coordinate
         )
       }
     }
