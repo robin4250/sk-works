@@ -6,6 +6,7 @@ import '../notifications/notification_bell.dart';
 import '../common/data_date_labels.dart';
 import '../qualifications/qualification_send_page.dart';
 import 'employee_personnel_detail_page.dart';
+import 'employee_personnel_print_page.dart';
 import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
@@ -389,38 +390,32 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     PersonnelExportOperation operation, {
     PersonRecord? initialRecord,
   }) async {
-    final workers = initialRecord == null
-        ? _exportWorkers
-        : [
-            PersonnelExportWorker(
-              id: initialRecord.id,
-              name: initialRecord.name,
-              originCompanyName: initialRecord.kind == PersonKind.partnerWorker
-                  ? initialRecord.companyName
-                  : null,
-            ),
-          ];
-    if (workers.isEmpty || !mounted) return;
+    final records = initialRecord == null
+        ? _records
+            .where((record) => record.kind != PersonKind.partnerCompany)
+            .toList(growable: false)
+        : [initialRecord];
+    if (records.isEmpty || !mounted) return;
 
-    if (operation == PersonnelExportOperation.send && initialRecord == null) {
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => PersonnelBundleSendPage(
-            workerIds: workers.map((worker) => worker.id).toSet(),
-          ),
-        ),
-      );
-      return;
-    }
-
-    await Navigator.of(context).push<PersonnelExportResult>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PersonnelExportPage(
-          title: '人員データ',
-          workers: workers,
-          operation: operation,
-          initialWorkerIds:
-              initialRecord == null ? const [] : [initialRecord.id],
+        builder: (_) => EmployeePersonnelPrintPage(
+          companyName: _companyName,
+          records: records,
+          action: operation == PersonnelExportOperation.send
+              ? EmployeePersonnelPreviewAction.send
+              : EmployeePersonnelPreviewAction.print,
+          onConfirmSend: operation == PersonnelExportOperation.send
+              ? (previewContext) async {
+                  await Navigator.of(previewContext).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => PersonnelBundleSendPage(
+                        workerIds: records.map((record) => record.id).toSet(),
+                      ),
+                    ),
+                  );
+                }
+              : null,
         ),
       ),
     );
