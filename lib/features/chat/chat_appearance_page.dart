@@ -184,7 +184,7 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
               (value) => setState(() => _backgroundOpacity = value),
             ),
             _slider(
-              'ヘッダーの透明度',
+              'ヘッダー・タブの透明度',
               _headerOpacity,
               (value) => setState(() => _headerOpacity = value),
             ),
