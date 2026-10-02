@@ -6,11 +6,15 @@ class SiteMapWorkspace {
   const SiteMapWorkspace({
     required this.canViewAll,
     required this.sites,
+    required this.customers,
+    required this.partners,
     required this.workers,
   });
 
   final bool canViewAll;
   final List<Map<String, dynamic>> sites;
+  final List<Map<String, dynamic>> customers;
+  final List<Map<String, dynamic>> partners;
   final List<Map<String, dynamic>> workers;
 }
 
@@ -44,6 +48,8 @@ class SiteMapRepository {
     return SiteMapWorkspace(
       canViewAll: value['can_view_all'] == true,
       sites: rows('sites'),
+      customers: rows('customers'),
+      partners: rows('partners'),
       workers: rows('workers'),
     );
   }
