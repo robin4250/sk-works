@@ -51,7 +51,7 @@ class VehicleRouteRepository {
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     var query = _client.from('route_assignments').select(
       'id,route_name,notes,is_active,created_at,updated_at,'
-      'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,sites(name,address))',
+      'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,latitude,longitude,sites(name,address,latitude,longitude))',
     );
     if (activeOnly) query = query.eq('is_active', true);
     final rows = await query
@@ -69,7 +69,7 @@ class VehicleRouteRepository {
   Future<List<Map<String, dynamic>>> sites() async {
     final rows = await _client
         .from('sites')
-        .select('id,name,address,status')
+        .select('id,name,address,latitude,longitude,status')
         .neq('status', 'completed')
         .order('name');
     return [for (final row in rows) Map<String, dynamic>.from(row)];
@@ -209,7 +209,7 @@ class VehicleRouteRepository {
     String? id,
     required String name,
     required String notes,
-    required List<Map<String, String?>> stops,
+    required List<Map<String, Object?>> stops,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
@@ -252,6 +252,8 @@ class VehicleRouteRepository {
             'source_kind': _nullable(stops[i]['source_kind']),
             'source_id': _nullable(stops[i]['source_id']),
             'source_label': _nullable(stops[i]['source_label']),
+            'latitude': stops[i]['latitude'],
+            'longitude': stops[i]['longitude'],
             'created_by': user.id,
             'updated_by': user.id,
           },
