@@ -12,6 +12,13 @@ void main() {
     final theme = File('lib/branding/sko_theme.dart').readAsStringSync();
 
     expect(appearance, contains("sko_home_appearance_"));
+    expect(appearance, contains("defaults_20261003"));
+    expect(appearance, contains("setDouble(_key('wallpaper_opacity'), 1.0)"));
+    expect(appearance, contains("setDouble(_key('button_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('card_button_opacity'), 1.0)"));
+    expect(appearance, contains("setDouble(_key('card_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('header_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('footer_opacity'), 0.8)"));
     expect(appearance, contains('getApplicationSupportDirectory'));
     expect(appearance, contains('min: 0.01'));
     expect(appearance, contains('divisions: 99'));
