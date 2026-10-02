@@ -46,7 +46,7 @@ void main() {
     expect(app, contains('buildDefaultDragHandles: true'));
     expect(app, contains('onReorderItem: _reorderHomeAction'));
     expect(app, contains('長押しして上下へドラッグ'));
-    expect(app, contains("label: '背景・ヘッダー・フッター設定'"));
+    expect(app, contains("SkoLanguageController.tr('背景・ヘッダー・フッター設定')"));
   });
 
   test('all route headers and root footer react to vertical scroll', () {
@@ -88,7 +88,7 @@ void main() {
     ).readAsStringSync();
 
     expect(app, contains("key: 'site_map'"));
-    expect(app, contains("label: '現場マップ'"));
+    expect(app, contains("SkoLanguageController.tr('現場マップ')"));
     expect(page, contains("'www.google.com'"));
     expect(page, contains("'/maps/search/'"));
     expect(page, contains("'取引会社'"));
