@@ -100,7 +100,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         child: Text(
                           data!.canViewAll
                               ? '現場・取引会社・下請け会社と、社員全員の最新の打刻位置をGoogleマップで開けます。常時追跡は行いません。'
-                              : '現場と自分自身の最新打刻位置をGoogleマップで開けます。',
+                              : '現場と自分自身の最新の打刻位置をGoogleマップで開けます。',
                         ),
                       ),
                     ),
