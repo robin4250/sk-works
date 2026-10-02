@@ -55,7 +55,10 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   Future<void> _openMap(String query) async {
     final value = query.trim();
     if (value.isEmpty) return;
-    final uri = Uri.https('maps.apple.com', '/', {'q': value});
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': value,
+    });
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('地図を開けませんでした')),
