@@ -184,15 +184,21 @@ class AttendanceVerificationRepository {
         now.month.toString().padLeft(2, '0') +
         '-' +
         now.day.toString().padLeft(2, '0');
-    final selection = await _client
-        .from('work_vehicle_route_selections')
-        .select(
-          'vehicle_id,route_assignment_id,'
-          'vehicles(display_name),route_assignments(route_name)',
-        )
-        .eq('worker_id', workerId)
-        .eq('work_date', workDate)
-        .maybeSingle();
+    Map<String, dynamic>? selection;
+    try {
+      final row = await _client
+          .from('work_vehicle_route_selections')
+          .select(
+            'vehicle_id,route_assignment_id,'
+            'vehicles(display_name),route_assignments(route_name)',
+          )
+          .eq('worker_id', workerId)
+          .eq('work_date', workDate)
+          .maybeSingle();
+      if (row != null) selection = Map<String, dynamic>.from(row);
+    } catch (_) {
+      selection = null;
+    }
     final selectedVehicle = selection?['vehicles'];
     final selectedRoute = selection?['route_assignments'];
 
@@ -364,20 +370,26 @@ class AttendanceVerificationRepository {
           );
     }
 
-    final selection = await _client
-        .from('work_vehicle_route_selections')
-        .select('vehicle_id,route_assignment_id')
-        .eq('company_id', companyId)
-        .eq('worker_id', workerId)
-        .eq(
-          'work_date',
-          DateTime.now().year.toString().padLeft(4, '0') +
-              '-' +
-              DateTime.now().month.toString().padLeft(2, '0') +
-              '-' +
-              DateTime.now().day.toString().padLeft(2, '0'),
-        )
-        .maybeSingle();
+    Map<String, dynamic>? selection;
+    try {
+      final row = await _client
+          .from('work_vehicle_route_selections')
+          .select('vehicle_id,route_assignment_id')
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq(
+            'work_date',
+            DateTime.now().year.toString().padLeft(4, '0') +
+                '-' +
+                DateTime.now().month.toString().padLeft(2, '0') +
+                '-' +
+                DateTime.now().day.toString().padLeft(2, '0'),
+          )
+          .maybeSingle();
+      if (row != null) selection = Map<String, dynamic>.from(row);
+    } catch (_) {
+      selection = null;
+    }
 
     try {
       final row = await _client
