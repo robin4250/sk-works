@@ -48,17 +48,18 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
         repository.routes(),
         repository.permissions(),
         repository.sites(),
-        repository.customers(),
-        repository.partners(),
+        repository.routeCompanyDirectories(),
       ]);
       final permissions = values[2] as Map<String, dynamic>;
+      final directories =
+          values[4] as Map<String, List<Map<String, dynamic>>>;
       if (!mounted) return;
       setState(() {
         _vehicles = values[0] as List<Map<String, dynamic>>;
         _routes = values[1] as List<Map<String, dynamic>>;
         _sites = values[3] as List<Map<String, dynamic>>;
-        _customers = values[4] as List<Map<String, dynamic>>;
-        _partners = values[5] as List<Map<String, dynamic>>;
+        _customers = directories['customers'] ?? const [];
+        _partners = directories['partners'] ?? const [];
         _canManageVehicles = permissions['can_manage_vehicles'] == true;
         _canManageRoutes = permissions['can_manage_routes'] == true;
         _loading = false;
