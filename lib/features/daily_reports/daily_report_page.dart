@@ -565,13 +565,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _showSignature() async {
     final report = _report;
-    if (report?.signatureJson == null) return;
-    final strokes = SignatureResult.fromJson(report!.signatureJson);
+    final signature =
+        report?.responsibleSignatureJson ?? report?.signatureJson;
+    if (signature == null) return;
+    final strokes = SignatureResult.fromJson(signature);
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('サイン済み：${report.signerName ?? ''}'),
+        title: Text(
+          '責任者サイン：${report.responsibleSignerName ?? report.signerName ?? ''}',
+        ),
         content: SizedBox(
           width: 460,
           child: SignaturePreview(strokes: strokes, height: 220),
