@@ -46,7 +46,7 @@ class CompanySubmittedDocumentRepository {
     final rows = await _client
         .from('company_required_documents')
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
         )
         .eq('company_id', value.companyId)
         .eq('is_active', true)
@@ -76,7 +76,7 @@ class CompanySubmittedDocumentRepository {
           'original_verified': false,
         })
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);
@@ -101,7 +101,7 @@ class CompanySubmittedDocumentRepository {
         .eq('company_id', value.companyId)
         .eq('id', id)
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(updated);
@@ -148,7 +148,7 @@ class CompanySubmittedDocumentRepository {
           .eq('company_id', value.companyId)
           .eq('id', id)
           .select(
-            'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, updated_at',
+            'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
           )
           .single();
       if (oldPath != null && oldPath.isNotEmpty && oldPath != path) {
