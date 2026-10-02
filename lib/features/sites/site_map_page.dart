@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../notifications/notification_bell.dart';
 import 'site_map_repository.dart';
 
-enum _MapLayer { sites, customers, company, home, employeeHomes }
+enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
 
 class SiteMapPage extends StatefulWidget {
   const SiteMapPage({super.key});
@@ -93,6 +93,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
     final places = <Map<String, dynamic>>[];
     if (_layers.contains(_MapLayer.sites)) places.addAll(data.sites);
     if (_layers.contains(_MapLayer.customers)) places.addAll(data.customers);
+    if (_layers.contains(_MapLayer.partners)) places.addAll(data.partners);
     if (_layers.contains(_MapLayer.company) && data.company != null) {
       places.add(data.company!);
     }
@@ -242,6 +243,11 @@ class _SiteMapPageState extends State<SiteMapPage> {
                               enabled: data.customers.isNotEmpty,
                             ),
                             _check(
+                              _MapLayer.partners,
+                              '下請け会社',
+                              enabled: data.partners.isNotEmpty,
+                            ),
+                            _check(
                               _MapLayer.company,
                               '自社',
                               enabled: data.company != null,
@@ -292,6 +298,19 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         trailing: const Icon(Icons.map_outlined),
                         onTap: () => _mapAddress(customer, 'customer_name'),
                       ),
+                    if (data.partners.isNotEmpty) ...[
+                      const _Heading('下請け会社'),
+                      for (final partner in data.partners)
+                        ListTile(
+                          leading: const Icon(Icons.handshake_outlined),
+                          title: Text(
+                            partner['partner_name']?.toString() ?? '下請け会社',
+                          ),
+                          subtitle: Text(partner['address']?.toString() ?? ''),
+                          trailing: const Icon(Icons.map_outlined),
+                          onTap: () => _mapAddress(partner, 'partner_name'),
+                        ),
+                    ],
                     if (data.company != null) ...[
                       const _Heading('自社'),
                       ListTile(
