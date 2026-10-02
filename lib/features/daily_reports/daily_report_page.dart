@@ -1241,143 +1241,52 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reporterStrokes =
-        SignatureResult.fromJson(report?.reporterSignatureJson);
-    final supervisorStrokes = SignatureResult.fromJson(report?.signatureJson);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('日報 A4プレビュー'),
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
-            AspectRatio(
-              aspectRatio: 1 / 1.414,
-              child: Card(
+            Expanded(
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
                 child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 4,
+                  minScale: 0.55,
+                  maxScale: 5,
+                  constrained: false,
+                  boundaryMargin: const EdgeInsets.all(240),
+                  clipBehavior: Clip.none,
                   child: Padding(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                '作 業 日 報',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '${date.year}年 ${date.month}月 ${date.day}日',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Table(
-                          border: TableBorder.all(color: Colors.black54),
-                          children: [
-                            TableRow(
-                              children: [
-                                _dailyPreviewCell('現場名\n$siteName', flex: true),
-                                _dailyPreviewCell(
-                                  '報告者\n${report?.reporterSignerName ?? ''}',
-                                  flex: true,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '出勤メンバー（${workers.length}名）',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 6),
-                        for (final worker in workers)
-                          Text(
-                            '${worker.workerName}  '
-                            '残${worker.overtimeHours} 早${worker.earlyHours} '
-                            '${worker.allowanceLabel}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        const Divider(height: 20),
-                        const Text(
-                          '作業内容',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(workDescription),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Text(
-                                    '報告者：${report?.reporterSignerName ?? ''}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  SignaturePreview(
-                                    strokes: reporterStrokes,
-                                    height: 70,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Text(
-                                    '責任者：${report?.signerName ?? ''}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  SignaturePreview(
-                                    strokes: supervisorStrokes,
-                                    height: 70,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    padding: const EdgeInsets.all(24),
+                    child: _DailyReportPaper(
+                      date: date,
+                      siteName: siteName,
+                      workers: workers,
+                      workDescription: workDescription,
+                      report: report,
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: () => DailyReportPdfService.printReport(
-                date: date,
-                siteName: siteName,
-                workers: workers,
-                workDescription: workDescription,
-                report: report,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+              child: FilledButton.icon(
+                onPressed: () => DailyReportPdfService.printReport(
+                  date: date,
+                  siteName: siteName,
+                  workers: workers,
+                  workDescription: workDescription,
+                  report: report,
+                ),
+                icon: const Icon(Icons.print),
+                label: const Text('印刷'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
               ),
-              icon: const Icon(Icons.print),
-              label: const Text('印刷'),
             ),
           ],
         ),
@@ -1386,14 +1295,315 @@ class DailyReportPrintPreviewPage extends StatelessWidget {
   }
 }
 
+class _DailyReportPaper extends StatelessWidget {
+  const _DailyReportPaper({
+    required this.date,
+    required this.siteName,
+    required this.workers,
+    required this.workDescription,
+    required this.report,
+  });
 
-Widget _dailyPreviewCell(String text, {bool flex = false}) => Padding(
-      padding: const EdgeInsets.all(8),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+  final DateTime date;
+  final String siteName;
+  final List<DailyReportWorkerDraft> workers;
+  final String workDescription;
+  final DailyReportRecord? report;
+
+  @override
+  Widget build(BuildContext context) {
+    final reporterStrokes =
+        SignatureResult.fromJson(report?.reporterSignatureJson);
+    final supervisorStrokes = SignatureResult.fromJson(report?.signatureJson);
+    final totalOvertime =
+        workers.fold<double>(0, (sum, worker) => sum + worker.overtimeHours);
+    final totalEarly =
+        workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
+    final totalNight =
+        workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
+
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      child: SizedBox(
+        width: 720,
+        height: 1018,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(38, 34, 38, 34),
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.black, fontSize: 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '作 業 日 報',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 4,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${date.year}年 ${date.month}月 ${date.day}日',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: _reportBox(
+                        label: '現場名',
+                        child: Text(
+                          siteName.isEmpty ? '未登録' : siteName,
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _signatureBox(
+                        label: '報告者サイン',
+                        name: report?.reporterSignerName ?? '',
+                        strokes: reporterStrokes,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: _signatureBox(
+                        label: '責任者サイン',
+                        name: report?.signerName ?? '',
+                        strokes: supervisorStrokes,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _reportBox(
+                  label: '作業内容',
+                  height: 210,
+                  child: Text(
+                    workDescription.trim().isEmpty
+                        ? '（記載なし）'
+                        : workDescription,
+                    style: const TextStyle(fontSize: 15, height: 1.55),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '作 業 者 名',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Table(
+                  border: TableBorder.all(color: Colors.black87, width: 1),
+                  columnWidths: const {
+                    0: FlexColumnWidth(2.2),
+                    1: FlexColumnWidth(0.9),
+                    2: FlexColumnWidth(0.9),
+                    3: FlexColumnWidth(0.9),
+                    4: FlexColumnWidth(1.8),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: const BoxDecoration(color: Color(0xFFF1F1F1)),
+                      children: [
+                        _tableCell('氏名', bold: true),
+                        _tableCell('早出', bold: true),
+                        _tableCell('残業', bold: true),
+                        _tableCell('夜間', bold: true),
+                        _tableCell('手当・車両等', bold: true),
+                      ],
+                    ),
+                    for (var index = 0; index < 9; index++)
+                      TableRow(
+                        children: index < workers.length
+                            ? _workerCells(workers[index])
+                            : [
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                                _tableCell(''),
+                              ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _summaryBox('計', '${workers.length}人工'),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '早出',
+                        totalEarly > 0 ? '${_num(totalEarly)}H' : '',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '残業',
+                        totalOvertime > 0 ? '${_num(totalOvertime)}H' : '',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _summaryBox(
+                        '夜間',
+                        totalNight > 0 ? '${_num(totalNight)}H' : '',
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                const Divider(color: Colors.black87, height: 1),
+                const SizedBox(height: 8),
+                const Text(
+                  '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  static List<Widget> _workerCells(DailyReportWorkerDraft worker) => [
+        _tableCell(worker.workerName),
+        _tableCell(worker.earlyHours > 0 ? _num(worker.earlyHours) : ''),
+        _tableCell(worker.overtimeHours > 0 ? _num(worker.overtimeHours) : ''),
+        _tableCell(worker.nightHours > 0 ? _num(worker.nightHours) : ''),
+        _tableCell(
+          [
+            if (worker.allowanceLabel.trim().isNotEmpty) worker.allowanceLabel,
+            if (worker.vehicleName?.trim().isNotEmpty == true)
+              worker.vehicleName!,
+            if (worker.routeName?.trim().isNotEmpty == true)
+              worker.routeName!,
+          ].join(' / '),
+        ),
+      ];
+
+  static Widget _reportBox({
+    required String label,
+    required Widget child,
+    double? height,
+  }) =>
+      Container(
+        height: height,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            Expanded(child: child),
+          ],
+        ),
+      );
+
+  static Widget _signatureBox({
+    required String label,
+    required String name,
+    required List<List<Offset>> strokes,
+  }) =>
+      Container(
+        height: 118,
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+            ),
+            if (name.isNotEmpty)
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10),
+              ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: strokes.isEmpty
+                  ? const SizedBox.shrink()
+                  : SignaturePreview(strokes: strokes, height: 72),
+            ),
+          ],
+        ),
+      );
+
+  static Widget _summaryBox(String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black87),
+        ),
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const Spacer(),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
+          ],
+        ),
+      );
+
+  static Widget _tableCell(String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
+          ),
+        ),
+      );
+
+  static String _num(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+}
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({
