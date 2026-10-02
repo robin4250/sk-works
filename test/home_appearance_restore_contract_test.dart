@@ -12,6 +12,13 @@ void main() {
     final theme = File('lib/branding/sko_theme.dart').readAsStringSync();
 
     expect(appearance, contains("sko_home_appearance_"));
+    expect(appearance, contains("defaults_20261003"));
+    expect(appearance, contains("setDouble(_key('wallpaper_opacity'), 1.0)"));
+    expect(appearance, contains("setDouble(_key('button_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('card_button_opacity'), 1.0)"));
+    expect(appearance, contains("setDouble(_key('card_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('header_opacity'), 0.8)"));
+    expect(appearance, contains("setDouble(_key('footer_opacity'), 0.8)"));
     expect(appearance, contains('getApplicationSupportDirectory'));
     expect(appearance, contains('min: 0.01'));
     expect(appearance, contains('divisions: 99'));
@@ -27,11 +34,14 @@ void main() {
     expect(home, contains('appearance.cardOpacity'));
     expect(app, contains('_homeAppearance.headerOpacity'));
     expect(app, contains('_homeAppearance.footerOpacity'));
-    expect(appearance, contains('this.buttonOpacity = 0.6'));
-    expect(appearance, contains('this.cardOpacity = 0.6'));
-    expect(appearance, contains('this.headerOpacity = 0.6'));
-    expect(appearance, contains('this.footerOpacity = 0.6'));
-    expect(appearance, contains('fallback = 0.6'));
+    expect(appearance, contains('this.buttonOpacity = 0.8'));
+    expect(appearance, contains('this.cardOpacity = 0.8'));
+    expect(appearance, contains('this.headerOpacity = 0.8'));
+    expect(appearance, contains('this.footerOpacity = 0.8'));
+    expect(appearance, contains("buttonOpacity: _read(prefs, 'button_opacity', fallback: 0.8)"));
+    expect(appearance, contains("cardOpacity: _read(prefs, 'card_opacity', fallback: 0.8)"));
+    expect(appearance, contains("headerOpacity: _read(prefs, 'header_opacity', fallback: 0.8)"));
+    expect(appearance, contains("footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8)"));
     expect(app, contains('Colors.white.withValues('));
     expect(app, contains('alpha: _homeAppearance.headerOpacity'));
     expect(theme, contains('backgroundColor: Colors.white'));
