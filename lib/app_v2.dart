@@ -11,6 +11,7 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/today_attendance_page.dart';
@@ -515,7 +516,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'attendance_verify':
-        page = const AttendanceVerificationPage();
+        page = const AttendanceSelectionPage();
         break;
       case 'daily_report':
         page = const DailyReportPage();
