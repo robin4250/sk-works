@@ -86,7 +86,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_canManageSites ? '管理者用現場データ' : '現場'),
+        title: const Text('現場データ'),
         actions: [
           const SkoNotificationBell(),
           IconButton(
@@ -101,11 +101,6 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || !_canCreateSites ? null : _add,
-        icon: const Icon(Icons.add_business),
-        label: const Text('現場登録'),
-      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -117,27 +112,6 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                   hintText: '現場名・取引先・担当者・住所・最寄駅で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-              child: FilledButton.tonalIcon(
-                onPressed: _loading
-                    ? null
-                    : () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SiteMapPage(),
-                          ),
-                        ),
-                icon: const Icon(Icons.map_outlined),
-                label: Text(
-                  _canManageSites
-                      ? '現場・取引会社・下請け会社・社員をGoogleマップで確認'
-                      : '現場マップを開く',
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                ),
               ),
             ),
             SingleChildScrollView(
@@ -204,6 +178,40 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                                 );
                               },
                             ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _loading || !_canCreateSites ? null : _add,
+                      icon: const Icon(Icons.add_business),
+                      label: const Text('現場登録'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _loading
+                          ? null
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SiteMapPage(),
+                                ),
+                              ),
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('現場マップ'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
