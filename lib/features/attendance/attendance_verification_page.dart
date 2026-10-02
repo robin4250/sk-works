@@ -105,8 +105,7 @@ class _AttendanceVerificationPageState
 
       final sites = values[1] as List<Map<String, dynamic>>;
       final selectedSiteId = selection['site_id']?.toString() ??
-          schedule['site_id']?.toString() ??
-          (sites.isEmpty ? null : sites.first['id']?.toString());
+          schedule['site_id']?.toString();
 
       if (!mounted) return;
       setState(() {
@@ -495,6 +494,8 @@ class _AttendanceVerificationPageState
           'outside_site' => '現場にいないようなのでGPS自動出勤は出勤を登録しませんでした',
           'site_location_missing' =>
             '現場の基準位置が未登録のためGPS自動出勤を登録しませんでした',
+          'route_location_missing' =>
+            'ルート内の駐車場・経由地にGPS基準位置がないため自動出勤を登録しませんでした',
           'already_recorded' => '本日の出勤はすでに登録されています',
           _ => 'GPS自動出勤の曜日・取得時間を保存しました',
         };
