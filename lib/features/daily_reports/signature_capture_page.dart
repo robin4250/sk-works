@@ -44,11 +44,13 @@ class SignatureCapturePage extends StatefulWidget {
   const SignatureCapturePage({
     super.key,
     this.title = '責任者サイン',
-    this.nameLabel = '現場責任者名',
+    this.signerLabel = '現場責任者名',
+    this.submitLabel = 'このサインで確定',
   });
 
   final String title;
-  final String nameLabel;
+  final String signerLabel;
+  final String submitLabel;
 
   @override
   State<SignatureCapturePage> createState() => _SignatureCapturePageState();
@@ -94,7 +96,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   void _submit() {
     if (_signer.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${widget.nameLabel}を入力してください')),
+        SnackBar(content: Text('${widget.signerLabel}を入力してください')),
       );
       return;
     }
@@ -140,7 +142,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
               child: TextField(
                 controller: _signer,
                 decoration: InputDecoration(
-                  labelText: widget.nameLabel,
+                  labelText: widget.signerLabel,
                   prefixIcon: const Icon(Icons.person_outline),
                 ),
               ),
