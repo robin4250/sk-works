@@ -100,14 +100,14 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             tooltip: 'A4横プレビュー確認後に送信',
             onPressed: _loading || _records.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.send),
+                : () => _openExportWithScope(PersonnelExportOperation.send),
             icon: const Icon(Icons.send_outlined),
           ),
           IconButton(
             tooltip: 'A4横プレビュー・印刷',
             onPressed: _loading || _records.isEmpty
                 ? null
-                : () => _openExport(PersonnelExportOperation.print),
+                : () => _openExportWithScope(PersonnelExportOperation.print),
             icon: const Icon(Icons.print_outlined),
           ),
           if (_canManagePeople)
@@ -385,6 +385,78 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         ),
       )
       .toList(growable: false);
+
+  Future<void> _openExportWithScope(
+    PersonnelExportOperation operation,
+  ) async {
+    final employees = _records
+        .where((record) => record.kind != PersonKind.partnerCompany)
+        .toList(growable: false);
+    if (employees.isEmpty || !mounted) return;
+
+    final all = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.groups_2_outlined),
+              title: const Text('社員一覧'),
+              subtitle: const Text('全社員をA4横向きでプレビュー'),
+              onTap: () => Navigator.pop(sheetContext, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('個別'),
+              subtitle: const Text('社員を1名選んでA4横向きでプレビュー'),
+              onTap: () => Navigator.pop(sheetContext, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (all == null || !mounted) return;
+
+    if (all) {
+      await _openExport(operation);
+      return;
+    }
+
+    final selected = await showModalBottomSheet<PersonRecord>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+            itemCount: employees.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 6),
+            itemBuilder: (_, index) {
+              final record = employees[index];
+              return ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.person_outline),
+                ),
+                title: Text(record.name),
+                subtitle: Text(
+                  [
+                    record.kind.label,
+                    if (record.role.trim().isNotEmpty) record.role,
+                  ].join(' / '),
+                ),
+                onTap: () => Navigator.pop(sheetContext, record),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    await _openExport(operation, initialRecord: selected);
+  }
 
   Future<void> _openExport(
     PersonnelExportOperation operation, {
