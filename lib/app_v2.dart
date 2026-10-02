@@ -1114,12 +1114,14 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
+                      Text(
+                        SkoLanguageController.isEnglish
+                            ? 'Manage Home and Menu in one list. Toggle visibility, drag to reorder, and choose 1–4 columns.'
+                            : 'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
                       ),
                       const SizedBox(height: 12),
                       SegmentedButton<int>(
-                        segments: const [
+                        segments: [
                           ButtonSegment(value: 1, label: Text(SkoLanguageController.tr('1列'))),
                           ButtonSegment(value: 2, label: Text(SkoLanguageController.tr('2列'))),
                           ButtonSegment(value: 3, label: Text(SkoLanguageController.tr('3列'))),
