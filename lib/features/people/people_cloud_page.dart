@@ -333,7 +333,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                   onPressed: () => _callPhone(record.phone),
                   icon: const Icon(Icons.phone_outlined),
                   label: Text(
-                    '電話: ' + domesticPhoneDisplay(record.phone),
+                    '電話: ${domesticPhoneDisplay(record.phone)}',
                   ),
                 ),
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
