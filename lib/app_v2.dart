@@ -992,10 +992,9 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: Colors.transparent,
           forceMaterialTransparency: true,
           flexibleSpace: ColoredBox(
-            color: Theme.of(context)
-                .colorScheme
-                .surface
-                .withValues(alpha: _homeAppearance.headerOpacity),
+            color: Colors.white.withValues(
+              alpha: _homeAppearance.headerOpacity,
+            ),
           ),
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
