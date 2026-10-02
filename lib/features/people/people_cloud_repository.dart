@@ -130,6 +130,10 @@ class PeopleCloudRepository {
         'emergencyRelation': personnel['emergency_relation'] ?? '',
         'emergencyPhone': personnel['emergency_phone'] ?? '',
         'emergencyAddress': personnel['emergency_address'] ?? '',
+        'familyComposition': personnel['family_composition'] ?? '',
+        'familyMembers': personnel['family_members'] is List
+            ? personnel['family_members']
+            : const <dynamic>[],
       };
     }).toList(growable: false);
   }
@@ -219,6 +223,11 @@ class PeopleCloudRepository {
                 record['emergencyPhone']?.toString() ?? '',
             'emergency_address':
                 record['emergencyAddress']?.toString() ?? '',
+            'family_composition':
+                record['familyComposition']?.toString() ?? '',
+            'family_members': record['familyMembers'] is List
+                ? record['familyMembers']
+                : const <dynamic>[],
           },
         },
       );
@@ -249,6 +258,11 @@ class PeopleCloudRepository {
           'emergency_phone': record['emergencyPhone']?.toString() ?? '',
           'emergency_address':
               record['emergencyAddress']?.toString() ?? '',
+          'family_composition':
+              record['familyComposition']?.toString() ?? '',
+          'family_members': record['familyMembers'] is List
+              ? record['familyMembers']
+              : const <dynamic>[],
         },
       },
     );
