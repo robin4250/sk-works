@@ -23,6 +23,8 @@ void main() {
     expect(repository, contains("rpc('site_directory_metadata')"));
     expect(repository, contains("site_information_request"));
     expect(repository, contains("site_photo_request"));
+    expect(repository, contains('loadSiteShareTargets'));
+    expect(repository, contains('sendSiteShare'));
     expect(repository, contains("from('site_entrance_photos')"));
     expect(repository, contains("from('site-entrance-photos')"));
     expect(model, contains('nearestStation'));
@@ -31,7 +33,7 @@ void main() {
     expect(model, contains('creatorName'));
     expect(model, contains('createdAt'));
     expect(model, contains('updatedAt'));
-    expect(detail, contains("'取引先に共有'"));
+    expect(detail, contains("'下請け会社・取引会社に共有'"));
     expect(detail, contains("'編集／登録'"));
     expect(detail, contains("'現場住所'"));
     expect(detail, contains("'最寄駅'"));
