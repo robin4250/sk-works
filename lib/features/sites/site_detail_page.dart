@@ -112,7 +112,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               shrinkWrap: true,
               children: [
                 const Text('SKOアプリ内で接続済みの会社を選択してください。'),
-                const SizedBox(height: 8),
+                const SizedBox(height: 5),
                 for (final target in targets)
                   CheckboxListTile(
                     value: selected.contains(
@@ -440,7 +440,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 18),
         children: [
           if (site.creatorName.isNotEmpty)
             ListTile(
@@ -453,11 +453,13 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             ),
           Text(
             site.formalName.isNotEmpty ? site.formalName : site.name,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  height: 1.1,
                 ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           _linkRow(
             icon: Icons.business_outlined,
             label: '取引先',
@@ -501,14 +503,14 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           if (site.updatedAt.isNotEmpty &&
               site.updatedAt != site.createdAt)
             Text('最終更新日: ${site.updatedAt}'),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
           Text(
             '現場写真',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           if (_loadingPhotos)
             const Center(child: CircularProgressIndicator())
           else
@@ -520,13 +522,13 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                 ],
               ],
             ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
             label: const Text('下請け会社・取引会社に共有'),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           OutlinedButton.icon(
             onPressed: _edit,
             icon: const Icon(Icons.edit_outlined),
@@ -534,7 +536,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           if (widget.canManage &&
               widget.site.status != SiteStatus.completed) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
             OutlinedButton.icon(
               onPressed: _requestComplete,
               icon: const Icon(Icons.archive_outlined),
@@ -555,7 +557,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       }
     }
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 1.25,
       child: InkWell(
         onTap: photo == null
             ? (widget.canManage ? () => _pickPhoto(slot) : null)
@@ -594,6 +596,8 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   }) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
     return ListTile(
+      dense: true,
+      visualDensity: const VisualDensity(vertical: -2),
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon),
       title: Text(label),
@@ -667,7 +671,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
           _field(_phone, '電話番号',
               keyboardType: TextInputType.phone),
           _field(_notes, '備考', maxLines: 3),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop({
               'name': _name.text.trim(),
