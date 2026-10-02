@@ -34,6 +34,7 @@ void main() {
     expect(friends, contains("'届いた申請'"));
     expect(friends, contains("'友達一覧'"));
     expect(appearance, contains("'チャット背景・透明度'"));
+    expect(appearance, contains("'ヘッダー・タブの透明度'"));
     expect(appearance, contains('min: 1'));
     expect(appearance, contains('max: 100'));
     expect(appearance, contains('this.headerOpacity = 60'));
@@ -42,6 +43,9 @@ void main() {
     expect(page, contains('alpha: _appearance.headerAlpha'));
     expect(page, contains('selected == null || _chatChromeVisible'));
     expect(page, contains('alpha: _appearance.footerAlpha'));
+    expect(page, contains('WidgetState.selected'));
+    expect(page, contains('delta > 4 && _chatChromeVisible'));
+    expect(page, contains('delta < -4 && !_chatChromeVisible'));
     expect(appearance, contains("'このチャットだけの個人設定です。他のユーザーには反映されません。'"));
     expect(migration, contains('private.personal_sko_ids'));
     expect(migration, contains('private.sko_friend_requests'));
