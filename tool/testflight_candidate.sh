@@ -63,7 +63,13 @@ fi
 
 echo
 echo "[5/5] 候補確認"
-ipa="$(find build/ios/ipa -maxdepth 1 -type f -name '*.ipa' -print -quit 2>/dev/null || true)"
+ipa=""
+for candidate in build/ios/ipa/*.ipa; do
+  if [[ -f "$candidate" ]]; then
+    ipa="$candidate"
+    break
+  fi
+done
 if [[ -z "$ipa" ]]; then
   echo "✗ IPAが生成されていません。"
   exit 1
