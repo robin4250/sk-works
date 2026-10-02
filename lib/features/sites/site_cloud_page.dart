@@ -101,6 +101,30 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
           ),
         ],
       ),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'site_map',
+            onPressed: _loading
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SiteMapPage(),
+                      ),
+                    ),
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('現場マップ'),
+          ),
+          const SizedBox(width: 10),
+          FloatingActionButton.extended(
+            heroTag: 'site_register',
+            onPressed: _loading || !_canCreateSites ? null : _add,
+            icon: const Icon(Icons.add_business),
+            label: const Text('現場登録'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -178,40 +202,6 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                                 );
                               },
                             ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _loading || !_canCreateSites ? null : _add,
-                      icon: const Icon(Icons.add_business),
-                      label: const Text('現場登録'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: _loading
-                          ? null
-                          : () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const SiteMapPage(),
-                                ),
-                              ),
-                      icon: const Icon(Icons.map_outlined),
-                      label: const Text('現場マップ'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
