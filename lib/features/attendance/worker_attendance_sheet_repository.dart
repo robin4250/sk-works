@@ -13,6 +13,7 @@ class WorkerAttendanceDay {
     this.nightHours = 0,
     this.allowanceYen = 0,
     this.allowanceNames = const <String>[],
+    this.allowanceUnits = const <String, String>{},
   });
 
   final DateTime date;
@@ -24,6 +25,7 @@ class WorkerAttendanceDay {
   final double nightHours;
   final int allowanceYen;
   final List<String> allowanceNames;
+  final Map<String, String> allowanceUnits;
 
   bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
 
@@ -36,11 +38,13 @@ class WorkerAttendanceMonth {
     required this.year,
     required this.month,
     required this.days,
+    this.allowanceUnits = const <String, String>{},
   });
 
   final int year;
   final int month;
   final Map<DateTime, WorkerAttendanceDay> days;
+  final Map<String, String> allowanceUnits;
 
   int get workedDays => days.values.where((day) => day.worked).length;
 
@@ -191,12 +195,23 @@ class WorkerAttendanceSheetRepository {
       }
     }
 
+    final rawUnits = await _client.rpc('my_attendance_allowance_units');
+    final allowanceUnits = rawUnits is Map
+        ? {
+            for (final entry in rawUnits.entries)
+              entry.key.toString(): entry.value?.toString().trim().isNotEmpty == true
+                  ? entry.value.toString().trim()
+                  : '回',
+          }
+        : <String, String>{};
+
     return WorkerAttendanceMonth(
       year: month.year,
       month: month.month,
+      allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
       days: {
         for (final entry in drafts.entries)
-          entry.key: entry.value.toValue(),
+          entry.key: entry.value.toValue(allowanceUnits),
       },
     );
   }
@@ -233,7 +248,8 @@ class _DayDraft {
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
 
-  WorkerAttendanceDay toValue() => WorkerAttendanceDay(
+  WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
+      WorkerAttendanceDay(
         date: date,
         siteName: siteName,
         clockIn: clockIn,
@@ -243,5 +259,6 @@ class _DayDraft {
         nightHours: nightHours,
         allowanceYen: allowanceYen,
         allowanceNames: List<String>.unmodifiable(allowanceNames),
+        allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
       );
 }
