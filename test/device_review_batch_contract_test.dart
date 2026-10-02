@@ -62,6 +62,9 @@ void main() {
 
     expect(map, contains("MethodChannel('sko.multi_pin_map')"));
     expect(map, contains('allowEmployeeHomes'));
+    expect(map, contains("Only other employees' homes are restricted by allowEmployeeHomes"));
+    expect(map, contains("if (_layers.contains(_MapLayer.home) && data.home != null)"));
+    expect(map, contains("if (data.home != null) ...["));
     expect(map, contains('選択地点を複数ピンで地図表示'));
     expect(sitesPage, contains('const SiteMapPage()'));
     expect(prepareIos, contains('import MapKit'));
