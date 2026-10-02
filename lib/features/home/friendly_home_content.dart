@@ -299,7 +299,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('attendance_verify'),
+                onTap: () => onOpen('workplace_select'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -323,7 +323,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('vehicle_select'),
+                onTap: () => onOpen('attendance_method_vehicle'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -345,7 +345,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('route_select'),
+                onTap: () => onOpen('workplace_select'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
