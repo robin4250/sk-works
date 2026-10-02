@@ -40,7 +40,14 @@ class SignatureResult {
 }
 
 class SignatureCapturePage extends StatefulWidget {
-  const SignatureCapturePage({super.key});
+  const SignatureCapturePage({
+    super.key,
+    this.title = '責任者サイン',
+    this.nameLabel = '現場責任者名',
+  });
+
+  final String title;
+  final String nameLabel;
 
   @override
   State<SignatureCapturePage> createState() => _SignatureCapturePageState();
@@ -86,7 +93,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   void _submit() {
     if (_signer.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('責任者名を入力してください')),
+        SnackBar(content: Text('${widget.nameLabel}を入力してください')),
       );
       return;
     }
@@ -111,9 +118,9 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '責任者サイン',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          widget.title,
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
           TextButton(
@@ -131,9 +138,9 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
               child: TextField(
                 controller: _signer,
-                decoration: const InputDecoration(
-                  labelText: '現場責任者名',
-                  prefixIcon: Icon(Icons.person_outline),
+                decoration: InputDecoration(
+                  labelText: widget.nameLabel,
+                  prefixIcon: const Icon(Icons.person_outline),
                 ),
               ),
             ),
