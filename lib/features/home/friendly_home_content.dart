@@ -323,7 +323,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('vehicle_route_select'),
+                onTap: () => onOpen('vehicle_select'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -345,7 +345,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpen('vehicle_route_select'),
+                onTap: () => onOpen('route_select'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -382,9 +382,17 @@ class _PersonalAttendanceCard extends StatelessWidget {
             if (vehicleRoutesEnabled) ...[
               const SizedBox(height: 9),
               OutlinedButton.icon(
-                onPressed: () => onOpen('vehicle_route_select'),
+                onPressed: () => onOpen('vehicle_select'),
+                icon: const Icon(Icons.directions_car_outlined),
+                label: const Text('車両を選択'),
+              ),
+            ],
+            if (vehicleRoutesEnabled) ...[
+              const SizedBox(height: 9),
+              OutlinedButton.icon(
+                onPressed: () => onOpen('route_select'),
                 icon: const Icon(Icons.route_outlined),
-                label: const Text('車両とルートの選択'),
+                label: const Text('ルートを選択'),
               ),
             ],
             const SizedBox(height: 9),
