@@ -952,8 +952,9 @@ class _HomePageState extends State<HomePage> {
       extendBodyBehindAppBar: false,
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(64),
+        preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
         child: AppBar(
+          toolbarHeight: _chromeVisible ? 64 : 0,
           backgroundColor: Colors.transparent,
           forceMaterialTransparency: true,
           flexibleSpace: Stack(
