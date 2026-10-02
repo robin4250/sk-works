@@ -32,6 +32,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.contentTopInset = 10,
     required this.onOpen,
     required this.onRefresh,
+    this.onReorderAction,
   });
 
   final HomeIdentity identity;
@@ -48,6 +49,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final double contentTopInset;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function() onRefresh;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -442,6 +445,7 @@ class _OrderedHomeContent extends StatelessWidget {
     required this.attendanceStatus,
     required this.appearance,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final HomeIdentity identity;
@@ -455,6 +459,8 @@ class _OrderedHomeContent extends StatelessWidget {
   final HomeAttendanceStatus attendanceStatus;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -503,6 +509,7 @@ class _OrderedHomeContent extends StatelessWidget {
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
           onOpen: onOpen,
+          onReorderAction: onReorderAction,
         ),
       );
       children.add(const SizedBox(height: 12));
@@ -605,6 +612,7 @@ class _ActionGrid extends StatelessWidget {
     required this.actionOrder,
     required this.opacity,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final List<_HomeAction> items;
@@ -612,6 +620,8 @@ class _ActionGrid extends StatelessWidget {
   final List<String> actionOrder;
   final double opacity;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -663,12 +673,15 @@ class _HomeActionTile extends StatelessWidget {
     required this.compact,
     required this.fourColumns,
     required this.onOpen,
+    required this.onReorderAction,
   });
 
   final _HomeAction item;
   final bool compact;
   final bool fourColumns;
   final Future<void> Function(String key) onOpen;
+  final Future<void> Function(String draggedKey, String targetKey)?
+      onReorderAction;
 
   @override
   Widget build(BuildContext context) {
@@ -701,12 +714,13 @@ class _HomeActionTile extends StatelessWidget {
       ),
     );
 
-    return Material(
-      color: background,
+    Widget tile({bool dragging = false}) => Material(
+      color: background.withValues(alpha: dragging ? 0.88 : 1),
+      elevation: dragging ? 8 : 0,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => onOpen(item.key),
+        onTap: dragging ? null : () => onOpen(item.key),
         child: Container(
           padding: EdgeInsets.all(compact ? 8 : 14),
           decoration: BoxDecoration(
@@ -756,6 +770,39 @@ class _HomeActionTile extends StatelessWidget {
                 ),
         ),
       ),
+    );
+
+    final reorder = onReorderAction;
+    if (reorder == null) return tile();
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != item.key,
+      onAcceptWithDetails: (details) {
+        reorder(details.data, item.key);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final highlighted = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: highlighted ? 1.04 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: LongPressDraggable<String>(
+            data: item.key,
+            delay: const Duration(milliseconds: 320),
+            feedback: SizedBox(
+              width: fourColumns ? 92 : (compact ? 120 : 220),
+              child: Material(
+                color: Colors.transparent,
+                child: tile(dragging: true),
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
+              child: tile(),
+            ),
+            child: tile(),
+          ),
+        );
+      },
     );
   }
 }
