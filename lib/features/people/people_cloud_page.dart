@@ -244,7 +244,19 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                           ),
                                       ],
                                     ),
-                                    trailing: const Icon(Icons.chevron_right),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (record.phone.isNotEmpty)
+                                          IconButton(
+                                            tooltip: '電話をかける',
+                                            onPressed: () =>
+                                                _callPhone(record.phone),
+                                            icon: const Icon(Icons.phone_outlined),
+                                          ),
+                                        const Icon(Icons.chevron_right),
+                                      ],
+                                    ),
                                     onTap: () {
                                       if (record.kind ==
                                           PersonKind.partnerCompany) {
