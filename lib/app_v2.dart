@@ -678,6 +678,23 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      if (_moduleEnabled('attendance'))
+        const _MenuAction(
+          key: 'attendance_verify',
+          label: '本日の勤務報告',
+          icon: Icons.fact_check_outlined,
+          homeEligible: false,
+          accessLabel: '管理者・サブ管理者・一般・閲覧権限',
+        ),
+      if (_moduleEnabled('attendance') &&
+          _identity.can('can_manage_attendance'))
+        const _MenuAction(
+          key: 'attendance_today',
+          label: '本日の出勤',
+          icon: Icons.groups_outlined,
+          homeEligible: false,
+          accessLabel: '管理者・サブ管理者（勤怠権限）',
+        ),
       const _MenuAction(
         key: 'daily_report',
         label: '日報',
@@ -941,7 +958,10 @@ class _HomePageState extends State<HomePage> {
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
-          visibleHomeKeys: _homeLayoutItems.map((item) => item.key).toSet(),
+          visibleHomeKeys: {
+            for (final item in _menuItems)
+              if (!_hiddenHomeActionKeys.contains(item.key)) item.key,
+          },
           shortcuts: [
             for (final item in _homeLayoutItems)
               HomeShortcut(item.key, item.label, item.icon),
