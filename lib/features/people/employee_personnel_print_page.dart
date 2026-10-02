@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import '../../international/language_controller.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -68,16 +70,16 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
             cellStyle: const pw.TextStyle(fontSize: 7.5),
             cellAlignment: pw.Alignment.centerLeft,
             headers: const [
-              '名前',
-              '区分',
-              '血液型',
-              '職種',
-              '電話番号',
-              '住所',
-              '緊急連絡先氏名',
-              '続柄',
-              '緊急電話番号',
-              '緊急住所',
+              SkoLanguageController.tr('名前'),
+              SkoLanguageController.tr('区分'),
+              SkoLanguageController.tr('血液型'),
+              SkoLanguageController.tr('職種'),
+              SkoLanguageController.tr('電話番号'),
+              SkoLanguageController.tr('住所'),
+              SkoLanguageController.tr('緊急連絡先氏名'),
+              SkoLanguageController.tr('続柄'),
+              SkoLanguageController.tr('緊急電話番号'),
+              SkoLanguageController.tr('緊急住所'),
             ],
             data: [
               for (final record in records)
@@ -108,8 +110,8 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(
           records.length == 1
-              ? '社員データ A4横プレビュー'
-              : '社員一覧 A4横プレビュー',
+              ? (SkoLanguageController.isEnglish ? 'Employee Data A4 Landscape Preview' : '社員データ A4横プレビュー')
+              : (SkoLanguageController.isEnglish ? 'Employee List A4 Landscape Preview' : '社員一覧 A4横プレビュー'),
         ),
       ),
       body: Column(
@@ -149,8 +151,8 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
                 ),
                 label: Text(
                   _isSend
-                      ? 'このA4プレビュー内容で送信へ進む'
-                      : 'このA4プレビュー内容を印刷',
+                      ? (SkoLanguageController.isEnglish ? 'Continue to Send with This Preview' : 'このA4プレビュー内容で送信へ進む')
+                      : (SkoLanguageController.isEnglish ? 'Print This A4 Preview' : 'このA4プレビュー内容を印刷'),
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
@@ -180,16 +182,16 @@ class _EmployeePersonnelPreviewSheet extends StatelessWidget {
     final dateText =
         '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}';
     const headers = <String>[
-      '名前',
-      '区分',
-      '血液型',
-      '職種',
-      '電話番号',
-      '住所',
-      '緊急連絡先氏名',
-      '続柄',
-      '緊急電話番号',
-      '緊急住所',
+      SkoLanguageController.tr('名前'),
+      SkoLanguageController.tr('区分'),
+      SkoLanguageController.tr('血液型'),
+      SkoLanguageController.tr('職種'),
+      SkoLanguageController.tr('電話番号'),
+      SkoLanguageController.tr('住所'),
+      SkoLanguageController.tr('緊急連絡先氏名'),
+      SkoLanguageController.tr('続柄'),
+      SkoLanguageController.tr('緊急電話番号'),
+      SkoLanguageController.tr('緊急住所'),
     ];
 
     return Padding(
@@ -273,7 +275,7 @@ class _EmployeePersonnelPreviewSheet extends StatelessWidget {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'ピンチ操作で拡大・縮小できます',
+                      SkoLanguageController.isEnglish ? 'Pinch to zoom in or out' : 'ピンチ操作で拡大・縮小できます',
                       style: TextStyle(fontSize: 12, color: Colors.black54),
                     ),
                   ),
