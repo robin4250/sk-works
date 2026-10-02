@@ -69,7 +69,7 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
             ),
             cellStyle: const pw.TextStyle(fontSize: 7.5),
             cellAlignment: pw.Alignment.centerLeft,
-            headers: const [
+            headers: [
               SkoLanguageController.tr('名前'),
               SkoLanguageController.tr('区分'),
               SkoLanguageController.tr('血液型'),
@@ -181,7 +181,7 @@ class _EmployeePersonnelPreviewSheet extends StatelessWidget {
     final now = DateTime.now();
     final dateText =
         '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}';
-    const headers = <String>[
+    final headers = <String>[
       SkoLanguageController.tr('名前'),
       SkoLanguageController.tr('区分'),
       SkoLanguageController.tr('血液型'),
@@ -272,11 +272,11 @@ class _EmployeePersonnelPreviewSheet extends StatelessWidget {
                     ],
                   ),
                   const Spacer(),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerRight,
                     child: Text(
                       SkoLanguageController.isEnglish ? 'Pinch to zoom in or out' : 'ピンチ操作で拡大・縮小できます',
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
                     ),
                   ),
                 ],
