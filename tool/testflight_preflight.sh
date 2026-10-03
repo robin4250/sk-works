@@ -49,6 +49,23 @@ if command -v flutter >/dev/null 2>&1; then
 fi
 
 echo
+echo "--- Release metadata ---"
+version_line="$(grep '^version:' pubspec.yaml | awk '{print $2}' || true)"
+if [[ "$version_line" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)$ ]]; then
+  build_name="${BASH_REMATCH[1]}"
+  build_number="${BASH_REMATCH[2]}"
+  ok "Version: $build_name"
+  ok "Build: $build_number"
+  if [[ "$build_number" -ge 3 ]]; then
+    ok "TestFlight build番号: $build_number"
+  else
+    fail "TestFlight build番号は3以上にしてください: $build_number"
+  fi
+else
+  fail "pubspec.yaml の version/build形式を確認してください: ${version_line:-missing}"
+fi
+
+echo
 echo "--- Release project contract ---"
 if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
   bundle="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/' | grep -v '\$(' | grep -v '\.RunnerTests$' | head -n 1 || true)"

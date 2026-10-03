@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('TestFlight candidate builder fails closed around production release contract', () {
     final script = File('tool/testflight_candidate.sh').readAsStringSync();
+    final upload = File('tool/testflight_upload.sh').readAsStringSync();
+    final finish = File('tool/testflight_finish.sh').readAsStringSync();
+    final preflight = File('tool/testflight_preflight.sh').readAsStringSync();
 
     expect(script, contains(r'[[ "$branch" != "main" ]]'));
     expect(script, contains('git rev-parse origin/main'));
@@ -19,5 +22,25 @@ void main() {
     expect(script, isNot(contains('com.robin4250.sko')));
     expect(script, contains('build/ios/archive/Runner.xcarchive'));
     expect(script, contains('build/ios/ipa'));
+    expect(upload, contains('APP_STORE_CONNECT_API_KEY_ID'));
+    expect(upload, contains('APP_STORE_CONNECT_API_ISSUER_ID'));
+    expect(upload, contains('APP_STORE_CONNECT_API_KEY_PATH'));
+    expect(upload, contains('.appstoreconnect/private_keys'));
+    expect(upload, contains('.private_keys'));
+    expect(upload, contains('xcrun altool'));
+    expect(upload, contains('--upload-app'));
+    expect(upload, contains('git rev-parse origin/main'));
+    expect(finish, contains('bash tool/testflight_candidate.sh'));
+    expect(finish, contains('bash tool/testflight_upload.sh'));
+    expect(finish, contains('Runner.xcarchive'));
+    expect(finish, contains(r'open "$archive"'));
+    expect(preflight, contains('--- Release metadata ---'));
+    expect(preflight, contains("grep '^version:' pubspec.yaml"));
+    expect(preflight, contains(r'Build: $build_number'));
+    expect(script, contains('--build-name='));
+    expect(script, contains('--build-number='));
+    expect(script, contains('CFBundleShortVersionString'));
+    expect(script, contains('CFBundleVersion'));
+    expect(script, contains('SKO_TESTFLIGHT_BUILD_NUMBER'));
   });
 }
