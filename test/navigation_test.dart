@@ -76,7 +76,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReorderableListView), findsOneWidget);
-    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格']) {
+    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格登録', '従業員資格']) {
       expect(find.text(label), findsOneWidget);
     }
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/company_data_transfer.dart';
+import '../attendance/attendance_worker_list_page.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../common/data_date_labels.dart';
@@ -97,6 +98,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         title: Text(SkoLanguageController.tr('社員')),
         actions: [
           const SkoNotificationBell(),
+          IconButton(
+            tooltip: '出勤表一覧・まとめ印刷',
+            onPressed: _loading
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AttendanceWorkerListPage(),
+                      ),
+                    ),
+            icon: const Icon(Icons.calendar_month_outlined),
+          ),
           IconButton(
             tooltip: 'A4横プレビュー確認後に送信',
             onPressed: _loading || _records.isEmpty

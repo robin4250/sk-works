@@ -15,6 +15,7 @@ class AttendancePdfService {
     DateTime month,
     WorkerAttendanceMonth data, {
     PdfPageFormat format = PdfPageFormat.a4,
+    String? workerName,
   }) async {
     final regular = await PdfGoogleFonts.notoSansJPRegular();
     final bold = await PdfGoogleFonts.notoSansJPBold();
@@ -30,7 +31,11 @@ class AttendancePdfService {
         margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
         build: (_) => [
           pw.Text(
-            '出勤表  ${month.year}年${month.month}月',
+            [
+              '出勤表',
+              if (workerName?.trim().isNotEmpty == true) workerName!.trim(),
+              '${month.year}年${month.month}月',
+            ].join('  '),
             style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 8),
@@ -71,12 +76,103 @@ class AttendancePdfService {
     return document.save();
   }
 
-  static Future<bool> printMonth(DateTime month, WorkerAttendanceMonth data) {
+  static Future<bool> printMonth(
+    DateTime month,
+    WorkerAttendanceMonth data, {
+    String? workerName,
+  }) {
     return Printing.layoutPdf(
-      name: '${month.year}年${month.month}月_出勤表.pdf',
+      name: '${month.year}年${month.month}月_${workerName?.trim().isNotEmpty == true ? '${workerName!.trim()}_' : ''}出勤表.pdf',
       format: PdfPageFormat.a4,
-      onLayout: (format) => buildPdf(month, data, format: format),
+      onLayout: (format) => buildPdf(
+        month,
+        data,
+        format: format,
+        workerName: workerName,
+      ),
     );
+  }
+
+  static Future<bool> printWorkers(
+    DateTime month,
+    List<({String workerName, WorkerAttendanceMonth data})> workers,
+  ) {
+    return Printing.layoutPdf(
+      name: '${month.year}年${month.month}月_出勤表一覧.pdf',
+      format: PdfPageFormat.a4,
+      onLayout: (format) => buildWorkersPdf(month, workers, format: format),
+    );
+  }
+
+  static Future<Uint8List> buildWorkersPdf(
+    DateTime month,
+    List<({String workerName, WorkerAttendanceMonth data})> workers, {
+    PdfPageFormat format = PdfPageFormat.a4,
+  }) async {
+    final regular = await PdfGoogleFonts.notoSansJPRegular();
+    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final document = pw.Document(
+      theme: pw.ThemeData.withFont(base: regular, bold: bold),
+    );
+    for (final worker in workers) {
+      final rows = worker.data.days.values.toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: format,
+          margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+          build: (_) => [
+            pw.Text(
+              '出勤表  ${worker.workerName}  ${month.year}年${month.month}月',
+              style: pw.TextStyle(
+                fontSize: 22,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(_summaryText(worker.data)),
+            pw.SizedBox(height: 12),
+            pw.TableHelper.fromTextArray(
+              headers: [
+                for (final label
+                    in ['日付', '現場', '出勤', '退勤', '残業', '早出', '夜間', '手当'])
+                  SkoLanguageController.tr(label),
+              ],
+              data: [
+                for (final day in rows)
+                  [
+                    '${day.date.month}/${day.date.day}',
+                    day.worked
+                        ? (day.siteName ?? SkoLanguageController.tr('現場'))
+                        : SkoLanguageController.tr('休み'),
+                    _time(day.clockIn),
+                    _time(day.clockOut),
+                    _hoursCell(day.overtimeHours),
+                    _hoursCell(day.earlyHours),
+                    _hoursCell(day.nightHours),
+                    day.hasAllowance
+                        ? (day.allowanceNames.isEmpty
+                            ? '手当1回'
+                            : day.allowanceNames
+                                .map(
+                                  (name) =>
+                                      '${name}1${day.allowanceUnits[name] ?? '回'}',
+                                )
+                                .join(' '))
+                        : '',
+                  ],
+              ],
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              headerDecoration:
+                  const pw.BoxDecoration(color: PdfColors.grey200),
+              cellStyle: const pw.TextStyle(fontSize: 8.5),
+              cellPadding: const pw.EdgeInsets.all(4),
+            ),
+          ],
+        ),
+      );
+    }
+    return document.save();
   }
 
   static String buildTextSnapshot(DateTime month, WorkerAttendanceMonth data) {

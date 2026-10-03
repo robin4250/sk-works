@@ -10,10 +10,13 @@ void main() {
             .readAsStringSync();
 
     expect(app, contains('SupabaseBackend.isInitialized'));
+    expect(app, contains('const OwnQualificationRegistrationPage()'));
     expect(app, contains('const QualificationCloudPage()'));
     expect(cloud, contains('Future<void> _addQualification()'));
     expect(cloud, contains('insertWorkerQualification('));
-    expect(cloud, contains("const Text('資格登録')"));
+    expect(cloud, contains("title: const Text('従業員資格')"));
+    expect(cloud, contains("hintText: '従業員名で検索'"));
+    expect(cloud, contains("hintText: '資格種類・証明書番号で検索'"));
   });
 
   test('qualification certificate flow supports camera and gallery evidence', () {

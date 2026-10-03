@@ -25,7 +25,8 @@ void main() {
       'approvals',
       'employee_onboarding_approvals',
       'documents',
-      'qualifications',
+      'employee_qualifications',
+      'signatures',
     ]) {
       expect(app, contains("'$key'"));
     }
@@ -34,7 +35,7 @@ void main() {
       'invoices',
       'payroll_settings',
       'payroll_adjustments',
-      'attendance',
+      'attendance_list',
     ]) {
       expect(app, contains("'$key'"));
     }
@@ -53,6 +54,8 @@ void main() {
     expect(app, contains("label: SkoLanguageController.tr('車両ルート')"));
     expect(app, contains("label: SkoLanguageController.tr('本日のLINE')"));
     expect(app, contains("label: SkoLanguageController.tr('背景')"));
+    expect(app, contains("label: SkoLanguageController.tr('資格登録')"));
+    expect(app, contains("label: SkoLanguageController.tr('従業員資格')"));
     expect(app, contains("key: 'settings'"));
     expect(app, contains('homeEligible: false'));
   });

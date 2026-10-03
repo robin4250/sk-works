@@ -8,7 +8,16 @@ import 'japan_holiday.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
-  const WorkerAttendanceSheetPage({super.key});
+  const WorkerAttendanceSheetPage({
+    super.key,
+    this.workerId,
+    this.workerName,
+    this.initialMonth,
+  });
+
+  final String? workerId;
+  final String? workerName;
+  final DateTime? initialMonth;
 
   @override
   State<WorkerAttendanceSheetPage> createState() =>
@@ -18,7 +27,7 @@ class WorkerAttendanceSheetPage extends StatefulWidget {
 class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   final _repository = WorkerAttendanceSheetRepository.maybeCreate();
 
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime _month;
   WorkerAttendanceMonth? _data;
   bool _loading = true;
   String? _error;
@@ -27,6 +36,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialMonth ?? DateTime.now();
+    _month = DateTime(initial.year, initial.month);
     _load();
   }
 
@@ -46,7 +57,10 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     });
 
     try {
-      final data = await repository.loadMonth(_month);
+      final data = await repository.loadMonth(
+        _month,
+        workerId: widget.workerId,
+      );
       if (!mounted) return;
       final weeks = _weeksForMonth(_month);
       setState(() {
@@ -66,7 +80,10 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   Future<void> _openDailyReport(DateTime date) async {
     final repository = _repository;
     if (repository == null) return;
-    final target = await repository.findDailyReportForDate(date);
+    final target = await repository.findDailyReportForDate(
+      date,
+      workerId: widget.workerId,
+    );
     if (target == null || !mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -115,7 +132,9 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          SkoLanguageController.tr('出勤表'),
+          widget.workerName?.trim().isNotEmpty == true
+              ? '${widget.workerName}・${SkoLanguageController.tr('出勤表')}'
+              : SkoLanguageController.tr('出勤表'),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
@@ -168,6 +187,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         builder: (_) => WorkerAttendanceMonthPage(
           month: _month,
           data: data,
+          workerId: widget.workerId,
+          workerName: widget.workerName,
         ),
       ),
     );
@@ -539,10 +560,14 @@ class WorkerAttendanceMonthPage extends StatefulWidget {
     super.key,
     required this.month,
     required this.data,
+    this.workerId,
+    this.workerName,
   });
 
   final DateTime month;
   final WorkerAttendanceMonth data;
+  final String? workerId;
+  final String? workerName;
 
   @override
   State<WorkerAttendanceMonthPage> createState() =>
@@ -556,7 +581,10 @@ class _WorkerAttendanceMonthPageState
   Future<void> _openDailyReport(DateTime date) async {
     final repository = _repository;
     if (repository == null) return;
-    final target = await repository.findDailyReportForDate(date);
+    final target = await repository.findDailyReportForDate(
+      date,
+      workerId: widget.workerId,
+    );
     if (target == null || !mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -591,7 +619,10 @@ class _WorkerAttendanceMonthPageState
     });
 
     try {
-      final data = await repository.loadMonth(next);
+      final data = await repository.loadMonth(
+        next,
+        workerId: widget.workerId,
+      );
       if (!mounted) return;
       setState(() {
         _month = next;
@@ -611,7 +642,13 @@ class _WorkerAttendanceMonthPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(SkoLanguageController.isEnglish ? '${_month.month}/${_month.year}' : '${_month.year}年${_month.month}月'),
+        title: Text(
+          widget.workerName?.trim().isNotEmpty == true
+              ? '${widget.workerName}・${SkoLanguageController.isEnglish ? '${_month.month}/${_month.year}' : '${_month.year}年${_month.month}月'}'
+              : (SkoLanguageController.isEnglish
+                  ? '${_month.month}/${_month.year}'
+                  : '${_month.year}年${_month.month}月'),
+        ),
         actions: [
           const SkoNotificationBell(),
         ],
@@ -656,6 +693,7 @@ class _WorkerAttendanceMonthPageState
                           builder: (_) => WorkerAttendancePrintPreviewPage(
                             month: _month,
                             data: _data,
+                            workerName: widget.workerName,
                           ),
                         ),
                       ),
@@ -944,10 +982,12 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
     super.key,
     required this.month,
     required this.data,
+    this.workerName,
   });
 
   final DateTime month;
   final WorkerAttendanceMonth data;
+  final String? workerName;
 
   @override
   Widget build(BuildContext context) {
@@ -973,8 +1013,8 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                       children: [
                         Text(
                           SkoLanguageController.isEnglish
-                              ? 'Attendance  ${month.month}/${month.year}'
-                              : '出勤表  ${month.year}年${month.month}月',
+                              ? 'Attendance  ${workerName ?? ''}  ${month.month}/${month.year}'
+                              : '出勤表  ${workerName ?? ''}  ${month.year}年${month.month}月',
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
@@ -1042,7 +1082,11 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: () => AttendancePdfService.printMonth(month, data),
+              onPressed: () => AttendancePdfService.printMonth(
+                month,
+                data,
+                workerName: workerName,
+              ),
               icon: const Icon(Icons.print),
               label: Text(SkoLanguageController.tr('印刷')),
             ),

@@ -27,6 +27,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   String? _error;
   String? _selectedWorkerId;
   String _scope = 'all';
+  String _workerQuery = '';
 
   @override
   void initState() {
@@ -141,22 +142,67 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                     : Column(
                         children: [
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _selectedWorkerId,
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                            child: TextField(
                               decoration: const InputDecoration(
-                                labelText: '対象者',
-                                prefixIcon: Icon(Icons.person_outline),
+                                labelText: '従業員検索',
+                                prefixIcon: Icon(Icons.person_search_outlined),
                               ),
-                              items: _workers
-                                  .map(
-                                    (row) => DropdownMenuItem<String>(
-                                      value: row['id']?.toString(),
-                                      child: Text(row['name']?.toString() ?? ''),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) => setState(() => _selectedWorkerId = value),
+                              onChanged: (value) =>
+                                  setState(() => _workerQuery = value),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 148,
+                            child: Builder(
+                              builder: (context) {
+                                final needle =
+                                    _workerQuery.trim().toLowerCase();
+                                final visibleWorkers = _workers.where((row) {
+                                  if (needle.isEmpty) return true;
+                                  return (row['name']?.toString() ?? '')
+                                      .toLowerCase()
+                                      .contains(needle);
+                                }).toList(growable: false);
+                                return ListView.separated(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: visibleWorkers.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 4),
+                                  itemBuilder: (context, index) {
+                                    final worker = visibleWorkers[index];
+                                    final id = worker['id']?.toString();
+                                    final selected = id == _selectedWorkerId;
+                                    return Card(
+                                      color: selected
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primaryContainer
+                                          : null,
+                                      child: ListTile(
+                                        dense: true,
+                                        leading: const CircleAvatar(
+                                          child: Icon(Icons.person_outline),
+                                        ),
+                                        title: Text(
+                                          worker['name']?.toString() ??
+                                              '名前未登録',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        trailing: selected
+                                            ? const Icon(Icons.check_circle)
+                                            : const Icon(Icons.chevron_right),
+                                        onTap: () => setState(
+                                          () => _selectedWorkerId = id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
                             ),
                           ),
                           Padding(

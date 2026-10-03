@@ -10,6 +10,8 @@ import '../help/manual_library_page.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../people/personnel_family_member.dart';
+import '../people/own_document_registration_page.dart';
+import '../qualifications/own_qualification_registration_page.dart';
 import 'profile_repository.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -839,6 +841,48 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                             ],
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Column(
+                          children: [
+                            ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.badge_outlined),
+                              ),
+                              title: const Text(
+                                '資格',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              subtitle: const Text('自分の資格一覧・資格登録'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const OwnQualificationRegistrationPage(),
+                                ),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.description_outlined),
+                              ),
+                              title: const Text(
+                                '書類',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              subtitle: const Text('自分の登録済み書類・書類登録'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const OwnDocumentRegistrationPage(),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),

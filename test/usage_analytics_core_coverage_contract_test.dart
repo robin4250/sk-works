@@ -37,7 +37,7 @@ void main() {
 
     for (final action in <String>[
       "'footer_home' => 'home'",
-      "'attendance' => 'attendance_sheet'",
+      "'attendance' || 'attendance_list' => 'attendance_sheet'",
       "'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance'",
       "'daily_report' || 'approvals' => 'daily_report'",
       "'payroll' || 'payroll_adjustments' => 'payroll'",

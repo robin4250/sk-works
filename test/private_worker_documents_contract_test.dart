@@ -17,7 +17,7 @@ void main() {
         File('lib/features/qualifications/qualification_certificate_page.dart')
             .readAsStringSync();
 
-    expect(workerDocs, contains("permissions['can_manage_people'] == true"));
+    expect(workerDocs, contains("value.role == 'manager'"));
     expect(workerDocs, contains("rpc('ensure_current_user_worker')"));
     expect(workerDocs, contains("statusesQuery.eq('worker_id', ownWorkerId)"));
 
@@ -27,10 +27,7 @@ void main() {
       qualifications,
       contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),
     );
-    expect(
-      qualificationCloud,
-      contains("permissions['can_manage_people'] == true"),
-    );
+    expect(qualificationCloud, contains("value.role == 'manager'"));
     expect(
       qualificationCloud,
       contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),

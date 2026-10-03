@@ -15,7 +15,8 @@ void main() {
     expect(page, contains("SkoLanguageController.tr('次の月')"));
     expect(page, contains('_changeMonth(-1)'));
     expect(page, contains('_changeMonth(1)'));
-    expect(page, contains('repository.loadMonth(next)'));
+    expect(page, contains('repository.loadMonth('));
+    expect(page, contains('workerId: widget.workerId'));
     expect(page, contains('holidayName'));
   });
 }

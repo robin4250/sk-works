@@ -12,6 +12,7 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
@@ -51,9 +52,11 @@ import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/signature_list_page.dart';
 import 'features/people/worker_document_page.dart';
+import 'features/people/own_document_registration_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
+import 'features/qualifications/own_qualification_registration_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
@@ -504,7 +507,7 @@ class _HomePageState extends State<HomePage> {
 
     final surfaceKey = switch (key) {
       'footer_home' => 'home',
-      'attendance' => 'attendance_sheet',
+      'attendance' || 'attendance_list' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
@@ -518,8 +521,11 @@ class _HomePageState extends State<HomePage> {
       'profile' => 'profile',
       'help' => 'help',
       'admin_sites' => 'sites',
-      'qualification_certificates' || 'qualifications' => 'qualifications',
-      'documents' => 'documents',
+      'qualification_certificates' ||
+      'qualification_register' ||
+      'employee_qualifications' ||
+      'qualifications' => 'qualifications',
+      'documents' || 'document_register' => 'documents',
       'vehicle_routes' => 'vehicle_routes',
       'settings' || 'appearance' || 'rollout' => 'settings',
       'invoices' => 'invoice',
@@ -529,14 +535,17 @@ class _HomePageState extends State<HomePage> {
     final featureKey = switch (key) {
       'clock_in' => 'clock_in',
       'clock_out' => 'clock_out',
-      'attendance' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
+      'attendance' || 'attendance_list' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
       'chat' => 'chat',
       'people' || 'employee_register' || 'employee_onboarding_approvals' =>
         'people',
-      'qualification_certificates' || 'qualifications' => 'qualifications',
+      'qualification_certificates' ||
+      'qualification_register' ||
+      'employee_qualifications' ||
+      'qualifications' => 'qualifications',
       'documents' => 'documents',
       'company_deliveries' => 'company_connection',
       'company_documents' => 'documents',
@@ -599,7 +608,11 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     final requiredModule = switch (key) {
-      'attendance' || 'attendance_verify' || 'clock_in' || 'clock_out' =>
+      'attendance' ||
+      'attendance_list' ||
+      'attendance_verify' ||
+      'clock_in' ||
+      'clock_out' =>
         'attendance',
       'footer_sites' || 'site_register' || 'site_map' || 'sites' => 'sites',
       'chat' => 'chat',
@@ -663,6 +676,14 @@ class _HomePageState extends State<HomePage> {
     }
     if (key == 'attendance') {
       setState(() => _selectedIndex = 1);
+      return;
+    }
+    if (key == 'attendance_list') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const AttendanceWorkerListPage(),
+        ),
+      );
       return;
     }
     if (key == 'attendance_today') {
@@ -774,8 +795,17 @@ class _HomePageState extends State<HomePage> {
       case 'qualification_certificates':
         page = const QualificationCertificatePage();
         break;
+      case 'qualification_register':
+        page = const OwnQualificationRegistrationPage();
+        break;
+      case 'employee_qualifications':
+        page = const QualificationCloudPage();
+        break;
       case 'documents':
         page = const WorkerDocumentPage();
+        break;
+      case 'document_register':
+        page = const OwnDocumentRegistrationPage();
         break;
       case 'company_deliveries':
         page = const CompanyDeliveryInboxPage();
@@ -866,7 +896,7 @@ class _HomePageState extends State<HomePage> {
         ),
       if (_moduleEnabled('attendance'))
         _MenuAction(
-          key: 'attendance',
+          key: 'attendance_list',
           label: SkoLanguageController.tr('出勤表一覧'),
           icon: Icons.calendar_month_outlined,
           homeEligible: true,
@@ -938,11 +968,28 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
+      if (_moduleEnabled('qualifications'))
+        _MenuAction(
+          key: 'qualification_register',
+          label: SkoLanguageController.tr('資格登録'),
+          icon: Icons.add_card_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
       if (_identity.isManagement && _moduleEnabled('qualifications'))
         _MenuAction(
-          key: 'qualifications',
-          label: SkoLanguageController.tr('資格'),
+          key: 'employee_qualifications',
+          label: SkoLanguageController.tr('従業員資格'),
           icon: Icons.badge_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
+        ),
+      if (_moduleEnabled('documents'))
+        _MenuAction(
+          key: 'document_register',
+          label: SkoLanguageController.tr('書類登録'),
+          icon: Icons.note_add_outlined,
+          homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_identity.isManagement && _moduleEnabled('documents'))
@@ -950,7 +997,8 @@ class _HomePageState extends State<HomePage> {
           key: 'documents',
           label: SkoLanguageController.tr('必要書類'),
           icon: Icons.fact_check_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (_moduleEnabled('notes'))
         _MenuAction(
@@ -1029,12 +1077,12 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'signatures',
           label: SkoLanguageController.tr('サイン一覧'),
           icon: Icons.draw_outlined,
-          accessLabel: SkoLanguageController.tr('管理者'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       _MenuAction(
         key: 'appearance',
@@ -1106,19 +1154,26 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
-            child: AppBar(
-              toolbarHeight: _chromeVisible ? 64 : 0,
-              backgroundColor: Colors.transparent,
-              forceMaterialTransparency: true,
-              surfaceTintColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              elevation: 0,
-              titleSpacing: 12,
-              flexibleSpace: ColoredBox(
-                color: Colors.white.withValues(
-                  alpha: _homeAppearance.headerOpacity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(
+                        (_homeAppearance.headerOpacity * 255).round(),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                AppBar(
+                  toolbarHeight: _chromeVisible ? 64 : 0,
+                  backgroundColor: Colors.transparent,
+                  forceMaterialTransparency: true,
+                  surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
+                  titleSpacing: 12,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1157,6 +1212,8 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.logout),
               ),
           ],
+                ),
+              ],
             ),
           ),
           body: FriendlyHomeContent(
@@ -1203,6 +1260,8 @@ class _HomePageState extends State<HomePage> {
       'notes',
       'daily_report',
       'profile',
+      'qualification_register',
+      'document_register',
     };
     const subAdmin = <String>{
       'people',
@@ -1212,13 +1271,14 @@ class _HomePageState extends State<HomePage> {
       'approvals',
       'employee_onboarding_approvals',
       'documents',
-      'qualifications',
+      'employee_qualifications',
+      'signatures',
     };
     const viewer = <String>{
       'invoices',
       'payroll_settings',
       'payroll_adjustments',
-      'attendance',
+      'attendance_list',
     };
     const admin = <String>{
       'admin_sites',
