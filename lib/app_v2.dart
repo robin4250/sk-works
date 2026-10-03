@@ -131,6 +131,7 @@ class _HomePageState extends State<HomePage> {
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
+  Map<String, bool> _subAdminHomeStates = const {};
   Map<String, int> _usage = const {};
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
@@ -157,6 +158,7 @@ class _HomePageState extends State<HomePage> {
   HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
 
   bool get _isAdmin => _identity.isAdmin;
+  bool get _isViewer => _identity.role == 'viewer';
 
   @override
   void initState() {
@@ -299,9 +301,15 @@ class _HomePageState extends State<HomePage> {
     final repository = _moduleSettingsRepository;
     if (repository == null) return;
     try {
-      final states = await repository.loadOptionalModuleStates();
+      final values = await Future.wait([
+        repository.loadOptionalModuleStates(),
+        repository.loadSubAdminHomeStates(),
+      ]);
       if (!mounted) return;
-      setState(() => _moduleStates = states);
+      setState(() {
+        _moduleStates = Map<String, bool>.from(values[0]);
+        _subAdminHomeStates = Map<String, bool>.from(values[1]);
+      });
     } catch (_) {
       // Keep modules visible if settings cannot be loaded.
     }
@@ -551,6 +559,14 @@ class _HomePageState extends State<HomePage> {
     return _moduleStates[key] ?? true;
   }
 
+  bool _subAdminFeatureEnabled(String key) {
+    if (!_identity.isSubAdmin) return true;
+    if (!CompanyModuleSettingsRepository.subAdminHomeKeys.contains(key)) {
+      return true;
+    }
+    return _subAdminHomeStates[key] ?? false;
+  }
+
   Widget _pageFor(legacy.ModuleDefinition module) {
     return switch (module.storageKey) {
       'people' => SupabaseBackend.isInitialized
@@ -610,10 +626,15 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if ((key == 'company_deliveries' || key == 'company_documents') &&
-        !_isAdmin) {
+    if (key == 'company_documents' && !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者のみ利用できます'))),
+      );
+      return;
+    }
+    if (key == 'company_deliveries' && !_identity.isManagement) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者・サブ管理者のみ利用できます'))),
       );
       return;
     }
@@ -645,12 +666,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     if (key == 'attendance_today') {
-      if (!_identity.can('can_manage_attendance')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('この機能を利用する権限がありません')),
-        );
-        return;
-      }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const TodayAttendancePage(),
@@ -836,19 +851,26 @@ class _HomePageState extends State<HomePage> {
       if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_verify',
-          label: SkoLanguageController.tr('本日の勤務報告'),
+          label: SkoLanguageController.tr('本日の勤怠報告'),
           icon: Icons.fact_check_outlined,
           homeEligible: false,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_moduleEnabled('attendance') &&
-          _identity.can('can_manage_attendance'))
+      if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_today',
           label: SkoLanguageController.tr('本日の出勤'),
           icon: Icons.groups_outlined,
           homeEligible: false,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
+      if (_moduleEnabled('attendance'))
+        _MenuAction(
+          key: 'attendance',
+          label: SkoLanguageController.tr('出勤表一覧'),
+          icon: Icons.calendar_month_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('閲覧者以上'),
         ),
       _MenuAction(
         key: 'daily_report',
@@ -860,15 +882,15 @@ class _HomePageState extends State<HomePage> {
       if (_identity.isManagement)
         _MenuAction(
           key: 'people',
-          label: SkoLanguageController.tr('社員'),
+          label: SkoLanguageController.tr('社員データ'),
           icon: Icons.groups_2_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・閲覧権限'),
         ),
-      if (_moduleEnabled('vehicle_routes'))
+      if (_identity.isManagement && _moduleEnabled('vehicle_routes'))
         _MenuAction(
           key: 'vehicle_routes',
-          label: SkoLanguageController.tr('車両・ルート'),
+          label: SkoLanguageController.tr('車両ルート'),
           icon: Icons.route_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
@@ -894,14 +916,15 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('本人・閲覧権限'),
         ),
-      if (_isAdmin || _identity.can('can_manage_payroll_adjustments'))
+      if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_settings',
           label: SkoLanguageController.tr('個別給与設定'),
           icon: Icons.manage_accounts_outlined,
+          homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・給与編集権限'),
         ),
-      if (_identity.can('can_view_payroll_adjustments'))
+      if (_identity.isManagement || _identity.can('can_view_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_adjustments',
           label: _payrollAdjustmentLabel,
@@ -915,14 +938,14 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
-      if (_moduleEnabled('qualifications'))
+      if (_identity.isManagement && _moduleEnabled('qualifications'))
         _MenuAction(
           key: 'qualifications',
           label: SkoLanguageController.tr('資格'),
           icon: Icons.badge_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_moduleEnabled('documents'))
+      if (_identity.isManagement && _moduleEnabled('documents'))
         _MenuAction(
           key: 'documents',
           label: SkoLanguageController.tr('必要書類'),
@@ -950,15 +973,15 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.approval_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
         ),
-      if (_identity.can('can_manage_attendance') &&
+      if (_isAdmin &&
           _moduleEnabled('line_bridge'))
         _MenuAction(
           key: 'today_line',
-          label: SkoLanguageController.tr('本日のLINE出勤候補'),
+          label: SkoLanguageController.tr('本日のLINE'),
           icon: Icons.today_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'company_deliveries',
           label: SkoLanguageController.tr('協力会社'),
@@ -973,7 +996,8 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者'),
         ),
-      if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
+      if (_moduleEnabled('invoices') &&
+          (_identity.isManagement || _identity.can('can_view_invoices')))
         _MenuAction(
           key: 'invoices',
           label: SkoLanguageController.tr('請求書'),
@@ -1014,7 +1038,7 @@ class _HomePageState extends State<HomePage> {
         ),
       _MenuAction(
         key: 'appearance',
-        label: SkoLanguageController.tr('背景・ヘッダー・フッター設定'),
+        label: SkoLanguageController.tr('背景'),
         icon: Icons.wallpaper_outlined,
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('本人のみ'),
@@ -1023,7 +1047,7 @@ class _HomePageState extends State<HomePage> {
         key: 'settings',
         label: SkoLanguageController.tr('設定'),
         icon: Icons.settings_outlined,
-        homeEligible: true,
+        homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
       _MenuAction(
@@ -1034,6 +1058,14 @@ class _HomePageState extends State<HomePage> {
         accessLabel: SkoLanguageController.tr('表示中の権限に合わせて案内'),
       ),
     ];
+
+    if (_identity.isSubAdmin) {
+      items.removeWhere(
+        (item) =>
+            CompanyModuleSettingsRepository.subAdminHomeKeys.contains(item.key) &&
+            !_subAdminFeatureEnabled(item.key),
+      );
+    }
 
     final rank = <String, int>{
       for (var i = 0; i < _homeActionOrder.length; i++)
@@ -1164,39 +1196,40 @@ class _HomePageState extends State<HomePage> {
   }
 
   HomeShortcutAccess _shortcutAccessForMenuItem(_MenuAction item) {
-    const adminOnly = <String>{
-      'company_deliveries',
-      'company_documents',
-      'signatures',
+    const general = <String>{
+      'help',
+      'appearance',
+      'albums',
+      'notes',
+      'daily_report',
+      'profile',
     };
     const subAdmin = <String>{
-      'employee_register',
-      'employee_onboarding_approvals',
-      'approvals',
-      'today_line',
-      'site_map',
-      'payroll_settings',
-    };
-    const viewerVisible = <String>{
-      'attendance_verify',
-      'daily_report',
       'people',
+      'company_deliveries',
       'vehicle_routes',
-      'payroll',
-      'profile',
-      'qualifications',
+      'employee_register',
+      'approvals',
+      'employee_onboarding_approvals',
       'documents',
-      'notes',
-      'albums',
-      'payroll_adjustments',
-      'invoices',
-      'admin_sites',
-      'site_register',
-      'settings',
+      'qualifications',
     };
-    if (adminOnly.contains(item.key)) return HomeShortcutAccess.admin;
+    const viewer = <String>{
+      'invoices',
+      'payroll_settings',
+      'payroll_adjustments',
+      'attendance',
+    };
+    const admin = <String>{
+      'admin_sites',
+      'company_documents',
+      'site_map',
+      'today_line',
+    };
+    if (admin.contains(item.key)) return HomeShortcutAccess.admin;
+    if (viewer.contains(item.key)) return HomeShortcutAccess.viewer;
     if (subAdmin.contains(item.key)) return HomeShortcutAccess.subAdmin;
-    if (viewerVisible.contains(item.key)) return HomeShortcutAccess.viewer;
+    if (general.contains(item.key)) return HomeShortcutAccess.general;
     return HomeShortcutAccess.general;
   }
 
@@ -1337,7 +1370,7 @@ class _HomePageState extends State<HomePage> {
           ? const SiteCloudPage()
           : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
-          ? const ChatCloudPage()
+          ? ChatCloudPage(viewerOnlyFriends: _isViewer)
           : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];
@@ -1358,67 +1391,69 @@ class _HomePageState extends State<HomePage> {
         duration: const Duration(milliseconds: 180),
         height: _chromeVisible ? 88 : 0,
         child: _chromeVisible
-            ? NavigationBar(
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withValues(alpha: _homeAppearance.footerOpacity),
-                  surfaceTintColor: Colors.transparent,
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) {
-                    final module = switch (index) {
-                      1 => 'attendance',
-                      2 => 'sites',
-                      3 => 'chat',
-                      _ => null,
-                    };
-                    if (module != null && !_moduleEnabled(module)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(SkoLanguageController.tr('この機能は会社設定でOFFになっています')),
-                        ),
-                      );
-                      return;
-                    }
-                    final usageKey = switch (index) {
-                      0 => 'footer_home',
-                      1 => 'attendance',
-                      2 => 'footer_sites',
-                      3 => 'chat',
-                      _ => null,
-                    };
-                    if (usageKey != null) {
-                      _recordCloudUsageForAction(usageKey);
-                    }
-                    setState(() => _selectedIndex = index);
-                  },
-                  destinations: [
+            ? Builder(
+                builder: (context) {
+                  final pageIndexes = <int>[
+                    0,
+                    if (!_isViewer) 1,
+                    if (!_isViewer) 2,
+                    3,
+                    4,
+                  ];
+                  final destinations = <NavigationDestination>[
                     NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home),
+                      icon: const Icon(Icons.home_outlined),
+                      selectedIcon: const Icon(Icons.home),
                       label: SkoLanguageController.tr('ホーム'),
                     ),
+                    if (!_isViewer)
+                      NavigationDestination(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        selectedIcon: const Icon(Icons.calendar_month),
+                        label: SkoLanguageController.tr('出勤表'),
+                      ),
+                    if (!_isViewer)
+                      NavigationDestination(
+                        icon: const Icon(Icons.business_outlined),
+                        selectedIcon: const Icon(Icons.business),
+                        label: SkoLanguageController.tr('現場'),
+                      ),
                     NavigationDestination(
-                      icon: Icon(Icons.calendar_month_outlined),
-                      selectedIcon: Icon(Icons.calendar_month),
-                      label: SkoLanguageController.tr('出勤表'),
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.business_outlined),
-                      selectedIcon: Icon(Icons.business),
-                      label: SkoLanguageController.tr('現場'),
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.chat_bubble_outline),
-                      selectedIcon: Icon(Icons.chat_bubble),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      selectedIcon: const Icon(Icons.chat_bubble),
                       label: SkoLanguageController.tr('チャット'),
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.menu),
+                      icon: const Icon(Icons.menu),
                       label: SkoLanguageController.tr('メニュー'),
                     ),
-                  ],
-                )
+                  ];
+                  final selectedPosition = pageIndexes.indexOf(_selectedIndex);
+                  return NavigationBar(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .surface
+                        .withValues(alpha: _homeAppearance.footerOpacity),
+                    surfaceTintColor: Colors.transparent,
+                    selectedIndex: selectedPosition >= 0 ? selectedPosition : 0,
+                    onDestinationSelected: (position) {
+                      final pageIndex = pageIndexes[position];
+                      final usageKey = switch (pageIndex) {
+                        0 => 'footer_home',
+                        1 => 'attendance',
+                        2 => 'footer_sites',
+                        3 => 'chat',
+                        _ => null,
+                      };
+                      if (usageKey != null) {
+                        _recordCloudUsageForAction(usageKey);
+                      }
+                      setState(() => _selectedIndex = pageIndex);
+                    },
+                    destinations: destinations,
+                  );
+                },
+              )
             : const SizedBox.shrink(),
       ),
     );

@@ -42,7 +42,9 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(home, contains('_OrderedHomeContent'));
-    expect(home, contains('identity.isManagement'));
+    expect(app, contains('_identity.isSubAdmin'));
+    expect(app, contains('CompanyModuleSettingsRepository.subAdminHomeKeys'));
+    expect(app, contains('_subAdminFeatureEnabled(item.key)'));
     expect(
       app,
       contains(

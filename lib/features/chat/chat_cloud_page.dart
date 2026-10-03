@@ -17,7 +17,12 @@ import 'chat_friends_page.dart';
 enum _ChatTab { all, site, direct, partner }
 
 class ChatCloudPage extends StatefulWidget {
-  const ChatCloudPage({super.key});
+  const ChatCloudPage({
+    super.key,
+    this.viewerOnlyFriends = false,
+  });
+
+  final bool viewerOnlyFriends;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -93,10 +98,30 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
     try {
       final canManagePartnerChat = await repository.canManagePartnerChat();
-      final groups = await repository.loadGroups();
-      final members = await repository.loadMembers();
-      final priorities = await repository.prioritizedSiteGroupIds();
+      var groups = await repository.loadGroups();
+      var members = await repository.loadMembers();
+      var priorities = await repository.prioritizedSiteGroupIds();
       final blockedUserIds = await repository.loadBlockedUserIds();
+
+      if (widget.viewerOnlyFriends) {
+        final workspace = await repository.loadFriendWorkspace();
+        final rawFriends = workspace['friends'];
+        final friendIds = <String>{
+          if (rawFriends is List)
+            for (final item in rawFriends)
+              if (item is Map && item['user_id'] != null)
+                item['user_id'].toString(),
+        };
+        groups = groups.where((group) {
+          if (group['group_type']?.toString() != 'direct') return false;
+          final otherUserId = group['direct_other_user_id']?.toString();
+          return otherUserId != null && friendIds.contains(otherUserId);
+        }).toList(growable: false);
+        members = members
+            .where((member) => friendIds.contains(member['user_id']?.toString()))
+            .toList(growable: false);
+        priorities = const [];
+      }
 
       final previous = _selectedGroupId;
       final next = groups.any((g) => g['id']?.toString() == previous)

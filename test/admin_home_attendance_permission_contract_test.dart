@@ -7,7 +7,7 @@ void main() {
     final source =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
-    expect(source, contains("'本日の勤務報告'"));
+    expect(source, contains("'本日の勤怠報告'"));
     expect(source, contains("onOpen('clock_in')"));
     expect(source, contains("onOpen('clock_out')"));
     expect(source, contains("onOpen('workplace_select')"));
@@ -15,8 +15,7 @@ void main() {
     expect(source, contains("'選択中の出勤方法："));
     expect(source, contains("'選択中の現場："));
 
-    expect(source, contains('identity.isManagement'));
-    expect(source, contains("identity.can('can_manage_attendance')"));
+    expect(source, isNot(contains("identity.can('can_manage_attendance')")));
     expect(source, contains("visibleHomeKeys.contains('attendance_today')"));
     expect(source, contains('_TodayAttendanceHomeCard'));
     expect(source, contains('出勤状況を確認'));

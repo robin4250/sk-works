@@ -13,9 +13,14 @@ void main() {
       greaterThanOrEqualTo(1),
     );
     expect(
-      RegExp(r"if \(key == 'attendance_today'\)[\s\S]*?_identity\.can\('can_manage_attendance'\)[\s\S]*?TodayAttendancePage\(\)")
+      RegExp(r"if \(key == 'attendance_today'\)[\s\S]*?TodayAttendancePage\(\)")
           .hasMatch(source),
       isTrue,
+    );
+    expect(
+      RegExp(r"if \(key == 'attendance_today'\)[\s\S]*?_identity\.can\('can_manage_attendance'\)")
+          .hasMatch(source),
+      isFalse,
     );
     expect(
       source,

@@ -18,6 +18,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
   bool _canManage = false;
   String? _error;
   Map<String, bool> _states = const {};
+  Map<String, bool> _subAdminStates = const {};
 
   @override
   void initState() {
@@ -43,12 +44,14 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
     try {
       final values = await Future.wait([
         repository.loadOptionalModuleStates(),
+        repository.loadSubAdminHomeStates(),
         repository.canManage(),
       ]);
       if (!mounted) return;
       setState(() {
         _states = Map<String, bool>.from(values[0] as Map);
-        _canManage = values[1] as bool;
+        _subAdminStates = Map<String, bool>.from(values[1] as Map);
+        _canManage = values[2] as bool;
         _loading = false;
       });
     } catch (error) {
@@ -77,6 +80,36 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
       );
     }
   }
+
+  Future<void> _setSubAdminEnabled(String key, bool enabled) async {
+    final repository = _repository;
+    if (repository == null || !_canManage) return;
+
+    final previous = _subAdminStates[key] ?? false;
+    setState(() => _subAdminStates = {..._subAdminStates, key: enabled});
+
+    try {
+      await repository.setSubAdminHomeEnabled(key, enabled);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _subAdminStates = {..._subAdminStates, key: previous});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('サブ管理者表示設定を保存できませんでした: $error')),
+      );
+    }
+  }
+
+  String _subAdminLabel(String key) => switch (key) {
+        'people' => '社員データ',
+        'company_deliveries' => '協力会社',
+        'vehicle_routes' => '車両ルート',
+        'employee_register' => '従業員登録',
+        'approvals' => '承認待ち',
+        'employee_onboarding_approvals' => '本登録承認',
+        'documents' => '必要書類',
+        'qualifications' => '資格',
+        _ => key,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +171,30 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                         title: Text(module.label),
                         subtitle: Text(module.description),
                         trailing: const Text('ON'),
+                      ),
+                    ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'サブ管理者に表示する機能',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '一般ユーザー用・閲覧者用は自動で表示されます。下記はチェックONの項目だけサブ管理者へ表示します。',
+                  ),
+                  const SizedBox(height: 8),
+                  for (final key
+                      in CompanyModuleSettingsRepository.subAdminHomeKeys)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: CheckboxListTile(
+                        title: Text(_subAdminLabel(key)),
+                        value: _subAdminStates[key] ?? false,
+                        onChanged: _canManage
+                            ? (value) => _setSubAdminEnabled(key, value == true)
+                            : null,
                       ),
                     ),
                   const SizedBox(height: 18),

@@ -18,12 +18,12 @@ void main() {
     expect(home, contains('actionOrder'));
     expect(home, contains('visibleHomeKeys'));
 
-    expect(home, contains("'本日の勤務報告'"));
+    expect(home, contains("'本日の勤怠報告'"));
     expect(home, contains("SkoLanguageController.tr('未対応')"));
     expect(home, contains('Icons.notifications_active_outlined'));
     expect(home, contains('repeat(reverse: true)'));
 
-    expect(app, contains("SkoLanguageController.tr('社員')"));
+    expect(app, contains("SkoLanguageController.tr('社員データ')"));
     expect(app, contains("SkoLanguageController.tr('管理現場')"));
     expect(home, contains('HomeShortcutAccess.subAdmin'));
     expect(home, contains('HomeShortcutAccess.viewer'));

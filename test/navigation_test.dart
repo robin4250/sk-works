@@ -15,10 +15,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
-    expect(find.text('社員'), findsOneWidget);
-    await tester.ensureVisible(find.text('社員'));
+    expect(find.text('社員データ'), findsOneWidget);
+    await tester.ensureVisible(find.text('社員データ'));
     await tester.pump();
-    await tester.tap(find.text('社員'));
+    await tester.tap(find.text('社員データ'));
     await tester.pumpAndSettle();
 
     expect(find.text('新規登録'), findsOneWidget);
@@ -43,9 +43,14 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
+    await tester.tap(find.text('メニュー'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('設定'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('設定'), findsOneWidget);
-    await tester.ensureVisible(find.text('設定'));
-    await tester.pump();
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 

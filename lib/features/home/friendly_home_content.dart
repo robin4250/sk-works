@@ -248,7 +248,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    SkoLanguageController.tr('本日の勤務報告'),
+                    SkoLanguageController.tr('本日の勤怠報告'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -494,9 +494,7 @@ class _OrderedHomeContent extends StatelessWidget {
           showAttendanceReport &&
           visibleHomeKeys.contains('attendance_verify'))
         'attendance_verify',
-      if (identity.isManagement &&
-          moduleEnabled('attendance') &&
-          identity.can('can_manage_attendance') &&
+      if (moduleEnabled('attendance') &&
           showTodayAttendance &&
           visibleHomeKeys.contains('attendance_today'))
         'attendance_today',
