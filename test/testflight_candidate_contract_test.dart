@@ -24,6 +24,9 @@ void main() {
     expect(script, contains('build/ios/ipa'));
     expect(upload, contains('APP_STORE_CONNECT_API_KEY_ID'));
     expect(upload, contains('APP_STORE_CONNECT_API_ISSUER_ID'));
+    expect(upload, contains('APP_STORE_CONNECT_API_KEY_PATH'));
+    expect(upload, contains('.appstoreconnect/private_keys'));
+    expect(upload, contains('.private_keys'));
     expect(upload, contains('xcrun altool'));
     expect(upload, contains('--upload-app'));
     expect(upload, contains('git rev-parse origin/main'));
