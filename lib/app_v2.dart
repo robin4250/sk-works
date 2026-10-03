@@ -21,14 +21,11 @@ import 'features/attendance/gps_auto_attendance_service.dart';
 import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
-import 'features/auth/employee_onboarding_approvals_page.dart';
 import 'features/approvals/approvals_hub_page.dart';
-import 'features/auth/employee_onboarding_repository.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
-import 'features/daily_reports/daily_report_approvals_page.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
 import 'features/help/manual_content.dart';
@@ -125,8 +122,6 @@ class _HomePageState extends State<HomePage> {
   final _moduleSettingsRepository =
       CompanyModuleSettingsRepository.maybeCreate();
   final _membershipRepository = HomeMembershipRepository.maybeCreate();
-  final _employeeOnboardingRepository =
-      EmployeeOnboardingRepository.maybeCreate();
   final _homeAttentionRepository = HomeAttentionRepository.maybeCreate();
   final _attendanceVerificationRepository =
       AttendanceVerificationRepository.maybeCreate();
@@ -150,7 +145,6 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   bool _chromeVisible = true;
   VoidCallback? _chromeListener;
-  bool _canReviewEmployeeOnboarding = false;
   String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
       const RequiredDocumentAttention(
@@ -193,7 +187,6 @@ class _HomePageState extends State<HomePage> {
       _loadUsage(),
       _loadHomeLayout(),
       _loadHomeAppearance(),
-      _loadEmployeeOnboardingCapability(),
       _loadRequiredDocumentAttention(),
       _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
@@ -285,19 +278,6 @@ class _HomePageState extends State<HomePage> {
       setState(() => _payrollAdjustmentLabel = access.pageLabel);
     } catch (_) {
       // Keep the standard label until the payroll adjustment migration is ready.
-    }
-  }
-
-  Future<void> _loadEmployeeOnboardingCapability() async {
-    final repository = _employeeOnboardingRepository;
-    if (repository == null) return;
-    try {
-      final value = await repository.canReview();
-      if (!mounted) return;
-      setState(() => _canReviewEmployeeOnboarding = value);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _canReviewEmployeeOnboarding = false);
     }
   }
 
