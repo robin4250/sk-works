@@ -42,9 +42,22 @@ bash tool/testflight_preflight.sh
 
 echo
 echo "[4/5] App Store配布用Release IPAを作成"
+version_line="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+build_name="${version_line%%+*}"
+pubspec_build_number="${version_line##*+}"
+build_number="${SKO_TESTFLIGHT_BUILD_NUMBER:-$pubspec_build_number}"
+if [[ ! "$build_number" =~ ^[0-9]+$ ]]; then
+  echo "✗ TestFlight build番号が数値ではありません: $build_number"
+  exit 1
+fi
+echo "✓ Version: $build_name"
+echo "✓ Build: $build_number"
+
 flutter build ipa \
   --release \
   --export-method app-store \
+  --build-name="$build_name" \
+  --build-number="$build_number" \
   --dart-define="SUPABASE_URL=$SUPABASE_URL" \
   --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"
 
@@ -55,9 +68,19 @@ if [[ ! -d "$ARCHIVE_APP" ]]; then
   exit 1
 fi
 built_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ARCHIVE_APP/Info.plist" 2>/dev/null || true)"
+built_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ARCHIVE_APP/Info.plist" 2>/dev/null || true)"
+built_build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ARCHIVE_APP/Info.plist" 2>/dev/null || true)"
 if [[ "$built_bundle_id" != "$EXPECTED_BUNDLE_ID" ]]; then
   echo "✗ Bundle IDが一致しません: ${built_bundle_id:-unknown}"
   echo "  必須: $EXPECTED_BUNDLE_ID"
+  exit 1
+fi
+if [[ "$built_version" != "$build_name" ]]; then
+  echo "✗ Versionが一致しません: ${built_version:-unknown}（必須: $build_name）"
+  exit 1
+fi
+if [[ "$built_build_number" != "$build_number" ]]; then
+  echo "✗ Build番号が一致しません: ${built_build_number:-unknown}（必須: $build_number）"
   exit 1
 fi
 
@@ -77,6 +100,10 @@ fi
 
 echo "✓ TestFlight候補IPA: $ipa"
 echo "✓ Bundle Identifier: $built_bundle_id"
+echo "✓ Version / Build: $built_version ($built_build_number)"
 echo "✓ Release archive: build/ios/archive/Runner.xcarchive"
+if command -v shasum >/dev/null 2>&1; then
+  echo "✓ IPA SHA256: $(shasum -a 256 "$ipa" | awk '{print $1}')"
+fi
 echo
-echo "次は実機確認後、Xcode Organizer / App Store Connectからこの候補をTestFlightへアップロードします。"
+echo "次は bash tool/testflight_upload.sh でApp Store Connectへアップロードできます。"
