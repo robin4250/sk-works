@@ -44,10 +44,11 @@ void main() {
     expect(appearance, contains("footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8)"));
     expect(app, contains('Colors.white.withValues('));
     expect(app, contains('alpha: _homeAppearance.headerOpacity'));
-    expect(app, contains('flexibleSpace: Stack('));
-    expect(app, contains('Image.file('));
+    expect(app, contains('flexibleSpace: ColoredBox('));
     expect(theme, contains('backgroundColor: Colors.white'));
     expect(app, contains('Theme.of(context).scaffoldBackgroundColor'));
+    expect(app, contains('extendBodyBehindAppBar: true'));
+    expect(app, contains('contentTopInset: _chromeVisible ? 72 : 8'));
     expect(app, isNot(contains('colorScheme.surfaceContainerHighest')));
     expect(app, contains('withValues(alpha: _homeAppearance.footerOpacity)'));
     expect(app, contains("'背景・ヘッダー・フッター設定'"));
