@@ -73,7 +73,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (item.actionKey == 'site_map') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const SiteMapPage(),
+          builder: (_) => const GeneralSiteMapPage(),
         ),
       );
       if (!mounted) return;
