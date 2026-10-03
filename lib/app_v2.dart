@@ -1158,9 +1158,11 @@ class _HomePageState extends State<HomePage> {
               fit: StackFit.expand,
               children: [
                 IgnorePointer(
-                  child: ColoredBox(
-                    color: Colors.white.withValues(
-                      alpha: _homeAppearance.headerOpacity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(
+                        (_homeAppearance.headerOpacity * 255).round(),
+                      ),
                     ),
                   ),
                 ),
