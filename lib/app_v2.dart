@@ -1179,14 +1179,39 @@ class _HomePageState extends State<HomePage> {
   }
 
   HomeShortcutAccess _shortcutAccessForMenuItem(_MenuAction item) {
-    final access = item.accessLabel;
-    if (access.contains('閲覧権限')) return HomeShortcutAccess.viewer;
-    if (access == '管理者' || access.startsWith('管理者（')) {
-      return HomeShortcutAccess.admin;
-    }
-    if (access.contains('サブ管理者') && !access.contains('一般')) {
-      return HomeShortcutAccess.subAdmin;
-    }
+    const adminOnly = <String>{
+      'company_deliveries',
+      'company_documents',
+      'signatures',
+    };
+    const subAdmin = <String>{
+      'employee_register',
+      'employee_onboarding_approvals',
+      'approvals',
+      'today_line',
+      'site_map',
+      'payroll_settings',
+    };
+    const viewerVisible = <String>{
+      'attendance_verify',
+      'daily_report',
+      'people',
+      'vehicle_routes',
+      'payroll',
+      'profile',
+      'qualifications',
+      'documents',
+      'notes',
+      'albums',
+      'payroll_adjustments',
+      'invoices',
+      'admin_sites',
+      'site_register',
+      'settings',
+    };
+    if (adminOnly.contains(item.key)) return HomeShortcutAccess.admin;
+    if (subAdmin.contains(item.key)) return HomeShortcutAccess.subAdmin;
+    if (viewerVisible.contains(item.key)) return HomeShortcutAccess.viewer;
     return HomeShortcutAccess.general;
   }
 
