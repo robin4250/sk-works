@@ -56,5 +56,15 @@ void main() {
     expect(map, contains('void _clearMapSelection()'));
     expect(map, contains('setState(_layers.clear);'));
     expect(map, contains('_clearMapSelection();'));
+    expect(map, isNot(contains('_saveLayerPreferences')));
+  });
+
+  test('notification map entry opens the general map', () {
+    final notifications = File(
+      'lib/features/notifications/notifications_page.dart',
+    ).readAsStringSync();
+
+    expect(notifications, contains('const GeneralSiteMapPage()'));
+    expect(notifications, isNot(contains('const SiteMapPage()')));
   });
 }
