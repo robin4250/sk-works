@@ -35,11 +35,10 @@ class QualificationCloudRepository {
   }
 
   Future<bool> canManageWorkerQualifications() async {
-    await membership();
-    final value = await _client.rpc('current_feature_permissions');
-    if (value is! Map) return false;
-    final permissions = Map<String, dynamic>.from(value);
-    return permissions['can_manage_people'] == true;
+    final value = await membership();
+    return value.role == 'owner' ||
+        value.role == 'admin' ||
+        value.role == 'manager';
   }
 
   Future<void> _requireManageWorkerQualifications() async {
