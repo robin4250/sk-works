@@ -19,7 +19,7 @@ void main() {
       ),
     );
     expect(app, contains('HomeShortcut('));
-    expect(home, contains("_shortcutAccess(shortcut.key)"));
+    expect(home, contains("shortcut.access"));
     expect(home, contains("key == 'company_documents'"));
   });
 }
