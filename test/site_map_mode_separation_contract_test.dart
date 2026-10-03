@@ -48,4 +48,13 @@ void main() {
       ),
     );
   });
+
+  test('map layer checks are one-shot and clear after opening map', () {
+    final map = File('lib/features/sites/site_map_page.dart').readAsStringSync();
+
+    expect(map, contains('_layers = <_MapLayer>{};'));
+    expect(map, contains('void _clearMapSelection()'));
+    expect(map, contains('setState(_layers.clear);'));
+    expect(map, contains('_clearMapSelection();'));
+  });
 }
