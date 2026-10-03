@@ -142,6 +142,66 @@ class QualificationCloudRepository {
     return Map<String, dynamic>.from(inserted);
   }
 
+  Future<({String workerId, String workerName})> currentWorker() async {
+    final workerIdRaw = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerIdRaw?.toString() ?? '';
+    if (workerId.isEmpty) {
+      throw StateError('本人の作業員情報を確認できません。');
+    }
+    final row = await _client
+        .from('workers')
+        .select('name')
+        .eq('id', workerId)
+        .maybeSingle();
+    final workerName = row?['name']?.toString().trim();
+    return (
+      workerId: workerId,
+      workerName: workerName?.isNotEmpty == true ? workerName! : '本人',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loadActiveMasters() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('qualification_master')
+        .select(
+          'id, name, category, issuer, expiry_required, notes, is_active',
+        )
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> insertOwnQualification({
+    required String qualificationMasterId,
+    String? certificateNumber,
+    DateTime? issuedAt,
+    DateTime? expiresAt,
+    String? issuer,
+    String? notes,
+  }) async {
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final inserted = await _client
+        .from('worker_qualifications')
+        .insert({
+          'company_id': companyId,
+          'worker_id': worker.workerId,
+          'qualification_master_id': qualificationMasterId,
+          'certificate_number': _nullable(certificateNumber),
+          'issued_at': _date(issuedAt),
+          'expires_at': _date(expiresAt),
+          'issuer': _nullable(issuer),
+          'notes': _nullable(notes),
+        })
+        .select(
+          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+        )
+        .single();
+    return Map<String, dynamic>.from(inserted);
+  }
+
   Future<Map<String, dynamic>> insertWorkerQualification({
     required String workerId,
     required String qualificationMasterId,
