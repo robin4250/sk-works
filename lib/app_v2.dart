@@ -55,6 +55,7 @@ import 'features/people/worker_document_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
+import 'features/qualifications/own_qualification_registration_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
@@ -519,7 +520,10 @@ class _HomePageState extends State<HomePage> {
       'profile' => 'profile',
       'help' => 'help',
       'admin_sites' => 'sites',
-      'qualification_certificates' || 'qualifications' => 'qualifications',
+      'qualification_certificates' ||
+      'qualification_register' ||
+      'employee_qualifications' ||
+      'qualifications' => 'qualifications',
       'documents' => 'documents',
       'vehicle_routes' => 'vehicle_routes',
       'settings' || 'appearance' || 'rollout' => 'settings',
@@ -537,7 +541,10 @@ class _HomePageState extends State<HomePage> {
       'chat' => 'chat',
       'people' || 'employee_register' || 'employee_onboarding_approvals' =>
         'people',
-      'qualification_certificates' || 'qualifications' => 'qualifications',
+      'qualification_certificates' ||
+      'qualification_register' ||
+      'employee_qualifications' ||
+      'qualifications' => 'qualifications',
       'documents' => 'documents',
       'company_deliveries' => 'company_connection',
       'company_documents' => 'documents',
@@ -787,6 +794,12 @@ class _HomePageState extends State<HomePage> {
       case 'qualification_certificates':
         page = const QualificationCertificatePage();
         break;
+      case 'qualification_register':
+        page = const OwnQualificationRegistrationPage();
+        break;
+      case 'employee_qualifications':
+        page = const QualificationCloudPage();
+        break;
       case 'documents':
         page = const WorkerDocumentPage();
         break;
@@ -951,12 +964,21 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
+      if (_moduleEnabled('qualifications'))
+        _MenuAction(
+          key: 'qualification_register',
+          label: SkoLanguageController.tr('資格登録'),
+          icon: Icons.add_card_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
       if (_identity.isManagement && _moduleEnabled('qualifications'))
         _MenuAction(
-          key: 'qualifications',
-          label: SkoLanguageController.tr('資格'),
+          key: 'employee_qualifications',
+          label: SkoLanguageController.tr('従業員資格'),
           icon: Icons.badge_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (_identity.isManagement && _moduleEnabled('documents'))
         _MenuAction(
@@ -1216,6 +1238,7 @@ class _HomePageState extends State<HomePage> {
       'notes',
       'daily_report',
       'profile',
+      'qualification_register',
     };
     const subAdmin = <String>{
       'people',
@@ -1225,7 +1248,7 @@ class _HomePageState extends State<HomePage> {
       'approvals',
       'employee_onboarding_approvals',
       'documents',
-      'qualifications',
+      'employee_qualifications',
       'signatures',
     };
     const viewer = <String>{
