@@ -8,7 +8,7 @@ void main() {
     final home =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
-    expect(app, contains("SkoLanguageController.tr('社員')"));
+    expect(app, contains("SkoLanguageController.tr('社員データ')"));
     expect(app, isNot(contains("label: '人員'")));
     expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')"));
     expect(app, contains("sko_home_hidden_actions"));
