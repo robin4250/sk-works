@@ -151,6 +151,7 @@ jobs:
           assert data.get("UISupportedInterfaceOrientations") == [
               "UIInterfaceOrientationPortrait"
           ]
+          assert data.get("ITSAppUsesNonExemptEncryption") is False
           PY
 
       - name: Verify Personal Team bundle identifier
