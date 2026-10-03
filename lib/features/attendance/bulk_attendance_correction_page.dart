@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../daily_reports/signature_capture_page.dart';
 import 'attendance_correction_repository.dart';
+import 'paid_leave_correction_page.dart';
 
 class BulkAttendanceCorrectionPage extends StatefulWidget {
   const BulkAttendanceCorrectionPage({super.key});
@@ -394,9 +395,28 @@ class _BulkAttendanceCorrectionPageState
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          '過去分まとめて修正',
+          '勤務修正',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
+        actions: [
+          TextButton(
+            onPressed: _saving
+                ? null
+                : () async {
+                    final count = await Navigator.of(context).push<int>(
+                      MaterialPageRoute(
+                        builder: (_) => const PaidLeaveCorrectionPage(),
+                      ),
+                    );
+                    if (count != null && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('$count日の有給勤務修正を申請しました')),
+                      );
+                    }
+                  },
+            child: const Text('休み→有給'),
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
