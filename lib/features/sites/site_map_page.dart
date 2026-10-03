@@ -361,12 +361,11 @@ class _SiteMapPageState extends State<SiteMapPage> {
                               SkoLanguageController.tr('自社'),
                               enabled: data.company != null,
                             ),
-                            if (widget.allowEmployeeHomes)
-                              _check(
-                                _MapLayer.home,
-                                SkoLanguageController.tr('自宅（本人）'),
-                                enabled: data.home != null,
-                              ),
+                            _check(
+                              _MapLayer.home,
+                              SkoLanguageController.tr('自宅（本人）'),
+                              enabled: data.home != null,
+                            ),
                             if (data.canViewAll && widget.allowEmployeeHomes)
                               _check(
                                 _MapLayer.employeeHomes,
