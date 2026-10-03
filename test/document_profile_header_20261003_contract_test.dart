@@ -51,10 +51,11 @@ void main() {
     expect(migration, contains("'owner','admin','manager'"));
   });
 
-  test('home header opacity applies to the whole header', () {
+  test('home header opacity applies only to the white band', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
-    expect(app, contains('Color.fromRGBO('));
-    expect(app, contains('_homeAppearance.headerOpacity'));
+    expect(app, contains('Stack('));
+    expect(app, contains('(_homeAppearance.headerOpacity * 255).round()'));
+    expect(app, contains('Colors.white.withAlpha('));
     expect(app, contains('backgroundColor: Colors.transparent'));
     expect(app, contains('forceMaterialTransparency: true'));
   });
