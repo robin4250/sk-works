@@ -69,7 +69,7 @@ void main() {
     expect(map, contains("if (_layers.contains(_MapLayer.home) && data.home != null)"));
     expect(map, contains("if (data.home != null) ...["));
     expect(map, contains('選択地点を複数ピンで地図表示'));
-    expect(sitesPage, contains('const SiteMapPage()'));
+    expect(sitesPage, contains('const GeneralSiteMapPage()'));
     expect(sitesPage, contains("SkoLanguageController.tr('現場データ')"));
     expect(sitesPage, contains("SkoLanguageController.tr('現場登録')"));
     expect(sitesPage, contains("SkoLanguageController.tr('現場マップ')"));
@@ -81,7 +81,7 @@ void main() {
     expect(sitesPage, contains('width: MediaQuery.sizeOf(context).width - 32'));
     expect(sitesPage, contains('Expanded('));
     expect(map, contains("title: Text(SkoLanguageController.tr(widget.title))"));
-    expect(app, contains("title: '管理者用現場マップ'"));
+    expect(app, contains('const AdminSiteMapPage()'));
     expect(prepareIos, contains('import MapKit'));
     expect(prepareIos, contains('MKMarkerAnnotationView'));
     expect(prepareIos, contains('showAnnotations'));
