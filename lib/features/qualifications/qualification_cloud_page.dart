@@ -101,7 +101,6 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
     final filtered = _qualifications.where((row) {
       final master = masterById[row['qualification_master_id']?.toString() ?? ''];
-      final worker = workerById[row['worker_id']?.toString() ?? ''];
       final expiry = _parseDate(row['expires_at']);
       final isExpired = expiry != null && expiry.isBefore(_dateOnly(now));
       final isExpiringSoon = expiry != null &&
