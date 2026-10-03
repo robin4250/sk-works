@@ -21,7 +21,7 @@ void main() {
     expect(home, contains('appearance.cardButtonOpacity'));
     expect(home, contains('required this.buttonOpacity'));
     expect(home, contains('opacity: buttonOpacity'));
-    expect(home, contains("'本日の勤務報告'"));
+    expect(home, contains("'本日の勤怠報告'"));
     expect(home, contains("'本日の出勤'"));
   });
 }
