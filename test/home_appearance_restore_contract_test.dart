@@ -42,9 +42,9 @@ void main() {
     expect(appearance, contains("cardOpacity: _read(prefs, 'card_opacity', fallback: 0.8)"));
     expect(appearance, contains("headerOpacity: _read(prefs, 'header_opacity', fallback: 0.8)"));
     expect(appearance, contains("footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8)"));
-    expect(app, contains('Colors.white.withValues('));
-    expect(app, contains('alpha: _homeAppearance.headerOpacity'));
-    expect(app, contains('flexibleSpace: ColoredBox('));
+    expect(app, contains('opacity: _homeAppearance.headerOpacity'));
+    expect(app, contains('backgroundColor: Colors.white'));
+    expect(app, isNot(contains('flexibleSpace: ColoredBox(')));
     expect(theme, contains('backgroundColor: Colors.white'));
     expect(app, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(app, contains('extendBodyBehindAppBar: true'));
