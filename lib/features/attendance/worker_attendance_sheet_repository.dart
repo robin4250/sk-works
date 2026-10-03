@@ -2,6 +2,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class AttendanceWorker {
+  const AttendanceWorker({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
 class WorkerAttendanceDay {
   const WorkerAttendanceDay({
     required this.date,
@@ -88,6 +95,40 @@ class WorkerAttendanceSheetRepository {
     return WorkerAttendanceSheetRepository._(client);
   }
 
+  Future<String> _companyId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return rows.first['company_id'] as String;
+  }
+
+  Future<List<AttendanceWorker>> loadCompanyWorkers() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('workers')
+        .select('id,name,affiliation,status')
+        .eq('company_id', companyId)
+        .eq('affiliation', 'employee')
+        .order('name');
+
+    return [
+      for (final raw in rows)
+        if ((raw['id']?.toString() ?? '').isNotEmpty &&
+            raw['status']?.toString() != 'inactive')
+          AttendanceWorker(
+            id: raw['id'].toString(),
+            name: raw['name']?.toString().trim().isNotEmpty == true
+                ? raw['name'].toString().trim()
+                : '名前未登録',
+          ),
+    ];
+  }
+
   Future<String> ensureCurrentWorkerId() async {
     final value = await _client.rpc('ensure_current_user_worker');
     final id = value?.toString();
@@ -99,15 +140,16 @@ class WorkerAttendanceSheetRepository {
 
   Future<({String reportId, String? siteId, String? routeAssignmentId})?>
       findDailyReportForDate(
-    DateTime date,
-  ) async {
-    final workerId = await ensureCurrentWorkerId();
+    DateTime date, {
+    String? workerId,
+  }) async {
+    final targetWorkerId = workerId ?? await ensureCurrentWorkerId();
     final rows = await _client
         .from('daily_report_workers')
         .select(
           'report_id,daily_reports!inner(site_id,route_assignment_id,report_date)',
         )
-        .eq('worker_id', workerId)
+        .eq('worker_id', targetWorkerId)
         .eq('daily_reports.report_date', _dbDate(date))
         .limit(1);
     if (rows.isEmpty) return null;
@@ -130,8 +172,11 @@ class WorkerAttendanceSheetRepository {
     );
   }
 
-  Future<WorkerAttendanceMonth> loadMonth(DateTime month) async {
-    final workerId = await ensureCurrentWorkerId();
+  Future<WorkerAttendanceMonth> loadMonth(
+    DateTime month, {
+    String? workerId,
+  }) async {
+    final targetWorkerId = workerId ?? await ensureCurrentWorkerId();
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 1);
     final startText = _dbDate(start);
@@ -142,7 +187,7 @@ class WorkerAttendanceSheetRepository {
         .select(
           'id, work_date, site_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
         )
-        .eq('worker_id', workerId)
+        .eq('worker_id', targetWorkerId)
         .gte('work_date', startText)
         .lt('work_date', endText)
         .order('work_date');
@@ -152,7 +197,7 @@ class WorkerAttendanceSheetRepository {
         .select(
           'event_type, confirmed_at, site_id, sites(name)',
         )
-        .eq('worker_id', workerId)
+        .eq('worker_id', targetWorkerId)
         .gte('confirmed_at', start.toUtc().toIso8601String())
         .lt('confirmed_at', end.toUtc().toIso8601String())
         .order('confirmed_at');
