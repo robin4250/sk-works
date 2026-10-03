@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
@@ -290,13 +291,16 @@ class _SiteMapPageState extends State<SiteMapPage> {
       contentPadding: EdgeInsets.zero,
       value: enabled && _layers.contains(layer),
       onChanged: enabled
-          ? (value) => setState(() {
+          ? (value) async {
+              setState(() {
                 if (value == true) {
                   _layers.add(layer);
                 } else {
                   _layers.remove(layer);
                 }
-              })
+              });
+              await _saveLayerPreferences();
+            }
           : null,
       title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
     );
