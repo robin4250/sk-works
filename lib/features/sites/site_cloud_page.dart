@@ -116,7 +116,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                       ? null
                       : () => Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => const SiteMapPage(),
+                              builder: (_) => const GeneralSiteMapPage(),
                             ),
                           ),
                   icon: const Icon(Icons.map_outlined),
