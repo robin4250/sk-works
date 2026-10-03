@@ -198,6 +198,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   }
 
   Future<void> _unlockWithBiometric() async {
+    final repository = _repository;
+    final userId = repository?.currentUser?.id;
     setState(() {
       _busy = true;
       _message = null;
@@ -212,10 +214,24 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         ),
       );
       if (!mounted) return;
+
+      if (ok && userId != null && !_biometricEnabled) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(
+          'sko_secondary_biometric_enabled_$userId',
+          true,
+        );
+      }
+
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _unlocked = ok;
-        if (!ok) _message = '生体認証を確認できませんでした。';
+        if (ok) {
+          _biometricEnabled = true;
+        } else {
+          _message = '生体認証を確認できませんでした。';
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -402,12 +418,16 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                         icon: const Icon(Icons.lock_open_outlined),
                         label: const Text('第2パスワードで開く'),
                       ),
-                      if (_biometricEnabled && _biometricAvailable) ...[
+                      if (_biometricAvailable) ...[
                         const SizedBox(height: 10),
                         OutlinedButton.icon(
                           onPressed: _busy ? null : _unlockWithBiometric,
                           icon: const Icon(Icons.fingerprint),
-                          label: const Text('Face ID / Touch IDで開く'),
+                          label: Text(
+                            _biometricEnabled
+                                ? 'Face ID / Touch IDで開く'
+                                : 'Face ID / Touch IDを使って開く',
+                          ),
                         ),
                       ],
                     ],
