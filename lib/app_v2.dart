@@ -1157,12 +1157,11 @@ class _HomePageState extends State<HomePage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ColoredBox(
-                  color: Color.fromRGBO(
-                    255,
-                    255,
-                    255,
-                    _homeAppearance.headerOpacity,
+                IgnorePointer(
+                  child: ColoredBox(
+                    color: Colors.white.withValues(
+                      alpha: _homeAppearance.headerOpacity,
+                    ),
                   ),
                 ),
                 AppBar(
