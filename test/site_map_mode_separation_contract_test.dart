@@ -39,7 +39,19 @@ void main() {
     );
     expect(
       map,
-      contains('if (widget.allowEmployeeHomes)'),
+      contains("SkoLanguageController.tr('自宅（本人）')"),
+    );
+    expect(
+      map,
+      contains('employeeHomes: const []'),
+    );
+    expect(
+      map,
+      contains('partners: const []'),
+    );
+    expect(
+      map,
+      contains("row['worker_id']?.toString() == ownWorkerId"),
     );
     expect(
       map,
