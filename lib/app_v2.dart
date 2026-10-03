@@ -52,6 +52,7 @@ import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/signature_list_page.dart';
 import 'features/people/worker_document_page.dart';
+import 'features/people/own_document_registration_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/qualifications/qualification_certificate_page.dart';
 import 'features/qualifications/qualification_cloud_page.dart';
@@ -524,7 +525,7 @@ class _HomePageState extends State<HomePage> {
       'qualification_register' ||
       'employee_qualifications' ||
       'qualifications' => 'qualifications',
-      'documents' => 'documents',
+      'documents' || 'document_register' => 'documents',
       'vehicle_routes' => 'vehicle_routes',
       'settings' || 'appearance' || 'rollout' => 'settings',
       'invoices' => 'invoice',
@@ -803,6 +804,9 @@ class _HomePageState extends State<HomePage> {
       case 'documents':
         page = const WorkerDocumentPage();
         break;
+      case 'document_register':
+        page = const OwnDocumentRegistrationPage();
+        break;
       case 'company_deliveries':
         page = const CompanyDeliveryInboxPage();
         break;
@@ -980,12 +984,21 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
+      if (_moduleEnabled('documents'))
+        _MenuAction(
+          key: 'document_register',
+          label: SkoLanguageController.tr('書類登録'),
+          icon: Icons.note_add_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
       if (_identity.isManagement && _moduleEnabled('documents'))
         _MenuAction(
           key: 'documents',
           label: SkoLanguageController.tr('必要書類'),
           icon: Icons.fact_check_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (_moduleEnabled('notes'))
         _MenuAction(
@@ -1236,6 +1249,7 @@ class _HomePageState extends State<HomePage> {
       'daily_report',
       'profile',
       'qualification_register',
+      'document_register',
     };
     const subAdmin = <String>{
       'people',
