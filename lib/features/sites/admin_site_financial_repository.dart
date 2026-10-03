@@ -10,8 +10,10 @@ class AdminSiteFinancialRecord {
     required this.workerDailyRateYen,
     required this.overtimeHourRateYen,
     required this.earlyHourRateYen,
-    required this.nightHourRateYen,
     required this.billingUnitPriceYen,
+    required this.billingSquareMeterUnitPriceYen,
+    required this.billingSquareMeterQuantity,
+    required this.billingContractAmountYen,
     required this.welfareRate,
   });
 
@@ -21,9 +23,39 @@ class AdminSiteFinancialRecord {
   final int workerDailyRateYen;
   final int overtimeHourRateYen;
   final int earlyHourRateYen;
-  final int nightHourRateYen;
   final int billingUnitPriceYen;
+  final int billingSquareMeterUnitPriceYen;
+  final double billingSquareMeterQuantity;
+  final int billingContractAmountYen;
   final double welfareRate;
+
+  bool get hasManDayBilling => billingUnitPriceYen > 0;
+  bool get hasSquareMeterBilling =>
+      billingSquareMeterUnitPriceYen > 0 && billingSquareMeterQuantity > 0;
+  bool get hasContractBilling => billingContractAmountYen > 0;
+
+  int get billingMethodCount =>
+      (hasManDayBilling ? 1 : 0) +
+      (hasSquareMeterBilling ? 1 : 0) +
+      (hasContractBilling ? 1 : 0);
+
+  bool get billingConfigured => billingMethodCount == 1;
+
+  String get billingMethodLabel {
+    if (hasManDayBilling) return '人工';
+    if (hasSquareMeterBilling) return '平米';
+    if (hasContractBilling) return '請負';
+    return '未設定';
+  }
+
+  int get fixedBillingBaseAmountYen {
+    if (hasSquareMeterBilling) {
+      return (billingSquareMeterUnitPriceYen * billingSquareMeterQuantity)
+          .round();
+    }
+    if (hasContractBilling) return billingContractAmountYen;
+    return 0;
+  }
 }
 
 class AdminSiteFinancialRepository {
@@ -99,8 +131,10 @@ class AdminSiteFinancialRepository {
         .from('site_financial_settings')
         .select(
           'site_id, worker_daily_rate_yen, overtime_hour_rate_yen, '
-          'early_hour_rate_yen, night_hour_rate_yen, '
-          'billing_unit_price_yen, welfare_rate',
+          'early_hour_rate_yen, billing_unit_price_yen, '
+          'billing_square_meter_unit_price_yen, '
+          'billing_square_meter_quantity, billing_contract_amount_yen, '
+          'welfare_rate',
         )
         .eq('company_id', companyId);
 
@@ -124,10 +158,14 @@ class AdminSiteFinancialRepository {
             (s['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
         earlyHourRateYen:
             (s['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
-        nightHourRateYen:
-            (s['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
         billingUnitPriceYen:
             (s['billing_unit_price_yen'] as num?)?.toInt() ?? 0,
+        billingSquareMeterUnitPriceYen:
+            (s['billing_square_meter_unit_price_yen'] as num?)?.toInt() ?? 0,
+        billingSquareMeterQuantity:
+            (s['billing_square_meter_quantity'] as num?)?.toDouble() ?? 0,
+        billingContractAmountYen:
+            (s['billing_contract_amount_yen'] as num?)?.toInt() ?? 0,
         welfareRate: (s['welfare_rate'] as num?)?.toDouble() ?? 0,
       );
     }).toList();
@@ -142,8 +180,11 @@ class AdminSiteFinancialRepository {
       'worker_daily_rate_yen': record.workerDailyRateYen,
       'overtime_hour_rate_yen': record.overtimeHourRateYen,
       'early_hour_rate_yen': record.earlyHourRateYen,
-      'night_hour_rate_yen': record.nightHourRateYen,
       'billing_unit_price_yen': record.billingUnitPriceYen,
+      'billing_square_meter_unit_price_yen':
+          record.billingSquareMeterUnitPriceYen,
+      'billing_square_meter_quantity': record.billingSquareMeterQuantity,
+      'billing_contract_amount_yen': record.billingContractAmountYen,
       'welfare_rate': record.welfareRate,
       'updated_by': _client.auth.currentUser?.id,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
