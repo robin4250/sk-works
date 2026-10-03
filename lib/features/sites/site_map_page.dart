@@ -59,20 +59,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
   @override
   void initState() {
     super.initState();
-    _layers = widget.mode == SiteMapMode.admin
-        ? <_MapLayer>{
-            _MapLayer.sites,
-            _MapLayer.customers,
-            _MapLayer.partners,
-            _MapLayer.company,
-            _MapLayer.home,
-          }
-        : <_MapLayer>{
-            _MapLayer.sites,
-            _MapLayer.customers,
-            _MapLayer.company,
-            _MapLayer.home,
-          };
+    _layers = <_MapLayer>{};
     _load();
   }
 
@@ -184,6 +171,11 @@ class _SiteMapPageState extends State<SiteMapPage> {
     }).toList(growable: false);
   }
 
+  void _clearMapSelection() {
+    if (!mounted) return;
+    setState(_layers.clear);
+  }
+
   Future<void> _openSelectedTogether() async {
     final data = _data;
     if (data == null) return;
@@ -242,6 +234,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
             'points': points,
           },
         );
+        _clearMapSelection();
         return;
       } on MissingPluginException {
         if (!mounted) return;
@@ -272,6 +265,8 @@ class _SiteMapPageState extends State<SiteMapPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('地図を開けませんでした'))),
       );
+    } else if (opened) {
+      _clearMapSelection();
     }
   }
 
