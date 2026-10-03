@@ -49,6 +49,26 @@ if command -v flutter >/dev/null 2>&1; then
 fi
 
 echo
+echo "--- Release metadata ---"
+if [[ -f pubspec.yaml ]]; then
+  version_line="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+  build_name="${version_line%%+*}"
+  build_number="${version_line##*+}"
+  if [[ "$build_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ok "Version: $build_name"
+  else
+    fail "Version形式を確認してください: ${build_name:-unknown}"
+  fi
+  if [[ "$build_number" =~ ^[0-9]+$ && "$build_number" -ge 1 ]]; then
+    ok "Build: $build_number"
+  else
+    fail "Build番号を確認してください: ${build_number:-unknown}"
+  fi
+else
+  fail "pubspec.yaml がありません"
+fi
+
+echo
 echo "--- Release project contract ---"
 if [[ -f ios/Runner.xcodeproj/project.pbxproj ]]; then
   bundle="$(grep 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj | sed -E 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/' | grep -v '\$(' | grep -v '\.RunnerTests$' | head -n 1 || true)"
