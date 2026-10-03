@@ -23,7 +23,7 @@ void main() {
     expect(home, contains('Icons.notifications_active_outlined'));
     expect(home, contains('repeat(reverse: true)'));
 
-    expect(app, contains("SkoLanguageController.tr('社員')"));
+    expect(app, contains("SkoLanguageController.tr('社員データ')"));
     expect(app, contains("SkoLanguageController.tr('管理現場')"));
     expect(home, contains('HomeShortcutAccess.subAdmin'));
     expect(home, contains('HomeShortcutAccess.viewer'));
