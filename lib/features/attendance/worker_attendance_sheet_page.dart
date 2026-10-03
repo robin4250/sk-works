@@ -4,6 +4,7 @@ import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
+import 'bulk_attendance_correction_page.dart';
 import 'japan_holiday.dart';
 import 'worker_attendance_sheet_repository.dart';
 
@@ -96,6 +97,19 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     );
   }
 
+  Future<void> _openAttendanceCorrection() async {
+    final count = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => const BulkAttendanceCorrectionPage(),
+      ),
+    );
+    if (count == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$count件の勤務修正を申請しました')),
+    );
+    await _load();
+  }
+
   Future<void> _changeMonth(int delta) async {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta);
@@ -138,6 +152,13 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          TextButton(
+            onPressed: _loading ? null : _openAttendanceCorrection,
+            child: const Text(
+              '勤務修正',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
           IconButton(
             tooltip: SkoLanguageController.tr('月間カレンダー'),
             onPressed: _loading ? null : _showMonthCalendar,
