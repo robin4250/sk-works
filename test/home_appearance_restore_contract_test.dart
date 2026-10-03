@@ -45,8 +45,7 @@ void main() {
     expect(app, contains('Colors.white.withValues('));
     expect(app, contains('alpha: _homeAppearance.headerOpacity'));
     expect(theme, contains('backgroundColor: Colors.white'));
-    expect(app, contains('const ColoredBox('));
-    expect(app, contains('color: Colors.white'));
+    expect(app, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(app, isNot(contains('colorScheme.surfaceContainerHighest')));
     expect(app, contains('withValues(alpha: _homeAppearance.footerOpacity)'));
     expect(app, contains("'背景・ヘッダー・フッター設定'"));
