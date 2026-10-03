@@ -25,10 +25,13 @@ void main() {
 
     expect(app, contains("SkoLanguageController.tr('社員')"));
     expect(app, contains("SkoLanguageController.tr('管理現場')"));
-    expect(home, contains('_HomeActionAccess.subAdmin'));
-    expect(home, contains('_HomeActionAccess.admin'));
-    expect(home, contains('_HomeActionAccess.professional'));
-    expect(home, contains('class _ProfessionalAccessMark'));
+    expect(home, contains('HomeShortcutAccess.subAdmin'));
+    expect(home, contains('HomeShortcutAccess.viewer'));
+    expect(home, contains('HomeShortcutAccess.admin'));
+    expect(home, isNot(contains('_ProfessionalAccessMark')));
+    expect(home, contains('final borderWidth = isAdmin ? 4.0'));
+    expect(home, contains('if (isViewer)'));
+    expect(home, contains('padding: const EdgeInsets.all(3)'));
     expect(home, contains('final background = scheme.surfaceContainerLowest;'));
     expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));
 
