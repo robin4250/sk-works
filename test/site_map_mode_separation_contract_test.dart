@@ -56,7 +56,7 @@ void main() {
     expect(
       map,
       contains(
-        'if (!value.canViewAll || !widget.allowEmployeeHomes)',
+        'if (!scoped.canViewAll || !widget.allowEmployeeHomes)',
       ),
     );
   });
