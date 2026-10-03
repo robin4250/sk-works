@@ -19,7 +19,7 @@ void main() {
     expect(repository, contains("'clock_in'"));
     expect(repository, contains("'clock_out'"));
 
-    expect(home, contains("'本日の勤務報告'"));
+    expect(home, contains("'本日の勤怠報告'"));
     expect(home, contains("'選択中の出勤方法："));
     expect(home, contains("'選択中の現場："));
     expect(home, contains("'現場の選択（1現場／複数現場）'"));
