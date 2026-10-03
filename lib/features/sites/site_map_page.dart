@@ -81,10 +81,11 @@ class _SiteMapPageState extends State<SiteMapPage> {
       final repository = _repository;
       if (repository == null) throw StateError(SkoLanguageController.tr('現場マップを利用できません'));
       final value = await repository.load();
+      final scoped = _scopeWorkspace(value);
       if (!mounted) return;
       setState(() {
-        _data = value;
-        if (!value.canViewAll || !widget.allowEmployeeHomes) {
+        _data = scoped;
+        if (!scoped.canViewAll || !widget.allowEmployeeHomes) {
           _layers.remove(_MapLayer.employeeHomes);
         }
         // The footer map must still show the signed-in user's own home.
@@ -99,6 +100,28 @@ class _SiteMapPageState extends State<SiteMapPage> {
         _error = error.toString();
       });
     }
+  }
+
+  SiteMapWorkspace _scopeWorkspace(SiteMapWorkspace value) {
+    if (widget.mode == SiteMapMode.admin) return value;
+
+    final ownWorkerId = value.home?['worker_id']?.toString();
+    return SiteMapWorkspace(
+      canViewAll: false,
+      sites: value.sites,
+      customers: value.customers,
+      partners: const [],
+      workers: ownWorkerId == null || ownWorkerId.isEmpty
+          ? const []
+          : value.workers
+              .where(
+                (row) => row['worker_id']?.toString() == ownWorkerId,
+              )
+              .toList(growable: false),
+      company: value.company,
+      home: value.home,
+      employeeHomes: const [],
+    );
   }
 
   Future<void> _mapAddress(
@@ -328,11 +351,12 @@ class _SiteMapPageState extends State<SiteMapPage> {
                               SkoLanguageController.tr('取引会社'),
                               enabled: data.customers.isNotEmpty,
                             ),
-                            _check(
-                              _MapLayer.partners,
-                              SkoLanguageController.tr('下請け会社'),
-                              enabled: data.partners.isNotEmpty,
-                            ),
+                            if (widget.mode == SiteMapMode.admin)
+                              _check(
+                                _MapLayer.partners,
+                                SkoLanguageController.tr('下請け会社'),
+                                enabled: data.partners.isNotEmpty,
+                              ),
                             _check(
                               _MapLayer.company,
                               SkoLanguageController.tr('自社'),
@@ -386,7 +410,8 @@ class _SiteMapPageState extends State<SiteMapPage> {
                         trailing: const Icon(Icons.map_outlined),
                         onTap: () => _mapAddress(customer, 'customer_name'),
                       ),
-                    if (data.partners.isNotEmpty) ...[
+                    if (widget.mode == SiteMapMode.admin &&
+                        data.partners.isNotEmpty) ...[
                       _Heading(SkoLanguageController.tr('下請け会社')),
                       for (final partner in data.partners)
                         ListTile(
@@ -438,7 +463,13 @@ class _SiteMapPageState extends State<SiteMapPage> {
                           onTap: () => _mapAddress(worker, 'worker_name'),
                         ),
                     ],
-                    _Heading(SkoLanguageController.tr('最新の打刻位置')),
+                    _Heading(
+                      SkoLanguageController.tr(
+                        widget.mode == SiteMapMode.admin
+                            ? '最新の打刻位置'
+                            : '自分の最新の打刻位置',
+                      ),
+                    ),
                     for (final worker in data.workers)
                       ListTile(
                         leading: const Icon(Icons.person_pin_circle_outlined),
