@@ -20,6 +20,7 @@ void main() {
     );
     expect(app, contains('HomeShortcut('));
     expect(home, contains("shortcut.access"));
-    expect(home, contains("key == 'company_documents'"));
+    expect(app, contains("'company_documents',"));
+    expect(app, contains('HomeShortcutAccess.admin'));
   });
 }
