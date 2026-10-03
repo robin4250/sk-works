@@ -291,7 +291,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
       contentPadding: EdgeInsets.zero,
       value: enabled && _layers.contains(layer),
       onChanged: enabled
-          ? (value) async {
+          ? (value) {
               setState(() {
                 if (value == true) {
                   _layers.add(layer);
@@ -299,7 +299,6 @@ class _SiteMapPageState extends State<SiteMapPage> {
                   _layers.remove(layer);
                 }
               });
-              await _saveLayerPreferences();
             }
           : null,
       title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
