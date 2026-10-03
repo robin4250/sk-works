@@ -289,7 +289,7 @@ class WorkerAttendanceSheetRepository {
       draft.paidLeave = true;
       draft.paidLeaveOrdinal = i + 1;
       draft.paidLeaveRemaining =
-          (grantedDays - (i + 1)).clamp(0, double.infinity);
+          (grantedDays - (i + 1)).clamp(0, double.infinity).toDouble();
     }
 
     final rawUnits = await _client.rpc('my_attendance_allowance_units');
