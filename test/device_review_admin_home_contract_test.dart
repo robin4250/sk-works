@@ -47,7 +47,9 @@ void main() {
     expect(homeDashboard, contains('contentTopInset: 8'));
     expect(homeDashboard, contains('forceMaterialTransparency: true'));
     expect(homeDashboard, contains('return Stack('));
-    expect(homeDashboard, contains('surfaceContainerHighest'));
+    expect(homeDashboard, contains('const ColoredBox('));
+    expect(homeDashboard, contains('color: Colors.white'));
+    expect(homeDashboard, isNot(contains('surfaceContainerHighest')));
     expect(homeDashboard, contains('bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true)'));
     expect(homeDashboard, contains('flexibleSpace: ColoredBox('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
