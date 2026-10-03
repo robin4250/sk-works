@@ -23,7 +23,6 @@ void main() {
       'vehicle_routes',
       'employee_register',
       'approvals',
-      'employee_onboarding_approvals',
       'documents',
       'employee_qualifications',
       'signatures',
@@ -58,5 +57,13 @@ void main() {
     expect(app, contains("label: SkoLanguageController.tr('従業員資格')"));
     expect(app, contains("key: 'settings'"));
     expect(app, contains('homeEligible: false'));
+    expect(app, isNot(contains("key: 'employee_onboarding_approvals'")));
+    expect(app, isNot(contains("SkoLanguageController.tr('本登録承認')")));
+    final hub =
+        File('lib/features/approvals/approvals_hub_page.dart').readAsStringSync();
+    expect(hub, contains("'日報の承認待ち'"));
+    expect(hub, contains("'従業員の本登録承認'"));
+    expect(hub, contains('DailyReportApprovalsPage'));
+    expect(hub, contains('EmployeeOnboardingApprovalsPage'));
   });
 }

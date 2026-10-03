@@ -58,7 +58,6 @@ class CompanyModuleSettingsRepository {
     'vehicle_routes',
     'employee_register',
     'approvals',
-    'employee_onboarding_approvals',
     'documents',
     'employee_qualifications',
     'signatures',

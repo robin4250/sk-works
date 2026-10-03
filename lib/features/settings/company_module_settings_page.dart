@@ -105,7 +105,6 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
         'vehicle_routes' => '車両ルート',
         'employee_register' => '従業員登録',
         'approvals' => '承認待ち',
-        'employee_onboarding_approvals' => '本登録承認',
         'documents' => '必要書類',
         'employee_qualifications' => '従業員資格',
         'signatures' => 'サイン一覧',
