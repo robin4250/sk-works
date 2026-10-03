@@ -13,7 +13,7 @@ void main() {
       source,
       isNot(contains('if (_biometricEnabled && _biometricAvailable) ...[')),
     );
-    expect(source, contains("'sko_secondary_biometric_enabled_$userId'"));
+    expect(source, contains(r"'sko_secondary_biometric_enabled_$userId'"));
     expect(source, contains('_biometricEnabled = true;'));
     expect(source, contains('Face ID / Touch IDで開く'));
   });
