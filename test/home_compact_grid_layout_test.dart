@@ -88,7 +88,7 @@ void main() {
     expect(source, contains('primary: false'));
     expect(source, contains('padding: EdgeInsets.zero'));
     expect(source, contains('fourColumns\n              ? Column('));
-    expect(source, contains('maxLines: fourColumns ? 2'));
+    expect(source, contains('maxLines: item.label.contains('\\n') ? 2'));
     expect(source, contains('fontSize: fourColumns ? 9.5'));
     expect(tester.takeException(), isNull);
   });
