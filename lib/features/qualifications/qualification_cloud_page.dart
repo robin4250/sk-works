@@ -15,7 +15,8 @@ class QualificationCloudPage extends StatefulWidget {
 
 class _QualificationCloudPageState extends State<QualificationCloudPage> {
   final _repository = QualificationCloudRepository.maybeCreate();
-  final _queryController = TextEditingController();
+  final _workerQueryController = TextEditingController();
+  final _qualificationQueryController = TextEditingController();
 
   List<Map<String, dynamic>> _masters = [];
   List<Map<String, dynamic>> _workers = [];
@@ -24,7 +25,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   bool _canManageMaster = false;
   bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
-  String _query = '';
+  String _workerQuery = '';
+  String _qualificationQuery = '';
+  String? _selectedWorkerId;
   String? _error;
 
   @override
@@ -35,7 +38,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
   @override
   void dispose() {
-    _queryController.dispose();
+    _workerQueryController.dispose();
+    _qualificationQueryController.dispose();
     super.dispose();
   }
 
@@ -85,7 +89,15 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final workerById = {
       for (final row in _workers) row['id']?.toString() ?? '': row,
     };
-    final needle = _query.trim().toLowerCase();
+    final workerNeedle = _workerQuery.trim().toLowerCase();
+    final qualificationNeedle = _qualificationQuery.trim().toLowerCase();
+    final filteredWorkers = _workers.where((row) {
+      if (workerNeedle.isEmpty) return true;
+      return [
+        row['name'],
+        row['affiliation'],
+      ].whereType<Object>().join(' ').toLowerCase().contains(workerNeedle);
+    }).toList(growable: false);
 
     final filtered = _qualifications.where((row) {
       final master = masterById[row['qualification_master_id']?.toString() ?? ''];
@@ -96,21 +108,24 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
           !isExpired &&
           !expiry.isAfter(_dateOnly(now).add(const Duration(days: 90)));
       final matchesExpiry = !_showExpiringOnly || isExpired || isExpiringSoon;
-      final haystack = [
+      final matchesWorker =
+          _selectedWorkerId == null || row['worker_id']?.toString() == _selectedWorkerId;
+      final qualificationHaystack = [
         master?['name'],
+        master?['category'],
         master?['issuer'],
-        worker?['name'],
         row['certificate_number'],
         row['issuer'],
         row['notes'],
       ].whereType<Object>().join(' ').toLowerCase();
-      final matchesQuery = needle.isEmpty || haystack.contains(needle);
-      return matchesExpiry && matchesQuery;
+      final matchesQualification = qualificationNeedle.isEmpty ||
+          qualificationHaystack.contains(qualificationNeedle);
+      return matchesExpiry && matchesWorker && matchesQualification;
     }).toList(growable: false);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('資格管理'),
+        title: const Text('従業員資格'),
         actions: [
           IconButton(
             tooltip: '親会社に送る',
@@ -154,14 +169,52 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
               child: TextField(
-                controller: _queryController,
+                controller: _workerQueryController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.person_search_outlined),
+                  hintText: '従業員名で検索',
+                ),
+                onChanged: (value) => setState(() => _workerQuery = value),
+              ),
+            ),
+            SizedBox(
+              height: 72,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                children: [
+                  ChoiceChip(
+                    label: const Text('全員'),
+                    selected: _selectedWorkerId == null,
+                    onSelected: (_) => setState(() => _selectedWorkerId = null),
+                  ),
+                  const SizedBox(width: 8),
+                  for (final worker in filteredWorkers) ...[
+                    ChoiceChip(
+                      label: Text(worker['name']?.toString() ?? '名前未登録'),
+                      selected:
+                          _selectedWorkerId == worker['id']?.toString(),
+                      onSelected: (_) => setState(
+                        () => _selectedWorkerId = worker['id']?.toString(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _qualificationQueryController,
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '資格名・保有者・証明書番号で検索',
+                  hintText: '資格種類・証明書番号で検索',
                 ),
-                onChanged: (value) => setState(() => _query = value),
+                onChanged: (value) =>
+                    setState(() => _qualificationQuery = value),
               ),
             ),
             Padding(
@@ -388,7 +441,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       return;
     }
 
-    var workerId = _workers.first['id']?.toString();
+    var workerId = _selectedWorkerId ?? _workers.first['id']?.toString();
     var masterId = _masters.first['id']?.toString();
     final certificateController = TextEditingController();
     final issuerController = TextEditingController();
