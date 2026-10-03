@@ -49,7 +49,7 @@ void main() {
     expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
     expect(homeDashboard, contains('contentTopInset: _chromeVisible ? 72 : 8'));
     expect(homeDashboard, contains('Stack('));
-    expect(homeDashboard, contains('Color.fromRGBO('));
+    expect(homeDashboard, contains('Colors.white.withAlpha('));
     expect(homeDashboard, contains('return Stack('));
     expect(homeDashboard, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(homeDashboard, isNot(contains('surfaceContainerHighest')));
