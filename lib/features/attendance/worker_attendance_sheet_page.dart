@@ -188,7 +188,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           month: _month,
           data: data,
           workerId: widget.workerId,
-          workerName: workerName,
+          workerName: widget.workerName,
         ),
       ),
     );
@@ -1085,7 +1085,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
               onPressed: () => AttendancePdfService.printMonth(
                 month,
                 data,
-                workerName: widget.workerName,
+                workerName: workerName,
               ),
               icon: const Icon(Icons.print),
               label: Text(SkoLanguageController.tr('印刷')),
