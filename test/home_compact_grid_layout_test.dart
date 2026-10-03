@@ -69,7 +69,7 @@ void main() {
     );
 
     expect(find.text('要対応'), findsOneWidget);
-    expect(find.text('本日の勤務報告'), findsOneWidget);
+    expect(find.text('本日の勤怠報告'), findsOneWidget);
     expect(find.text('本日の出勤'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -82,7 +82,7 @@ void main() {
     );
 
     expect(find.text('要対応'), findsOneWidget);
-    expect(find.text('本日の勤務報告'), findsOneWidget);
+    expect(find.text('本日の勤怠報告'), findsOneWidget);
     expect(find.text('本日の出勤'), findsOneWidget);
     final source = File('lib/features/home/friendly_home_content.dart').readAsStringSync();
     expect(source, contains('primary: false'));
