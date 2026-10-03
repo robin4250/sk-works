@@ -33,7 +33,7 @@ void main() {
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
     expect(app, contains("key: 'daily_report'"));
-    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(app, contains('HomeShortcut('));
     expect(home, contains('for (final shortcut in shortcuts)'));
     expect(home, isNot(contains("'日報の入力・サイン・印刷を確認'")));
   });

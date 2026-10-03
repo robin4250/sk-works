@@ -135,6 +135,7 @@ class _HomePageState extends State<HomePage> {
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
   Set<String> _hiddenHomeActionKeys = <String>{};
+  Map<String, String> _homeLabelOverrides = const {};
   HomeAppearance _homeAppearance = const HomeAppearance();
   HomeIdentity _identity = const HomeIdentity(
     role: 'viewer',
@@ -216,8 +217,10 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
-    if (value == null || !mounted) return;
-    setState(() => _homeAppearance = value);
+    if (!mounted) return;
+    final latest = value ?? await HomeAppearanceRepository.load();
+    if (!mounted) return;
+    setState(() => _homeAppearance = latest);
   }
 
   Future<void> _loadIdentity() async {
@@ -327,11 +330,21 @@ class _HomePageState extends State<HomePage> {
     final columns = (prefs.getInt('sko_home_grid_columns') ?? 2).clamp(1, 4);
     final order = prefs.getStringList('sko_home_action_order') ?? const <String>[];
     final hidden = prefs.getStringList('sko_home_hidden_actions') ?? const <String>[];
+    final labelOverrides = <String, String>{};
+    for (final key in prefs.getKeys()) {
+      const prefix = 'sko_home_label_override_';
+      if (!key.startsWith(prefix)) continue;
+      final value = prefs.getString(key)?.trim();
+      if (value != null && value.isNotEmpty) {
+        labelOverrides[key.substring(prefix.length)] = value;
+      }
+    }
     if (!mounted) return;
     setState(() {
       _homeGridColumns = columns;
       _homeActionOrder = List<String>.from(order);
       _hiddenHomeActionKeys = hidden.toSet();
+      _homeLabelOverrides = labelOverrides;
     });
   }
 
@@ -352,6 +365,80 @@ class _HomePageState extends State<HomePage> {
     setState(() => _hiddenHomeActionKeys = next);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_hidden_actions', next.toList()..sort());
+  }
+
+  Future<void> _setHomeLabelOverride(String key, String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = value?.trim() ?? '';
+    final next = <String, String>{..._homeLabelOverrides};
+    if (normalized.isEmpty) {
+      next.remove(key);
+      await prefs.remove('sko_home_label_override_$key');
+    } else {
+      next[key] = normalized;
+      await prefs.setString('sko_home_label_override_$key', normalized);
+    }
+    if (!mounted) return;
+    setState(() => _homeLabelOverrides = next);
+  }
+
+  Future<void> _editHomeLabel(_MenuAction item) async {
+    final current = _homeLabelOverrides[item.key] ?? item.label;
+    final parts = current.split('\n');
+    final first = TextEditingController(text: parts.isNotEmpty ? parts.first : item.label);
+    final second = TextEditingController(text: parts.length > 1 ? parts.sublist(1).join(' ') : '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('2行表示時の改行位置'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(item.label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: first,
+              maxLines: 1,
+              decoration: const InputDecoration(labelText: '1行目'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: second,
+              maxLines: 1,
+              decoration: const InputDecoration(labelText: '2行目（不要なら空欄）'),
+            ),
+            const SizedBox(height: 8),
+            const Text('1行で収まる時は1行表示のままです。2行表示が必要な時だけ、この改行位置を使います。'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(''),
+            child: const Text('標準に戻す'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final line1 = first.text.trim();
+              final line2 = second.text.trim();
+              final value = [
+                if (line1.isNotEmpty) line1,
+                if (line2.isNotEmpty) line2,
+              ].join('\n');
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    first.dispose();
+    second.dispose();
+    if (result == null) return;
+    await _setHomeLabelOverride(item.key, result);
   }
 
   Future<void> _reorderHomeAction(int oldIndex, int newIndex) async {
@@ -983,7 +1070,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         Scaffold(
-          extendBodyBehindAppBar: false,
+          extendBodyBehindAppBar: true,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
@@ -995,26 +1082,10 @@ class _HomePageState extends State<HomePage> {
               shadowColor: Colors.transparent,
               elevation: 0,
               titleSpacing: 12,
-              flexibleSpace: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ColoredBox(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                  ),
-                  if (wallpaperPath != null && File(wallpaperPath).existsSync())
-                    Opacity(
-                      opacity: _homeAppearance.wallpaperOpacity,
-                      child: Image.file(
-                        File(wallpaperPath),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ColoredBox(
-                    color: Colors.white.withValues(
-                      alpha: _homeAppearance.headerOpacity,
-                    ),
-                  ),
-                ],
+              flexibleSpace: ColoredBox(
+                color: Colors.white.withValues(
+                  alpha: _homeAppearance.headerOpacity,
+                ),
               ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1068,7 +1139,13 @@ class _HomePageState extends State<HomePage> {
           },
           shortcuts: [
             for (final item in _homeLayoutItems)
-              HomeShortcut(item.key, item.label, item.icon),
+              HomeShortcut(
+                item.key,
+                item.label,
+                item.icon,
+                twoLineLabel: _homeLabelOverrides[item.key],
+                access: item.access,
+              ),
           ],
           showAttendanceReport:
               !_hiddenHomeActionKeys.contains('attendance_verify'),
@@ -1076,7 +1153,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: 8,
+          contentTopInset: _chromeVisible ? 72 : 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
@@ -1086,11 +1163,53 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  HomeShortcutAccess _shortcutAccessForMenuItem(_MenuAction item) {
+    const adminOnly = <String>{
+      'company_deliveries',
+      'company_documents',
+      'signatures',
+    };
+    const subAdmin = <String>{
+      'employee_register',
+      'employee_onboarding_approvals',
+      'approvals',
+      'today_line',
+      'site_map',
+      'payroll_settings',
+    };
+    const viewerVisible = <String>{
+      'attendance_verify',
+      'daily_report',
+      'people',
+      'vehicle_routes',
+      'payroll',
+      'profile',
+      'qualifications',
+      'documents',
+      'notes',
+      'albums',
+      'payroll_adjustments',
+      'invoices',
+      'admin_sites',
+      'site_register',
+      'settings',
+    };
+    if (adminOnly.contains(item.key)) return HomeShortcutAccess.admin;
+    if (subAdmin.contains(item.key)) return HomeShortcutAccess.subAdmin;
+    if (viewerVisible.contains(item.key)) return HomeShortcutAccess.viewer;
+    return HomeShortcutAccess.general;
+  }
+
   List<_HomeLayoutItem> get _homeLayoutItems {
     return [
       for (final item in _menuItems)
         if (item.homeEligible && !_hiddenHomeActionKeys.contains(item.key))
-          _HomeLayoutItem(item.key, item.label, item.icon),
+          _HomeLayoutItem(
+            item.key,
+            item.label,
+            item.icon,
+            _shortcutAccessForMenuItem(item),
+          ),
     ];
   }
 
@@ -1181,10 +1300,22 @@ class _HomePageState extends State<HomePage> {
                   ),
                   subtitle: Text('${SkoLanguageController.tr('利用権限')}：${item.accessLabel}'),
                   onTap: () => _openHomeAction(item.key),
-                  trailing: Switch(
-                    value: !_hiddenHomeActionKeys.contains(item.key),
-                    onChanged: (value) =>
-                        _setHomeActionVisible(item.key, value),
+                  trailing: Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (item.homeEligible)
+                        IconButton(
+                          tooltip: '2行表示時の改行位置',
+                          onPressed: () => _editHomeLabel(item),
+                          icon: const Icon(Icons.edit_note_outlined),
+                        ),
+                      Switch(
+                        value: !_hiddenHomeActionKeys.contains(item.key),
+                        onChanged: (value) =>
+                            _setHomeActionVisible(item.key, value),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1311,11 +1442,12 @@ class _MenuAction {
 }
 
 class _HomeLayoutItem {
-  const _HomeLayoutItem(this.key, this.label, this.icon);
+  const _HomeLayoutItem(this.key, this.label, this.icon, this.access);
 
   final String key;
   final String label;
   final IconData icon;
+  final HomeShortcutAccess access;
 }
 
 class _BackendUnavailableScreen extends StatelessWidget {

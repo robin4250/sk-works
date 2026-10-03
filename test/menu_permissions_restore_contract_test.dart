@@ -18,8 +18,8 @@ void main() {
     expect(app, contains("SkoLanguageController.tr('1列')"));
     expect(app, contains("SkoLanguageController.tr('4列')"));
     expect(app, contains("SkoLanguageController.tr('協力会社')"));
-    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(app, contains('HomeShortcut('));
     expect(home, contains('for (final shortcut in shortcuts)'));
-    expect(home, contains('_shortcutAccess(shortcut.key)'));
+    expect(home, contains('shortcut.access'));
   });
 }

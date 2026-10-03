@@ -25,10 +25,13 @@ void main() {
 
     expect(app, contains("SkoLanguageController.tr('社員')"));
     expect(app, contains("SkoLanguageController.tr('管理現場')"));
-    expect(home, contains('_HomeActionAccess.subAdmin'));
-    expect(home, contains('_HomeActionAccess.admin'));
-    expect(home, contains('_HomeActionAccess.professional'));
-    expect(home, contains('class _ProfessionalAccessMark'));
+    expect(home, contains('HomeShortcutAccess.subAdmin'));
+    expect(home, contains('HomeShortcutAccess.viewer'));
+    expect(home, contains('HomeShortcutAccess.admin'));
+    expect(home, isNot(contains('_ProfessionalAccessMark')));
+    expect(home, contains('final borderWidth = isAdmin ? 4.0'));
+    expect(home, contains('if (isViewer)'));
+    expect(home, contains('padding: const EdgeInsets.all(3)'));
     expect(home, contains('final background = scheme.surfaceContainerLowest;'));
     expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));
 
@@ -41,21 +44,20 @@ void main() {
     expect(homeStart, greaterThanOrEqualTo(0));
     expect(homeEnd, greaterThan(homeStart));
     final homeDashboard = app.substring(homeStart, homeEnd);
-    expect(homeDashboard, contains('extendBodyBehindAppBar: false'));
+    expect(homeDashboard, contains('extendBodyBehindAppBar: true'));
     expect(homeDashboard, contains('preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0)'));
     expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
-    expect(homeDashboard, contains('contentTopInset: 8'));
+    expect(homeDashboard, contains('contentTopInset: _chromeVisible ? 72 : 8'));
     expect(homeDashboard, contains('forceMaterialTransparency: true'));
     expect(homeDashboard, contains('return Stack('));
     expect(homeDashboard, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(homeDashboard, isNot(contains('surfaceContainerHighest')));
     expect(homeDashboard, contains('bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true)'));
-    expect(homeDashboard, contains('flexibleSpace: Stack('));
+    expect(homeDashboard, contains('flexibleSpace: ColoredBox('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('Colors.white.withValues('));
     expect(homeDashboard, contains('alpha: _homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('backgroundColor: Colors.transparent'));
-    expect(homeDashboard, contains('Image.file('));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, contains('_chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));

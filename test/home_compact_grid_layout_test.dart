@@ -88,7 +88,8 @@ void main() {
     expect(source, contains('primary: false'));
     expect(source, contains('padding: EdgeInsets.zero'));
     expect(source, contains('fourColumns\n              ? Column('));
-    expect(source, contains('maxLines: fourColumns ? 2'));
+    expect(source, contains('final needsTwoLines = painter.width > constraints.maxWidth'));
+    expect(source, contains('maxLines: needsTwoLines ? 2 : 1'));
     expect(source, contains('fontSize: fourColumns ? 9.5'));
     expect(tester.takeException(), isNull);
   });

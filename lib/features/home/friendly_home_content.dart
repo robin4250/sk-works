@@ -8,12 +8,22 @@ import 'home_attention_repository.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
+enum HomeShortcutAccess { general, subAdmin, viewer, admin }
+
 class HomeShortcut {
-  const HomeShortcut(this.key, this.label, this.icon);
+  const HomeShortcut(
+    this.key,
+    this.label,
+    this.icon, {
+    this.twoLineLabel,
+    this.access = HomeShortcutAccess.general,
+  });
 
   final String key;
   final String label;
+  final String? twoLineLabel;
   final IconData icon;
+  final HomeShortcutAccess access;
 }
 
 class FriendlyHomeContent extends StatelessWidget {
@@ -575,9 +585,8 @@ class _OrderedHomeContent extends StatelessWidget {
             shortcut.key,
             shortcut.label,
             shortcut.icon,
-            access: identity.isManagement
-                ? _shortcutAccess(shortcut.key)
-                : _HomeActionAccess.general,
+            twoLineLabel: shortcut.twoLineLabel,
+            access: shortcut.access,
           ),
         );
       }
@@ -770,61 +779,57 @@ class _HomeActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isSubAdmin = item.access == _HomeActionAccess.subAdmin;
-    final isAdmin = item.access == _HomeActionAccess.admin ||
-        item.access == _HomeActionAccess.professional;
-    final isProfessional = item.access == _HomeActionAccess.professional;
+      final isSubAdmin = item.access == HomeShortcutAccess.subAdmin;
+    final isViewer = item.access == HomeShortcutAccess.viewer;
+    final isAdmin = item.access == HomeShortcutAccess.admin;
     final background = scheme.surfaceContainerLowest;
-    final borderColor =
-        (isSubAdmin || isAdmin) ? scheme.primary : scheme.outlineVariant;
-    final borderWidth = (isSubAdmin || isAdmin) ? 2.0 : 1.0;
+    final borderColor = scheme.primary;
+    final borderWidth = isAdmin ? 4.0 : (isSubAdmin || isViewer ? 1.8 : 0.0);
 
     final icon = CircleAvatar(
       radius: fourColumns ? 12 : (compact ? 16 : 20),
       child: Icon(item.icon, size: fourColumns ? 14 : (compact ? 18 : 24)),
     );
 
-    final label = Text(
-      item.label,
-      maxLines: fourColumns ? 2 : (compact ? 2 : 1),
-      overflow: TextOverflow.ellipsis,
-      textAlign: fourColumns
-          ? TextAlign.center
-          : (compact ? TextAlign.center : TextAlign.start),
-      style: TextStyle(
-        fontWeight: FontWeight.w900,
-        fontSize: fourColumns ? 9.5 : (compact ? 11 : 14),
-        height: 1.05,
-      ),
+    final labelStyle = TextStyle(
+      fontWeight: FontWeight.w900,
+      fontSize: fourColumns ? 9.5 : (compact ? 11 : 14),
+      height: 1.05,
     );
 
-    Widget tile({bool dragging = false}) => Material(
-      color: background.withValues(alpha: dragging ? 0.88 : 1),
-      elevation: dragging ? 8 : 0,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: dragging ? null : () => onOpen(item.key),
-        child: Container(
-          padding: EdgeInsets.all(compact ? 8 : 14),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: borderColor,
-              width: borderWidth,
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: fourColumns
+    Widget label = LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: item.label, style: labelStyle),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: double.infinity);
+        final needsTwoLines = painter.width > constraints.maxWidth;
+        final display = needsTwoLines &&
+                item.twoLineLabel != null &&
+                item.twoLineLabel!.trim().isNotEmpty
+            ? item.twoLineLabel!
+            : item.label;
+        return Text(
+          display,
+          maxLines: needsTwoLines ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: fourColumns
+              ? TextAlign.center
+              : (compact ? TextAlign.center : TextAlign.start),
+          style: labelStyle,
+        );
+      },
+    );
+
+    Widget content() => fourColumns
               ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     icon,
                     const SizedBox(height: 4),
                     Flexible(child: label),
-                    if (isProfessional) ...[
-                      const SizedBox(height: 2),
-                      const _ProfessionalAccessMark(),
-                    ],
+
                   ],
                 )
               : compact
@@ -834,10 +839,7 @@ class _HomeActionTile extends StatelessWidget {
                         icon,
                         const SizedBox(height: 6),
                         label,
-                        if (isProfessional) ...[
-                          const SizedBox(height: 4),
-                          const _ProfessionalAccessMark(),
-                        ],
+
                       ],
                     )
                   : Row(
@@ -845,16 +847,44 @@ class _HomeActionTile extends StatelessWidget {
                     icon,
                     const SizedBox(width: 10),
                     Expanded(child: label),
-                    if (isProfessional) ...[
-                      const _ProfessionalAccessMark(),
-                      const SizedBox(width: 4),
-                    ],
+
                     const Icon(Icons.chevron_right),
                   ],
-                ),
+                );
+
+    Widget tile({bool dragging = false}) {
+      Widget core = Material(
+        color: background.withValues(alpha: dragging ? 0.88 : 1),
+        elevation: dragging ? 8 : 0,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: dragging ? null : () => onOpen(item.key),
+          child: Container(
+            padding: EdgeInsets.all(compact ? 8 : 14),
+            decoration: BoxDecoration(
+              border: borderWidth > 0
+                  ? Border.all(color: borderColor, width: borderWidth)
+                  : null,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: content(),
+          ),
         ),
-      ),
-    );
+      );
+
+      if (isViewer) {
+        core = Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            border: Border.all(color: borderColor, width: 1.8),
+            borderRadius: BorderRadius.circular(23),
+          ),
+          child: core,
+        );
+      }
+      return core;
+    }
 
     final reorder = onReorderAction;
     if (reorder == null) return tile();
@@ -891,57 +921,20 @@ class _HomeActionTile extends StatelessWidget {
   }
 }
 
-_HomeActionAccess _shortcutAccess(String key) {
-  if (key == 'people') return _HomeActionAccess.subAdmin;
-  if (key == 'invoices') return _HomeActionAccess.professional;
-  if (key == 'admin_sites' ||
-      key == 'company_documents' ||
-      key == 'company_deliveries' ||
-      key == 'signatures' ||
-      key == 'payroll_settings' ||
-      key == 'payroll_adjustments') {
-    return _HomeActionAccess.admin;
-  }
-  return _HomeActionAccess.general;
-}
-
-enum _HomeActionAccess {
-  general,
-  subAdmin,
-  admin,
-  professional,
-}
-
 class _HomeAction {
   const _HomeAction(
     this.key,
     this.label,
     this.icon, {
-    this.access = _HomeActionAccess.general,
+    this.twoLineLabel,
+    this.access = HomeShortcutAccess.general,
   });
 
   final String key;
   final String label;
+  final String? twoLineLabel;
   final IconData icon;
-  final _HomeActionAccess access;
+  final HomeShortcutAccess access;
 }
 
-class _ProfessionalAccessMark extends StatelessWidget {
-  const _ProfessionalAccessMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 18,
-      height: 18,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(Icons.circle_outlined, size: 18, color: Colors.black),
-          Icon(Icons.circle_outlined, size: 11, color: Colors.black),
-        ],
-      ),
-    );
-  }
-}
 
