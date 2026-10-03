@@ -45,9 +45,12 @@ void main() {
 
     await tester.tap(find.text('メニュー'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('設定'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('設定'), findsOneWidget);
-    await tester.ensureVisible(find.text('設定'));
-    await tester.pump();
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 
