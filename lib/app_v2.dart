@@ -1154,15 +1154,25 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
-            child: Opacity(
-              opacity: _homeAppearance.headerOpacity,
-              child: AppBar(
-                toolbarHeight: _chromeVisible ? 64 : 0,
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                elevation: 0,
-                titleSpacing: 12,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: Color.fromRGBO(
+                    255,
+                    255,
+                    255,
+                    _homeAppearance.headerOpacity,
+                  ),
+                ),
+                AppBar(
+                  toolbarHeight: _chromeVisible ? 64 : 0,
+                  backgroundColor: Colors.transparent,
+                  forceMaterialTransparency: true,
+                  surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
+                  titleSpacing: 12,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1201,7 +1211,8 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.logout),
               ),
           ],
-              ),
+                ),
+              ],
             ),
           ),
           body: FriendlyHomeContent(
