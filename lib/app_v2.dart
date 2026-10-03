@@ -757,10 +757,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'site_map':
-        page = const SiteMapPage(
-          allowEmployeeHomes: true,
-          title: '管理者用現場マップ',
-        );
+        page = const AdminSiteMapPage();
         break;
       case 'admin_sites':
         page = const SecondaryProtectedPage(
