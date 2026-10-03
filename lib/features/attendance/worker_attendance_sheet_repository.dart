@@ -21,6 +21,9 @@ class WorkerAttendanceDay {
     this.allowanceYen = 0,
     this.allowanceNames = const <String>[],
     this.allowanceUnits = const <String, String>{},
+    this.paidLeave = false,
+    this.paidLeaveOrdinal = 0,
+    this.paidLeaveRemaining = 0,
   });
 
   final DateTime date;
@@ -33,6 +36,9 @@ class WorkerAttendanceDay {
   final int allowanceYen;
   final List<String> allowanceNames;
   final Map<String, String> allowanceUnits;
+  final bool paidLeave;
+  final int paidLeaveOrdinal;
+  final double paidLeaveRemaining;
 
   bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
 
@@ -54,6 +60,7 @@ class WorkerAttendanceMonth {
   final Map<String, String> allowanceUnits;
 
   int get workedDays => days.values.where((day) => day.worked).length;
+  int get paidLeaveDays => days.values.where((day) => day.paidLeave).length;
 
   double get overtimeHours =>
       days.values.fold(0, (sum, day) => sum + day.overtimeHours);
@@ -253,6 +260,38 @@ class WorkerAttendanceSheetRepository {
       }
     }
 
+    final allApprovedLeaveRows = await _client
+        .from('paid_leave_requests')
+        .select('leave_date')
+        .eq('worker_id', targetWorkerId)
+        .eq('status', 'approved')
+        .order('leave_date');
+
+    final summaryRaw = await _client.rpc(
+      'paid_leave_worker_summary',
+      params: {'p_worker_id': targetWorkerId},
+    );
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : const <String, dynamic>{};
+    final grantedDays = _number(summary['granted_days']);
+
+    final approvedDates = <DateTime>[
+      for (final row in allApprovedLeaveRows)
+        if (_parseDate(row['leave_date']?.toString()) case final date?)
+          _dateOnly(date),
+    ];
+
+    for (var i = 0; i < approvedDates.length; i++) {
+      final date = approvedDates[i];
+      if (date.isBefore(start) || !date.isBefore(end)) continue;
+      final draft = drafts.putIfAbsent(date, () => _DayDraft(date));
+      draft.paidLeave = true;
+      draft.paidLeaveOrdinal = i + 1;
+      draft.paidLeaveRemaining =
+          (grantedDays - (i + 1)).clamp(0, double.infinity);
+    }
+
     final rawUnits = await _client.rpc('my_attendance_allowance_units');
     final allowanceUnits = rawUnits is Map
         ? {
@@ -305,6 +344,9 @@ class _DayDraft {
   double nightHours = 0;
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
+  bool paidLeave = false;
+  int paidLeaveOrdinal = 0;
+  double paidLeaveRemaining = 0;
 
   WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
       WorkerAttendanceDay(
@@ -318,5 +360,8 @@ class _DayDraft {
         allowanceYen: allowanceYen,
         allowanceNames: List<String>.unmodifiable(allowanceNames),
         allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
+        paidLeave: paidLeave,
+        paidLeaveOrdinal: paidLeaveOrdinal,
+        paidLeaveRemaining: paidLeaveRemaining,
       );
 }
