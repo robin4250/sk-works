@@ -52,6 +52,61 @@ class CompanyModuleSettingsRepository {
     return states;
   }
 
+  static const subAdminHomeKeys = <String>{
+    'people',
+    'company_deliveries',
+    'vehicle_routes',
+    'employee_register',
+    'approvals',
+    'employee_onboarding_approvals',
+    'documents',
+    'qualifications',
+  };
+
+  static String _subAdminKey(String key) => 'subadmin_home:$key';
+
+  Future<Map<String, bool>> loadSubAdminHomeStates() async {
+    final membership = await _membership();
+    final rows = await _client
+        .from('company_module_settings')
+        .select('module_key, is_enabled')
+        .eq('company_id', membership.companyId);
+
+    final states = <String, bool>{
+      for (final key in subAdminHomeKeys) key: false,
+    };
+
+    for (final row in List<Map<String, dynamic>>.from(rows)) {
+      final rawKey = row['module_key']?.toString() ?? '';
+      if (!rawKey.startsWith('subadmin_home:')) continue;
+      final key = rawKey.substring('subadmin_home:'.length);
+      if (states.containsKey(key)) {
+        states[key] = row['is_enabled'] == true;
+      }
+    }
+    return states;
+  }
+
+  Future<void> setSubAdminHomeEnabled(String key, bool enabled) async {
+    if (!subAdminHomeKeys.contains(key)) {
+      throw ArgumentError.value(key, 'key', 'Unknown sub-admin home action');
+    }
+
+    final membership = await _membership();
+    if (membership.role != 'owner' && membership.role != 'admin') {
+      throw StateError('サブ管理者の表示設定は管理者のみ変更できます。');
+    }
+    final user = _client.auth.currentUser!;
+
+    await _client.from('company_module_settings').upsert({
+      'company_id': membership.companyId,
+      'module_key': _subAdminKey(key),
+      'is_enabled': enabled,
+      'updated_by': user.id,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
   Future<bool> canManage() async {
     final membership = await _membership();
     return membership.role == 'owner' || membership.role == 'admin';
