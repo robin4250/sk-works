@@ -989,13 +989,10 @@ class _HomePageState extends State<HomePage> {
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
             child: AppBar(
           toolbarHeight: _chromeVisible ? 64 : 0,
-          backgroundColor: Colors.transparent,
-          forceMaterialTransparency: true,
-          flexibleSpace: ColoredBox(
-            color: Colors.white.withValues(
-              alpha: _homeAppearance.headerOpacity,
-            ),
+          backgroundColor: Colors.white.withValues(
+            alpha: _homeAppearance.headerOpacity,
           ),
+          forceMaterialTransparency: false,
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
           elevation: 0,
