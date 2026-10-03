@@ -10,7 +10,7 @@ void main() {
       'lib/features/attendance/attendance_cloud_repository.dart',
     ).readAsStringSync();
 
-    expect(page, contains("'まとめて登録'"));
+    expect(page, contains("'まとめてサインして申請'"));
     expect(page, contains('責任者サインは日報で登録します'));
     expect(page, isNot(contains('SignatureCapturePage')));
     expect(page, isNot(contains("'signatureJson'")));
