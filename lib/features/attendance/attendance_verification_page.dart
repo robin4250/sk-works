@@ -6,7 +6,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../daily_reports/daily_report_page.dart';
 import '../notifications/notification_bell.dart';
+import 'attendance_cloud_repository.dart';
 import 'attendance_verification_repository.dart';
+import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
 
@@ -26,6 +28,7 @@ class AttendanceVerificationPage extends StatefulWidget {
 class _AttendanceVerificationPageState
     extends State<AttendanceVerificationPage> {
   final _repository = AttendanceVerificationRepository.maybeCreate();
+  final _bulkAttendanceRepository = AttendanceCloudRepository.maybeCreate();
   final _picker = ImagePicker();
   final _noteController = TextEditingController();
 
@@ -135,6 +138,21 @@ class _AttendanceVerificationPageState
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _openPastBulkAttendance() async {
+    final repository = _bulkAttendanceRepository;
+    if (repository == null) return;
+    final count = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => BulkAttendancePage(repository: repository),
+      ),
+    );
+    if (count == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$count件の過去出勤をまとめて登録しました')),
+    );
+    await _load();
   }
 
   Future<void> _changeMode(String? value) async {
@@ -341,6 +359,17 @@ class _AttendanceVerificationPageState
                       minimumSize: const Size.fromHeight(52),
                     ),
                   ),
+                  if (!isClockOut && _canManageAttendance) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _saving ? null : _openPastBulkAttendance,
+                      icon: const Icon(Icons.playlist_add_check_circle_outlined),
+                      label: const Text('過去の出勤をまとめて登録する'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Text(
                     '最近の確認',
