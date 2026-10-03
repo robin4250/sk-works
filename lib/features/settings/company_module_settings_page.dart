@@ -108,6 +108,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
         'employee_onboarding_approvals' => '本登録承認',
         'documents' => '必要書類',
         'qualifications' => '資格',
+        'signatures' => 'サイン一覧',
         _ => key,
       };
 
