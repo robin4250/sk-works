@@ -61,6 +61,7 @@ class CompanyModuleSettingsRepository {
     'employee_onboarding_approvals',
     'documents',
     'qualifications',
+    'signatures',
   };
 
   static String _subAdminKey(String key) => 'subadmin_home:$key';
