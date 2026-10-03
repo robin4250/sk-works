@@ -6,6 +6,7 @@ void main() {
   test('TestFlight candidate builder fails closed around production release contract', () {
     final script = File('tool/testflight_candidate.sh').readAsStringSync();
     final upload = File('tool/testflight_upload.sh').readAsStringSync();
+    final finish = File('tool/testflight_finish.sh').readAsStringSync();
 
     expect(script, contains(r'[[ "$branch" != "main" ]]'));
     expect(script, contains('git rev-parse origin/main'));
@@ -25,6 +26,10 @@ void main() {
     expect(upload, contains('xcrun altool'));
     expect(upload, contains('--upload-app'));
     expect(upload, contains('git rev-parse origin/main'));
+    expect(finish, contains('bash tool/testflight_candidate.sh'));
+    expect(finish, contains('bash tool/testflight_upload.sh'));
+    expect(finish, contains('Runner.xcarchive'));
+    expect(finish, contains('open "$archive"'));
     expect(script, contains('--build-name='));
     expect(script, contains('--build-number='));
     expect(script, contains('CFBundleShortVersionString'));
