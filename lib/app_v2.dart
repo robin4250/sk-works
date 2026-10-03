@@ -131,6 +131,7 @@ class _HomePageState extends State<HomePage> {
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
+  Map<String, bool> _subAdminHomeStates = const {};
   Map<String, int> _usage = const {};
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
@@ -300,9 +301,15 @@ class _HomePageState extends State<HomePage> {
     final repository = _moduleSettingsRepository;
     if (repository == null) return;
     try {
-      final states = await repository.loadOptionalModuleStates();
+      final values = await Future.wait([
+        repository.loadOptionalModuleStates(),
+        repository.loadSubAdminHomeStates(),
+      ]);
       if (!mounted) return;
-      setState(() => _moduleStates = states);
+      setState(() {
+        _moduleStates = Map<String, bool>.from(values[0]);
+        _subAdminHomeStates = Map<String, bool>.from(values[1]);
+      });
     } catch (_) {
       // Keep modules visible if settings cannot be loaded.
     }
@@ -550,6 +557,14 @@ class _HomePageState extends State<HomePage> {
     if (!SupabaseBackend.isInitialized) return true;
     if (key == 'people' || key == 'settings') return true;
     return _moduleStates[key] ?? true;
+  }
+
+  bool _subAdminFeatureEnabled(String key) {
+    if (!_identity.isSubAdmin) return true;
+    if (!CompanyModuleSettingsRepository.subAdminHomeKeys.contains(key)) {
+      return true;
+    }
+    return _subAdminHomeStates[key] ?? false;
   }
 
   Widget _pageFor(legacy.ModuleDefinition module) {
@@ -901,7 +916,7 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('本人・閲覧権限'),
         ),
-      if (_isAdmin || _identity.can('can_manage_payroll_adjustments'))
+      if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_settings',
           label: SkoLanguageController.tr('個別給与設定'),
@@ -909,7 +924,7 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・給与編集権限'),
         ),
-      if (_identity.can('can_view_payroll_adjustments'))
+      if (_identity.isManagement || _identity.can('can_view_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_adjustments',
           label: _payrollAdjustmentLabel,
@@ -981,7 +996,8 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者'),
         ),
-      if (_moduleEnabled('invoices') && _identity.can('can_view_invoices'))
+      if (_moduleEnabled('invoices') &&
+          (_identity.isManagement || _identity.can('can_view_invoices')))
         _MenuAction(
           key: 'invoices',
           label: SkoLanguageController.tr('請求書'),
@@ -1042,6 +1058,14 @@ class _HomePageState extends State<HomePage> {
         accessLabel: SkoLanguageController.tr('表示中の権限に合わせて案内'),
       ),
     ];
+
+    if (_identity.isSubAdmin) {
+      items.removeWhere(
+        (item) =>
+            CompanyModuleSettingsRepository.subAdminHomeKeys.contains(item.key) &&
+            !_subAdminFeatureEnabled(item.key),
+      );
+    }
 
     final rank = <String, int>{
       for (var i = 0; i < _homeActionOrder.length; i++)
