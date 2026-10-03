@@ -164,6 +164,10 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
     setState(() => _value = _value.copyWith(wallpaperPath: path));
   }
 
+  Future<void> _persistCurrent() async {
+    await HomeAppearanceRepository.save(_value);
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -220,10 +224,15 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
             _value.cardOpacity,
             (v) => _value = _value.copyWith(cardOpacity: v),
           ),
-          _slider('ヘッダーの透明度', _value.headerOpacity, (v) => _value = _value.copyWith(headerOpacity: v)),
+          _headerOpacityPreview(),
+          _slider(
+            'ヘッダーの透明度',
+            _value.headerOpacity,
+            (v) => _value = _value.copyWith(headerOpacity: v),
+          ),
           _slider('フッターの透明度', _value.footerOpacity, (v) => _value = _value.copyWith(footerOpacity: v)),
           const SizedBox(height: 8),
-          const Text('透明度は1〜100%です。0%にはできません。'),
+          const Text('透明度は1〜100%です。変更値はその場で保存されます。0%にはできません。'),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _saving ? null : _save,
@@ -231,6 +240,55 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
             label: Text(_saving ? '保存中…' : '確定して保存'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _headerOpacityPreview() {
+    final opacity = _value.headerOpacity;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'ヘッダー透明度プレビュー',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 54,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFBBD7F5),
+                    Color(0xFFE4EEF8),
+                    Color(0xFFBBD7F5),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: opacity),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      'ヘッダー ${(opacity * 100).round()}%',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -252,7 +310,10 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
               max: 1,
               divisions: 99,
               label: '$percent%',
-              onChanged: (next) => setState(() => update(next)),
+              onChanged: (next) {
+                setState(() => update(next));
+                _persistCurrent();
+              },
             ),
           ],
         ),
