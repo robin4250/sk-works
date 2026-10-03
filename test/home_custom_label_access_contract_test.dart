@@ -38,7 +38,7 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(appearance, contains('Future<void> _persistCurrent()'));
-    expect(appearance, contains('_persistCurrent();'));
+    expect(appearance, contains('onChangeEnd: (_) => _persistCurrent()'));
     expect(appearance, contains("'ヘッダー透明度プレビュー'"));
     expect(appearance, contains('Colors.white.withValues(alpha: opacity)'));
     expect(app, contains('value ?? await HomeAppearanceRepository.load()'));
