@@ -42,8 +42,10 @@ void main() {
     expect(appearance, contains("cardOpacity: _read(prefs, 'card_opacity', fallback: 0.8)"));
     expect(appearance, contains("headerOpacity: _read(prefs, 'header_opacity', fallback: 0.8)"));
     expect(appearance, contains("footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8)"));
-    expect(app, contains('child: const ColoredBox(color: Colors.white)'));
-    expect(app, contains('opacity: _homeAppearance.headerOpacity'));
+    expect(app, contains('Colors.white.withValues('));
+    expect(app, contains('alpha: _homeAppearance.headerOpacity'));
+    expect(app, contains('flexibleSpace: Stack('));
+    expect(app, contains('Image.file('));
     expect(theme, contains('backgroundColor: Colors.white'));
     expect(app, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(app, isNot(contains('colorScheme.surfaceContainerHighest')));
