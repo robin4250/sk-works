@@ -1456,6 +1456,8 @@ class _HomePageState extends State<HomePage> {
               )
             : const SizedBox.shrink(),
       ),
+    );
+  }
 }
 
 class _MenuAction {
