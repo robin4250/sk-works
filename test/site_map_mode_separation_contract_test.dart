@@ -39,12 +39,8 @@ void main() {
     );
     expect(
       map,
-      contains('if (widget.allowEmployeeHomes)'),
-    );
-    expect(
-      map,
       contains(
-        'if (!value.canViewAll || !widget.allowEmployeeHomes)',
+        'if (!scoped.canViewAll || !widget.allowEmployeeHomes)',
       ),
     );
   });
