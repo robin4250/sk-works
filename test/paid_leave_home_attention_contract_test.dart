@@ -12,6 +12,7 @@ void main() {
     expect(repository, contains('pending_paid_leave_request_batches'));
     expect(repository, contains('paidLeaveApprovalCount'));
     expect(repository, contains('unresolvedCount'));
+    expect(repository, contains('Non-management users'));
     expect(content, contains("? 'approvals'"));
     expect(content, contains('attention.unresolvedCount'));
   });
