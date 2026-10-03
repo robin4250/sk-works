@@ -390,7 +390,7 @@ class _HomePageState extends State<HomePage> {
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('TOPボタン表示名'),
+        title: const Text('2行表示時の改行位置'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -408,7 +408,7 @@ class _HomePageState extends State<HomePage> {
               decoration: const InputDecoration(labelText: '2行目（不要なら空欄）'),
             ),
             const SizedBox(height: 8),
-            const Text('2行目を設定した場合、TOPでは指定した位置で必ず改行します。'),
+            const Text('1行で収まる時は1行表示のままです。2行表示が必要な時だけ、この改行位置を使います。'),
           ],
         ),
         actions: [
@@ -1141,8 +1141,9 @@ class _HomePageState extends State<HomePage> {
             for (final item in _homeLayoutItems)
               HomeShortcut(
                 item.key,
-                _homeLabelOverrides[item.key] ?? item.label,
+                item.label,
                 item.icon,
+                twoLineLabel: _homeLabelOverrides[item.key],
                 access: item.access,
               ),
           ],
@@ -1305,7 +1306,7 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       if (item.homeEligible)
                         IconButton(
-                          tooltip: 'TOP表示名・改行位置',
+                          tooltip: '2行表示時の改行位置',
                           onPressed: () => _editHomeLabel(item),
                           icon: const Icon(Icons.edit_note_outlined),
                         ),
