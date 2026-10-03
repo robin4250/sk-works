@@ -310,10 +310,8 @@ class _HomeAppearanceSettingsPageState extends State<HomeAppearanceSettingsPage>
               max: 1,
               divisions: 99,
               label: '$percent%',
-              onChanged: (next) {
-                setState(() => update(next));
-                _persistCurrent();
-              },
+              onChanged: (next) => setState(() => update(next)),
+              onChangeEnd: (_) => _persistCurrent(),
             ),
           ],
         ),
