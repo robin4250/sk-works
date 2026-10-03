@@ -42,7 +42,7 @@ class HomeAttentionRepository {
       // Non-management users do not have access to approval queues.
     }
     if (value is! Map) {
-      return const RequiredDocumentAttention(
+      return RequiredDocumentAttention(
         missingCount: 0,
         missingNames: [],
         needsLicense: false,
