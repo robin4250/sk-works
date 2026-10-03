@@ -55,6 +55,7 @@ class _IndividualPayrollSettingsPageState
     for (var i = 1; i <= 3; i++) {
       _controllers['allowance_name_$i'] = TextEditingController();
     }
+    _controllers['paid_leave_granted_days'] = TextEditingController();
     _load();
   }
 
@@ -118,6 +119,8 @@ class _IndividualPayrollSettingsPageState
         final key = 'allowance_name_$i';
         _controllers[key]!.text = setting.text(key);
       }
+      _controllers['paid_leave_granted_days']!.text =
+          setting.amount('paid_leave_granted_days').toString();
       if (!mounted) return;
       setState(() {
         _workerId = workerId;
@@ -180,6 +183,16 @@ class _IndividualPayrollSettingsPageState
       final key = 'allowance_name_$i';
       values[key] = _controllers[key]!.text.trim();
     }
+    final paidLeaveGrantedDays = num.tryParse(
+      _controllers['paid_leave_granted_days']!.text.trim(),
+    );
+    if (paidLeaveGrantedDays == null || paidLeaveGrantedDays < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('有給付与日数は0以上の数字で入力してください')),
+      );
+      return;
+    }
+    values['paid_leave_granted_days'] = paidLeaveGrantedDays;
 
     setState(() => _saving = true);
     try {
@@ -273,6 +286,16 @@ class _IndividualPayrollSettingsPageState
                       _amountField('family_monthly', '家族手当・月額'),
                       _amountField('transport_monthly', '交通費・月額'),
                       const SizedBox(height: 12),
+                      _sectionTitle('有給'),
+                      _amountField(
+                        'paid_leave_granted_days',
+                        '有給付与日数',
+                        suffixText: '日',
+                      ),
+                      const Text(
+                        '承認済みの有給申請から使用日数と残日数を自動計算します。',
+                      ),
+                      const SizedBox(height: 12),
                       _sectionTitle('控除'),
                       _amountField('income_tax_monthly', '所得税・月額'),
                       _amountField('resident_tax_monthly', '住民税・月額'),
@@ -304,7 +327,12 @@ class _IndividualPayrollSettingsPageState
         ),
       );
 
-  Widget _amountField(String key, String label) => Padding(
+  Widget _amountField(
+    String key,
+    String label, {
+    String suffixText = '円',
+  }) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: TextFormField(
           controller: _controllers[key],
@@ -312,7 +340,7 @@ class _IndividualPayrollSettingsPageState
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText: label,
-            suffixText: '円',
+            suffixText: suffixText,
             border: const OutlineInputBorder(),
           ),
         ),
