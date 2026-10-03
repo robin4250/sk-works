@@ -48,9 +48,21 @@ if [[ -z "$key_id" || -z "$issuer_id" ]]; then
   exit 1
 fi
 
-key_file="$HOME/.appstoreconnect/private_keys/AuthKey_${key_id}.p8"
-if [[ ! -f "$key_file" ]]; then
-  echo "✗ App Store Connect API秘密鍵が見つかりません: $key_file"
+key_file="${APP_STORE_CONNECT_API_KEY_PATH:-}"
+if [[ -z "$key_file" ]]; then
+  for candidate in \
+    "$HOME/.appstoreconnect/private_keys/AuthKey_${key_id}.p8" \
+    "$HOME/.private_keys/AuthKey_${key_id}.p8"
+  do
+    if [[ -f "$candidate" ]]; then
+      key_file="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$key_file" || ! -f "$key_file" ]]; then
+  echo "✗ App Store Connect API秘密鍵が見つかりません。"
+  echo "  APP_STORE_CONNECT_API_KEY_PATH または標準配置を確認してください。"
   exit 1
 fi
 
