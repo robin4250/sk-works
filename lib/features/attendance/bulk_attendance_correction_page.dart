@@ -408,7 +408,7 @@ class _BulkAttendanceCorrectionPageState
                         builder: (_) => const PaidLeaveCorrectionPage(),
                       ),
                     );
-                    if (count != null && mounted) {
+                    if (count != null && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('$count日の有給勤務修正を申請しました')),
                       );
