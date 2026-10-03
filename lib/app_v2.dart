@@ -1150,7 +1150,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         Scaffold(
-          extendBodyBehindAppBar: true,
+          extendBodyBehindAppBar: false,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
@@ -1242,7 +1242,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible ? 72 : 8,
+          contentTopInset: 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
