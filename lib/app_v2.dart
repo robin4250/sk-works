@@ -12,6 +12,7 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
+import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
@@ -504,7 +505,7 @@ class _HomePageState extends State<HomePage> {
 
     final surfaceKey = switch (key) {
       'footer_home' => 'home',
-      'attendance' => 'attendance_sheet',
+      'attendance' || 'attendance_list' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
@@ -529,7 +530,7 @@ class _HomePageState extends State<HomePage> {
     final featureKey = switch (key) {
       'clock_in' => 'clock_in',
       'clock_out' => 'clock_out',
-      'attendance' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
+      'attendance' || 'attendance_list' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
@@ -599,7 +600,11 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     final requiredModule = switch (key) {
-      'attendance' || 'attendance_verify' || 'clock_in' || 'clock_out' =>
+      'attendance' ||
+      'attendance_list' ||
+      'attendance_verify' ||
+      'clock_in' ||
+      'clock_out' =>
         'attendance',
       'footer_sites' || 'site_register' || 'site_map' || 'sites' => 'sites',
       'chat' => 'chat',
@@ -663,6 +668,14 @@ class _HomePageState extends State<HomePage> {
     }
     if (key == 'attendance') {
       setState(() => _selectedIndex = 1);
+      return;
+    }
+    if (key == 'attendance_list') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const AttendanceWorkerListPage(),
+        ),
+      );
       return;
     }
     if (key == 'attendance_today') {
@@ -866,7 +879,7 @@ class _HomePageState extends State<HomePage> {
         ),
       if (_moduleEnabled('attendance'))
         _MenuAction(
-          key: 'attendance',
+          key: 'attendance_list',
           label: SkoLanguageController.tr('出勤表一覧'),
           icon: Icons.calendar_month_outlined,
           homeEligible: true,
@@ -1029,12 +1042,12 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'signatures',
           label: SkoLanguageController.tr('サイン一覧'),
           icon: Icons.draw_outlined,
-          accessLabel: SkoLanguageController.tr('管理者'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       _MenuAction(
         key: 'appearance',
@@ -1213,12 +1226,13 @@ class _HomePageState extends State<HomePage> {
       'employee_onboarding_approvals',
       'documents',
       'qualifications',
+      'signatures',
     };
     const viewer = <String>{
       'invoices',
       'payroll_settings',
       'payroll_adjustments',
-      'attendance',
+      'attendance_list',
     };
     const admin = <String>{
       'admin_sites',
