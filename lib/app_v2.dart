@@ -217,8 +217,10 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
-    if (value == null || !mounted) return;
-    setState(() => _homeAppearance = value);
+    if (!mounted) return;
+    final latest = value ?? await HomeAppearanceRepository.load();
+    if (!mounted) return;
+    setState(() => _homeAppearance = latest);
   }
 
   Future<void> _loadIdentity() async {
