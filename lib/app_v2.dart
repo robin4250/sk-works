@@ -22,6 +22,7 @@ import 'features/attendance/today_attendance_page.dart';
 import 'features/attendance/worker_attendance_sheet_page.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/auth/employee_onboarding_approvals_page.dart';
+import 'features/approvals/approvals_hub_page.dart';
 import 'features/auth/employee_onboarding_repository.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
@@ -513,7 +514,6 @@ class _HomePageState extends State<HomePage> {
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
-      'employee_onboarding_approvals' ||
       'people' ||
       'company_deliveries' => 'people',
       'company_documents' => 'documents',
@@ -540,8 +540,7 @@ class _HomePageState extends State<HomePage> {
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
       'chat' => 'chat',
-      'people' || 'employee_register' || 'employee_onboarding_approvals' =>
-        'people',
+      'people' || 'employee_register' => 'people',
       'qualification_certificates' ||
       'qualification_register' ||
       'employee_qualifications' ||
@@ -745,11 +744,8 @@ class _HomePageState extends State<HomePage> {
           canAssignManagementRole: _identity.isAdmin,
         );
         break;
-      case 'employee_onboarding_approvals':
-        page = const EmployeeOnboardingApprovalsPage();
-        break;
       case 'approvals':
-        page = const DailyReportApprovalsPage();
+        page = const ApprovalsHubPage();
         break;
       case 'payroll':
         page = const SecondaryProtectedPage(
@@ -931,13 +927,6 @@ class _HomePageState extends State<HomePage> {
         icon: Icons.person_add_alt_1,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
       ),
-      if (_canReviewEmployeeOnboarding)
-        _MenuAction(
-          key: 'employee_onboarding_approvals',
-          label: SkoLanguageController.tr('本登録承認'),
-          icon: Icons.verified_user_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
-        ),
       if (!_isAdmin)
         _MenuAction(
           key: 'payroll',
@@ -1150,7 +1139,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         Scaffold(
-          extendBodyBehindAppBar: true,
+          extendBodyBehindAppBar: false,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
@@ -1242,7 +1231,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible ? 72 : 8,
+          contentTopInset: 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
@@ -1269,7 +1258,6 @@ class _HomePageState extends State<HomePage> {
       'vehicle_routes',
       'employee_register',
       'approvals',
-      'employee_onboarding_approvals',
       'documents',
       'employee_qualifications',
       'signatures',
