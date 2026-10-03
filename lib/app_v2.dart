@@ -610,10 +610,15 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if ((key == 'company_deliveries' || key == 'company_documents') &&
-        !_isAdmin) {
+    if (key == 'company_documents' && !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者のみ利用できます'))),
+      );
+      return;
+    }
+    if (key == 'company_deliveries' && !_identity.isManagement) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者・サブ管理者のみ利用できます'))),
       );
       return;
     }
@@ -850,6 +855,14 @@ class _HomePageState extends State<HomePage> {
           homeEligible: false,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
+      if (_moduleEnabled('attendance'))
+        _MenuAction(
+          key: 'attendance',
+          label: SkoLanguageController.tr('出勤表一覧'),
+          icon: Icons.calendar_month_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('閲覧者以上'),
+        ),
       _MenuAction(
         key: 'daily_report',
         label: SkoLanguageController.tr('日報'),
@@ -860,15 +873,15 @@ class _HomePageState extends State<HomePage> {
       if (_identity.isManagement)
         _MenuAction(
           key: 'people',
-          label: SkoLanguageController.tr('社員'),
+          label: SkoLanguageController.tr('社員データ'),
           icon: Icons.groups_2_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・閲覧権限'),
         ),
-      if (_moduleEnabled('vehicle_routes'))
+      if (_identity.isManagement && _moduleEnabled('vehicle_routes'))
         _MenuAction(
           key: 'vehicle_routes',
-          label: SkoLanguageController.tr('車両・ルート'),
+          label: SkoLanguageController.tr('車両ルート'),
           icon: Icons.route_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
@@ -899,6 +912,7 @@ class _HomePageState extends State<HomePage> {
           key: 'payroll_settings',
           label: SkoLanguageController.tr('個別給与設定'),
           icon: Icons.manage_accounts_outlined,
+          homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・給与編集権限'),
         ),
       if (_identity.can('can_view_payroll_adjustments'))
@@ -915,14 +929,14 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
-      if (_moduleEnabled('qualifications'))
+      if (_identity.isManagement && _moduleEnabled('qualifications'))
         _MenuAction(
           key: 'qualifications',
           label: SkoLanguageController.tr('資格'),
           icon: Icons.badge_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_moduleEnabled('documents'))
+      if (_identity.isManagement && _moduleEnabled('documents'))
         _MenuAction(
           key: 'documents',
           label: SkoLanguageController.tr('必要書類'),
@@ -950,15 +964,15 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.approval_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
         ),
-      if (_identity.can('can_manage_attendance') &&
+      if (_isAdmin &&
           _moduleEnabled('line_bridge'))
         _MenuAction(
           key: 'today_line',
-          label: SkoLanguageController.tr('本日のLINE出勤候補'),
+          label: SkoLanguageController.tr('本日のLINE'),
           icon: Icons.today_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'company_deliveries',
           label: SkoLanguageController.tr('協力会社'),
@@ -1014,7 +1028,7 @@ class _HomePageState extends State<HomePage> {
         ),
       _MenuAction(
         key: 'appearance',
-        label: SkoLanguageController.tr('背景・ヘッダー・フッター設定'),
+        label: SkoLanguageController.tr('背景'),
         icon: Icons.wallpaper_outlined,
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('本人のみ'),
@@ -1023,7 +1037,7 @@ class _HomePageState extends State<HomePage> {
         key: 'settings',
         label: SkoLanguageController.tr('設定'),
         icon: Icons.settings_outlined,
-        homeEligible: true,
+        homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
       _MenuAction(
@@ -1164,39 +1178,40 @@ class _HomePageState extends State<HomePage> {
   }
 
   HomeShortcutAccess _shortcutAccessForMenuItem(_MenuAction item) {
-    const adminOnly = <String>{
-      'company_deliveries',
-      'company_documents',
-      'signatures',
+    const general = <String>{
+      'help',
+      'appearance',
+      'albums',
+      'notes',
+      'daily_report',
+      'profile',
     };
     const subAdmin = <String>{
-      'employee_register',
-      'employee_onboarding_approvals',
-      'approvals',
-      'today_line',
-      'site_map',
-      'payroll_settings',
-    };
-    const viewerVisible = <String>{
-      'attendance_verify',
-      'daily_report',
       'people',
+      'company_deliveries',
       'vehicle_routes',
-      'payroll',
-      'profile',
-      'qualifications',
+      'employee_register',
+      'approvals',
+      'employee_onboarding_approvals',
       'documents',
-      'notes',
-      'albums',
-      'payroll_adjustments',
-      'invoices',
-      'admin_sites',
-      'site_register',
-      'settings',
+      'qualifications',
     };
-    if (adminOnly.contains(item.key)) return HomeShortcutAccess.admin;
+    const viewer = <String>{
+      'invoices',
+      'payroll_settings',
+      'payroll_adjustments',
+      'attendance',
+    };
+    const admin = <String>{
+      'admin_sites',
+      'company_documents',
+      'site_map',
+      'today_line',
+    };
+    if (admin.contains(item.key)) return HomeShortcutAccess.admin;
+    if (viewer.contains(item.key)) return HomeShortcutAccess.viewer;
     if (subAdmin.contains(item.key)) return HomeShortcutAccess.subAdmin;
-    if (viewerVisible.contains(item.key)) return HomeShortcutAccess.viewer;
+    if (general.contains(item.key)) return HomeShortcutAccess.general;
     return HomeShortcutAccess.general;
   }
 
