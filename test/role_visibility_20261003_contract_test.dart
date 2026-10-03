@@ -52,7 +52,7 @@ void main() {
     ).readAsStringSync();
 
     expect(repo, contains('subAdminHomeKeys'));
-    expect(repo, contains("static String _subAdminKey(String key) => 'subadmin_home:$key'"));
+    expect(repo, contains(r"static String _subAdminKey(String key) => 'subadmin_home:$key'"));
     expect(repo, contains('loadSubAdminHomeStates'));
     expect(repo, contains('setSubAdminHomeEnabled'));
     expect(page, contains("'サブ管理者に表示する機能'"));
