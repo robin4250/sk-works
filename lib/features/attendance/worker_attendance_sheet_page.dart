@@ -12,10 +12,12 @@ class WorkerAttendanceSheetPage extends StatefulWidget {
     super.key,
     this.workerId,
     this.workerName,
+    this.initialMonth,
   });
 
   final String? workerId;
   final String? workerName;
+  final DateTime? initialMonth;
 
   @override
   State<WorkerAttendanceSheetPage> createState() =>
@@ -25,7 +27,7 @@ class WorkerAttendanceSheetPage extends StatefulWidget {
 class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   final _repository = WorkerAttendanceSheetRepository.maybeCreate();
 
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime _month;
   WorkerAttendanceMonth? _data;
   bool _loading = true;
   String? _error;
@@ -34,6 +36,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialMonth ?? DateTime.now();
+    _month = DateTime(initial.year, initial.month);
     _load();
   }
 
@@ -689,6 +693,7 @@ class _WorkerAttendanceMonthPageState
                           builder: (_) => WorkerAttendancePrintPreviewPage(
                             month: _month,
                             data: _data,
+                            workerName: widget.workerName,
                           ),
                         ),
                       ),
@@ -977,10 +982,12 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
     super.key,
     required this.month,
     required this.data,
+    this.workerName,
   });
 
   final DateTime month;
   final WorkerAttendanceMonth data;
+  final String? workerName;
 
   @override
   Widget build(BuildContext context) {
@@ -1006,8 +1013,8 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                       children: [
                         Text(
                           SkoLanguageController.isEnglish
-                              ? 'Attendance  ${month.month}/${month.year}'
-                              : '出勤表  ${month.year}年${month.month}月',
+                              ? 'Attendance  ${workerName ?? ''}  ${month.month}/${month.year}'
+                              : '出勤表  ${workerName ?? ''}  ${month.year}年${month.month}月',
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
