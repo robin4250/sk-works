@@ -50,12 +50,12 @@ void main() {
     expect(homeDashboard, contains('Theme.of(context).scaffoldBackgroundColor'));
     expect(homeDashboard, isNot(contains('surfaceContainerHighest')));
     expect(homeDashboard, contains('bodyAppearance = _homeAppearance.copyWith(clearWallpaper: true)'));
-    expect(homeDashboard, isNot(contains('flexibleSpace:')));
+    expect(homeDashboard, contains('flexibleSpace: Stack('));
     expect(homeDashboard, contains('_homeAppearance.headerOpacity'));
-    expect(homeDashboard, contains('opacity: _homeAppearance.headerOpacity'));
-    expect(homeDashboard, contains('child: const ColoredBox(color: Colors.white)'));
+    expect(homeDashboard, contains('Colors.white.withValues('));
+    expect(homeDashboard, contains('alpha: _homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('backgroundColor: Colors.transparent'));
-    expect(homeDashboard, contains('opacity: _homeAppearance.headerOpacity'));
+    expect(homeDashboard, contains('Image.file('));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, contains('_chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
