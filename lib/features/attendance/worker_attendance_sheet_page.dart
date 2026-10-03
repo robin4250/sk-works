@@ -6,6 +6,7 @@ import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'bulk_attendance_correction_page.dart';
 import 'japan_holiday.dart';
+import 'paid_leave_page.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
@@ -110,6 +111,16 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     await _load();
   }
 
+  Future<void> _openPaidLeave() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const PaidLeavePage(),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
   Future<void> _changeMonth(int delta) async {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta);
@@ -152,6 +163,14 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          if (widget.workerId == null)
+            TextButton(
+              onPressed: _loading ? null : _openPaidLeave,
+              child: const Text(
+                '有給申請',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
           TextButton(
             onPressed: _loading ? null : _openAttendanceCorrection,
             child: const Text(
@@ -332,7 +351,7 @@ class _WeekList extends StatelessWidget {
               weekday: (SkoLanguageController.isEnglish ? _weekdayNamesEn : _weekdayNamesJa)[index],
               inMonth: inMonth,
               day: day,
-              onTap: () => onDateTap(date),
+              onTap: day?.paidLeave == true ? () {} : () => onDateTap(date),
             );
           },
         );
@@ -359,6 +378,7 @@ class _AttendanceDayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final worked = day?.worked == true;
+    final paidLeave = day?.paidLeave == true;
     final colors = Theme.of(context).colorScheme;
     final faded = !inMonth;
     final holidayName = JapanHoliday.name(date);
@@ -449,18 +469,34 @@ class _AttendanceDayCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      worked ? (day?.siteName ?? SkoLanguageController.tr('現場')) : SkoLanguageController.tr('休み'),
+                      paidLeave
+                          ? '有給 ${day!.paidLeaveOrdinal}日目'
+                          : worked
+                              ? (day?.siteName ?? SkoLanguageController.tr('現場'))
+                              : SkoLanguageController.tr('休み'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 14,
-                        color: worked
-                            ? colors.onSurface
-                            : colors.onSurfaceVariant,
+                        color: paidLeave
+                            ? colors.error
+                            : worked
+                                ? colors.onSurface
+                                : colors.onSurfaceVariant,
                       ),
                     ),
-                    if (worked) ...[
+                    if (paidLeave) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '残り${_number(day!.paidLeaveRemaining)}日',
+                        style: TextStyle(
+                          color: colors.error,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ] else if (worked) ...[
                       const SizedBox(height: 2),
                       Wrap(
                         spacing: 4,
@@ -474,7 +510,16 @@ class _AttendanceDayCard extends StatelessWidget {
               const SizedBox(width: 8),
               SizedBox(
                 width: 82,
-                child: worked
+                child: paidLeave
+                    ? Text(
+                        '有給',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: colors.error,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      )
+                    : worked
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -802,7 +847,11 @@ class _MonthCalendar extends StatelessWidget {
                     date: date,
                     inMonth: date.month == month.month,
                     day: data.days[DateTime(date.year, date.month, date.day)],
-                    onTap: () => onDateTap(date),
+                    onTap: data.days[DateTime(date.year, date.month, date.day)]
+                                ?.paidLeave ==
+                            true
+                        ? () {}
+                        : () => onDateTap(date),
                   ),
               ],
             ),
@@ -829,6 +878,7 @@ class _MonthCalendarCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final worked = day?.worked == true;
+    final paidLeave = day?.paidLeave == true;
     final siteName = day?.siteName?.trim() ?? '';
     final shortSite = siteName.isEmpty
         ? ''
@@ -889,15 +939,17 @@ class _MonthCalendarCell extends StatelessWidget {
               ),
             const Spacer(),
             Text(
-              worked ? shortSite : '休',
+              paidLeave ? '有給' : worked ? shortSite : '休',
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
-                color: worked
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                color: paidLeave
+                    ? Theme.of(context).colorScheme.error
+                    : worked
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             if (day?.hasAllowance == true)
@@ -939,6 +991,11 @@ class _MonthlySummary extends StatelessWidget {
           children: [
             if (data.workedDays > 0)
               _SummaryPill(label: SkoLanguageController.tr('出勤'), value: SkoLanguageController.isEnglish ? '${data.workedDays} days' : '${data.workedDays}日'),
+            if (data.paidLeaveDays > 0)
+              _SummaryPill(
+                label: '有給',
+                value: '${data.paidLeaveDays}日',
+              ),
             if (data.overtimeHours > 0)
               _SummaryPill(
                 label: SkoLanguageController.tr('残業'),
