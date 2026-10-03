@@ -22,6 +22,7 @@ on:
       - 'tool/testflight_candidate.sh'
       - 'tool/testflight_preflight.sh'
       - 'tool/testflight_upload.sh'
+      - 'tool/testflight_finish.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -74,6 +75,7 @@ jobs:
           bash -n tool/testflight_candidate.sh
           bash -n tool/testflight_preflight.sh
           bash -n tool/testflight_upload.sh
+          bash -n tool/testflight_finish.sh
 
       - name: Verify device-day signing diagnostics
         run: |
