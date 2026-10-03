@@ -20,6 +20,6 @@ void main() {
     expect(app, contains("SkoLanguageController.tr('協力会社')"));
     expect(app, contains('HomeShortcut('));
     expect(home, contains('for (final shortcut in shortcuts)'));
-    expect(home, contains('_shortcutAccess(shortcut.key)'));
+    expect(home, contains('shortcut.access'));
   });
 }
