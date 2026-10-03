@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('bulk attendance uses current attendance schema and keeps signatures in daily reports', () {
+  test('past bulk attendance signs once and submits through approval', () {
     final page =
         File('lib/features/attendance/bulk_attendance_page.dart').readAsStringSync();
     final repository = File(
@@ -11,11 +11,11 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains("'まとめてサインして申請'"));
-    expect(page, contains('責任者サインは日報で登録します'));
-    expect(page, isNot(contains('SignatureCapturePage')));
-    expect(page, isNot(contains("'signatureJson'")));
-    expect(page, isNot(contains("'signedAt'")));
+    expect(page, contains('SignatureCapturePage'));
+    expect(page, contains('approvalRepository.submit'));
+    expect(page, contains('承認完了後に正式な出勤データへ反映'));
 
+    // Current attendance schema keeps signature data out of attendance_entries.
     expect(repository, isNot(contains("'signer_name':")));
     expect(repository, isNot(contains("'signature_json':")));
     expect(repository, isNot(contains("'signed_at':")));
