@@ -216,6 +216,7 @@ entries = {
     "NSLocationAlwaysAndWhenInUseUsageDescription": "GPS自動出勤を本人が有効にした場合、指定した曜日と時刻の前後に現場付近にいるか確認するため、バックグラウンドでも位置情報を使用します。",
     "NSCameraUsageDescription": "SKOで出勤確認や資格証、現場写真を登録するためカメラを使用します。",
     "NSPhotoLibraryUsageDescription": "SKOでプロフィール写真や現場・チャットの写真を選択するため写真ライブラリを使用します。",
+    "ITSAppUsesNonExemptEncryption": False,
 }
 
 for key, value in entries.items():
