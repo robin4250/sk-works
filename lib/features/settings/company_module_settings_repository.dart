@@ -60,7 +60,7 @@ class CompanyModuleSettingsRepository {
     'approvals',
     'employee_onboarding_approvals',
     'documents',
-    'qualifications',
+    'employee_qualifications',
     'signatures',
   };
 
