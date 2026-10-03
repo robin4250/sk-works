@@ -17,7 +17,7 @@ class PastAttendanceRequestRepository {
   Future<String> submit({
     required List<Map<String, dynamic>> items,
     required String signerName,
-    required Map<String, dynamic> signatureJson,
+    required Object signatureJson,
   }) async {
     final value = await _client.rpc(
       'submit_past_attendance_request',
