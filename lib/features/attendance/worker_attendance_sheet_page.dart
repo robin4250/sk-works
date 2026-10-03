@@ -188,7 +188,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           month: _month,
           data: data,
           workerId: widget.workerId,
-          workerName: widget.workerName,
+          workerName: workerName,
         ),
       ),
     );
