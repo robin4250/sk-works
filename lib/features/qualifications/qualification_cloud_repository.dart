@@ -160,6 +160,30 @@ class QualificationCloudRepository {
     );
   }
 
+  Future<Map<String, dynamic>> loadOwnQualificationWorkspace() async {
+    final worker = await currentWorker();
+    final masters = await loadActiveMasters();
+    final companyId = await _companyId();
+    final qualifications = await _client
+        .from('worker_qualifications')
+        .select(
+          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+        )
+        .eq('company_id', companyId)
+        .eq('worker_id', worker.workerId)
+        .order('created_at', ascending: false);
+
+    return {
+      'worker': {
+        'id': worker.workerId,
+        'name': worker.workerName,
+      },
+      'masters': masters,
+      'qualifications':
+          List<Map<String, dynamic>>.from(qualifications),
+    };
+  }
+
   Future<List<Map<String, dynamic>>> loadActiveMasters() async {
     final companyId = await _companyId();
     final rows = await _client
