@@ -1143,7 +1143,7 @@ class _HomePageState extends State<HomePage> {
                 item.key,
                 _homeLabelOverrides[item.key] ?? item.label,
                 item.icon,
-                access: _shortcutAccessForMenuItem(item),
+                access: item.access,
               ),
           ],
           showAttendanceReport:
@@ -1203,7 +1203,12 @@ class _HomePageState extends State<HomePage> {
     return [
       for (final item in _menuItems)
         if (item.homeEligible && !_hiddenHomeActionKeys.contains(item.key))
-          _HomeLayoutItem(item.key, item.label, item.icon),
+          _HomeLayoutItem(
+            item.key,
+            item.label,
+            item.icon,
+            _shortcutAccessForMenuItem(item),
+          ),
     ];
   }
 
@@ -1436,11 +1441,12 @@ class _MenuAction {
 }
 
 class _HomeLayoutItem {
-  const _HomeLayoutItem(this.key, this.label, this.icon);
+  const _HomeLayoutItem(this.key, this.label, this.icon, this.access);
 
   final String key;
   final String label;
   final IconData icon;
+  final HomeShortcutAccess access;
 }
 
 class _BackendUnavailableScreen extends StatelessWidget {
