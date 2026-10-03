@@ -971,8 +971,8 @@ class _HomePageState extends State<HomePage> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        ColoredBox(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        const ColoredBox(
+          color: Colors.white,
         ),
         if (wallpaperPath != null && File(wallpaperPath).existsSync())
           Opacity(
