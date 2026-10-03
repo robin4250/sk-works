@@ -33,10 +33,10 @@ void main() {
     expect(finish, contains('bash tool/testflight_candidate.sh'));
     expect(finish, contains('bash tool/testflight_upload.sh'));
     expect(finish, contains('Runner.xcarchive'));
-    expect(finish, contains('open "$archive"'));
+    expect(finish, contains(r'open "$archive"'));
     expect(preflight, contains('--- Release metadata ---'));
     expect(preflight, contains("grep '^version:' pubspec.yaml"));
-    expect(preflight, contains('Build: $build_number'));
+    expect(preflight, contains(r'Build: $build_number'));
     expect(script, contains('--build-name='));
     expect(script, contains('--build-number='));
     expect(script, contains('CFBundleShortVersionString'));
