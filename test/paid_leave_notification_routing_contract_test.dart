@@ -9,5 +9,6 @@ void main() {
     ).readAsStringSync();
     expect(source, contains("item.actionKey == 'paid_leave_request'"));
     expect(source, contains('PaidLeaveApprovalsPage'));
+    expect(source, contains("item.actionKey == 'paid_leave_request'"));
   });
 }
