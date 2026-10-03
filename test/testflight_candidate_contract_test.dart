@@ -7,6 +7,7 @@ void main() {
     final script = File('tool/testflight_candidate.sh').readAsStringSync();
     final upload = File('tool/testflight_upload.sh').readAsStringSync();
     final finish = File('tool/testflight_finish.sh').readAsStringSync();
+    final preflight = File('tool/testflight_preflight.sh').readAsStringSync();
 
     expect(script, contains(r'[[ "$branch" != "main" ]]'));
     expect(script, contains('git rev-parse origin/main'));
@@ -30,6 +31,9 @@ void main() {
     expect(finish, contains('bash tool/testflight_upload.sh'));
     expect(finish, contains('Runner.xcarchive'));
     expect(finish, contains('open "$archive"'));
+    expect(preflight, contains('--- Release metadata ---'));
+    expect(preflight, contains("grep '^version:' pubspec.yaml"));
+    expect(preflight, contains('Build: $build_number'));
     expect(script, contains('--build-name='));
     expect(script, contains('--build-number='));
     expect(script, contains('CFBundleShortVersionString'));
