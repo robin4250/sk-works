@@ -132,7 +132,8 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                         ),
                                       ),
                                       subtitle: Text(
-                                        '給与単価 ${_yen(item.workerDailyRateYen)} / 請求単価 ${_yen(item.billingUnitPriceYen)}',
+                                        '給与 ${_yen(item.workerDailyRateYen)} / '
+                                        '請求方式 ${item.billingMethodLabel}',
                                       ),
                                       trailing: Icon(
                                         _canManage
@@ -163,11 +164,17 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     final early = TextEditingController(
       text: record.earlyHourRateYen.toString(),
     );
-    final night = TextEditingController(
-      text: record.nightHourRateYen.toString(),
-    );
     final billing = TextEditingController(
       text: record.billingUnitPriceYen.toString(),
+    );
+    final squareMeterUnitPrice = TextEditingController(
+      text: record.billingSquareMeterUnitPriceYen.toString(),
+    );
+    final squareMeterQuantity = TextEditingController(
+      text: _numberText(record.billingSquareMeterQuantity),
+    );
+    final contractAmount = TextEditingController(
+      text: record.billingContractAmountYen.toString(),
     );
     final welfare = TextEditingController(
       text: record.welfareRate.toString(),
@@ -196,8 +203,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 _MoneyField(controller: overtime, label: '残業 1時間'),
                 const SizedBox(height: 10),
                 _MoneyField(controller: early, label: '早出 1時間'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: night, label: '夜間 1時間'),
                 const SizedBox(height: 18),
                 const Align(
                   alignment: Alignment.centerLeft,
@@ -207,7 +212,33 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _MoneyField(controller: billing, label: '請求 1人工単価'),
+                _MoneyField(controller: billing, label: '1人工単価'),
+                const SizedBox(height: 10),
+                _MoneyField(
+                  controller: squareMeterUnitPrice,
+                  label: '平米単価',
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: squareMeterQuantity,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: '平米数',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _MoneyField(
+                  controller: contractAmount,
+                  label: '請負金額',
+                ),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '人工・平米・請負のどれか1方式を設定します。平米は単価と平米数の両方が必要です。',
+                  ),
+                ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: welfare,
@@ -228,6 +259,36 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           ),
           FilledButton(
             onPressed: () {
+              final manDay = int.tryParse(billing.text) ?? 0;
+              final squarePrice = int.tryParse(squareMeterUnitPrice.text) ?? 0;
+              final squareQty = double.tryParse(squareMeterQuantity.text) ?? 0;
+              final contract = int.tryParse(contractAmount.text) ?? 0;
+
+              final squareHalfEntered =
+                  (squarePrice > 0 && squareQty <= 0) ||
+                  (squarePrice <= 0 && squareQty > 0);
+              if (squareHalfEntered) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('平米単価と平米数は両方入力してください'),
+                  ),
+                );
+                return;
+              }
+
+              final methodCount =
+                  (manDay > 0 ? 1 : 0) +
+                  (squarePrice > 0 && squareQty > 0 ? 1 : 0) +
+                  (contract > 0 ? 1 : 0);
+              if (methodCount > 1) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('請求方式は人工・平米・請負のどれか1つにしてください'),
+                  ),
+                );
+                return;
+              }
+
               Navigator.pop(
                 dialogContext,
                 AdminSiteFinancialRecord(
@@ -237,8 +298,10 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   workerDailyRateYen: int.tryParse(daily.text) ?? 0,
                   overtimeHourRateYen: int.tryParse(overtime.text) ?? 0,
                   earlyHourRateYen: int.tryParse(early.text) ?? 0,
-                  nightHourRateYen: int.tryParse(night.text) ?? 0,
-                  billingUnitPriceYen: int.tryParse(billing.text) ?? 0,
+                  billingUnitPriceYen: manDay,
+                  billingSquareMeterUnitPriceYen: squarePrice,
+                  billingSquareMeterQuantity: squareQty,
+                  billingContractAmountYen: contract,
                   welfareRate: double.tryParse(welfare.text) ?? 0,
                 ),
               );
@@ -253,8 +316,10 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
       daily,
       overtime,
       early,
-      night,
       billing,
+      squareMeterUnitPrice,
+      squareMeterQuantity,
+      contractAmount,
       welfare,
     ]) {
       controller.dispose();
@@ -278,6 +343,11 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
   }
 
   static String _yen(int value) => '¥$value';
+
+  static String _numberText(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
+  }
 }
 
 class _MoneyField extends StatelessWidget {
