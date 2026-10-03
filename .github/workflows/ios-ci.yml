@@ -19,6 +19,9 @@ on:
       - 'tool/device_day_preflight.sh'
       - 'tool/device_day.sh'
       - 'tool/pre_device_release_gate.sh'
+      - 'tool/testflight_candidate.sh'
+      - 'tool/testflight_preflight.sh'
+      - 'tool/testflight_upload.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/ios-ci.yml'
@@ -68,6 +71,9 @@ jobs:
           bash -n tool/device_day_preflight.sh
           bash -n tool/device_day.sh
           bash -n tool/pre_device_release_gate.sh
+          bash -n tool/testflight_candidate.sh
+          bash -n tool/testflight_preflight.sh
+          bash -n tool/testflight_upload.sh
 
       - name: Verify device-day signing diagnostics
         run: |
