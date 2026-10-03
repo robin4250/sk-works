@@ -57,15 +57,16 @@ class WorkerDocumentRepository {
 
   Future<bool> canManageRequirements() async {
     final value = await membership();
-    return value.role == 'owner' || value.role == 'admin';
+    return value.role == 'owner' ||
+        value.role == 'admin' ||
+        value.role == 'manager';
   }
 
   Future<bool> canManageStatuses() async {
-    await membership();
-    final value = await _client.rpc('current_feature_permissions');
-    if (value is! Map) return false;
-    final permissions = Map<String, dynamic>.from(value);
-    return permissions['can_manage_people'] == true;
+    final value = await membership();
+    return value.role == 'owner' ||
+        value.role == 'admin' ||
+        value.role == 'manager';
   }
 
   Future<void> _requireManagePeople() async {
@@ -274,6 +275,114 @@ class WorkerDocumentRepository {
     if (ext.length > 8) return '.jpg';
     final sanitized = ext.replaceAll(RegExp(r'[^a-z0-9.]'), '');
     return sanitized.isEmpty ? '.jpg' : sanitized;
+  }
+
+  Future<({String workerId, String workerName})> currentWorker() async {
+    final raw = await _client.rpc('ensure_current_user_worker');
+    final workerId = raw?.toString() ?? '';
+    if (workerId.isEmpty) {
+      throw StateError('本人の作業員情報を確認できません。');
+    }
+    final row = await _client
+        .from('workers')
+        .select('name')
+        .eq('id', workerId)
+        .maybeSingle();
+    final name = row?['name']?.toString().trim();
+    return (
+      workerId: workerId,
+      workerName: name?.isNotEmpty == true ? name! : '本人',
+    );
+  }
+
+  Future<void> updateOwnStatus({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+  }) async {
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final existing = await _client
+        .from('worker_document_statuses')
+        .select('id')
+        .eq('worker_id', worker.workerId)
+        .eq('requirement_id', requirementId)
+        .limit(1);
+    final payload = {
+      'company_id': companyId,
+      'worker_id': worker.workerId,
+      'requirement_id': requirementId,
+      'status': 'submitted',
+      'expires_at': expiresAt?.toIso8601String().split('T').first,
+      'original_verified': false,
+      'notes': notes.trim().isEmpty ? null : notes.trim(),
+      'updated_by': _client.auth.currentUser?.id,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (existing.isEmpty) {
+      await _client.from('worker_document_statuses').insert(payload);
+    } else {
+      await _client
+          .from('worker_document_statuses')
+          .update(payload)
+          .eq('id', existing.first['id']);
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadOwnAttachment({
+    required String statusId,
+    required String requirementId,
+    required Uint8List bytes,
+    required String originalFilename,
+  }) async {
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('worker_document_statuses')
+        .select('id, attachment_path')
+        .eq('company_id', companyId)
+        .eq('worker_id', worker.workerId)
+        .eq('id', statusId)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('本人の書類情報を確認できません。');
+
+    final oldPath = rows.first['attachment_path']?.toString();
+    final extension = _extensionOf(originalFilename);
+    final objectName = '${DateTime.now().microsecondsSinceEpoch}$extension';
+    final storagePath =
+        '$companyId/${worker.workerId}/$requirementId/$statusId/$objectName';
+
+    await _client.storage.from(_bucket).uploadBinary(
+      storagePath,
+      bytes,
+      fileOptions: const FileOptions(upsert: false),
+    );
+
+    try {
+      final updated = await _client
+          .from('worker_document_statuses')
+          .update({
+            'attachment_path': storagePath,
+            'status': 'submitted',
+            'original_verified': false,
+            'updated_by': _client.auth.currentUser?.id,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId)
+          .eq('id', statusId)
+          .select(
+            'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
+          )
+          .single();
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != storagePath) {
+        await _client.storage.from(_bucket).remove([oldPath]);
+      }
+      return Map<String, dynamic>.from(updated);
+    } catch (_) {
+      await _client.storage.from(_bucket).remove([storagePath]);
+      rethrow;
+    }
   }
 
   Future<void> updateStatus({
