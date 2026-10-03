@@ -157,6 +157,7 @@ class _HomePageState extends State<HomePage> {
   HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
 
   bool get _isAdmin => _identity.isAdmin;
+  bool get _isViewer => _identity.role == 'viewer';
 
   @override
   void initState() {
@@ -650,12 +651,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     if (key == 'attendance_today') {
-      if (!_identity.can('can_manage_attendance')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('この機能を利用する権限がありません')),
-        );
-        return;
-      }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const TodayAttendancePage(),
@@ -841,19 +836,18 @@ class _HomePageState extends State<HomePage> {
       if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_verify',
-          label: SkoLanguageController.tr('本日の勤務報告'),
+          label: SkoLanguageController.tr('本日の勤怠報告'),
           icon: Icons.fact_check_outlined,
           homeEligible: false,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_moduleEnabled('attendance') &&
-          _identity.can('can_manage_attendance'))
+      if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_today',
           label: SkoLanguageController.tr('本日の出勤'),
           icon: Icons.groups_outlined,
           homeEligible: false,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_moduleEnabled('attendance'))
         _MenuAction(
@@ -1352,7 +1346,7 @@ class _HomePageState extends State<HomePage> {
           ? const SiteCloudPage()
           : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
-          ? const ChatCloudPage()
+          ? ChatCloudPage(viewerOnlyFriends: _isViewer)
           : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];
@@ -1373,71 +1367,71 @@ class _HomePageState extends State<HomePage> {
         duration: const Duration(milliseconds: 180),
         height: _chromeVisible ? 88 : 0,
         child: _chromeVisible
-            ? NavigationBar(
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withValues(alpha: _homeAppearance.footerOpacity),
-                  surfaceTintColor: Colors.transparent,
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) {
-                    final module = switch (index) {
-                      1 => 'attendance',
-                      2 => 'sites',
-                      3 => 'chat',
-                      _ => null,
-                    };
-                    if (module != null && !_moduleEnabled(module)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(SkoLanguageController.tr('この機能は会社設定でOFFになっています')),
-                        ),
-                      );
-                      return;
-                    }
-                    final usageKey = switch (index) {
-                      0 => 'footer_home',
-                      1 => 'attendance',
-                      2 => 'footer_sites',
-                      3 => 'chat',
-                      _ => null,
-                    };
-                    if (usageKey != null) {
-                      _recordCloudUsageForAction(usageKey);
-                    }
-                    setState(() => _selectedIndex = index);
-                  },
-                  destinations: [
+            ? Builder(
+                builder: (context) {
+                  final pageIndexes = <int>[
+                    0,
+                    if (!_isViewer) 1,
+                    if (!_isViewer) 2,
+                    3,
+                    4,
+                  ];
+                  final destinations = <NavigationDestination>[
                     NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home),
+                      icon: const Icon(Icons.home_outlined),
+                      selectedIcon: const Icon(Icons.home),
                       label: SkoLanguageController.tr('ホーム'),
                     ),
+                    if (!_isViewer)
+                      NavigationDestination(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        selectedIcon: const Icon(Icons.calendar_month),
+                        label: SkoLanguageController.tr('出勤表'),
+                      ),
+                    if (!_isViewer)
+                      NavigationDestination(
+                        icon: const Icon(Icons.business_outlined),
+                        selectedIcon: const Icon(Icons.business),
+                        label: SkoLanguageController.tr('現場'),
+                      ),
                     NavigationDestination(
-                      icon: Icon(Icons.calendar_month_outlined),
-                      selectedIcon: Icon(Icons.calendar_month),
-                      label: SkoLanguageController.tr('出勤表'),
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.business_outlined),
-                      selectedIcon: Icon(Icons.business),
-                      label: SkoLanguageController.tr('現場'),
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.chat_bubble_outline),
-                      selectedIcon: Icon(Icons.chat_bubble),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      selectedIcon: const Icon(Icons.chat_bubble),
                       label: SkoLanguageController.tr('チャット'),
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.menu),
+                      icon: const Icon(Icons.menu),
                       label: SkoLanguageController.tr('メニュー'),
                     ),
-                  ],
-                )
+                  ];
+                  final selectedPosition = pageIndexes.indexOf(_selectedIndex);
+                  return NavigationBar(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .surface
+                        .withValues(alpha: _homeAppearance.footerOpacity),
+                    surfaceTintColor: Colors.transparent,
+                    selectedIndex: selectedPosition >= 0 ? selectedPosition : 0,
+                    onDestinationSelected: (position) {
+                      final pageIndex = pageIndexes[position];
+                      final usageKey = switch (pageIndex) {
+                        0 => 'footer_home',
+                        1 => 'attendance',
+                        2 => 'footer_sites',
+                        3 => 'chat',
+                        _ => null,
+                      };
+                      if (usageKey != null) {
+                        _recordCloudUsageForAction(usageKey);
+                      }
+                      setState(() => _selectedIndex = pageIndex);
+                    },
+                    destinations: destinations,
+                  );
+                },
+              )
             : const SizedBox.shrink(),
       ),
-    );
-  }
 }
 
 class _MenuAction {
