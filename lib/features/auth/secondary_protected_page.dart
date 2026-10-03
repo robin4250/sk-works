@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,13 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     _loadState();
   }
 
+  Future<bool> _biometricIsAvailable() async {
+    final supported = await _localAuth.isDeviceSupported();
+    if (!supported) return false;
+    final available = await _localAuth.getAvailableBiometrics();
+    return available.isNotEmpty || await _localAuth.canCheckBiometrics;
+  }
+
   Future<void> _loadState() async {
     final repository = _repository;
     final userId = repository?.currentUser?.id;
@@ -55,9 +63,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       final prefs = await SharedPreferences.getInstance();
       final enabled =
           prefs.getBool('sko_secondary_biometric_enabled_$userId') ?? false;
-      final available =
-          await _localAuth.isDeviceSupported() &&
-              await _localAuth.canCheckBiometrics;
+      final available = await _biometricIsAvailable();
       if (!mounted) return;
       setState(() {
         _secondaryConfigured = configured;
@@ -76,6 +82,10 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshBiometricAvailability());
+      return;
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
@@ -92,6 +102,16 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         _busy = false;
         _message = null;
       }
+    }
+  }
+
+  Future<void> _refreshBiometricAvailability() async {
+    try {
+      final available = await _biometricIsAvailable();
+      if (!mounted) return;
+      setState(() => _biometricAvailable = available);
+    } catch (_) {
+      // Keep the previous availability state on transient local_auth errors.
     }
   }
 
@@ -185,6 +205,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         _busy = false;
         _unlocked = true;
         _password.clear();
+        // Password unlock must never disable or hide Face ID / Touch ID.
       });
     } catch (error) {
       if (!mounted) return;
