@@ -44,10 +44,10 @@ void main() {
     expect(homeStart, greaterThanOrEqualTo(0));
     expect(homeEnd, greaterThan(homeStart));
     final homeDashboard = app.substring(homeStart, homeEnd);
-    expect(homeDashboard, contains('extendBodyBehindAppBar: true'));
+    expect(homeDashboard, contains('extendBodyBehindAppBar: false'));
     expect(homeDashboard, contains('preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0)'));
     expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
-    expect(homeDashboard, contains('contentTopInset: _chromeVisible ? 72 : 8'));
+    expect(homeDashboard, contains('contentTopInset: 8'));
     expect(homeDashboard, contains('Stack('));
     expect(homeDashboard, contains('Colors.white.withAlpha('));
     expect(homeDashboard, contains('return Stack('));
