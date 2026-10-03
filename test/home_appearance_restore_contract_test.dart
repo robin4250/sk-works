@@ -42,7 +42,7 @@ void main() {
     expect(appearance, contains("cardOpacity: _read(prefs, 'card_opacity', fallback: 0.8)"));
     expect(appearance, contains("headerOpacity: _read(prefs, 'header_opacity', fallback: 0.8)"));
     expect(appearance, contains("footerOpacity: _read(prefs, 'footer_opacity', fallback: 0.8)"));
-    expect(app, contains('Color.fromRGBO('));
+    expect(app, contains('Colors.white.withAlpha('));
     expect(app, contains('_homeAppearance.headerOpacity'));
     expect(app, contains('forceMaterialTransparency: true'));
     expect(theme, contains('backgroundColor: Colors.white'));
