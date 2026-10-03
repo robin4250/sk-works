@@ -55,7 +55,7 @@ void main() {
     expect(homeDashboard, contains('opacity: _homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('child: const ColoredBox(color: Colors.white)'));
     expect(homeDashboard, contains('backgroundColor: Colors.transparent'));
-    expect(homeDashboard, contains('backgroundColor: Colors.white.withValues('));
+    expect(homeDashboard, contains('opacity: _homeAppearance.headerOpacity'));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
     expect(homeDashboard, contains('_chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
