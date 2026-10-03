@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import '../attendance/paid_leave_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
 import '../operations/vehicle_route_page.dart';
@@ -94,6 +95,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const VehicleRoutePage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'paid_leave_request') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const PaidLeaveApprovalsPage(),
         ),
       );
       if (!mounted) return;
