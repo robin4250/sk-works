@@ -135,6 +135,7 @@ class _HomePageState extends State<HomePage> {
   int _homeGridColumns = 2;
   List<String> _homeActionOrder = const [];
   Set<String> _hiddenHomeActionKeys = <String>{};
+  Map<String, String> _homeLabelOverrides = const {};
   HomeAppearance _homeAppearance = const HomeAppearance();
   HomeIdentity _identity = const HomeIdentity(
     role: 'viewer',
@@ -327,11 +328,21 @@ class _HomePageState extends State<HomePage> {
     final columns = (prefs.getInt('sko_home_grid_columns') ?? 2).clamp(1, 4);
     final order = prefs.getStringList('sko_home_action_order') ?? const <String>[];
     final hidden = prefs.getStringList('sko_home_hidden_actions') ?? const <String>[];
+    final labelOverrides = <String, String>{};
+    for (final key in prefs.getKeys()) {
+      const prefix = 'sko_home_label_override_';
+      if (!key.startsWith(prefix)) continue;
+      final value = prefs.getString(key)?.trim();
+      if (value != null && value.isNotEmpty) {
+        labelOverrides[key.substring(prefix.length)] = value;
+      }
+    }
     if (!mounted) return;
     setState(() {
       _homeGridColumns = columns;
       _homeActionOrder = List<String>.from(order);
       _hiddenHomeActionKeys = hidden.toSet();
+      _homeLabelOverrides = labelOverrides;
     });
   }
 
@@ -352,6 +363,80 @@ class _HomePageState extends State<HomePage> {
     setState(() => _hiddenHomeActionKeys = next);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_hidden_actions', next.toList()..sort());
+  }
+
+  Future<void> _setHomeLabelOverride(String key, String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = value?.trim() ?? '';
+    final next = <String, String>{..._homeLabelOverrides};
+    if (normalized.isEmpty) {
+      next.remove(key);
+      await prefs.remove('sko_home_label_override_$key');
+    } else {
+      next[key] = normalized;
+      await prefs.setString('sko_home_label_override_$key', normalized);
+    }
+    if (!mounted) return;
+    setState(() => _homeLabelOverrides = next);
+  }
+
+  Future<void> _editHomeLabel(_MenuAction item) async {
+    final current = _homeLabelOverrides[item.key] ?? item.label;
+    final parts = current.split('\n');
+    final first = TextEditingController(text: parts.isNotEmpty ? parts.first : item.label);
+    final second = TextEditingController(text: parts.length > 1 ? parts.sublist(1).join(' ') : '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('TOPボタン表示名'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(item.label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: first,
+              maxLines: 1,
+              decoration: const InputDecoration(labelText: '1行目'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: second,
+              maxLines: 1,
+              decoration: const InputDecoration(labelText: '2行目（不要なら空欄）'),
+            ),
+            const SizedBox(height: 8),
+            const Text('2行目を設定した場合、TOPでは指定した位置で必ず改行します。'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(''),
+            child: const Text('標準に戻す'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final line1 = first.text.trim();
+              final line2 = second.text.trim();
+              final value = [
+                if (line1.isNotEmpty) line1,
+                if (line2.isNotEmpty) line2,
+              ].join('\n');
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    first.dispose();
+    second.dispose();
+    if (result == null) return;
+    await _setHomeLabelOverride(item.key, result);
   }
 
   Future<void> _reorderHomeAction(int oldIndex, int newIndex) async {
@@ -1068,7 +1153,12 @@ class _HomePageState extends State<HomePage> {
           },
           shortcuts: [
             for (final item in _homeLayoutItems)
-              HomeShortcut(item.key, item.label, item.icon),
+              HomeShortcut(
+                item.key,
+                _homeLabelOverrides[item.key] ?? item.label,
+                item.icon,
+                access: _shortcutAccessForMenuItem(item),
+              ),
           ],
           showAttendanceReport:
               !_hiddenHomeActionKeys.contains('attendance_verify'),
@@ -1084,6 +1174,18 @@ class _HomePageState extends State<HomePage> {
       ),
       ],
     );
+  }
+
+  HomeShortcutAccess _shortcutAccessForMenuItem(_MenuAction item) {
+    final access = item.accessLabel;
+    if (access.contains('閲覧権限')) return HomeShortcutAccess.viewer;
+    if (access == '管理者' || access.startsWith('管理者（')) {
+      return HomeShortcutAccess.admin;
+    }
+    if (access.contains('サブ管理者') && !access.contains('一般')) {
+      return HomeShortcutAccess.subAdmin;
+    }
+    return HomeShortcutAccess.general;
   }
 
   List<_HomeLayoutItem> get _homeLayoutItems {
@@ -1181,10 +1283,22 @@ class _HomePageState extends State<HomePage> {
                   ),
                   subtitle: Text('${SkoLanguageController.tr('利用権限')}：${item.accessLabel}'),
                   onTap: () => _openHomeAction(item.key),
-                  trailing: Switch(
-                    value: !_hiddenHomeActionKeys.contains(item.key),
-                    onChanged: (value) =>
-                        _setHomeActionVisible(item.key, value),
+                  trailing: Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (item.homeEligible)
+                        IconButton(
+                          tooltip: 'TOP表示名・改行位置',
+                          onPressed: () => _editHomeLabel(item),
+                          icon: const Icon(Icons.edit_note_outlined),
+                        ),
+                      Switch(
+                        value: !_hiddenHomeActionKeys.contains(item.key),
+                        onChanged: (value) =>
+                            _setHomeActionVisible(item.key, value),
+                      ),
+                    ],
                   ),
                 ),
               ),
