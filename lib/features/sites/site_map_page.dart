@@ -11,15 +11,39 @@ import 'site_map_repository.dart';
 
 enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
 
+enum SiteMapMode { general, admin }
+
+class GeneralSiteMapPage extends StatelessWidget {
+  const GeneralSiteMapPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const SiteMapPage(
+        mode: SiteMapMode.general,
+        title: '現場マップ',
+      );
+}
+
+class AdminSiteMapPage extends StatelessWidget {
+  const AdminSiteMapPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const SiteMapPage(
+        mode: SiteMapMode.admin,
+        title: '管理者用現場マップ',
+      );
+}
+
 class SiteMapPage extends StatefulWidget {
   const SiteMapPage({
     super.key,
-    this.allowEmployeeHomes = false,
-    this.title = '現場マップ',
+    required this.mode,
+    required this.title,
   });
 
-  final bool allowEmployeeHomes;
+  final SiteMapMode mode;
   final String title;
+
+  bool get allowEmployeeHomes => mode == SiteMapMode.admin;
 
   @override
   State<SiteMapPage> createState() => _SiteMapPageState();
@@ -30,16 +54,25 @@ class _SiteMapPageState extends State<SiteMapPage> {
   SiteMapWorkspace? _data;
   bool _loading = true;
   String? _error;
-  final Set<_MapLayer> _layers = {
-    _MapLayer.sites,
-    _MapLayer.customers,
-    _MapLayer.company,
-    _MapLayer.home,
-  };
+  late final Set<_MapLayer> _layers;
 
   @override
   void initState() {
     super.initState();
+    _layers = widget.mode == SiteMapMode.admin
+        ? <_MapLayer>{
+            _MapLayer.sites,
+            _MapLayer.customers,
+            _MapLayer.partners,
+            _MapLayer.company,
+            _MapLayer.home,
+          }
+        : <_MapLayer>{
+            _MapLayer.sites,
+            _MapLayer.customers,
+            _MapLayer.company,
+            _MapLayer.home,
+          };
     _load();
   }
 
