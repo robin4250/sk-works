@@ -82,7 +82,7 @@ class AttendancePdfService {
     String? workerName,
   }) {
     return Printing.layoutPdf(
-      name: '${month.year}年${month.month}月_${workerName?.trim().isNotEmpty == true ? workerName!.trim() + '_' : ''}出勤表.pdf',
+      name: '${month.year}年${month.month}月_${workerName?.trim().isNotEmpty == true ? '${workerName!.trim()}_' : ''}出勤表.pdf',
       format: PdfPageFormat.a4,
       onLayout: (format) => buildPdf(
         month,
