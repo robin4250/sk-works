@@ -15,6 +15,7 @@ void main() {
     expect(page, contains('approvalRepository.submit'));
     expect(page, isNot(contains('widget.repository.insertMany(records)')));
     expect(repository, contains('submit_past_attendance_request'));
+    expect(repository, contains('required Object signatureJson'));
     expect(page, contains('承認完了後に正式な出勤データへ反映'));
   });
 }
