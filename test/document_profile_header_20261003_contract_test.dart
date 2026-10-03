@@ -53,9 +53,9 @@ void main() {
 
   test('home header opacity applies to the whole header', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
-    expect(app, contains('opacity: _homeAppearance.headerOpacity'));
-    expect(app, contains('child: AppBar('));
-    expect(app, contains('backgroundColor: Colors.white'));
-    expect(app, isNot(contains('alpha: _homeAppearance.headerOpacity')));
+    expect(app, contains('Color.fromRGBO('));
+    expect(app, contains('_homeAppearance.headerOpacity'));
+    expect(app, contains('backgroundColor: Colors.transparent'));
+    expect(app, contains('forceMaterialTransparency: true'));
   });
 }
