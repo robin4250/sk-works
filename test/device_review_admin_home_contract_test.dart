@@ -18,7 +18,7 @@ void main() {
     expect(home, contains('actionOrder'));
     expect(home, contains('visibleHomeKeys'));
 
-    expect(home, contains("'本日の勤務報告'"));
+    expect(home, contains("'本日の勤怠報告'"));
     expect(home, contains("SkoLanguageController.tr('未対応')"));
     expect(home, contains('Icons.notifications_active_outlined'));
     expect(home, contains('repeat(reverse: true)'));
