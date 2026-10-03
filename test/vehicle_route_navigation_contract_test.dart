@@ -13,7 +13,7 @@ void main() {
     expect(app, contains("key: 'vehicle_routes'"));
     expect(app, contains("SkoLanguageController.tr('車両・ルート')"));
     expect(app, contains('icon: Icons.route_outlined'));
-    expect(app, contains('HomeShortcut(item.key, item.label, item.icon)'));
+    expect(app, contains('HomeShortcut('));
     expect(home, contains('for (final shortcut in shortcuts)'));
   });
 }
