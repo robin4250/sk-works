@@ -12,8 +12,10 @@ void main() {
     expect(app, contains("labelText: '1行目'"));
     expect(app, contains("labelText: '2行目（不要なら空欄）'"));
     expect(app, contains("].join('\\n')"));
-    expect(app, contains("tooltip: 'TOP表示名・改行位置'"));
-    expect(home, contains("item.label.contains('\\n') ? 2"));
+    expect(app, contains("tooltip: '2行表示時の改行位置'"));
+    expect(home, contains('final needsTwoLines = painter.width > constraints.maxWidth'));
+    expect(home, contains('maxLines: needsTwoLines ? 2 : 1'));
+    expect(app, contains('1行で収まる時は1行表示のままです'));
   });
 
   test('home access borders follow the restored four-level rule', () {
