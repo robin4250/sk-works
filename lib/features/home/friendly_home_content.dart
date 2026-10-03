@@ -15,11 +15,13 @@ class HomeShortcut {
     this.key,
     this.label,
     this.icon, {
+    this.twoLineLabel,
     this.access = HomeShortcutAccess.general,
   });
 
   final String key;
   final String label;
+  final String? twoLineLabel;
   final IconData icon;
   final HomeShortcutAccess access;
 }
@@ -583,6 +585,7 @@ class _OrderedHomeContent extends StatelessWidget {
             shortcut.key,
             shortcut.label,
             shortcut.icon,
+            twoLineLabel: shortcut.twoLineLabel,
             access: shortcut.access,
           ),
         );
@@ -788,18 +791,35 @@ class _HomeActionTile extends StatelessWidget {
       child: Icon(item.icon, size: fourColumns ? 14 : (compact ? 18 : 24)),
     );
 
-    final label = Text(
-      item.label,
-      maxLines: item.label.contains('\n') ? 2 : (fourColumns ? 2 : (compact ? 2 : 1)),
-      overflow: TextOverflow.ellipsis,
-      textAlign: fourColumns
-          ? TextAlign.center
-          : (compact ? TextAlign.center : TextAlign.start),
-      style: TextStyle(
-        fontWeight: FontWeight.w900,
-        fontSize: fourColumns ? 9.5 : (compact ? 11 : 14),
-        height: 1.05,
-      ),
+    final labelStyle = TextStyle(
+      fontWeight: FontWeight.w900,
+      fontSize: fourColumns ? 9.5 : (compact ? 11 : 14),
+      height: 1.05,
+    );
+
+    Widget label = LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: item.label, style: labelStyle),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: double.infinity);
+        final needsTwoLines = painter.width > constraints.maxWidth;
+        final display = needsTwoLines &&
+                item.twoLineLabel != null &&
+                item.twoLineLabel!.trim().isNotEmpty
+            ? item.twoLineLabel!
+            : item.label;
+        return Text(
+          display,
+          maxLines: needsTwoLines ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: fourColumns
+              ? TextAlign.center
+              : (compact ? TextAlign.center : TextAlign.start),
+          style: labelStyle,
+        );
+      },
     );
 
     Widget content() => fourColumns
@@ -906,11 +926,13 @@ class _HomeAction {
     this.key,
     this.label,
     this.icon, {
+    this.twoLineLabel,
     this.access = HomeShortcutAccess.general,
   });
 
   final String key;
   final String label;
+  final String? twoLineLabel;
   final IconData icon;
   final HomeShortcutAccess access;
 }
