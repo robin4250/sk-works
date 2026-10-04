@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'payroll_pdf_service.dart';
 import 'payroll_statement_repository.dart';
 
@@ -29,7 +30,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = '給与明細を利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Payslips are unavailable.' : '給与明細を利用できません。';
       });
       return;
     }
@@ -59,9 +60,9 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '給与明細',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Payslips' : '給与明細',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -71,18 +72,18 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
             : _error != null
                 ? _ErrorState(message: _error!, onRetry: _load)
                 : _items.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Padding(
-                          padding: EdgeInsets.all(28),
+                          padding: const EdgeInsets.all(28),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.payments_outlined, size: 56),
-                              SizedBox(height: 12),
+                              const Icon(Icons.payments_outlined, size: 56),
+                              const SizedBox(height: 12),
                               Text(
-                                '給与明細はまだ発行されていません',
+                                SkoLanguageController.isEnglish ? 'No payslips have been issued yet.' : '給与明細はまだ発行されていません',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(fontWeight: FontWeight.w900),
+                                style: const TextStyle(fontWeight: FontWeight.w900),
                               ),
                             ],
                           ),
@@ -135,7 +136,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                         Text(item.workerName),
                                       const SizedBox(height: 6),
                                       Text(
-                                        item.reviewConfirmed ? '確認済み' : '未確定',
+                                        item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
                                         style: TextStyle(
                                           color: item.reviewConfirmed
                                               ? Colors.green
@@ -150,7 +151,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              '差引支給額',
+                                              SkoLanguageController.isEnglish ? 'Net Pay' : '差引支給額',
                                               style: Theme.of(context)
                                                   .textTheme
                                                   .bodyMedium,
@@ -222,8 +223,8 @@ class PayrollStatementPreviewPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          '給 与 明 細',
+                        Text(
+                          SkoLanguageController.isEnglish ? 'PAYSLIP' : '給 与 明 細',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 22,
@@ -240,28 +241,28 @@ class PayrollStatementPreviewPage extends StatelessWidget {
                         Text(statement.workerName),
                         const SizedBox(height: 8),
                         Text(
-                          '対象期間：${_date(statement.periodStart)} ～ ${_date(statement.periodEnd)}',
+                          SkoLanguageController.isEnglish ? 'Period: ${_date(statement.periodStart)} - ${_date(statement.periodEnd)}' : '対象期間：${_date(statement.periodStart)} ～ ${_date(statement.periodEnd)}',
                         ),
                         const Divider(height: 24),
                         _MoneyRow(
-                          label: '総支給額',
+                          label: SkoLanguageController.isEnglish ? 'Gross Pay' : '総支給額',
                           value: statement.grossPay,
                         ),
                         _MoneyRow(
-                          label: '控除額',
+                          label: SkoLanguageController.isEnglish ? 'Deductions' : '控除額',
                           value: statement.deductions,
                         ),
                         const Divider(height: 20),
                         _MoneyRow(
-                          label: '差引支給額',
+                          label: SkoLanguageController.isEnglish ? 'Net Pay' : '差引支給額',
                           value: statement.netPay,
                           strong: true,
                         ),
                         const SizedBox(height: 18),
                         if (statement.detail.isNotEmpty) ...[
-                          const Text(
-                            '内訳',
-                            style: TextStyle(fontWeight: FontWeight.w900),
+                          Text(
+                            SkoLanguageController.isEnglish ? 'Details' : '内訳',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 8),
                           for (final entry in statement.detail.entries)
@@ -285,7 +286,7 @@ class PayrollStatementPreviewPage extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                statement.reviewConfirmed ? '確認済み' : '未確定',
+                statement.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
                 style: TextStyle(
                   color: statement.reviewConfirmed
                       ? Colors.green
@@ -299,7 +300,7 @@ class PayrollStatementPreviewPage extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => PayrollPdfService.printStatement(statement),
               icon: const Icon(Icons.print),
-              label: const Text('印刷'),
+              label: Text(SkoLanguageController.isEnglish ? 'Print' : '印刷'),
             ),
           ],
         ),
@@ -387,7 +388,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再読み込み'),
+              label: Text(SkoLanguageController.isEnglish ? 'Reload' : '再読み込み'),
             ),
           ],
         ),
