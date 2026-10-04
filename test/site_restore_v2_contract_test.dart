@@ -51,7 +51,7 @@ void main() {
     expect(detail, contains("'写真ライブラリから選択'"));
     expect(detail, contains('ImageSource.gallery'));
     expect(detail, contains('InteractiveViewer'));
-    expect(detail, contains("tooltip: '写真を変更'"));
+    expect(detail, contains("tooltip: _tr('写真を変更', 'Change Photo')"));
     expect(detail, contains("title: Text('現場写真\$slot')"));
     expect(detail, contains("'formal_name'"));
     expect(detail, contains("'nearest_station'"));
