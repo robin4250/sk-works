@@ -99,7 +99,7 @@ else
 fi
 
 echo
-echo "--- unsigned iOS build ---"
+echo "--- unsigned iOS release build ---"
 if command -v flutter >/dev/null 2>&1; then
   if bash tool/prepare_ios.sh; then
     ok "最新iOS生成設定を再適用"
@@ -114,15 +114,15 @@ if command -v flutter >/dev/null 2>&1; then
       fail "iOS生成設定契約に違反があります"
     fi
 
-    if flutter build ios --debug --no-codesign; then
-      ok "iOS debug build（署名なし）"
+    if flutter build ios --release --no-codesign; then
+      ok "iOS release build（署名なし）"
       if [[ -f ios/Podfile.lock ]]; then
         ok "CocoaPods lockfile 生成済み"
       else
         warn "iOSビルドは成功しましたが Podfile.lock を確認できません"
       fi
     else
-      fail "iOS debug build（署名なし）に失敗しました"
+      fail "iOS release build（署名なし）に失敗しました"
       echo "  次: bash tool/collect_ios_diagnostics.sh"
     fi
   fi
