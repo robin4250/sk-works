@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../international/language_controller.dart';
 class EmployeeInviteCredentials {
   const EmployeeInviteCredentials({
     required this.phone,
@@ -62,7 +63,7 @@ class _EmployeeInviteScannerPageState extends State<EmployeeInviteScannerPage> {
         return;
       } catch (_) {
         setState(() {
-          _message = 'SKO従業員登録用のQRコードではありません。';
+          _message = SkoLanguageController.tr('SKO従業員登録用のQRコードではありません。');
         });
       }
     }
@@ -71,7 +72,34 @@ class _EmployeeInviteScannerPageState extends State<EmployeeInviteScannerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('従業員登録QRを読み取る')),
+      appBar: AppBar(
+        title: Text(SkoLanguageController.tr('従業員登録QRを読み取る')),
+        actions: [
+          IconButton(
+            tooltip: SkoLanguageController.tr('この画面の使い方'),
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(
+                  SkoLanguageController.tr('従業員登録QRを読み取る'),
+                ),
+                content: Text(
+                  SkoLanguageController.tr(
+                    'SKO利用者が表示した従業員登録QRコードをカメラで読み取ると、初期ログイン情報が自動入力されます。',
+                  ),
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: Text(SkoLanguageController.tr('閉じる')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -85,9 +113,10 @@ class _EmployeeInviteScannerPageState extends State<EmployeeInviteScannerPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text(
-                    'SKOを利用している人が表示した従業員登録QRコードを'
-                    '枠内に映してください。',
+                  Text(
+                    SkoLanguageController.tr(
+                      'SKOを利用している人が表示した従業員登録QRコードを枠内に映してください。',
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   if (_message != null) ...[
