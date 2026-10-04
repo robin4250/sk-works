@@ -927,7 +927,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                                         }
                                       } catch (error) {
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(context)
+                                        ScaffoldMessenger.of(this.context)
                                             .showSnackBar(
                                           SnackBar(
                                             content: Text(
