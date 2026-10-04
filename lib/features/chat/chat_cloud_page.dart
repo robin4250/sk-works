@@ -1364,6 +1364,219 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     );
   }
 
+  bool _isCustomGroup(Map<String, dynamic>? group) =>
+      group != null &&
+      group['group_type'] == 'company' &&
+      group['participants_only'] == true;
+
+  Widget _groupWorkspace() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _createCustomGroup,
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text(
+                'グループチャット作成',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ),
+        if (_pendingGroupInvites.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+            child: Card(
+              child: Column(
+                children: [
+                  const ListTile(
+                    leading: Icon(Icons.mark_email_unread_outlined),
+                    title: Text(
+                      'グループ招待',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  for (final invite in _pendingGroupInvites)
+                    ListTile(
+                      title: Text(
+                        invite['group_name']?.toString() ?? 'グループ',
+                      ),
+                      subtitle: Text(
+                        '${invite['inviter_name']?.toString() ?? 'SKOユーザー'}さんから招待',
+                      ),
+                      trailing: Wrap(
+                        spacing: 4,
+                        children: [
+                          IconButton(
+                            tooltip: '拒否',
+                            onPressed: () => _respondGroupInvite(invite, false),
+                            icon: const Icon(Icons.close),
+                          ),
+                          IconButton(
+                            tooltip: '承認',
+                            onPressed: () => _respondGroupInvite(invite, true),
+                            icon: const Icon(Icons.check_circle_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        Expanded(
+          child: _groupList(
+            _customGroups,
+            emptyText: 'グループチャットはまだありません',
+            enableGroupActions: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _handleCustomGroupSwipe(
+    Map<String, dynamic> group,
+    DismissDirection direction,
+  ) async {
+    if (direction == DismissDirection.endToStart) {
+      await _showCustomGroupLeftActions(group);
+    } else if (direction == DismissDirection.startToEnd) {
+      await _showCustomGroupRightActions(group);
+    }
+    return false;
+  }
+
+  Future<void> _showCustomGroupLeftActions(
+    Map<String, dynamic> group,
+  ) async {
+    final groupId = group['id']?.toString() ?? '';
+    if (groupId.isEmpty) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: const Text('非表示'),
+              onTap: () => Navigator.pop(sheetContext, 'hide'),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(sheetContext).colorScheme.error,
+              ),
+              title: Text(
+                '削除',
+                style: TextStyle(
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'hide') {
+      setState(() => _hiddenGroupIds.add(groupId));
+      await _saveListPreference('hidden', _hiddenGroupIds);
+      return;
+    }
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('グループを削除しますか？'),
+          content: const Text('この操作は元に戻せません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('削除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      try {
+        await _repository?.deleteCustomGroup(groupId);
+        await _load();
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('グループを削除できませんでした: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showCustomGroupRightActions(
+    Map<String, dynamic> group,
+  ) async {
+    final groupId = group['id']?.toString() ?? '';
+    if (groupId.isEmpty) return;
+    final pinned = _pinnedGroupIds.contains(groupId);
+    final muted = _mutedGroupIds.contains(groupId);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(
+                pinned ? Icons.push_pin : Icons.push_pin_outlined,
+              ),
+              title: Text(pinned ? 'ピン留めを解除' : '上位にピン留め'),
+              onTap: () => Navigator.pop(sheetContext, 'pin'),
+            ),
+            ListTile(
+              leading: Icon(
+                muted
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_active_outlined,
+              ),
+              title: Text(
+                muted ? '通知音をON' : '通知音をOFF',
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'sound'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'pin') {
+      setState(() {
+        if (pinned) {
+          _pinnedGroupIds.remove(groupId);
+        } else {
+          _pinnedGroupIds.add(groupId);
+        }
+      });
+      await _saveListPreference('pinned', _pinnedGroupIds);
+    } else if (action == 'sound') {
+      setState(() {
+        if (muted) {
+          _mutedGroupIds.remove(groupId);
+        } else {
+          _mutedGroupIds.add(groupId);
+        }
+      });
+      await _saveListPreference('muted', _mutedGroupIds);
+    }
+  }
+
   Widget _groupList(
     List<Map<String, dynamic>> groups, {
     required String emptyText,
