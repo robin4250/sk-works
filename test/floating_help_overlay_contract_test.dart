@@ -18,6 +18,8 @@ void main() {
     expect(controller, contains("sko_floating_help_x"));
     expect(controller, contains("sko_floating_help_y"));
     expect(overlay, contains("footerClearance = 78.0"));
+    expect(overlay, contains("MediaQuery.viewInsetsOf(context).bottom"));
+    expect(overlay, contains("keyboardHeight > 0"));
     expect(overlay, contains("onLongPressStart"));
     expect(overlay, contains("onLongPressMoveUpdate"));
     expect(overlay, contains("onLongPressEnd"));
