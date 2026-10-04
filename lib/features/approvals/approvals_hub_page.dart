@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
 import '../auth/employee_onboarding_approvals_page.dart';
 import '../auth/employee_onboarding_repository.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
@@ -111,13 +112,13 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '承認待ち',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.tr('承認待ち'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
           IconButton(
-            tooltip: '件数を更新',
+            tooltip: SkoLanguageController.tr('件数を更新'),
             onPressed: _loadingCounts ? null : _loadCounts,
             icon: const Icon(Icons.refresh),
           ),
@@ -133,11 +134,11 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 leading: const CircleAvatar(
                   child: Icon(Icons.edit_note_outlined),
                 ),
-                title: const Text(
-                  '日報の承認待ち',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                title: Text(
+                  SkoLanguageController.tr('日報の承認待ち'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: const Text('日報修正申請の承認・却下'),
+                subtitle: Text(SkoLanguageController.tr('日報修正申請の承認・却下')),
                 trailing: _trailing(_dailyCount),
                 onTap: () => _open(const DailyReportApprovalsPage()),
               ),
@@ -148,11 +149,11 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 leading: const CircleAvatar(
                   child: Icon(Icons.edit_calendar_outlined),
                 ),
-                title: const Text(
-                  '勤務修正の承認待ち',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                title: Text(
+                  SkoLanguageController.tr('勤務修正の承認待ち'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: const Text('勤務修正・過去まとめて出勤の申請を確認して承認'),
+                subtitle: Text(SkoLanguageController.tr('勤務修正・過去まとめて出勤の申請を確認して承認')),
                 trailing: _trailing(_attendanceCount),
                 onTap: () => _open(const AttendanceCorrectionApprovalsPage()),
               ),
@@ -163,11 +164,11 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 leading: const CircleAvatar(
                   child: Icon(Icons.event_available_outlined),
                 ),
-                title: const Text(
-                  '有給申請の承認待ち',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                title: Text(
+                  SkoLanguageController.tr('有給申請の承認待ち'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: const Text('有給申請を確認して承認・却下'),
+                subtitle: Text(SkoLanguageController.tr('有給申請を確認して承認・却下')),
                 trailing: _trailing(_paidLeaveCount),
                 onTap: () => _open(const PaidLeaveApprovalsPage()),
               ),
@@ -178,11 +179,11 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 leading: const CircleAvatar(
                   child: Icon(Icons.verified_user_outlined),
                 ),
-                title: const Text(
-                  '従業員の本登録承認',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                title: Text(
+                  SkoLanguageController.tr('従業員の本登録承認'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: const Text('本登録待ちの従業員を確認して承認'),
+                subtitle: Text(SkoLanguageController.tr('本登録待ちの従業員を確認して承認')),
                 trailing: _trailing(_onboardingCount),
                 onTap: () => _open(const EmployeeOnboardingApprovalsPage()),
               ),
