@@ -137,7 +137,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                       const SizedBox(height: 6),
                                       Text(
                                         item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: item.reviewConfirmed
                                               ? Colors.green
                                               : Theme.of(context)
