@@ -636,7 +636,7 @@ class InvoicePdfService {
     final repository = InvoiceSettingsRepository.maybeCreate();
     if (repository == null) return null;
     try {
-      return await repository.load();
+      return await repository.loadForDocument();
     } catch (_) {
       return null;
     }
