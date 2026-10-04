@@ -19,28 +19,34 @@ class PayrollReviewItem {
   const PayrollReviewItem({
     required this.statement,
     required this.revision,
-    required this.confirmed,
-    this.reviewedAt,
+    required this.reviewChecked,
+    required this.reviewConfirmed,
+    required this.reviewerConfirmed,
   });
 
   final PayrollStatementRecord statement;
   final int revision;
-  final bool confirmed;
-  final DateTime? reviewedAt;
+  final bool reviewChecked;
+  final bool reviewConfirmed;
+  final bool reviewerConfirmed;
 }
 
 class PayrollReviewWorkspace {
   const PayrollReviewWorkspace({
     required this.role,
-    required this.canManageVisibility,
+    required this.companyName,
+    required this.isAdmin,
     required this.canConfirm,
+    required this.periodStart,
     required this.items,
     required this.workers,
   });
 
   final String role;
-  final bool canManageVisibility;
+  final String companyName;
+  final bool isAdmin;
   final bool canConfirm;
+  final DateTime periodStart;
   final List<PayrollReviewItem> items;
   final List<PayrollReviewWorkerVisibility> workers;
 }
@@ -57,8 +63,13 @@ class PayrollReviewRepository {
     return PayrollReviewRepository._(client);
   }
 
-  Future<PayrollReviewWorkspace> loadWorkspace() async {
-    final raw = await _client.rpc('payroll_review_workspace');
+  Future<PayrollReviewWorkspace> loadWorkspace(DateTime month) async {
+    final periodStart =
+        '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01';
+    final raw = await _client.rpc(
+      'payroll_review_workspace',
+      params: {'p_period_start': periodStart},
+    );
     final value = raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{};
@@ -72,8 +83,12 @@ class PayrollReviewRepository {
 
     return PayrollReviewWorkspace(
       role: value['role']?.toString() ?? '',
-      canManageVisibility: value['can_manage_visibility'] == true,
+      companyName: value['company_name']?.toString() ?? '',
+      isAdmin: value['is_admin'] == true,
       canConfirm: value['can_confirm'] == true,
+      periodStart:
+          DateTime.tryParse(value['period_start']?.toString() ?? '') ??
+              DateTime(month.year, month.month),
       items: [
         for (final rawItem in statements)
           if (rawItem is Map) _item(Map<String, dynamic>.from(rawItem)),
@@ -82,8 +97,8 @@ class PayrollReviewRepository {
         for (final rawWorker in workers)
           if (rawWorker is Map)
             PayrollReviewWorkerVisibility(
-              workerId: rawWorker['worker_id']?.toString() ?? '',
-              workerName: rawWorker['worker_name']?.toString() ?? '',
+              workerId: rawWorker['id']?.toString() ?? '',
+              workerName: rawWorker['name']?.toString() ?? '',
               visibleToManager: rawWorker['visible_to_manager'] == true,
             ),
       ].where((item) => item.workerId.isNotEmpty).toList(growable: false),
@@ -95,7 +110,7 @@ class PayrollReviewRepository {
     required bool visible,
   }) async {
     await _client.rpc(
-      'set_payroll_worker_visibility',
+      'set_payroll_manager_worker_visibility',
       params: {
         'p_worker_id': workerId,
         'p_visible': visible,
@@ -103,27 +118,38 @@ class PayrollReviewRepository {
     );
   }
 
-  Future<int> confirmMonth({
-    required DateTime month,
-    required List<String> statementIds,
+  Future<void> setReviewCheck({
+    required String statementId,
+    required int revision,
+    required bool checked,
   }) async {
-    final date =
+    await _client.rpc(
+      'set_payroll_review_check',
+      params: {
+        'p_statement_id': statementId,
+        'p_revision': revision,
+        'p_checked': checked,
+      },
+    );
+  }
+
+  Future<int> confirmMonth(DateTime month) async {
+    final periodStart =
         '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01';
     final raw = await _client.rpc(
-      'confirm_payroll_review',
-      params: {
-        'p_period_start': date,
-        'p_statement_ids': statementIds,
-      },
+      'confirm_payroll_review_month',
+      params: {'p_period_start': periodStart},
     );
     return raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '') ?? 0;
   }
 
   PayrollReviewItem _item(Map<String, dynamic> row) {
     final periodStart =
-        DateTime.tryParse(row['period_start']?.toString() ?? '') ?? DateTime.now();
+        DateTime.tryParse(row['period_start']?.toString() ?? '') ??
+            DateTime.now();
     final periodEnd =
-        DateTime.tryParse(row['period_end']?.toString() ?? '') ?? DateTime.now();
+        DateTime.tryParse(row['period_end']?.toString() ?? '') ??
+            DateTime.now();
 
     return PayrollReviewItem(
       statement: PayrollStatementRecord(
@@ -138,13 +164,11 @@ class PayrollReviewRepository {
         detail: row['detail'] is Map
             ? Map<String, dynamic>.from(row['detail'] as Map)
             : const {},
-        issuedAt:
-            DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
       ),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
-      confirmed: row['confirmed'] == true,
-      reviewedAt:
-          DateTime.tryParse(row['reviewed_at']?.toString() ?? '')?.toLocal(),
+      reviewChecked: row['review_checked'] == true,
+      reviewConfirmed: row['review_confirmed'] == true,
+      reviewerConfirmed: row['reviewer_confirmed'] == true,
     );
   }
 }
