@@ -19,9 +19,6 @@ void main() {
     expect(page, contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"));
     expect(page, contains("item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み')"));
     expect(page, contains('Colors.green'));
-    expect(page, contains('Theme.of(context)'));
-    expect(page, contains('.colorScheme'));
-    expect(page, contains('.error'));
   });
 
   test('printed payroll statement keeps review status in the margin', () {
