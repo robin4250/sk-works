@@ -71,7 +71,7 @@ class PaymentCertificatePdfService {
                     color: PdfColors.blueGrey100,
                   ),
                   children: [
-                    _cell('工事項目', bold: true),
+                    _cell('作業所名 / 工事内容', bold: true),
                     _cell('数量', bold: true, right: true),
                     _cell('単価', bold: true, right: true),
                     _cell('支払金額', bold: true, right: true),
@@ -111,6 +111,18 @@ class PaymentCertificatePdfService {
                   children: [
                     _cell('合計', bold: true),
                     _cell(_yen(record.netAmount), bold: true, right: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _cell('法定福利費', bold: true),
+                    _cell('', right: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _cell('消費税', bold: true),
+                    _cell('', right: true),
                   ],
                 ),
                 pw.TableRow(

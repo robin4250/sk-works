@@ -21,6 +21,9 @@ class EmployeeInviteResult {
     required this.phone,
     required this.temporaryPassword,
     required this.qrPayload,
+    this.smsSent = false,
+    this.testFlightUrl,
+    this.deliveryMessage,
   });
 
   final String inviteId;
@@ -28,6 +31,23 @@ class EmployeeInviteResult {
   final String phone;
   final String temporaryPassword;
   final String qrPayload;
+  final bool smsSent;
+  final String? testFlightUrl;
+  final String? deliveryMessage;
+}
+
+class InitialRegistrationEmployee {
+  const InitialRegistrationEmployee({
+    required this.id,
+    required this.name,
+    required this.phone,
+    required this.invited,
+  });
+
+  final String id;
+  final String name;
+  final String phone;
+  final bool invited;
 }
 
 class EmployeeInviteRepository {
@@ -39,6 +59,18 @@ class EmployeeInviteRepository {
     if (!SupabaseBackend.isInitialized) return null;
     if (SupabaseBackend.client.auth.currentUser == null) return null;
     return EmployeeInviteRepository._(SupabaseBackend.client);
+  }
+
+  Future<String> _companyId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return rows.first['company_id']?.toString() ?? '';
   }
 
   Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees() async {
@@ -54,6 +86,73 @@ class EmployeeInviteRepository {
             role: raw['role']?.toString() ?? 'manager',
           ),
     ].where((item) => item.userId.isNotEmpty).toList(growable: false);
+  }
+
+  Future<void> registerEmployee({
+    required String name,
+    required String phone,
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedPhone = phone.trim();
+    if (trimmedName.isEmpty || trimmedPhone.isEmpty) {
+      throw StateError('名前と電話番号を入力してください。');
+    }
+
+    final companyId = await _companyId();
+    final existing = await _client
+        .from('workers')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('affiliation', 'employee')
+        .eq('phone', trimmedPhone)
+        .limit(1);
+    if (existing.isNotEmpty) {
+      throw StateError('この電話番号の従業員はすでに登録されています。');
+    }
+
+    await _client.from('workers').insert({
+      'company_id': companyId,
+      'affiliation': 'employee',
+      'name': trimmedName,
+      'phone': trimmedPhone,
+      'status': 'inactive',
+      'user_id': null,
+    });
+  }
+
+  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('workers')
+        .select('id,name,phone,user_id,status')
+        .eq('company_id', companyId)
+        .eq('affiliation', 'employee')
+        .order('name');
+
+    return [
+      for (final raw in rows)
+        if ((raw['phone']?.toString().trim() ?? '').isNotEmpty)
+          InitialRegistrationEmployee(
+            id: raw['id']?.toString() ?? '',
+            name: raw['name']?.toString() ?? '名前未登録',
+            phone: raw['phone']?.toString() ?? '',
+            invited: (raw['user_id']?.toString().trim() ?? '').isNotEmpty,
+          ),
+    ].where((item) => item.id.isNotEmpty).toList(growable: false);
+  }
+
+  Future<EmployeeInviteResult> createInviteForWorker(
+    String workerId, {
+    bool deliverSms = true,
+  }) async {
+    final response = await _client.functions.invoke(
+      'create-employee-invite',
+      body: {
+        'workerId': workerId,
+        'deliverSms': deliverSms,
+      },
+    );
+    return _resultFromResponse(response);
   }
 
   Future<EmployeeInviteResult> createInvite({
@@ -73,10 +172,21 @@ class EmployeeInviteRepository {
         'replaceApprovalAssigneeUserId': replaceApprovalAssigneeUserId,
       },
     );
+    return _resultFromResponse(
+      response,
+      fallbackName: name.trim(),
+      fallbackPhone: phone.trim(),
+    );
+  }
 
+  EmployeeInviteResult _resultFromResponse(
+    FunctionResponse response, {
+    String fallbackName = '',
+    String fallbackPhone = '',
+  }) {
     final data = response.data;
     if (response.status < 200 || response.status >= 300 || data is! Map) {
-      throw StateError('従業員登録を作成できませんでした。');
+      throw StateError('初回登録を作成できませんでした。');
     }
 
     final map = Map<String, dynamic>.from(data);
@@ -85,10 +195,13 @@ class EmployeeInviteRepository {
 
     return EmployeeInviteResult(
       inviteId: map['inviteId']?.toString() ?? '',
-      name: map['name']?.toString() ?? name.trim(),
-      phone: map['phone']?.toString() ?? phone.trim(),
+      name: map['name']?.toString() ?? fallbackName,
+      phone: map['phone']?.toString() ?? fallbackPhone,
       temporaryPassword: map['temporaryPassword']?.toString() ?? '',
       qrPayload: map['qrPayload']?.toString() ?? '',
+      smsSent: map['smsSent'] == true,
+      testFlightUrl: map['testFlightUrl']?.toString(),
+      deliveryMessage: map['deliveryMessage']?.toString(),
     );
   }
 }

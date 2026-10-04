@@ -1,3 +1,6 @@
+import { serverAccountActivity } from '../_shared/account_activity.mjs';
+import { createDeletionInspection } from '../_shared/account_deletion_inspection.mjs';
+import { serverAccountAccess } from '../_shared/account_access.mjs';
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const encoder = new TextEncoder();
@@ -41,6 +44,25 @@ async function serviceFetch(path: string, init: RequestInit = {}) {
   });
 }
 
+const accessRpc = async (name: string, args: unknown) => {
+  const response = await serviceFetch('/rest/v1/rpc/' + name, {
+    method: 'POST', body: JSON.stringify(args), signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw Error('account_access_unavailable');
+  return await response.json();
+};
+const checkAccountAccess = serverAccountAccess(accessRpc);
+const inspectDeletion = createDeletionInspection({serviceKey:Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')??'',rpc:accessRpc,checkAccess:checkAccountAccess});
+const accountActivity = serverAccountActivity(accessRpc);
+async function accessFailure(userId: string) {
+  try {
+    return await checkAccountAccess(userId) ? null
+      : json({ error: 'アカウントの利用を停止しています。' }, 403);
+  } catch {
+    return json({ error: '利用権限を確認できませんでした。時間をおいてお試しください。' }, 503);
+  }
+}
+
 async function callerUser(req: Request) {
   const url = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -58,10 +80,15 @@ async function callerUser(req: Request) {
 }
 
 Deno.serve(async (req: Request) => {
+  const inspection = await inspectDeletion(req);
+  if (inspection) return inspection;
   if (req.method !== "POST") return json({ error: "Method Not Allowed" }, 405);
 
   const caller = await callerUser(req);
   if (!caller?.id) return json({ error: "authentication required" }, 401);
+
+  const denied = await accessFailure(caller.id);
+  if (denied) return denied;
 
   let payload: any;
   try {
@@ -70,15 +97,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: "invalid JSON" }, 400);
   }
 
-  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
-  if (!name) return json({ error: "名前を入力してください。" }, 400);
-
-  let phone: string;
-  try {
-    phone = normalizeJapaneseMobile(String(payload?.phone ?? ""));
-  } catch (error) {
-    return json({ error: String(error instanceof Error ? error.message : error) }, 400);
-  }
+  let name = typeof payload?.name === "string" ? payload.name.trim() : "";
+  let phone = "";
+  const workerId =
+    typeof payload?.workerId === "string" && payload.workerId.trim().length > 0
+      ? payload.workerId.trim()
+      : null;
+  const deliverSms = payload?.deliverSms === true;
 
   const membershipResponse = await serviceFetch(
     "/rest/v1/company_members?user_id=eq." +
@@ -97,6 +122,45 @@ Deno.serve(async (req: Request) => {
   const callerRole = String(memberships[0].role ?? "viewer");
   const canAssignManagementRole =
     callerRole === "owner" || callerRole === "admin";
+
+  let existingWorker: any = null;
+  if (workerId) {
+    if (!canAssignManagementRole) {
+      return json({ error: "初回登録の送信は管理者だけが行えます。" }, 403);
+    }
+    const workerResponse = await serviceFetch(
+      "/rest/v1/workers?id=eq." +
+        encodeURIComponent(workerId) +
+        "&company_id=eq." +
+        encodeURIComponent(companyId) +
+        "&affiliation=eq.employee&select=id,name,phone,user_id&limit=1",
+      { method: "GET" },
+    );
+    if (!workerResponse.ok) {
+      return json({ error: "従業員情報を確認できませんでした。" }, 500);
+    }
+    const workers = await workerResponse.json();
+    if (!Array.isArray(workers) || workers.length === 0) {
+      return json({ error: "対象の従業員が見つかりません。" }, 404);
+    }
+    existingWorker = workers[0];
+    if (existingWorker.user_id) {
+      return json({ error: "この従業員は初回登録作成済みです。" }, 409);
+    }
+    name = String(existingWorker.name ?? "").trim();
+    try {
+      phone = normalizeJapaneseMobile(String(existingWorker.phone ?? ""));
+    } catch (error) {
+      return json({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  } else {
+    if (!name) return json({ error: "名前を入力してください。" }, 400);
+    try {
+      phone = normalizeJapaneseMobile(String(payload?.phone ?? ""));
+    } catch (error) {
+      return json({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  }
 
   const requestedRole =
     payload?.requestedRole === "manager" ? "manager" : "viewer";
@@ -179,6 +243,16 @@ Deno.serve(async (req: Request) => {
     return json({ error: "この電話番号はすでに登録手続き中です。" }, 409);
   }
 
+  const changedAccess = await accessFailure(caller.id);
+  if (changedAccess) return changedAccess;
+
+  let activityId: string;
+  try {
+    activityId = await accountActivity.begin(caller.id, 'create-employee-invite');
+  } catch {
+    return json({ error: '利用権限を確認できませんでした。時間をおいてお試しください。' }, 503);
+  }
+  // Any unconfirmed remote failure leaves this activity pending for operator review.
   const password = temporaryPassword();
   const authResponse = await serviceFetch("/auth/v1/admin/users", {
     method: "POST",
@@ -210,24 +284,42 @@ Deno.serve(async (req: Request) => {
   const authUserId = authPayload?.id ?? authPayload?.user?.id;
   if (!authUserId) return json({ error: "利用者IDを作成できませんでした。" }, 500);
 
-  let workerId: string | null = null;
+  let persistedWorkerId: string | null = workerId;
+  let linkedExistingWorker = false;
   try {
-    const workerResponse = await serviceFetch("/rest/v1/workers?select=id", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        company_id: companyId,
-        affiliation: "employee",
-        name,
-        phone,
-        status: "inactive",
-        user_id: authUserId,
-      }),
-    });
-    if (!workerResponse.ok) throw new Error(await workerResponse.text());
-    const workers = await workerResponse.json();
-    workerId = workers?.[0]?.id ?? null;
-    if (!workerId) throw new Error("worker id missing");
+    if (existingWorker && persistedWorkerId) {
+      const workerResponse = await serviceFetch(
+        "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            user_id: authUserId,
+            status: "inactive",
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+      if (!workerResponse.ok) throw new Error(await workerResponse.text());
+      linkedExistingWorker = true;
+    } else {
+      const workerResponse = await serviceFetch("/rest/v1/workers?select=id", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          company_id: companyId,
+          affiliation: "employee",
+          name,
+          phone,
+          status: "inactive",
+          user_id: authUserId,
+        }),
+      });
+      if (!workerResponse.ok) throw new Error(await workerResponse.text());
+      const workers = await workerResponse.json();
+      persistedWorkerId = workers?.[0]?.id ?? null;
+    }
+    if (!persistedWorkerId) throw new Error("worker id missing");
 
     const inviteResponse = await serviceFetch(
       "/rest/v1/employee_registration_invites",
@@ -236,7 +328,7 @@ Deno.serve(async (req: Request) => {
         headers: { Prefer: "return=representation" },
         body: JSON.stringify({
           company_id: companyId,
-          worker_id: workerId,
+          worker_id: persistedWorkerId,
           auth_user_id: authUserId,
           name,
           phone_e164: phone,
@@ -258,20 +350,79 @@ Deno.serve(async (req: Request) => {
       password,
     });
 
+    const testFlightUrl = Deno.env.get("SKO_TESTFLIGHT_URL") ?? "";
+    let smsSent = false;
+    let deliveryMessage = "";
+    if (deliverSms) {
+      const webhook = Deno.env.get("SKO_EMPLOYEE_INVITE_SMS_WEBHOOK");
+      const webhookToken = Deno.env.get("SKO_EMPLOYEE_INVITE_SMS_WEBHOOK_TOKEN");
+      if (!testFlightUrl) {
+        deliveryMessage = "TestFlight URLが未設定です。";
+      } else if (!webhook) {
+        deliveryMessage = "SMS自動送信基盤が未接続です。";
+      } else {
+        try {
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+          };
+          if (webhookToken) headers.Authorization = "Bearer " + webhookToken;
+          const deliveryResponse = await fetch(webhook, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              to: phone,
+              name,
+              testFlightUrl,
+              temporaryPassword: password,
+              qrPayload,
+              inviteId,
+            }),
+          });
+          smsSent = deliveryResponse.ok;
+          if (!smsSent) {
+            deliveryMessage = "SMS送信サービスがエラーを返しました。";
+          }
+        } catch (error) {
+          console.error("employee invite sms delivery failed", error);
+          deliveryMessage = "SMS送信サービスへ接続できませんでした。";
+        }
+      }
+    }
+
+    try {
+      await accountActivity.finish(caller.id, activityId);
+    } catch {
+      // Registration succeeded: never destroy it because bookkeeping failed.
+      // The pending activity still prevents deletion until reconciled.
+      console.error('employee invite activity completion unconfirmed');
+    }
     return json({
       inviteId,
       name,
       phone,
       temporaryPassword: password,
       qrPayload,
+      smsSent,
+      testFlightUrl,
+      deliveryMessage,
     });
   } catch (error) {
     console.error("employee invite persistence failed", error);
-    if (workerId) {
-      await serviceFetch(
-        "/rest/v1/workers?id=eq." + encodeURIComponent(workerId),
-        { method: "DELETE" },
-      );
+    if (persistedWorkerId) {
+      if (linkedExistingWorker) {
+        await serviceFetch(
+          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
+          {
+            method: "PATCH",
+            body: JSON.stringify({ user_id: null }),
+          },
+        );
+      } else {
+        await serviceFetch(
+          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
+          { method: "DELETE" },
+        );
+      }
     }
     await serviceFetch("/auth/v1/admin/users/" + encodeURIComponent(authUserId), {
       method: "DELETE",

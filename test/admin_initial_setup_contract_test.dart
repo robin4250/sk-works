@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('admin setup keeps employee invite onboarding states intact', () {
+  test('admin setup keeps employee onboarding states intact', () {
     final gate = read('lib/features/auth/auth_gate.dart');
     final pages = read('lib/features/auth/secure_onboarding_pages.dart');
 
@@ -16,89 +16,54 @@ void main() {
     expect(pages, contains('従業員登録QRでログイン'));
   });
 
-  test('new companies require guided initial setup without affecting existing companies', () {
-    final sql = read(
-      'supabase/migrations/20260922013000_add_admin_initial_setup_wizard.sql',
-    );
-
-    expect(sql, contains('company_initial_setup_progress'));
-    expect(sql, contains('Existing production companies must not be pushed back'));
-    expect(sql, contains('insert into public.company_initial_setup_progress(company_id)'));
-    expect(sql, contains('company_profile_completed'));
-    expect(sql, contains('document_requirements_reviewed'));
-    expect(sql, contains('first_site_completed'));
-    expect(sql, contains('rate_settings_completed'));
-  });
-
-  test('initial company profile creates the owner worker record', () {
-    final sql = read(
-      'supabase/migrations/20260922013000_add_admin_initial_setup_wizard.sql',
-    );
-
-    expect(sql, contains('insert into public.workers'));
-    expect(sql, contains("'employee'"));
-    expect(sql, contains("'管理者'"));
-    expect(sql, contains('user_id'));
-  });
-
-  test('initial site captures billing customer address station and site rate', () {
-    final sql = read(
-      'supabase/migrations/20260922013000_add_admin_initial_setup_wizard.sql',
-    );
+  test('admin initial setup follows rollout sequence instead of site and rates', () {
     final page = read('lib/features/auth/admin_initial_setup_page.dart');
-
-    expect(sql, contains('nearest_station'));
-    expect(sql, contains('p_customer_name'));
-    expect(sql, contains('p_site_address'));
-    expect(sql, contains('p_billing_unit_price_yen'));
-
-    expect(page, contains('請求先会社名'));
-    expect(page, contains('現場住所'));
-    expect(page, contains('最寄り駅'));
-    expect(page, contains('現場単価'));
-  });
-
-  test('initial rate setup includes requested pay rates and three allowances', () {
-    final sql = read(
-      'supabase/migrations/20260922013000_add_admin_initial_setup_wizard.sql',
+    final migration = read(
+      'supabase/migrations/20261005045500_align_admin_initial_setup_with_employee_rollout.sql',
     );
-    final page = read('lib/features/auth/admin_initial_setup_page.dart');
-
-    for (final item in [
-      'p_tax_rate',
-      'p_welfare_rate',
-      'p_overtime_hour_rate_yen',
-      'p_early_hour_rate_yen',
-      'p_night_hour_rate_yen',
-      'p_holiday_day_rate_yen',
-      'p_allowance_1_name',
-      'p_allowance_2_name',
-      'p_allowance_3_name',
-    ]) {
-      expect(sql, contains(item));
-    }
 
     for (final label in [
-      '消費税率',
-      '福利厚生費率',
-      '残業単価',
-      '早出単価',
-      '夜勤単価',
-      '休日出勤単価',
-      '手当1 名称',
-      '手当2 名称',
-      '手当3 名称',
+      '個人情報登録',
+      '会社情報登録',
+      '提出書類登録',
+      '資格設定',
+      '従業員登録',
+      '初回登録',
     ]) {
       expect(page, contains(label));
     }
+
+    expect(page, contains('CompanySubmittedDocumentsPage'));
+    expect(page, contains('QualificationCloudPage'));
+    expect(page, contains('EmployeeRegistrationPage'));
+    expect(page, contains('EmployeeInitialRegistrationPage'));
+    expect(page, contains('現場登録や単価設定は初回必須ではなく'));
+
+    expect(migration, contains('personal_profile_completed'));
+    expect(migration, contains('company_documents_reviewed'));
+    expect(migration, contains('qualification_settings_reviewed'));
+    expect(migration, contains('employee_registration_reviewed'));
+    expect(migration, contains('initial_registration_reviewed'));
+    expect(migration, contains('mark_admin_initial_setup_step'));
   });
 
-  test('required documents can be selected now while uploads remain later', () {
-    final page = read('lib/features/auth/admin_initial_setup_page.dart');
+  test('existing completed companies stay completed after rollout migration', () {
+    final migration = read(
+      'supabase/migrations/20261005045500_align_admin_initial_setup_with_employee_rollout.sql',
+    );
 
-    expect(page, contains('実際の書類写真やPDFは後から登録できます'));
-    expect(page, contains('標準の必要書類を追加'));
-    expect(page, contains('会社独自の必要書類を追加'));
-    expect(page, contains('大事なお知らせ'));
+    expect(migration, contains('where completed_at is not null'));
+    expect(migration, contains('company_documents_reviewed = true'));
+    expect(migration, contains('initial_registration_reviewed = true'));
+  });
+
+  test('company profile completion also completes personal step', () {
+    final migration = read(
+      'supabase/migrations/20261005050000_sync_admin_personal_profile_initial_step.sql',
+    );
+
+    expect(migration, contains('sync_initial_personal_profile_progress'));
+    expect(migration, contains('new.company_profile_completed'));
+    expect(migration, contains('new.personal_profile_completed := true'));
   });
 }

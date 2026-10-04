@@ -53,7 +53,8 @@ import 'features/payroll/payroll_statements_page.dart';
 import 'features/payroll/payment_certificates_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/company_submitted_documents_page.dart';
-import 'features/people/employee_invite_page.dart';
+import 'features/people/employee_registration_page.dart';
+import 'features/people/employee_initial_registration_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
 import 'features/people/signature_list_page.dart';
@@ -508,6 +509,7 @@ class _HomePageState extends State<HomePage> {
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
+      'initial_registration' ||
       'people' ||
       'company_deliveries' => 'people',
       'company_documents' => 'documents',
@@ -534,7 +536,7 @@ class _HomePageState extends State<HomePage> {
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
       'chat' => 'chat',
-      'people' || 'employee_register' => 'people',
+      'people' || 'employee_register' || 'initial_registration' => 'people',
       'qualification_certificates' ||
       'qualification_register' ||
       'employee_qualifications' ||
@@ -740,9 +742,10 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'employee_register':
-        page = EmployeeInvitePage(
-          canAssignManagementRole: _identity.isAdmin,
-        );
+        page = const EmployeeRegistrationPage();
+        break;
+      case 'initial_registration':
+        page = const EmployeeInitialRegistrationPage();
         break;
       case 'approvals':
         page = const ApprovalsHubPage();
@@ -952,12 +955,22 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      _MenuAction(
-        key: 'employee_register',
-        label: SkoLanguageController.tr('従業員登録'),
-        icon: Icons.person_add_alt_1,
-        accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-      ),
+      if (_identity.isManagement)
+        _MenuAction(
+          key: 'employee_register',
+          label: SkoLanguageController.tr('従業員登録'),
+          icon: Icons.person_add_alt_1,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
+        ),
+      if (_isAdmin)
+        _MenuAction(
+          key: 'initial_registration',
+          label: SkoLanguageController.tr('初回登録'),
+          icon: Icons.sms_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者'),
+        ),
       _MenuAction(
         key: 'payroll',
         label: SkoLanguageController.tr('給与明細'),
@@ -1314,7 +1327,9 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible ? 72 : 8,
+          contentTopInset: _chromeVisible
+              ? MediaQuery.paddingOf(context).top + 72
+              : 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
@@ -1362,6 +1377,7 @@ class _HomePageState extends State<HomePage> {
       'site_map',
       'today_line',
       'payment_certificate_settings',
+      'initial_registration',
     };
     if (admin.contains(item.key)) return HomeShortcutAccess.admin;
     if (viewer.contains(item.key)) return HomeShortcutAccess.viewer;

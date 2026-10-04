@@ -1327,7 +1327,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => setState(() => _tab = tab),
+        onTap: () async {
+          if (_selectedGroupId != null) {
+            await _closeConversation();
+            if (!mounted) return;
+          }
+          setState(() => _tab = tab);
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
           child: Text(
