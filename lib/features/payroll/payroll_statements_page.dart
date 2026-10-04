@@ -133,6 +133,18 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                         ),
                                       if (item.workerName.isNotEmpty)
                                         Text(item.workerName),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        item.reviewConfirmed ? '確認済み' : '未確定',
+                                        style: TextStyle(
+                                          color: item.reviewConfirmed
+                                              ? Colors.green
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .error,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                       const SizedBox(height: 12),
                                       Row(
                                         children: [
@@ -266,6 +278,20 @@ class PayrollStatementPreviewPage extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                statement.reviewConfirmed ? '確認済み' : '未確定',
+                style: TextStyle(
+                  color: statement.reviewConfirmed
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

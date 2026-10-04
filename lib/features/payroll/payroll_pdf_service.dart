@@ -35,6 +35,19 @@ class PayrollPdfService {
             pw.Text(statement.companyName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
             pw.Text(statement.workerName),
             pw.Text('対象期間：${_date(statement.periodStart)} ～ ${_date(statement.periodEnd)}'),
+            pw.SizedBox(height: 6),
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Text(
+                statement.reviewConfirmed ? '確認済み' : '未確定',
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  color: statement.reviewConfirmed
+                      ? PdfColors.green700
+                      : PdfColors.red700,
+                ),
+              ),
+            ),
             pw.SizedBox(height: 14),
             pw.Divider(),
             _moneyRow('総支給額', statement.grossPay),
@@ -71,7 +84,8 @@ class PayrollPdfService {
 
   static String buildTextSnapshot(PayrollStatementRecord statement) =>
       '給与明細\n${statement.companyName}\n${statement.workerName}\n'
-      '${statement.monthLabel}\n総支給額 ${_yen(statement.grossPay)}\n'
+      '${statement.monthLabel}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
+      '総支給額 ${_yen(statement.grossPay)}\n'
       '控除額 ${_yen(statement.deductions)}\n差引支給額 ${_yen(statement.netPay)}';
 
   static pw.Widget _moneyRow(String label, int value, {bool strong = false}) {
