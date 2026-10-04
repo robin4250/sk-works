@@ -246,7 +246,7 @@ class InvoicePdfService {
       ),
       pw.SizedBox(height: 8),
       pw.TableHelper.fromTextArray(
-        headers: const ['整理番号', '内容', '人工', '残業', '金額'],
+        headers: const ['整理番号', '内容', '人工', '単価', '金額'],
         data: [
           for (var i = 0; i < rows.length; i++)
             [
