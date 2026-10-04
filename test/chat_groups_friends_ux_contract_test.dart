@@ -124,7 +124,7 @@ void main() {
     final repository =
         File('lib/features/chat/chat_cloud_repository.dart').readAsStringSync();
 
-    expect(page, contains('friendByUserId'));
+    expect(repository, contains('friendByUser'));
     expect(page, contains("'direct_other_user_id'"));
     expect(
       repository,
