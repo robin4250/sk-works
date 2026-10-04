@@ -18,7 +18,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
   final _vehicleRouteRepository = VehicleRouteRepository.maybeCreate();
 
   List<Map<String, dynamic>> _vehicles = const [];
-  String _mode = 'manual';
+  String _mode = 'none';
   String? _siteId;
   String? _routeId;
   String? _vehicleId;
@@ -69,7 +69,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
           : const <int>[1, 2, 3, 4, 5];
 
       var mode = selection['mode']?.toString() ??
-          (schedule['enabled'] == true ? 'gps_auto' : 'manual');
+          (schedule['enabled'] == true ? 'gps_auto' : 'none');
       if (mode == 'location') mode = 'gps_auto';
 
       if (!mounted) return;
@@ -122,6 +122,13 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
     if (attendanceRepository == null ||
         vehicleRouteRepository == null ||
         _saving) {
+      return;
+    }
+
+    if (_mode == 'none') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('出勤方法を選択してください')),
+      );
       return;
     }
 
@@ -205,6 +212,10 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                           border: OutlineInputBorder(),
                         ),
                         items: const [
+                          DropdownMenuItem(
+                            value: 'none',
+                            child: Text('未選択'),
+                          ),
                           DropdownMenuItem(
                             value: 'manual',
                             child: Text('手動'),
