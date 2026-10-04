@@ -37,4 +37,15 @@ void main() {
     expect(page, contains('Icons.event_available_outlined'));
     expect(page, contains('Icons.edit_calendar_outlined'));
   });
+
+  test('off to paid leave correction is an obvious button', () {
+    final page = File(
+      'lib/features/attendance/bulk_attendance_correction_page.dart',
+    ).readAsStringSync();
+
+    expect(page, contains('FilledButton.tonalIcon'));
+    expect(page, contains("const Text(\n                    '休み → 有給'"));
+    expect(page, contains('Icons.event_repeat_outlined'));
+  });
+
 }
