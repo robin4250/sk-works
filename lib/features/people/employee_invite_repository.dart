@@ -61,18 +61,6 @@ class EmployeeInviteRepository {
     return EmployeeInviteRepository._(SupabaseBackend.client);
   }
 
-  Future<String> _companyId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SKOへのログインが必要です。');
-    final rows = await _client
-        .from('company_members')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
-    return rows.first['company_id']?.toString() ?? '';
-  }
-
   Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees() async {
     final value = await _client.rpc('company_approval_assignee_rows');
     if (value is! List) return const [];
