@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import '../auth/secondary_protected_page.dart';
+import '../payroll/individual_payroll_settings_page.dart';
+import '../payroll/payment_certificates_page.dart';
+import '../settings/settings_page.dart';
+import '../sites/admin_site_financial_page.dart';
 import '../attendance/paid_leave_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
@@ -105,6 +110,55 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const PaidLeaveApprovalsPage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'payroll_settings') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SecondaryProtectedPage(
+            title: '個別給与設定',
+            child: IndividualPayrollSettingsPage(),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'admin_sites') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SecondaryProtectedPage(
+            title: '管理者用現場データ',
+            child: AdminSiteFinancialPage(),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'payment_certificate_settings') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SecondaryProtectedPage(
+            title: '支払証明書設定',
+            child: PartnerPaymentSettingsPage(),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'settings') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const SettingsPage(),
         ),
       );
       if (!mounted) return;
