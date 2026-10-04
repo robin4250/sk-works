@@ -171,7 +171,9 @@ class _RequiredDocumentAttentionCardState
           onTap: () => widget.onOpen(
             widget.attention.paidLeaveApprovalCount > 0
                 ? 'approvals'
-                : 'documents',
+                : widget.attention.generationIssueCount > 0
+                    ? 'notifications'
+                    : 'documents',
           ),
           child: IntrinsicHeight(
             child: Row(
