@@ -15,6 +15,8 @@ class _PaidLeaveCorrectionPageState extends State<PaidLeaveCorrectionPage> {
   final _reason = TextEditingController();
   final Set<DateTime> _selected = <DateTime>{};
   late DateTime _month;
+  PaidLeaveSummary? _summary;
+  bool _loadingSummary = true;
   bool _saving = false;
 
   @override
@@ -22,6 +24,25 @@ class _PaidLeaveCorrectionPageState extends State<PaidLeaveCorrectionPage> {
     super.initState();
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
+    _loadSummary();
+  }
+
+  Future<void> _loadSummary() async {
+    final repository = _repository;
+    if (repository == null) {
+      if (mounted) setState(() => _loadingSummary = false);
+      return;
+    }
+    try {
+      final summary = await repository.loadSummary();
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _loadingSummary = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingSummary = false);
+    }
   }
 
   @override
@@ -41,12 +62,25 @@ class _PaidLeaveCorrectionPageState extends State<PaidLeaveCorrectionPage> {
   Future<void> _submit() async {
     final repository = _repository;
     if (repository == null || _selected.isEmpty || _saving) return;
+    final summary = _summary;
+    if (summary != null && summary.remainingDays < _selected.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '有給残日数が不足しています。個別給与設定の有給付与日数を確認してください。',
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       await repository.submitRetrospective(
         dates: _selected,
         reason: _reason.text,
       );
+      if (!mounted) return;
+      await _loadSummary();
       if (!mounted) return;
       Navigator.of(context).pop(_selected.length);
     } catch (error) {
@@ -75,8 +109,26 @@ class _PaidLeaveCorrectionPageState extends State<PaidLeaveCorrectionPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
           children: [
-            const Card(
-              child: Padding(
+            if (_loadingSummary)
+              const LinearProgressIndicator()
+            else if (_summary != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Text('付与 ${_summary!.grantedDays.toStringAsFixed(0)}日'),
+                      Text('使用 ${_summary!.usedDays.toStringAsFixed(0)}日'),
+                      Text(
+                        '残り ${_summary!.remainingDays.toStringAsFixed(0)}日',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const Card(              child: Padding(
                 padding: EdgeInsets.all(14),
                 child: Text(
                   '今日または過去の「休み」を有給へ変更申請します。'
