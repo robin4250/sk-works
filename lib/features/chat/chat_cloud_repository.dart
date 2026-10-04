@@ -678,4 +678,80 @@ class ChatCloudRepository {
     );
   }
 
+
+  Future<List<Map<String, dynamic>>> loadPendingGroupInvites() async {
+    final raw = await _client.rpc('my_chat_group_invites');
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<String> createCustomGroup(String name) async {
+    final raw = await _client.rpc(
+      'create_custom_chat_group',
+      params: {'p_name': name.trim()},
+    );
+    final id = raw?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('グループを作成できませんでした。');
+    }
+    return id;
+  }
+
+  Future<void> inviteFriendToGroup({
+    required String groupId,
+    required String friendUserId,
+  }) async {
+    await _client.rpc(
+      'invite_friend_to_chat_group',
+      params: {
+        'p_group_id': groupId,
+        'p_friend_user_id': friendUserId,
+      },
+    );
+  }
+
+  Future<String> respondGroupInvite({
+    required String inviteId,
+    required bool accept,
+  }) async {
+    final raw = await _client.rpc(
+      'respond_chat_group_invite',
+      params: {
+        'p_invite_id': inviteId,
+        'p_accept': accept,
+      },
+    );
+    return raw?.toString() ?? '';
+  }
+
+  Future<void> leaveCustomGroup(String groupId) async {
+    await _client.rpc(
+      'leave_custom_chat_group',
+      params: {'p_group_id': groupId},
+    );
+  }
+
+  Future<void> removeCustomGroupMember({
+    required String groupId,
+    required String userId,
+  }) async {
+    await _client.rpc(
+      'remove_custom_chat_group_member',
+      params: {
+        'p_group_id': groupId,
+        'p_user_id': userId,
+      },
+    );
+  }
+
+  Future<void> deleteCustomGroup(String groupId) async {
+    await _client.rpc(
+      'delete_custom_chat_group',
+      params: {'p_group_id': groupId},
+    );
+  }
+
 }
