@@ -140,4 +140,21 @@ void main() {
     );
   });
 
+
+  test('custom group members can remove another member but not self', () {
+    final migration = File(
+      'supabase/migrations/20261004162159_allow_custom_chat_members_to_remove_members.sql',
+    ).readAsStringSync();
+
+    expect(migration, contains('and me.user_id=v_user'));
+    expect(
+      migration,
+      contains('自分の脱退は脱退ボタンを使用してください'),
+    );
+    expect(
+      migration,
+      contains('delete from public.communication_group_members'),
+    );
+  });
+
 }
