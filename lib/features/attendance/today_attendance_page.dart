@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'today_attendance_repository.dart';
+import '../../international/language_controller.dart';
 
 class TodayAttendancePage extends StatefulWidget {
   const TodayAttendancePage({super.key});
