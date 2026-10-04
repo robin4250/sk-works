@@ -29,6 +29,8 @@ import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
+import 'features/help/floating_help_controller.dart';
+import 'features/help/floating_help_overlay.dart';
 import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
 import 'features/home/home_attention_repository.dart';
@@ -93,8 +95,14 @@ class SkWorksApp extends StatelessWidget {
               debugShowCheckedModeBanner: false,
               title: ProductBrand.displayName,
               theme: SkoTheme.light(palette),
-              builder: (context, child) => SkoGlobalScrollChrome(
-                child: child ?? const SizedBox.shrink(),
+              builder: (context, child) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  SkoGlobalScrollChrome(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                  const FloatingHelpOverlay(),
+                ],
               ),
               home: SupabaseBackend.isInitialized
                   ? SupabaseAuthGate(
@@ -587,6 +595,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openHomeAction(String key) async {
+    FloatingHelpController.setContext(
+      featureKey: key,
+      currentRole: ManualContent.fromMembershipRole(_identity.role),
+      visibleKeys: _menuItems.map((item) => item.key).toSet(),
+    );
     unawaited(_recordUsage(key));
     if (!mounted) return;
 
@@ -1154,6 +1167,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _homeDashboard() {
+    FloatingHelpController.setContext(
+      featureKey: 'home',
+      currentRole: ManualContent.fromMembershipRole(_identity.role),
+      visibleKeys: _menuItems.map((item) => item.key).toSet(),
+    );
     final now = DateTime.now();
     final dateLabel = SkoLanguageController.isEnglish
         ? '${now.month}/${now.day}/${now.year}'
