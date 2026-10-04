@@ -20,6 +20,17 @@ void main() {
     expect(sql, contains('calculation_blocked,calculation_fingerprint'));
   });
 
+  test('invoice draft is also generated when customer is unset', () {
+    final sql = read(
+      'supabase/migrations/20261004111111_generate_invoice_without_customer_setting.sql',
+    );
+
+    expect(sql, contains('ensure_unassigned_invoice_customer'));
+    expect(sql, contains('取引先未設定（自動下書き）'));
+    expect(sql, contains("'customer_missing',v_system_customer"));
+    expect(sql, contains('取引先が未入力です'));
+  });
+
   test('generation setting notifications are deduplicated and auto-resolved', () {
     final sql = read(
       'supabase/migrations/20261004105043_dedupe_generation_setting_notifications.sql',
