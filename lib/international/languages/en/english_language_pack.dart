@@ -309,6 +309,12 @@ const englishLanguagePack = LanguagePack(
     'SKO従業員登録用のQRコードではありません。': 'This is not an SKO employee registration QR code.',
     'SKO利用者が表示した従業員登録QRコードをカメラで読み取ると、初期ログイン情報が自動入力されます。': 'Scan the employee registration QR code shown by an SKO user to fill in the initial sign-in information automatically.',
     'SKOを利用している人が表示した従業員登録QRコードを枠内に映してください。': 'Place the employee registration QR code shown by an SKO user inside the frame.',
+    '給料一覧': 'Payroll List',
+    '確認済み': 'Confirmed',
+    '未確定': 'Unconfirmed',
+    '支払証明書': 'Payment Certificate',
+    '下書き': 'Draft',
+    '確定': 'Finalized',
     '設定を保存しました': 'Settings saved',
   },
 );
