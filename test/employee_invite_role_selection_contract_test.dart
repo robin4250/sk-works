@@ -61,13 +61,14 @@ void main() {
     expect(page, contains('入れ替え対象'));
   });
 
-  test('home only exposes invite role controls to full admins', () {
+  test('home separates employee preregistration from admin initial registration', () {
     final app = read('lib/app_v2.dart');
 
-    expect(
-      app,
-      contains('canAssignManagementRole: _identity.isAdmin'),
-    );
+    expect(app, contains("key: 'employee_register'"));
+    expect(app, contains('EmployeeRegistrationPage'));
+    expect(app, contains("key: 'initial_registration'"));
+    expect(app, contains('EmployeeInitialRegistrationPage'));
+    expect(app, contains('if (_isAdmin)'));
   });
 
   test('manuals describe invite-time role and approver selection', () {
