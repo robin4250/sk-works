@@ -274,6 +274,9 @@ const englishLanguagePack = LanguagePack(
     '設定の読み込みに失敗しました': 'Failed to load settings',
     '設定の保存に失敗しました': 'Failed to save settings',
     'クラウドに設定を保存しました': 'Settings saved to cloud',
+    'ヘルプ表示': 'Help Display',
+    'フローティングヘルプ': 'Floating Help',
+    'ONにすると画面右下の？ボタンからいつでも使い方を確認できます。ボタンは長押しで好きな位置へ移動できます。': 'When ON, use the ? button at the lower-right to get help anytime. Long-press and drag the button to move it anywhere on the screen.',
     '設定を保存しました': 'Settings saved',
   },
 );
