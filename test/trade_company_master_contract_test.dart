@@ -12,7 +12,7 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(page, contains('TradeCompanyPageMode.customer'));
-    expect(page, contains('TradeCompanyPageMode.subcontractor'));
+    expect(repo, contains('TradeCompanyPageMode { customer, subcontractor }'));
     expect(page, contains('SKO連携なしでも登録できます'));
     expect(repo, contains("rpc('trade_company_workspace')"));
     expect(repo, contains("rpc('sync_trade_company_directory')"));
@@ -67,6 +67,8 @@ void main() {
       'supabase/migrations/20261004132037_restrict_trade_company_master_to_rpc.sql',
       'supabase/migrations/20261004132201_add_trade_company_calculation_conflicts.sql',
       'supabase/migrations/20261004134247_sync_trade_company_directory_sources.sql',
+      'supabase/migrations/20261004140858_apply_trade_company_calculation_source.sql',
+      'supabase/migrations/20261004141035_refresh_outputs_after_trade_contract_change.sql',
     ]) {
       expect(File(path).existsSync(), isTrue, reason: path);
     }
