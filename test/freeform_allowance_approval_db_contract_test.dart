@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('approval flow preserves freeform allowance names', () {
     final sql = File(
-      'supabase/migrations/20261004081800_preserve_freeform_allowance_names.sql',
+      'supabase/migrations/20261004081612_preserve_freeform_allowance_names.sql',
     ).readAsStringSync();
     expect(sql, contains('allowance_names'));
     expect(sql, contains('jsonb_array_elements_text'));
