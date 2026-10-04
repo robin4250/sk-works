@@ -18,6 +18,9 @@ void main() {
     expect(repo, contains("rpc('sync_trade_company_directory')"));
     expect(app, contains("key: 'trade_companies'"));
     expect(app, contains("key: 'subcontractors'"));
+    expect(app, contains("SkoLanguageController.tr('取引会社登録')"));
+    expect(app, contains("SkoLanguageController.tr('協力会社登録')"));
+    expect(app, contains("SkoLanguageController.tr('協力会社情報')"));
   });
 
   test('company contract supports all requested calculation methods', () {
@@ -56,7 +59,7 @@ void main() {
     expect(page, contains('barrierDismissible: false'));
     expect(page, contains('管理現場の設定を使う'));
     expect(page, contains('取引会社の契約を使う'));
-    expect(page, contains('下請け会社の契約を使う'));
+    expect(page, contains('協力会社の契約を使う'));
     expect(repo, contains("'trade_company_link_candidates'"));
     expect(repo, contains("'select_site_calculation_source'"));
   });
