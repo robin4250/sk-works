@@ -1307,21 +1307,19 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .surface
           .withValues(alpha: _appearance.headerAlpha),
       padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (var index = 0; index < tabs.length; index++) ...[
-              SizedBox(
-                width: 78,
-                child: _chatTabButton(
-                  tab: tabs[index].$1,
-                  label: tabs[index].$2,
-                ),
-              ),
-              if (index < tabs.length - 1) const SizedBox(width: 5),
-            ],
-          ],
+      child: SizedBox(
+        height: 42,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: tabs.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 5),
+          itemBuilder: (context, index) => SizedBox(
+            width: 78,
+            child: _chatTabButton(
+              tab: tabs[index].$1,
+              label: tabs[index].$2,
+            ),
+          ),
         ),
       ),
     );
