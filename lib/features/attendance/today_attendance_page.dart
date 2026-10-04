@@ -142,6 +142,29 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                             _AttendanceCard(record: record),
                             const SizedBox(height: 8),
                           ],
+                        const SizedBox(height: 16),
+                        const Divider(),
+                        const SizedBox(height: 6),
+                        Text(
+                          '過去1か月',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          '昨日を先頭に、下へ向かって古い日付順です。最初の1週間分から、そのまま1か月分までスクロールできます。',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 10),
+                        for (final day in snapshot?.history ??
+                            const <TodayAttendanceHistoryDay>[]) ...[
+                          _HistoryDayCard(
+                            day: day,
+                            partnerTab: _tabIndex == 1,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                       ],
                     ),
                   ),
@@ -150,6 +173,96 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
   }
 }
 
+class _HistoryDayCard extends StatelessWidget {
+  const _HistoryDayCard({
+    required this.day,
+    required this.partnerTab,
+  });
+
+  final TodayAttendanceHistoryDay day;
+  final bool partnerTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final records = partnerTab ? day.subcontractors : day.ownCompany;
+    return Card(
+      child: ExpansionTile(
+        initiallyExpanded: _isWithinFirstWeek(day.date),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+        childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        title: Text(
+          _dateLabel(day.date),
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        subtitle: Text(
+          records.isEmpty ? '記録なし' : '出勤 ${records.length}人',
+        ),
+        children: records.isEmpty
+            ? const [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(8, 2, 8, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('この日の出勤記録はありません'),
+                  ),
+                ),
+              ]
+            : [
+                for (var i = 0; i < records.length; i++) ...[
+                  _HistoryAttendanceRow(record: records[i]),
+                  if (i != records.length - 1)
+                    const Divider(height: 1),
+                ],
+              ],
+      ),
+    );
+  }
+
+  static bool _isWithinFirstWeek(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = today.difference(date).inDays;
+    return diff >= 1 && diff <= 7;
+  }
+
+  static String _dateLabel(DateTime value) {
+    final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+    return '${value.month}/${value.day}（${weekdays[value.weekday - 1]}）';
+  }
+}
+
+class _HistoryAttendanceRow extends StatelessWidget {
+  const _HistoryAttendanceRow({required this.record});
+
+  final TodayAttendanceRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: const Icon(Icons.history),
+      title: Text(
+        record.workerName,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(
+        [
+          if (record.isPartner) record.companyLabel,
+          record.siteName ?? '現場未設定',
+          '出 ${_time(record.clockInAt)}',
+          '退 ${_time(record.clockOutAt)}',
+        ].join(' / '),
+      ),
+    );
+  }
+
+  static String _time(DateTime? value) {
+    if (value == null) return '--:--';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(value.hour)}:${two(value.minute)}';
+  }
+}
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({
     required this.total,
