@@ -32,7 +32,7 @@ class _SignatureListPageState extends State<SignatureListPage> {
       return;
     }
     try {
-      final sources = await repository.listSendableSources();
+      final sources = await repository.listSignatureSources();
       final items = sources
           .where((row) => row['kind']?.toString() == 'daily_report_signature')
           .toList(growable: false);
@@ -46,7 +46,7 @@ class _SignatureListPageState extends State<SignatureListPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = error.toString().replaceFirst('PostgrestException(message: ', '').replaceFirst('Bad state: ', '');
       });
     }
   }
