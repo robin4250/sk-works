@@ -224,7 +224,6 @@ class AttendanceVerificationRepository {
   }
 
   Future<HomeAttendanceStatus> loadHomeAttendanceStatus() async {
-    final settings = await loadSettings();
     final workspace = await loadAttendanceSelectionWorkspace();
     final dailySelection = workspace['selection'] is Map
         ? Map<String, dynamic>.from(workspace['selection'] as Map)
