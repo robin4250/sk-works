@@ -46,7 +46,12 @@ class PayrollPdfService {
     document.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.all(8 * PdfPageFormat.mm),
+        margin: const pw.EdgeInsets.fromLTRB(
+          8 * PdfPageFormat.mm,
+          7 * PdfPageFormat.mm,
+          8 * PdfPageFormat.mm,
+          7 * PdfPageFormat.mm,
+        ),
         build: (_) => _sheet(
           statement,
           detail: detail,
@@ -55,6 +60,7 @@ class PayrollPdfService {
         ),
       ),
     );
+
     return document.save();
   }
 
@@ -82,7 +88,7 @@ class PayrollPdfService {
     final headerFill = PdfColor.fromHex('#DCE8F6');
     final grid = PdfColor.fromHex('#6D89A8');
 
-    final earningLabels = <String>[
+    const earningLabels = <String>[
       '基本給',
       '残業手当',
       '勤続手当',
@@ -94,7 +100,8 @@ class PayrollPdfService {
       '',
       '',
     ];
-    final deductionLabels = <String>[
+
+    const deductionLabels = <String>[
       '健康保険料',
       '介護保険料',
       '厚生年金保険',
@@ -107,250 +114,239 @@ class PayrollPdfService {
       '',
     ];
 
+    final supportValues = <String>[
+      _amount(earnings, '基本給', fallbackKey: '出勤に基づく支給額'),
+      _amount(earnings, '残業手当'),
+      _amount(earnings, '勤続手当'),
+      _amount(earnings, '役職手当'),
+      _amount(earnings, '家族手当'),
+      _amount(earnings, '働き方手当'),
+      '',
+      '',
+      '',
+      '',
+    ];
+
+    final deductionValues = <String>[
+      _amount(deductions, '健康保険料', fallbackKey: '社会保険'),
+      _amount(deductions, '介護保険料'),
+      _amount(deductions, '厚生年金保険'),
+      _amount(deductions, '雇用保険料'),
+      _amount(deductions, '所得税'),
+      _amount(deductions, '住民税'),
+      _amount(deductions, 'SKB会費'),
+      _amount(deductions, '道具代'),
+      '',
+      '',
+    ];
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+        pw.SizedBox(height: 3),
+        pw.Stack(
           children: [
-            pw.Expanded(
-              child: pw.Column(
-                children: [
-                  pw.Text(
-                    '給与明細書',
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      fontSize: 20,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.SizedBox(height: 5),
-                  pw.Table(
-                    border: pw.TableBorder.all(color: grid, width: .55),
-                    columnWidths: const {
-                      0: pw.FlexColumnWidth(2.2),
-                      1: pw.FlexColumnWidth(1.2),
-                      2: pw.FlexColumnWidth(3),
-                    },
-                    children: [
-                      pw.TableRow(
-                        decoration: pw.BoxDecoration(color: headerFill),
-                        children: [
-                          _cell('所属', center: true, bold: true),
-                          _cell('社員番号', center: true, bold: true),
-                          _cell('氏名', center: true, bold: true),
-                        ],
+            pw.Align(
+              alignment: pw.Alignment.topCenter,
+              child: pw.Text(
+                '給与明細書',
+                style: pw.TextStyle(
+                  fontSize: 20,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.Align(
+              alignment: pw.Alignment.topRight,
+              child: pw.SizedBox(
+                width: 165,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      '${statement.periodEnd.year}年${statement.periodEnd.month}月分',
+                      style: pw.TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: pw.FontWeight.bold,
                       ),
-                      pw.TableRow(
-                        children: [
-                          _cell(statement.companyName),
-                          _cell(_text(detail, '社員番号'), center: true),
-                          _cell('${statement.workerName}　様'),
-                        ],
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      '支払日　${statement.issuedAt == null ? '' : _date(statement.issuedAt!)}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      statement.companyName,
+                      style: pw.TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Row(
+          children: [
+            pw.SizedBox(
+              width: 420,
+              child: pw.Table(
+                border: pw.TableBorder.all(color: grid, width: .55),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2.4),
+                  1: pw.FlexColumnWidth(1.1),
+                  2: pw.FlexColumnWidth(2.5),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: headerFill),
+                    children: [
+                      _cell('所属', center: true, bold: true, height: 18),
+                      _cell('社員番号', center: true, bold: true, height: 18),
+                      _cell('氏名', center: true, bold: true, height: 18),
+                    ],
+                  ),
+                  pw.TableRow(
+                    children: [
+                      _cell(statement.companyName, height: 22),
+                      _cell(
+                        _first(detail, const ['社員番号', '社員No', '社員No.']),
+                        center: true,
+                        height: 22,
+                      ),
+                      _cell(
+                        '${statement.workerName}　様',
+                        height: 22,
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            pw.SizedBox(width: 18),
-            pw.SizedBox(
-              width: 160,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.SizedBox(height: 8),
-                  pw.Text(
-                    '${statement.periodEnd.year}年${statement.periodEnd.month}月分',
-                    style: pw.TextStyle(
-                      fontSize: 13,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.SizedBox(height: 3),
-                  pw.Text(
-                    '支払日　${statement.issuedAt == null ? '' : _date(statement.issuedAt!)}',
-                    style: const pw.TextStyle(fontSize: 8.5),
-                  ),
-                  pw.SizedBox(height: 8),
-                  pw.Text(
-                    statement.companyName,
-                    style: pw.TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
-        pw.SizedBox(height: 7),
-        _section(
-          title: '勤怠',
-          labels: const [
-            '出勤日数',
-            '休日出勤',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-          values: [
-            _text(detail, '出勤日数'),
-            _text(detail, '休日出勤'),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-          secondLabels: const [
-            '残業時間',
-            '法定外出時間',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-          secondValues: [
-            _text(detail, '残業時間'),
-            _text(detail, '法定外出時間'),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
+        pw.SizedBox(height: 10),
+        _attendanceSection(
+          detail: detail,
           headerFill: headerFill,
           grid: grid,
-          extraBlankRows: 0,
         ),
-        pw.SizedBox(height: 7),
-        _section(
+        pw.SizedBox(height: 10),
+        _singleHeaderSection(
           title: '支給',
           labels: earningLabels,
-          values: [
-            _amount(earnings, '基本給', fallbackKey: '出勤に基づく支給額'),
-            _amount(earnings, '残業手当'),
-            _amount(earnings, '勤続手当'),
-            _amount(earnings, '役職手当'),
-            _amount(earnings, '家族手当'),
-            _amount(earnings, '働き方手当'),
-            '',
-            '',
-            '',
-            '',
-          ],
-          secondLabels: const ['', '', '', '', '', '', '', '', '', ''],
-          secondValues: const ['', '', '', '', '', '', '', '', '', ''],
+          values: supportValues,
           headerFill: headerFill,
           grid: grid,
-          extraBlankRows: 2,
+          blankRows: 3,
         ),
-        pw.SizedBox(height: 7),
-        _section(
+        pw.SizedBox(height: 10),
+        _singleHeaderSection(
           title: '控除',
           labels: deductionLabels,
-          values: [
-            _amount(deductions, '健康保険料', fallbackKey: '社会保険'),
-            _amount(deductions, '介護保険料'),
-            _amount(deductions, '厚生年金保険'),
-            _amount(deductions, '雇用保険料'),
-            _amount(deductions, '所得税'),
-            _amount(deductions, '住民税'),
-            _amount(deductions, 'SKB会費'),
-            _amount(deductions, '道具代'),
-            '',
-            '',
-          ],
-          secondLabels: const ['', '', '', '', '', '', '', '', '', ''],
-          secondValues: const ['', '', '', '', '', '', '', '', '', ''],
+          values: deductionValues,
           headerFill: headerFill,
           grid: grid,
-          extraBlankRows: 2,
+          blankRows: 3,
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.SizedBox(
-            width: 315,
+            width: 455,
             child: pw.Table(
               border: pw.TableBorder.all(color: grid, width: .55),
               children: [
                 pw.TableRow(
                   decoration: pw.BoxDecoration(color: headerFill),
                   children: [
-                    _cell('総支給額', center: true, bold: true),
-                    _cell('総控除額', center: true, bold: true),
-                    _cell('差引支給額', center: true, bold: true),
+                    for (var i = 0; i < 5; i++)
+                      _cell('', height: 18),
+                    _cell('総支給額', center: true, bold: true, height: 18),
+                    _cell('総控除額', center: true, bold: true, height: 18),
+                    _cell('差引支給額', center: true, bold: true, height: 18),
                   ],
                 ),
                 pw.TableRow(
                   children: [
-                    _cell(_number(statement.grossPay), right: true),
-                    _cell(_number(statement.deductions), right: true),
-                    _cell(_number(statement.netPay), right: true, bold: true),
+                    for (var i = 0; i < 5; i++)
+                      _cell('', height: 23),
+                    _cell(
+                      _number(statement.grossPay),
+                      right: true,
+                      height: 23,
+                      fontSize: 8,
+                    ),
+                    _cell(
+                      _number(statement.deductions),
+                      right: true,
+                      height: 23,
+                      fontSize: 8,
+                    ),
+                    _cell(
+                      _number(statement.netPay),
+                      right: true,
+                      bold: true,
+                      height: 23,
+                      fontSize: 8,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 10),
         pw.Table(
           border: pw.TableBorder.all(color: grid, width: .55),
           children: [
             pw.TableRow(
               decoration: pw.BoxDecoration(color: headerFill),
               children: [
-                _cell('日給単価', center: true, bold: true),
-                _cell(''),
-                _cell(''),
-                _cell(''),
-                _cell(''),
-                _cell('月次減税額', center: true, bold: true, fontSize: 6.4),
-                _cell('減税前未済額', center: true, bold: true, fontSize: 6.4),
-                _cell('減税前所得税', center: true, bold: true, fontSize: 6.4),
-                _cell('定額減税額', center: true, bold: true, fontSize: 6.4),
-                _cell('定額減税未済', center: true, bold: true, fontSize: 6.4),
+                _cell('日給単価', center: true, bold: true, height: 18),
+                _cell('', height: 18),
+                _cell('', height: 18),
+                _cell('', height: 18),
+                _cell('', height: 18),
+                _cell('月次減税額', center: true, bold: true, height: 18, fontSize: 6.5),
+                _cell('減税前未済額', center: true, bold: true, height: 18, fontSize: 6.5),
+                _cell('減税前所得税', center: true, bold: true, height: 18, fontSize: 6.5),
+                _cell('定額減税額', center: true, bold: true, height: 18, fontSize: 6.5),
+                _cell('定額減税未済', center: true, bold: true, height: 18, fontSize: 6.5),
               ],
             ),
             pw.TableRow(
               children: [
-                _cell(_text(detail, '日給単価'), right: true),
-                _cell(''),
-                _cell(''),
-                _cell(''),
-                _cell(''),
-                _cell(_text(detail, '月次減税額'), right: true),
-                _cell(_text(detail, '減税前未済額'), right: true),
-                _cell(_text(detail, '減税前所得税'), right: true),
-                _cell(_text(detail, '定額減税額'), right: true),
-                _cell(_text(detail, '定額減税未済'), right: true),
+                _cell(
+                  _first(detail, const ['日給単価']),
+                  right: true,
+                  height: 22,
+                ),
+                for (var i = 0; i < 4; i++) _cell('', height: 22),
+                _cell(_first(detail, const ['月次減税額']), right: true, height: 22),
+                _cell(_first(detail, const ['減税前未済額']), right: true, height: 22),
+                _cell(_first(detail, const ['減税前所得税']), right: true, height: 22),
+                _cell(_first(detail, const ['定額減税額']), right: true, height: 22),
+                _cell(_first(detail, const ['定額減税未済']), right: true, height: 22),
               ],
             ),
           ],
         ),
-        pw.SizedBox(height: 5),
+        pw.SizedBox(height: 8),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('お疲れさまです。', style: const pw.TextStyle(fontSize: 7.5)),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(left: 175),
+              child: pw.Text(
+                'お疲れさまです。',
+                style: const pw.TextStyle(fontSize: 7.5),
+              ),
+            ),
             pw.Text(
               statement.reviewConfirmed ? '確認済み' : '未確定',
               style: pw.TextStyle(
@@ -366,21 +362,109 @@ class PayrollPdfService {
     );
   }
 
-  static pw.Widget _section({
+  static pw.Widget _attendanceSection({
+    required Map<String, dynamic> detail,
+    required PdfColor headerFill,
+    required PdfColor grid,
+  }) {
+    const topLabels = <String>[
+      '出勤日数',
+      '休出日数',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ];
+    const secondLabels = <String>[
+      '残業時間',
+      '法定休出時間',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ];
+
+    final topValues = <String>[
+      _first(detail, const ['出勤日数']),
+      _first(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ];
+
+    final secondValues = <String>[
+      _first(detail, const ['残業時間']),
+      _first(detail, const ['法定休出時間', '法定休日出勤時間', '法定外出時間']),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ];
+
+    return _sectionShell(
+      title: '勤怠',
+      headerFill: headerFill,
+      grid: grid,
+      rows: [
+        _row(topLabels, headerFill: headerFill, bold: true, height: 18),
+        _row(topValues, right: true, height: 21),
+        _row(secondLabels, headerFill: headerFill, bold: true, height: 18),
+        _row(secondValues, right: true, height: 21),
+      ],
+    );
+  }
+
+  static pw.Widget _singleHeaderSection({
     required String title,
     required List<String> labels,
     required List<String> values,
-    required List<String> secondLabels,
-    required List<String> secondValues,
     required PdfColor headerFill,
     required PdfColor grid,
-    required int extraBlankRows,
+    required int blankRows,
+  }) {
+    return _sectionShell(
+      title: title,
+      headerFill: headerFill,
+      grid: grid,
+      rows: [
+        _row(labels, headerFill: headerFill, bold: true, height: 18),
+        _row(values, right: true, height: 22),
+        for (var i = 0; i < blankRows; i++)
+          _row(
+            List<String>.filled(labels.length, ''),
+            height: 20,
+          ),
+      ],
+    );
+  }
+
+  static pw.Widget _sectionShell({
+    required String title,
+    required PdfColor headerFill,
+    required PdfColor grid,
+    required List<pw.TableRow> rows,
   }) {
     return pw.Row(
       children: [
         pw.Container(
-          width: 27,
-          padding: const pw.EdgeInsets.symmetric(vertical: 10),
+          width: 28,
           decoration: pw.BoxDecoration(
             color: headerFill,
             border: pw.Border.all(color: grid, width: .55),
@@ -398,44 +482,33 @@ class PayrollPdfService {
         pw.Expanded(
           child: pw.Table(
             border: pw.TableBorder.all(color: grid, width: .55),
-            children: [
-              pw.TableRow(
-                decoration: pw.BoxDecoration(color: headerFill),
-                children: [
-                  for (final label in labels)
-                    _cell(label, center: true, bold: true, fontSize: 7),
-                ],
-              ),
-              pw.TableRow(
-                children: [
-                  for (final value in values)
-                    _cell(value, right: true, fontSize: 7.5),
-                ],
-              ),
-              if (secondLabels.any((value) => value.isNotEmpty))
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: headerFill),
-                  children: [
-                    for (final label in secondLabels)
-                      _cell(label, center: true, bold: true, fontSize: 7),
-                  ],
-                ),
-              if (secondLabels.any((value) => value.isNotEmpty))
-                pw.TableRow(
-                  children: [
-                    for (final value in secondValues)
-                      _cell(value, right: true, fontSize: 7.5),
-                  ],
-                ),
-              for (var row = 0; row < extraBlankRows; row++)
-                pw.TableRow(
-                  children: [
-                    for (var i = 0; i < labels.length; i++) _cell(''),
-                  ],
-                ),
-            ],
+            children: rows,
           ),
         ),
+      ],
+    );
+  }
+
+  static pw.TableRow _row(
+    List<String> values, {
+    PdfColor? headerFill,
+    bool bold = false,
+    bool right = false,
+    double height = 20,
+  }) {
+    return pw.TableRow(
+      decoration: headerFill == null
+          ? null
+          : pw.BoxDecoration(color: headerFill),
+      children: [
+        for (final value in values)
+          _cell(
+            value,
+            center: !right,
+            right: right,
+            bold: bold,
+            height: height,
+          ),
       ],
     );
   }
@@ -446,7 +519,9 @@ class PayrollPdfService {
   ) {
     final result = <String, Object?>{};
     for (final key in keys) {
-      if (detail.containsKey(key)) result[key] = detail[key];
+      if (detail.containsKey(key)) {
+        result[key] = detail[key];
+      }
     }
     return result;
   }
@@ -456,15 +531,24 @@ class PayrollPdfService {
     String key, {
     String? fallbackKey,
   }) {
-    final value = source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
+    final value =
+        source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
     if (value is num) return _number(value.toInt());
     return value?.toString() ?? '';
   }
 
-  static String _text(Map<String, dynamic> source, String key) {
-    final value = source[key];
-    if (value is num) return _number(value.toInt());
-    return value?.toString() ?? '';
+  static String _first(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      if (value is num) return _number(value.toInt());
+      final text = value.toString();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
   }
 
   static pw.Widget _cell(
@@ -472,12 +556,20 @@ class PayrollPdfService {
     bool bold = false,
     bool right = false,
     bool center = false,
-    double fontSize = 7.5,
+    double fontSize = 7.4,
+    double height = 20,
   }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2.5),
+    return pw.Container(
+      height: height,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      alignment: right
+          ? pw.Alignment.centerRight
+          : center
+              ? pw.Alignment.center
+              : pw.Alignment.centerLeft,
       child: pw.Text(
         text,
+        maxLines: 1,
         textAlign: right
             ? pw.TextAlign.right
             : center
@@ -499,7 +591,9 @@ class PayrollPdfService {
     final digits = value.abs().toString();
     final out = StringBuffer();
     for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      if (i > 0 && (digits.length - i) % 3 == 0) {
+        out.write(',');
+      }
       out.write(digits[i]);
     }
     return '${negative ? '-' : ''}$out';
