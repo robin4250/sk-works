@@ -37,7 +37,7 @@ class InvoicePdfService {
             13 * PdfPageFormat.mm,
             10 * PdfPageFormat.mm,
           ),
-          build: (_) => _sheet(invoice, settings),
+          build: (_) => _sheet(invoice, effectiveSettings),
         ),
       );
     }
@@ -136,12 +136,13 @@ class InvoicePdfService {
     for (final site in invoice.siteCalculations) {
       for (var index = 0; index < site.lines.length; index++) {
         final line = site.lines[index];
+        final isOvertime = line.label.contains('残業');
         rows.add(
           _InvoiceFormRow(
             siteName: index == 0 ? site.siteName : '',
             content: line.label,
-            quantity: _quantity(line.quantity),
-            unitPrice: _number(line.unitPriceYen),
+            quantity: isOvertime ? '' : _quantity(line.quantity),
+            overtime: isOvertime ? _quantity(line.quantity) : '',
             amount: _number(line.amountYen),
           ),
         );
@@ -153,7 +154,7 @@ class InvoicePdfService {
             siteName: '',
             content: '法定福利費',
             quantity: '',
-            unitPrice: '',
+            overtime: '',
             amount: _number(site.welfareAmountYen),
           ),
         );
@@ -165,7 +166,7 @@ class InvoicePdfService {
             siteName: '',
             content: '値引き・調整',
             quantity: '',
-            unitPrice: '',
+            overtime: '',
             amount: _number(site.manualAdjustmentYen),
           ),
         );
