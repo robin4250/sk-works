@@ -17,10 +17,12 @@ void main() {
           .hasMatch(source),
       isTrue,
     );
+    final todayBlock = RegExp(
+      r"if \(key == 'attendance_today'\)[\s\S]*?return;\n    }",
+    ).firstMatch(source)?.group(0) ?? '';
     expect(
-      RegExp(r"if \(key == 'attendance_today'\)[\s\S]*?_identity\.can\('can_manage_attendance'\)")
-          .hasMatch(source),
-      isFalse,
+      todayBlock,
+      isNot(contains("_identity.can('can_manage_attendance')")),
     );
     expect(
       source,

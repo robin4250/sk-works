@@ -14,6 +14,7 @@ import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
 import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
+import 'features/attendance/attendance_management_page.dart';
 import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
@@ -789,6 +790,9 @@ class _HomePageState extends State<HomePage> {
       case 'signatures':
         page = const SignatureListPage();
         break;
+      case 'attendance_management':
+        page = const AttendanceManagementPage();
+        break;
       case 'today_line':
         page = const TodayLineAttendancePage();
         break;
@@ -1043,6 +1047,14 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
         ),
+      if (_identity.isManagement && _identity.can('can_manage_attendance'))
+        _MenuAction(
+          key: 'attendance_management',
+          label: SkoLanguageController.tr('勤怠管理'),
+          icon: Icons.manage_history_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
+        ),
       if (_identity.isManagement)
         _MenuAction(
           key: 'signatures',
@@ -1238,6 +1250,7 @@ class _HomePageState extends State<HomePage> {
       'documents',
       'employee_qualifications',
       'signatures',
+      'attendance_management',
     };
     const viewer = <String>{
       'invoices',
