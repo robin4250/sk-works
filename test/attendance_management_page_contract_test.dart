@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('attendance management page supports individual and bulk direct operations', () {
     final page = File('lib/features/attendance/attendance_management_page.dart').readAsStringSync();
-    expect(page, contains("Tab(text: '個別'"));
-    expect(page, contains("Tab(text: '一括'"));
+    expect(page, contains("text: SkoLanguageController.tr('個別')"));
+    expect(page, contains("text: SkoLanguageController.tr('一括')"));
     expect(page, contains("'登録・編集を直接反映'"));
     expect(page, contains("'一括登録・編集を直接反映'"));
     expect(page, contains("'選択範囲を一括削除'"));
