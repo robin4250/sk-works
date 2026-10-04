@@ -29,6 +29,12 @@ void main() {
     expect(sql, contains('取引先未設定（自動下書き）'));
     expect(sql, contains("'customer_missing',v_system_customer"));
     expect(sql, contains('取引先が未入力です'));
+
+    final refresh = read(
+      'supabase/migrations/20261004111410_refresh_generation_attention_on_site_customer.sql',
+    );
+    expect(refresh, contains('after update of customer_id on public.sites'));
+    expect(refresh, contains('refresh_generation_setting_issues_trigger'));
   });
 
   test('generation setting notifications are deduplicated and auto-resolved', () {
