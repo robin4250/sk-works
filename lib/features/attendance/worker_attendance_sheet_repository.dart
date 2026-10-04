@@ -276,11 +276,12 @@ class WorkerAttendanceSheetRepository {
         : const <String, dynamic>{};
     final grantedDays = _number(summary['granted_days']);
 
-    final approvedDates = <DateTime>[
+    final approvedDates = <DateTime>{
       for (final row in allApprovedLeaveRows)
         if (_parseDate(row['leave_date']?.toString()) case final date?)
           _dateOnly(date),
-    ];
+    }.toList()
+      ..sort((a, b) => a.compareTo(b));
 
     for (var i = 0; i < approvedDates.length; i++) {
       final date = approvedDates[i];
