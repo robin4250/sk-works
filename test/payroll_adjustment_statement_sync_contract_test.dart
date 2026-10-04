@@ -30,11 +30,11 @@ void main() {
     expect(repository, contains("row['worker_name']"));
   });
 
-  test('payroll statement UI and PDF format numeric adjustment details as yen', () {
+  test('payroll template PDF formats numeric adjustment details as yen', () {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
-    expect(page, contains('_formatDetailValue(entry.value)'));
+    expect(page, contains('PayrollPdfService.buildPdf(statement)'));
     expect(pdf, contains('_detailValue(entry.value)'));
   });
 }
