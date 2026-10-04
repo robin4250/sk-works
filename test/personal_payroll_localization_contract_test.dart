@@ -9,13 +9,11 @@ void main() {
 
     expect(source, contains("SkoLanguageController.isEnglish ? 'Payslips'"));
     expect(source, contains("'No payslips have been issued yet.'"));
-    expect(source, contains("'PAYSLIP'"));
-    expect(source, contains("'Gross Pay'"));
-    expect(source, contains("'Deductions'"));
-    expect(source, contains("'Net Pay'"));
+    expect(source, contains("SkoLanguageController.isEnglish ? 'Payslip'"));
+    expect(source, contains('PdfPreview('));
+    expect(source, contains('PdfPageFormat.a4.landscape'));
     expect(source, contains("'Confirmed'"));
     expect(source, contains("'Unconfirmed'"));
-    expect(source, contains("'Print'"));
 
     // Keep the personal-only repository boundary.
     expect(source, contains('loadMyStatements()'));
