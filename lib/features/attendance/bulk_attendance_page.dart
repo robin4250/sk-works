@@ -108,15 +108,10 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
     return value;
   }
 
-  int _parseAllowance(TextEditingController controller, int day) {
-    final text = controller.text.trim();
-    if (text.isEmpty) return 0;
-    final value = int.tryParse(text.replaceAll(',', ''));
-    if (value == null || value < 0) {
-      throw FormatException('$day日の手当は0以上の整数で入力してください。');
-    }
-    return value;
-  }
+  List<String> _allowanceNames(_BulkDayDetails details) => [
+        for (final controller in details.allowances)
+          if (controller.text.trim().isNotEmpty) controller.text.trim(),
+      ];
 
   Future<void> _save() async {
     if (_site == null || _site!.isEmpty) {
@@ -142,7 +137,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
         final overtimeHours = _parseHours(details.overtime, '残業', day);
         final earlyHours = _parseHours(details.early, '早出', day);
         final nightHours = _parseHours(details.night, '夜勤', day);
-        final allowanceYen = _parseAllowance(details.allowance, day);
+        final allowanceNames = _allowanceNames(details);
 
         for (final worker in workers) {
           records.add({
@@ -153,7 +148,8 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
             'overtimeHours': overtimeHours,
             'earlyHours': earlyHours,
             'nightHours': nightHours,
-            'allowanceYen': allowanceYen,
+            'allowanceYen': 0,
+            'allowanceNames': allowanceNames,
             'notes': details.notes.text.trim(),
           });
         }
@@ -242,29 +238,57 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
             ],
           ),
           const SizedBox(height: 10),
+          _numberField(
+            controller: details.night,
+            label: '夜勤',
+            suffix: '時間',
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _numberField(
-                  controller: details.night,
-                  label: '夜勤',
-                  suffix: '時間',
+                child: Text(
+                  '手当',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: details.allowance,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '手当',
-                    suffixText: '円',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+              TextButton.icon(
+                onPressed: () => setState(details.addAllowance),
+                icon: const Icon(Icons.add),
+                label: const Text('手当を追加'),
               ),
             ],
           ),
+          if (details.allowances.isEmpty)
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('手当なし'),
+            )
+          else
+            for (var i = 0; i < details.allowances.length; i++) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: details.allowances[i],
+                      decoration: InputDecoration(
+                        labelText: '手当${i + 1}',
+                        hintText: '例：PC、職長、夜間作業',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'この手当を削除',
+                    onPressed: () => setState(() => details.removeAllowance(i)),
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
           const SizedBox(height: 10),
           TextField(
             controller: details.notes,
@@ -456,14 +480,23 @@ class _BulkDayDetails {
   final overtime = TextEditingController(text: '0');
   final early = TextEditingController(text: '0');
   final night = TextEditingController(text: '0');
-  final allowance = TextEditingController(text: '0');
+  final allowances = <TextEditingController>[];
   final notes = TextEditingController();
+
+  void addAllowance() => allowances.add(TextEditingController());
+
+  void removeAllowance(int index) {
+    if (index < 0 || index >= allowances.length) return;
+    allowances.removeAt(index).dispose();
+  }
 
   void dispose() {
     overtime.dispose();
     early.dispose();
     night.dispose();
-    allowance.dispose();
+    for (final controller in allowances) {
+      controller.dispose();
+    }
     notes.dispose();
   }
 }

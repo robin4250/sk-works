@@ -206,7 +206,10 @@ class _RequiredDocumentAttentionCardState
                         ),
                         Text(
                           '${SkoLanguageController.tr('未対応')} ${widget.attention.unresolvedCount}${SkoLanguageController.isEnglish ? '' : '件'}',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                         const SizedBox(width: 4),
                         const Icon(Icons.chevron_right),

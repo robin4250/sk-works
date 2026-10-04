@@ -100,13 +100,18 @@ class PaidLeaveRepository {
         .toSet()
         .toList(growable: false)
       ..sort();
-    final raw = await _client.rpc(
-      'submit_paid_leave_request',
-      params: {
-        'p_dates': normalized,
-        'p_reason': reason?.trim(),
-      },
-    );
+    Object? raw;
+    try {
+      raw = await _client.rpc(
+        'submit_paid_leave_request',
+        params: {
+          'p_dates': normalized,
+          'p_reason': reason?.trim(),
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw StateError(_paidLeaveErrorMessage(error.message));
+    }
     final batchId = raw?.toString() ?? '';
     if (batchId.isEmpty) throw StateError('有給申請を作成できませんでした。');
     return batchId;
@@ -121,13 +126,18 @@ class PaidLeaveRepository {
         .toSet()
         .toList(growable: false)
       ..sort();
-    final raw = await _client.rpc(
-      'submit_retrospective_paid_leave_request',
-      params: {
-        'p_dates': normalized,
-        'p_reason': reason?.trim(),
-      },
-    );
+    Object? raw;
+    try {
+      raw = await _client.rpc(
+        'submit_retrospective_paid_leave_request',
+        params: {
+          'p_dates': normalized,
+          'p_reason': reason?.trim(),
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw StateError(_paidLeaveErrorMessage(error.message));
+    }
     final batchId = raw?.toString() ?? '';
     if (batchId.isEmpty) {
       throw StateError('有給への勤務修正申請を作成できませんでした。');
@@ -180,6 +190,23 @@ class PaidLeaveRepository {
       },
     );
     return raw?.toString() ?? '';
+  }
+
+  static String _paidLeaveErrorMessage(String raw) {
+    final message = raw.toLowerCase();
+    if (message.contains('paid leave balance exceeded')) {
+      return '有給残日数が不足しています。個別給与設定の有給付与日数を確認してください。';
+    }
+    if (message.contains('paid leave already requested')) {
+      return '選択した日に、すでに有給申請があります。';
+    }
+    if (message.contains('attendance exists')) {
+      return '選択した日に勤務実績があります。先に通常の勤務修正を行ってください。';
+    }
+    if (message.contains('future paid leave')) {
+      return '未来日の有給は「有給申請」から申請してください。';
+    }
+    return '有給申請を処理できませんでした。内容を確認してもう一度お試しください。';
   }
 
   static double _number(Object? value) =>

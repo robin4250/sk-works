@@ -75,6 +75,17 @@ class _PaidLeavePageState extends State<PaidLeavePage> {
   Future<void> _submit() async {
     final repository = _repository;
     if (repository == null || _selected.isEmpty || _saving) return;
+    final summary = _summary;
+    if (summary != null && summary.remainingDays < _selected.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '有給残日数が不足しています。個別給与設定の有給付与日数を確認してください。',
+          ),
+        ),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
