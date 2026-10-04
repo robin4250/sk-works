@@ -36,6 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _detailMode = 'siteBreakdownOnInvoice';
   String _languageCode = SkoLanguageController.languageCode;
   bool _floatingHelpEnabled = true;
+  bool _appNotificationSoundEnabled = true;
 
   bool get _usesCloud => SupabaseBackend.isInitialized;
 
@@ -54,6 +55,9 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await FloatingHelpController.load();
       _floatingHelpEnabled = FloatingHelpController.enabled.value;
+      final personalPrefs = await SharedPreferences.getInstance();
+      _appNotificationSoundEnabled =
+          personalPrefs.getBool('sko_app_notification_sound_enabled') ?? true;
       if (_usesCloud) {
         await _loadFromCloud();
       } else {
@@ -309,6 +313,40 @@ class _SettingsPageState extends State<SettingsPage> {
                           onChanged: (value) async {
                             setState(() => _floatingHelpEnabled = value);
                             await FloatingHelpController.setEnabled(value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '通知設定',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      Card(
+                        child: SwitchListTile(
+                          value: _appNotificationSoundEnabled,
+                          secondary: Icon(
+                            _appNotificationSoundEnabled
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_off_outlined,
+                          ),
+                          title: const Text(
+                            'アプリの通知音設定',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: const Text(
+                            'OFFにするとアプリ全体の通知音を鳴らしません。グループごとの通知音設定とは別です。',
+                          ),
+                          onChanged: (value) async {
+                            setState(
+                              () => _appNotificationSoundEnabled = value,
+                            );
+                            final prefs =
+                                await SharedPreferences.getInstance();
+                            await prefs.setBool(
+                              'sko_app_notification_sound_enabled',
+                              value,
+                            );
                           },
                         ),
                       ),
