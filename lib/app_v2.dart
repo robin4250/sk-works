@@ -53,7 +53,6 @@ import 'features/payroll/payroll_statements_page.dart';
 import 'features/payroll/payment_certificates_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/company_submitted_documents_page.dart';
-import 'features/people/employee_invite_page.dart';
 import 'features/people/employee_registration_page.dart';
 import 'features/people/employee_initial_registration_page.dart';
 import 'features/people/people_cloud_page.dart';
@@ -1328,7 +1327,9 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible ? 72 : 8,
+          contentTopInset: _chromeVisible
+              ? MediaQuery.paddingOf(context).top + 72
+              : 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
