@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'attendance_management_repository.dart';
+import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
   const AttendanceManagementPage({super.key});
@@ -189,8 +190,8 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
         title: const Text('この日のデータを削除しますか？'),
         content: const Text('出勤・有給・対象従業員の日報行を直接削除します。承認待ちは通りません。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('キャンセル')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('削除')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(SkoLanguageController.tr('キャンセル'))),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(SkoLanguageController.tr('削除'))),
         ],
       ),
     );
@@ -300,7 +301,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         title: Text('$total件を一括削除しますか？'),
         content: const Text('選択した従業員・日付の出勤、有給、日報行を直接削除します。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('キャンセル')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(SkoLanguageController.tr('キャンセル'))),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('一括削除')),
         ],
       ),
