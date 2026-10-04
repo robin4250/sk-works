@@ -28,6 +28,7 @@ import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
+import 'features/companies/trade_company_repository.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
 import 'features/help/manual_content.dart';
