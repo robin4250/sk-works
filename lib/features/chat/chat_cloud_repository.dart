@@ -38,6 +38,18 @@ class ChatCloudRepository {
 
   Future<String> _companyId() async => (await membership()).companyId;
 
+  Future<String> _groupCompanyId(String groupId) async {
+    final rows = await _client
+        .from('communication_groups')
+        .select('company_id')
+        .eq('id', groupId)
+        .limit(1);
+    if (rows.isEmpty) {
+      throw StateError('グループ情報が見つかりません。');
+    }
+    return rows.first['company_id'].toString();
+  }
+
   Future<bool> canManagePartnerChat() async {
     await membership();
     final value = await _client.rpc('current_feature_permissions');
@@ -65,10 +77,17 @@ class ChatCloudRepository {
 
     final directMembershipRows = await _client
         .from('communication_group_members')
-        .select('group_id, user_id')
-        .eq('company_id', value.companyId);
+        .select('group_id, user_id');
 
     final memberProfileRows = await _client.rpc('company_member_profiles');
+    final friendWorkspace = await loadFriendWorkspace();
+    final rawFriends = friendWorkspace['friends'];
+    final friendByUser = <String, Map<String, dynamic>>{
+      if (rawFriends is List)
+        for (final raw in rawFriends)
+          if (raw is Map && raw['user_id'] != null)
+            raw['user_id'].toString(): Map<String, dynamic>.from(raw),
+    };
 
     final profileByUser = <String, Map<String, dynamic>>{};
     for (final raw in (memberProfileRows as List<dynamic>)) {
@@ -112,7 +131,10 @@ class ChatCloudRepository {
         );
         directOtherUserId = otherId.isEmpty ? null : otherId;
         final profile = profileByUser[otherId];
-        displayName = profile?['display_name']?.toString() ?? '個別トーク';
+        final friend = friendByUser[otherId];
+        displayName = profile?['display_name']?.toString() ??
+            friend?['display_name']?.toString() ??
+            '個別トーク';
         avatarPath = profile?['avatar_storage_path']?.toString();
       } else if (group['group_type'] == 'site' && site is Map) {
         displayName = site['name']?.toString() ?? displayName;
@@ -485,7 +507,7 @@ class ChatCloudRepository {
   }) async {
     final text = body.trim();
     if (text.isEmpty) return '';
-    final companyId = await _companyId();
+    final companyId = await _groupCompanyId(groupId);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
@@ -521,7 +543,7 @@ class ChatCloudRepository {
     required String mimeType,
     required bool isImage,
   }) async {
-    final companyId = await _companyId();
+    final companyId = await _groupCompanyId(groupId);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
