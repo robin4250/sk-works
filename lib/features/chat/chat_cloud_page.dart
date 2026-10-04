@@ -147,6 +147,28 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               .toList(growable: false)
           : <Map<String, dynamic>>[];
       final pendingGroupInvites = await repository.loadPendingGroupInvites();
+      final friendByUserId = <String, Map<String, dynamic>>{
+        for (final friend in friends)
+          if ((friend['user_id']?.toString() ?? '').isNotEmpty)
+            friend['user_id'].toString(): friend,
+      };
+      groups = [
+        for (final group in groups)
+          if (group['group_type'] == 'direct' &&
+              friendByUserId.containsKey(
+                group['direct_other_user_id']?.toString(),
+              ))
+            {
+              ...group,
+              'display_name': friendByUserId[
+                        group['direct_other_user_id']?.toString()
+                      ]?['display_name']
+                      ?.toString() ??
+                  group['display_name'],
+            }
+          else
+            group,
+      ];
       await _loadListPreferences();
 
       if (widget.viewerOnlyFriends) {
