@@ -79,4 +79,28 @@ void main() {
     expect(migration, contains('revoke execute on function public.'));
     expect(migration, contains('grant execute on function public.'));
   });
+
+  test('cross-company friends use explicit participant access', () {
+    final repository =
+        File('lib/features/chat/chat_cloud_repository.dart').readAsStringSync();
+    final migration = File(
+      'supabase/migrations/20261004161045_allow_cross_company_custom_chat_members.sql',
+    ).readAsStringSync();
+
+    expect(repository, contains('participants_only, created_by'));
+    expect(repository, contains("'custom_chat_group_members'"));
+    expect(migration, contains('if v_participants_only then'));
+    expect(
+      migration,
+      contains('where cgm.group_id=p_group_id'),
+    );
+    expect(migration, contains('custom_chat_group_members'));
+    expect(
+      migration,
+      contains(
+        'revoke execute on function public.custom_chat_group_members(uuid) from public, anon',
+      ),
+    );
+  });
+
 }
