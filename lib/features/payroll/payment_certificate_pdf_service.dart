@@ -56,8 +56,9 @@ class PaymentCertificatePdfService {
           ]
         : record.lines;
 
-    final lineTotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
-    final gross = record.grossAmount != 0 ? record.grossAmount : lineTotal;
+    final detailTotal =
+        lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final gross = record.grossAmount != 0 ? record.grossAmount : detailTotal;
     final balance = gross - record.deductions;
 
     return pw.Column(
@@ -70,8 +71,14 @@ class PaymentCertificatePdfService {
               'From:${record.payerCompanyName}',
               style: const pw.TextStyle(fontSize: 7),
             ),
-            pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
-            pw.Text('P.001/001', style: const pw.TextStyle(fontSize: 7)),
+            pw.Text(
+              record.payerPhone,
+              style: const pw.TextStyle(fontSize: 7),
+            ),
+            pw.Text(
+              'P.001/001',
+              style: const pw.TextStyle(fontSize: 7),
+            ),
           ],
         ),
         pw.SizedBox(height: 22),
@@ -275,7 +282,10 @@ class PaymentCertificatePdfService {
     double fontSize = 8,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3.3),
+      padding: const pw.EdgeInsets.symmetric(
+        horizontal: 3,
+        vertical: 3.3,
+      ),
       child: pw.Text(
         text,
         textAlign: right
@@ -285,7 +295,8 @@ class PaymentCertificatePdfService {
                 : pw.TextAlign.left,
         style: pw.TextStyle(
           fontSize: fontSize,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontWeight:
+              bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
       ),
     );
@@ -299,7 +310,9 @@ class PaymentCertificatePdfService {
     final digits = value.abs().toString();
     final out = StringBuffer();
     for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      if (i > 0 && (digits.length - i) % 3 == 0) {
+        out.write(',');
+      }
       out.write(digits[i]);
     }
     return '${negative ? '-' : ''}$out';
