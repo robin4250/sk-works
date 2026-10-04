@@ -14,7 +14,7 @@ enum HomeAttendancePhase {
 
 class HomeAttendanceStatus {
   const HomeAttendanceStatus({
-    this.verificationMode = 'manual',
+    this.verificationMode = 'none',
     this.siteName,
     this.clockIn,
     this.clockOut,
@@ -40,6 +40,7 @@ class HomeAttendanceStatus {
   final HomeAttendancePhase phase;
 
   String get verificationModeLabel => switch (verificationMode) {
+        'none' => '未選択',
         'location' || 'gps_auto' => 'GPS自動出勤',
         'location_photo' => '位置情報＋写真',
         'photo' => '写真',
@@ -235,9 +236,7 @@ class AttendanceVerificationRepository {
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString();
     if (workerId == null || workerId.isEmpty) {
-      final fallbackMode = settings['mode']?.toString() == 'location'
-          ? 'gps_auto'
-          : settings['mode']?.toString() ?? 'manual';
+      const fallbackMode = 'none';
       return HomeAttendanceStatus(verificationMode: fallbackMode);
     }
 
@@ -250,11 +249,7 @@ class AttendanceVerificationRepository {
     final scheduledToday =
         gpsSchedule['enabled'] == true && scheduleWeekdays.contains(now.weekday);
     final configuredMode = dailySelection['mode']?.toString() ??
-        (scheduledToday
-            ? 'gps_auto'
-            : (settings['mode']?.toString() == 'location'
-                ? 'gps_auto'
-                : settings['mode']?.toString() ?? 'manual'));
+        (scheduledToday ? 'gps_auto' : 'none');
     final workDate =
         now.year.toString().padLeft(4, '0') +
         '-' +
