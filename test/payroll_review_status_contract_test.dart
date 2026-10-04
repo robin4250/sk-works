@@ -10,7 +10,7 @@ void main() {
         read('lib/features/payroll/payroll_statement_repository.dart');
     expect(repository, contains('my_payroll_review_statuses'));
     expect(repository, contains('reviewConfirmed'));
-    expect(repository, contains("review?['confirmed'] == true"));
+    expect(repository, contains("review?['review_confirmed'] == true"));
   });
 
   test('employee payroll statement shows confirmed or unconfirmed label', () {
