@@ -9,7 +9,7 @@ void main() {
     final page =
         read('lib/features/attendance/bulk_attendance_correction_page.dart');
 
-    expect(page, contains('過去分まとめて修正'));
+    expect(page, contains('勤務修正'));
     expect(page, contains('_selectedIds'));
     expect(page, contains('CheckboxListTile'));
     expect(page, contains('最後に1回だけおまとめサイン'));
@@ -32,7 +32,7 @@ void main() {
   test('attendance page exposes past bulk correction only to attendance managers', () {
     final page = read('lib/features/attendance/attendance_cloud_page.dart');
 
-    expect(page, contains('過去分まとめて修正'));
+    expect(page, contains('勤務修正'));
     expect(page, contains('_canManageAttendanceEntries'));
     expect(page, contains('_openBulkCorrection'));
   });

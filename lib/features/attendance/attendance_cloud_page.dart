@@ -91,7 +91,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
             ),
           if (_canManageAttendanceEntries) ...[
             IconButton(
-              tooltip: '過去分まとめて修正',
+              tooltip: '勤務修正',
               onPressed: _loading ? null : _openBulkCorrection,
               icon: const Icon(Icons.edit_calendar_outlined),
             ),
@@ -214,7 +214,7 @@ class _AttendanceCloudPageState extends State<AttendanceCloudPage> {
     if (count == null || !mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$count件の過去勤怠をまとめて修正申請しました')),
+      SnackBar(content: Text('$count件の勤務修正を申請しました')),
     );
   }
 
