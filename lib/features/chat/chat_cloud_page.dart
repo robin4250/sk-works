@@ -783,7 +783,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     if (repository == null || groupId == null) return;
 
     try {
-      final members = await repository.loadGroupMembers(groupId);
+      final members = _isCustomGroup(selectedGroup)
+          ? await repository.loadCustomGroupMembers(groupId)
+          : await repository.loadGroupMembers(groupId);
       if (!mounted) return;
       final customGroup = _isCustomGroup(selectedGroup);
       await showModalBottomSheet<void>(
