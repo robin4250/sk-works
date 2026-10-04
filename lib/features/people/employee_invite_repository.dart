@@ -98,36 +98,25 @@ class EmployeeInviteRepository {
       throw StateError('名前と電話番号を入力してください。');
     }
 
-    final companyId = await _companyId();
-    final existing = await _client
-        .from('workers')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('affiliation', 'employee')
-        .eq('phone', trimmedPhone)
-        .limit(1);
-    if (existing.isNotEmpty) {
-      throw StateError('この電話番号の従業員はすでに登録されています。');
+    try {
+      await _client.rpc(
+        'register_employee_preregistration',
+        params: {
+          'p_name': trimmedName,
+          'p_phone': trimmedPhone,
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (error.message.contains('employee phone already registered')) {
+        throw StateError('この電話番号の従業員はすでに登録されています。');
+      }
+      rethrow;
     }
-
-    await _client.from('workers').insert({
-      'company_id': companyId,
-      'affiliation': 'employee',
-      'name': trimmedName,
-      'phone': trimmedPhone,
-      'status': 'inactive',
-      'user_id': null,
-    });
   }
 
   Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees() async {
-    final companyId = await _companyId();
-    final rows = await _client
-        .from('workers')
-        .select('id,name,phone,user_id,status')
-        .eq('company_id', companyId)
-        .eq('affiliation', 'employee')
-        .order('name');
+    final value = await _client.rpc('initial_registration_employee_rows');
+    final rows = value is List ? value : const <dynamic>[];
 
     return [
       for (final raw in rows)
