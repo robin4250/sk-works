@@ -68,10 +68,11 @@ class PayrollStatementRepository {
 
     return [
       for (final raw in (rows as List<dynamic>))
-        _fromRow(
-          Map<String, dynamic>.from(raw as Map),
-          statusById[raw is Map ? raw['id']?.toString() ?? '' : ''],
-        ),
+        if (raw is Map)
+          _fromRow(
+            Map<String, dynamic>.from(raw),
+            statusById[raw['id']?.toString() ?? ''],
+          ),
     ];
   }
 
