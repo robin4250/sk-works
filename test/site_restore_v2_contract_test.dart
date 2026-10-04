@@ -52,7 +52,7 @@ void main() {
     expect(detail, contains('ImageSource.gallery'));
     expect(detail, contains('InteractiveViewer'));
     expect(detail, contains("tooltip: _tr('写真を変更', 'Change Photo')"));
-    expect(detail, contains("title: Text('現場写真\$slot')"));
+    expect(detail, contains("title: Text(SkoLanguageController.isEnglish ? 'Site Photo \$slot' : '現場写真\$slot')"));
     expect(detail, contains("'formal_name'"));
     expect(detail, contains("'nearest_station'"));
     expect(detail, contains("'representative_name'"));
