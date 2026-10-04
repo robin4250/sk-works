@@ -17,5 +17,7 @@ void main() {
     expect(repository, contains('submit_past_attendance_request'));
     expect(repository, contains('required Object signatureJson'));
     expect(page, contains('承認完了後に正式な出勤データへ反映'));
+    expect(page, contains('date.isBefore(today)'));
+    expect(page, contains('if (next.isAfter(currentMonth)) return;'));
   });
 }
