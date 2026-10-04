@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'payment_certificate_pdf_service.dart';
 import 'payment_certificate_repository.dart';
 
@@ -29,7 +30,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = '支払証明書を利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Payment certificates are unavailable.' : '支払証明書を利用できません。';
       });
       return;
     }
@@ -55,9 +56,9 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '支払証明書',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Payment Certificates' : '支払証明書',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -72,9 +73,9 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                     ),
                   )
                 : _items.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          '下請け作業員の出勤が入ると自動で下書きを作成します',
+                          SkoLanguageController.isEnglish ? 'A draft is created automatically when subcontractor attendance is recorded.' : '下請け作業員の出勤が入ると自動で下書きを作成します',
                           textAlign: TextAlign.center,
                         ),
                       )
@@ -97,7 +98,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                                 ),
                                 subtitle: Text(
                                   '${item.monthLabel} ・ '
-                                  '${item.status == 'draft' ? '下書き' : '確定'} ・ '
+                                  '${item.status == 'draft' ? (SkoLanguageController.isEnglish ? 'Draft' : '下書き') : (SkoLanguageController.isEnglish ? 'Finalized' : '確定')} ・ '
                                   'revision ${item.revision}',
                                 ),
                                 trailing: Row(
@@ -110,7 +111,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                                       ),
                                     ),
                                     IconButton(
-                                      tooltip: '印刷',
+                                      tooltip: SkoLanguageController.isEnglish ? 'Print' : '印刷',
                                       onPressed: () =>
                                           PaymentCertificatePdfService
                                               .printCertificate(item),
@@ -180,7 +181,7 @@ class _PartnerPaymentSettingsPageState
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = '支払証明書設定を利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Payment certificate settings are unavailable.' : '支払証明書設定を利用できません。';
       });
       return;
     }
@@ -242,7 +243,7 @@ class _PartnerPaymentSettingsPageState
 
     if ([daily, overtime, early, night].any((value) => value < 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('金額は0以上の数字で入力してください')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Enter amounts as numbers greater than or equal to 0.' : '金額は0以上の数字で入力してください')),
       );
       return;
     }
@@ -262,12 +263,12 @@ class _PartnerPaymentSettingsPageState
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('支払証明書設定を保存しました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Payment certificate settings saved.' : '支払証明書設定を保存しました')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not save' : '保存できませんでした'}: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -278,9 +279,9 @@ class _PartnerPaymentSettingsPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '支払証明書設定',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Payment Certificate Settings' : '支払証明書設定',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -290,15 +291,15 @@ class _PartnerPaymentSettingsPageState
             : _error != null
                 ? Center(child: Text(_error!, textAlign: TextAlign.center))
                 : _items.isEmpty
-                    ? const Center(child: Text('協力会社が登録されていません'))
+                    ? Center(child: Text(SkoLanguageController.isEnglish ? 'No subcontractor companies are registered.' : '協力会社が登録されていません'))
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                         children: [
                           DropdownButtonFormField<String>(
                             initialValue: _partnerId,
-                            decoration: const InputDecoration(
-                              labelText: '協力会社',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.isEnglish ? 'Subcontractor Company' : '協力会社',
+                              border: const OutlineInputBorder(),
                             ),
                             items: [
                               for (final item in _items)
@@ -313,19 +314,19 @@ class _PartnerPaymentSettingsPageState
                             },
                           ),
                           const SizedBox(height: 16),
-                          _field(_daily, '人工単価'),
-                          _field(_overtime, '残業1時間単価'),
-                          _field(_early, '早出1時間単価'),
-                          _field(_night, '夜勤1時間単価'),
+                          _field(_daily, SkoLanguageController.isEnglish ? 'Daily Rate' : '人工単価'),
+                          _field(_overtime, SkoLanguageController.isEnglish ? 'Overtime Hourly Rate' : '残業1時間単価'),
+                          _field(_early, SkoLanguageController.isEnglish ? 'Early-start Hourly Rate' : '早出1時間単価'),
+                          _field(_night, SkoLanguageController.isEnglish ? 'Night Hourly Rate' : '夜勤1時間単価'),
                           const SizedBox(height: 8),
-                          const Text(
-                            '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
+                          Text(
+                            SkoLanguageController.isEnglish ? 'Even without settings, a zero-value draft is generated. It recalculates automatically after settings are saved.' : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
                           ),
                           const SizedBox(height: 16),
                           FilledButton.icon(
                             onPressed: _saving ? null : _save,
                             icon: const Icon(Icons.save_outlined),
-                            label: Text(_saving ? '保存中…' : '設定を保存'),
+                            label: Text(_saving ? (SkoLanguageController.isEnglish ? 'Saving…' : '保存中…') : (SkoLanguageController.isEnglish ? 'Save Settings' : '設定を保存')),
                           ),
                         ],
                       ),
@@ -340,7 +341,7 @@ class _PartnerPaymentSettingsPageState
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText: label,
-            suffixText: '円',
+            suffixText: SkoLanguageController.isEnglish ? 'JPY' : '円',
             border: const OutlineInputBorder(),
           ),
         ),
