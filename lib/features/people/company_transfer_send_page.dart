@@ -64,7 +64,9 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
     }
     try {
       final values = await Future.wait([
-        repository.listSendableSources(),
+        widget.sourceKind == 'daily_report_signature'
+            ? repository.listSignatureSources()
+            : repository.listSendableSources(),
         repository.listTransferTargets(),
       ]);
       final sources = (values[0] as List<Map<String, dynamic>>).where((row) {
