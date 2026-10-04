@@ -97,9 +97,7 @@ class PayrollStatementRepository {
           : const {},
       issuedAt:
           DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
-      reviewConfirmed: review?['confirmed'] == true,
-      reviewedAt:
-          DateTime.tryParse(review?['reviewed_at']?.toString() ?? '')?.toLocal(),
+      reviewConfirmed: review?['review_confirmed'] == true,
     );
   }
 }
