@@ -47,6 +47,9 @@ void main() {
     expect(page, contains('初回ログインQR'));
     expect(page, contains('未送信'));
     expect(repository, contains('createInviteForWorker'));
+    expect(repository, contains("rpc('initial_registration_employee_rows')"));
+    expect(repository, contains("'register_employee_preregistration'"));
+    expect(repository, isNot(contains("from('workers').select")));
     expect(repository, contains("'workerId': workerId"));
     expect(repository, contains("'deliverSms': deliverSms"));
     expect(edge, contains('existingWorker'));
