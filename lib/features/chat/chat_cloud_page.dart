@@ -14,7 +14,7 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
 
-enum _ChatTab { all, site, direct, partner }
+enum _ChatTab { all, friends, site, groups, partner }
 
 class ChatCloudPage extends StatefulWidget {
   const ChatCloudPage({
@@ -39,7 +39,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _friends = [];
+  List<Map<String, dynamic>> _pendingGroupInvites = [];
   List<String> _prioritizedSiteGroupIds = const [];
+  Set<String> _pinnedGroupIds = <String>{};
+  Set<String> _hiddenGroupIds = <String>{};
+  Set<String> _mutedGroupIds = <String>{};
   Set<String> _blockedUserIds = <String>{};
   Map<String, int> _unreadCounts = const {};
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
@@ -72,6 +77,31 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     _load();
   }
 
+  Future<void> _loadListPreferences() async {
+    final repository = _repository;
+    final userId = repository?.currentUserId ?? 'anonymous';
+    final prefs = await SharedPreferences.getInstance();
+    _pinnedGroupIds =
+        prefs.getStringList('sko_chat_pinned_$userId')?.toSet() ?? <String>{};
+    _hiddenGroupIds =
+        prefs.getStringList('sko_chat_hidden_$userId')?.toSet() ?? <String>{};
+    _mutedGroupIds =
+        prefs.getStringList('sko_chat_muted_$userId')?.toSet() ?? <String>{};
+  }
+
+  Future<void> _saveListPreference(
+    String kind,
+    Set<String> values,
+  ) async {
+    final repository = _repository;
+    final userId = repository?.currentUserId ?? 'anonymous';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'sko_chat_${kind}_$userId',
+      values.toList(growable: false),
+    );
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -102,6 +132,16 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       var members = await repository.loadMembers();
       var priorities = await repository.prioritizedSiteGroupIds();
       final blockedUserIds = await repository.loadBlockedUserIds();
+      final friendWorkspace = await repository.loadFriendWorkspace();
+      final rawFriends = friendWorkspace['friends'];
+      final friends = rawFriends is List
+          ? rawFriends
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+          : <Map<String, dynamic>>[];
+      final pendingGroupInvites = await repository.loadPendingGroupInvites();
+      await _loadListPreferences();
 
       if (widget.viewerOnlyFriends) {
         final workspace = await repository.loadFriendWorkspace();
@@ -136,6 +176,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         }
         _groups = groups;
         _members = members;
+        _friends = friends;
+        _pendingGroupInvites = pendingGroupInvites;
         _prioritizedSiteGroupIds = priorities;
         _blockedUserIds = blockedUserIds;
         _selectedGroupId = next;
