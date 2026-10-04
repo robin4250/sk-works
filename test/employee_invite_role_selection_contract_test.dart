@@ -39,7 +39,7 @@ void main() {
     expect(page, contains('承認担当者にする'));
     expect(page, contains('承認担当者は最大3名です'));
     expect(page, contains('この人を外す'));
-    expect(page, contains("child: const Text('閉じる')"));
+    expect(page, contains("child: Text(_tr('閉じる', 'Close'))"));
     expect(page, contains('_makeSubAdmin = true'));
   });
 
