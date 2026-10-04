@@ -52,6 +52,8 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
+      await FloatingHelpController.load();
+      _floatingHelpEnabled = FloatingHelpController.enabled.value;
       if (_usesCloud) {
         await _loadFromCloud();
       } else {
@@ -112,7 +114,6 @@ class _SettingsPageState extends State<SettingsPage> {
       company['default_invoice_detail_mode'] as String?,
     );
     _languageCode = SkoLanguageController.languageCode;
-    _floatingHelpEnabled = FloatingHelpController.enabled.value;
   }
 
   Future<void> _loadFromLocal() async {
@@ -124,8 +125,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _detailMode = prefs.getString('settings_invoice_detail_mode') ??
         'siteBreakdownOnInvoice';
     _languageCode = SkoLanguageController.languageCode;
-    await FloatingHelpController.load();
-    _floatingHelpEnabled = FloatingHelpController.enabled.value;
   }
 
   Future<void> _save() async {
