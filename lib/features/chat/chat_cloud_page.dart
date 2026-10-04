@@ -1060,10 +1060,13 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 ),
               ),
         actions: [
-          IconButton(
-            tooltip: SkoLanguageController.tr('友達追加'),
-            onPressed: _openFriends,
-            icon: const Icon(Icons.person_add_alt_1_outlined),
+          TextButton.icon(
+            onPressed: _openFriendsForChat,
+            icon: const Icon(Icons.people_outline),
+            label: const Text(
+              '友達一覧',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
           ),
           const SkoNotificationBell(),
           if (selected != null)
@@ -1275,6 +1278,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               _error!,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        if (_isCustomGroup(_selectedGroup))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _inviteFriendToSelectedGroup,
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: const Text(
+                  '友達を招待',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
             ),
           ),
