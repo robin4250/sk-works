@@ -96,6 +96,7 @@ class _BulkAttendanceCorrectionPageState
       'earlyHours',
       'nightHours',
       'allowanceYen',
+      'allowanceNames',
       'notes',
     ]) {
       if ((original[key]?.toString() ?? '') !=
@@ -123,152 +124,154 @@ class _BulkAttendanceCorrectionPageState
     final night = TextEditingController(
       text: _numberText(proposed['nightHours']),
     );
-    final allowance = TextEditingController(
-      text: proposed['allowanceYen']?.toString() ?? '0',
-    );
     final notes = TextEditingController(
       text: proposed['notes']?.toString() ?? '',
     );
+    final allowanceControllers = <TextEditingController>[
+      for (final value in (proposed['allowanceNames'] as List<dynamic>? ?? const []))
+        if (value?.toString().trim().isNotEmpty == true)
+          TextEditingController(text: value.toString().trim()),
+    ];
 
     final saved = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('${entry.date}  ${entry.workerName}'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: site,
-                  decoration: const InputDecoration(
-                    labelText: '現場',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text('${entry.date}  ${entry.workerName}'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: site,
+                    decoration: const InputDecoration(labelText: '現場'),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: manDays,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '人工',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: manDays,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: '人工'),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: overtime,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: '残業',
-                          suffixText: '時間',
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: overtime,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: '残業', suffixText: '時間'),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: early,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: '早出',
-                          suffixText: '時間',
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: early,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: '早出', suffixText: '時間'),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: night,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: '夜勤',
-                          suffixText: '時間',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: allowance,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: '手当',
-                          suffixText: '円',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: notes,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: '備考',
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: night,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: '夜勤', suffixText: '時間'),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('手当', style: TextStyle(fontWeight: FontWeight.w900)),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => setDialogState(
+                          () => allowanceControllers.add(TextEditingController()),
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('手当を追加'),
+                      ),
+                    ],
+                  ),
+                  if (allowanceControllers.isEmpty)
+                    const Align(alignment: Alignment.centerLeft, child: Text('手当なし'))
+                  else
+                    for (var i = 0; i < allowanceControllers.length; i++) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: allowanceControllers[i],
+                              decoration: InputDecoration(
+                                labelText: '手当${i + 1}',
+                                hintText: '例：PC、職長、夜間作業',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'この手当を削除',
+                            onPressed: () => setDialogState(() {
+                              allowanceControllers.removeAt(i).dispose();
+                            }),
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: notes,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: '備考'),
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final parsedManDays = double.tryParse(manDays.text.trim());
+                final parsedOvertime = double.tryParse(overtime.text.trim());
+                final parsedEarly = double.tryParse(early.text.trim());
+                final parsedNight = double.tryParse(night.text.trim());
+                if (site.text.trim().isEmpty ||
+                    parsedManDays == null || parsedManDays < 0 ||
+                    parsedOvertime == null || parsedOvertime < 0 ||
+                    parsedEarly == null || parsedEarly < 0 ||
+                    parsedNight == null || parsedNight < 0) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('入力内容を確認してください')),
+                  );
+                  return;
+                }
+                final allowanceNames = [
+                  for (final controller in allowanceControllers)
+                    if (controller.text.trim().isNotEmpty) controller.text.trim(),
+                ];
+                Navigator.pop(dialogContext, {
+                  ...entry.snapshot(),
+                  'siteName': site.text.trim(),
+                  'manDays': parsedManDays,
+                  'overtimeHours': parsedOvertime,
+                  'earlyHours': parsedEarly,
+                  'nightHours': parsedNight,
+                  'allowanceYen': 0,
+                  'allowanceNames': allowanceNames,
+                  'notes': notes.text.trim(),
+                });
+              },
+              child: const Text('修正内容を保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsedManDays = double.tryParse(manDays.text.trim());
-              final parsedOvertime = double.tryParse(overtime.text.trim());
-              final parsedEarly = double.tryParse(early.text.trim());
-              final parsedNight = double.tryParse(night.text.trim());
-              final parsedAllowance =
-                  int.tryParse(allowance.text.replaceAll(',', '').trim());
-
-              if (site.text.trim().isEmpty ||
-                  parsedManDays == null ||
-                  parsedManDays < 0 ||
-                  parsedOvertime == null ||
-                  parsedOvertime < 0 ||
-                  parsedEarly == null ||
-                  parsedEarly < 0 ||
-                  parsedNight == null ||
-                  parsedNight < 0 ||
-                  parsedAllowance == null) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(content: Text('入力内容を確認してください')),
-                );
-                return;
-              }
-
-              Navigator.pop(dialogContext, {
-                ...entry.snapshot(),
-                'siteName': site.text.trim(),
-                'manDays': parsedManDays,
-                'overtimeHours': parsedOvertime,
-                'earlyHours': parsedEarly,
-                'nightHours': parsedNight,
-                'allowanceYen': parsedAllowance,
-                'notes': notes.text.trim(),
-              });
-            },
-            child: const Text('修正内容を保存'),
-          ),
-        ],
       ),
     );
 
@@ -277,7 +280,9 @@ class _BulkAttendanceCorrectionPageState
     overtime.dispose();
     early.dispose();
     night.dispose();
-    allowance.dispose();
+    for (final controller in allowanceControllers) {
+      controller.dispose();
+    }
     notes.dispose();
 
     if (saved == null || !mounted) return;
@@ -286,7 +291,6 @@ class _BulkAttendanceCorrectionPageState
       _proposedById[entry.id] = saved;
     });
   }
-
   Future<void> _submit() async {
     final repository = _repository;
     if (repository == null || _saving) return;
@@ -369,7 +373,7 @@ class _BulkAttendanceCorrectionPageState
       _numberText(entry.nightHours),
       _numberText(proposed['nightHours']),
     );
-    add('手当', entry.allowanceYen, proposed['allowanceYen']);
+    add('手当', entry.allowanceNames.join('・'), ((proposed['allowanceNames'] as List<dynamic>? ?? const []).join('・')));
     add('備考', entry.notes, proposed['notes']);
 
     return changes.isEmpty ? 'タップして修正内容を入力' : changes.join(' / ');
