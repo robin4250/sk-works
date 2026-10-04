@@ -11,7 +11,7 @@ void main() {
     expect(source, contains("'請求書番号:'"));
     expect(source, contains("'御請求金額'"));
     expect(source, contains("'振込先'"));
-    expect(source, contains("'件名 / 工期  '"));
+    expect(source, contains("'件名 / 工期  \${invoice.billingPeriod}'"));
     expect(source, contains("['整理番号', '内容', '人工', '残業', '金額']"));
     expect(source, contains("'合計(税込)'"));
   });
