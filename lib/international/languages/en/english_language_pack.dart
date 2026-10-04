@@ -312,6 +312,12 @@ const englishLanguagePack = LanguagePack(
     'ヘルプ表示': 'Help Display',
     'フローティングヘルプ': 'Floating Help',
     'ONにすると画面右下の？ボタンからいつでも使い方を確認できます。ボタンは長押しで好きな位置へ移動できます。': 'When ON, use the ? button at the lower-right to get help anytime. Long-press and drag the button to move it anywhere on the screen.',
+    '給料一覧': 'Payroll List',
+    '確認済み': 'Confirmed',
+    '未確定': 'Unconfirmed',
+    '支払証明書': 'Payment Certificate',
+    '下書き': 'Draft',
+    '確定': 'Finalized',
     '設定を保存しました': 'Settings saved',
   },
 );
