@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
 import '../auth/secondary_protected_page.dart';
+import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
 import '../payroll/payment_certificates_page.dart';
 import '../settings/settings_page.dart';
@@ -76,6 +77,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
     if (!mounted) return;
 
+    if (item.actionKey == 'chat_group_invite') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ChatCloudPage(showGroupsInitially: true),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
     if (item.actionKey == 'site_map') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -285,7 +296,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         'warning' => Icons.warning_amber_outlined,
         'attendance' => Icons.schedule_outlined,
         'document' => Icons.description_outlined,
-        'chat' => Icons.chat_bubble_outline,
+        'chat' || 'chat_group_invite' => Icons.chat_bubble_outline,
         _ => Icons.notifications_outlined,
       };
 
