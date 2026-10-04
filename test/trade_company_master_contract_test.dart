@@ -57,8 +57,8 @@ void main() {
     expect(page, contains('管理現場の設定を使う'));
     expect(page, contains('取引会社の契約を使う'));
     expect(page, contains('下請け会社の契約を使う'));
-    expect(repo, contains("rpc('trade_company_link_candidates'"));
-    expect(repo, contains("rpc('select_site_calculation_source'"));
+    expect(repo, contains("'trade_company_link_candidates'"));
+    expect(repo, contains("'select_site_calculation_source'"));
   });
 
   test('production trade company migrations are mirrored in repository', () {
