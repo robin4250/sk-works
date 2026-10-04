@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
@@ -205,105 +207,20 @@ class PayrollStatementPreviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(statement.monthLabel),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Payslip' : '給与明細書',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: const [SkoNotificationBell()],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            AspectRatio(
-              aspectRatio: 1 / 1.414,
-              child: Card(
-                child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          SkoLanguageController.isEnglish ? 'PAYSLIP' : '給 与 明 細',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          statement.companyName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(statement.workerName),
-                        const SizedBox(height: 8),
-                        Text(
-                          SkoLanguageController.isEnglish ? 'Period: ${_date(statement.periodStart)} - ${_date(statement.periodEnd)}' : '対象期間：${_date(statement.periodStart)} ～ ${_date(statement.periodEnd)}',
-                        ),
-                        const Divider(height: 24),
-                        _MoneyRow(
-                          label: SkoLanguageController.isEnglish ? 'Gross Pay' : '総支給額',
-                          value: statement.grossPay,
-                        ),
-                        _MoneyRow(
-                          label: SkoLanguageController.isEnglish ? 'Deductions' : '控除額',
-                          value: statement.deductions,
-                        ),
-                        const Divider(height: 20),
-                        _MoneyRow(
-                          label: SkoLanguageController.isEnglish ? 'Net Pay' : '差引支給額',
-                          value: statement.netPay,
-                          strong: true,
-                        ),
-                        const SizedBox(height: 18),
-                        if (statement.detail.isNotEmpty) ...[
-                          Text(
-                            SkoLanguageController.isEnglish ? 'Details' : '内訳',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final entry in statement.detail.entries)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
-                                children: [
-                                  Expanded(child: Text(entry.key)),
-                                  Text(_formatDetailValue(entry.value)),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                statement.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
-                style: TextStyle(
-                  color: statement.reviewConfirmed
-                      ? Colors.green
-                      : Theme.of(context).colorScheme.error,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: () => PayrollPdfService.printStatement(statement),
-              icon: const Icon(Icons.print),
-              label: Text(SkoLanguageController.isEnglish ? 'Print' : '印刷'),
-            ),
-          ],
-        ),
+      body: PdfPreview(
+        initialPageFormat: PdfPageFormat.a4.landscape,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        allowPrinting: true,
+        allowSharing: true,
+        pdfFileName: '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
+        build: (_) => PayrollPdfService.buildPdf(statement),
       ),
     );
   }
