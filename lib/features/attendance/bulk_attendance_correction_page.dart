@@ -108,183 +108,14 @@ class _BulkAttendanceCorrectionPageState
   }
 
   Future<void> _edit(AttendanceCorrectionEntry entry) async {
-    final proposed = Map<String, dynamic>.from(_proposalFor(entry));
-    final site = TextEditingController(
-      text: proposed['siteName']?.toString() ?? '',
-    );
-    final manDays = TextEditingController(
-      text: _numberText(proposed['manDays']),
-    );
-    final overtime = TextEditingController(
-      text: _numberText(proposed['overtimeHours']),
-    );
-    final early = TextEditingController(
-      text: _numberText(proposed['earlyHours']),
-    );
-    final night = TextEditingController(
-      text: _numberText(proposed['nightHours']),
-    );
-    final notes = TextEditingController(
-      text: proposed['notes']?.toString() ?? '',
-    );
-    final allowanceControllers = <TextEditingController>[
-      for (final value in (proposed['allowanceNames'] as List<dynamic>? ?? const []))
-        if (value?.toString().trim().isNotEmpty == true)
-          TextEditingController(text: value.toString().trim()),
-    ];
-
-    final saved = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text('${entry.date}  ${entry.workerName}'),
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: site,
-                    decoration: const InputDecoration(labelText: '現場'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: manDays,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: '人工'),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: overtime,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: '残業', suffixText: '時間'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: early,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: '早出', suffixText: '時間'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: night,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: '夜勤', suffixText: '時間'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('手当', style: TextStyle(fontWeight: FontWeight.w900)),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => setDialogState(
-                          () => allowanceControllers.add(TextEditingController()),
-                        ),
-                        icon: const Icon(Icons.add),
-                        label: const Text('手当を追加'),
-                      ),
-                    ],
-                  ),
-                  if (allowanceControllers.isEmpty)
-                    const Align(alignment: Alignment.centerLeft, child: Text('手当なし'))
-                  else
-                    for (var i = 0; i < allowanceControllers.length; i++) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: allowanceControllers[i],
-                              decoration: InputDecoration(
-                                labelText: '手当${i + 1}',
-                                hintText: '例：PC、職長、夜間作業',
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'この手当を削除',
-                            onPressed: () => setDialogState(() {
-                              allowanceControllers.removeAt(i).dispose();
-                            }),
-                            icon: const Icon(Icons.remove_circle_outline),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: notes,
-                    maxLines: 2,
-                    decoration: const InputDecoration(labelText: '備考'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('キャンセル'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final parsedManDays = double.tryParse(manDays.text.trim());
-                final parsedOvertime = double.tryParse(overtime.text.trim());
-                final parsedEarly = double.tryParse(early.text.trim());
-                final parsedNight = double.tryParse(night.text.trim());
-                if (site.text.trim().isEmpty ||
-                    parsedManDays == null || parsedManDays < 0 ||
-                    parsedOvertime == null || parsedOvertime < 0 ||
-                    parsedEarly == null || parsedEarly < 0 ||
-                    parsedNight == null || parsedNight < 0) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('入力内容を確認してください')),
-                  );
-                  return;
-                }
-                final allowanceNames = [
-                  for (final controller in allowanceControllers)
-                    if (controller.text.trim().isNotEmpty) controller.text.trim(),
-                ];
-                Navigator.pop(dialogContext, {
-                  ...entry.snapshot(),
-                  'siteName': site.text.trim(),
-                  'manDays': parsedManDays,
-                  'overtimeHours': parsedOvertime,
-                  'earlyHours': parsedEarly,
-                  'nightHours': parsedNight,
-                  'allowanceYen': 0,
-                  'allowanceNames': allowanceNames,
-                  'notes': notes.text.trim(),
-                });
-              },
-              child: const Text('修正内容を保存'),
-            ),
-          ],
+    final saved = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => _AttendanceCorrectionEditPage(
+          entry: entry,
+          proposed: Map<String, dynamic>.from(_proposalFor(entry)),
         ),
       ),
     );
-
-    site.dispose();
-    manDays.dispose();
-    overtime.dispose();
-    early.dispose();
-    night.dispose();
-    for (final controller in allowanceControllers) {
-      controller.dispose();
-    }
-    notes.dispose();
-
     if (saved == null || !mounted) return;
     setState(() {
       _selectedIds.add(entry.id);
@@ -566,5 +397,235 @@ class _BulkAttendanceCorrectionPageState
         ),
       ),
     );
+  }
+}
+
+class _AttendanceCorrectionEditPage extends StatefulWidget {
+  const _AttendanceCorrectionEditPage({
+    required this.entry,
+    required this.proposed,
+  });
+
+  final AttendanceCorrectionEntry entry;
+  final Map<String, dynamic> proposed;
+
+  @override
+  State<_AttendanceCorrectionEditPage> createState() =>
+      _AttendanceCorrectionEditPageState();
+}
+
+class _AttendanceCorrectionEditPageState
+    extends State<_AttendanceCorrectionEditPage> {
+  late final TextEditingController _site;
+  late final TextEditingController _manDays;
+  late final TextEditingController _overtime;
+  late final TextEditingController _early;
+  late final TextEditingController _night;
+  late final TextEditingController _notes;
+  final List<TextEditingController> _allowances = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final proposed = widget.proposed;
+    _site = TextEditingController(text: proposed['siteName']?.toString() ?? '');
+    _manDays = TextEditingController(text: _numberText(proposed['manDays']));
+    _overtime = TextEditingController(text: _numberText(proposed['overtimeHours']));
+    _early = TextEditingController(text: _numberText(proposed['earlyHours']));
+    _night = TextEditingController(text: _numberText(proposed['nightHours']));
+    _notes = TextEditingController(text: proposed['notes']?.toString() ?? '');
+    for (final value in (proposed['allowanceNames'] as List<dynamic>? ?? const [])) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) _allowances.add(TextEditingController(text: text));
+    }
+  }
+
+  @override
+  void dispose() {
+    _site.dispose();
+    _manDays.dispose();
+    _overtime.dispose();
+    _early.dispose();
+    _night.dispose();
+    _notes.dispose();
+    for (final controller in _allowances) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final parsedManDays = double.tryParse(_manDays.text.trim());
+    final parsedOvertime = double.tryParse(_overtime.text.trim());
+    final parsedEarly = double.tryParse(_early.text.trim());
+    final parsedNight = double.tryParse(_night.text.trim());
+    if (_site.text.trim().isEmpty ||
+        parsedManDays == null || parsedManDays < 0 ||
+        parsedOvertime == null || parsedOvertime < 0 ||
+        parsedEarly == null || parsedEarly < 0 ||
+        parsedNight == null || parsedNight < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('入力内容を確認してください')),
+      );
+      return;
+    }
+    final allowanceNames = [
+      for (final controller in _allowances)
+        if (controller.text.trim().isNotEmpty) controller.text.trim(),
+    ];
+    Navigator.of(context).pop<Map<String, dynamic>>({
+      ...widget.entry.snapshot(),
+      'siteName': _site.text.trim(),
+      'manDays': parsedManDays,
+      'overtimeHours': parsedOvertime,
+      'earlyHours': parsedEarly,
+      'nightHours': parsedNight,
+      'allowanceYen': 0,
+      'allowanceNames': allowanceNames,
+      'notes': _notes.text.trim(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('勤務修正入力', style: TextStyle(fontWeight: FontWeight.w900)),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: FilledButton.icon(
+          onPressed: _save,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('修正内容を保存'),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            16, 12, 16, MediaQuery.viewInsetsOf(context).bottom + 28,
+          ),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.entry.date, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                    const SizedBox(height: 4),
+                    Text(widget.entry.workerName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _site,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: '現場',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _numberField(_manDays, '人工'),
+            const SizedBox(height: 12),
+            _numberField(_overtime, '残業', suffix: '時間'),
+            const SizedBox(height: 12),
+            _numberField(_early, '早出', suffix: '時間'),
+            const SizedBox(height: 12),
+            _numberField(_night, '夜勤', suffix: '時間'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('手当', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => setState(() => _allowances.add(TextEditingController())),
+                  icon: const Icon(Icons.add),
+                  label: const Text('手当を追加'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_allowances.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('手当なし'),
+              )
+            else
+              for (var i = 0; i < _allowances.length; i++) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _allowances[i],
+                        textInputAction: TextInputAction.next,
+                        decoration: InputDecoration(
+                          labelText: '手当${i + 1}',
+                          hintText: '例：PC、職長、夜間作業',
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: 'この手当を削除',
+                      onPressed: () => setState(() => _allowances.removeAt(i).dispose()),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+            const SizedBox(height: 6),
+            TextField(
+              controller: _notes,
+              minLines: 3,
+              maxLines: 6,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(
+                labelText: '備考',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.all(14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _numberField(
+    TextEditingController controller,
+    String label, {
+    String? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textInputAction: TextInputAction.next,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: suffix,
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      ),
+    );
+  }
+
+  static String _numberText(Object? value) {
+    final number = (value as num?)?.toDouble() ??
+        double.tryParse(value?.toString() ?? '') ??
+        0;
+    if (number == number.roundToDouble()) return number.toInt().toString();
+    return number.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
   }
 }
