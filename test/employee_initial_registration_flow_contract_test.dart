@@ -27,9 +27,13 @@ void main() {
 
     expect(page, contains('名前と携帯電話番号だけを先に登録'));
     expect(repository, contains('registerEmployee'));
-    expect(repository, contains("'affiliation': 'employee'"));
-    expect(repository, contains("'status': 'inactive'"));
-    expect(repository, contains("'user_id': null"));
+    expect(repository, contains("'register_employee_preregistration'"));
+    final migration = read(
+      'supabase/migrations/20261005062000_secure_employee_preregistration_rpcs.sql',
+    );
+    expect(migration, contains("w.affiliation = 'employee'"));
+    expect(migration, contains("'inactive'"));
+    expect(migration, contains('null'));
   });
 
   test('initial registration uses preregistered worker and delivery status', () {
