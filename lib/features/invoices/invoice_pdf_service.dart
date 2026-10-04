@@ -240,7 +240,7 @@ class InvoicePdfService {
         padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         color: PdfColors.blueGrey100,
         child: pw.Text(
-          '件名 / 工期  ' + invoice.billingPeriod,
+          '件名 / 工期  ${invoice.billingPeriod}',
           style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
         ),
       ),
