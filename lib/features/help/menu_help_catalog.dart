@@ -41,6 +41,8 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'company_documents', label: '会社提出書類', purpose: '会社単位で提出するPDF・画像を登録し、接続会社へ送信します。', destination: '会社提出書類一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'signatures', label: 'サイン一覧', purpose: '日報に保存済みの責任者・代表者・監督者サインを確認し、接続済み親会社へ送信します。', destination: 'サイン一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'trade_companies', label: '取引会社', purpose: 'SKO連携あり・なしを問わず取引会社を登録し、1日・月・平米・請負の契約金額を設定します。', destination: '取引会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'subcontractors', label: '下請け会社', purpose: 'SKO連携なしの下請け会社も登録し、支払証明書に使う契約金額を設定します。', destination: '下請け会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'site_map', label: '現場マップ', purpose: '現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。', destination: 'Googleマップ一覧へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
