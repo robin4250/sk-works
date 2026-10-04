@@ -11,6 +11,11 @@ void main() {
     expect(auth, contains("OutlinedButton.icon("));
     expect(auth, contains("'初回登録'"));
     expect(auth, contains("_registerMode = !_registerMode"));
+    expect(
+      auth.indexOf("'初回登録'"),
+      lessThan(auth.indexOf("'従業員登録QRでログイン'")),
+      reason: '初回登録はQRログインより上に表示する',
+    );
   });
 
   test('employee onboarding uses language controller and contextual help', () {
