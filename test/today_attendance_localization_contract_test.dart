@@ -7,7 +7,7 @@ void main() {
     final source =
         File('lib/features/attendance/today_attendance_page.dart').readAsStringSync();
 
-    expect(source, contains("SkoLanguageController.isEnglish ? "Today's Attendance""));
+    expect(source, contains("SkoLanguageController.isEnglish ? \"Today's Attendance\""));
     expect(source, contains("'My Company"));
     expect(source, contains("'Subcontractors"));
     expect(source, contains("'Past Month'"));
