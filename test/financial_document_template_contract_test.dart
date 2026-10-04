@@ -8,7 +8,7 @@ void main() {
   test('invoice PDF follows provided construction invoice template', () {
     final source = read('lib/features/invoices/invoice_pdf_service.dart');
     expect(source, contains("'御　請　求　書'"));
-    expect(source, contains("'請求書番号：'"));
+    expect(source, contains("'請求書番号：\${invoice.invoiceNumber}'"));
     expect(source, contains("'御請求金額'"));
     expect(source, contains("'振込先："));
     expect(source, contains("'件名 ／ 工期'"));
