@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import 'payroll_pdf_service.dart';
 import 'payroll_statement_repository.dart';
+import '../../international/language_controller.dart';
 
 class PayrollStatementsPage extends StatefulWidget {
   const PayrollStatementsPage({super.key});
@@ -299,7 +300,7 @@ class PayrollStatementPreviewPage extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => PayrollPdfService.printStatement(statement),
               icon: const Icon(Icons.print),
-              label: const Text('印刷'),
+              label: Text(SkoLanguageController.tr('印刷')),
             ),
           ],
         ),
@@ -387,7 +388,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再読み込み'),
+              label: Text(SkoLanguageController.tr('再読み込み')),
             ),
           ],
         ),
