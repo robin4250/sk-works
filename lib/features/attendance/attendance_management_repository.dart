@@ -185,5 +185,5 @@ class AttendanceManagementRepository {
 
   static double _number(Object? value) => (value as num?)?.toDouble() ?? double.tryParse(value?.toString() ?? '') ?? 0;
   static String _dbDate(DateTime value) =>
-      value.year.toString().padLeft(4, '0') + '-' + value.month.toString().padLeft(2, '0') + '-' + value.day.toString().padLeft(2, '0');
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
