@@ -81,8 +81,8 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
                     )
                   : TabBarView(
                       children: [
-                        _IndividualManagementPanel(repository: _repository!, workers: _workers, sites: _sites),
-                        _BulkManagementPanel(repository: _repository!, workers: _workers, sites: _sites),
+                        _IndividualManagementPanel(repository: _repository, workers: _workers, sites: _sites),
+                        _BulkManagementPanel(repository: _repository, workers: _workers, sites: _sites),
                       ],
                     ),
         ),
@@ -485,7 +485,8 @@ class _ManagementFormState {
     return match != null;
   }
   static String _num(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(2);
-  static String _time(DateTime value) => value.hour.toString().padLeft(2, '0') + ':' + value.minute.toString().padLeft(2, '0');
+  static String _time(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   static void _message(BuildContext context, String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
@@ -573,4 +574,5 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
   );
 }
 
-String _dateText(DateTime value) => value.year.toString() + '/' + value.month.toString().padLeft(2, '0') + '/' + value.day.toString().padLeft(2, '0');
+String _dateText(DateTime value) =>
+    '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
