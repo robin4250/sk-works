@@ -43,7 +43,7 @@ void main() {
       "'payroll' || 'payroll_adjustments' => 'payroll'",
       "'invoices' => 'invoice'",
       "'chat' => 'chat'",
-      "'company_deliveries' => 'company_connection'",
+      "'company_deliveries' || 'trade_companies' || 'subcontractors' =>\n        'company_connection'",
     ]) {
       expect(app, contains(action));
     }
