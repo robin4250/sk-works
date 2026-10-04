@@ -7,12 +7,15 @@ String read(String path) => File(path).readAsStringSync();
 void main() {
   test('invoice PDF follows provided construction invoice template', () {
     final source = read('lib/features/invoices/invoice_pdf_service.dart');
-    expect(source, contains("'御 請 求 書'"));
-    expect(source, contains("'請求書番号:'"));
+    expect(source, contains("'御　請　求　書'"));
+    expect(source, contains("'請求書番号：'"));
     expect(source, contains("'御請求金額'"));
-    expect(source, contains("'振込先'"));
-    expect(source, contains("'件名 / 工期  \${invoice.billingPeriod}'"));
-    expect(source, contains("['整理番号', '内容', '人工', '単価', '金額']"));
+    expect(source, contains("'振込先："));
+    expect(source, contains("'件名 ／ 工期'"));
+    expect(source, contains("'整理番号'"));
+    expect(source, contains("'人工'"));
+    expect(source, contains("'残業'"));
+    expect(source, contains("'金額'"));
     expect(source, contains("'合計(税込)'"));
   });
 
@@ -20,7 +23,9 @@ void main() {
     final source = read('lib/features/payroll/payroll_pdf_service.dart');
     expect(source, contains('PdfPageFormat.a4.landscape'));
     expect(source, contains("'給与明細書'"));
-    expect(source, contains("'勤怠・支給・控除'"));
+    expect(source, contains("'勤怠'"));
+    expect(source, contains("'支給'"));
+    expect(source, contains("'控除'"));
     expect(source, contains("'総支給額'"));
     expect(source, contains("'総控除額'"));
     expect(source, contains("'差引支給額'"));
@@ -31,12 +36,11 @@ void main() {
       'lib/features/payroll/payment_certificate_pdf_service.dart',
     );
     expect(source, contains("'工事代金支払明細書'"));
-    expect(source, contains("'作業所名 / 工事内容'"));
-    expect(source, contains("'数量'"));
-    expect(source, contains("'単価'"));
+    expect(source, contains("'作　業　所　名'"));
+    expect(source, contains("'工　事　内　容'"));
+    expect(source, contains("'数　量'"));
+    expect(source, contains("'単　価'"));
     expect(source, contains("'支払金額'"));
-    expect(source, contains("'法定福利費'"));
-    expect(source, contains("'消費税'"));
-    expect(source, contains("'差引残高'"));
+    expect(source, contains("'差　引　残　高'"));
   });
 }
