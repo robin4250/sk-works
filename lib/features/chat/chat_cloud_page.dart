@@ -147,28 +147,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               .toList(growable: false)
           : <Map<String, dynamic>>[];
       final pendingGroupInvites = await repository.loadPendingGroupInvites();
-      final friendByUserId = <String, Map<String, dynamic>>{
-        for (final friend in friends)
-          if ((friend['user_id']?.toString() ?? '').isNotEmpty)
-            friend['user_id'].toString(): friend,
-      };
-      groups = [
-        for (final group in groups)
-          if (group['group_type'] == 'direct' &&
-              friendByUserId.containsKey(
-                group['direct_other_user_id']?.toString(),
-              ))
-            {
-              ...group,
-              'display_name': friendByUserId[
-                        group['direct_other_user_id']?.toString()
-                      ]?['display_name']
-                      ?.toString() ??
-                  group['display_name'],
-            }
-          else
-            group,
-      ];
       await _loadListPreferences();
 
       if (widget.viewerOnlyFriends) {
@@ -679,6 +657,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _openFriendManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
   Future<void> _openFriendsForChat() async {
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
@@ -1182,6 +1168,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
+          IconButton(
+            tooltip: SkoLanguageController.tr('友達追加'),
+            onPressed: _openFriendManagement,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+          ),
           const SkoNotificationBell(),
           if (selected != null)
             PopupMenuButton<String>(
@@ -1306,21 +1297,19 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .colorScheme
           .surface
           .withValues(alpha: _appearance.headerAlpha),
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-      child: SizedBox(
-        height: 42,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: tabs.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 5),
-          itemBuilder: (context, index) => SizedBox(
-            width: 78,
-            child: _chatTabButton(
-              tab: tabs[index].$1,
-              label: tabs[index].$2,
+      padding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++) ...[
+            Expanded(
+              child: _chatTabButton(
+                tab: tabs[index].$1,
+                label: tabs[index].$2,
+              ),
             ),
-          ),
-        ),
+            if (index < tabs.length - 1) const SizedBox(width: 3),
+          ],
+        ],
       ),
     );
   }
@@ -1348,7 +1337,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             softWrap: false,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
               color: selected
                   ? scheme.onPrimaryContainer
