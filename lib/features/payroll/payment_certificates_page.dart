@@ -175,11 +175,16 @@ class _PartnerPaymentSettingsPageState
     try {
       final items = await repository.loadSettings();
       if (!mounted) return;
+      final previousId = _partnerId;
       setState(() {
         _items = items;
         _loading = false;
         _error = null;
-        _partnerId = items.isEmpty ? null : items.first.partnerCompanyId;
+        _partnerId = items.any((item) => item.partnerCompanyId == previousId)
+            ? previousId
+            : items.isEmpty
+                ? null
+                : items.first.partnerCompanyId;
       });
       _syncControllers();
     } catch (error) {
@@ -191,10 +196,17 @@ class _PartnerPaymentSettingsPageState
     }
   }
 
-  void _syncControllers() {
+  PartnerPaymentSetting? _selectedSetting() {
     final id = _partnerId;
-    if (id == null) return;
-    final item = _items.where((value) => value.partnerCompanyId == id).firstOrNull;
+    if (id == null) return null;
+    for (final item in _items) {
+      if (item.partnerCompanyId == id) return item;
+    }
+    return null;
+  }
+
+  void _syncControllers() {
+    final item = _selectedSetting();
     if (item == null) return;
     _daily.text = item.dailyRateYen.toString();
     _overtime.text = item.overtimeHourRateYen.toString();
@@ -204,11 +216,8 @@ class _PartnerPaymentSettingsPageState
 
   Future<void> _save() async {
     final repository = _repository;
-    final id = _partnerId;
-    if (repository == null || id == null) return;
-    final current =
-        _items.where((value) => value.partnerCompanyId == id).firstOrNull;
-    if (current == null) return;
+    final current = _selectedSetting();
+    if (repository == null || current == null) return;
 
     int parse(TextEditingController controller) =>
         int.tryParse(controller.text.trim()) ?? -1;
