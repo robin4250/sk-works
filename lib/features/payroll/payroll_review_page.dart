@@ -15,7 +15,6 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   final _repository = PayrollReviewRepository.maybeCreate();
   PayrollReviewWorkspace? _workspace;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
-  final Set<String> _checked = {};
   bool _loading = true;
   bool _saving = false;
   String? _error;
