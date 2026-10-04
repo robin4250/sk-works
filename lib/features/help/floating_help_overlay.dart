@@ -192,6 +192,7 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
         item.purpose,
         item.destination,
         item.access,
+        item.details,
       ].join(' ').toLowerCase();
       return haystack.contains(needle);
     }).toList(growable: false);
@@ -309,6 +310,15 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
               ),
               const SizedBox(height: 4),
               Text(item.destination),
+              if (item.details.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  english ? 'How to use it' : '使い方・ポイント',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(item.details),
+              ],
               const SizedBox(height: 12),
               Text(
                 english ? 'Who can use it' : '利用できる人',

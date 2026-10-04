@@ -1075,25 +1075,25 @@ class _HomePageState extends State<HomePage> {
       if (_identity.isManagement)
         _MenuAction(
           key: 'company_deliveries',
-          label: SkoLanguageController.tr('協力会社'),
+          label: SkoLanguageController.tr('協力会社情報'),
           icon: Icons.folder_shared_outlined,
           accessLabel: SkoLanguageController.tr('管理者'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'trade_companies',
-          label: SkoLanguageController.tr('取引会社'),
+          label: SkoLanguageController.tr('取引会社登録'),
           icon: Icons.business_center_outlined,
           homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
-      if (_isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'subcontractors',
-          label: SkoLanguageController.tr('下請け会社'),
+          label: SkoLanguageController.tr('協力会社登録'),
           icon: Icons.handshake_outlined,
           homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (_isAdmin)
         _MenuAction(
@@ -1222,7 +1222,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         Scaffold(
-          extendBodyBehindAppBar: false,
+          extendBodyBehindAppBar: true,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
             preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
@@ -1314,7 +1314,7 @@ class _HomePageState extends State<HomePage> {
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
           appearance: bodyAppearance,
-          contentTopInset: 8,
+          contentTopInset: _chromeVisible ? 72 : 8,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
@@ -1346,6 +1346,8 @@ class _HomePageState extends State<HomePage> {
       'signatures',
       'attendance_management',
       'payment_certificates',
+      'trade_companies',
+      'subcontractors',
     };
     const viewer = <String>{
       'invoices',

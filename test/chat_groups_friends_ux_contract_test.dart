@@ -80,6 +80,16 @@ void main() {
     expect(migration, contains('grant execute on function public.'));
   });
 
+  test('site chats keep site-role visibility after custom group rollout', () {
+    final migration = File(
+      'supabase/migrations/20261004190939_restore_site_chat_visibility_after_custom_groups.sql',
+    ).readAsStringSync();
+
+    expect(migration, contains("v_group_type='company' and v_participants_only"));
+    expect(migration, contains("v_group_type='site'"));
+    expect(migration, contains("'owner','admin','manager'"));
+  });
+
   test('cross-company friends use explicit participant access', () {
     final repository =
         File('lib/features/chat/chat_cloud_repository.dart').readAsStringSync();

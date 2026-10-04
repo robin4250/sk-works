@@ -17,7 +17,7 @@ void main() {
     expect(app, contains("ホームとメニューを同じ一覧で管理します"));
     expect(app, contains("SkoLanguageController.tr('1列')"));
     expect(app, contains("SkoLanguageController.tr('4列')"));
-    expect(app, contains("SkoLanguageController.tr('協力会社')"));
+    expect(app, contains("SkoLanguageController.tr('協力会社情報')"));
     expect(app, contains('HomeShortcut('));
     expect(home, contains('for (final shortcut in shortcuts)'));
     expect(home, contains('shortcut.access'));

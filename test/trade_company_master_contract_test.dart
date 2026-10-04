@@ -18,6 +18,11 @@ void main() {
     expect(repo, contains("rpc('sync_trade_company_directory')"));
     expect(app, contains("key: 'trade_companies'"));
     expect(app, contains("key: 'subcontractors'"));
+    expect(app, contains("SkoLanguageController.tr('取引会社登録')"));
+    expect(app, contains("SkoLanguageController.tr('協力会社登録')"));
+    expect(app, contains("SkoLanguageController.tr('協力会社情報')"));
+    expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
+    expect(app, contains("if (_identity.isManagement)"));
   });
 
   test('company contract supports all requested calculation methods', () {
@@ -56,7 +61,7 @@ void main() {
     expect(page, contains('barrierDismissible: false'));
     expect(page, contains('管理現場の設定を使う'));
     expect(page, contains('取引会社の契約を使う'));
-    expect(page, contains('下請け会社の契約を使う'));
+    expect(page, contains('協力会社の契約を使う'));
     expect(repo, contains("'trade_company_link_candidates'"));
     expect(repo, contains("'select_site_calculation_source'"));
   });
@@ -69,6 +74,7 @@ void main() {
       'supabase/migrations/20261004134247_sync_trade_company_directory_sources.sql',
       'supabase/migrations/20261004140858_apply_trade_company_calculation_source.sql',
       'supabase/migrations/20261004141035_refresh_outputs_after_trade_contract_change.sql',
+      'supabase/migrations/20261004190642_fix_trade_company_subadmin_rpc_access.sql',
     ]) {
       expect(File(path).existsSync(), isTrue, reason: path);
     }

@@ -36,7 +36,7 @@ class _AttendanceVerificationPageState
   List<Map<String, dynamic>> _sites = const [];
   List<Map<String, dynamic>> _recent = const [];
 
-  String _mode = 'manual';
+  String _mode = 'none';
   String? _workerId;
   String? _siteId;
   late String _eventType;
@@ -103,7 +103,7 @@ class _AttendanceVerificationPageState
           : const <int>[1, 2, 3, 4, 5];
 
       var selectedMode = selection['mode']?.toString() ??
-          (schedule['enabled'] == true ? 'gps_auto' : 'manual');
+          (schedule['enabled'] == true ? 'gps_auto' : 'none');
       if (selectedMode == 'location') selectedMode = 'gps_auto';
 
       final sites = values[1] as List<Map<String, dynamic>>;
@@ -221,6 +221,10 @@ class _AttendanceVerificationPageState
                       border: OutlineInputBorder(),
                     ),
                     items: const [
+                      DropdownMenuItem(
+                        value: 'none',
+                        child: Text('未選択'),
+                      ),
                       DropdownMenuItem(
                         value: 'manual',
                         child: Text('手動'),
@@ -485,6 +489,13 @@ class _AttendanceVerificationPageState
       return;
     }
 
+    if (_mode == 'none') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('出勤方法を選択してください')),
+      );
+      return;
+    }
+
     if (_mode == 'gps_auto') {
       final allowed = await ensureGpsAutoLocationPermission(context);
       if (!allowed || !mounted) return;
@@ -622,6 +633,7 @@ class _AttendanceVerificationPageState
   }
 
   String _modeLabel(Object? mode) => switch (mode?.toString()) {
+        'none' => '未選択',
         'gps_auto' || 'location' => 'GPS自動出勤',
         'location_photo' => '位置情報＋写真',
         _ => '手動',
