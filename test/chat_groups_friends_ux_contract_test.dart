@@ -117,4 +117,23 @@ void main() {
     expect(page, contains("'友達を招待'"));
   });
 
+
+  test('cross-company direct chats use friend display names', () {
+    final page =
+        File('lib/features/chat/chat_cloud_page.dart').readAsStringSync();
+    final repository =
+        File('lib/features/chat/chat_cloud_repository.dart').readAsStringSync();
+
+    expect(page, contains('friendByUserId'));
+    expect(page, contains("'direct_other_user_id'"));
+    expect(
+      repository,
+      contains(".from('communication_group_members')"),
+    );
+    expect(
+      repository,
+      isNot(contains(".eq('company_id', value.companyId);")),
+    );
+  });
+
 }
