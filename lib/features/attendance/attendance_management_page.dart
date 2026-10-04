@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'attendance_management_repository.dart';
+import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
   const AttendanceManagementPage({super.key});
@@ -26,7 +27,7 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) {
-      setState(() { _loading = false; _error = '勤怠管理を利用できません。'; });
+      setState(() { _loading = false; _error = SkoLanguageController.tr('勤怠管理を利用できません。'); });
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -54,12 +55,18 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('勤怠管理', style: TextStyle(fontWeight: FontWeight.w900)),
+          title: Text(SkoLanguageController.tr('勤怠管理'), style: const TextStyle(fontWeight: FontWeight.w900)),
           actions: const [SkoNotificationBell()],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: '個別', icon: Icon(Icons.person_outline)),
-              Tab(text: '一括', icon: Icon(Icons.groups_outlined)),
+              Tab(
+                text: SkoLanguageController.tr('個別'),
+                icon: const Icon(Icons.person_outline),
+              ),
+              Tab(
+                text: SkoLanguageController.tr('一括'),
+                icon: const Icon(Icons.groups_outlined),
+              ),
             ],
           ),
         ),
@@ -81,7 +88,7 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
                       ),
                     )
                   : repository == null
-                      ? const Center(child: Text('勤怠管理を利用できません。'))
+                      ? Center(child: Text(SkoLanguageController.tr('勤怠管理を利用できません。')))
                       : TabBarView(
                           children: [
                             _IndividualManagementPanel(repository: repository, workers: _workers, sites: _sites),
@@ -189,8 +196,8 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
         title: const Text('この日のデータを削除しますか？'),
         content: const Text('出勤・有給・対象従業員の日報行を直接削除します。承認待ちは通りません。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('キャンセル')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('削除')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(SkoLanguageController.tr('キャンセル'))),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(SkoLanguageController.tr('削除'))),
         ],
       ),
     );
@@ -300,8 +307,8 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         title: Text('$total件を一括削除しますか？'),
         content: const Text('選択した従業員・日付の出勤、有給、日報行を直接削除します。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('キャンセル')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('一括削除')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(SkoLanguageController.tr('キャンセル'))),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(SkoLanguageController.tr('一括削除'))),
         ],
       ),
     );
@@ -381,9 +388,9 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         const SizedBox(height: 14),
         Text('選択: ${_workerIds.length}人 × ${_dates.length}日 = ${_workerIds.length * _dates.length}件', style: const TextStyle(fontWeight: FontWeight.w900)),
         const SizedBox(height: 10),
-        FilledButton.icon(onPressed: _busy ? null : _apply, icon: const Icon(Icons.done_all), label: const Text('一括登録・編集を直接反映')),
+        FilledButton.icon(onPressed: _busy ? null : _apply, icon: const Icon(Icons.done_all), label: Text(SkoLanguageController.tr('一括登録・編集を直接反映'))),
         const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: _busy ? null : _delete, icon: const Icon(Icons.delete_sweep_outlined), label: const Text('選択範囲を一括削除')),
+        OutlinedButton.icon(onPressed: _busy ? null : _delete, icon: const Icon(Icons.delete_sweep_outlined), label: Text(SkoLanguageController.tr('選択範囲を一括削除'))),
       ],
     );
   }
