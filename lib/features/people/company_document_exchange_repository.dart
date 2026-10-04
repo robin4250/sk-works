@@ -80,6 +80,15 @@ class CompanyDocumentExchangeRepository {
     ];
   }
 
+  Future<List<Map<String, dynamic>>> listSignatureSources() async {
+    final value = await _client.rpc('company_signature_sources');
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
   Future<List<Map<String, dynamic>>> listSendableSources() async {
     final values = await Future.wait([
       _client.rpc(
