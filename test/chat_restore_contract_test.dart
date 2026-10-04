@@ -22,7 +22,7 @@ void main() {
     expect(page, contains("'ブロック解除'"));
     expect(page, contains('Badge('));
     expect(page, contains("sko_chat_last_read_"));
-    expect(page, contains("'友達追加'"));
+    expect(page, contains("'友達一覧'"));
     expect(page, contains('_positionInitialMessageView'));
     expect(page, contains('_scrollToBottom()'));
     expect(page, contains("'トーク一覧に戻る'"));

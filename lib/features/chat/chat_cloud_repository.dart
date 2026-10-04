@@ -38,6 +38,18 @@ class ChatCloudRepository {
 
   Future<String> _companyId() async => (await membership()).companyId;
 
+  Future<String> _groupCompanyId(String groupId) async {
+    final rows = await _client
+        .from('communication_groups')
+        .select('company_id')
+        .eq('id', groupId)
+        .limit(1);
+    if (rows.isEmpty) {
+      throw StateError('グループ情報が見つかりません。');
+    }
+    return rows.first['company_id'].toString();
+  }
+
   Future<bool> canManagePartnerChat() async {
     await membership();
     final value = await _client.rpc('current_feature_permissions');
@@ -54,9 +66,8 @@ class ChatCloudRepository {
     final groupRows = await _client
         .from('communication_groups')
         .select(
-          'id, name, site_id, group_type, last_activity_at, archived_at, sites(name)',
+          'id, name, site_id, group_type, last_activity_at, archived_at, participants_only, created_by, sites(name)',
         )
-        .eq('company_id', value.companyId)
         .order('last_activity_at', ascending: false);
 
     final bindingRows = await _client
@@ -66,10 +77,17 @@ class ChatCloudRepository {
 
     final directMembershipRows = await _client
         .from('communication_group_members')
-        .select('group_id, user_id')
-        .eq('company_id', value.companyId);
+        .select('group_id, user_id');
 
     final memberProfileRows = await _client.rpc('company_member_profiles');
+    final friendWorkspace = await loadFriendWorkspace();
+    final rawFriends = friendWorkspace['friends'];
+    final friendByUser = <String, Map<String, dynamic>>{
+      if (rawFriends is List)
+        for (final raw in rawFriends)
+          if (raw is Map && raw['user_id'] != null)
+            raw['user_id'].toString(): Map<String, dynamic>.from(raw),
+    };
 
     final profileByUser = <String, Map<String, dynamic>>{};
     for (final raw in (memberProfileRows as List<dynamic>)) {
@@ -113,7 +131,10 @@ class ChatCloudRepository {
         );
         directOtherUserId = otherId.isEmpty ? null : otherId;
         final profile = profileByUser[otherId];
-        displayName = profile?['display_name']?.toString() ?? '個別トーク';
+        final friend = friendByUser[otherId];
+        displayName = profile?['display_name']?.toString() ??
+            friend?['display_name']?.toString() ??
+            '個別トーク';
         avatarPath = profile?['avatar_storage_path']?.toString();
       } else if (group['group_type'] == 'site' && site is Map) {
         displayName = site['name']?.toString() ?? displayName;
@@ -182,6 +203,20 @@ class ChatCloudRepository {
       });
     }
     return list;
+  }
+
+  Future<List<Map<String, dynamic>>> loadCustomGroupMembers(
+    String groupId,
+  ) async {
+    final raw = await _client.rpc(
+      'custom_chat_group_members',
+      params: {'p_group_id': groupId},
+    );
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> loadGroupMembers(String groupId) async {
@@ -472,7 +507,7 @@ class ChatCloudRepository {
   }) async {
     final text = body.trim();
     if (text.isEmpty) return '';
-    final companyId = await _companyId();
+    final companyId = await _groupCompanyId(groupId);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
@@ -508,7 +543,7 @@ class ChatCloudRepository {
     required String mimeType,
     required bool isImage,
   }) async {
-    final companyId = await _companyId();
+    final companyId = await _groupCompanyId(groupId);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
 
@@ -675,6 +710,82 @@ class ChatCloudRepository {
     await _client.rpc(
       'remove_sko_friend',
       params: {'p_user': userId},
+    );
+  }
+
+
+  Future<List<Map<String, dynamic>>> loadPendingGroupInvites() async {
+    final raw = await _client.rpc('my_chat_group_invites');
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<String> createCustomGroup(String name) async {
+    final raw = await _client.rpc(
+      'create_custom_chat_group',
+      params: {'p_name': name.trim()},
+    );
+    final id = raw?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('グループを作成できませんでした。');
+    }
+    return id;
+  }
+
+  Future<void> inviteFriendToGroup({
+    required String groupId,
+    required String friendUserId,
+  }) async {
+    await _client.rpc(
+      'invite_friend_to_chat_group',
+      params: {
+        'p_group_id': groupId,
+        'p_friend_user_id': friendUserId,
+      },
+    );
+  }
+
+  Future<String> respondGroupInvite({
+    required String inviteId,
+    required bool accept,
+  }) async {
+    final raw = await _client.rpc(
+      'respond_chat_group_invite',
+      params: {
+        'p_invite_id': inviteId,
+        'p_accept': accept,
+      },
+    );
+    return raw?.toString() ?? '';
+  }
+
+  Future<void> leaveCustomGroup(String groupId) async {
+    await _client.rpc(
+      'leave_custom_chat_group',
+      params: {'p_group_id': groupId},
+    );
+  }
+
+  Future<void> removeCustomGroupMember({
+    required String groupId,
+    required String userId,
+  }) async {
+    await _client.rpc(
+      'remove_custom_chat_group_member',
+      params: {
+        'p_group_id': groupId,
+        'p_user_id': userId,
+      },
+    );
+  }
+
+  Future<void> deleteCustomGroup(String groupId) async {
+    await _client.rpc(
+      'delete_custom_chat_group',
+      params: {'p_group_id': groupId},
     );
   }
 

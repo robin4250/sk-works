@@ -3,7 +3,14 @@ import 'package:flutter/material.dart';
 import 'chat_cloud_repository.dart';
 
 class ChatFriendsPage extends StatefulWidget {
-  const ChatFriendsPage({super.key});
+  const ChatFriendsPage({
+    super.key,
+    this.selectForChat = false,
+    this.selectForGroupInvite = false,
+  });
+
+  final bool selectForChat;
+  final bool selectForGroupInvite;
 
   @override
   State<ChatFriendsPage> createState() => _ChatFriendsPageState();
@@ -224,8 +231,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '友達',
+        title: Text(
+          widget.selectForChat
+              ? '友達一覧'
+              : widget.selectForGroupInvite
+                  ? '友達を招待'
+                  : '友達',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
@@ -239,7 +250,36 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                       child: Text(_error!, textAlign: TextAlign.center),
                     ),
                   )
-                : ListView(
+                : (widget.selectForChat || widget.selectForGroupInvite)
+                    ? (friends.isEmpty
+                        ? const Center(child: Text('友達はまだいません'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: friends.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 6),
+                            itemBuilder: (context, index) {
+                              final friend = friends[index];
+                              return Card(
+                                child: ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.person_outline),
+                                  ),
+                                  title: Text(
+                                    friend['display_name']?.toString() ??
+                                        'SKOユーザー',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () =>
+                                      Navigator.of(context).pop(friend),
+                                ),
+                              );
+                            },
+                          ))
+                    : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
                     children: [
                       Card(
@@ -377,13 +417,22 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                               ),
                               subtitle:
                                   Text(friend['sko_id']?.toString() ?? ''),
-                              trailing: IconButton(
-                                tooltip: '友達から削除',
-                                onPressed: _busy
-                                    ? null
-                                    : () => _removeFriend(friend),
-                                icon: const Icon(Icons.person_remove_outlined),
-                              ),
+                              trailing: widget.selectForChat ||
+                                      widget.selectForGroupInvite
+                                  ? const Icon(Icons.chevron_right)
+                                  : IconButton(
+                                      tooltip: '友達から削除',
+                                      onPressed: _busy
+                                          ? null
+                                          : () => _removeFriend(friend),
+                                      icon: const Icon(
+                                        Icons.person_remove_outlined,
+                                      ),
+                                    ),
+                              onTap: widget.selectForChat ||
+                                      widget.selectForGroupInvite
+                                  ? () => Navigator.of(context).pop(friend)
+                                  : null,
                             ),
                           ),
                     ],
