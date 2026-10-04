@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,9 +21,11 @@ class ChatCloudPage extends StatefulWidget {
   const ChatCloudPage({
     super.key,
     this.viewerOnlyFriends = false,
+    this.showGroupsInitially = false,
   });
 
   final bool viewerOnlyFriends;
+  final bool showGroupsInitially;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -58,6 +61,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
   bool _sending = false;
+  bool _appNotificationSoundEnabled = true;
+  final Map<String, String?> _lastObservedMessageIdByGroup = <String, String?>{};
   String? _error;
 
   Map<String, dynamic>? get _selectedGroup {
@@ -72,6 +77,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.showGroupsInitially) {
+      _tab = _ChatTab.groups;
+    }
     _load();
   }
 
@@ -85,6 +93,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         prefs.getStringList('sko_chat_hidden_$userId')?.toSet() ?? <String>{};
     _mutedGroupIds =
         prefs.getStringList('sko_chat_muted_$userId')?.toSet() ?? <String>{};
+    _appNotificationSoundEnabled =
+        prefs.getBool('sko_app_notification_sound_enabled') ?? true;
   }
 
   Future<void> _saveListPreference(
@@ -202,6 +212,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     _subscription = repository.watchMessages(id).listen(
       (messages) {
         if (!mounted) return;
+        final latest = messages.isEmpty ? null : messages.last;
+        final latestId = latest?['id']?.toString();
+        final previousId = _lastObservedMessageIdByGroup[id];
+        final senderId = latest?['sender_user_id']?.toString();
+        final shouldSound = previousId != null &&
+            latestId != null &&
+            latestId != previousId &&
+            senderId != null &&
+            senderId != repository.currentUserId &&
+            _appNotificationSoundEnabled &&
+            !_mutedGroupIds.contains(id);
+        _lastObservedMessageIdByGroup[id] = latestId;
+        if (shouldSound) {
+          SystemSound.play(SystemSoundType.alert);
+        }
         setState(() {
           _messages = messages;
           for (final message in messages) {
