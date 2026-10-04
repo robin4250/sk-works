@@ -417,7 +417,7 @@ class _EmployeeProfileOnboardingPageState
             const SizedBox(height: 12),
             TextField(
               controller: _address,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: '${SkoLanguageController.tr('住所')} *',
                 prefixIcon: Icon(Icons.home_outlined),
               ),
@@ -425,11 +425,11 @@ class _EmployeeProfileOnboardingPageState
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _bloodType,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: '${SkoLanguageController.tr('血液型')} *',
                 prefixIcon: Icon(Icons.bloodtype_outlined),
               ),
-              items: const [
+              items: [
                 DropdownMenuItem(value: 'A', child: Text(SkoLanguageController.isEnglish ? 'A' : 'A型')),
                 DropdownMenuItem(value: 'B', child: Text(SkoLanguageController.isEnglish ? 'B' : 'B型')),
                 DropdownMenuItem(value: 'O', child: Text(SkoLanguageController.isEnglish ? 'O' : 'O型')),
@@ -444,7 +444,7 @@ class _EmployeeProfileOnboardingPageState
             TextField(
               controller: _family,
               maxLines: 2,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: '${SkoLanguageController.tr('家族構成')} *',
                 hintText: SkoLanguageController.tr('例：妻、子供2人'),
                 prefixIcon: Icon(Icons.family_restroom_outlined),
