@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/invoice_engine.dart';
+import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_pdf_service.dart';
@@ -40,7 +41,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '請求書を利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Invoices are unavailable.' : '請求書を利用できません。';
       });
       return;
     }
@@ -149,15 +150,15 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '請求書',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Invoices' : '請求書',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
           const SkoNotificationBell(),
           if (_canManageSettings)
             IconButton(
-              tooltip: '請求書設定',
+              tooltip: SkoLanguageController.isEnglish ? 'Invoice Settings' : '請求書設定',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const InvoiceSettingsPage(),
@@ -177,15 +178,15 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                         child: SegmentedButton<_InvoiceBrowseMode>(
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: _InvoiceBrowseMode.all,
-                              label: Text('一覧'),
+                              label: Text(SkoLanguageController.isEnglish ? 'All' : '一覧'),
                               icon: Icon(Icons.list_alt_outlined),
                             ),
                             ButtonSegment(
                               value: _InvoiceBrowseMode.company,
-                              label: Text('会社別'),
+                              label: Text(SkoLanguageController.isEnglish ? 'By Company' : '会社別'),
                               icon: Icon(Icons.business_outlined),
                             ),
                           ],
@@ -198,14 +199,14 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
                         child: SegmentedButton<_InvoicePeriodMode>(
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: _InvoicePeriodMode.month,
-                              label: Text('月'),
+                              label: Text(SkoLanguageController.isEnglish ? 'Month' : '月'),
                             ),
                             ButtonSegment(
                               value: _InvoicePeriodMode.year,
-                              label: Text('年'),
+                              label: Text(SkoLanguageController.isEnglish ? 'Year' : '年'),
                             ),
                           ],
                           selected: {_periodMode},
@@ -222,14 +223,14 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                           padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
                           child: DropdownButtonFormField<String?>(
                             initialValue: _companyFilter,
-                            decoration: const InputDecoration(
-                              labelText: '取引会社を選択',
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.isEnglish ? 'Select Company' : '取引会社を選択',
                               prefixIcon: Icon(Icons.business_center_outlined),
                             ),
                             items: [
-                              const DropdownMenuItem<String?>(
+                              DropdownMenuItem<String?>(
                                 value: null,
-                                child: Text('すべての会社'),
+                                child: Text(SkoLanguageController.isEnglish ? 'All Companies' : 'すべての会社'),
                               ),
                               for (final company in _companies)
                                 DropdownMenuItem<String?>(
@@ -243,8 +244,8 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                         ),
                       _PeriodHeader(
                         label: _periodMode == _InvoicePeriodMode.month
-                            ? '${_period.year}年${_period.month}月'
-                            : '${_period.year}年',
+                            ? (SkoLanguageController.isEnglish ? '${_period.month}/${_period.year}' : '${_period.year}年${_period.month}月')
+                            : (SkoLanguageController.isEnglish ? '${_period.year}' : '${_period.year}年'),
                         onPrevious: () => _movePeriod(-1),
                         onNext: () => _movePeriod(1),
                       ),
@@ -259,32 +260,32 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      '年間 ${visible.length}件 / 合計 ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}',
+                                      SkoLanguageController.isEnglish ? 'Year total: ${visible.length} invoices / ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}' : '年間 ${visible.length}件 / 合計 ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
                                   ),
                                   PopupMenuButton<String>(
-                                    tooltip: '年間出力',
+                                    tooltip: SkoLanguageController.isEnglish ? 'Annual Output' : '年間出力',
                                     onSelected: (value) =>
                                         _annualAction(value, visible),
-                                    itemBuilder: (_) => const [
+                                    itemBuilder: (_) => [
                                       PopupMenuItem(
                                         value: 'preview',
-                                        child: Text('年間プレビュー'),
+                                        child: Text(SkoLanguageController.isEnglish ? 'Annual Preview' : '年間プレビュー'),
                                       ),
                                       PopupMenuItem(
                                         value: 'print',
-                                        child: Text('年間印刷'),
+                                        child: Text(SkoLanguageController.isEnglish ? 'Annual Print' : '年間印刷'),
                                       ),
                                       PopupMenuItem(
                                         value: 'save',
-                                        child: Text('年間保存'),
+                                        child: Text(SkoLanguageController.isEnglish ? 'Annual Save' : '年間保存'),
                                       ),
                                       PopupMenuItem(
                                         value: 'mail',
-                                        child: Text('年間メール送信'),
+                                        child: Text(SkoLanguageController.isEnglish ? 'Annual Email' : '年間メール送信'),
                                       ),
                                     ],
                                   ),
@@ -295,10 +296,10 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                         ),
                       Expanded(
                         child: visible.isEmpty
-                            ? const Center(
+                            ? Center(
                                 child: Text(
-                                  'この期間の請求書はありません',
-                                  style: TextStyle(
+                                  SkoLanguageController.isEnglish ? 'No invoices for this period.' : 'この期間の請求書はありません',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
@@ -348,11 +349,11 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                                       month == null
                                                           ? invoice
                                                               .billingPeriod
-                                                          : '${month.year}年${month.month}月',
+                                                          : (SkoLanguageController.isEnglish ? '${month.month}/${month.year}' : '${month.year}年${month.month}月'),
                                                     ),
                                                     const SizedBox(height: 5),
                                                     Text(
-                                                      '${invoice.siteCalculations.length}現場',
+                                                      SkoLanguageController.isEnglish ? '${invoice.siteCalculations.length} sites' : '${invoice.siteCalculations.length}現場',
                                                       style: Theme.of(context)
                                                           .textTheme
                                                           .bodySmall,
@@ -400,7 +401,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     List<InvoiceCalculationResult> invoices,
   ) async {
     if (invoices.isEmpty) return;
-    final title = '${_period.year}年 請求書';
+    final title = SkoLanguageController.isEnglish ? '${_period.year} Invoices' : '${_period.year}年 請求書';
 
     try {
       switch (action) {
@@ -412,7 +413,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
             invoices,
             title: title,
             subject: title,
-            body: '共有メニューから「ファイルに保存」を選択してください。',
+            body: SkoLanguageController.isEnglish ? 'Choose Save to Files from the share menu.' : '共有メニューから「ファイルに保存」を選択してください。',
           );
           break;
         case 'mail':
@@ -420,7 +421,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
             invoices,
             title: title,
             subject: title,
-            body: '年間請求書PDFを送付します。',
+            body: SkoLanguageController.isEnglish ? 'Annual invoice PDF attached.' : '年間請求書PDFを送付します。',
           );
           break;
         default:
@@ -437,7 +438,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('請求書PDFを出力できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not output invoice PDF' : '請求書PDFを出力できませんでした'}: $error')),
       );
     }
   }
@@ -495,9 +496,9 @@ class InvoicePreviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '請求書プレビュー',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Invoice Preview' : '請求書プレビュー',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -516,10 +517,10 @@ class InvoicePreviewPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          '請 求 書',
+                        Text(
+                          SkoLanguageController.isEnglish ? 'INVOICE' : '請 求 書',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
                           ),
@@ -532,7 +533,7 @@ class InvoicePreviewPage extends StatelessWidget {
                             fontSize: 18,
                           ),
                         ),
-                        Text('対象：${invoice.billingPeriod}'),
+                        Text(SkoLanguageController.isEnglish ? 'Period: ${invoice.billingPeriod}' : '対象：${invoice.billingPeriod}'),
                         const Divider(height: 24),
                         Expanded(
                           child: ListView(
@@ -568,12 +569,12 @@ class InvoicePreviewPage extends StatelessWidget {
                                   ),
                                 if (site.manualAdjustmentYen != 0)
                                   _AmountRow(
-                                    label: '調整',
+                                    label: SkoLanguageController.isEnglish ? 'Adjustment' : '調整',
                                     value: site.manualAdjustmentYen,
                                   ),
                                 if (site.welfareAmountYen != 0)
                                   _AmountRow(
-                                    label: '法定福利費',
+                                    label: SkoLanguageController.isEnglish ? 'Statutory Welfare' : '法定福利費',
                                     value: site.welfareAmountYen,
                                   ),
                                 const Divider(height: 16),
@@ -582,16 +583,16 @@ class InvoicePreviewPage extends StatelessWidget {
                           ),
                         ),
                         _AmountRow(
-                          label: '小計',
+                          label: SkoLanguageController.isEnglish ? 'Subtotal' : '小計',
                           value: invoice.subtotalYen,
                         ),
                         _AmountRow(
-                          label: '消費税',
+                          label: SkoLanguageController.isEnglish ? 'Tax' : '消費税',
                           value: invoice.taxYen,
                         ),
                         const Divider(),
                         _AmountRow(
-                          label: '請求合計',
+                          label: SkoLanguageController.isEnglish ? 'Total' : '請求合計',
                           value: invoice.grandTotalYen,
                           strong: true,
                         ),
@@ -608,7 +609,7 @@ class InvoicePreviewPage extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: () => _savePdf(context),
                     icon: const Icon(Icons.download_outlined),
-                    label: const Text('保存'),
+                    label: Text(SkoLanguageController.isEnglish ? 'Save' : '保存'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -616,7 +617,7 @@ class InvoicePreviewPage extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: () => _mailPdf(context),
                     icon: const Icon(Icons.email_outlined),
-                    label: const Text('メール'),
+                    label: Text(SkoLanguageController.isEnglish ? 'Email' : 'メール'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -624,7 +625,7 @@ class InvoicePreviewPage extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: () => _printPdf(context),
                     icon: const Icon(Icons.print_outlined),
-                    label: const Text('印刷'),
+                    label: Text(SkoLanguageController.isEnglish ? 'Print' : '印刷'),
                   ),
                 ),
               ],
@@ -639,8 +640,8 @@ class InvoicePreviewPage extends StatelessWidget {
     try {
       await InvoicePdfService.shareInvoices(
         [invoice],
-        subject: '${invoice.billingPeriod} 請求書',
-        body: '共有メニューから「ファイルに保存」を選択してください。',
+        subject: SkoLanguageController.isEnglish ? '${invoice.billingPeriod} Invoice' : '${invoice.billingPeriod} 請求書',
+        body: SkoLanguageController.isEnglish ? 'Choose Save to Files from the share menu.' : '共有メニューから「ファイルに保存」を選択してください。',
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -652,8 +653,8 @@ class InvoicePreviewPage extends StatelessWidget {
     try {
       await InvoicePdfService.shareInvoices(
         [invoice],
-        subject: '${invoice.billingPeriod} ${invoice.customerId} 御中 請求書',
-        body: '請求書PDFを送付します。',
+        subject: SkoLanguageController.isEnglish ? '${invoice.billingPeriod} ${invoice.customerId} Invoice' : '${invoice.billingPeriod} ${invoice.customerId} 御中 請求書',
+        body: SkoLanguageController.isEnglish ? 'Invoice PDF attached.' : '請求書PDFを送付します。',
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -672,7 +673,7 @@ class InvoicePreviewPage extends StatelessWidget {
 
   void _showOutputError(BuildContext context, Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('請求書PDFを出力できませんでした: $error')),
+      SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not output invoice PDF' : '請求書PDFを出力できませんでした'}: $error')),
     );
   }
 }
@@ -727,9 +728,9 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off_outlined, size: 42),
             const SizedBox(height: 12),
-            const Text(
-              '請求書を読み込めませんでした',
-              style: TextStyle(fontWeight: FontWeight.w900),
+            Text(
+              SkoLanguageController.isEnglish ? 'Could not load invoices' : '請求書を読み込めませんでした',
+              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
@@ -737,7 +738,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
+              label: Text(SkoLanguageController.isEnglish ? 'Retry' : '再試行'),
             ),
           ],
         ),
