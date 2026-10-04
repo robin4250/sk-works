@@ -225,62 +225,6 @@ class PayrollStatementPreviewPage extends StatelessWidget {
     );
   }
 
-  static String _date(DateTime value) =>
-      '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
-}
-
-String _formatDetailValue(Object? value) {
-  if (value is num) return _formatYen(value.toInt());
-  return value?.toString() ?? '';
-}
-
-String _formatYen(int value) {
-  final digits = value.abs().toString();
-  final groups = <String>[];
-  for (var end = digits.length; end > 0; end -= 3) {
-    final start = (end - 3).clamp(0, digits.length);
-    groups.insert(0, digits.substring(start, end));
-  }
-  return '${value < 0 ? '-' : ''}¥${groups.join(',')}';
-}
-
-class _MoneyRow extends StatelessWidget {
-  const _MoneyRow({
-    required this.label,
-    required this.value,
-    this.strong = false,
-  });
-
-  final String label;
-  final int value;
-  final bool strong;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = strong
-        ? Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-            )
-        : Theme.of(context).textTheme.bodyLarge;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: style,
-            ),
-          ),
-          Text(
-            _formatYen(value),
-            style: style,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ErrorState extends StatelessWidget {
