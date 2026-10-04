@@ -246,7 +246,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       ),
     );
 
-    if (candidate == null) return;
+    if (candidate == null || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
