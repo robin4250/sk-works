@@ -52,6 +52,10 @@ class InvoiceCalculationResult {
     required this.detailMode,
     required this.siteCalculations,
     required this.taxRateBps,
+    this.invoiceNumber = '',
+    this.issueDate,
+    this.periodStart,
+    this.periodEnd,
   });
 
   final String customerId;
@@ -61,6 +65,10 @@ class InvoiceCalculationResult {
 
   /// Basis points. Example: 1000 = 10%.
   final int taxRateBps;
+  final String invoiceNumber;
+  final DateTime? issueDate;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
 
   int get subtotalYen => siteCalculations.fold<int>(
         0,
@@ -81,6 +89,10 @@ class InvoiceEngine {
     required InvoiceDetailMode detailMode,
     required List<SiteInvoiceCalculation> sites,
     int taxRateBps = 1000,
+    String invoiceNumber = '',
+    DateTime? issueDate,
+    DateTime? periodStart,
+    DateTime? periodEnd,
   }) {
     if (customerId.trim().isEmpty) {
       throw ArgumentError.value(customerId, 'customerId', 'must not be empty');
@@ -125,6 +137,10 @@ class InvoiceEngine {
       detailMode: detailMode,
       siteCalculations: List.unmodifiable(sites),
       taxRateBps: taxRateBps,
+      invoiceNumber: invoiceNumber,
+      issueDate: issueDate,
+      periodStart: periodStart,
+      periodEnd: periodEnd,
     );
   }
 }
