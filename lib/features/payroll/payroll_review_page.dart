@@ -42,12 +42,11 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     });
 
     try {
-      final workspace = await repository.loadWorkspace();
+      final workspace = await repository.loadWorkspace(_month);
       if (!mounted) return;
       setState(() {
         _workspace = workspace;
         _loading = false;
-        _checked.clear();
       });
     } catch (error) {
       if (!mounted) return;
@@ -58,35 +57,31 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     }
   }
 
-  List<PayrollReviewItem> get _monthItems {
-    final items = _workspace?.items ?? const <PayrollReviewItem>[];
-    return [
-      for (final item in items)
-        if (item.statement.periodStart.year == _month.year &&
-            item.statement.periodStart.month == _month.month)
-          item,
-    ];
+  Future<void> _setReviewCheck(PayrollReviewItem item, bool checked) async {
+    final repository = _repository;
+    if (repository == null) return;
+    await repository.setReviewCheck(
+      statementId: item.statement.id,
+      revision: item.revision,
+      checked: checked,
+    );
+    await _load();
   }
 
   Future<void> _confirm() async {
     final repository = _repository;
     final workspace = _workspace;
-    final items = _monthItems;
     if (repository == null || workspace == null || !workspace.canConfirm) return;
-    if (items.isEmpty) return;
-    if (_checked.length != items.length) {
+    if (workspace.items.isEmpty) return;
+    if (workspace.items.any((item) => !item.reviewChecked)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('全従業員の給与明細を確認してから確定してください')),
       );
       return;
     }
-
     setState(() => _saving = true);
     try {
-      await repository.confirmMonth(
-        month: _month,
-        statementIds: [for (final item in items) item.statement.id],
-      );
+      await repository.confirmMonth(_month);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -115,16 +110,15 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     await _load();
   }
 
-  void _moveMonth(int offset) {
-    setState(() {
-      _month = DateTime(_month.year, _month.month + offset);
-      _checked.clear();
-    });
+  Future<void> _moveMonth(int offset) async {
+    setState(() => _month = DateTime(_month.year, _month.month + offset));
+    await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final workspace = _workspace;
+    final items = workspace?.items ?? const <PayrollReviewItem>[];
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -172,7 +166,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 ),
                               ],
                             ),
-                            if (workspace.canManageVisibility) ...[
+                            if (workspace.isAdmin) ...[
                               const SizedBox(height: 8),
                               Card(
                                 child: ExpansionTile(
@@ -196,7 +190,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               ),
                               const SizedBox(height: 12),
                             ],
-                            if (_monthItems.isEmpty)
+                            if (items.isEmpty)
                               const Padding(
                                 padding: EdgeInsets.all(32),
                                 child: Text(
@@ -205,7 +199,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 ),
                               )
                             else
-                              for (final item in _monthItems)
+                              for (final item in items)
                                 Card(
                                   child: ListTile(
                                     onTap: () => Navigator.of(context).push(
@@ -218,19 +212,11 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                     ),
                                     leading: workspace.canConfirm
                                         ? Checkbox(
-                                            value: _checked.contains(
-                                              item.statement.id,
+                                            value: item.reviewChecked,
+                                            onChanged: (value) => _setReviewCheck(
+                                              item,
+                                              value ?? false,
                                             ),
-                                            onChanged: (value) {
-                                              setState(() {
-                                                if (value == true) {
-                                                  _checked.add(item.statement.id);
-                                                } else {
-                                                  _checked
-                                                      .remove(item.statement.id);
-                                                }
-                                              });
-                                            },
                                           )
                                         : null,
                                     title: Text(
@@ -240,9 +226,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                       ),
                                     ),
                                     subtitle: Text(
-                                      item.confirmed ? '確認済み' : '未確定',
+                                      item.reviewConfirmed ? '確認済み' : '未確定',
                                       style: TextStyle(
-                                        color: item.confirmed
+                                        color: item.reviewConfirmed
                                             ? Colors.green
                                             : Theme.of(context)
                                                 .colorScheme
@@ -258,7 +244,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                     ),
                                   ),
                                 ),
-                            if (workspace.canConfirm && _monthItems.isNotEmpty) ...[
+                            if (workspace.canConfirm && items.isNotEmpty) ...[
                               const SizedBox(height: 16),
                               FilledButton.icon(
                                 onPressed: _saving ? null : _confirm,
