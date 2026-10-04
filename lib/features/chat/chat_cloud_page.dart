@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,15 +15,17 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
 
-enum _ChatTab { all, site, direct, partner }
+enum _ChatTab { all, friends, site, groups, partner }
 
 class ChatCloudPage extends StatefulWidget {
   const ChatCloudPage({
     super.key,
     this.viewerOnlyFriends = false,
+    this.showGroupsInitially = false,
   });
 
   final bool viewerOnlyFriends;
+  final bool showGroupsInitially;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -31,15 +34,18 @@ class ChatCloudPage extends StatefulWidget {
 class _ChatCloudPageState extends State<ChatCloudPage> {
   final _repository = ChatCloudRepository.maybeCreate();
   final _composer = TextEditingController();
-  final _memberSearch = TextEditingController();
   final _scrollController = ScrollController();
   final _picker = ImagePicker();
 
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _groups = [];
-  List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _friends = [];
+  List<Map<String, dynamic>> _pendingGroupInvites = [];
   List<String> _prioritizedSiteGroupIds = const [];
+  Set<String> _pinnedGroupIds = <String>{};
+  Set<String> _hiddenGroupIds = <String>{};
+  Set<String> _mutedGroupIds = <String>{};
   Set<String> _blockedUserIds = <String>{};
   Map<String, int> _unreadCounts = const {};
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
@@ -55,6 +61,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   _ChatTab _tab = _ChatTab.all;
   bool _loading = true;
   bool _sending = false;
+  bool _appNotificationSoundEnabled = true;
+  final Map<String, String?> _lastObservedMessageIdByGroup = <String, String?>{};
   String? _error;
 
   Map<String, dynamic>? get _selectedGroup {
@@ -69,14 +77,43 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.showGroupsInitially) {
+      _tab = _ChatTab.groups;
+    }
     _load();
+  }
+
+  Future<void> _loadListPreferences() async {
+    final repository = _repository;
+    final userId = repository?.currentUserId ?? 'anonymous';
+    final prefs = await SharedPreferences.getInstance();
+    _pinnedGroupIds =
+        prefs.getStringList('sko_chat_pinned_$userId')?.toSet() ?? <String>{};
+    _hiddenGroupIds =
+        prefs.getStringList('sko_chat_hidden_$userId')?.toSet() ?? <String>{};
+    _mutedGroupIds =
+        prefs.getStringList('sko_chat_muted_$userId')?.toSet() ?? <String>{};
+    _appNotificationSoundEnabled =
+        prefs.getBool('sko_app_notification_sound_enabled') ?? true;
+  }
+
+  Future<void> _saveListPreference(
+    String kind,
+    Set<String> values,
+  ) async {
+    final repository = _repository;
+    final userId = repository?.currentUserId ?? 'anonymous';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'sko_chat_${kind}_$userId',
+      values.toList(growable: false),
+    );
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
     _composer.dispose();
-    _memberSearch.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -99,9 +136,18 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     try {
       final canManagePartnerChat = await repository.canManagePartnerChat();
       var groups = await repository.loadGroups();
-      var members = await repository.loadMembers();
       var priorities = await repository.prioritizedSiteGroupIds();
       final blockedUserIds = await repository.loadBlockedUserIds();
+      final friendWorkspace = await repository.loadFriendWorkspace();
+      final rawFriends = friendWorkspace['friends'];
+      final friends = rawFriends is List
+          ? rawFriends
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+          : <Map<String, dynamic>>[];
+      final pendingGroupInvites = await repository.loadPendingGroupInvites();
+      await _loadListPreferences();
 
       if (widget.viewerOnlyFriends) {
         final workspace = await repository.loadFriendWorkspace();
@@ -117,9 +163,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           final otherUserId = group['direct_other_user_id']?.toString();
           return otherUserId != null && friendIds.contains(otherUserId);
         }).toList(growable: false);
-        members = members
-            .where((member) => friendIds.contains(member['user_id']?.toString()))
-            .toList(growable: false);
         priorities = const [];
       }
 
@@ -135,7 +178,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           _tab = _ChatTab.all;
         }
         _groups = groups;
-        _members = members;
+        _friends = friends;
+        _pendingGroupInvites = pendingGroupInvites;
         _prioritizedSiteGroupIds = priorities;
         _blockedUserIds = blockedUserIds;
         _selectedGroupId = next;
@@ -168,6 +212,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     _subscription = repository.watchMessages(id).listen(
       (messages) {
         if (!mounted) return;
+        final latest = messages.isEmpty ? null : messages.last;
+        final latestId = latest?['id']?.toString();
+        final previousId = _lastObservedMessageIdByGroup[id];
+        final senderId = latest?['sender_user_id']?.toString();
+        final shouldSound = previousId != null &&
+            latestId != null &&
+            latestId != previousId &&
+            senderId != null &&
+            senderId != repository.currentUserId &&
+            _appNotificationSoundEnabled &&
+            !_mutedGroupIds.contains(id);
+        _lastObservedMessageIdByGroup[id] = latestId;
+        if (shouldSound) {
+          SystemSound.play(SystemSoundType.alert);
+        }
         setState(() {
           _messages = messages;
           for (final message in messages) {
@@ -192,21 +251,35 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   Future<void> _selectGroup(String id) async {
-    if (id == _selectedGroupId) {
-      setState(() => _tab = _ChatTab.all);
-      return;
+    if (id == _selectedGroupId) return;
+    Map<String, dynamic>? target;
+    for (final group in _groups) {
+      if (group['id']?.toString() == id) {
+        target = group;
+        break;
+      }
     }
     final appearance = await ChatAppearanceStore.load(id);
     if (!mounted) return;
     setState(() {
       _selectedGroupId = id;
-      _tab = _ChatTab.all;
+      _tab = _tabForGroup(target);
       _positionInitialMessages = true;
       _appearance = appearance;
       _chatChromeVisible = true;
       _unreadCounts = {..._unreadCounts, id: 0};
     });
     await _subscribeSelected();
+  }
+
+  _ChatTab _tabForGroup(Map<String, dynamic>? group) {
+    if (_isCustomGroup(group)) return _ChatTab.groups;
+    return switch (group?['group_type']?.toString()) {
+      'direct' => _ChatTab.friends,
+      'site' => _ChatTab.site,
+      'partner' => _ChatTab.partner,
+      _ => _ChatTab.all,
+    };
   }
 
   Future<void> _closeConversation() async {
@@ -218,7 +291,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _messages = [];
       _positionInitialMessages = false;
       _chatChromeVisible = true;
-      _tab = _ChatTab.all;
     });
   }
 
@@ -585,10 +657,149 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
-  Future<void> _openFriends() async {
+  Future<void> _openFriendManagement() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
     );
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _openFriendsForChat() async {
+    final friend = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => const ChatFriendsPage(selectForChat: true),
+      ),
+    );
+    if (friend == null || !mounted) return;
+    await _startDirect(friend);
+  }
+
+  Future<void> _createCustomGroup() async {
+    final repository = _repository;
+    if (repository == null) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('グループチャット作成'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'グループ名',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('作成'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty || !mounted) return;
+    try {
+      final id = await repository.createCustomGroup(name);
+      await _load();
+      if (!mounted) return;
+      await _selectGroup(id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('グループを作成できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _inviteFriendToSelectedGroup() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+    final friend = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => const ChatFriendsPage(selectForGroupInvite: true),
+      ),
+    );
+    if (friend == null || !mounted) return;
+    final friendUserId = friend['user_id']?.toString() ?? '';
+    if (friendUserId.isEmpty) return;
+    try {
+      await repository.inviteFriendToGroup(
+        groupId: groupId,
+        friendUserId: friendUserId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('グループ招待の承認通知を送りました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('友達を招待できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _respondGroupInvite(
+    Map<String, dynamic> invite,
+    bool accept,
+  ) async {
+    final repository = _repository;
+    final inviteId = invite['id']?.toString() ?? '';
+    if (repository == null || inviteId.isEmpty) return;
+    try {
+      final groupId = await repository.respondGroupInvite(
+        inviteId: inviteId,
+        accept: accept,
+      );
+      await _load();
+      if (!mounted || !accept || groupId.isEmpty) return;
+      await _selectGroup(groupId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('グループ招待を処理できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _leaveSelectedGroup() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('グループから脱退しますか？'),
+        content: const Text(
+          '最後の1名が脱退した場合、このグループは削除されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('脱退'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repository.leaveCustomGroup(groupId);
+    if (!mounted) return;
+    await _closeConversation();
+    await _load();
   }
 
   Future<void> _openNotes() async {
@@ -614,22 +825,26 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Future<void> _showSelectedGroupMembers() async {
     final repository = _repository;
     final groupId = _selectedGroupId;
+    final selectedGroup = _selectedGroup;
     if (repository == null || groupId == null) return;
 
     try {
-      final members = await repository.loadGroupMembers(groupId);
+      final members = _isCustomGroup(selectedGroup)
+          ? await repository.loadCustomGroupMembers(groupId)
+          : await repository.loadGroupMembers(groupId);
       if (!mounted) return;
+      final customGroup = _isCustomGroup(selectedGroup);
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
         builder: (sheetContext) => SafeArea(
           child: SizedBox(
-            height: MediaQuery.sizeOf(sheetContext).height * 0.65,
+            height: MediaQuery.sizeOf(sheetContext).height * 0.72,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Text(
                     '${SkoLanguageController.tr('参加メンバー')}  ${members.length}${SkoLanguageController.isEnglish ? '' : '人'}',
                     style: Theme.of(sheetContext)
@@ -638,10 +853,43 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
+                if (customGroup)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: () {
+                              Navigator.pop(sheetContext);
+                              _inviteFriendToSelectedGroup();
+                            },
+                            icon: const Icon(Icons.person_add_alt_1_outlined),
+                            label: const Text('友達招待'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(sheetContext);
+                              _leaveSelectedGroup();
+                            },
+                            icon: const Icon(Icons.logout),
+                            label: const Text('脱退'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const Divider(height: 1),
                 Expanded(
                   child: members.isEmpty
-                      ? Center(child: Text(SkoLanguageController.tr('参加メンバーはいません')))
+                      ? Center(
+                          child: Text(
+                            SkoLanguageController.tr('参加メンバーはいません'),
+                          ),
+                        )
                       : ListView.separated(
                           padding: const EdgeInsets.all(10),
                           itemCount: members.length,
@@ -651,6 +899,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                             final member = members[index];
                             final avatarUrl =
                                 member['avatar_url']?.toString();
+                            final userId =
+                                member['user_id']?.toString() ?? '';
+                            final isMe = userId == repository.currentUserId;
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundImage:
@@ -669,8 +920,71 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                                 ),
                               ),
                               subtitle: Text(
-                                member['company_name']?.toString() ?? '',
+                                customGroup && !isMe
+                                    ? '長押しで追放'
+                                    : member['company_name']?.toString() ?? '',
                               ),
+                              onLongPress: !customGroup || isMe
+                                  ? null
+                                  : () async {
+                                      final confirmed =
+                                          await showDialog<bool>(
+                                        context: sheetContext,
+                                        builder: (dialogContext) =>
+                                            AlertDialog(
+                                          title: const Text(
+                                            'このメンバーを追放しますか？',
+                                          ),
+                                          content: Text(
+                                            member['display_name']
+                                                    ?.toString() ??
+                                                'メンバー',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(
+                                                dialogContext,
+                                                false,
+                                              ),
+                                              child: const Text('戻る'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(
+                                                dialogContext,
+                                                true,
+                                              ),
+                                              child: const Text('追放'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed != true) return;
+                                      try {
+                                        await repository
+                                            .removeCustomGroupMember(
+                                          groupId: groupId,
+                                          userId: userId,
+                                        );
+                                        if (sheetContext.mounted) {
+                                          Navigator.pop(sheetContext);
+                                        }
+                                        if (mounted) {
+                                          await _showSelectedGroupMembers();
+                                        }
+                                      } catch (error) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(this.context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'メンバーを追放できませんでした: $error',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
                             );
                           },
                         ),
@@ -683,7 +997,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('参加メンバーを読み込めませんでした')}: $error')),
+        SnackBar(
+          content: Text(
+            '${SkoLanguageController.tr('参加メンバーを読み込めませんでした')}: $error',
+          ),
+        ),
       );
     }
   }
@@ -721,6 +1039,36 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     return groups;
   }
 
+  List<Map<String, dynamic>> get _friendGroups {
+    final friendIds = _friends
+        .map((friend) => friend['user_id']?.toString())
+        .whereType<String>()
+        .toSet();
+    final groups = _directGroups.where((group) {
+      final other = group['direct_other_user_id']?.toString();
+      return other != null && friendIds.contains(other);
+    }).toList();
+    return groups;
+  }
+
+  List<Map<String, dynamic>> get _customGroups {
+    final groups = _groups.where((group) {
+      final id = group['id']?.toString() ?? '';
+      return group['group_type'] == 'company' &&
+          group['participants_only'] == true &&
+          !_hiddenGroupIds.contains(id);
+    }).toList();
+    groups.sort((a, b) {
+      final aId = a['id']?.toString() ?? '';
+      final bId = b['id']?.toString() ?? '';
+      final aPinned = _pinnedGroupIds.contains(aId);
+      final bPinned = _pinnedGroupIds.contains(bId);
+      if (aPinned != bPinned) return aPinned ? -1 : 1;
+      return _lastActivity(b).compareTo(_lastActivity(a));
+    });
+    return groups;
+  }
+
   List<Map<String, dynamic>> get _partnerGroups {
     final groups =
         _groups.where((g) => g['group_type'] == 'partner').toList();
@@ -728,43 +1076,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
     );
     return groups;
-  }
-
-  List<Map<String, dynamic>> get _filteredMembers {
-    final query = _memberSearch.text.trim().toLowerCase();
-    final directActivityByUser = <String, DateTime>{};
-    for (final group in _directGroups) {
-      final other = group['direct_other_user_id']?.toString();
-      if (other != null) {
-        directActivityByUser[other] = _lastActivity(group);
-      }
-    }
-
-    final members = _members.where((member) {
-      if (query.isEmpty) return true;
-      return (member['display_name'] ?? '')
-          .toString()
-          .toLowerCase()
-          .contains(query);
-    }).toList();
-
-    members.sort((a, b) {
-      final aId = a['user_id']?.toString() ?? '';
-      final bId = b['user_id']?.toString() ?? '';
-      final aDate = directActivityByUser[aId];
-      final bDate = directActivityByUser[bId];
-      if (aDate != null || bDate != null) {
-        if (aDate == null) return 1;
-        if (bDate == null) return -1;
-        final byDate = bDate.compareTo(aDate);
-        if (byDate != 0) return byDate;
-      }
-      return (a['display_name'] ?? '')
-          .toString()
-          .compareTo((b['display_name'] ?? '').toString());
-    });
-
-    return members;
   }
 
   DateTime _lastActivity(Map<String, dynamic> group) =>
@@ -849,9 +1160,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 ),
               ),
         actions: [
+          TextButton.icon(
+            onPressed: _openFriendsForChat,
+            icon: const Icon(Icons.people_outline),
+            label: const Text(
+              '友達一覧',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
           IconButton(
             tooltip: SkoLanguageController.tr('友達追加'),
-            onPressed: _openFriends,
+            onPressed: _openFriendManagement,
             icon: const Icon(Icons.person_add_alt_1_outlined),
           ),
           const SkoNotificationBell(),
@@ -926,15 +1245,31 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                               emptyText: SkoLanguageController.tr('トークはまだありません'),
                             )
                           : _conversationView(),
-                      _ChatTab.site => _groupList(
-                          _siteGroups,
-                          emptyText: SkoLanguageController.tr('現場トークはまだありません'),
-                        ),
-                      _ChatTab.direct => _directList(),
-                      _ChatTab.partner => _groupList(
-                          _partnerGroups,
-                          emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
-                        ),
+                      _ChatTab.friends => _selectedGroupId != null &&
+                              selected?['group_type'] == 'direct'
+                          ? _conversationView()
+                          : _groupList(
+                              _friendGroups,
+                              emptyText: SkoLanguageController.tr('友達とのトークはまだありません'),
+                            ),
+                      _ChatTab.site => _selectedGroupId != null &&
+                              selected?['group_type'] == 'site'
+                          ? _conversationView()
+                          : _groupList(
+                              _siteGroups,
+                              emptyText: SkoLanguageController.tr('現場トークはまだありません'),
+                            ),
+                      _ChatTab.groups => _selectedGroupId != null &&
+                              _isCustomGroup(selected)
+                          ? _conversationView()
+                          : _groupWorkspace(),
+                      _ChatTab.partner => _selectedGroupId != null &&
+                              selected?['group_type'] == 'partner'
+                          ? _conversationView()
+                          : _groupList(
+                              _partnerGroups,
+                              emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
+                            ),
                     },
                   ),
                 ],
@@ -949,8 +1284,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Widget _tabs() {
     final tabs = <(_ChatTab, String)>[
       (_ChatTab.all, SkoLanguageController.tr('すべて')),
+      (_ChatTab.friends, SkoLanguageController.tr('友達')),
       (_ChatTab.site, SkoLanguageController.tr('現場')),
-      (_ChatTab.direct, SkoLanguageController.tr('個別')),
+      (_ChatTab.groups, SkoLanguageController.tr('グループ')),
       if (_canManagePartnerChat)
         (_ChatTab.partner, SkoLanguageController.tr('協力会社')),
     ];
@@ -961,7 +1297,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .colorScheme
           .surface
           .withValues(alpha: _appearance.headerAlpha),
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+      padding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
       child: Row(
         children: [
           for (var index = 0; index < tabs.length; index++) ...[
@@ -971,7 +1307,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                 label: tabs[index].$2,
               ),
             ),
-            if (index < tabs.length - 1) const SizedBox(width: 5),
+            if (index < tabs.length - 1) const SizedBox(width: 3),
           ],
         ],
       ),
@@ -1001,7 +1337,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             softWrap: false,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
               color: selected
                   ? scheme.onPrimaryContainer
@@ -1055,6 +1391,21 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               _error!,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        if (_isCustomGroup(_selectedGroup))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _inviteFriendToSelectedGroup,
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: const Text(
+                  '友達を招待',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
             ),
           ),
@@ -1144,9 +1495,223 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     );
   }
 
+  bool _isCustomGroup(Map<String, dynamic>? group) =>
+      group != null &&
+      group['group_type'] == 'company' &&
+      group['participants_only'] == true;
+
+  Widget _groupWorkspace() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _createCustomGroup,
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text(
+                'グループチャット作成',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ),
+        if (_pendingGroupInvites.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+            child: Card(
+              child: Column(
+                children: [
+                  const ListTile(
+                    leading: Icon(Icons.mark_email_unread_outlined),
+                    title: Text(
+                      'グループ招待',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  for (final invite in _pendingGroupInvites)
+                    ListTile(
+                      title: Text(
+                        invite['group_name']?.toString() ?? 'グループ',
+                      ),
+                      subtitle: Text(
+                        '${invite['inviter_name']?.toString() ?? 'SKOユーザー'}さんから招待',
+                      ),
+                      trailing: Wrap(
+                        spacing: 4,
+                        children: [
+                          IconButton(
+                            tooltip: '拒否',
+                            onPressed: () => _respondGroupInvite(invite, false),
+                            icon: const Icon(Icons.close),
+                          ),
+                          IconButton(
+                            tooltip: '承認',
+                            onPressed: () => _respondGroupInvite(invite, true),
+                            icon: const Icon(Icons.check_circle_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        Expanded(
+          child: _groupList(
+            _customGroups,
+            emptyText: 'グループチャットはまだありません',
+            enableGroupActions: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _handleCustomGroupSwipe(
+    Map<String, dynamic> group,
+    DismissDirection direction,
+  ) async {
+    if (direction == DismissDirection.endToStart) {
+      await _showCustomGroupLeftActions(group);
+    } else if (direction == DismissDirection.startToEnd) {
+      await _showCustomGroupRightActions(group);
+    }
+    return false;
+  }
+
+  Future<void> _showCustomGroupLeftActions(
+    Map<String, dynamic> group,
+  ) async {
+    final groupId = group['id']?.toString() ?? '';
+    if (groupId.isEmpty) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: const Text('非表示'),
+              onTap: () => Navigator.pop(sheetContext, 'hide'),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(sheetContext).colorScheme.error,
+              ),
+              title: Text(
+                '削除',
+                style: TextStyle(
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'hide') {
+      setState(() => _hiddenGroupIds.add(groupId));
+      await _saveListPreference('hidden', _hiddenGroupIds);
+      return;
+    }
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('グループを削除しますか？'),
+          content: const Text('この操作は元に戻せません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('削除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      try {
+        await _repository?.deleteCustomGroup(groupId);
+        await _load();
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('グループを削除できませんでした: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showCustomGroupRightActions(
+    Map<String, dynamic> group,
+  ) async {
+    final groupId = group['id']?.toString() ?? '';
+    if (groupId.isEmpty) return;
+    final pinned = _pinnedGroupIds.contains(groupId);
+    final muted = _mutedGroupIds.contains(groupId);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(
+                pinned ? Icons.push_pin : Icons.push_pin_outlined,
+              ),
+              title: Text(pinned ? 'ピン留めを解除' : '上位にピン留め'),
+              onTap: () => Navigator.pop(sheetContext, 'pin'),
+            ),
+            ListTile(
+              leading: Icon(
+                muted
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_active_outlined,
+              ),
+              title: Text(
+                muted ? '通知音をON' : '通知音をOFF',
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'sound'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'pin') {
+      setState(() {
+        if (pinned) {
+          _pinnedGroupIds.remove(groupId);
+        } else {
+          _pinnedGroupIds.add(groupId);
+        }
+      });
+      await _saveListPreference('pinned', _pinnedGroupIds);
+    } else if (action == 'sound') {
+      setState(() {
+        if (muted) {
+          _mutedGroupIds.remove(groupId);
+        } else {
+          _mutedGroupIds.add(groupId);
+        }
+      });
+      await _saveListPreference('muted', _mutedGroupIds);
+    }
+  }
+
   Widget _groupList(
     List<Map<String, dynamic>> groups, {
     required String emptyText,
+    bool enableGroupActions = false,
   }) {
     if (groups.isEmpty) {
       return Center(child: Text(emptyText));
@@ -1161,7 +1726,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         final selected =
             group['id']?.toString() == _selectedGroupId;
 
-        return Card(
+        final card = Card(
           child: ListTile(
             leading: CircleAvatar(
               backgroundImage: group['avatar_url'] == null
@@ -1200,67 +1765,58 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             onTap: () => _selectGroup(group['id'].toString()),
           ),
         );
-      },
-    );
-  }
 
-  Widget _directList() {
-    final members = _filteredMembers;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 5),
-          child: TextField(
-            controller: _memberSearch,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              labelText: SkoLanguageController.tr('社員を検索'),
-              hintText: SkoLanguageController.tr('名前を入力'),
+        if (!enableGroupActions || !_isCustomGroup(group)) {
+          return card;
+        }
+
+        final groupId = group['id']?.toString() ?? '';
+        return Dismissible(
+          key: ValueKey('custom-group-$groupId'),
+          confirmDismiss: (direction) =>
+              _handleCustomGroupSwipe(group, direction),
+          background: Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
             ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-        Expanded(
-          child: members.isEmpty
-              ? Center(child: Text(SkoLanguageController.tr('該当するメンバーはいません')))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
-                  itemCount: members.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: 6),
-                  itemBuilder: (context, index) {
-                    final member = members[index];
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: member['avatar_url'] == null
-                              ? null
-                              : NetworkImage(
-                                  member['avatar_url'].toString(),
-                                ),
-                          child: member['avatar_url'] == null
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
-                        title: Text(
-                          member['display_name']?.toString() ??
-                              SkoLanguageController.tr('メンバー'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        subtitle: Text(
-                          member['role']?.toString() ?? '',
-                        ),
-                        trailing:
-                            const Icon(Icons.chat_bubble_outline),
-                        onTap: () => _startDirect(member),
-                      ),
-                    );
-                  },
+            child: Row(
+              children: [
+                Icon(
+                  _pinnedGroupIds.contains(groupId)
+                      ? Icons.push_pin
+                      : Icons.push_pin_outlined,
                 ),
-        ),
-      ],
+                const SizedBox(width: 10),
+                Icon(
+                  _mutedGroupIds.contains(groupId)
+                      ? Icons.notifications_off_outlined
+                      : Icons.notifications_active_outlined,
+                ),
+              ],
+            ),
+          ),
+          secondaryBackground: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(Icons.visibility_off_outlined),
+                SizedBox(width: 10),
+                Icon(Icons.delete_outline),
+              ],
+            ),
+          ),
+          child: card,
+        );
+      },
     );
   }
 
