@@ -20,7 +20,8 @@ void main() {
     expect(app, contains("'clock_in' => 'clock_in'"));
     expect(app, contains("'clock_out' => 'clock_out'"));
     expect(app, contains("'vehicle_routes' => 'vehicle_routes'"));
-    expect(app, contains("'company_deliveries' => 'company_connection'"));
+    expect(app, contains("'company_deliveries' || 'trade_companies' || 'subcontractors'"));
+    expect(app, contains("'company_connection'"));
 
     final permissionCheck = app.indexOf(
       "if (permission != null && !_identity.can(permission))",
