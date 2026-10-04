@@ -216,3 +216,65 @@ class TradeCompanyRepository {
     );
   }
 }
+
+
+class TradeCompanyCalculationConflict {
+  const TradeCompanyCalculationConflict({
+    required this.siteId,
+    required this.siteName,
+    required this.outputType,
+    required this.siteSettingConfigured,
+    required this.tradeCompanySettingConfigured,
+    required this.conflict,
+    required this.selectedSource,
+  });
+
+  final String siteId;
+  final String siteName;
+  final String outputType;
+  final bool siteSettingConfigured;
+  final bool tradeCompanySettingConfigured;
+  final bool conflict;
+  final String? selectedSource;
+
+  String get outputLabel => switch (outputType) {
+        'invoice' => '請求書',
+        'payment_certificate' => '支払証明書',
+        'payroll' => '給料明細',
+        _ => outputType,
+      };
+
+  factory TradeCompanyCalculationConflict.fromJson(
+    Map<String, dynamic> row,
+  ) {
+    return TradeCompanyCalculationConflict(
+      siteId: row['site_id']?.toString() ?? '',
+      siteName: row['site_name']?.toString() ?? '',
+      outputType: row['output_type']?.toString() ?? '',
+      siteSettingConfigured: row['site_setting_configured'] == true,
+      tradeCompanySettingConfigured:
+          row['trade_company_setting_configured'] == true,
+      conflict: row['conflict'] == true,
+      selectedSource: row['selected_source']?.toString(),
+    );
+  }
+}
+
+extension TradeCompanyConflictRepository on TradeCompanyRepository {
+  Future<List<TradeCompanyCalculationConflict>> calculationConflicts(
+    String tradeCompanyId,
+  ) async {
+    final raw = await _client.rpc(
+      'trade_company_calculation_conflicts',
+      params: {'p_trade_company_id': tradeCompanyId},
+    );
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          TradeCompanyCalculationConflict.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+    ];
+  }
+}
