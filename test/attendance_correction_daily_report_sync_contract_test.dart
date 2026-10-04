@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('approved attendance correction syncs worker-level daily report fields', () {
     final sql = File(
-      'supabase/migrations/20261003170400_sync_attendance_corrections_to_daily_report_workers.sql',
+      'supabase/migrations/20261003170035_sync_attendance_corrections_to_daily_report_workers.sql',
     ).readAsStringSync();
     expect(sql, contains('source_report_id'));
     expect(sql, contains('update public.daily_report_workers'));
