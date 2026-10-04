@@ -1075,14 +1075,14 @@ class _HomePageState extends State<HomePage> {
       if (_identity.isManagement)
         _MenuAction(
           key: 'company_deliveries',
-          label: SkoLanguageController.tr('協力会社'),
+          label: SkoLanguageController.tr('協力会社情報'),
           icon: Icons.folder_shared_outlined,
           accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_identity.isManagement)
         _MenuAction(
           key: 'trade_companies',
-          label: SkoLanguageController.tr('取引会社'),
+          label: SkoLanguageController.tr('取引会社登録'),
           icon: Icons.business_center_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
@@ -1090,7 +1090,7 @@ class _HomePageState extends State<HomePage> {
       if (_identity.isManagement)
         _MenuAction(
           key: 'subcontractors',
-          label: SkoLanguageController.tr('下請け会社'),
+          label: SkoLanguageController.tr('協力会社登録'),
           icon: Icons.handshake_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
