@@ -7,6 +7,7 @@ class MenuHelpItem {
     required this.purpose,
     required this.destination,
     required this.access,
+    this.details = '',
     this.roles = const <ManualRole>{
       ManualRole.general,
       ManualRole.subAdmin,
@@ -19,6 +20,7 @@ class MenuHelpItem {
   final String purpose;
   final String destination;
   final String access;
+  final String details;
   final Set<ManualRole> roles;
 }
 
@@ -26,9 +28,9 @@ class MenuHelpCatalog {
   const MenuHelpCatalog._();
 
   static const items = <MenuHelpItem>[
-    MenuHelpItem(key: 'attendance', label: '出勤表', purpose: '週間・月間の勤務実績、残業、早出、夜間、手当を確認します。', destination: '出勤表の週間画面へ移動します。月間・A4プレビューも開けます。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'attendance', label: '出勤表', purpose: '週間・月間の勤務実績、残業、早出、夜間、手当を確認します。', destination: '出勤表の週間画面へ移動します。月間・A4プレビューも開けます。', access: '管理者・サブ管理者・一般・閲覧権限', details: '今日の勤務日は枠で確認できます。週/月を切り替え、月間集計では出勤日数・残業・早出・夜間・回数制手当を確認できます。過去勤務の修正が必要な場合は勤務修正の申請へ進みます。'),
     MenuHelpItem(key: 'daily_report', label: '日報', purpose: '作業内容、勤務時間、手当、責任者サインを記録します。', destination: '日報入力・確認画面へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
-    MenuHelpItem(key: 'chat', label: 'チャット', purpose: '現場・個別・協力会社との連絡、写真、ファイルを扱います。', destination: 'チャット一覧へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'chat', label: 'チャット', purpose: '現場・友達・グループ・協力会社との連絡、写真、ファイルを扱います。', destination: '「すべて / 友達 / 現場 / グループ / 協力会社」のタブがあるチャット一覧へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限', details: '友達の氏名をタップすると個別トークを開始できます。グループでは友達招待、承認/拒否、メンバー確認、脱退、メンバー追放ができます。グループを右スワイプするとピン留め・通知音、左スワイプすると非表示・削除を選べます。現場タブには利用権限のある現場チャットが表示されます。'),
     MenuHelpItem(key: 'site_register', label: '現場登録', purpose: '新しい現場の基本情報、住所、最寄駅、責任者等を登録します。', destination: '現場登録画面へ移動します。', access: '現場登録を許可された利用者'),
     MenuHelpItem(key: 'people', label: '社員', purpose: '自社社員の基本情報、資格、必要書類を確認・管理します。', destination: '社員一覧へ移動します。', access: '管理者・サブ管理者・社員閲覧権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'employee_register', label: '従業員登録', purpose: '名前と電話番号から初回利用者を登録し、QR/初期パスを案内します。', destination: '従業員登録画面へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
@@ -41,8 +43,8 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'company_documents', label: '会社提出書類', purpose: '会社単位で提出するPDF・画像を登録し、接続会社へ送信します。', destination: '会社提出書類一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'signatures', label: 'サイン一覧', purpose: '日報に保存済みの責任者・代表者・監督者サインを確認し、接続済み親会社へ送信します。', destination: 'サイン一覧へ移動します。', access: '管理者', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'company_deliveries', label: '協力会社', purpose: '協力会社から受信した社員・資格・必要書類・会社提出書類を会社別に確認します。', destination: '協力会社一覧・受信データ画面へ移動します。', access: '管理者', roles: {ManualRole.admin}),
-    MenuHelpItem(key: 'trade_companies', label: '取引会社', purpose: 'SKO連携あり・なしを問わず取引会社を登録し、1日・月・平米・請負の契約金額を設定します。', destination: '取引会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者', roles: {ManualRole.admin}),
-    MenuHelpItem(key: 'subcontractors', label: '下請け会社', purpose: 'SKO連携なしの下請け会社も登録し、支払証明書に使う契約金額を設定します。', destination: '下請け会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者', roles: {ManualRole.admin}),
+    MenuHelpItem(key: 'trade_companies', label: '取引会社', purpose: 'SKO連携あり・なしを問わず取引会社を登録し、1日・月・平米・請負の契約金額を設定します。', destination: '取引会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者・サブ管理者', details: '会社名・電話番号・住所・法人番号を登録できます。SKOを使っていない会社も登録可能です。既存SKO会社と候補一致した場合は、確認してから統合します。管理現場側にも金額設定がある場合は、どちらを計算元にするか選択します。', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'subcontractors', label: '下請け会社', purpose: 'SKO連携なしの下請け会社も登録し、支払証明書に使う契約金額を設定します。', destination: '下請け会社一覧へ移動し、会社名タップで契約設定やSKO連携候補の統合確認を行えます。', access: '管理者・サブ管理者', details: '1日単価・月単価・平米単価・請負金額を設定できます。SKO未連携の下請け会社でも支払証明書の計算対象にできます。後からSKO連携する場合は同一会社であることを確認して統合します。', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'invoices', label: '請求書', purpose: '請求内容を確認・作成し、PDFプレビュー、印刷、共有を行います。', destination: '第2認証後、請求書画面へ移動します。', access: '管理者・請求書閲覧権限', roles: {ManualRole.admin}),
     MenuHelpItem(key: 'site_map', label: '現場マップ', purpose: '現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。', destination: 'Googleマップ一覧へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'admin_sites', label: '管理現場', purpose: '現場単価や管理者向け現場データを確認します。', destination: '第2認証後、管理現場画面へ移動します。', access: '管理者・現場データ閲覧権限', roles: {ManualRole.admin}),
@@ -53,8 +55,8 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'approvals', label: '承認待ち', purpose: '日報修正等の承認申請を確認して承認・却下します。', destination: '承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'today_line', label: '本日のLINE出勤候補', purpose: 'LINE連携から取り込んだ出勤候補を確認します。', destination: '本日のLINE出勤候補画面へ移動します。', access: '管理者・勤怠管理権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'appearance', label: '背景・ヘッダー・フッター設定', purpose: '自分のホーム壁紙と、ボタン・カード・ヘッダー・フッターの透明度を調整します。', destination: '個人用のホーム外観設定画面へ移動します。', access: '本人のみ。ほかの利用者には影響しません'),
-    MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります'),
-    MenuHelpItem(key: 'help', label: 'ヘルプ', purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。', destination: 'このヘルプ画面です。', access: '管理者・サブ管理者・一般・閲覧権限'),
+    MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価、通知音、フローティングヘルプ等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります', details: '利用できる設定だけが表示されます。フローティングヘルプをONにすると、画面上の「？」からいつでも使い方を確認できます。通知音はアプリ全体とグループ単位で分けて設定できます。'),
+    MenuHelpItem(key: 'help', label: 'ヘルプ', purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。', destination: 'このヘルプ画面です。', access: '管理者・サブ管理者・一般・閲覧権限', details: '画面右側の「？」は長押しして好きな位置へ移動できます。タップすると現在画面の説明が最初に出ます。検索欄には「出勤」「日報」「チャット」「給与」「現場」などの機能名を入力して使い方を探せます。'),
   ];
 
   static List<MenuHelpItem> visibleFor({
