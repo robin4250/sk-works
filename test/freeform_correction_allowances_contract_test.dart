@@ -7,8 +7,8 @@ void main() {
     final page = File('lib/features/attendance/bulk_attendance_correction_page.dart').readAsStringSync();
     final repo = File('lib/features/attendance/attendance_correction_repository.dart').readAsStringSync();
     expect(page, contains("'手当を追加'"));
-    expect(page, contains('allowanceControllers.add'));
-    expect(page, contains('allowanceControllers.removeAt'));
+    expect(page, contains('_allowances.add'));
+    expect(page, contains('_allowances.removeAt'));
     expect(page, contains("'allowanceNames': allowanceNames"));
     expect(repo, contains("'allowance_names'"));
     expect(repo, contains('allowanceNames'));
