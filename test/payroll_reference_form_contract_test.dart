@@ -11,8 +11,9 @@ void main() {
     expect(source, contains("'総支給額'"));
     expect(source, contains("'総控除額'"));
     expect(source, contains("'差引支給額'"));
-    expect(source, contains("'支給・控除内訳'"));
+    expect(source, contains("'勤怠・支給・控除'"));
     expect(source, contains('pw.Table('));
+    expect(source, contains('PdfPageFormat.a4.landscape'));
     expect(source, contains('PdfColors.blueGrey100'));
     expect(source, contains("statement.reviewConfirmed ? '確認済み' : '未確定'"));
   });
