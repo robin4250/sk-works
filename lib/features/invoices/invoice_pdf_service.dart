@@ -185,81 +185,116 @@ class InvoicePdfService {
       settings?.bankAccountNumber ?? '',
     ].where((value) => value.trim().isNotEmpty).join('　');
 
-    final subject = invoice.siteCalculations
-        .map((site) => site.siteName)
-        .where((name) => name.trim().isNotEmpty)
-        .join('・');
+    final subject = (settings?.invoiceSubject ?? '').trim();
+    final issueDate = invoice.issueDate ?? _monthEnd(invoice);
+    final workPeriod = _workPeriod(invoice);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+        pw.Stack(
           children: [
-            pw.Expanded(
-              flex: 3,
+            pw.Align(
+              alignment: pw.Alignment.topCenter,
+              child: pw.Text(
+                '御　請　求　書',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                  color: blue,
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 4,
+                ),
+              ),
+            ),
+            pw.Align(
+              alignment: pw.Alignment.topRight,
               child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text(
-                    '御　請　求　書',
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      color: blue,
-                      fontSize: 24,
-                      fontWeight: pw.FontWeight.bold,
-                      letterSpacing: 4,
-                    ),
+                    _dateJa(issueDate),
+                    style: const pw.TextStyle(fontSize: 10),
                   ),
-                  pw.SizedBox(height: 12),
-                  pw.Container(
-                    padding: const pw.EdgeInsets.only(bottom: 4),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border(
-                        bottom: pw.BorderSide(color: blue, width: 1.4),
-                      ),
-                    ),
-                    child: pw.Row(
-                      children: [
-                        pw.Expanded(
-                          child: pw.Text(
-                            invoice.customerId,
-                            style: pw.TextStyle(
-                              fontSize: 17,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        pw.Text('御中', style: pw.TextStyle(color: blue)),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 8),
                   pw.Text(
-                    '下記の通り、御請求申し上げますので、お支払約定日までに、\n'
-                    '下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
-                    style: pw.TextStyle(fontSize: 8.5, color: blue),
+                    '請求書番号：${invoice.invoiceNumber}',
+                    style: pw.TextStyle(fontSize: 8, color: blue),
                   ),
                 ],
               ),
             ),
-            pw.SizedBox(width: 16),
+          ],
+        ),
+        pw.SizedBox(height: 18),
+        pw.Container(
+          padding: const pw.EdgeInsets.only(bottom: 4),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(
+              bottom: pw.BorderSide(color: blue, width: 1.4),
+            ),
+          ),
+          child: pw.Text(
+            '${invoice.customerId}　御中',
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              fontSize: 17,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+        pw.SizedBox(height: 8),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                '下記の通り、御請求申し上げますので、お支払約定日までに、\n'
+                '下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
+                style: pw.TextStyle(fontSize: 8.5, color: blue),
+              ),
+            ),
+            pw.SizedBox(width: 14),
             pw.SizedBox(
-              width: 170,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
+              width: 220,
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text(invoice.billingPeriod, style: const pw.TextStyle(fontSize: 10)),
-                  pw.Text('請求書番号：', style: pw.TextStyle(fontSize: 8, color: blue)),
-                  pw.SizedBox(height: 13),
-                  pw.Text(
-                    (settings?.companyName ?? '').trim().isEmpty
-                        ? '会社情報'
-                        : settings!.companyName,
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text(
+                          settings?.companyName ?? '',
+                          style: pw.TextStyle(
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        if ((settings?.companyPostalCode ?? '').isNotEmpty)
+                          pw.Text(
+                            '〒${settings!.companyPostalCode}',
+                            style: const pw.TextStyle(fontSize: 7.5),
+                          ),
+                        if ((settings?.companyAddress ?? '').isNotEmpty)
+                          pw.Text(
+                            settings!.companyAddress,
+                            style: const pw.TextStyle(fontSize: 7.5),
+                          ),
+                        if ((settings?.companyPhone ?? '').isNotEmpty)
+                          pw.Text(
+                            'TEL：${settings!.companyPhone}',
+                            style: const pw.TextStyle(fontSize: 7.5),
+                          ),
+                        if ((settings?.companyFax ?? '').isNotEmpty)
+                          pw.Text(
+                            'FAX：${settings!.companyFax}',
+                            style: const pw.TextStyle(fontSize: 7.5),
+                          ),
+                      ],
                     ),
                   ),
+                  pw.SizedBox(width: 7),
+                  _companySeal(settings?.companyName ?? ''),
                 ],
               ),
             ),
@@ -332,7 +367,10 @@ class InvoicePdfService {
                 border: pw.Border.all(color: blue, width: .8),
               ),
               alignment: pw.Alignment.center,
-              child: pw.Text('確認印', style: pw.TextStyle(color: blue, fontSize: 10)),
+              child: _confirmationStamp(
+                settings?.invoiceContactName ?? '',
+                issueDate,
+              ),
             ),
           ],
         ),
@@ -358,9 +396,23 @@ class InvoicePdfService {
               pw.Expanded(
                 child: pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 7),
-                  child: pw.Text(
-                    '${subject.isEmpty ? invoice.billingPeriod : subject}　${invoice.billingPeriod}',
-                    style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(
+                        child: pw.Text(
+                          subject.isEmpty ? '件名未設定' : subject,
+                          style: pw.TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      pw.Text(
+                        workPeriod,
+                        textAlign: pw.TextAlign.right,
+                        style: const pw.TextStyle(fontSize: 8),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -454,7 +506,12 @@ class InvoicePdfService {
               ),
               pw.Expanded(
                 child: pw.Center(
-                  child: pw.Text('請求書設定に従う', style: const pw.TextStyle(fontSize: 9)),
+                  child: pw.Text(
+                    (settings?.paymentDueText ?? '').trim().isEmpty
+                        ? '未設定'
+                        : settings!.paymentDueText,
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
                 ),
               ),
               pw.Container(
@@ -497,6 +554,83 @@ class InvoicePdfService {
       ],
     );
   }
+
+  static pw.Widget _confirmationStamp(String name, DateTime date) {
+    final red = PdfColor.fromHex('#B83232');
+    final label = name.trim().isEmpty ? '担当者' : name.trim();
+    return pw.Container(
+      width: 58,
+      height: 58,
+      decoration: pw.BoxDecoration(
+        shape: pw.BoxShape.circle,
+        border: pw.Border.all(color: red, width: 1.5),
+      ),
+      alignment: pw.Alignment.center,
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        children: [
+          pw.Text('確認', style: pw.TextStyle(color: red, fontSize: 7)),
+          pw.Text(
+            '${date.year}.${date.month}.${date.day}',
+            style: pw.TextStyle(color: red, fontSize: 6),
+          ),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              color: red,
+              fontSize: 8,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _companySeal(String companyName) {
+    final red = PdfColor.fromHex('#B83232');
+    final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
+    return pw.Container(
+      width: 48,
+      height: 48,
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: red, width: 1.5),
+      ),
+      padding: const pw.EdgeInsets.all(3),
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        text,
+        textAlign: pw.TextAlign.center,
+        maxLines: 4,
+        style: pw.TextStyle(
+          color: red,
+          fontSize: 6.5,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  static DateTime _monthEnd(InvoiceCalculationResult invoice) {
+    if (invoice.periodEnd != null) return invoice.periodEnd!;
+    final match = RegExp(r'(\\d{4})年(\\d{1,2})月').firstMatch(
+      invoice.billingPeriod,
+    );
+    if (match == null) return DateTime.now();
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    return DateTime(year, month + 1, 0);
+  }
+
+  static String _workPeriod(InvoiceCalculationResult invoice) {
+    final end = _monthEnd(invoice);
+    final start = invoice.periodStart ?? DateTime(end.year, end.month, 1);
+    return '${start.year}年${start.month}月${start.day}日'
+        '～${end.year}年${end.month}月${end.day}日';
+  }
+
+  static String _dateJa(DateTime value) =>
+      '${value.year}年${value.month}月${value.day}日';
 
   static Future<InvoiceSettingsData?> _loadSettings() async {
     final repository = InvoiceSettingsRepository.maybeCreate();
@@ -648,7 +782,17 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return PdfPreview(
+          return Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  'ピンチ操作で拡大・縮小できます',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Expanded(
+                child: PdfPreview(
             initialPageFormat: PdfPageFormat.a4,
             canChangePageFormat: false,
             canChangeOrientation: false,
@@ -663,6 +807,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               title: widget.title,
               settings: snapshot.data,
             ),
+                ),
+              ),
+            ],
           );
         },
       ),
