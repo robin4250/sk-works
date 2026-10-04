@@ -21,6 +21,8 @@ void main() {
     expect(app, contains("SkoLanguageController.tr('取引会社登録')"));
     expect(app, contains("SkoLanguageController.tr('協力会社登録')"));
     expect(app, contains("SkoLanguageController.tr('協力会社情報')"));
+    expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
+    expect(app, contains("if (_identity.isManagement)"));
   });
 
   test('company contract supports all requested calculation methods', () {
@@ -72,6 +74,7 @@ void main() {
       'supabase/migrations/20261004134247_sync_trade_company_directory_sources.sql',
       'supabase/migrations/20261004140858_apply_trade_company_calculation_source.sql',
       'supabase/migrations/20261004141035_refresh_outputs_after_trade_contract_change.sql',
+      'supabase/migrations/20261004190642_fix_trade_company_subadmin_rpc_access.sql',
     ]) {
       expect(File(path).existsSync(), isTrue, reason: path);
     }
