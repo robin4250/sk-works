@@ -159,3 +159,66 @@ revoke all on function public.save_invoice_settings_v2(
 grant execute on function public.save_invoice_settings_v2(
   numeric,numeric,text,text,text,text,text,text,text,text,text,text
 ) to authenticated;
+
+
+create or replace function public.invoice_document_settings()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_company_id uuid;
+  v_result jsonb;
+begin
+  if v_user_id is null then
+    raise exception 'authentication required';
+  end if;
+
+  select cm.company_id
+  into v_company_id
+  from public.company_members cm
+  where cm.user_id = v_user_id
+  limit 1;
+
+  if v_company_id is null
+     or not private.has_company_feature(v_company_id, 'can_view_invoices') then
+    raise exception 'invoice view permission required';
+  end if;
+
+  select jsonb_build_object(
+    'company_name', c.name,
+    'company_postal_code', coalesce(c.postal_code, ''),
+    'company_address', coalesce(c.address, ''),
+    'company_phone', coalesce(c.phone, ''),
+    'company_fax', coalesce(c.fax, ''),
+    'tax_rate', c.tax_rate,
+    'welfare_rate', c.default_welfare_rate,
+    'template_title', c.invoice_template_title,
+    'footer_note', coalesce(c.invoice_footer_note, ''),
+    'bank_name', coalesce(b.bank_name, ''),
+    'bank_branch', coalesce(b.bank_branch, ''),
+    'bank_account_type', coalesce(b.bank_account_type, ''),
+    'bank_account_number', coalesce(b.bank_account_number, ''),
+    'bank_account_holder', coalesce(b.bank_account_holder, ''),
+    'invoice_subject', coalesce(b.invoice_subject, ''),
+    'invoice_contact_name', coalesce(b.invoice_contact_name, ''),
+    'payment_due_text', coalesce(b.payment_due_text, '')
+  )
+  into v_result
+  from public.companies c
+  left join public.company_private_billing_settings b
+    on b.company_id = c.id
+  where c.id = v_company_id;
+
+  return coalesce(v_result, '{}'::jsonb);
+end;
+$function$;
+
+revoke all on function public.invoice_document_settings()
+from public, anon;
+
+grant execute on function public.invoice_document_settings()
+to authenticated;
