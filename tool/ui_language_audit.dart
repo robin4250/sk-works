@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:io';
 
 final japanese = RegExp(r'''['"\x60][^'"\x60\n]*[\u3040-\u30ff\u3400-\u9fff][^'"\x60\n]*['"\x60]''');
