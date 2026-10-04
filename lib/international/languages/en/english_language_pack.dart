@@ -309,6 +309,9 @@ const englishLanguagePack = LanguagePack(
     'SKO従業員登録用のQRコードではありません。': 'This is not an SKO employee registration QR code.',
     'SKO利用者が表示した従業員登録QRコードをカメラで読み取ると、初期ログイン情報が自動入力されます。': 'Scan the employee registration QR code shown by an SKO user to fill in the initial sign-in information automatically.',
     'SKOを利用している人が表示した従業員登録QRコードを枠内に映してください。': 'Place the employee registration QR code shown by an SKO user inside the frame.',
+    'ヘルプ表示': 'Help Display',
+    'フローティングヘルプ': 'Floating Help',
+    'ONにすると画面右下の？ボタンからいつでも使い方を確認できます。ボタンは長押しで好きな位置へ移動できます。': 'When ON, use the ? button at the lower-right to get help anytime. Long-press and drag the button to move it anywhere on the screen.',
     '設定を保存しました': 'Settings saved',
   },
 );
