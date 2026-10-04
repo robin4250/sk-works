@@ -13,7 +13,7 @@ class FloatingHelpController {
 
   static final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
   static final ValueNotifier<double> xFraction = ValueNotifier<double>(1.0);
-  static final ValueNotifier<double> yFraction = ValueNotifier<double>(1.0);
+  static final ValueNotifier<double> yFraction = ValueNotifier<double>(0.88);
   static final ValueNotifier<String?> currentFeatureKey =
       ValueNotifier<String?>(null);
   static final ValueNotifier<ManualRole> role =
@@ -25,7 +25,7 @@ class FloatingHelpController {
     final prefs = await SharedPreferences.getInstance();
     enabled.value = prefs.getBool(_enabledKey) ?? true;
     xFraction.value = (prefs.getDouble(_xKey) ?? 1.0).clamp(0.0, 1.0);
-    yFraction.value = (prefs.getDouble(_yKey) ?? 1.0).clamp(0.0, 1.0);
+    yFraction.value = (prefs.getDouble(_yKey) ?? 0.88).clamp(0.0, 1.0);
   }
 
   static Future<void> setEnabled(bool value) async {
