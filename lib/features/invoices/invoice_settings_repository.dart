@@ -14,6 +14,13 @@ class InvoiceSettingsData {
     required this.bankAccountType,
     required this.bankAccountNumber,
     required this.bankAccountHolder,
+    this.companyPostalCode = '',
+    this.companyAddress = '',
+    this.companyPhone = '',
+    this.companyFax = '',
+    this.invoiceSubject = '',
+    this.invoiceContactName = '',
+    this.paymentDueText = '',
   });
 
   final String companyName;
@@ -26,6 +33,13 @@ class InvoiceSettingsData {
   final String bankAccountType;
   final String bankAccountNumber;
   final String bankAccountHolder;
+  final String companyPostalCode;
+  final String companyAddress;
+  final String companyPhone;
+  final String companyFax;
+  final String invoiceSubject;
+  final String invoiceContactName;
+  final String paymentDueText;
 }
 
 class InvoiceSettingsRepository {
@@ -70,7 +84,8 @@ class InvoiceSettingsRepository {
     final companyRows = await _client
         .from('companies')
         .select(
-          'name, tax_rate, default_welfare_rate, '
+          'name, postal_code, address, phone, fax, '
+          'tax_rate, default_welfare_rate, '
           'invoice_template_title, invoice_footer_note',
         )
         .eq('id', companyId)
@@ -86,7 +101,8 @@ class InvoiceSettingsRepository {
         .from('company_private_billing_settings')
         .select(
           'bank_name, bank_branch, bank_account_type, '
-          'bank_account_number, bank_account_holder',
+          'bank_account_number, bank_account_holder, '
+          'invoice_subject, invoice_contact_name, payment_due_text',
         )
         .eq('company_id', companyId)
         .limit(1);
@@ -111,6 +127,40 @@ class InvoiceSettingsRepository {
           billing['bank_account_number']?.toString() ?? '',
       bankAccountHolder:
           billing['bank_account_holder']?.toString() ?? '',
+      companyPostalCode: company['postal_code']?.toString() ?? '',
+      companyAddress: company['address']?.toString() ?? '',
+      companyPhone: company['phone']?.toString() ?? '',
+      companyFax: company['fax']?.toString() ?? '',
+      invoiceSubject: billing['invoice_subject']?.toString() ?? '',
+      invoiceContactName:
+          billing['invoice_contact_name']?.toString() ?? '',
+      paymentDueText: billing['payment_due_text']?.toString() ?? '',
+    );
+  }
+
+  Future<InvoiceSettingsData> loadForDocument() async {
+    final raw = await _client.rpc('invoice_document_settings');
+    final row = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+    return InvoiceSettingsData(
+      companyName: row['company_name']?.toString() ?? '',
+      taxRate: (row['tax_rate'] as num?)?.toDouble() ?? 10,
+      welfareRate: (row['welfare_rate'] as num?)?.toDouble() ?? 0,
+      templateTitle: row['template_title']?.toString() ?? '請求書',
+      footerNote: row['footer_note']?.toString() ?? '',
+      bankName: row['bank_name']?.toString() ?? '',
+      bankBranch: row['bank_branch']?.toString() ?? '',
+      bankAccountType: row['bank_account_type']?.toString() ?? '普通',
+      bankAccountNumber: row['bank_account_number']?.toString() ?? '',
+      bankAccountHolder: row['bank_account_holder']?.toString() ?? '',
+      companyPostalCode: row['company_postal_code']?.toString() ?? '',
+      companyAddress: row['company_address']?.toString() ?? '',
+      companyPhone: row['company_phone']?.toString() ?? '',
+      companyFax: row['company_fax']?.toString() ?? '',
+      invoiceSubject: row['invoice_subject']?.toString() ?? '',
+      invoiceContactName: row['invoice_contact_name']?.toString() ?? '',
+      paymentDueText: row['payment_due_text']?.toString() ?? '',
     );
   }
 
@@ -118,7 +168,7 @@ class InvoiceSettingsRepository {
     await _companyIdForManage();
 
     await _client.rpc(
-      'save_invoice_settings',
+      'save_invoice_settings_v2',
       params: {
         'p_tax_rate': value.taxRate,
         'p_welfare_rate': value.welfareRate,
@@ -129,6 +179,9 @@ class InvoiceSettingsRepository {
         'p_bank_account_type': value.bankAccountType,
         'p_bank_account_number': value.bankAccountNumber,
         'p_bank_account_holder': value.bankAccountHolder,
+        'p_invoice_subject': value.invoiceSubject,
+        'p_invoice_contact_name': value.invoiceContactName,
+        'p_payment_due_text': value.paymentDueText,
       },
     );
   }
