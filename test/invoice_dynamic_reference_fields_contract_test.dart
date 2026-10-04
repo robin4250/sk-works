@@ -27,7 +27,7 @@ void main() {
 
     expect(pdf, contains("'御　請　求　書'"));
     expect(pdf, contains("textAlign: pw.TextAlign.center"));
-    expect(pdf, contains("'請求書番号：${invoice.invoiceNumber}'"));
+    expect(pdf, contains("'請求書番号：\${invoice.invoiceNumber}'"));
     expect(pdf, contains('_monthEnd(invoice)'));
     expect(pdf, contains('_workPeriod(invoice)'));
     expect(pdf, contains('settings?.invoiceSubject'));
