@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('approved paid leave remains replayable for future payroll', () {
     final sql = File(
-      'supabase/migrations/20261003171000_add_paid_leave_payroll_projection.sql',
+      'supabase/migrations/20261003170340_add_paid_leave_payroll_projection.sql',
     ).readAsStringSync();
     expect(sql, contains('approved_paid_leave_payroll_rows'));
     expect(sql, contains('security_invoker = true'));
