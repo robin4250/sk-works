@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
@@ -30,6 +31,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   List<ApprovalAssigneeOption> _currentApprovalAssignees = const [];
   EmployeeInviteResult? _result;
   String? _error;
+
+  String _tr(String ja, String en) =>
+      SkoLanguageController.isEnglish ? en : ja;
 
   @override
   void initState() {
@@ -67,16 +71,18 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     return showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('承認担当者は最大3名です'),
+        title: Text(_tr('承認担当者は最大3名です', 'Up to 3 approvers can be assigned')),
         content: SizedBox(
           width: 480,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                '現在登録中の3名のうち、誰か1名を外してください。'
-                '新しい従業員の本登録承認と同時に入れ替えます。',
+              Text(
+                _tr(
+                  '現在登録中の3名のうち、誰か1名を外してください。新しい従業員の本登録承認と同時に入れ替えます。',
+                  'Remove one of the 3 current approvers. The replacement will be applied when the new employee registration is approved.',
+                ),
               ),
               const SizedBox(height: 12),
               for (final item in _currentApprovalAssignees)
@@ -85,15 +91,15 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                     title: Text(item.displayName),
                     subtitle: Text(
                       item.role == 'owner'
-                          ? '管理者'
+                          ? _tr('管理者', 'Administrator')
                           : item.role == 'admin'
-                              ? '管理者'
-                              : 'サブ管理者',
+                              ? _tr('管理者', 'Administrator')
+                              : _tr('サブ管理者', 'Sub-administrator'),
                     ),
                     trailing: TextButton(
                       onPressed: () =>
                           Navigator.pop(dialogContext, item.userId),
-                      child: const Text('この人を外す'),
+                      child: Text(_tr('この人を外す', 'Remove')),
                     ),
                   ),
                 ),
@@ -103,7 +109,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('閉じる'),
+            child: Text(_tr('閉じる', 'Close')),
           ),
         ],
       ),
@@ -148,7 +154,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     final repository = _repository;
     if (repository == null) return;
     if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
-      setState(() => _error = '名前と電話番号を入力してください。');
+      setState(() => _error = _tr('名前と電話番号を入力してください。', 'Enter the employee name and phone number.'));
       return;
     }
 
@@ -158,7 +164,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       final replacement = await _chooseApprovalReplacement();
       if (!mounted) return;
       if (replacement == null) {
-        setState(() => _error = '承認担当者から外す人を選んでください。');
+        setState(() => _error = _tr('承認担当者から外す人を選んでください。', 'Choose an approver to replace.'));
         return;
       }
       _replaceApprovalAssigneeUserId = replacement;
@@ -192,11 +198,15 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   }
 
   String _shareText(EmployeeInviteResult result) =>
-      'SKOの従業員登録が作成されました。\n'
-      '電話番号: ${result.phone}\n'
-      '初期パスワード: ${result.temporaryPassword}\n'
-      'SKOアプリを開き、初期パスワードでログインしてください。'
-      '初回ログイン後に本パスワードを設定します。';
+      SkoLanguageController.isEnglish
+          ? 'An SKO employee registration has been created.\n'
+              'Phone: ${result.phone}\n'
+              'Temporary password: ${result.temporaryPassword}\n'
+              'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
+          : 'SKOの従業員登録が作成されました。\n'
+              '電話番号: ${result.phone}\n'
+              '初期パスワード: ${result.temporaryPassword}\n'
+              'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
 
   Future<void> _share(EmployeeInviteResult result) async {
     await SharePlus.instance.share(
@@ -238,9 +248,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '従業員登録',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          _tr('従業員登録', 'Employee Registration'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: SafeArea(
@@ -252,11 +262,14 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   widget.canAssignManagementRole
-                      ? '従業員登録はSKOを利用中の会社メンバーなら行えます。'
-                          '管理者はこの画面でサブ管理者・承認担当者の指定もできます。'
-                      : '従業員登録はSKOを利用中の会社メンバーなら行えます。'
-                          '一般ユーザーとして招待します。'
-                          'サブ管理者・承認担当者の指定は管理者が行います。',
+                      ? _tr(
+                          '従業員登録はSKOを利用中の会社メンバーなら行えます。管理者はこの画面でサブ管理者・承認担当者の指定もできます。',
+                          'Any company member using SKO can register an employee. Administrators can also assign sub-administrator and approval roles here.',
+                        )
+                      : _tr(
+                          '従業員登録はSKOを利用中の会社メンバーなら行えます。一般ユーザーとして招待します。サブ管理者・承認担当者の指定は管理者が行います。',
+                          'Any company member using SKO can register an employee. This invitation creates a general user. Management roles are assigned by an administrator.',
+                        ),
                 ),
               ),
             ),
@@ -264,9 +277,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
             TextField(
               controller: _name,
               enabled: result == null,
-              decoration: const InputDecoration(
-                labelText: '名前 *',
-                prefixIcon: Icon(Icons.person_outline),
+              decoration: InputDecoration(
+                labelText: _tr('名前 *', 'Name *'),
+                prefixIcon: const Icon(Icons.person_outline),
               ),
             ),
             const SizedBox(height: 12),
@@ -274,10 +287,10 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
               controller: _phone,
               enabled: result == null,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: '携帯電話番号 *',
+              decoration: InputDecoration(
+                labelText: _tr('携帯電話番号 *', 'Mobile phone number *'),
                 hintText: '09012345678',
-                prefixIcon: Icon(Icons.phone_iphone_outlined),
+                prefixIcon: const Icon(Icons.phone_iphone_outlined),
               ),
             ),
             if (widget.canAssignManagementRole && result == null) ...[
@@ -289,9 +302,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        '役割・承認権限',
-                        style: TextStyle(
+                      Text(
+                        _tr('役割・承認権限', 'Role & Approval Access'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 17,
                         ),
@@ -299,9 +312,12 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       const SizedBox(height: 6),
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('サブ管理者にする'),
-                        subtitle: const Text(
-                          '請求書・管理者用現場データ・現場単価は表示しません',
+                        title: Text(_tr('サブ管理者にする', 'Make sub-administrator')),
+                        subtitle: Text(
+                          _tr(
+                            '請求書・管理者用現場データ・現場単価は表示しません',
+                            'Invoices, administrator-only site data, and site rates remain hidden.',
+                          ),
                         ),
                         value: _makeSubAdmin,
                         onChanged: _busy
@@ -319,12 +335,13 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       ),
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('承認担当者にする'),
+                        title: Text(_tr('承認担当者にする', 'Make approval assignee')),
                         subtitle: Text(
                           _assigneeLoading
-                              ? '現在の承認担当者を確認中...'
-                              : '現在 ${_currentApprovalAssignees.length} / 3名'
-                                  '${replacementName == null ? '' : '　→ $replacementNameさんと入れ替え予定'}',
+                              ? _tr('現在の承認担当者を確認中...', 'Checking current approvers...')
+                              : SkoLanguageController.isEnglish
+                                  ? 'Current ${_currentApprovalAssignees.length} / 3${replacementName == null ? '' : ' → Replace with $replacementName'}'
+                                  : '現在 ${_currentApprovalAssignees.length} / 3名${replacementName == null ? '' : '　→ $replacementNameさんと入れ替え予定'}',
                         ),
                         value: _makeApprovalAssignee,
                         onChanged: _busy || _assigneeLoading
@@ -333,9 +350,12 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                                 _setApprovalAssignee(value ?? false),
                       ),
                       if (_makeApprovalAssignee)
-                        const Text(
-                          '承認担当者を選ぶと、サブ管理者も自動でONになります。',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                        Text(
+                          _tr(
+                            '承認担当者を選ぶと、サブ管理者も自動でONになります。',
+                            'Selecting an approval assignee also enables sub-administrator automatically.',
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                     ],
                   ),
@@ -352,7 +372,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.person_add_alt_1),
-                label: const Text('従業員登録を作成'),
+                label: Text(_tr('従業員登録を作成', 'Create Employee Registration')),
               ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -370,9 +390,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        '初期パスワードを渡してください',
-                        style: TextStyle(
+                      Text(
+                        _tr('初期パスワードを渡してください', 'Share the Temporary Password'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 20,
                         ),
@@ -381,8 +401,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         const SizedBox(height: 6),
                         Text(
                           _makeApprovalAssignee
-                              ? '本登録後：サブ管理者・承認担当者'
-                              : '本登録後：サブ管理者',
+                              ? _tr('本登録後：サブ管理者・承認担当者', 'After registration: Sub-admin + Approver')
+                              : _tr('本登録後：サブ管理者', 'After registration: Sub-administrator'),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ],
@@ -404,19 +424,19 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           );
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('初期パスワードをコピーしました'),
+                            SnackBar(
+                              content: Text(_tr('初期パスワードをコピーしました', 'Temporary password copied')),
                             ),
                           );
                         },
                         icon: const Icon(Icons.copy_outlined),
-                        label: const Text('初期パスワードをコピー'),
+                        label: Text(_tr('初期パスワードをコピー', 'Copy Temporary Password')),
                       ),
                       const SizedBox(height: 8),
                       FilledButton.icon(
                         onPressed: () => _share(result),
                         icon: const Icon(Icons.ios_share),
-                        label: const Text('SMS・メッセージなどで共有'),
+                        label: Text(_tr('SMS・メッセージなどで共有', 'Share by SMS or Message')),
                       ),
                     ],
                   ),
@@ -428,9 +448,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                   padding: const EdgeInsets.all(18),
                   child: Column(
                     children: [
-                      const Text(
-                        'QRコードで渡す',
-                        style: TextStyle(
+                      Text(
+                        _tr('QRコードで渡す', 'Share by QR Code'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 18,
                         ),
@@ -443,9 +463,11 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         backgroundColor: Colors.white,
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        '相手のSKOログイン画面で「QRコードから登録」を開き、'
-                        'このQRコードを読み取ってください。',
+                      Text(
+                        _tr(
+                          '相手のSKOログイン画面で「QRコードから登録」を開き、このQRコードを読み取ってください。',
+                          'On the recipient\'s SKO sign-in screen, open “Register from QR Code” and scan this QR code.',
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -456,7 +478,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
               FilledButton.tonalIcon(
                 onPressed: _reset,
                 icon: const Icon(Icons.person_add_alt),
-                label: const Text('続けて別の従業員を登録'),
+                label: Text(_tr('続けて別の従業員を登録', 'Register Another Employee')),
               ),
             ],
           ],
