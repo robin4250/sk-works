@@ -49,6 +49,7 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final repository = _repository;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -79,12 +80,14 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
                         ),
                       ),
                     )
-                  : TabBarView(
-                      children: [
-                        _IndividualManagementPanel(repository: _repository, workers: _workers, sites: _sites),
-                        _BulkManagementPanel(repository: _repository, workers: _workers, sites: _sites),
-                      ],
-                    ),
+                  : repository == null
+                      ? const Center(child: Text('勤怠管理を利用できません。'))
+                      : TabBarView(
+                          children: [
+                            _IndividualManagementPanel(repository: repository, workers: _workers, sites: _sites),
+                            _BulkManagementPanel(repository: repository, workers: _workers, sites: _sites),
+                          ],
+                        ),
         ),
       ),
     );
