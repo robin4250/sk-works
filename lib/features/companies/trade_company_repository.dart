@@ -113,6 +113,7 @@ class TradeCompanyRepository {
   }
 
   Future<List<TradeCompanyRecord>> loadAll() async {
+    await _client.rpc('sync_trade_company_directory');
     final raw = await _client.rpc('trade_company_workspace');
     if (raw is! List) return const [];
     return [
