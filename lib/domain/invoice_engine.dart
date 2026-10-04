@@ -92,9 +92,9 @@ class InvoiceEngine {
         'must not be empty',
       );
     }
-    if (sites.isEmpty) {
-      throw ArgumentError.value(sites, 'sites', 'must contain at least one site');
-    }
+    // Zero-value automatic drafts may legitimately have no site calculations yet
+    // when billing/customer settings are incomplete. Keep them loadable so the
+    // UI can show the draft and guide the user to complete settings.
     if (taxRateBps < 0) {
       throw ArgumentError.value(taxRateBps, 'taxRateBps', 'must be >= 0');
     }
