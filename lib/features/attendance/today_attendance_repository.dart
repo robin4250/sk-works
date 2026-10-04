@@ -34,13 +34,32 @@ class TodayAttendanceRecord {
           : (isPartner ? '下請け' : '自社');
 }
 
+
+class TodayAttendanceHistoryDay {
+  const TodayAttendanceHistoryDay({
+    required this.date,
+    required this.records,
+  });
+
+  final DateTime date;
+  final List<TodayAttendanceRecord> records;
+
+  List<TodayAttendanceRecord> get ownCompany =>
+      records.where((record) => !record.isPartner).toList(growable: false);
+
+  List<TodayAttendanceRecord> get subcontractors =>
+      records.where((record) => record.isPartner).toList(growable: false);
+}
+
 class TodayAttendanceSnapshot {
   const TodayAttendanceSnapshot({
     required this.records,
+    required this.history,
     required this.loadedAt,
   });
 
   final List<TodayAttendanceRecord> records;
+  final List<TodayAttendanceHistoryDay> history;
   final DateTime loadedAt;
 
   List<TodayAttendanceRecord> get ownCompany =>
@@ -146,7 +165,103 @@ class TodayAttendanceRepository {
         return bt.compareTo(at);
       });
 
-    return TodayAttendanceSnapshot(records: records, loadedAt: DateTime.now());
+    final history = await _loadHistory(companyId, localStart);
+    return TodayAttendanceSnapshot(
+      records: records,
+      history: history,
+      loadedAt: DateTime.now(),
+    );
+  }
+
+  Future<List<TodayAttendanceHistoryDay>> _loadHistory(
+    String companyId,
+    DateTime todayStart,
+  ) async {
+    final historyStart = todayStart.subtract(const Duration(days: 30));
+    final rows = await _client
+        .from('attendance_verifications')
+        .select(
+          'id, worker_id, site_id, event_type, confirmed_at, '
+          'workers!attendance_verifications_worker_id_fkey('
+          'id, name, affiliation, partner_company_id, '
+          'partner_companies!workers_partner_company_id_fkey(name)), '
+          'sites!attendance_verifications_site_id_fkey(id, name)',
+        )
+        .eq('company_id', companyId)
+        .gte('confirmed_at', historyStart.toUtc().toIso8601String())
+        .lt('confirmed_at', todayStart.toUtc().toIso8601String())
+        .order('confirmed_at');
+
+    final draftsByDay = <DateTime, Map<String, _TodayDraft>>{};
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw);
+      final worker = row['workers'];
+      if (worker is! Map) continue;
+
+      final workerId = row['worker_id']?.toString() ?? '';
+      if (workerId.isEmpty) continue;
+
+      final confirmed =
+          DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
+      if (confirmed == null) continue;
+
+      final day = DateTime(confirmed.year, confirmed.month, confirmed.day);
+      final byWorker = draftsByDay.putIfAbsent(day, () => <String, _TodayDraft>{});
+      final draft = byWorker.putIfAbsent(
+        workerId,
+        () => _TodayDraft(
+          workerId: workerId,
+          workerName: worker['name']?.toString().trim().isNotEmpty == true
+              ? worker['name'].toString().trim()
+              : '名前未登録',
+          affiliation: worker['affiliation']?.toString() ?? 'employee',
+          partnerCompanyName: _partnerName(worker['partner_companies']),
+        ),
+      );
+
+      final site = row['sites'];
+      if (site is Map && site['name']?.toString().trim().isNotEmpty == true) {
+        draft.siteName = site['name'].toString().trim();
+      }
+
+      final eventType = row['event_type']?.toString();
+      if (eventType == 'clock_in') {
+        if (draft.clockInAt == null || confirmed.isBefore(draft.clockInAt!)) {
+          draft.clockInAt = confirmed;
+        }
+      } else if (eventType == 'clock_out') {
+        if (draft.clockOutAt == null || confirmed.isAfter(draft.clockOutAt!)) {
+          draft.clockOutAt = confirmed;
+        }
+      }
+
+      if (draft.lastConfirmedAt == null ||
+          confirmed.isAfter(draft.lastConfirmedAt!)) {
+        draft.lastConfirmedAt = confirmed;
+        draft.lastEventType = eventType;
+      }
+    }
+
+    return [
+      for (var offset = 1; offset <= 30; offset++)
+        () {
+          final date = todayStart.subtract(Duration(days: offset));
+          final key = DateTime(date.year, date.month, date.day);
+          final records = (draftsByDay[key]?.values
+                      .map((draft) => draft.toRecord())
+                      .toList(growable: false) ??
+                  const <TodayAttendanceRecord>[])
+              .toList()
+            ..sort((a, b) {
+              final at =
+                  a.lastConfirmedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              final bt =
+                  b.lastConfirmedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              return bt.compareTo(at);
+            });
+          return TodayAttendanceHistoryDay(date: key, records: records);
+        }(),
+    ];
   }
 
   String? _partnerName(Object? value) {
