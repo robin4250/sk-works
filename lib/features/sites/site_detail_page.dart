@@ -189,7 +189,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
+            child: Text(_tr('戻る', 'Back')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -271,7 +271,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+            child: Text(_tr('戻る', 'Back')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -395,7 +395,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+            child: Text(_tr('戻る', 'Back')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
