@@ -81,6 +81,9 @@ class PayrollPdfService {
   }) {
     final headerFill = PdfColor.fromHex('#DCE8F6');
     final grid = PdfColor.fromHex('#6D89A8');
+    // Supplied payroll form: 勤怠 / 支給 / 控除 are separate roomy grids.
+    const referenceLayout = '勤怠・支給・控除';
+    assert(referenceLayout.isNotEmpty);
 
     final earningLabels = <String>[
       '基本給',
@@ -120,11 +123,11 @@ class PayrollPdfService {
                     '給与明細書',
                     textAlign: pw.TextAlign.center,
                     style: pw.TextStyle(
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
-                  pw.SizedBox(height: 5),
+                  pw.SizedBox(height: 8),
                   pw.Table(
                     border: pw.TableBorder.all(color: grid, width: .55),
                     columnWidths: const {
@@ -185,12 +188,12 @@ class PayrollPdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         _section(
           title: '勤怠',
           labels: const [
             '出勤日数',
-            '休日出勤',
+            '休出日数',
             '',
             '',
             '',
@@ -202,7 +205,7 @@ class PayrollPdfService {
           ],
           values: [
             _text(detail, '出勤日数'),
-            _text(detail, '休日出勤'),
+            _textAny(detail, const ['休出日数', '休日出勤']),
             '',
             '',
             '',
@@ -214,7 +217,7 @@ class PayrollPdfService {
           ],
           secondLabels: const [
             '残業時間',
-            '法定外出時間',
+            '法定休出時間',
             '',
             '',
             '',
@@ -226,7 +229,7 @@ class PayrollPdfService {
           ],
           secondValues: [
             _text(detail, '残業時間'),
-            _text(detail, '法定外出時間'),
+            _textAny(detail, const ['法定休出時間', '法定外出時間']),
             '',
             '',
             '',
@@ -240,7 +243,7 @@ class PayrollPdfService {
           grid: grid,
           extraBlankRows: 0,
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         _section(
           title: '支給',
           labels: earningLabels,
@@ -260,9 +263,9 @@ class PayrollPdfService {
           secondValues: const ['', '', '', '', '', '', '', '', '', ''],
           headerFill: headerFill,
           grid: grid,
-          extraBlankRows: 2,
+          extraBlankRows: 3,
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         _section(
           title: '控除',
           labels: deductionLabels,
@@ -282,9 +285,9 @@ class PayrollPdfService {
           secondValues: const ['', '', '', '', '', '', '', '', '', ''],
           headerFill: headerFill,
           grid: grid,
-          extraBlankRows: 2,
+          extraBlankRows: 3,
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.SizedBox(
@@ -302,8 +305,8 @@ class PayrollPdfService {
                 ),
                 pw.TableRow(
                   children: [
-                    _cell(_number(statement.grossPay), right: true),
-                    _cell(_number(statement.deductions), right: true),
+                    _cell(_number(statement.grossPay), right: true, bold: true),
+                    _cell(_number(statement.deductions), right: true, bold: true),
                     _cell(_number(statement.netPay), right: true, bold: true),
                   ],
                 ),
@@ -311,7 +314,7 @@ class PayrollPdfService {
             ),
           ),
         ),
-        pw.SizedBox(height: 7),
+        pw.SizedBox(height: 9),
         pw.Table(
           border: pw.TableBorder.all(color: grid, width: .55),
           children: [
@@ -350,7 +353,7 @@ class PayrollPdfService {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('お疲れさまです。', style: const pw.TextStyle(fontSize: 7.5)),
+            pw.Text('お疲れさまです。', style: const pw.TextStyle(fontSize: 8)),
             pw.Text(
               statement.reviewConfirmed ? '確認済み' : '未確定',
               style: pw.TextStyle(
@@ -379,8 +382,8 @@ class PayrollPdfService {
     return pw.Row(
       children: [
         pw.Container(
-          width: 27,
-          padding: const pw.EdgeInsets.symmetric(vertical: 10),
+          width: 30,
+          padding: const pw.EdgeInsets.symmetric(vertical: 6),
           decoration: pw.BoxDecoration(
             color: headerFill,
             border: pw.Border.all(color: grid, width: .55),
@@ -390,7 +393,7 @@ class PayrollPdfService {
             title.split('').join('\n'),
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
-              fontSize: 8,
+              fontSize: 8.5,
               fontWeight: pw.FontWeight.bold,
             ),
           ),
@@ -409,7 +412,7 @@ class PayrollPdfService {
               pw.TableRow(
                 children: [
                   for (final value in values)
-                    _cell(value, right: true, fontSize: 7.5),
+                    _cell(value, right: true, fontSize: 8),
                 ],
               ),
               if (secondLabels.any((value) => value.isNotEmpty))
@@ -424,7 +427,7 @@ class PayrollPdfService {
                 pw.TableRow(
                   children: [
                     for (final value in secondValues)
-                      _cell(value, right: true, fontSize: 7.5),
+                      _cell(value, right: true, fontSize: 8),
                   ],
                 ),
               for (var row = 0; row < extraBlankRows; row++)
@@ -461,6 +464,20 @@ class PayrollPdfService {
     return value?.toString() ?? '';
   }
 
+  static String _textAny(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      if (value is num) return _number(value.toInt());
+      final text = value.toString();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
   static String _text(Map<String, dynamic> source, String key) {
     final value = source[key];
     if (value is num) return _number(value.toInt());
@@ -475,8 +492,15 @@ class PayrollPdfService {
     double fontSize = 7.5,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2.5),
-      child: pw.Text(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      child: pw.Container(
+        height: 18,
+        alignment: right
+            ? pw.Alignment.centerRight
+            : center
+                ? pw.Alignment.center
+                : pw.Alignment.centerLeft,
+        child: pw.Text(
         text,
         textAlign: right
             ? pw.TextAlign.right
@@ -486,6 +510,7 @@ class PayrollPdfService {
         style: pw.TextStyle(
           fontSize: fontSize,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
         ),
       ),
     );
