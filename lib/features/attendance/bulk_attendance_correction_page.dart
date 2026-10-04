@@ -207,7 +207,7 @@ class _BulkAttendanceCorrectionPageState
     add('手当', entry.allowanceNames.join('・'), ((proposed['allowanceNames'] as List<dynamic>? ?? const []).join('・')));
     add('備考', entry.notes, proposed['notes']);
 
-    return changes.isEmpty ? 'タップして修正内容を入力' : changes.join(' / ');
+    return changes.isEmpty ? '「修正」ボタンから内容を入力してください' : '変更済み：${changes.join(' / ')}';
   }
 
   static String _numberText(Object? value) {
@@ -223,9 +223,13 @@ class _BulkAttendanceCorrectionPageState
 
   @override
   Widget build(BuildContext context) {
+    final selectedCount = _entries
+        .where((entry) => _selectedIds.contains(entry.id))
+        .length;
     final selectedChanged = _entries
         .where((entry) => _selectedIds.contains(entry.id) && _isChanged(entry))
         .length;
+    final canSubmit = !_loading && !_saving && selectedChanged > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -238,7 +242,7 @@ class _BulkAttendanceCorrectionPageState
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: FilledButton.icon(
-          onPressed: _loading || _saving ? null : _submit,
+          onPressed: canSubmit ? _submit : null,
           icon: _saving
               ? const SizedBox.square(
                   dimension: 18,
@@ -248,13 +252,57 @@ class _BulkAttendanceCorrectionPageState
           label: Text(
             _saving
                 ? '申請中…'
-                : '最後に1回だけおまとめサイン（$selectedChanged件）',
+                : selectedChanged > 0
+                    ? '④ 最後にまとめてサイン（変更 $selectedChanged件）'
+                    : '④ 修正内容を入力するとサインへ進めます',
           ),
         ),
       ),
       body: SafeArea(
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        '勤務修正の進め方',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '① 月を選ぶ  →  ② 修正したい日を選ぶ  →  ③「修正」から内容を直す  →  ④ 最後にまとめてサイン',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        selectedCount == 0
+                            ? 'まず下の一覧から修正したい日を選んでください'
+                            : selectedChanged == 0
+                                ? '$selectedCount件選択中です。「修正」ボタンから内容を入力してください'
+                                : '$selectedCount件選択中 / $selectedChanged件変更済み。下の「まとめてサイン」へ進めます',
+                        style: TextStyle(
+                          color: selectedChanged > 0
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
               child: SizedBox(
@@ -387,10 +435,10 @@ class _BulkAttendanceCorrectionPageState
                                         ),
                                       ],
                                     ),
-                                    secondary: IconButton(
-                                      tooltip: '修正内容を入力',
+                                    secondary: FilledButton.tonalIcon(
                                       onPressed: () => _edit(entry),
                                       icon: const Icon(Icons.edit_outlined),
+                                      label: const Text('修正'),
                                     ),
                                     onChanged: (value) {
                                       setState(() {
