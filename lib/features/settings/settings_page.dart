@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
+import '../help/floating_help_controller.dart';
 import '../../branding/product_brand.dart';
 import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
@@ -34,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
   String _languageCode = SkoLanguageController.languageCode;
+  bool _floatingHelpEnabled = true;
 
   bool get _usesCloud => SupabaseBackend.isInitialized;
 
@@ -110,6 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
       company['default_invoice_detail_mode'] as String?,
     );
     _languageCode = SkoLanguageController.languageCode;
+    _floatingHelpEnabled = FloatingHelpController.enabled.value;
   }
 
   Future<void> _loadFromLocal() async {
@@ -121,6 +124,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _detailMode = prefs.getString('settings_invoice_detail_mode') ??
         'siteBreakdownOnInvoice';
     _languageCode = SkoLanguageController.languageCode;
+    await FloatingHelpController.load();
+    _floatingHelpEnabled = FloatingHelpController.enabled.value;
   }
 
   Future<void> _save() async {
@@ -281,6 +286,31 @@ class _SettingsPageState extends State<SettingsPage> {
                               }
                             },
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        SkoLanguageController.tr('ヘルプ表示'),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      Card(
+                        child: SwitchListTile(
+                          value: _floatingHelpEnabled,
+                          secondary: const Icon(Icons.help_outline),
+                          title: Text(
+                            SkoLanguageController.tr('フローティングヘルプ'),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            SkoLanguageController.tr(
+                              'ONにすると画面右下の？ボタンからいつでも使い方を確認できます。ボタンは長押しで好きな位置へ移動できます。',
+                            ),
+                          ),
+                          onChanged: (value) async {
+                            setState(() => _floatingHelpEnabled = value);
+                            await FloatingHelpController.setEnabled(value);
+                          },
                         ),
                       ),
                       const SizedBox(height: 16),
