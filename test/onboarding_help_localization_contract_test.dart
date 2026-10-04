@@ -3,20 +3,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('login screen exposes a visible initial registration button', () {
+  test('login screen keeps administrator signup distinct from employee initial registration', () {
     final auth = File(
       'lib/features/auth/secure_onboarding_pages.dart',
     ).readAsStringSync();
 
-    expect(auth, contains("OutlinedButton.icon("));
-    expect(auth, contains("'初回登録'"));
+    expect(auth, contains("'管理者として初めて登録する'"));
     expect(auth, contains("_registerMode = !_registerMode"));
-    expect(
-      auth.indexOf("'初回登録'"),
-      lessThan(auth.indexOf("'従業員登録QRでログイン'")),
-      reason: '初回登録はQRログインより上に表示する',
-    );
+    expect(auth, isNot(contains("_registerMode ? 'ログインへ戻る' : '初回登録'")));
   });
+
 
   test('employee onboarding uses language controller and contextual help', () {
     final pages =
