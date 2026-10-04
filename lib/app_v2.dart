@@ -44,6 +44,7 @@ import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_statements_page.dart';
+import 'features/payroll/payment_certificates_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/company_submitted_documents_page.dart';
 import 'features/people/employee_invite_page.dart';
@@ -746,6 +747,18 @@ class _HomePageState extends State<HomePage> {
           child: const PayrollAdjustmentPage(),
         );
         break;
+      case 'payment_certificates':
+        page = const SecondaryProtectedPage(
+          title: '支払証明書',
+          child: PaymentCertificatesPage(),
+        );
+        break;
+      case 'payment_certificate_settings':
+        page = const SecondaryProtectedPage(
+          title: '支払証明書設定',
+          child: PartnerPaymentSettingsPage(),
+        );
+        break;
       case 'profile':
         page = ProfilePage(
           role: ManualContent.fromMembershipRole(_identity.role),
@@ -930,6 +943,22 @@ class _HomePageState extends State<HomePage> {
           label: _payrollAdjustmentLabel,
           icon: Icons.price_change_outlined,
           accessLabel: SkoLanguageController.tr('管理者・給与閲覧権限'),
+        ),
+      if (_identity.isManagement)
+        _MenuAction(
+          key: 'payment_certificates',
+          label: SkoLanguageController.tr('支払証明書'),
+          icon: Icons.receipt_long_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
+        ),
+      if (_identity.isAdmin)
+        _MenuAction(
+          key: 'payment_certificate_settings',
+          label: SkoLanguageController.tr('支払証明書設定'),
+          icon: Icons.tune_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       _MenuAction(
         key: 'profile',
@@ -1251,6 +1280,7 @@ class _HomePageState extends State<HomePage> {
       'employee_qualifications',
       'signatures',
       'attendance_management',
+      'payment_certificates',
     };
     const viewer = <String>{
       'invoices',
@@ -1263,6 +1293,7 @@ class _HomePageState extends State<HomePage> {
       'company_documents',
       'site_map',
       'today_line',
+      'payment_certificate_settings',
     };
     if (admin.contains(item.key)) return HomeShortcutAccess.admin;
     if (viewer.contains(item.key)) return HomeShortcutAccess.viewer;
