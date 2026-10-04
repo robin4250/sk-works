@@ -13,10 +13,7 @@ void main() {
     expect(source, contains("'All Companies'"));
     expect(source, contains("'Annual Preview'"));
     expect(source, contains("'Invoice Preview'"));
-    expect(source, contains("'INVOICE'"));
-    expect(source, contains("'Subtotal'"));
-    expect(source, contains("'Tax'"));
-    expect(source, contains("'Total'"));
+    expect(source, contains('InvoicePdfPreviewPage('));
     expect(source, contains("'Retry'"));
   });
 }

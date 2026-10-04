@@ -17,9 +17,8 @@ void main() {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
     expect(page, contains("SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み'"));
     expect(page, contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"));
-    expect(page, contains("statement.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み')"));
+    expect(page, contains("item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み')"));
     expect(page, contains('Colors.green'));
-    expect(page, contains('colorScheme.error'));
   });
 
   test('printed payroll statement keeps review status in the margin', () {

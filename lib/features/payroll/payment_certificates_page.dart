@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
@@ -90,6 +92,13 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                             final item = _items[index];
                             return Card(
                               child: ListTile(
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => PaymentCertificatePreviewPage(
+                                      record: item,
+                                    ),
+                                  ),
+                                ),
                                 title: Text(
                                   item.partnerCompanyName,
                                   style: const TextStyle(
@@ -136,6 +145,40 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
       groups.insert(0, digits.substring(start, end));
     }
     return '${value < 0 ? '-' : ''}¥${groups.join(',')}';
+  }
+}
+
+class PaymentCertificatePreviewPage extends StatelessWidget {
+  const PaymentCertificatePreviewPage({
+    super.key,
+    required this.record,
+  });
+
+  final PaymentCertificateRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          SkoLanguageController.isEnglish
+              ? 'Payment Certificate'
+              : '支払証明書',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        actions: const [SkoNotificationBell()],
+      ),
+      body: PdfPreview(
+        initialPageFormat: PdfPageFormat.a4,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        allowPrinting: true,
+        allowSharing: true,
+        pdfFileName:
+            '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
+        build: (_) => PaymentCertificatePdfService.buildPdf(record),
+      ),
+    );
   }
 }
 
