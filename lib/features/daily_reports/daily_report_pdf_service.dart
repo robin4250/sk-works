@@ -60,7 +60,7 @@ class DailyReportPdfService {
               children: [
                 pw.Expanded(
                   child: pw.Text(
-                    SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : '作 業 日 報',
+                    SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : '作業日報',
                     style: pw.TextStyle(
                       fontSize: 25,
                       fontWeight: pw.FontWeight.bold,
@@ -112,6 +112,24 @@ class DailyReportPdfService {
               ],
             ),
             pw.SizedBox(height: 7),
+            pw.Row(
+              children: [
+                pw.Expanded(
+                  child: _summaryBox(
+                    SkoLanguageController.tr('日付'),
+                    '${date.year}年${date.month}月${date.day}日',
+                  ),
+                ),
+                pw.SizedBox(width: 4),
+                pw.Expanded(
+                  child: _summaryBox(
+                    SkoLanguageController.tr('現場'),
+                    siteName.isEmpty ? SkoLanguageController.tr('未登録') : siteName,
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 7),
             _boxed(
               SkoLanguageController.tr('作業内容'),
               pw.Text(
@@ -158,7 +176,7 @@ class DailyReportPdfService {
               ),
               cellStyle: const pw.TextStyle(fontSize: 8.5),
               headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey200),
+                  const pw.BoxDecoration(color: PdfColors.blueGrey100),
               border: pw.TableBorder.all(width: 0.7),
               cellPadding:
                   const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
