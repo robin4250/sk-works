@@ -16,6 +16,7 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
   bool _loaded = false;
   bool _dragging = false;
   Offset? _dragPosition;
+  Offset? _dragStartPosition;
 
   @override
   void initState() {
@@ -73,15 +74,18 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
                             onLongPressStart: (_) {
                               setState(() {
                                 _dragging = true;
-                                _dragPosition = Offset(left, top);
+                                _dragStartPosition = Offset(left, top);
+                                _dragPosition = _dragStartPosition;
                               });
                             },
                             onLongPressMoveUpdate: (details) {
                               setState(() {
+                                final start =
+                                    _dragStartPosition ?? Offset(left, top);
                                 _dragPosition = Offset(
-                                  (_dragPosition!.dx + details.offsetFromOrigin.dx)
+                                  (start.dx + details.offsetFromOrigin.dx)
                                       .clamp(margin, maxX),
-                                  (_dragPosition!.dy + details.offsetFromOrigin.dy)
+                                  (start.dy + details.offsetFromOrigin.dy)
                                       .clamp(margin, maxY),
                                 );
                               });
@@ -96,6 +100,7 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
                               setState(() {
                                 _dragging = false;
                                 _dragPosition = null;
+                                _dragStartPosition = null;
                               });
                             },
                             child: Tooltip(
