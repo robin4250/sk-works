@@ -44,6 +44,7 @@ import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
 import 'features/payroll/payroll_adjustment_page.dart';
 import 'features/payroll/payroll_adjustment_repository.dart';
+import 'features/payroll/payroll_review_page.dart';
 import 'features/payroll/payroll_statements_page.dart';
 import 'features/payroll/payment_certificates_page.dart';
 import 'features/people/company_delivery_inbox_page.dart';
@@ -748,6 +749,12 @@ class _HomePageState extends State<HomePage> {
           child: const PayrollAdjustmentPage(),
         );
         break;
+      case 'payroll_review':
+        page = const SecondaryProtectedPage(
+          title: '給料一覧',
+          child: PayrollReviewPage(),
+        );
+        break;
       case 'payment_certificates':
         page = const SecondaryProtectedPage(
           title: '支払証明書',
@@ -947,6 +954,14 @@ class _HomePageState extends State<HomePage> {
           label: _payrollAdjustmentLabel,
           icon: Icons.price_change_outlined,
           accessLabel: SkoLanguageController.tr('管理者・給与閲覧権限'),
+        ),
+      if (_identity.isManagement || _isViewer)
+        _MenuAction(
+          key: 'payroll_review',
+          label: SkoLanguageController.tr('給料一覧'),
+          icon: Icons.fact_check_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・閲覧権限'),
         ),
       if (_identity.isManagement)
         _MenuAction(
@@ -1290,6 +1305,7 @@ class _HomePageState extends State<HomePage> {
       'invoices',
       'payroll_settings',
       'payroll_adjustments',
+      'payroll_review',
       'attendance_list',
     };
     const admin = <String>{
