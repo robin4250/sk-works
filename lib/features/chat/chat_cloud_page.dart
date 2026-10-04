@@ -763,6 +763,36 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     return groups;
   }
 
+  List<Map<String, dynamic>> get _friendGroups {
+    final friendIds = _friends
+        .map((friend) => friend['user_id']?.toString())
+        .whereType<String>()
+        .toSet();
+    final groups = _directGroups.where((group) {
+      final other = group['direct_other_user_id']?.toString();
+      return other != null && friendIds.contains(other);
+    }).toList();
+    return groups;
+  }
+
+  List<Map<String, dynamic>> get _customGroups {
+    final groups = _groups.where((group) {
+      final id = group['id']?.toString() ?? '';
+      return group['group_type'] == 'company' &&
+          group['participants_only'] == true &&
+          !_hiddenGroupIds.contains(id);
+    }).toList();
+    groups.sort((a, b) {
+      final aId = a['id']?.toString() ?? '';
+      final bId = b['id']?.toString() ?? '';
+      final aPinned = _pinnedGroupIds.contains(aId);
+      final bPinned = _pinnedGroupIds.contains(bId);
+      if (aPinned != bPinned) return aPinned ? -1 : 1;
+      return _lastActivity(b).compareTo(_lastActivity(a));
+    });
+    return groups;
+  }
+
   List<Map<String, dynamic>> get _partnerGroups {
     final groups =
         _groups.where((g) => g['group_type'] == 'partner').toList();
@@ -968,11 +998,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                               emptyText: SkoLanguageController.tr('トークはまだありません'),
                             )
                           : _conversationView(),
+                      _ChatTab.friends => _groupList(
+                          _friendGroups,
+                          emptyText: SkoLanguageController.tr('友達とのトークはまだありません'),
+                        ),
                       _ChatTab.site => _groupList(
                           _siteGroups,
                           emptyText: SkoLanguageController.tr('現場トークはまだありません'),
                         ),
-                      _ChatTab.direct => _directList(),
+                      _ChatTab.groups => _groupWorkspace(),
                       _ChatTab.partner => _groupList(
                           _partnerGroups,
                           emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
@@ -991,8 +1025,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Widget _tabs() {
     final tabs = <(_ChatTab, String)>[
       (_ChatTab.all, SkoLanguageController.tr('すべて')),
+      (_ChatTab.friends, SkoLanguageController.tr('友達')),
       (_ChatTab.site, SkoLanguageController.tr('現場')),
-      (_ChatTab.direct, SkoLanguageController.tr('個別')),
+      (_ChatTab.groups, SkoLanguageController.tr('グループ')),
       if (_canManagePartnerChat)
         (_ChatTab.partner, SkoLanguageController.tr('協力会社')),
     ];
@@ -1004,18 +1039,22 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .surface
           .withValues(alpha: _appearance.headerAlpha),
       padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-      child: Row(
-        children: [
-          for (var index = 0; index < tabs.length; index++) ...[
-            Expanded(
-              child: _chatTabButton(
-                tab: tabs[index].$1,
-                label: tabs[index].$2,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var index = 0; index < tabs.length; index++) ...[
+              SizedBox(
+                width: 78,
+                child: _chatTabButton(
+                  tab: tabs[index].$1,
+                  label: tabs[index].$2,
+                ),
               ),
-            ),
-            if (index < tabs.length - 1) const SizedBox(width: 5),
+              if (index < tabs.length - 1) const SizedBox(width: 5),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
