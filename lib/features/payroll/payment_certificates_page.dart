@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import 'payment_certificate_pdf_service.dart';
 import 'payment_certificate_repository.dart';
 
 class PaymentCertificatesPage extends StatefulWidget {
@@ -99,11 +100,23 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                                   '${item.status == 'draft' ? '下書き' : '確定'} ・ '
                                   'revision ${item.revision}',
                                 ),
-                                trailing: Text(
-                                  _yen(item.netAmount),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _yen(item.netAmount),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: '印刷',
+                                      onPressed: () =>
+                                          PaymentCertificatePdfService
+                                              .printCertificate(item),
+                                      icon: const Icon(Icons.print_outlined),
+                                    ),
+                                  ],
                                 ),
                               ),
                             );
