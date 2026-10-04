@@ -657,6 +657,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Future<void> _openFriendManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
   Future<void> _openFriendsForChat() async {
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
@@ -1160,6 +1168,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
+          IconButton(
+            tooltip: SkoLanguageController.tr('友達追加'),
+            onPressed: _openFriendManagement,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+          ),
           const SkoNotificationBell(),
           if (selected != null)
             PopupMenuButton<String>(
@@ -1284,23 +1297,19 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           .colorScheme
           .surface
           .withValues(alpha: _appearance.headerAlpha),
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (var index = 0; index < tabs.length; index++) ...[
-              SizedBox(
-                width: 78,
-                child: _chatTabButton(
-                  tab: tabs[index].$1,
-                  label: tabs[index].$2,
-                ),
+      padding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++) ...[
+            Expanded(
+              child: _chatTabButton(
+                tab: tabs[index].$1,
+                label: tabs[index].$2,
               ),
-              if (index < tabs.length - 1) const SizedBox(width: 5),
-            ],
+            ),
+            if (index < tabs.length - 1) const SizedBox(width: 3),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1328,7 +1337,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             softWrap: false,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
               color: selected
                   ? scheme.onPrimaryContainer
