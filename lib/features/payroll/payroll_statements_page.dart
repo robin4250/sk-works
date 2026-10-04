@@ -274,7 +274,7 @@ class PayrollStatementPreviewPage extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(vertical: 3),
                               child: Row(
                                 children: [
-                                  Expanded(child: Text(entry.key)),
+                                  Expanded(child: Text(SkoLanguageController.tr(entry.key))),
                                   Text(_formatDetailValue(entry.value)),
                                 ],
                               ),
