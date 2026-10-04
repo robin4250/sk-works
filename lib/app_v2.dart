@@ -932,14 +932,13 @@ class _HomePageState extends State<HomePage> {
         icon: Icons.person_add_alt_1,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
       ),
-      if (!_isAdmin)
-        _MenuAction(
-          key: 'payroll',
-          label: SkoLanguageController.tr('給与明細'),
-          icon: Icons.payments_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('本人・閲覧権限'),
-        ),
+      _MenuAction(
+        key: 'payroll',
+        label: SkoLanguageController.tr('給与明細'),
+        icon: Icons.payments_outlined,
+        homeEligible: true,
+        accessLabel: SkoLanguageController.tr('本人'),
+      ),
       if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_settings',
