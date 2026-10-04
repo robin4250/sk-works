@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../international/language_controller.dart';
 import 'site_cloud_repository.dart';
 import 'site_page.dart';
 
@@ -26,6 +27,9 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   final _picker = ImagePicker();
   List<SitePhotoRecord> _photos = const [];
   bool _loadingPhotos = true;
+
+  String _tr(String ja, String en) =>
+      SkoLanguageController.isEnglish ? en : ja;
 
   @override
   void initState() {
@@ -61,7 +65,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     });
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('地図を開けませんでした')),
+        SnackBar(content: Text(_tr('地図を開けませんでした', 'Could not open the map'))),
       );
     }
   }
@@ -72,7 +76,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final uri = Uri(scheme: 'tel', path: value);
     if (!await launchUrl(uri) && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('電話を開始できませんでした')),
+        SnackBar(content: Text(_tr('電話を開始できませんでした', 'Could not start the call'))),
       );
     }
   }
@@ -87,7 +91,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('送信先会社を読み込めませんでした: $error')),
+        SnackBar(content: Text('${_tr('送信先会社を読み込めませんでした', 'Could not load recipient companies')}: $error')),
       );
       return;
     }
@@ -95,7 +99,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
 
     if (targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('接続済みの下請け会社・取引会社がありません')),
+        SnackBar(content: Text(_tr('接続済みの下請け会社・取引会社がありません', 'There are no connected subcontractor or business partner companies'))),
       );
       return;
     }
@@ -105,13 +109,13 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('下請け会社・取引会社に共有'),
+          title: Text(_tr('下請け会社・取引会社に共有', 'Share with Subcontractors / Business Partners')),
           content: SizedBox(
             width: 420,
             child: ListView(
               shrinkWrap: true,
               children: [
-                const Text('SKOアプリ内で接続済みの会社を選択してください。'),
+                Text(_tr('SKOアプリ内で接続済みの会社を選択してください。', 'Select connected companies in SKO.')),
                 const SizedBox(height: 5),
                 for (final target in targets)
                   CheckboxListTile(
@@ -119,7 +123,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                       target['company_id']?.toString() ?? '',
                     ),
                     title: Text(
-                      target['company_name']?.toString() ?? '会社',
+                      target['company_name']?.toString() ?? _tr('会社', 'Company'),
                     ),
                     subtitle: Text(
                       target['relation_label']?.toString() ?? '',
@@ -142,13 +146,13 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('戻る'),
+              child: Text(_tr('戻る', 'Back')),
             ),
             FilledButton(
               onPressed: selected.isEmpty
                   ? null
                   : () => Navigator.pop(dialogContext, true),
-              child: Text('選択した${selected.length}社へ送信'),
+              child: Text(SkoLanguageController.isEnglish ? 'Send to ${selected.length} selected companies' : '選択した${selected.length}社へ送信'),
             ),
           ],
         ),
@@ -163,12 +167,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$count社へ現場データを送信しました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Site data sent to $count companies' : '$count社へ現場データを送信しました')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場データを送信できませんでした: $error')),
+        SnackBar(content: Text('${_tr('現場データを送信できませんでした', 'Could not send site data')}: $error')),
       );
     }
   }
@@ -180,8 +184,8 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('現場終了を申請しますか？'),
-        content: const Text('現場は承認後に終了扱いになります。'),
+        title: Text(_tr('現場終了を申請しますか？', 'Request site completion?')),
+        content: Text(_tr('現場は承認後に終了扱いになります。', 'The site will be marked complete after approval.')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -189,7 +193,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('承認申請を送る'),
+            child: Text(_tr('承認申請を送る', 'Send Approval Request')),
           ),
         ],
       ),
@@ -203,12 +207,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('現場終了の承認申請を送信しました')),
+        SnackBar(content: Text(_tr('現場終了の承認申請を送信しました', 'Site completion approval request sent'))),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('現場終了を申請できませんでした: $error')),
+        SnackBar(content: Text('${_tr('現場終了を申請できませんでした', 'Could not request site completion')}: $error')),
       );
     }
   }
@@ -222,26 +226,26 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('登録者の社員情報'),
+        title: Text(_tr('登録者の社員情報', 'Registrant Employee Information')),
         content: worker == null
-            ? Text('登録者：$creatorName')
+            ? Text(SkoLanguageController.isEnglish ? 'Registrant: $creatorName' : '登録者：$creatorName')
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('氏名：${worker['name']?.toString() ?? creatorName}'),
+                  Text(SkoLanguageController.isEnglish ? 'Name: ${worker['name']?.toString() ?? creatorName}' : '氏名：${worker['name']?.toString() ?? creatorName}'),
                   if ((worker['role']?.toString().isNotEmpty ?? false))
-                    Text('役割・職種：${worker['role']}'),
+                    Text(SkoLanguageController.isEnglish ? 'Role / Job: ${worker['role']}' : '役割・職種：${worker['role']}'),
                   if ((worker['phone']?.toString().isNotEmpty ?? false))
-                    Text('電話：${worker['phone']}'),
+                    Text(SkoLanguageController.isEnglish ? 'Phone: ${worker['phone']}' : '電話：${worker['phone']}'),
                   if ((worker['email']?.toString().isNotEmpty ?? false))
-                    Text('メール：${worker['email']}'),
+                    Text(SkoLanguageController.isEnglish ? 'Email: ${worker['email']}' : 'メール：${worker['email']}'),
                 ],
               ),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('閉じる'),
+            child: Text(_tr('閉じる', 'Close')),
           ),
         ],
       ),
@@ -262,8 +266,8 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('現場情報の変更を申請しますか？'),
-        content: const Text('登録済みの現場情報は承認後に反映されます。'),
+        title: Text(_tr('現場情報の変更を申請しますか？', 'Request changes to site information?')),
+        content: Text(_tr('登録済みの現場情報は承認後に反映されます。', 'Changes to registered site information are applied after approval.')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -271,7 +275,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('確定して申請'),
+            child: Text(_tr('確定して申請', 'Confirm and Submit')),
           ),
         ],
       ),
@@ -285,12 +289,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('変更申請を送信しました')),
+        SnackBar(content: Text(_tr('変更申請を送信しました', 'Change request sent'))),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('変更申請を送信できませんでした: $error')),
+        SnackBar(content: Text('${_tr('変更申請を送信できませんでした', 'Could not send change request')}: $error')),
       );
     }
   }
@@ -309,11 +313,11 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             children: [
               AppBar(
                 automaticallyImplyLeading: false,
-                title: Text('現場写真$slot'),
+                title: Text(SkoLanguageController.isEnglish ? 'Site Photo $slot' : '現場写真$slot'),
                 actions: [
                   if (widget.canManage)
                     IconButton(
-                      tooltip: '写真を変更',
+                      tooltip: _tr('写真を変更', 'Change Photo'),
                       onPressed: () {
                         Navigator.pop(dialogContext);
                         _pickPhoto(slot);
@@ -321,7 +325,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                       icon: const Icon(Icons.edit_outlined),
                     ),
                   IconButton(
-                    tooltip: '閉じる',
+                    tooltip: _tr('閉じる', 'Close'),
                     onPressed: () => Navigator.pop(dialogContext),
                     icon: const Icon(Icons.close),
                   ),
@@ -360,12 +364,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('カメラで撮影'),
+              title: Text(_tr('カメラで撮影', 'Take Photo with Camera')),
               onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('写真ライブラリから選択'),
+              title: Text(_tr('写真ライブラリから選択', 'Choose from Photo Library')),
               onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
@@ -386,8 +390,8 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('現場写真$slotを登録しますか？'),
-        content: const Text('既存現場の写真変更は承認後に反映されます。'),
+        title: Text(SkoLanguageController.isEnglish ? 'Register site photo $slot?' : '現場写真$slotを登録しますか？'),
+        content: Text(_tr('既存現場の写真変更は承認後に反映されます。', 'Photo changes for an existing site are applied after approval.')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -395,7 +399,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('確定して送信'),
+            child: Text(_tr('確定して送信', 'Confirm and Send')),
           ),
         ],
       ),
@@ -412,7 +416,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            pending ? '写真変更を承認待ちで送信しました' : '現場写真を登録しました',
+            pending ? _tr('写真変更を承認待ちで送信しました', 'Photo change sent for approval') : _tr('現場写真を登録しました', 'Site photo registered'),
           ),
         ),
       );
@@ -420,7 +424,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('写真を送信できませんでした: $error')),
+        SnackBar(content: Text('${_tr('写真を送信できませんでした', 'Could not send photo')}: $error')),
       );
     }
   }
@@ -430,10 +434,10 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     final site = widget.site;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('現場詳細'),
+        title: Text(_tr('現場詳細', 'Site Details')),
         actions: [
           IconButton(
-            tooltip: '下請け会社・取引会社に共有',
+            tooltip: _tr('下請け会社・取引会社に共有', 'Share with Subcontractors / Business Partners'),
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
           ),
@@ -452,9 +456,9 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                   children: [
                     const Icon(Icons.person_outline, size: 17),
                     const SizedBox(width: 6),
-                    const Text(
-                      '登録者 ',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    Text(
+                      _tr('登録者 ', 'Registrant '),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                     ),
                     Expanded(
                       child: Text(
@@ -483,7 +487,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           const SizedBox(height: 4),
           _linkRow(
             icon: Icons.business_outlined,
-            label: '取引先',
+            label: _tr('取引先', 'Business Partner'),
             value: site.customerName,
             onTap: site.customerName.isEmpty
                 ? null
@@ -491,14 +495,14 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           _linkRow(
             icon: Icons.location_on_outlined,
-            label: '現場住所',
+            label: _tr('現場住所', 'Site Address'),
             value: site.address,
             onTap:
                 site.address.isEmpty ? null : () => _openMap(site.address),
           ),
           _linkRow(
             icon: Icons.train_outlined,
-            label: '最寄駅',
+            label: _tr('最寄駅', 'Nearest Station'),
             value: site.nearestStation,
             onTap: site.nearestStation.isEmpty
                 ? null
@@ -506,14 +510,14 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           _linkRow(
             icon: Icons.badge_outlined,
-            label: '現場責任者',
+            label: _tr('現場責任者', 'Site Manager'),
             value: site.representativeName.isNotEmpty
                 ? site.representativeName
                 : site.managerName,
           ),
           _linkRow(
             icon: Icons.phone_outlined,
-            label: '電話番号',
+            label: _tr('電話番号', 'Phone Number'),
             value: site.representativePhone,
             onTap: site.representativePhone.isEmpty
                 ? null
@@ -523,9 +527,9 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt))
             Text(
               [
-                if (site.createdAt.isNotEmpty) '登録日: ${site.createdAt}',
+                if (site.createdAt.isNotEmpty) (SkoLanguageController.isEnglish ? 'Registered: ${site.createdAt}' : '登録日: ${site.createdAt}'),
                 if (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt)
-                  '最終更新日: ${site.updatedAt}',
+                  (SkoLanguageController.isEnglish ? 'Last updated: ${site.updatedAt}' : '最終更新日: ${site.updatedAt}'),
               ].join('　'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -533,7 +537,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             ),
           const SizedBox(height: 10),
           Text(
-            '現場写真',
+            _tr('現場写真', 'Site Photos'),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
@@ -556,7 +560,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             child: FilledButton.icon(
             onPressed: _share,
             icon: const Icon(Icons.ios_share_outlined),
-            label: const Text('下請け会社・取引会社に共有'),
+            label: Text(_tr('下請け会社・取引会社に共有', 'Share with Subcontractors / Business Partners')),
             ),
           ),
           const SizedBox(height: 4),
@@ -565,7 +569,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             child: OutlinedButton.icon(
             onPressed: _edit,
             icon: const Icon(Icons.edit_outlined),
-            label: const Text('編集／登録'),
+            label: Text(_tr('編集／登録', 'Edit / Register')),
             ),
           ),
           if (widget.canManage &&
@@ -576,7 +580,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               child: OutlinedButton.icon(
               onPressed: _requestComplete,
               icon: const Icon(Icons.archive_outlined),
-              label: const Text('現場終了を承認申請'),
+              label: Text(_tr('現場終了を承認申請', 'Request Site Completion')),
               ),
             ),
           ],
@@ -611,7 +615,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                   children: [
                     const Icon(Icons.add_a_photo_outlined),
                     const SizedBox(height: 4),
-                    Text('写真$slot'),
+                    Text(SkoLanguageController.isEnglish ? 'Photo $slot' : '写真$slot'),
                   ],
                 )
               : Image.network(
@@ -663,6 +667,9 @@ class _SiteEditRequestPage extends StatefulWidget {
 }
 
 class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
+  String _tr(String ja, String en) =>
+      SkoLanguageController.isEnglish ? en : ja;
+
   late final TextEditingController _name;
   late final TextEditingController _address;
   late final TextEditingController _station;
@@ -706,17 +713,17 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('現場 編集／登録')),
+      appBar: AppBar(title: Text(_tr('現場 編集／登録', 'Edit / Register Site'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _field(_name, '現場名'),
-          _field(_address, '現場住所'),
-          _field(_station, '最寄駅'),
-          _field(_representative, '現場責任者名'),
-          _field(_phone, '電話番号',
+          _field(_name, _tr('現場名', 'Site Name')),
+          _field(_address, _tr('現場住所', 'Site Address')),
+          _field(_station, _tr('最寄駅', 'Nearest Station')),
+          _field(_representative, _tr('現場責任者名', 'Site Manager Name')),
+          _field(_phone, _tr('電話番号', 'Phone Number'),
               keyboardType: TextInputType.phone),
-          _field(_notes, '備考', maxLines: 3),
+          _field(_notes, _tr('備考', 'Notes'), maxLines: 3),
           const SizedBox(height: 6),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop({
@@ -729,7 +736,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
               'notes': _notes.text.trim(),
             }),
             icon: const Icon(Icons.check),
-            label: const Text('変更内容を確認'),
+            label: Text(_tr('変更内容を確認', 'Review Changes')),
           ),
         ],
       ),
