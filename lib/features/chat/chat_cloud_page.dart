@@ -31,13 +31,11 @@ class ChatCloudPage extends StatefulWidget {
 class _ChatCloudPageState extends State<ChatCloudPage> {
   final _repository = ChatCloudRepository.maybeCreate();
   final _composer = TextEditingController();
-  final _memberSearch = TextEditingController();
   final _scrollController = ScrollController();
   final _picker = ImagePicker();
 
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _groups = [];
-  List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _friends = [];
   List<Map<String, dynamic>> _pendingGroupInvites = [];
@@ -106,7 +104,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   void dispose() {
     _subscription?.cancel();
     _composer.dispose();
-    _memberSearch.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -129,7 +126,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     try {
       final canManagePartnerChat = await repository.canManagePartnerChat();
       var groups = await repository.loadGroups();
-      var members = await repository.loadMembers();
       var priorities = await repository.prioritizedSiteGroupIds();
       final blockedUserIds = await repository.loadBlockedUserIds();
       final friendWorkspace = await repository.loadFriendWorkspace();
@@ -157,9 +153,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           final otherUserId = group['direct_other_user_id']?.toString();
           return otherUserId != null && friendIds.contains(otherUserId);
         }).toList(growable: false);
-        members = members
-            .where((member) => friendIds.contains(member['user_id']?.toString()))
-            .toList(growable: false);
         priorities = const [];
       }
 
@@ -175,7 +168,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           _tab = _ChatTab.all;
         }
         _groups = groups;
-        _members = members;
         _friends = friends;
         _pendingGroupInvites = pendingGroupInvites;
         _prioritizedSiteGroupIds = priorities;
@@ -627,14 +619,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
-  Future<void> _openFriends() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
-    );
-    if (!mounted) return;
-    await _load();
-  }
-
   Future<void> _openFriendsForChat() async {
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
@@ -1044,43 +1028,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
     );
     return groups;
-  }
-
-  List<Map<String, dynamic>> get _filteredMembers {
-    final query = _memberSearch.text.trim().toLowerCase();
-    final directActivityByUser = <String, DateTime>{};
-    for (final group in _directGroups) {
-      final other = group['direct_other_user_id']?.toString();
-      if (other != null) {
-        directActivityByUser[other] = _lastActivity(group);
-      }
-    }
-
-    final members = _members.where((member) {
-      if (query.isEmpty) return true;
-      return (member['display_name'] ?? '')
-          .toString()
-          .toLowerCase()
-          .contains(query);
-    }).toList();
-
-    members.sort((a, b) {
-      final aId = a['user_id']?.toString() ?? '';
-      final bId = b['user_id']?.toString() ?? '';
-      final aDate = directActivityByUser[aId];
-      final bDate = directActivityByUser[bId];
-      if (aDate != null || bDate != null) {
-        if (aDate == null) return 1;
-        if (bDate == null) return -1;
-        final byDate = bDate.compareTo(aDate);
-        if (byDate != 0) return byDate;
-      }
-      return (a['display_name'] ?? '')
-          .toString()
-          .compareTo((b['display_name'] ?? '').toString());
-    });
-
-    return members;
   }
 
   DateTime _lastActivity(Map<String, dynamic> group) =>
@@ -1809,66 +1756,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           child: card,
         );
       },
-    );
-  }
-
-  Widget _directList() {
-    final members = _filteredMembers;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 5),
-          child: TextField(
-            controller: _memberSearch,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              labelText: SkoLanguageController.tr('社員を検索'),
-              hintText: SkoLanguageController.tr('名前を入力'),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-        Expanded(
-          child: members.isEmpty
-              ? Center(child: Text(SkoLanguageController.tr('該当するメンバーはいません')))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
-                  itemCount: members.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: 6),
-                  itemBuilder: (context, index) {
-                    final member = members[index];
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: member['avatar_url'] == null
-                              ? null
-                              : NetworkImage(
-                                  member['avatar_url'].toString(),
-                                ),
-                          child: member['avatar_url'] == null
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
-                        title: Text(
-                          member['display_name']?.toString() ??
-                              SkoLanguageController.tr('メンバー'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        subtitle: Text(
-                          member['role']?.toString() ?? '',
-                        ),
-                        trailing:
-                            const Icon(Icons.chat_bubble_outline),
-                        onTap: () => _startDirect(member),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
     );
   }
 
