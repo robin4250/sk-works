@@ -47,7 +47,11 @@ class AttendancePdfService {
               for (final day in rows)
                 [
                   '${day.date.month}/${day.date.day}',
-                  day.worked ? (day.siteName ?? SkoLanguageController.tr('現場')) : SkoLanguageController.tr('休み'),
+                  day.paidLeave
+                      ? SkoLanguageController.tr('有給')
+                      : day.worked
+                          ? (day.siteName ?? SkoLanguageController.tr('現場'))
+                          : SkoLanguageController.tr('休み'),
                   _time(day.clockIn),
                   _time(day.clockOut),
                   _hoursCell(day.overtimeHours),
@@ -142,9 +146,11 @@ class AttendancePdfService {
                 for (final day in rows)
                   [
                     '${day.date.month}/${day.date.day}',
-                    day.worked
-                        ? (day.siteName ?? SkoLanguageController.tr('現場'))
-                        : SkoLanguageController.tr('休み'),
+                    day.paidLeave
+                        ? SkoLanguageController.tr('有給')
+                        : day.worked
+                            ? (day.siteName ?? SkoLanguageController.tr('現場'))
+                            : SkoLanguageController.tr('休み'),
                     _time(day.clockIn),
                     _time(day.clockOut),
                     _hoursCell(day.overtimeHours),
@@ -184,7 +190,7 @@ class AttendancePdfService {
     for (final day in rows) {
       b.writeln(
         '${day.date.month}/${day.date.day} '
-        "${day.worked ? (day.siteName ?? SkoLanguageController.tr('現場')) : SkoLanguageController.tr('休み')} "
+        "${day.paidLeave ? SkoLanguageController.tr('有給') : day.worked ? (day.siteName ?? SkoLanguageController.tr('現場')) : SkoLanguageController.tr('休み')} "
         '${_time(day.clockIn)}-${_time(day.clockOut)}',
       );
     }
