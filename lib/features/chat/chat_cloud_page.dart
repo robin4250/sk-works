@@ -795,22 +795,24 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Future<void> _showSelectedGroupMembers() async {
     final repository = _repository;
     final groupId = _selectedGroupId;
+    final selectedGroup = _selectedGroup;
     if (repository == null || groupId == null) return;
 
     try {
       final members = await repository.loadGroupMembers(groupId);
       if (!mounted) return;
+      final customGroup = _isCustomGroup(selectedGroup);
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
         builder: (sheetContext) => SafeArea(
           child: SizedBox(
-            height: MediaQuery.sizeOf(sheetContext).height * 0.65,
+            height: MediaQuery.sizeOf(sheetContext).height * 0.72,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Text(
                     '${SkoLanguageController.tr('参加メンバー')}  ${members.length}${SkoLanguageController.isEnglish ? '' : '人'}',
                     style: Theme.of(sheetContext)
@@ -819,10 +821,43 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
+                if (customGroup)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: () {
+                              Navigator.pop(sheetContext);
+                              _inviteFriendToSelectedGroup();
+                            },
+                            icon: const Icon(Icons.person_add_alt_1_outlined),
+                            label: const Text('友達招待'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(sheetContext);
+                              _leaveSelectedGroup();
+                            },
+                            icon: const Icon(Icons.logout),
+                            label: const Text('脱退'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const Divider(height: 1),
                 Expanded(
                   child: members.isEmpty
-                      ? Center(child: Text(SkoLanguageController.tr('参加メンバーはいません')))
+                      ? Center(
+                          child: Text(
+                            SkoLanguageController.tr('参加メンバーはいません'),
+                          ),
+                        )
                       : ListView.separated(
                           padding: const EdgeInsets.all(10),
                           itemCount: members.length,
@@ -832,6 +867,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                             final member = members[index];
                             final avatarUrl =
                                 member['avatar_url']?.toString();
+                            final userId =
+                                member['user_id']?.toString() ?? '';
+                            final isMe = userId == repository.currentUserId;
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundImage:
@@ -850,8 +888,71 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                                 ),
                               ),
                               subtitle: Text(
-                                member['company_name']?.toString() ?? '',
+                                customGroup && !isMe
+                                    ? '長押しで追放'
+                                    : member['company_name']?.toString() ?? '',
                               ),
+                              onLongPress: !customGroup || isMe
+                                  ? null
+                                  : () async {
+                                      final confirmed =
+                                          await showDialog<bool>(
+                                        context: sheetContext,
+                                        builder: (dialogContext) =>
+                                            AlertDialog(
+                                          title: const Text(
+                                            'このメンバーを追放しますか？',
+                                          ),
+                                          content: Text(
+                                            member['display_name']
+                                                    ?.toString() ??
+                                                'メンバー',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(
+                                                dialogContext,
+                                                false,
+                                              ),
+                                              child: const Text('戻る'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(
+                                                dialogContext,
+                                                true,
+                                              ),
+                                              child: const Text('追放'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed != true) return;
+                                      try {
+                                        await repository
+                                            .removeCustomGroupMember(
+                                          groupId: groupId,
+                                          userId: userId,
+                                        );
+                                        if (sheetContext.mounted) {
+                                          Navigator.pop(sheetContext);
+                                        }
+                                        if (mounted) {
+                                          await _showSelectedGroupMembers();
+                                        }
+                                      } catch (error) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'メンバーを追放できませんでした: $error',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
                             );
                           },
                         ),
@@ -864,7 +965,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('参加メンバーを読み込めませんでした')}: $error')),
+        SnackBar(
+          content: Text(
+            '${SkoLanguageController.tr('参加メンバーを読み込めませんでした')}: $error',
+          ),
+        ),
       );
     }
   }
