@@ -45,7 +45,9 @@ void main() {
     expect(repository, contains("'confirm_payroll_review_month'"));
     expect(repository, contains("'set_payroll_manager_worker_visibility'"));
     expect(page, contains("'給料一覧'"));
-    expect(page, contains("'サブ管理者へ見せる従業員'"));
+    expect(page, contains("'サブ管理者に見せない従業員'"));
+    expect(page, contains('value: !worker.visibleToManager'));
+    expect(page, contains('visible: !hidden'));
     expect(page, contains("'確認済み'"));
     expect(page, contains("'未確定'"));
     expect(page, contains("'全員確認後に確定'"));
