@@ -11,7 +11,7 @@ void main() {
       'lib/features/attendance/paid_leave_correction_page.dart',
     ).readAsStringSync();
     expect(correction, contains("'勤務修正'"));
-    expect(correction, contains("'休み→有給'"));
+    expect(correction, contains("'休み → 有給'"));
     expect(leave, contains('submitRetrospective'));
     expect(leave, contains('!date.isAfter(todayDate)'));
   });

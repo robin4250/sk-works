@@ -12,7 +12,7 @@ void main() {
     expect(page, contains('勤務修正'));
     expect(page, contains('_selectedIds'));
     expect(page, contains('CheckboxListTile'));
-    expect(page, contains('最後に1回だけおまとめサイン'));
+    expect(page, contains('最後にまとめてサイン'));
     expect(page, contains('SignatureCapturePage'));
     expect(page, contains('repository.createDraft'));
     expect(page, contains('repository.submit'));

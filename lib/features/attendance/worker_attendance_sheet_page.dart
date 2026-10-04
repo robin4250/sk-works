@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
+import '../../widgets/sko_scroll_chrome.dart';
 import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'bulk_attendance_correction_page.dart';
@@ -163,21 +164,6 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          if (widget.workerId == null)
-            TextButton(
-              onPressed: _loading ? null : _openPaidLeave,
-              child: const Text(
-                '有給申請',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          TextButton(
-            onPressed: _loading ? null : _openAttendanceCorrection,
-            child: const Text(
-              '勤務修正',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ),
           IconButton(
             tooltip: SkoLanguageController.tr('月間カレンダー'),
             onPressed: _loading ? null : _showMonthCalendar,
@@ -193,6 +179,12 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
               month: _month,
               onPrevious: () => _changeMonth(-1),
               onNext: () => _changeMonth(1),
+            ),
+            _AttendanceSheetActionButtons(
+              showPaidLeave: widget.workerId == null,
+              loading: _loading,
+              onPaidLeave: _openPaidLeave,
+              onCorrection: _openAttendanceCorrection,
             ),
             _WeekTabs(
               count: weeks.length,
@@ -232,6 +224,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         ),
       ),
     );
+    if (!mounted) return;
+    SkoScrollChromeController.visible.value = true;
   }
 }
 
@@ -272,6 +266,54 @@ class _MonthHeader extends StatelessWidget {
             tooltip: SkoLanguageController.tr('次の月'),
             onPressed: onNext,
             icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttendanceSheetActionButtons extends StatelessWidget {
+  const _AttendanceSheetActionButtons({
+    required this.showPaidLeave,
+    required this.loading,
+    required this.onPaidLeave,
+    required this.onCorrection,
+  });
+
+  final bool showPaidLeave;
+  final bool loading;
+  final VoidCallback onPaidLeave;
+  final VoidCallback onCorrection;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      child: Row(
+        children: [
+          if (showPaidLeave) ...[
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: loading ? null : onPaidLeave,
+                icon: const Icon(Icons.event_available_outlined),
+                label: Text(
+                  SkoLanguageController.tr('有給申請'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: loading ? null : onCorrection,
+              icon: const Icon(Icons.edit_calendar_outlined),
+              label: Text(
+                SkoLanguageController.tr('勤務修正'),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
           ),
         ],
       ),
@@ -1130,7 +1172,10 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                   child: Text(
                                     [
                                       '${day.date.month}/${day.date.day}',
-                                      day.siteName ?? SkoLanguageController.tr('休み'),
+                                      day.paidLeave
+                                          ? SkoLanguageController.tr('有給')
+                                          : day.siteName ??
+                                              SkoLanguageController.tr('休み'),
                                       '${_time(day.clockIn)}〜${_time(day.clockOut)}',
                                       if (day.overtimeHours > 0)
                                         '残${_number(day.overtimeHours)}',
