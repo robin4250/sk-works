@@ -251,21 +251,35 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   Future<void> _selectGroup(String id) async {
-    if (id == _selectedGroupId) {
-      setState(() => _tab = _ChatTab.all);
-      return;
+    if (id == _selectedGroupId) return;
+    Map<String, dynamic>? target;
+    for (final group in _groups) {
+      if (group['id']?.toString() == id) {
+        target = group;
+        break;
+      }
     }
     final appearance = await ChatAppearanceStore.load(id);
     if (!mounted) return;
     setState(() {
       _selectedGroupId = id;
-      _tab = _ChatTab.all;
+      _tab = _tabForGroup(target);
       _positionInitialMessages = true;
       _appearance = appearance;
       _chatChromeVisible = true;
       _unreadCounts = {..._unreadCounts, id: 0};
     });
     await _subscribeSelected();
+  }
+
+  _ChatTab _tabForGroup(Map<String, dynamic>? group) {
+    if (_isCustomGroup(group)) return _ChatTab.groups;
+    return switch (group?['group_type']?.toString()) {
+      'direct' => _ChatTab.friends,
+      'site' => _ChatTab.site,
+      'partner' => _ChatTab.partner,
+      _ => _ChatTab.all,
+    };
   }
 
   Future<void> _closeConversation() async {
@@ -277,7 +291,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _messages = [];
       _positionInitialMessages = false;
       _chatChromeVisible = true;
-      _tab = _ChatTab.all;
     });
   }
 
@@ -1219,19 +1232,31 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                               emptyText: SkoLanguageController.tr('トークはまだありません'),
                             )
                           : _conversationView(),
-                      _ChatTab.friends => _groupList(
-                          _friendGroups,
-                          emptyText: SkoLanguageController.tr('友達とのトークはまだありません'),
-                        ),
-                      _ChatTab.site => _groupList(
-                          _siteGroups,
-                          emptyText: SkoLanguageController.tr('現場トークはまだありません'),
-                        ),
-                      _ChatTab.groups => _groupWorkspace(),
-                      _ChatTab.partner => _groupList(
-                          _partnerGroups,
-                          emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
-                        ),
+                      _ChatTab.friends => _selectedGroupId != null &&
+                              selected?['group_type'] == 'direct'
+                          ? _conversationView()
+                          : _groupList(
+                              _friendGroups,
+                              emptyText: SkoLanguageController.tr('友達とのトークはまだありません'),
+                            ),
+                      _ChatTab.site => _selectedGroupId != null &&
+                              selected?['group_type'] == 'site'
+                          ? _conversationView()
+                          : _groupList(
+                              _siteGroups,
+                              emptyText: SkoLanguageController.tr('現場トークはまだありません'),
+                            ),
+                      _ChatTab.groups => _selectedGroupId != null &&
+                              _isCustomGroup(selected)
+                          ? _conversationView()
+                          : _groupWorkspace(),
+                      _ChatTab.partner => _selectedGroupId != null &&
+                              selected?['group_type'] == 'partner'
+                          ? _conversationView()
+                          : _groupList(
+                              _partnerGroups,
+                              emptyText: SkoLanguageController.tr('協力会社トークはまだありません'),
+                            ),
                     },
                   ),
                 ],
