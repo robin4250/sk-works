@@ -631,6 +631,145 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ChatFriendsPage()),
     );
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _openFriendsForChat() async {
+    final friend = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => const ChatFriendsPage(selectForChat: true),
+      ),
+    );
+    if (friend == null || !mounted) return;
+    await _startDirect(friend);
+  }
+
+  Future<void> _createCustomGroup() async {
+    final repository = _repository;
+    if (repository == null) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('グループチャット作成'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'グループ名',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('作成'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty || !mounted) return;
+    try {
+      final id = await repository.createCustomGroup(name);
+      await _load();
+      if (!mounted) return;
+      await _selectGroup(id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('グループを作成できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _inviteFriendToSelectedGroup() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+    final friend = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => const ChatFriendsPage(selectForGroupInvite: true),
+      ),
+    );
+    if (friend == null || !mounted) return;
+    final friendUserId = friend['user_id']?.toString() ?? '';
+    if (friendUserId.isEmpty) return;
+    try {
+      await repository.inviteFriendToGroup(
+        groupId: groupId,
+        friendUserId: friendUserId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('グループ招待の承認通知を送りました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('友達を招待できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _respondGroupInvite(
+    Map<String, dynamic> invite,
+    bool accept,
+  ) async {
+    final repository = _repository;
+    final inviteId = invite['id']?.toString() ?? '';
+    if (repository == null || inviteId.isEmpty) return;
+    try {
+      final groupId = await repository.respondGroupInvite(
+        inviteId: inviteId,
+        accept: accept,
+      );
+      await _load();
+      if (!mounted || !accept || groupId.isEmpty) return;
+      await _selectGroup(groupId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('グループ招待を処理できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _leaveSelectedGroup() async {
+    final repository = _repository;
+    final groupId = _selectedGroupId;
+    if (repository == null || groupId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('グループから脱退しますか？'),
+        content: const Text(
+          '最後の1名が脱退した場合、このグループは削除されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('脱退'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repository.leaveCustomGroup(groupId);
+    if (!mounted) return;
+    await _closeConversation();
+    await _load();
   }
 
   Future<void> _openNotes() async {
