@@ -23,7 +23,7 @@ class PayrollPdfService {
 
     document.addPage(
       pw.Page(
-        pageFormat: format,
+        pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(
           14 * PdfPageFormat.mm,
           13 * PdfPageFormat.mm,
@@ -94,7 +94,7 @@ class PayrollPdfService {
             ),
             pw.SizedBox(height: 11),
             pw.Text(
-              '支給・控除内訳',
+              '勤怠・支給・控除',
               style: pw.TextStyle(
                 fontSize: 11,
                 fontWeight: pw.FontWeight.bold,
@@ -205,7 +205,7 @@ class PayrollPdfService {
   static Future<bool> printStatement(PayrollStatementRecord statement) {
     return Printing.layoutPdf(
       name: '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-      format: PdfPageFormat.a4,
+      format: PdfPageFormat.a4.landscape,
       onLayout: (format) => buildPdf(statement, format: format),
     );
   }
