@@ -125,6 +125,8 @@ void main() {
       contains('_ChatTab.groups => _selectedGroupId != null'),
     );
     expect(page, contains("'友達を招待'"));
+    expect(page, contains('await _closeConversation()'));
+    expect(page, contains('setState(() => _tab = tab)'));
   });
 
 
