@@ -27,6 +27,8 @@ import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
+import 'features/companies/trade_company_page.dart';
+import 'features/companies/trade_company_repository.dart';
 import 'features/daily_reports/daily_report_page.dart';
 import 'features/help/help_page.dart';
 import 'features/help/floating_help_controller.dart';
@@ -538,7 +540,8 @@ class _HomePageState extends State<HomePage> {
       'employee_qualifications' ||
       'qualifications' => 'qualifications',
       'documents' => 'documents',
-      'company_deliveries' => 'company_connection',
+      'company_deliveries' || 'trade_companies' || 'subcontractors' =>
+        'company_connection',
       'company_documents' => 'documents',
       _ => null,
     };
@@ -821,6 +824,16 @@ class _HomePageState extends State<HomePage> {
       case 'company_deliveries':
         page = const CompanyDeliveryInboxPage();
         break;
+      case 'trade_companies':
+        page = const TradeCompanyPage(
+          mode: TradeCompanyPageMode.customer,
+        );
+        break;
+      case 'subcontractors':
+        page = const TradeCompanyPage(
+          mode: TradeCompanyPageMode.subcontractor,
+        );
+        break;
       case 'company_documents':
         page = const CompanySubmittedDocumentsPage();
         break;
@@ -1064,6 +1077,22 @@ class _HomePageState extends State<HomePage> {
           key: 'company_deliveries',
           label: SkoLanguageController.tr('協力会社'),
           icon: Icons.folder_shared_outlined,
+          accessLabel: SkoLanguageController.tr('管理者'),
+        ),
+      if (_isAdmin)
+        _MenuAction(
+          key: 'trade_companies',
+          label: SkoLanguageController.tr('取引会社'),
+          icon: Icons.business_center_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者'),
+        ),
+      if (_isAdmin)
+        _MenuAction(
+          key: 'subcontractors',
+          label: SkoLanguageController.tr('下請け会社'),
+          icon: Icons.handshake_outlined,
+          homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_isAdmin)
