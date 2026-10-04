@@ -13,6 +13,7 @@ class AttendanceCorrectionEntry {
     required this.earlyHours,
     required this.nightHours,
     required this.allowanceYen,
+    required this.allowanceNames,
     required this.notes,
   });
 
@@ -25,6 +26,7 @@ class AttendanceCorrectionEntry {
   final double earlyHours;
   final double nightHours;
   final int allowanceYen;
+  final List<String> allowanceNames;
   final String notes;
 
   Map<String, dynamic> snapshot() => {
@@ -36,6 +38,7 @@ class AttendanceCorrectionEntry {
         'earlyHours': earlyHours,
         'nightHours': nightHours,
         'allowanceYen': allowanceYen,
+        'allowanceNames': allowanceNames,
         'notes': notes,
       };
 }
@@ -84,7 +87,7 @@ class AttendanceCorrectionRepository {
     final rows = await _client
         .from('attendance_entries')
         .select(
-          'id, work_date, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, notes, workers(name), sites(name)',
+          'id, work_date, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, notes, workers(name), sites(name)',
         )
         .eq('company_id', value.companyId)
         .gte('work_date', _dbDate(start))
@@ -108,6 +111,11 @@ class AttendanceCorrectionRepository {
           earlyHours: _number(raw['early_hours']),
           nightHours: _number(raw['night_hours']),
           allowanceYen: (raw['allowance_amount'] as num?)?.toInt() ?? 0,
+          allowanceNames: [
+            for (final value in (raw['allowance_names'] as List<dynamic>? ?? const []))
+              if (value?.toString().trim().isNotEmpty == true)
+                value.toString().trim(),
+          ],
           notes: raw['notes']?.toString() ?? '',
         ),
     ].where((entry) => entry.id.isNotEmpty).toList();
@@ -196,7 +204,8 @@ class AttendanceCorrectionRepository {
       'overtimeHours': '残業',
       'earlyHours': '早出',
       'nightHours': '夜勤',
-      'allowanceYen': '手当',
+      'allowanceYen': '旧手当金額',
+      'allowanceNames': '手当',
       'notes': '備考',
     };
     final changes = <String>[];
