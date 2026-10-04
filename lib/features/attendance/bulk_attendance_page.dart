@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../daily_reports/signature_capture_page.dart';
 import 'attendance_cloud_repository.dart';
+import 'past_attendance_request_repository.dart';
 
 class BulkAttendancePage extends StatefulWidget {
   const BulkAttendancePage({super.key, required this.repository});
@@ -12,6 +14,7 @@ class BulkAttendancePage extends StatefulWidget {
 }
 
 class _BulkAttendancePageState extends State<BulkAttendancePage> {
+  final _approvalRepository = PastAttendanceRequestRepository.maybeCreate();
   final _selectedDays = <int>{};
   final _selectedWorkers = <String>{};
   final _dayDetails = <int, _BulkDayDetails>{};
@@ -69,8 +72,12 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
       '${_month.year.toString().padLeft(4, '0')}/${_month.month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}';
 
   void _changeMonth(int delta) {
+    final next = DateTime(_month.year, _month.month + delta);
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    if (next.isAfter(currentMonth)) return;
     setState(() {
-      _month = DateTime(_month.year, _month.month + delta);
+      _month = next;
       _selectedDays.clear();
       for (final details in _dayDetails.values) {
         details.dispose();
@@ -156,15 +163,32 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
       return;
     }
 
+    final approvalRepository = _approvalRepository;
+    if (approvalRepository == null) {
+      _show('過去のまとめて出勤申請を利用できません。');
+      return;
+    }
+
+    final signature = await Navigator.of(context).push<SignatureResult>(
+      MaterialPageRoute(
+        builder: (_) => const SignatureCapturePage(),
+      ),
+    );
+    if (signature == null || !mounted) return;
+
     setState(() => _saving = true);
     try {
-      final saved = await widget.repository.insertMany(records);
+      await approvalRepository.submit(
+        items: records,
+        signerName: signature.signerName,
+        signatureJson: signature.toJson(),
+      );
       if (!mounted) return;
-      Navigator.of(context).pop(saved.length);
+      Navigator.of(context).pop(records.length);
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _show('一括登録できませんでした: $error');
+      _show('過去のまとめて出勤を申請できませんでした: $error');
     }
   }
 
@@ -258,6 +282,8 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
   @override
   Widget build(BuildContext context) {
     final selectedDays = _selectedDays.toList()..sort();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     return Scaffold(
       appBar: AppBar(title: const Text('おまとめ出勤')),
       bottomNavigationBar: SafeArea(
@@ -271,7 +297,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.done_all),
-          label: Text(_saving ? '登録中…' : 'まとめて登録'),
+          label: Text(_saving ? '申請中…' : 'まとめてサインして申請'),
         ),
       ),
       body: SafeArea(
@@ -336,11 +362,20 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                             runSpacing: 8,
                             children: [
                               for (var day = 1; day <= _daysInMonth; day++)
-                                FilterChip(
-                                  label: Text('$day日'),
-                                  selected: _selectedDays.contains(day),
-                                  onSelected: (selected) =>
-                                      _setDaySelected(day, selected),
+                                Builder(
+                                  builder: (context) {
+                                    final date =
+                                        DateTime(_month.year, _month.month, day);
+                                    final enabled = date.isBefore(today);
+                                    return FilterChip(
+                                      label: Text('$day日'),
+                                      selected: _selectedDays.contains(day),
+                                      onSelected: enabled
+                                          ? (selected) =>
+                                              _setDaySelected(day, selected)
+                                          : null,
+                                    );
+                                  },
                                 ),
                             ],
                           ),
@@ -408,7 +443,7 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '選択した日付・作業員の勤怠をまとめて登録します。責任者サインは日報で登録します。',
+                        '選択した日付・作業員を1回のまとめてサインで申請します。承認完了後に正式な出勤データへ反映します。',
                       ),
                     ],
                   ),
