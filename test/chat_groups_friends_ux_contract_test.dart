@@ -132,7 +132,11 @@ void main() {
     );
     expect(
       repository,
-      isNot(contains(".eq('company_id', value.companyId);")),
+      contains(
+        "final directMembershipRows = await _client\n"
+        "        .from('communication_group_members')\n"
+        "        .select('group_id, user_id');",
+      ),
     );
   });
 
