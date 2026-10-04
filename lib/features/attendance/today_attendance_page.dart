@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'today_attendance_repository.dart';
 
 class TodayAttendancePage extends StatefulWidget {
@@ -30,7 +31,7 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'クラウド接続を確認できません。';
+        _error = SkoLanguageController.isEnglish ? 'Could not verify cloud connection.' : 'クラウド接続を確認できません。';
       });
       return;
     }
@@ -66,14 +67,14 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '本日の出勤',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? "Today's Attendance" : '本日の出勤',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '再読み込み',
+            tooltip: SkoLanguageController.isEnglish ? 'Reload' : '再読み込み',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
@@ -110,12 +111,12 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                             ButtonSegment(
                               value: 0,
                               icon: const Icon(Icons.business_outlined),
-                              label: Text('自社 ${own.length}'),
+                              label: Text(SkoLanguageController.isEnglish ? 'My Company ${own.length}' : '自社 ${own.length}'),
                             ),
                             ButtonSegment(
                               value: 1,
                               icon: const Icon(Icons.handshake_outlined),
-                              label: Text('下請け ${partner.length}'),
+                              label: Text(SkoLanguageController.isEnglish ? 'Subcontractors ${partner.length}' : '下請け ${partner.length}'),
                             ),
                           ],
                           selected: {_tabIndex},
@@ -126,13 +127,13 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                         ),
                         const SizedBox(height: 12),
                         if (selected.isEmpty)
-                          const Card(
+                          Card(
                             child: Padding(
-                              padding: EdgeInsets.all(22),
+                              padding: const EdgeInsets.all(22),
                               child: Center(
                                 child: Text(
-                                  '本日の出勤記録はまだありません',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                  SkoLanguageController.isEnglish ? 'No attendance records for today yet.' : '本日の出勤記録はまだありません',
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
                                 ),
                               ),
                             ),
@@ -146,15 +147,15 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                         const Divider(),
                         const SizedBox(height: 6),
                         Text(
-                          '過去1か月',
+                          SkoLanguageController.isEnglish ? 'Past Month' : '過去1か月',
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w900,
                               ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          '昨日を先頭に、下へ向かって古い日付順です。最初の1週間分から、そのまま1か月分までスクロールできます。',
-                          style: TextStyle(fontSize: 12),
+                        Text(
+                          SkoLanguageController.isEnglish ? 'Starts with yesterday and continues backward in time. The first week is expanded, and you can scroll through one month.' : '昨日を先頭に、下へ向かって古い日付順です。最初の1週間分から、そのまま1か月分までスクロールできます。',
+                          style: const TextStyle(fontSize: 12),
                         ),
                         const SizedBox(height: 10),
                         for (final day in snapshot?.history ??
@@ -195,15 +196,15 @@ class _HistoryDayCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          records.isEmpty ? '記録なし' : '出勤 ${records.length}人',
+          records.isEmpty ? (SkoLanguageController.isEnglish ? 'No records' : '記録なし') : (SkoLanguageController.isEnglish ? '${records.length} working' : '出勤 ${records.length}人'),
         ),
         children: records.isEmpty
-            ? const [
+            ? [
                 Padding(
                   padding: EdgeInsets.fromLTRB(8, 2, 8, 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('この日の出勤記録はありません'),
+                    child: Text(SkoLanguageController.isEnglish ? 'No attendance records for this date.' : 'この日の出勤記録はありません'),
                   ),
                 ),
               ]
@@ -226,8 +227,12 @@ class _HistoryDayCard extends StatelessWidget {
   }
 
   static String _dateLabel(DateTime value) {
-    final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
-    return '${value.month}/${value.day}（${weekdays[value.weekday - 1]}）';
+    final weekdays = SkoLanguageController.isEnglish
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : ['月', '火', '水', '木', '金', '土', '日'];
+    return SkoLanguageController.isEnglish
+        ? '${value.month}/${value.day} (${weekdays[value.weekday - 1]})'
+        : '${value.month}/${value.day}（${weekdays[value.weekday - 1]}）';
   }
 }
 
@@ -249,9 +254,9 @@ class _HistoryAttendanceRow extends StatelessWidget {
       subtitle: Text(
         [
           if (record.isPartner) record.companyLabel,
-          record.siteName ?? '現場未設定',
-          '出 ${_time(record.clockInAt)}',
-          '退 ${_time(record.clockOutAt)}',
+          record.siteName ?? (SkoLanguageController.isEnglish ? 'Site not set' : '現場未設定'),
+          SkoLanguageController.isEnglish ? 'In ${_time(record.clockInAt)}' : '出 ${_time(record.clockInAt)}',
+          SkoLanguageController.isEnglish ? 'Out ${_time(record.clockOutAt)}' : '退 ${_time(record.clockOutAt)}',
         ].join(' / '),
       ),
     );
@@ -278,11 +283,11 @@ class _SummaryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _SummaryTile(label: '合計', value: total)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.isEnglish ? 'Total' : '合計', value: total)),
         const SizedBox(width: 8),
-        Expanded(child: _SummaryTile(label: '出勤中', value: working)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.isEnglish ? 'Working' : '出勤中', value: working)),
         const SizedBox(width: 8),
-        Expanded(child: _SummaryTile(label: '退勤済', value: clockedOut)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.isEnglish ? 'Clocked Out' : '退勤済', value: clockedOut)),
       ],
     );
   }
@@ -302,7 +307,7 @@ class _SummaryTile extends StatelessWidget {
         child: Column(
           children: [
             Text(
-              '$value人',
+              SkoLanguageController.isEnglish ? '$value people' : '$value人',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -349,9 +354,9 @@ class _AttendanceCard extends StatelessWidget {
         subtitle: Text(
           [
             if (record.isPartner) record.companyLabel,
-            record.siteName ?? '現場未設定',
-            '出 ${_time(record.clockInAt)}',
-            '退 ${_time(record.clockOutAt)}',
+            record.siteName ?? (SkoLanguageController.isEnglish ? 'Site not set' : '現場未設定'),
+            SkoLanguageController.isEnglish ? 'In ${_time(record.clockInAt)}' : '出 ${_time(record.clockInAt)}',
+            SkoLanguageController.isEnglish ? 'Out ${_time(record.clockOutAt)}' : '退 ${_time(record.clockOutAt)}',
           ].join(' / '),
         ),
         trailing: Container(
@@ -361,7 +366,7 @@ class _AttendanceCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
           ),
           child: Text(
-            working ? '出勤中' : '退勤済',
+            working ? (SkoLanguageController.isEnglish ? 'Working' : '出勤中') : (SkoLanguageController.isEnglish ? 'Clocked Out' : '退勤済'),
             style: TextStyle(
               color: working ? scheme.onPrimary : scheme.onSurfaceVariant,
               fontWeight: FontWeight.w900,
@@ -396,9 +401,9 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off_outlined, size: 42),
             const SizedBox(height: 12),
-            const Text(
-              '本日の出勤を読み込めませんでした',
-              style: TextStyle(fontWeight: FontWeight.w900),
+            Text(
+              SkoLanguageController.isEnglish ? "Could not load today's attendance" : '本日の出勤を読み込めませんでした',
+              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
@@ -406,7 +411,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
+              label: Text(SkoLanguageController.isEnglish ? 'Retry' : '再試行'),
             ),
           ],
         ),
