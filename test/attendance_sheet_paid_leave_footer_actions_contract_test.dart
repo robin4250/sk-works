@@ -48,4 +48,20 @@ void main() {
     expect(page, contains('Icons.event_repeat_outlined'));
   });
 
+
+  test('attendance correction explains the four-step flow', () {
+    final page = File(
+      'lib/features/attendance/bulk_attendance_correction_page.dart',
+    ).readAsStringSync();
+
+    expect(page, contains('勤務修正の進め方'));
+    expect(page, contains('① 月を選ぶ'));
+    expect(page, contains('② 修正したい日を選ぶ'));
+    expect(page, contains('③「修正」から内容を直す'));
+    expect(page, contains('④ 最後にまとめてサイン'));
+    expect(page, contains("label: const Text('修正')"));
+    expect(page, contains('selectedCount'));
+    expect(page, contains('selectedChanged'));
+  });
+
 }
