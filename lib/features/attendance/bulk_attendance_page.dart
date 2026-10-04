@@ -72,8 +72,12 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
       '${_month.year.toString().padLeft(4, '0')}/${_month.month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}';
 
   void _changeMonth(int delta) {
+    final next = DateTime(_month.year, _month.month + delta);
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    if (next.isAfter(currentMonth)) return;
     setState(() {
-      _month = DateTime(_month.year, _month.month + delta);
+      _month = next;
       _selectedDays.clear();
       for (final details in _dayDetails.values) {
         details.dispose();
@@ -278,6 +282,8 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
   @override
   Widget build(BuildContext context) {
     final selectedDays = _selectedDays.toList()..sort();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     return Scaffold(
       appBar: AppBar(title: const Text('おまとめ出勤')),
       bottomNavigationBar: SafeArea(
@@ -356,11 +362,20 @@ class _BulkAttendancePageState extends State<BulkAttendancePage> {
                             runSpacing: 8,
                             children: [
                               for (var day = 1; day <= _daysInMonth; day++)
-                                FilterChip(
-                                  label: Text('$day日'),
-                                  selected: _selectedDays.contains(day),
-                                  onSelected: (selected) =>
-                                      _setDaySelected(day, selected),
+                                Builder(
+                                  builder: (context) {
+                                    final date =
+                                        DateTime(_month.year, _month.month, day);
+                                    final enabled = date.isBefore(today);
+                                    return FilterChip(
+                                      label: Text('$day日'),
+                                      selected: _selectedDays.contains(day),
+                                      onSelected: enabled
+                                          ? (selected) =>
+                                              _setDaySelected(day, selected)
+                                          : null,
+                                    );
+                                  },
                                 ),
                             ],
                           ),
