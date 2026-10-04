@@ -54,7 +54,7 @@ void main() {
     expect(page, contains("'非表示'"));
     expect(page, contains("'削除'"));
     expect(page, contains("'通知音をOFF'"));
-    expect(page, contains("'notifications_active_outlined'"));
+    expect(page, contains('Icons.notifications_active_outlined'));
   });
 
   test('settings exposes app notification sound switch', () {
