@@ -74,7 +74,7 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
         actions: [
           const SkoNotificationBell(),
           IconButton(
-            tooltip: '再読み込み',
+            tooltip: SkoLanguageController.tr('再読み込み'),
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
@@ -147,14 +147,14 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                         const Divider(),
                         const SizedBox(height: 6),
                         Text(
-                          '過去1か月',
+                          SkoLanguageController.tr('過去1か月'),
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w900,
                               ),
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          '昨日を先頭に、下へ向かって古い日付順です。最初の1週間分から、そのまま1か月分までスクロールできます。',
+                          SkoLanguageController.tr('昨日を先頭に、下へ向かって古い日付順です。最初の1週間分から、そのまま1か月分までスクロールできます。'),
                           style: TextStyle(fontSize: 12),
                         ),
                         const SizedBox(height: 10),
@@ -196,7 +196,7 @@ class _HistoryDayCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          records.isEmpty ? '記録なし' : '出勤 ${records.length}人',
+          records.isEmpty ? SkoLanguageController.tr('記録なし') : '${SkoLanguageController.tr('出勤')} ${records.length}${SkoLanguageController.tr('人')}',
         ),
         children: records.isEmpty
             ? const [
@@ -204,7 +204,7 @@ class _HistoryDayCard extends StatelessWidget {
                   padding: EdgeInsets.fromLTRB(8, 2, 8, 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('この日の出勤記録はありません'),
+                    child: Text(SkoLanguageController.tr('この日の出勤記録はありません')),
                   ),
                 ),
               ]
@@ -252,9 +252,9 @@ class _HistoryAttendanceRow extends StatelessWidget {
       subtitle: Text(
         [
           if (record.isPartner) record.companyLabel,
-          record.siteName ?? '現場未設定',
-          '出 ${_time(record.clockInAt)}',
-          '退 ${_time(record.clockOutAt)}',
+          record.siteName ?? SkoLanguageController.tr('現場未設定'),
+          '${SkoLanguageController.tr('出')} ${_time(record.clockInAt)}',
+          '${SkoLanguageController.tr('退')} ${_time(record.clockOutAt)}',
         ].join(' / '),
       ),
     );
@@ -281,11 +281,11 @@ class _SummaryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _SummaryTile(label: '合計', value: total)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.tr('合計'), value: total)),
         const SizedBox(width: 8),
-        Expanded(child: _SummaryTile(label: '出勤中', value: working)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.tr('出勤中'), value: working)),
         const SizedBox(width: 8),
-        Expanded(child: _SummaryTile(label: '退勤済', value: clockedOut)),
+        Expanded(child: _SummaryTile(label: SkoLanguageController.tr('退勤済'), value: clockedOut)),
       ],
     );
   }
@@ -352,9 +352,9 @@ class _AttendanceCard extends StatelessWidget {
         subtitle: Text(
           [
             if (record.isPartner) record.companyLabel,
-            record.siteName ?? '現場未設定',
-            '出 ${_time(record.clockInAt)}',
-            '退 ${_time(record.clockOutAt)}',
+            record.siteName ?? SkoLanguageController.tr('現場未設定'),
+            '${SkoLanguageController.tr('出')} ${_time(record.clockInAt)}',
+            '${SkoLanguageController.tr('退')} ${_time(record.clockOutAt)}',
           ].join(' / '),
         ),
         trailing: Container(
@@ -364,7 +364,7 @@ class _AttendanceCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
           ),
           child: Text(
-            working ? '出勤中' : '退勤済',
+            working ? SkoLanguageController.tr('出勤中') : SkoLanguageController.tr('退勤済'),
             style: TextStyle(
               color: working ? scheme.onPrimary : scheme.onSurfaceVariant,
               fontWeight: FontWeight.w900,
