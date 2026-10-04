@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
@@ -30,7 +31,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = '給料一覧を利用できません。';
+        _error = SkoLanguageController.isEnglish ? 'Payroll review is unavailable.' : '給料一覧を利用できません。';
       });
       return;
     }
@@ -74,7 +75,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     if (workspace.items.isEmpty) return;
     if (workspace.items.any((item) => !item.reviewChecked)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('全従業員の給与明細を確認してから確定してください')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Review every employee payslip before confirming.' : '全従業員の給与明細を確認してから確定してください')),
       );
       return;
     }
@@ -84,12 +85,12 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('全員分を確認済みにしました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'All payslips are confirmed.' : '全員分を確認済みにしました')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('確定できませんでした: $error')),
+        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not confirm' : '確定できませんでした'}: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -120,9 +121,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     final items = workspace?.items ?? const <PayrollReviewItem>[];
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '給料一覧',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.isEnglish ? 'Payroll Review' : '給料一覧',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -151,7 +152,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 ),
                                 Expanded(
                                   child: Text(
-                                    '${_month.year}年${_month.month}月',
+                                    SkoLanguageController.isEnglish ? '${_month.month}/${_month.year}' : '${_month.year}年${_month.month}月',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       fontSize: 18,
@@ -169,13 +170,12 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               const SizedBox(height: 8),
                               Card(
                                 child: ExpansionTile(
-                                  title: const Text(
-                                    'サブ管理者に見せない従業員',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w900),
+                                  title: Text(
+                                    SkoLanguageController.isEnglish ? 'Hide from sub-admins' : 'サブ管理者に見せない従業員',
+                                    style: const TextStyle(fontWeight: FontWeight.w900),
                                   ),
-                                  subtitle: const Text(
-                                    '非表示にする従業員だけチェックしてください',
+                                  subtitle: Text(
+                                    SkoLanguageController.isEnglish ? 'Check only the employees sub-admins must not see.' : '非表示にする従業員だけチェックしてください',
                                   ),
                                   children: [
                                     for (final worker in workspace.workers)
@@ -194,10 +194,10 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               const SizedBox(height: 12),
                             ],
                             if (items.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(32),
+                              Padding(
+                                padding: const EdgeInsets.all(32),
                                 child: Text(
-                                  'この月の給与明細はまだありません',
+                                  SkoLanguageController.isEnglish ? 'No payslips have been issued for this month yet.' : 'この月の給与明細はまだありません',
                                   textAlign: TextAlign.center,
                                 ),
                               )
@@ -229,7 +229,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                       ),
                                     ),
                                     subtitle: Text(
-                                      item.reviewConfirmed ? '確認済み' : '未確定',
+                                      item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
                                       style: TextStyle(
                                         color: item.reviewConfirmed
                                             ? Colors.green
@@ -252,7 +252,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               FilledButton.icon(
                                 onPressed: _saving ? null : _confirm,
                                 icon: const Icon(Icons.verified_outlined),
-                                label: Text(_saving ? '確定中…' : '全員確認後に確定'),
+                                label: Text(_saving ? (SkoLanguageController.isEnglish ? 'Confirming…' : '確定中…') : (SkoLanguageController.isEnglish ? 'Confirm after reviewing all' : '全員確認後に確定')),
                               ),
                             ],
                           ],
