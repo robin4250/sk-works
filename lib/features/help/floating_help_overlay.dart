@@ -43,7 +43,8 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
             const size = 52.0;
             const margin = 8.0;
             final maxX = (constraints.maxWidth - size - margin).clamp(0.0, double.infinity);
-            final maxY = (constraints.maxHeight - size - margin).clamp(0.0, double.infinity);
+            const footerClearance = 78.0;
+            final maxY = (constraints.maxHeight - size - footerClearance).clamp(0.0, double.infinity);
 
             return AnimatedBuilder(
               animation: Listenable.merge([
