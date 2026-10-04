@@ -14,13 +14,13 @@ class InvoiceSettingsData {
     required this.bankAccountType,
     required this.bankAccountNumber,
     required this.bankAccountHolder,
-    required this.companyPostalCode,
-    required this.companyAddress,
-    required this.companyPhone,
-    required this.companyFax,
-    required this.invoiceSubject,
-    required this.invoiceContactName,
-    required this.paymentDueText,
+    this.companyPostalCode = '',
+    this.companyAddress = '',
+    this.companyPhone = '',
+    this.companyFax = '',
+    this.invoiceSubject = '',
+    this.invoiceContactName = '',
+    this.paymentDueText = '',
   });
 
   final String companyName;
@@ -135,6 +135,32 @@ class InvoiceSettingsRepository {
       invoiceContactName:
           billing['invoice_contact_name']?.toString() ?? '',
       paymentDueText: billing['payment_due_text']?.toString() ?? '',
+    );
+  }
+
+  Future<InvoiceSettingsData> loadForDocument() async {
+    final raw = await _client.rpc('invoice_document_settings');
+    final row = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+    return InvoiceSettingsData(
+      companyName: row['company_name']?.toString() ?? '',
+      taxRate: (row['tax_rate'] as num?)?.toDouble() ?? 10,
+      welfareRate: (row['welfare_rate'] as num?)?.toDouble() ?? 0,
+      templateTitle: row['template_title']?.toString() ?? '請求書',
+      footerNote: row['footer_note']?.toString() ?? '',
+      bankName: row['bank_name']?.toString() ?? '',
+      bankBranch: row['bank_branch']?.toString() ?? '',
+      bankAccountType: row['bank_account_type']?.toString() ?? '普通',
+      bankAccountNumber: row['bank_account_number']?.toString() ?? '',
+      bankAccountHolder: row['bank_account_holder']?.toString() ?? '',
+      companyPostalCode: row['company_postal_code']?.toString() ?? '',
+      companyAddress: row['company_address']?.toString() ?? '',
+      companyPhone: row['company_phone']?.toString() ?? '',
+      companyFax: row['company_fax']?.toString() ?? '',
+      invoiceSubject: row['invoice_subject']?.toString() ?? '',
+      invoiceContactName: row['invoice_contact_name']?.toString() ?? '',
+      paymentDueText: row['payment_due_text']?.toString() ?? '',
     );
   }
 
