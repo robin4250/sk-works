@@ -17,7 +17,7 @@ void main() {
     expect(sql, contains('partner_payment_settings'));
     expect(sql, contains("coalesce((settings->>(category||'_daily'))::numeric,0)"));
     expect(sql, contains("'設定未入力'"));
-    expect(sql, contains('calculation_blocked,false'));
+    expect(sql, contains('calculation_blocked,calculation_fingerprint'));
   });
 
   test('generation setting notifications are deduplicated and auto-resolved', () {
