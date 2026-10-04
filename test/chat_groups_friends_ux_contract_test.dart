@@ -103,4 +103,18 @@ void main() {
     );
   });
 
+
+  test('conversations stay inside friends and groups tabs', () {
+    final page =
+        File('lib/features/chat/chat_cloud_page.dart').readAsStringSync();
+
+    expect(page, contains("'direct' => _ChatTab.friends"));
+    expect(page, contains('if (_isCustomGroup(group)) return _ChatTab.groups'));
+    expect(
+      page,
+      contains('_ChatTab.groups => _selectedGroupId != null'),
+    );
+    expect(page, contains("'友達を招待'"));
+  });
+
 }
