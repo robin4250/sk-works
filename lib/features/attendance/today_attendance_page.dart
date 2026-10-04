@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'today_attendance_repository.dart';
 
 class TodayAttendancePage extends StatefulWidget {
@@ -30,7 +31,7 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'クラウド接続を確認できません。';
+        _error = SkoLanguageController.tr('クラウド接続を確認できません。');
       });
       return;
     }
@@ -67,7 +68,7 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          '本日の出勤',
+          SkoLanguageController.tr('本日の出勤'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
@@ -110,12 +111,12 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                             ButtonSegment(
                               value: 0,
                               icon: const Icon(Icons.business_outlined),
-                              label: Text('自社 ${own.length}'),
+                              label: Text('${SkoLanguageController.tr('自社')} ${own.length}'),
                             ),
                             ButtonSegment(
                               value: 1,
                               icon: const Icon(Icons.handshake_outlined),
-                              label: Text('下請け ${partner.length}'),
+                              label: Text('${SkoLanguageController.tr('下請け')} ${partner.length}'),
                             ),
                           ],
                           selected: {_tabIndex},
@@ -131,7 +132,7 @@ class _TodayAttendancePageState extends State<TodayAttendancePage> {
                               padding: EdgeInsets.all(22),
                               child: Center(
                                 child: Text(
-                                  '本日の出勤記録はまだありません',
+                                  SkoLanguageController.tr('本日の出勤記録はまだありません'),
                                   style: TextStyle(fontWeight: FontWeight.w800),
                                 ),
                               ),
@@ -226,7 +227,9 @@ class _HistoryDayCard extends StatelessWidget {
   }
 
   static String _dateLabel(DateTime value) {
-    final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+    final weekdays = SkoLanguageController.isEnglish
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : ['月', '火', '水', '木', '金', '土', '日'];
     return '${value.month}/${value.day}（${weekdays[value.weekday - 1]}）';
   }
 }
@@ -302,7 +305,7 @@ class _SummaryTile extends StatelessWidget {
         child: Column(
           children: [
             Text(
-              '$value人',
+              '$value${SkoLanguageController.tr('人')}',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -397,7 +400,7 @@ class _ErrorState extends StatelessWidget {
             const Icon(Icons.cloud_off_outlined, size: 42),
             const SizedBox(height: 12),
             const Text(
-              '本日の出勤を読み込めませんでした',
+              SkoLanguageController.tr('本日の出勤を読み込めませんでした'),
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
@@ -406,7 +409,7 @@ class _ErrorState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
+              label: Text(SkoLanguageController.tr('再試行')),
             ),
           ],
         ),
