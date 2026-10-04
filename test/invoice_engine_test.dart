@@ -69,16 +69,18 @@ void main() {
       expect(line.amountYen, 12501);
     });
 
-    test('rejects invoices without sites', () {
-      expect(
-        () => InvoiceEngine.calculate(
-          customerId: 'customer-1',
-          billingPeriod: '2026-09',
-          detailMode: InvoiceDetailMode.consolidatedOnly,
-          sites: const [],
-        ),
-        throwsArgumentError,
+    test('allows zero-value automatic drafts without sites', () {
+      final result = InvoiceEngine.calculate(
+        customerId: '取引先未設定（自動下書き）',
+        billingPeriod: '2026-09',
+        detailMode: InvoiceDetailMode.consolidatedOnly,
+        sites: const [],
       );
+
+      expect(result.siteCalculations, isEmpty);
+      expect(result.subtotalYen, 0);
+      expect(result.taxYen, 0);
+      expect(result.grandTotalYen, 0);
     });
   });
 }
