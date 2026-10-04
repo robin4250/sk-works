@@ -14,4 +14,17 @@ void main() {
       expect(source, isNot(contains(r'${SKO_IOS_BUNDLE_ID:-com.skworks.skWorks}')));
     }
   });
+
+  test('device-day workflow stays release-only', () {
+    final deviceDay = File('tool/device_day.sh').readAsStringSync();
+    final preflight = File('tool/device_day_preflight.sh').readAsStringSync();
+    final installer = File('tool/run_ios_device.sh').readAsStringSync();
+
+    expect(deviceDay, contains('bash tool/run_ios_device.sh'));
+    expect(preflight, contains('flutter build ios --release --no-codesign'));
+    expect(preflight, isNot(contains('flutter build ios --debug')));
+    expect(installer, contains('--release'));
+    expect(installer, isNot(contains('flutter run')));
+  });
+
 }
