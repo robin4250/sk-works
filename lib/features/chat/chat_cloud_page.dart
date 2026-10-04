@@ -1580,6 +1580,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   Widget _groupList(
     List<Map<String, dynamic>> groups, {
     required String emptyText,
+    bool enableGroupActions = false,
   }) {
     if (groups.isEmpty) {
       return Center(child: Text(emptyText));
@@ -1594,7 +1595,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         final selected =
             group['id']?.toString() == _selectedGroupId;
 
-        return Card(
+        final card = Card(
           child: ListTile(
             leading: CircleAvatar(
               backgroundImage: group['avatar_url'] == null
@@ -1632,6 +1633,57 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
                     : const Icon(Icons.chevron_right),
             onTap: () => _selectGroup(group['id'].toString()),
           ),
+        );
+
+        if (!enableGroupActions || !_isCustomGroup(group)) {
+          return card;
+        }
+
+        final groupId = group['id']?.toString() ?? '';
+        return Dismissible(
+          key: ValueKey('custom-group-$groupId'),
+          confirmDismiss: (direction) =>
+              _handleCustomGroupSwipe(group, direction),
+          background: Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _pinnedGroupIds.contains(groupId)
+                      ? Icons.push_pin
+                      : Icons.push_pin_outlined,
+                ),
+                const SizedBox(width: 10),
+                Icon(
+                  _mutedGroupIds.contains(groupId)
+                      ? Icons.notifications_off_outlined
+                      : Icons.notifications_active_outlined,
+                ),
+              ],
+            ),
+          ),
+          secondaryBackground: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(Icons.visibility_off_outlined),
+                SizedBox(width: 10),
+                Icon(Icons.delete_outline),
+              ],
+            ),
+          ),
+          child: card,
         );
       },
     );
