@@ -33,6 +33,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'chat', label: 'チャット', purpose: '現場・友達・グループ・協力会社との連絡、写真、ファイルを扱います。', destination: '「すべて / 友達 / 現場 / グループ / 協力会社」のタブがあるチャット一覧へ移動します。', access: '管理者・サブ管理者・一般・閲覧権限', details: '友達の氏名をタップすると個別トークを開始できます。グループでは友達招待、承認/拒否、メンバー確認、脱退、メンバー追放ができます。グループを右スワイプするとピン留め・通知音、左スワイプすると非表示・削除を選べます。現場タブには利用権限のある現場チャットが表示されます。'),
     MenuHelpItem(key: 'site_register', label: '現場登録', purpose: '新しい現場の基本情報、住所、最寄駅、責任者等を登録します。', destination: '現場登録画面へ移動します。', access: '現場登録を許可された利用者'),
     MenuHelpItem(key: 'people', label: '社員', purpose: '自社社員の基本情報、資格、必要書類を確認・管理します。', destination: '社員一覧へ移動します。', access: '管理者・サブ管理者・社員閲覧権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
+    MenuHelpItem(key: 'initial_registration', label: '初回登録', purpose: 'SKOを初めて利用する管理者が、携帯電話番号をIDとして登録しSMS認証へ進みます。', destination: 'ログイン画面の「初回登録」から管理者初回登録へ切り替えます。', access: '初回登録を行う管理者', details: 'ログイン画面で「初回登録」を押し、携帯電話番号と8文字以上の本パスワードを入力します。SMS認証後に会社情報・第2パスワード等の初期設定へ進みます。既に登録済みの場合は通常ログインを使用してください。'),
     MenuHelpItem(key: 'employee_register', label: '従業員登録', purpose: '名前と電話番号から初回利用者を登録し、QR/初期パスを案内します。', destination: '従業員登録画面へ移動します。', access: '管理者・サブ管理者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'employee_onboarding_approvals', label: '本登録承認', purpose: '従業員の本人情報登録を確認して本登録を承認・拒否します。', destination: '本登録承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'payroll', label: '給与明細', purpose: '自分の給与明細を月別に確認し、プレビュー・印刷します。', destination: '第2認証後、給与明細一覧へ移動します。', access: '本人・給与明細閲覧権限'),
