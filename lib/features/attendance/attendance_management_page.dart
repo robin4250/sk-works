@@ -57,10 +57,16 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
         appBar: AppBar(
           title: Text(SkoLanguageController.tr('勤怠管理'), style: const TextStyle(fontWeight: FontWeight.w900)),
           actions: const [SkoNotificationBell()],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: SkoLanguageController.tr('個別'), icon: const Icon(Icons.person_outline)),
-              Tab(text: SkoLanguageController.tr('一括'), icon: const Icon(Icons.groups_outlined)),
+              Tab(
+                text: SkoLanguageController.tr('個別'),
+                icon: const Icon(Icons.person_outline),
+              ),
+              Tab(
+                text: SkoLanguageController.tr('一括'),
+                icon: const Icon(Icons.groups_outlined),
+              ),
             ],
           ),
         ),
