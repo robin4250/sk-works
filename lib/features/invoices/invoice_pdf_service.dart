@@ -117,7 +117,8 @@ class InvoicePdfService {
       buffer
         ..writeln('計 ${_yen(invoice.subtotalYen)}')
         ..writeln('消費税 ${_yen(invoice.taxYen)}')
-        ..writeln('合計(税込) ${_yen(invoice.grandTotalYen)}');
+        ..writeln('合計(税込) ${_yen(invoice.grandTotalYen)}')
+        ..writeln('請求合計 ${_yen(invoice.grandTotalYen)}');
     }
     return buffer.toString();
   }
