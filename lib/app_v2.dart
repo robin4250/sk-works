@@ -38,6 +38,7 @@ import 'features/invoices/invoice_cloud_page.dart';
 import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
+import 'features/notifications/notifications_page.dart';
 import 'features/operations/vehicle_route_page.dart';
 import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
@@ -758,6 +759,9 @@ class _HomePageState extends State<HomePage> {
           title: '支払証明書設定',
           child: PartnerPaymentSettingsPage(),
         );
+        break;
+      case 'notifications':
+        page = const NotificationsPage();
         break;
       case 'profile':
         page = ProfilePage(
