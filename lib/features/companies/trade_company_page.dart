@@ -18,7 +18,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   String? _error;
 
   String get _title =>
-      widget.mode == TradeCompanyPageMode.customer ? '取引会社' : '下請け会社';
+      widget.mode == TradeCompanyPageMode.customer ? '取引会社登録' : '協力会社登録';
 
   @override
   void initState() {
@@ -86,7 +86,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                           child: Text(
                             widget.mode == TradeCompanyPageMode.customer
                                 ? '取引会社はまだ登録されていません\nSKO連携なしでも登録できます'
-                                : '下請け会社はまだ登録されていません\nSKO連携なしでも登録できます',
+                                : '協力会社はまだ登録されていません\nSKO連携なしでも登録できます',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -306,7 +306,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
               child: Text(
                 widget.mode == TradeCompanyPageMode.customer
                     ? '取引会社の契約を使う'
-                    : '下請け会社の契約を使う',
+                    : '協力会社の契約を使う',
               ),
             ),
           ],
