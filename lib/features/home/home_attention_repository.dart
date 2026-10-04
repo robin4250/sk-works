@@ -8,14 +8,17 @@ class RequiredDocumentAttention {
     required this.missingNames,
     required this.needsLicense,
     required this.needsQualification,
+    this.paidLeaveApprovalCount = 0,
   });
 
   final int missingCount;
   final List<String> missingNames;
   final bool needsLicense;
   final bool needsQualification;
+  final int paidLeaveApprovalCount;
 
-  bool get hasMissing => missingCount > 0;
+  int get unresolvedCount => missingCount + paidLeaveApprovalCount;
+  bool get hasMissing => unresolvedCount > 0;
 }
 
 class HomeAttentionRepository {
@@ -31,12 +34,20 @@ class HomeAttentionRepository {
 
   Future<RequiredDocumentAttention> loadRequiredDocumentAttention() async {
     final value = await _client.rpc('current_user_required_document_attention');
+    var paidLeaveApprovalCount = 0;
+    try {
+      final pending = await _client.rpc('pending_paid_leave_request_batches');
+      if (pending is List) paidLeaveApprovalCount = pending.length;
+    } catch (_) {
+      // Non-management users do not have access to approval queues.
+    }
     if (value is! Map) {
-      return const RequiredDocumentAttention(
+      return RequiredDocumentAttention(
         missingCount: 0,
         missingNames: [],
         needsLicense: false,
         needsQualification: false,
+        paidLeaveApprovalCount: paidLeaveApprovalCount,
       );
     }
     final row = Map<String, dynamic>.from(value);
@@ -51,6 +62,7 @@ class HomeAttentionRepository {
       missingNames: names,
       needsLicense: row['needs_license'] == true,
       needsQualification: row['needs_qualification'] == true,
+      paidLeaveApprovalCount: paidLeaveApprovalCount,
     );
   }
 }

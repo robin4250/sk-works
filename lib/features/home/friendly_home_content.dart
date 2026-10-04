@@ -168,7 +168,11 @@ class _RequiredDocumentAttentionCardState
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => widget.onOpen('documents'),
+          onTap: () => widget.onOpen(
+            widget.attention.paidLeaveApprovalCount > 0
+                ? 'approvals'
+                : 'documents',
+          ),
           child: IntrinsicHeight(
             child: Row(
               children: [
@@ -201,7 +205,7 @@ class _RequiredDocumentAttentionCardState
                           ),
                         ),
                         Text(
-                          '${SkoLanguageController.tr('未対応')} ${widget.attention.missingCount}${SkoLanguageController.isEnglish ? '' : '件'}',
+                          '${SkoLanguageController.tr('未対応')} ${widget.attention.unresolvedCount}${SkoLanguageController.isEnglish ? '' : '件'}',
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(width: 4),
