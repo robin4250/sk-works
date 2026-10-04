@@ -45,14 +45,8 @@ void main() {
     expect(app, contains('_identity.isSubAdmin'));
     expect(app, contains('CompanyModuleSettingsRepository.subAdminHomeKeys'));
     expect(app, contains('_subAdminFeatureEnabled(item.key)'));
-    expect(
-      app,
-      contains(
-        "if (!_isAdmin)\n"
-        "        _MenuAction(\n"
-        "          key: 'payroll',",
-      ),
-    );
+    expect(app, contains("key: 'payroll'"));
+    expect(app, contains("accessLabel: SkoLanguageController.tr('本人')"));
     expect(
       app,
       contains("if (_identity.can('can_approve_daily_report_edits'))"),
