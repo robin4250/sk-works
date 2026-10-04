@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
+import '../../international/language_controller.dart';
 
 class PayrollReviewPage extends StatefulWidget {
   const PayrollReviewPage({super.key});
