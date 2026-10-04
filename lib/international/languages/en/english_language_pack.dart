@@ -328,5 +328,11 @@ const englishLanguagePack = LanguagePack(
     '一括登録・編集を直接反映': 'Apply Bulk Registration / Edits',
     '選択範囲を一括削除': 'Delete Selected Range',
     '設定を保存しました': 'Settings saved',
+    '給料一覧': 'Payroll List',
+    '確認済み': 'Confirmed',
+    '未確定': 'Unconfirmed',
+    '支払証明書': 'Payment Certificate',
+    '下書き': 'Draft',
+    '確定': 'Finalized',
   },
 );
