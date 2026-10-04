@@ -250,7 +250,36 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                       child: Text(_error!, textAlign: TextAlign.center),
                     ),
                   )
-                : ListView(
+                : (widget.selectForChat || widget.selectForGroupInvite)
+                    ? (friends.isEmpty
+                        ? const Center(child: Text('友達はまだいません'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: friends.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 6),
+                            itemBuilder: (context, index) {
+                              final friend = friends[index];
+                              return Card(
+                                child: ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.person_outline),
+                                  ),
+                                  title: Text(
+                                    friend['display_name']?.toString() ??
+                                        'SKOユーザー',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () =>
+                                      Navigator.of(context).pop(friend),
+                                ),
+                              );
+                            },
+                          ))
+                    : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
                     children: [
                       Card(
