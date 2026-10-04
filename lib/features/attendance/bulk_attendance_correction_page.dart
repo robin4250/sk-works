@@ -233,25 +233,7 @@ class _BulkAttendanceCorrectionPageState
           '勤務修正',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: [
-          TextButton(
-            onPressed: _saving
-                ? null
-                : () async {
-                    final count = await Navigator.of(context).push<int>(
-                      MaterialPageRoute(
-                        builder: (_) => const PaidLeaveCorrectionPage(),
-                      ),
-                    );
-                    if (count != null && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('$count日の有給勤務修正を申請しました')),
-                      );
-                    }
-                  },
-            child: const Text('休み→有給'),
-          ),
-        ],
+        actions: const [],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -273,6 +255,37 @@ class _BulkAttendanceCorrectionPageState
       body: SafeArea(
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: _saving
+                      ? null
+                      : () async {
+                          final count = await Navigator.of(context).push<int>(
+                            MaterialPageRoute(
+                              builder: (_) => const PaidLeaveCorrectionPage(),
+                            ),
+                          );
+                          if (count != null && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '$count日の有給勤務修正を申請しました',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  icon: const Icon(Icons.event_repeat_outlined),
+                  label: const Text(
+                    '休み → 有給',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
               child: Row(
