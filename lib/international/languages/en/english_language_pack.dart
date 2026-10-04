@@ -323,6 +323,10 @@ const englishLanguagePack = LanguagePack(
     '本登録待ちの従業員を確認して承認': 'Review and approve employees waiting for full registration',
     '勤怠管理': 'Attendance Management',
     '一括': 'Bulk',
+    '勤怠管理を利用できません。': 'Attendance management is unavailable.',
+    '一括削除': 'Bulk Delete',
+    '一括登録・編集を直接反映': 'Apply Bulk Registration / Edits',
+    '選択範囲を一括削除': 'Delete Selected Range',
     '設定を保存しました': 'Settings saved',
   },
 );
