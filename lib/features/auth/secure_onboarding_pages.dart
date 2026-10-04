@@ -414,17 +414,28 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                       ] else ...[
                         const SizedBox(height: 12),
                         if (!_passwordResetMode)
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() {
-                                      _registerMode = !_registerMode;
-                                      _message = null;
-                                    }),
-                            child: Text(
-                              _registerMode
-                                  ? 'すでに登録済みの方'
-                                  : '管理者として初めて登録する',
+                          SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() {
+                                        _registerMode = !_registerMode;
+                                        _message = null;
+                                      }),
+                              icon: Icon(
+                                _registerMode
+                                    ? Icons.login
+                                    : Icons.person_add_alt_1,
+                              ),
+                              label: Text(
+                                _registerMode
+                                    ? 'ログインへ戻る'
+                                    : '初回登録',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
                           ),
                         if (!_registerMode)
