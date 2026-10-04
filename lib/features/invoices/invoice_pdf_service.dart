@@ -20,6 +20,8 @@ class InvoicePdfService {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
+    final effectiveSettings = settings ?? await _loadSettings();
+
     final regular = await PdfGoogleFonts.notoSansJPRegular();
     final bold = await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
@@ -380,7 +382,7 @@ class InvoicePdfService {
                 _cell('整理番号', bold: true, center: true, color: PdfColors.white),
                 _cell('内容', bold: true, center: true, color: PdfColors.white),
                 _cell('人工', bold: true, center: true, color: PdfColors.white),
-                _cell('単価', bold: true, center: true, color: PdfColors.white),
+                _cell('残業', bold: true, center: true, color: PdfColors.white),
                 _cell('金額', bold: true, center: true, color: PdfColors.white),
               ],
             ),
@@ -397,7 +399,7 @@ class InvoicePdfService {
                         : '${rows[i].siteName}　${rows[i].content}',
                   ),
                   _cell(rows[i].quantity, right: true),
-                  _cell(rows[i].unitPrice, right: true),
+                  _cell(rows[i].overtime, right: true),
                   _cell(rows[i].amount, right: true),
                 ],
               ),
@@ -494,6 +496,16 @@ class InvoicePdfService {
     );
   }
 
+  static Future<InvoiceSettingsData?> _loadSettings() async {
+    final repository = InvoiceSettingsRepository.maybeCreate();
+    if (repository == null) return null;
+    try {
+      return await repository.load();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static pw.TableRow _summaryRow(
     String label,
     int value,
@@ -579,7 +591,7 @@ class _InvoiceFormRow {
     required this.siteName,
     required this.content,
     required this.quantity,
-    required this.unitPrice,
+    required this.overtime,
     required this.amount,
   });
 
@@ -587,13 +599,13 @@ class _InvoiceFormRow {
       : siteName = '',
         content = '',
         quantity = '',
-        unitPrice = '',
+        overtime = '',
         amount = '';
 
   final String siteName;
   final String content;
   final String quantity;
-  final String unitPrice;
+  final String overtime;
   final String amount;
 }
 
