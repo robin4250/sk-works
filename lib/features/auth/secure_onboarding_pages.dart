@@ -357,6 +357,32 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           ),
                         ),
                       ),
+                      if (!_awaitingSms && !_passwordResetMode) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() {
+                                      _registerMode = !_registerMode;
+                                      _message = null;
+                                    }),
+                            icon: Icon(
+                              _registerMode
+                                  ? Icons.login
+                                  : Icons.person_add_alt_1,
+                            ),
+                            label: Text(
+                              _registerMode ? 'ログインへ戻る' : '初回登録',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (!_awaitingSms &&
                           !_registerMode &&
                           !_passwordResetMode) ...[
@@ -413,31 +439,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                         ),
                       ] else ...[
                         const SizedBox(height: 12),
-                        if (!_passwordResetMode)
-                          SizedBox(
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              onPressed: _busy
-                                  ? null
-                                  : () => setState(() {
-                                        _registerMode = !_registerMode;
-                                        _message = null;
-                                      }),
-                              icon: Icon(
-                                _registerMode
-                                    ? Icons.login
-                                    : Icons.person_add_alt_1,
-                              ),
-                              label: Text(
-                                _registerMode
-                                    ? 'ログインへ戻る'
-                                    : '初回登録',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
+
                         if (!_registerMode)
                           TextButton(
                             onPressed: _busy
