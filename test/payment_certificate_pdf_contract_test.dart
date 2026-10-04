@@ -11,7 +11,7 @@ void main() {
         read('lib/features/payroll/payment_certificate_pdf_service.dart');
     final page = read('lib/features/payroll/payment_certificates_page.dart');
 
-    expect(service, contains("'支 払 証 明 書'"));
+    expect(service, contains("'工事代金支払明細書'"));
     expect(service, contains('PdfPageFormat.a4'));
     expect(service, contains('Printing.layoutPdf'));
     expect(service, contains("'支払金額'"));
