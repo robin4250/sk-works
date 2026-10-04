@@ -96,15 +96,15 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     }
   }
 
-  Future<void> _setVisibility(
+  Future<void> _setHiddenFromSubAdmin(
     PayrollReviewWorkerVisibility worker,
-    bool value,
+    bool hidden,
   ) async {
     final repository = _repository;
     if (repository == null) return;
     await repository.setManagerVisibility(
       workerId: worker.workerId,
-      visible: value,
+      visible: !hidden,
     );
     await _load();
   }
@@ -170,16 +170,20 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               Card(
                                 child: ExpansionTile(
                                   title: const Text(
-                                    'サブ管理者へ見せる従業員',
+                                    'サブ管理者に見せない従業員',
                                     style:
                                         TextStyle(fontWeight: FontWeight.w900),
+                                  ),
+                                  subtitle: const Text(
+                                    '非表示にする従業員だけチェックしてください',
                                   ),
                                   children: [
                                     for (final worker in workspace.workers)
                                       CheckboxListTile(
-                                        value: worker.visibleToManager,
+                                        value: !worker.visibleToManager,
                                         title: Text(worker.workerName),
-                                        onChanged: (value) => _setVisibility(
+                                        onChanged: (value) =>
+                                            _setHiddenFromSubAdmin(
                                           worker,
                                           value ?? false,
                                         ),
