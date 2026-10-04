@@ -3,6 +3,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('login screen exposes a visible initial registration button', () {
+    final auth = File(
+      'lib/features/auth/secure_onboarding_pages.dart',
+    ).readAsStringSync();
+
+    expect(auth, contains("OutlinedButton.icon("));
+    expect(auth, contains("'初回登録'"));
+    expect(auth, contains("_registerMode = !_registerMode"));
+  });
+
   test('employee onboarding uses language controller and contextual help', () {
     final pages =
         File('lib/features/auth/employee_onboarding_pages.dart').readAsStringSync();
