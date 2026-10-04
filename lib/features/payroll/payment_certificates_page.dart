@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import 'payment_certificate_pdf_service.dart';
 import 'payment_certificate_repository.dart';
-import '../../international/language_controller.dart';
 
 class PaymentCertificatesPage extends StatefulWidget {
   const PaymentCertificatesPage({super.key});
