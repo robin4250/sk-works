@@ -374,10 +374,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                                   : Icons.person_add_alt_1,
                             ),
                             label: Text(
-                              _registerMode ? 'ログインへ戻る' : '初回登録',
+                              _registerMode
+                                  ? 'ログインへ戻る'
+                                  : '管理者として初めて登録する',
                               style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
