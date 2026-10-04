@@ -6,11 +6,17 @@ declare
 begin
   if exists (
     with grants as (
-      select table_name, privilege_type
-      from information_schema.role_table_grants
-      where table_schema = 'public'
-        and grantee = 'authenticated'
-        and privilege_type in ('SELECT','INSERT','UPDATE','DELETE')
+      select g.table_name, g.privilege_type
+      from information_schema.role_table_grants g
+      join pg_catalog.pg_class c
+        on c.relname = g.table_name
+      join pg_catalog.pg_namespace n
+        on n.oid = c.relnamespace
+       and n.nspname = g.table_schema
+      where g.table_schema = 'public'
+        and g.grantee = 'authenticated'
+        and g.privilege_type in ('SELECT','INSERT','UPDATE','DELETE')
+        and c.relkind in ('r','p')
     ),
     policies as (
       select tablename,
