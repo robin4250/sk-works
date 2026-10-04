@@ -13,7 +13,7 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
 
     expect(controller, contains("ValueNotifier<bool>(true)"));
-    expect(controller, contains("ValueNotifier<double>(1.0)"));
+    expect(controller, contains("ValueNotifier<double>(0.88)"));
     expect(controller, contains("sko_floating_help_enabled"));
     expect(controller, contains("sko_floating_help_x"));
     expect(controller, contains("sko_floating_help_y"));
@@ -24,6 +24,8 @@ void main() {
     expect(overlay, contains("onLongPressMoveUpdate"));
     expect(overlay, contains("onLongPressEnd"));
     expect(overlay, contains("何かお困りですか？"));
+    expect(overlay, contains("使い方・ポイント"));
+    expect(overlay, contains("item.details"));
     expect(app, contains("const FloatingHelpOverlay()"));
   });
 
