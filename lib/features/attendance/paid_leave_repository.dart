@@ -112,6 +112,29 @@ class PaidLeaveRepository {
     return batchId;
   }
 
+  Future<String> submitRetrospective({
+    required Iterable<DateTime> dates,
+    String? reason,
+  }) async {
+    final normalized = dates
+        .map((date) => _dbDate(date))
+        .toSet()
+        .toList(growable: false)
+      ..sort();
+    final raw = await _client.rpc(
+      'submit_retrospective_paid_leave_request',
+      params: {
+        'p_dates': normalized,
+        'p_reason': reason?.trim(),
+      },
+    );
+    final batchId = raw?.toString() ?? '';
+    if (batchId.isEmpty) {
+      throw StateError('有給への勤務修正申請を作成できませんでした。');
+    }
+    return batchId;
+  }
+
   Future<List<PaidLeaveApprovalBatch>> loadPendingApprovals() async {
     final raw = await _client.rpc('pending_paid_leave_request_batches');
     if (raw is! List) return const [];
