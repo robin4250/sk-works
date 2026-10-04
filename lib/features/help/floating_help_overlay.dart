@@ -103,8 +103,9 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
                                 _dragStartPosition = null;
                               });
                             },
-                            child: Tooltip(
-                              message: SkoLanguageController.isEnglish
+                            child: Semantics(
+                              button: true,
+                              label: SkoLanguageController.isEnglish
                                   ? 'Help'
                                   : '何かお困りですか？',
                               child: Container(
