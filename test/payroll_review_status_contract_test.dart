@@ -15,7 +15,8 @@ void main() {
 
   test('employee payroll statement shows confirmed or unconfirmed label', () {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
-    expect(page, contains("item.reviewConfirmed ? '確認済み' : '未確定'"));
+    expect(page, contains("SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み'"));
+    expect(page, contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"));
     expect(page, contains("statement.reviewConfirmed ? '確認済み' : '未確定'"));
     expect(page, contains('Colors.green'));
     expect(page, contains('colorScheme.error'));
