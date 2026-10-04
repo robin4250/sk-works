@@ -169,7 +169,7 @@ class InvoicePdfService {
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
           pw.Text(
-            '請求書',
+            '御請求書',
             style: pw.TextStyle(
               fontSize: 28,
               fontWeight: pw.FontWeight.bold,
@@ -190,13 +190,36 @@ class InvoicePdfService {
           fontWeight: pw.FontWeight.bold,
         ),
       ),
-      pw.SizedBox(height: 22),
+      pw.SizedBox(height: 10),
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.blueGrey600, width: 0.8),
+        ),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              '御請求金額',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              _yen(invoice.grandTotalYen),
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+      pw.SizedBox(height: 16),
       pw.TableHelper.fromTextArray(
-        headers: const ['現場 / 明細', '数量', '単価', '金額'],
+        headers: const ['工事内容 / 現場', '数量', '単価', '金額'],
         data: rows,
         headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
         headerDecoration: const pw.BoxDecoration(
-          color: PdfColors.grey200,
+          color: PdfColors.blueGrey100,
         ),
         cellPadding: const pw.EdgeInsets.symmetric(
           horizontal: 6,
@@ -230,7 +253,7 @@ class InvoicePdfService {
               _totalRow('消費税', invoice.taxYen),
               pw.Divider(thickness: 1.5),
               _totalRow(
-                '請求合計',
+                '合計(税込)',
                 invoice.grandTotalYen,
                 strong: true,
               ),
