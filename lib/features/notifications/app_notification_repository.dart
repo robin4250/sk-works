@@ -51,6 +51,7 @@ class AppNotificationRepository {
   }
 
   Future<List<AppNotificationRecord>> load({int limit = 100}) async {
+    await _enqueueDueInvoiceApprovals();
     final rows = await _client
         .from('app_notifications')
         .select(
@@ -69,6 +70,7 @@ class AppNotificationRepository {
   }
 
   Future<int> unreadCount() async {
+    await _enqueueDueInvoiceApprovals();
     final rows = await _client
         .from('app_notifications')
         .select('id')
@@ -86,5 +88,13 @@ class AppNotificationRepository {
 
   Future<void> markAllRead() async {
     await _client.rpc('mark_all_notifications_read');
+  }
+
+  Future<void> _enqueueDueInvoiceApprovals() async {
+    try {
+      await _client.rpc('enqueue_due_invoice_approval_notifications');
+    } catch (_) {
+      // Older schemas remain readable while migrations roll out.
+    }
   }
 }
