@@ -83,4 +83,30 @@ void main() {
       expect(result.grandTotalYen, 0);
     });
   });
+
+  test('InvoiceEngine accepts primary invoice row with site label and blank work content', () {
+    final result = InvoiceEngine.calculate(
+      customerId: '株式会社 秀中',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+      sites: const [
+        SiteInvoiceCalculation(
+          siteId: 'site-1',
+          siteName: '江戸川清掃工場建て替え工事',
+          lines: [
+            InvoiceLine(
+              label: '',
+              siteLabel: '江戸川清掃工場建て替え工事',
+              workContent: '',
+              quantity: 1,
+              unitPriceYen: 32800,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(result.grandTotalYen, greaterThan(0));
+  });
+
 }
