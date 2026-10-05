@@ -723,7 +723,8 @@ class InvoicePdfService {
   static String _surnameForStamp(String name) {
     final value = name.trim();
     if (value.isEmpty) return '確認者';
-    final parts = value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty);
+    final parts =
+        value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).toList();
     if (parts.length > 1) return parts.first;
     if (RegExp(r'^[A-Za-z0-9_-]+
     final value = encoded.trim();
