@@ -21,6 +21,8 @@ class InvoiceSettingsData {
     this.invoiceSubject = '',
     this.invoiceContactName = '',
     this.paymentDueText = '',
+    this.companyLogoBase64 = '',
+    this.companySealBase64 = '',
   });
 
   final String companyName;
@@ -40,6 +42,8 @@ class InvoiceSettingsData {
   final String invoiceSubject;
   final String invoiceContactName;
   final String paymentDueText;
+  final String companyLogoBase64;
+  final String companySealBase64;
 }
 
 class InvoiceSettingsRepository {
@@ -102,7 +106,8 @@ class InvoiceSettingsRepository {
         .select(
           'bank_name, bank_branch, bank_account_type, '
           'bank_account_number, bank_account_holder, '
-          'invoice_subject, invoice_contact_name, payment_due_text',
+          'invoice_subject, invoice_contact_name, payment_due_text, '
+          'invoice_logo_base64, invoice_seal_base64',
         )
         .eq('company_id', companyId)
         .limit(1);
@@ -135,6 +140,8 @@ class InvoiceSettingsRepository {
       invoiceContactName:
           billing['invoice_contact_name']?.toString() ?? '',
       paymentDueText: billing['payment_due_text']?.toString() ?? '',
+      companyLogoBase64: billing['invoice_logo_base64']?.toString() ?? '',
+      companySealBase64: billing['invoice_seal_base64']?.toString() ?? '',
     );
   }
 
@@ -161,6 +168,8 @@ class InvoiceSettingsRepository {
       invoiceSubject: row['invoice_subject']?.toString() ?? '',
       invoiceContactName: row['invoice_contact_name']?.toString() ?? '',
       paymentDueText: row['payment_due_text']?.toString() ?? '',
+      companyLogoBase64: row['invoice_logo_base64']?.toString() ?? '',
+      companySealBase64: row['invoice_seal_base64']?.toString() ?? '',
     );
   }
 
@@ -182,6 +191,14 @@ class InvoiceSettingsRepository {
         'p_invoice_subject': value.invoiceSubject,
         'p_invoice_contact_name': value.invoiceContactName,
         'p_payment_due_text': value.paymentDueText,
+      },
+    );
+
+    await _client.rpc(
+      'save_invoice_branding',
+      params: {
+        'p_logo_base64': value.companyLogoBase64,
+        'p_seal_base64': value.companySealBase64,
       },
     );
   }

@@ -15,14 +15,18 @@ void main() {
     expect(repository, contains('paymentDueText'));
     expect(repository, contains("rpc('invoice_document_settings')"));
     expect(repository, contains("'save_invoice_settings_v2'"));
+    expect(repository, contains("'save_invoice_branding'"));
+    expect(repository, contains('companyLogoBase64'));
+    expect(repository, contains('companySealBase64'));
 
     expect(page, contains("'件名'"));
     expect(page, contains("'請求書の承認者'"));
     expect(page, contains("'支払約定日'"));
     expect(page, contains("'請求元（会社データから自動反映）'"));
+    expect(page, contains("'ロゴ画像を登録'"));
   });
 
-  test('invoice PDF uses month-end date counter company data and generated stamps', () {
+  test('invoice PDF uses month-end date counter company data and branding images', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
 
     expect(pdf, contains("'御　請　求　書'"));
@@ -35,6 +39,9 @@ void main() {
     expect(pdf, contains('settings?.companyPhone'));
     expect(pdf, contains('_confirmationStamp('));
     expect(pdf, contains('_companySeal('));
+    expect(pdf, contains('companyLogo'));
+    expect(pdf, contains('companySealImage'));
+    expect(pdf, contains('width: 335'));
     expect(pdf, contains('settings?.paymentDueText'));
     expect(pdf, contains("'2本指で拡大・縮小／拡大後はドラッグで移動'"));
   });
