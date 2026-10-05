@@ -732,13 +732,8 @@ class InvoicePdfService {
 
   static pw.Widget _companySeal(String companyName) {
     final red = PdfColor.fromHex('#B83232');
-    final chars = companyName
-        .replaceAll('株式会社', '')
-        .replaceAll('有限会社', '')
-        .replaceAll(' ', '')
-        .trim();
-    final sealText = chars.isEmpty ? companyName.trim() : chars;
-    final shown = sealText.isEmpty ? '会社之印' : '$sealText\n之印';
+    final sealText = companyName.replaceAll(' ', '').trim();
+    final shown = sealText.isEmpty ? '会社之印' : sealText;
     return pw.Container(
       width: 48,
       height: 48,
@@ -754,10 +749,10 @@ class InvoicePdfService {
         child: pw.Text(
           shown,
           textAlign: pw.TextAlign.center,
-          maxLines: 4,
+          maxLines: 5,
           style: pw.TextStyle(
             color: red,
-            fontSize: 6.2,
+            fontSize: 5.5,
             fontWeight: pw.FontWeight.bold,
             letterSpacing: .7,
           ),
