@@ -246,7 +246,7 @@ create or replace function public.invoice_approval_status_rows(p_invoice_id uuid
 returns table(
   approver_user_id uuid,
   approver_name text,
-  position integer,
+  "position" integer,
   status text,
   approved_at timestamptz,
   can_current_user_approve boolean
