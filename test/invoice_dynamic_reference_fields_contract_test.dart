@@ -76,7 +76,7 @@ void main() {
     expect(repository, contains("line['work_content']"));
     expect(repository, contains("'通常作業'"));
     expect(pdf, contains("siteLabel == '〃' && workContent.isNotEmpty"));
-    expect(pdf, contains("'〃　$workContent'"));
+    expect(pdf, contains("'〃　\$workContent'"));
     expect(sql, contains("'work_content','夜間作業'"));
     expect(sql, contains("'work_content','（手当て）'"));
     expect(sql, contains("'work_content','（残業）'"));
