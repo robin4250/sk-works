@@ -79,6 +79,7 @@ void main() {
     expect(sql, contains("'work_content','（法定福利費）'"));
     expect(sql, contains("'work_content','（消費税）'"));
     expect(sql, contains('*1.5'));
+    expect(pdf, contains("rawWorkContent.isEmpty ? '通常作業'"));
   });
 
   test('invoice model and repository carry number and billing dates', () {
