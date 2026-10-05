@@ -209,7 +209,7 @@ class InvoicePdfService {
                 textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(
                   color: blue,
-                  fontSize: 24,
+                  fontSize: 17,
                   fontWeight: pw.FontWeight.bold,
                   letterSpacing: 4,
                 ),
@@ -233,7 +233,7 @@ class InvoicePdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 8),
+        pw.SizedBox(height: 2),
         pw.Align(
           alignment: pw.Alignment.centerLeft,
           child: pw.SizedBox(
@@ -274,7 +274,7 @@ class InvoicePdfService {
             ),
           ),
         ),
-        pw.SizedBox(height: 3),
+        pw.SizedBox(height: 1),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -354,7 +354,7 @@ class InvoicePdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 4),
+        pw.SizedBox(height: 1),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -664,7 +664,7 @@ class InvoicePdfService {
     required bool designB,
   }) {
     final red = PdfColor.fromHex('#B83232');
-    final label = name.trim().isEmpty ? '確認者' : name.trim();
+    final label = _surnameForStamp(name);
     return pw.Container(
       width: 34,
       height: 34,
@@ -718,6 +718,17 @@ class InvoicePdfService {
         ),
       ),
     );
+  }
+
+  static String _surnameForStamp(String name) {
+    final value = name.trim();
+    if (value.isEmpty) return '確認者';
+    final parts = value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty);
+    if (parts.length > 1) return parts.first;
+    if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value) || value.length <= 2) {
+      return value;
+    }
+    return value.substring(0, 2);
   }
 
   static pw.MemoryImage? _memoryImage(String encoded) {
