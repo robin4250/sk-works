@@ -195,7 +195,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
   }
 }
 
-class PayrollStatementPreviewPage extends StatelessWidget {
+class PayrollStatementPreviewPage extends StatefulWidget {
   const PayrollStatementPreviewPage({
     super.key,
     required this.statement,
@@ -204,27 +204,76 @@ class PayrollStatementPreviewPage extends StatelessWidget {
   final PayrollStatementRecord statement;
 
   @override
+  State<PayrollStatementPreviewPage> createState() =>
+      _PayrollStatementPreviewPageState();
+}
+
+class _PayrollStatementPreviewPageState
+    extends State<PayrollStatementPreviewPage> {
+  final TransformationController _zoomController = TransformationController();
+
+  @override
+  void dispose() {
+    _zoomController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final statement = widget.statement;
     return Scaffold(
       appBar: AppBar(
         title: Text(
           SkoLanguageController.isEnglish ? 'Payslip' : '給与明細書',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          IconButton(
+            tooltip: SkoLanguageController.isEnglish
+                ? 'Reset zoom'
+                : '拡大縮小をリセット',
+            onPressed: () => _zoomController.value = Matrix4.identity(),
+            icon: const Icon(Icons.fit_screen_outlined),
+          ),
+          const SkoNotificationBell(),
+        ],
       ),
-      body: PdfPreview(
-        initialPageFormat: PdfPageFormat.a4.landscape,
-        canChangePageFormat: false,
-        canChangeOrientation: false,
-        allowPrinting: true,
-        allowSharing: true,
-        pdfFileName: '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-        build: (_) => PayrollPdfService.buildPdf(statement),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              SkoLanguageController.isEnglish
+                  ? 'Pinch to zoom. Drag to move while zoomed.'
+                  : '2本指で拡大・縮小／拡大後はドラッグで移動',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            child: InteractiveViewer(
+              transformationController: _zoomController,
+              minScale: 1,
+              maxScale: 5,
+              panEnabled: true,
+              scaleEnabled: true,
+              boundaryMargin: const EdgeInsets.all(120),
+              clipBehavior: Clip.none,
+              child: PdfPreview(
+                initialPageFormat: PdfPageFormat.a4.landscape,
+                canChangePageFormat: false,
+                canChangeOrientation: false,
+                allowPrinting: true,
+                allowSharing: true,
+                pdfFileName:
+                    '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
+                build: (_) => PayrollPdfService.buildPdf(statement),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-
 }
 
 class _ErrorState extends StatelessWidget {

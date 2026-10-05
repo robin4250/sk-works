@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
 import '../auth/secondary_protected_page.dart';
+import '../invoices/invoice_cloud_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
 import '../payroll/payment_certificates_page.dart';
@@ -146,6 +147,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
           builder: (_) => const SecondaryProtectedPage(
             title: '管理者用現場データ',
             child: AdminSiteFinancialPage(),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'invoice_approval') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => InvoiceCloudPage(
+            initialInvoiceId: item.actionId,
           ),
         ),
       );

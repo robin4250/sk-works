@@ -120,6 +120,7 @@ class InvoiceCloudRepository {
             subtotal: _toInt(invoice['subtotal']),
             tax: _toInt(invoice['tax']),
           ),
+          invoiceId: invoice['id']?.toString() ?? '',
           invoiceNumber: invoice['invoice_number']?.toString() ?? '',
           issueDate: issueDate,
           periodStart: periodStart,

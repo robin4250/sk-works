@@ -52,6 +52,7 @@ class InvoiceCalculationResult {
     required this.detailMode,
     required this.siteCalculations,
     required this.taxRateBps,
+    this.invoiceId = '',
     this.invoiceNumber = '',
     this.issueDate,
     this.periodStart,
@@ -65,6 +66,7 @@ class InvoiceCalculationResult {
 
   /// Basis points. Example: 1000 = 10%.
   final int taxRateBps;
+  final String invoiceId;
   final String invoiceNumber;
   final DateTime? issueDate;
   final DateTime? periodStart;
@@ -89,6 +91,7 @@ class InvoiceEngine {
     required InvoiceDetailMode detailMode,
     required List<SiteInvoiceCalculation> sites,
     int taxRateBps = 1000,
+    String invoiceId = '',
     String invoiceNumber = '',
     DateTime? issueDate,
     DateTime? periodStart,
@@ -137,6 +140,7 @@ class InvoiceEngine {
       detailMode: detailMode,
       siteCalculations: List.unmodifiable(sites),
       taxRateBps: taxRateBps,
+      invoiceId: invoiceId,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,
       periodStart: periodStart,

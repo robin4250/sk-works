@@ -17,7 +17,7 @@ void main() {
     expect(repository, contains("'save_invoice_settings_v2'"));
 
     expect(page, contains("'件名'"));
-    expect(page, contains("'担当者名（確認印）'"));
+    expect(page, contains("'請求書の承認者'"));
     expect(page, contains("'支払約定日'"));
     expect(page, contains("'請求元（会社データから自動反映）'"));
   });
@@ -36,7 +36,7 @@ void main() {
     expect(pdf, contains('_confirmationStamp('));
     expect(pdf, contains('_companySeal('));
     expect(pdf, contains('settings?.paymentDueText'));
-    expect(pdf, contains("'ピンチ操作で拡大・縮小できます'"));
+    expect(pdf, contains("'2本指で拡大・縮小／拡大後はドラッグで移動'"));
   });
 
   test('invoice number assignment is company-scoped and automatic', () {

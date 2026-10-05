@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../domain/invoice_engine.dart';
+import 'invoice_approval_repository.dart';
 import 'invoice_settings_repository.dart';
 
 class InvoicePdfService {
@@ -27,7 +28,16 @@ class InvoicePdfService {
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
+    final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      List<InvoiceApprovalRecord> approvals = const [];
+      if (approvalRepository != null && invoice.invoiceId.isNotEmpty) {
+        try {
+          approvals = await approvalRepository.loadForInvoice(invoice.invoiceId);
+        } catch (_) {
+          approvals = const [];
+        }
+      }
       document.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
@@ -37,7 +47,11 @@ class InvoicePdfService {
             13 * PdfPageFormat.mm,
             10 * PdfPageFormat.mm,
           ),
-          build: (_) => _sheet(invoice, effectiveSettings),
+          build: (_) => _sheet(
+            invoice,
+            effectiveSettings,
+            approvals,
+          ),
         ),
       );
     }
@@ -126,6 +140,7 @@ class InvoicePdfService {
   static pw.Widget _sheet(
     InvoiceCalculationResult invoice,
     InvoiceSettingsData? settings,
+    List<InvoiceApprovalRecord> approvals,
   ) {
     final blue = PdfColor.fromHex('#8199B5');
     final pale = PdfColor.fromHex('#E7ECF2');
@@ -233,13 +248,31 @@ class InvoicePdfService {
               bottom: pw.BorderSide(color: blue, width: 1.4),
             ),
           ),
-          child: pw.Text(
-            '${invoice.customerId}　御中',
-            textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              fontSize: 17,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          child: pw.Stack(
+            children: [
+              pw.Align(
+                alignment: pw.Alignment.center,
+                child: pw.Text(
+                  invoice.customerId,
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                    fontSize: 17,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Text(
+                  '御中',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    color: blue,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         pw.SizedBox(height: 8),
@@ -256,10 +289,10 @@ class InvoicePdfService {
             pw.SizedBox(width: 14),
             pw.SizedBox(
               width: 220,
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
+              child: pw.Stack(
                 children: [
-                  pw.Expanded(
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(right: 28),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
@@ -293,8 +326,11 @@ class InvoicePdfService {
                       ],
                     ),
                   ),
-                  pw.SizedBox(width: 7),
-                  _companySeal(settings?.companyName ?? ''),
+                  pw.Positioned(
+                    right: 0,
+                    top: -4,
+                    child: _companySeal(settings?.companyName ?? ''),
+                  ),
                 ],
               ),
             ),
@@ -360,16 +396,12 @@ class InvoicePdfService {
               ),
             ),
             pw.SizedBox(width: 18),
-            pw.Container(
+            pw.SizedBox(
               width: 170,
               height: 83,
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: blue, width: .8),
-              ),
-              alignment: pw.Alignment.center,
-              child: _confirmationStamp(
-                settings?.invoiceContactName ?? '',
-                issueDate,
+              child: _approvalBoxes(
+                approvals,
+                blue,
               ),
             ),
           ],
@@ -555,57 +587,189 @@ class InvoicePdfService {
     );
   }
 
-  static pw.Widget _confirmationStamp(String name, DateTime date) {
-    final red = PdfColor.fromHex('#B83232');
-    final label = name.trim().isEmpty ? '担当者' : name.trim();
-    return pw.Container(
-      width: 58,
-      height: 58,
-      decoration: pw.BoxDecoration(
-        shape: pw.BoxShape.circle,
-        border: pw.Border.all(color: red, width: 1.5),
-      ),
-      alignment: pw.Alignment.center,
-      child: pw.Column(
-        mainAxisAlignment: pw.MainAxisAlignment.center,
-        children: [
-          pw.Text('確認', style: pw.TextStyle(color: red, fontSize: 7)),
-          pw.Text(
-            '${date.year}.${date.month}.${date.day}',
-            style: pw.TextStyle(color: red, fontSize: 6),
-          ),
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              color: red,
-              fontSize: 8,
-              fontWeight: pw.FontWeight.bold,
+  static pw.Widget _approvalBoxes(
+    List<InvoiceApprovalRecord> approvals,
+    PdfColor blue,
+  ) {
+    final visible = approvals.take(3).toList();
+    if (visible.isEmpty) {
+      return pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: blue, width: .8),
+        ),
+        child: pw.Column(
+          children: [
+            pw.Container(
+              height: 20,
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: blue, width: .6),
+                ),
+              ),
+              child: pw.Text(
+                '確認者',
+                style: pw.TextStyle(
+                  color: blue,
+                  fontSize: 7,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.Expanded(child: pw.SizedBox()),
+          ],
+        ),
+      );
+    }
+
+    return pw.Row(
+      children: [
+        for (var i = 0; i < visible.length; i++) ...[
+          if (i > 0) pw.SizedBox(width: 2),
+          pw.Expanded(
+            child: pw.Container(
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: blue, width: .8),
+              ),
+              child: pw.Column(
+                children: [
+                  pw.Container(
+                    height: 20,
+                    alignment: pw.Alignment.center,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border(
+                        bottom: pw.BorderSide(color: blue, width: .6),
+                      ),
+                    ),
+                    child: pw.Text(
+                      '確認者',
+                      style: pw.TextStyle(
+                        color: blue,
+                        fontSize: 7,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  pw.Expanded(
+                    child: pw.Center(
+                      child: visible[i].approved
+                          ? _confirmationStamp(
+                              visible[i].name,
+                              visible[i].approvedAt ?? DateTime.now(),
+                              designB: visible[i].position.isEven,
+                            )
+                          : pw.Text(
+                              visible[i].name,
+                              textAlign: pw.TextAlign.center,
+                              style: pw.TextStyle(
+                                fontSize: 6.5,
+                                color: blue,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  static pw.Widget _confirmationStamp(
+    String name,
+    DateTime date, {
+    required bool designB,
+  }) {
+    final red = PdfColor.fromHex('#B83232');
+    final label = name.trim().isEmpty ? '確認者' : name.trim();
+    return pw.Container(
+      width: 42,
+      height: 42,
+      decoration: pw.BoxDecoration(
+        shape: pw.BoxShape.circle,
+        border: pw.Border.all(
+          color: red,
+          width: designB ? 1.8 : 1.35,
+        ),
+      ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Container(
+        decoration: designB
+            ? pw.BoxDecoration(
+                shape: pw.BoxShape.circle,
+                border: pw.Border.all(color: red, width: .55),
+              )
+            : null,
+        alignment: pw.Alignment.center,
+        child: pw.Column(
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          children: [
+            pw.Text(
+              designB ? '確認印' : '確認',
+              style: pw.TextStyle(
+                color: red,
+                fontSize: designB ? 5.5 : 6,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.Container(
+              margin: const pw.EdgeInsets.symmetric(vertical: 1.5),
+              height: .55,
+              color: red,
+            ),
+            pw.Text(
+              '${date.year}.${date.month}.${date.day}',
+              style: pw.TextStyle(color: red, fontSize: 4.6),
+            ),
+            pw.Text(
+              label,
+              maxLines: 1,
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(
+                color: red,
+                fontSize: 6.2,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   static pw.Widget _companySeal(String companyName) {
     final red = PdfColor.fromHex('#B83232');
-    final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
+    final chars = companyName
+        .replaceAll('株式会社', '')
+        .replaceAll('有限会社', '')
+        .replaceAll(' ', '')
+        .trim();
+    final sealText = chars.isEmpty ? companyName.trim() : chars;
+    final shown = sealText.isEmpty ? '会社之印' : '$sealText\n之印';
     return pw.Container(
       width: 48,
       height: 48,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: red, width: 1.5),
+        border: pw.Border.all(color: red, width: 1.7),
       ),
-      padding: const pw.EdgeInsets.all(3),
-      alignment: pw.Alignment.center,
-      child: pw.Text(
-        text,
-        textAlign: pw.TextAlign.center,
-        maxLines: 4,
-        style: pw.TextStyle(
-          color: red,
-          fontSize: 6.5,
-          fontWeight: pw.FontWeight.bold,
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: red, width: .55),
+        ),
+        alignment: pw.Alignment.center,
+        child: pw.Text(
+          shown,
+          textAlign: pw.TextAlign.center,
+          maxLines: 4,
+          style: pw.TextStyle(
+            color: red,
+            fontSize: 6.2,
+            fontWeight: pw.FontWeight.bold,
+            letterSpacing: .7,
+          ),
         ),
       ),
     );
@@ -760,56 +924,153 @@ class InvoicePdfPreviewPage extends StatefulWidget {
 }
 
 class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
-  late final Future<InvoiceSettingsData?> _settings = _loadSettings();
+  late Future<InvoiceSettingsData?> _settings = _loadSettings();
+  final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
+  final TransformationController _zoomController = TransformationController();
+  int _previewRevision = 0;
+
+  InvoiceCalculationResult? get _singleInvoice =>
+      widget.invoices.length == 1 ? widget.invoices.first : null;
 
   Future<InvoiceSettingsData?> _loadSettings() async {
     final repository = InvoiceSettingsRepository.maybeCreate();
     if (repository == null) return null;
     try {
-      return await repository.load();
+      return await repository.loadForDocument();
     } catch (_) {
       return null;
     }
   }
 
+  Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
+    final invoice = _singleInvoice;
+    final repository = _approvalRepository;
+    if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
+      return const [];
+    }
+    try {
+      return await repository.loadForInvoice(invoice.invoiceId);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _approve() async {
+    final invoice = _singleInvoice;
+    final repository = _approvalRepository;
+    if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
+      return;
+    }
+    await repository.approve(invoice.invoiceId);
+    if (!mounted) return;
+    setState(() {
+      _previewRevision++;
+      _settings = _loadSettings();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('請求書を承認しました')),
+    );
+  }
+
+  @override
+  void dispose() {
+    _zoomController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title ?? '請求書PDFプレビュー')),
+      appBar: AppBar(
+        title: Text(widget.title ?? '請求書PDFプレビュー'),
+        actions: [
+          IconButton(
+            tooltip: '拡大縮小をリセット',
+            onPressed: () => _zoomController.value = Matrix4.identity(),
+            icon: const Icon(Icons.fit_screen_outlined),
+          ),
+        ],
+      ),
       body: FutureBuilder<InvoiceSettingsData?>(
         future: _settings,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  'ピンチ操作で拡大・縮小できます',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              Expanded(
-                child: PdfPreview(
-            initialPageFormat: PdfPageFormat.a4,
-            canChangePageFormat: false,
-            canChangeOrientation: false,
-            allowPrinting: true,
-            allowSharing: true,
-            pdfFileName: InvoicePdfService.fileNameFor(
-              widget.invoices,
-              title: widget.title,
-            ),
-            build: (_) => InvoicePdfService.buildPdf(
-              widget.invoices,
-              title: widget.title,
-              settings: snapshot.data,
-            ),
-                ),
-              ),
-            ],
+          return FutureBuilder<List<InvoiceApprovalRecord>>(
+            future: _loadApprovals(),
+            builder: (context, approvalSnapshot) {
+              final approvals = approvalSnapshot.data ?? const [];
+              final canApprove =
+                  approvals.any((item) => item.canCurrentUserApprove);
+              return Column(
+                children: [
+                  if (approvals.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              approvals
+                                  .map(
+                                    (item) =>
+                                        '${item.name}：${item.approved ? '承認済み' : '承認待ち'}',
+                                  )
+                                  .join('　'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (canApprove)
+                            FilledButton.icon(
+                              onPressed: _approve,
+                              icon: const Icon(Icons.approval_outlined),
+                              label: const Text('承認'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 6),
+                    child: Text(
+                      '2本指で拡大・縮小／拡大後はドラッグで移動',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Expanded(
+                    child: InteractiveViewer(
+                      transformationController: _zoomController,
+                      minScale: 1,
+                      maxScale: 5,
+                      panEnabled: true,
+                      scaleEnabled: true,
+                      boundaryMargin: const EdgeInsets.all(120),
+                      clipBehavior: Clip.none,
+                      child: PdfPreview(
+                        key: ValueKey(_previewRevision),
+                        initialPageFormat: PdfPageFormat.a4,
+                        canChangePageFormat: false,
+                        canChangeOrientation: false,
+                        allowPrinting: true,
+                        allowSharing: true,
+                        pdfFileName: InvoicePdfService.fileNameFor(
+                          widget.invoices,
+                          title: widget.title,
+                        ),
+                        build: (_) => InvoicePdfService.buildPdf(
+                          widget.invoices,
+                          title: widget.title,
+                          settings: snapshot.data,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
