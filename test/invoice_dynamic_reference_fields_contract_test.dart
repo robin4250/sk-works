@@ -26,7 +26,7 @@ void main() {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
 
     expect(pdf, contains("'御　請　求　書'"));
-    expect(pdf, contains("textAlign: pw.TextAlign.center"));
+    expect(pdf, contains('textAlign: pw.TextAlign.center'));
     expect(pdf, contains("'請求書番号：\${invoice.invoiceNumber}'"));
     expect(pdf, contains('_monthEnd(invoice)'));
     expect(pdf, contains('_workPeriod(invoice)'));
@@ -45,37 +45,19 @@ void main() {
     );
 
     expect(sql, contains('private.invoice_number_counters'));
-    expect(sql, contains("~ '^[0-9]+
-    expect(sql, contains('new.invoice_number'));
-    expect(sql, contains('new.issue_date := new.billing_period_end'));
-    expect(sql, contains('invoice_document_settings'));
-    expect(sql, contains('save_invoice_settings_v2'));
-    expect(sql, contains('revoke all on function public.invoice_document_settings()'));
-  });
-
-  test('invoice model and repository carry number and billing dates', () {
-    final model = read('lib/domain/invoice_engine.dart');
-    final repository =
-        read('lib/features/invoices/invoice_cloud_repository.dart');
-
-    expect(model, contains('invoiceNumber'));
-    expect(model, contains('issueDate'));
-    expect(model, contains('periodStart'));
-    expect(model, contains('periodEnd'));
-
-    expect(repository, contains('invoice_number'));
-    expect(repository, contains('issue_date'));
-    expect(repository, contains('billing_period_end'));
-  });
-}
-"));
+    expect(sql, contains("~ '^[0-9]+\\$'"));
     expect(sql, contains('greatest('));
     expect(sql, contains('assign_invoice_number_and_issue_date'));
     expect(sql, contains('new.invoice_number'));
     expect(sql, contains('new.issue_date := new.billing_period_end'));
     expect(sql, contains('invoice_document_settings'));
     expect(sql, contains('save_invoice_settings_v2'));
-    expect(sql, contains('revoke all on function public.invoice_document_settings()'));
+    expect(
+      sql,
+      contains(
+        'revoke all on function public.invoice_document_settings()',
+      ),
+    );
   });
 
   test('invoice model and repository carry number and billing dates', () {
