@@ -30,6 +30,7 @@ void main() {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
 
     expect(pdf, contains("'御　請　求　書'"));
+    expect(pdf, contains('fontSize: 17'));
     expect(pdf, contains("textAlign: pw.TextAlign.center"));
     expect(pdf, contains("'請求書番号：\${invoice.invoiceNumber}'"));
     expect(pdf, contains('_monthEnd(invoice)'));
@@ -80,6 +81,15 @@ void main() {
     expect(sql, contains("'work_content','（法定福利費）'"));
     expect(sql, contains("'work_content','（消費税）'"));
     expect(sql, contains('*1.5'));
+    final latest = read(
+      'supabase/migrations/20261005152000_invoice_allowance_and_early_rows.sql',
+    );
+    expect(latest, contains("'work_content','（手当て）'"));
+    expect(latest, contains("'work_content','（早出）'"));
+    expect(latest, contains("'work_content','（残業）'"));
+    expect(latest, contains('early_amount'));
+    expect(latest, contains('a+b+early_amount+c'));
+    expect(latest, contains('group by allowance_name'));
   });
 
   test('invoice model and repository carry number and billing dates', () {
