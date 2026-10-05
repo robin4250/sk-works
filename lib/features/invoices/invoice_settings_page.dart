@@ -260,14 +260,6 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                           ),
                           const SizedBox(height: 12),
                           TextField(
-                            controller: _invoiceContactName,
-                            decoration: const InputDecoration(
-                              labelText: '担当者名（確認印）',
-                              hintText: '例：斉藤',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
                             controller: _paymentDueText,
                             decoration: const InputDecoration(
                               labelText: '支払約定日',
