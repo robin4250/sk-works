@@ -73,6 +73,7 @@ void main() {
     expect(repository, contains("invoice['snapshot']"));
     expect(repository, contains("line['site_label']"));
     expect(repository, contains("line['work_content']"));
+    expect(repository, contains("'通常作業'"));
     expect(sql, contains("'work_content','夜間作業'"));
     expect(sql, contains("'work_content','（手当て）'"));
     expect(sql, contains("'work_content','（残業）'"));
