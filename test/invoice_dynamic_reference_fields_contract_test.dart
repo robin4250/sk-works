@@ -40,7 +40,7 @@ void main() {
     expect(pdf, contains('_confirmationStamp('));
     expect(pdf, contains('_companySeal('));
     expect(pdf, contains('companyLogo'));
-    expect(pdf, contains('companySealImage'));
+    expect(pdf, isNot(contains('companySealImage')));
     expect(pdf, contains('width: 335'));
     expect(pdf, contains('settings?.paymentDueText'));
     expect(pdf, contains("'2本指で拡大・縮小／拡大後はドラッグで移動'"));
@@ -58,6 +58,27 @@ void main() {
     expect(sql, contains('invoice_document_settings'));
     expect(sql, contains('save_invoice_settings_v2'));
     expect(sql, contains('revoke all on function public.invoice_document_settings()'));
+  });
+
+  test('invoice site rows use the requested five columns and stored snapshot rows', () {
+    final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
+    final repository = read('lib/features/invoices/invoice_cloud_repository.dart');
+    final sql = read(
+      'supabase/migrations/20261005133000_invoice_site_breakdown_rows.sql',
+    );
+
+    for (final label in ['作業所名', '工事内容', '数量', '単価', '請求金額']) {
+      expect(pdf, contains("'\$label'"));
+    }
+    expect(repository, contains("invoice['snapshot']"));
+    expect(repository, contains("line['site_label']"));
+    expect(repository, contains("line['work_content']"));
+    expect(sql, contains("'work_content','夜間作業'"));
+    expect(sql, contains("'work_content','（手当て）'"));
+    expect(sql, contains("'work_content','（残業）'"));
+    expect(sql, contains("'work_content','（法定福利費）'"));
+    expect(sql, contains("'work_content','（消費税）'"));
+    expect(sql, contains('*1.5'));
   });
 
   test('invoice model and repository carry number and billing dates', () {
