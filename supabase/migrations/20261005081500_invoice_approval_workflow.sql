@@ -1,5 +1,8 @@
 -- Invoice approver configuration, approval state, notifications, and audit trail.
 
+alter table public.invoices
+  add column if not exists approval_finalized_at timestamptz;
+
 create table if not exists public.invoice_approvers (
   company_id uuid not null references public.companies(id) on delete cascade,
   position smallint not null check (position between 1 and 3),
@@ -158,8 +161,11 @@ begin
   using public.invoices i
   where a.invoice_id=i.id
     and i.company_id=v_company_id
-    and i.status='draft'
-    and a.status='pending';
+    and i.status='draft';
+
+  update public.invoices
+  set approval_finalized_at=null
+  where company_id=v_company_id and status='draft';
 
   insert into public.invoice_approvals(
     invoice_id,company_id,approver_user_id,position,status
@@ -196,8 +202,37 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  r record;
 begin
   perform private.ensure_invoice_approval_rows(new.id);
+
+  if new.billing_period_end <=
+      (current_timestamp at time zone 'Asia/Tokyo')::date then
+    for r in
+      select a.approver_user_id
+      from public.invoice_approvals a
+      where a.invoice_id=new.id
+        and a.status='pending'
+        and not exists (
+          select 1 from public.app_notifications n
+          where n.recipient_user_id=a.approver_user_id
+            and n.action_key='invoice_approval'
+            and n.action_id=new.id
+        )
+    loop
+      perform private.enqueue_notification(
+        new.company_id,
+        r.approver_user_id,
+        'approval',
+        '請求書の確認',
+        '月末の請求書を確認して承認してください。',
+        'invoice_approval',
+        new.id
+      );
+    end loop;
+  end if;
+
   return null;
 end;
 $$;
@@ -296,6 +331,12 @@ begin
     select 1 from public.invoice_approvals
     where invoice_id=p_invoice_id and status<>'approved'
   ) into v_final;
+
+  if v_final then
+    update public.invoices
+    set approval_finalized_at=coalesce(approval_finalized_at,now())
+    where id=p_invoice_id;
+  end if;
 
   return v_final;
 end;
