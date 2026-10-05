@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('invoice approvers are configurable from 1 to 3 registered users', () {
+  test('invoice confirmers are configurable up to two registered users', () {
     final page = read('lib/features/invoices/invoice_settings_page.dart');
     final repo = read('lib/features/invoices/invoice_approval_repository.dart');
     final sql = read(
@@ -13,8 +13,8 @@ void main() {
     );
 
     expect(page, contains("'請求書の承認者'"));
-    expect(page, contains("'承認者は1～3名で設定してください'"));
-    expect(page, contains("'承認者は最大3名です'"));
+    expect(page, contains("'確認者は1～2名で設定してください'"));
+    expect(page, contains("'確認者は最大2名です'"));
     expect(repo, contains("'invoice_approver_rows'"));
     expect(repo, contains("'set_invoice_approvers'"));
     expect(sql, contains('position between 1 and 3'));
@@ -66,7 +66,9 @@ void main() {
     expect(pdf, contains("visible[i].approved"));
     expect(pdf, contains("'確認印'"));
     expect(pdf, contains('_companySeal('));
-    expect(pdf, contains("'\$sealText\\n之印'"));
+    expect(pdf, contains('_memoryImage('));
+    expect(pdf, contains('companySealImage'));
+    expect(pdf, contains('companyLogo'));
     expect(pdf, contains('pw.Positioned('));
   });
 
