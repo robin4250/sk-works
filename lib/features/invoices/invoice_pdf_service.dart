@@ -146,48 +146,39 @@ class InvoicePdfService {
     final blue = PdfColor.fromHex('#8199B5');
     final pale = PdfColor.fromHex('#E7ECF2');
     final rows = <_InvoiceFormRow>[];
-    var baseTotal = 0;
-    var welfareTotal = 0;
-    var adjustmentTotal = 0;
-
     for (final site in invoice.siteCalculations) {
       for (var index = 0; index < site.lines.length; index++) {
         final line = site.lines[index];
-        final isOvertime = line.label.contains('残業');
+        final siteLabel = line.siteLabel.trim().isNotEmpty
+            ? line.siteLabel
+            : index == 0
+                ? site.siteName
+                : '〃';
+        final workContent = (line.workContent ?? line.label).trim();
         rows.add(
           _InvoiceFormRow(
-            siteName: index == 0 ? site.siteName : '',
-            content: line.label,
-            quantity: isOvertime ? '' : _quantity(line.quantity),
-            overtime: isOvertime ? _quantity(line.quantity) : '',
+            siteName: siteLabel,
+            content: workContent,
+            quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
+            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+                ? line.unitPriceText!.trim()
+                : line.unitPriceYen == 0
+                    ? ''
+                    : _number(line.unitPriceYen),
             amount: _number(line.amountYen),
           ),
         );
-        baseTotal += line.amountYen;
-      }
-      if (site.welfareAmountYen != 0) {
-        rows.add(
-          _InvoiceFormRow(
-            siteName: '',
-            content: '法定福利費',
-            quantity: '',
-            overtime: '',
-            amount: _number(site.welfareAmountYen),
-          ),
-        );
-        welfareTotal += site.welfareAmountYen;
       }
       if (site.manualAdjustmentYen != 0) {
         rows.add(
           _InvoiceFormRow(
-            siteName: '',
-            content: '値引き・調整',
+            siteName: '〃',
+            content: '（値引き・調整）',
             quantity: '',
-            overtime: '',
+            unitPrice: '',
             amount: _number(site.manualAdjustmentYen),
           ),
         );
-        adjustmentTotal += site.manualAdjustmentYen;
       }
     }
     while (rows.length < 10) {
@@ -205,7 +196,6 @@ class InvoicePdfService {
     final issueDate = invoice.issueDate ?? _monthEnd(invoice);
     final workPeriod = _workPeriod(invoice);
     final companyLogo = _memoryImage(settings?.companyLogoBase64 ?? '');
-    final companySealImage = _memoryImage(settings?.companySealBase64 ?? '');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -243,7 +233,7 @@ class InvoicePdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 18),
+        pw.SizedBox(height: 8),
         pw.Align(
           alignment: pw.Alignment.centerLeft,
           child: pw.SizedBox(
@@ -284,7 +274,7 @@ class InvoicePdfService {
             ),
           ),
         ),
-        pw.SizedBox(height: 8),
+        pw.SizedBox(height: 3),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -357,23 +347,14 @@ class InvoicePdfService {
                   pw.Positioned(
                     right: -2,
                     top: -5,
-                    child: companySealImage == null
-                        ? _companySeal(settings?.companyName ?? '')
-                        : pw.SizedBox(
-                            width: 46,
-                            height: 46,
-                            child: pw.Image(
-                              companySealImage,
-                              fit: pw.BoxFit.contain,
-                            ),
-                          ),
+                    child: _companySeal(settings?.companyName ?? ''),
                   ),
                 ],
               ),
             ),
           ],
         ),
-        pw.SizedBox(height: 11),
+        pw.SizedBox(height: 4),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -434,8 +415,8 @@ class InvoicePdfService {
             ),
             pw.SizedBox(width: 18),
             pw.SizedBox(
-              width: 150,
-              height: 72,
+              width: 142,
+              height: 64,
               child: _approvalBoxes(
                 approvals,
                 blue,
@@ -492,21 +473,21 @@ class InvoicePdfService {
         pw.Table(
           border: pw.TableBorder.all(color: blue, width: .55),
           columnWidths: const {
-            0: pw.FlexColumnWidth(.75),
-            1: pw.FlexColumnWidth(3.3),
-            2: pw.FlexColumnWidth(.85),
-            3: pw.FlexColumnWidth(1.05),
-            4: pw.FlexColumnWidth(1.35),
+            0: pw.FlexColumnWidth(2.15),
+            1: pw.FlexColumnWidth(2.05),
+            2: pw.FlexColumnWidth(.8),
+            3: pw.FlexColumnWidth(1.25),
+            4: pw.FlexColumnWidth(1.45),
           },
           children: [
             pw.TableRow(
               decoration: pw.BoxDecoration(color: blue),
               children: [
-                _cell('整理番号', bold: true, center: true, color: PdfColors.white),
-                _cell('内容', bold: true, center: true, color: PdfColors.white),
-                _cell('人工', bold: true, center: true, color: PdfColors.white),
-                _cell('残業', bold: true, center: true, color: PdfColors.white),
-                _cell('金額', bold: true, center: true, color: PdfColors.white),
+                _cell('作業所名', bold: true, center: true, color: PdfColors.white),
+                _cell('工事内容', bold: true, center: true, color: PdfColors.white),
+                _cell('数量', bold: true, center: true, color: PdfColors.white),
+                _cell('単価', bold: true, center: true, color: PdfColors.white),
+                _cell('請求金額', bold: true, center: true, color: PdfColors.white),
               ],
             ),
             for (var i = 0; i < rows.length; i++)
@@ -515,14 +496,10 @@ class InvoicePdfService {
                   color: i.isOdd ? pale : PdfColors.white,
                 ),
                 children: [
-                  _cell(rows[i].content.isEmpty ? '' : '${i + 1}', center: true),
-                  _cell(
-                    rows[i].siteName.isEmpty
-                        ? rows[i].content
-                        : '${rows[i].siteName}　${rows[i].content}',
-                  ),
+                  _cell(rows[i].siteName),
+                  _cell(rows[i].content),
                   _cell(rows[i].quantity, right: true),
-                  _cell(rows[i].overtime, right: true),
+                  _cell(rows[i].unitPrice, right: true),
                   _cell(rows[i].amount, right: true),
                 ],
               ),
@@ -540,13 +517,8 @@ class InvoicePdfService {
                 1: pw.FlexColumnWidth(2.4),
               },
               children: [
-                _summaryRow('計', baseTotal + welfareTotal + adjustmentTotal, blue),
-                _summaryRow('値引き', adjustmentTotal < 0 ? adjustmentTotal : 0, blue),
-                _summaryRow(
-                  '消費税(${(invoice.taxRateBps / 100).toStringAsFixed(invoice.taxRateBps % 100 == 0 ? 0 : 2)}%)',
-                  invoice.taxYen,
-                  blue,
-                ),
+                _summaryRow('計', invoice.subtotalYen, blue),
+                _summaryRow('消費税', invoice.taxYen, blue),
                 _summaryRow('合計(税込)', invoice.grandTotalYen, blue, strong: true),
               ],
             ),
@@ -910,7 +882,7 @@ class _InvoiceFormRow {
     required this.siteName,
     required this.content,
     required this.quantity,
-    required this.overtime,
+    required this.unitPrice,
     required this.amount,
   });
 
@@ -918,13 +890,13 @@ class _InvoiceFormRow {
       : siteName = '',
         content = '',
         quantity = '',
-        overtime = '',
+        unitPrice = '',
         amount = '';
 
   final String siteName;
   final String content;
   final String quantity;
-  final String overtime;
+  final String unitPrice;
   final String amount;
 }
 
