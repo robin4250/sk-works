@@ -10,11 +10,19 @@ class AdminSiteFinancialRecord {
     required this.workerDailyRateYen,
     required this.overtimeHourRateYen,
     required this.earlyHourRateYen,
+    required this.nightHourRateYen,
     required this.billingUnitPriceYen,
+    required this.billingMonthlyRateYen,
     required this.billingSquareMeterUnitPriceYen,
     required this.billingSquareMeterQuantity,
     required this.billingContractAmountYen,
     required this.welfareRate,
+    this.billingAllowance1Name = '',
+    this.billingAllowance1AmountYen = 0,
+    this.billingAllowance2Name = '',
+    this.billingAllowance2AmountYen = 0,
+    this.billingAllowance3Name = '',
+    this.billingAllowance3AmountYen = 0,
   });
 
   final String siteId;
@@ -23,26 +31,37 @@ class AdminSiteFinancialRecord {
   final int workerDailyRateYen;
   final int overtimeHourRateYen;
   final int earlyHourRateYen;
+  final int nightHourRateYen;
   final int billingUnitPriceYen;
+  final int billingMonthlyRateYen;
   final int billingSquareMeterUnitPriceYen;
   final double billingSquareMeterQuantity;
   final int billingContractAmountYen;
   final double welfareRate;
+  final String billingAllowance1Name;
+  final int billingAllowance1AmountYen;
+  final String billingAllowance2Name;
+  final int billingAllowance2AmountYen;
+  final String billingAllowance3Name;
+  final int billingAllowance3AmountYen;
 
   bool get hasManDayBilling => billingUnitPriceYen > 0;
+  bool get hasMonthlyBilling => billingMonthlyRateYen > 0;
   bool get hasSquareMeterBilling =>
       billingSquareMeterUnitPriceYen > 0 && billingSquareMeterQuantity > 0;
   bool get hasContractBilling => billingContractAmountYen > 0;
 
   int get billingMethodCount =>
       (hasManDayBilling ? 1 : 0) +
+      (hasMonthlyBilling ? 1 : 0) +
       (hasSquareMeterBilling ? 1 : 0) +
       (hasContractBilling ? 1 : 0);
 
   bool get billingConfigured => billingMethodCount == 1;
 
   String get billingMethodLabel {
-    if (hasManDayBilling) return '人工';
+    if (hasManDayBilling) return '1日単価';
+    if (hasMonthlyBilling) return '月単価';
     if (hasSquareMeterBilling) return '平米';
     if (hasContractBilling) return '請負';
     return '未設定';
@@ -131,10 +150,14 @@ class AdminSiteFinancialRepository {
         .from('site_financial_settings')
         .select(
           'site_id, worker_daily_rate_yen, overtime_hour_rate_yen, '
-          'early_hour_rate_yen, billing_unit_price_yen, '
+          'early_hour_rate_yen, night_hour_rate_yen, billing_unit_price_yen, '
+          'billing_monthly_rate_yen, '
           'billing_square_meter_unit_price_yen, '
           'billing_square_meter_quantity, billing_contract_amount_yen, '
-          'welfare_rate',
+          'welfare_rate, billing_allowance_1_name, '
+          'billing_allowance_1_amount_yen, billing_allowance_2_name, '
+          'billing_allowance_2_amount_yen, billing_allowance_3_name, '
+          'billing_allowance_3_amount_yen',
         )
         .eq('company_id', companyId);
 
@@ -158,8 +181,12 @@ class AdminSiteFinancialRepository {
             (s['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
         earlyHourRateYen:
             (s['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
+        nightHourRateYen:
+            (s['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
         billingUnitPriceYen:
             (s['billing_unit_price_yen'] as num?)?.toInt() ?? 0,
+        billingMonthlyRateYen:
+            (s['billing_monthly_rate_yen'] as num?)?.toInt() ?? 0,
         billingSquareMeterUnitPriceYen:
             (s['billing_square_meter_unit_price_yen'] as num?)?.toInt() ?? 0,
         billingSquareMeterQuantity:
@@ -167,6 +194,18 @@ class AdminSiteFinancialRepository {
         billingContractAmountYen:
             (s['billing_contract_amount_yen'] as num?)?.toInt() ?? 0,
         welfareRate: (s['welfare_rate'] as num?)?.toDouble() ?? 0,
+        billingAllowance1Name:
+            s['billing_allowance_1_name']?.toString() ?? '',
+        billingAllowance1AmountYen:
+            (s['billing_allowance_1_amount_yen'] as num?)?.toInt() ?? 0,
+        billingAllowance2Name:
+            s['billing_allowance_2_name']?.toString() ?? '',
+        billingAllowance2AmountYen:
+            (s['billing_allowance_2_amount_yen'] as num?)?.toInt() ?? 0,
+        billingAllowance3Name:
+            s['billing_allowance_3_name']?.toString() ?? '',
+        billingAllowance3AmountYen:
+            (s['billing_allowance_3_amount_yen'] as num?)?.toInt() ?? 0,
       );
     }).toList();
   }
@@ -180,12 +219,26 @@ class AdminSiteFinancialRepository {
       'worker_daily_rate_yen': record.workerDailyRateYen,
       'overtime_hour_rate_yen': record.overtimeHourRateYen,
       'early_hour_rate_yen': record.earlyHourRateYen,
+      'night_hour_rate_yen': record.nightHourRateYen,
       'billing_unit_price_yen': record.billingUnitPriceYen,
+      'billing_monthly_rate_yen': record.billingMonthlyRateYen,
       'billing_square_meter_unit_price_yen':
           record.billingSquareMeterUnitPriceYen,
       'billing_square_meter_quantity': record.billingSquareMeterQuantity,
       'billing_contract_amount_yen': record.billingContractAmountYen,
       'welfare_rate': record.welfareRate,
+      'billing_allowance_1_name': record.billingAllowance1Name.trim().isEmpty
+          ? null
+          : record.billingAllowance1Name.trim(),
+      'billing_allowance_1_amount_yen': record.billingAllowance1AmountYen,
+      'billing_allowance_2_name': record.billingAllowance2Name.trim().isEmpty
+          ? null
+          : record.billingAllowance2Name.trim(),
+      'billing_allowance_2_amount_yen': record.billingAllowance2AmountYen,
+      'billing_allowance_3_name': record.billingAllowance3Name.trim().isEmpty
+          ? null
+          : record.billingAllowance3Name.trim(),
+      'billing_allowance_3_amount_yen': record.billingAllowance3AmountYen,
       'updated_by': _client.auth.currentUser?.id,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
