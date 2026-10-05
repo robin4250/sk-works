@@ -155,10 +155,14 @@ class InvoicePdfService {
                 ? site.siteName
                 : '〃';
         final workContent = (line.workContent ?? line.label).trim();
+        final subRowInSiteColumn =
+            siteLabel == '〃' && workContent.isNotEmpty;
         rows.add(
           _InvoiceFormRow(
-            siteName: siteLabel,
-            content: workContent,
+            siteName: subRowInSiteColumn
+                ? '〃　$workContent'
+                : siteLabel,
+            content: subRowInSiteColumn ? '' : workContent,
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
             unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
                 ? line.unitPriceText!.trim()
@@ -172,8 +176,8 @@ class InvoicePdfService {
       if (site.manualAdjustmentYen != 0) {
         rows.add(
           _InvoiceFormRow(
-            siteName: '〃',
-            content: '（値引き・調整）',
+            siteName: '〃　（値引き・調整）',
+            content: '',
             quantity: '',
             unitPrice: '',
             amount: _number(site.manualAdjustmentYen),
