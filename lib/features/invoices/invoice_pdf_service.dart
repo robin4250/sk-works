@@ -723,16 +723,9 @@ class InvoicePdfService {
   static String _surnameForStamp(String name) {
     final value = name.trim();
     if (value.isEmpty) return '確認者';
-    final parts =
-        value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).toList();
+    final parts = value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty);
     if (parts.length > 1) return parts.first;
-    if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value) || value.length <= 2) {
-      return value;
-    }
-    return value.substring(0, 2);
-  }
-
-  static pw.MemoryImage? _memoryImage(String encoded) {
+    if (RegExp(r'^[A-Za-z0-9_-]+
     final value = encoded.trim();
     if (value.isEmpty) return null;
     try {
