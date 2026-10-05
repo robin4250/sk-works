@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import 'invoice_approval_repository.dart';
 import 'invoice_settings_repository.dart';
 
 class InvoiceSettingsPage extends StatefulWidget {
@@ -12,6 +13,7 @@ class InvoiceSettingsPage extends StatefulWidget {
 
 class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
   final _repository = InvoiceSettingsRepository.maybeCreate();
+  final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
 
   final _templateTitle = TextEditingController();
   final _taxRate = TextEditingController();
@@ -34,6 +36,8 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  List<InvoiceApproverCandidate> _approverCandidates = const [];
+  final List<String> _selectedApproverIds = [];
 
   @override
   void initState() {
@@ -78,6 +82,8 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
 
     try {
       final value = await repository.load();
+      final candidates = await _approvalRepository?.loadCandidates() ??
+          const <InvoiceApproverCandidate>[];
       if (!mounted) return;
       _companyName = value.companyName;
       _companyPostalCode = value.companyPostalCode;
@@ -98,6 +104,16 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       _accountType = value.bankAccountType.isEmpty
           ? '普通'
           : value.bankAccountType;
+      _approverCandidates = candidates;
+      final selected = candidates
+          .where((item) => item.selectedPosition != null)
+          .toList()
+        ..sort(
+          (a, b) => a.selectedPosition!.compareTo(b.selectedPosition!),
+        );
+      _selectedApproverIds
+        ..clear()
+        ..addAll(selected.map((item) => item.userId));
       setState(() => _loading = false);
     } catch (error) {
       if (!mounted) return;
@@ -126,6 +142,13 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       return;
     }
 
+    if (_selectedApproverIds.isEmpty || _selectedApproverIds.length > 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('承認者は1～3名で設定してください')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await repository.save(
@@ -149,6 +172,7 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
           paymentDueText: _paymentDueText.text,
         ),
       );
+      await _approvalRepository?.saveApprovers(_selectedApproverIds);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請求書設定を保存しました')),
@@ -258,6 +282,64 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                               labelText: '備考・フッター',
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _Section(
+                        title: '請求書の承認者',
+                        children: [
+                          const Text(
+                            '登録済みユーザーから1～3名を選択します。表示順が請求書の確認欄の左からの順番になります。',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          if (_approverCandidates.isEmpty)
+                            const Text('選択できるユーザーがいません')
+                          else
+                            ..._approverCandidates.map((candidate) {
+                              final index =
+                                  _selectedApproverIds.indexOf(candidate.userId);
+                              final selected = index >= 0;
+                              return CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: selected,
+                                title: Text(candidate.displayName),
+                                subtitle: Text(
+                                  selected
+                                      ? '確認者 ${index + 1} ・ ${candidate.role}'
+                                      : candidate.role,
+                                ),
+                                secondary: selected
+                                    ? CircleAvatar(
+                                        child: Text('${index + 1}'),
+                                      )
+                                    : const Icon(Icons.person_outline),
+                                onChanged: (checked) {
+                                  setState(() {
+                                    if (checked == true) {
+                                      if (_selectedApproverIds.length >= 3) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              '承認者は最大3名です',
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      if (!selected) {
+                                        _selectedApproverIds
+                                            .add(candidate.userId);
+                                      }
+                                    } else {
+                                      _selectedApproverIds
+                                          .remove(candidate.userId);
+                                    }
+                                  });
+                                },
+                              );
+                            }),
                         ],
                       ),
                       const SizedBox(height: 14),
