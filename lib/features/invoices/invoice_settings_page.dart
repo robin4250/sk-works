@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../notifications/notification_bell.dart';
 import 'invoice_approval_repository.dart';
@@ -33,6 +37,8 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
   String _companyAddress = '';
   String _companyPhone = '';
   String _companyFax = '';
+  String _companyLogoBase64 = '';
+  String _companySealBase64 = '';
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -90,6 +96,8 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       _companyAddress = value.companyAddress;
       _companyPhone = value.companyPhone;
       _companyFax = value.companyFax;
+      _companyLogoBase64 = value.companyLogoBase64;
+      _companySealBase64 = value.companySealBase64;
       _templateTitle.text = value.templateTitle;
       _invoiceSubject.text = value.invoiceSubject;
       _invoiceContactName.text = value.invoiceContactName;
@@ -124,6 +132,34 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
     }
   }
 
+  Uint8List? get _companyLogoBytes {
+    if (_companyLogoBase64.trim().isEmpty) return null;
+    try {
+      return base64Decode(_companyLogoBase64);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _pickCompanyLogo() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      imageQuality: 92,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.lengthInBytes > 2 * 1024 * 1024) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ロゴ画像は2MB以下にしてください')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _companyLogoBase64 = base64Encode(bytes));
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     if (repository == null) return;
@@ -142,9 +178,9 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       return;
     }
 
-    if (_selectedApproverIds.isEmpty || _selectedApproverIds.length > 3) {
+    if (_selectedApproverIds.isEmpty || _selectedApproverIds.length > 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('承認者は1～3名で設定してください')),
+        const SnackBar(content: Text('確認者は1～2名で設定してください')),
       );
       return;
     }
@@ -170,6 +206,8 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
           invoiceSubject: _invoiceSubject.text,
           invoiceContactName: _invoiceContactName.text,
           paymentDueText: _paymentDueText.text,
+          companyLogoBase64: _companyLogoBase64,
+          companySealBase64: _companySealBase64,
         ),
       );
       await _approvalRepository?.saveApprovers(_selectedApproverIds);
@@ -267,6 +305,66 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          Card(
+                            margin: EdgeInsets.zero,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const Text(
+                                    '会社ロゴ',
+                                    style: TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (_companyLogoBytes != null)
+                                    Container(
+                                      height: 72,
+                                      alignment: Alignment.centerLeft,
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outlineVariant,
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Image.memory(
+                                        _companyLogoBytes!,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    )
+                                  else
+                                    const Text('ロゴ未登録'),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: _pickCompanyLogo,
+                                        icon: const Icon(Icons.image_outlined),
+                                        label: const Text('ロゴ画像を登録'),
+                                      ),
+                                      if (_companyLogoBytes != null)
+                                        TextButton.icon(
+                                          onPressed: () => setState(
+                                            () => _companyLogoBase64 = '',
+                                          ),
+                                          icon: const Icon(Icons.delete_outline),
+                                          label: const Text('登録解除'),
+                                        ),
+                                    ],
+                                  ),
+                                  const Text(
+                                    '請求書では会社名の左隣に表示します。プレビュー・PDF・印刷・共有で同じ画像を使用します。',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           TextField(
                             controller: _footerNote,
                             maxLines: 3,
@@ -281,7 +379,7 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                         title: '請求書の承認者',
                         children: [
                           const Text(
-                            '登録済みユーザーから1～3名を選択します。表示順が請求書の確認欄の左からの順番になります。',
+                            '登録済みユーザーから1～2名を選択します。請求書には確認者欄を2枠表示し、選択順が左からの順番になります。',
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
@@ -309,12 +407,12 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                                 onChanged: (checked) {
                                   setState(() {
                                     if (checked == true) {
-                                      if (_selectedApproverIds.length >= 3) {
+                                      if (_selectedApproverIds.length >= 2) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
                                             content: Text(
-                                              '承認者は最大3名です',
+                                              '確認者は最大2名です',
                                             ),
                                           ),
                                         );
