@@ -18,6 +18,10 @@ void main() {
     expect(repo, contains("'invoice_approver_rows'"));
     expect(repo, contains("'set_invoice_approvers'"));
     expect(sql, contains('position between 1 and 3'));
+    final latest = read(
+      'supabase/migrations/20261005133000_invoice_site_breakdown_rows.sql',
+    );
+    expect(latest, contains('invoice confirmers must contain 1 to 2 users'));
     expect(sql, contains('approver must be a registered company user'));
     expect(sql, contains("cm.role::text='owner'"));
   });
@@ -67,7 +71,8 @@ void main() {
     expect(pdf, contains("'確認印'"));
     expect(pdf, contains('_companySeal('));
     expect(pdf, contains('_memoryImage('));
-    expect(pdf, contains('companySealImage'));
+    expect(pdf, isNot(contains('companySealImage')));
+    expect(pdf, contains("_companySeal(settings?.companyName ?? '')"));
     expect(pdf, contains('companyLogo'));
     expect(pdf, contains('pw.Positioned('));
   });

@@ -9,13 +9,22 @@ class InvoiceLine {
     required this.label,
     required this.quantity,
     required this.unitPriceYen,
+    this.siteLabel = '',
+    this.workContent,
+    this.unitPriceText,
+    this.amountYenOverride,
   });
 
   final String label;
   final double quantity;
   final int unitPriceYen;
+  final String siteLabel;
+  final String? workContent;
+  final String? unitPriceText;
+  final int? amountYenOverride;
 
-  int get amountYen => (quantity * unitPriceYen).round();
+  int get amountYen =>
+      amountYenOverride ?? (quantity * unitPriceYen).round();
 }
 
 class SiteInvoiceCalculation {
@@ -57,6 +66,9 @@ class InvoiceCalculationResult {
     this.issueDate,
     this.periodStart,
     this.periodEnd,
+    this.subtotalYenOverride,
+    this.taxYenOverride,
+    this.grandTotalYenOverride,
   });
 
   final String customerId;
@@ -71,15 +83,20 @@ class InvoiceCalculationResult {
   final DateTime? issueDate;
   final DateTime? periodStart;
   final DateTime? periodEnd;
+  final int? subtotalYenOverride;
+  final int? taxYenOverride;
+  final int? grandTotalYenOverride;
 
-  int get subtotalYen => siteCalculations.fold<int>(
+  int get subtotalYen => subtotalYenOverride ?? siteCalculations.fold<int>(
         0,
         (sum, site) => sum + site.subtotalYen,
       );
 
-  int get taxYen => (subtotalYen * taxRateBps / 10000).round();
+  int get taxYen =>
+      taxYenOverride ?? (subtotalYen * taxRateBps / 10000).round();
 
-  int get grandTotalYen => subtotalYen + taxYen;
+  int get grandTotalYen =>
+      grandTotalYenOverride ?? subtotalYen + taxYen;
 }
 
 class InvoiceEngine {
@@ -96,6 +113,9 @@ class InvoiceEngine {
     DateTime? issueDate,
     DateTime? periodStart,
     DateTime? periodEnd,
+    int? subtotalYenOverride,
+    int? taxYenOverride,
+    int? grandTotalYenOverride,
   }) {
     if (customerId.trim().isEmpty) {
       throw ArgumentError.value(customerId, 'customerId', 'must not be empty');
@@ -145,6 +165,9 @@ class InvoiceEngine {
       issueDate: issueDate,
       periodStart: periodStart,
       periodEnd: periodEnd,
+      subtotalYenOverride: subtotalYenOverride,
+      taxYenOverride: taxYenOverride,
+      grandTotalYenOverride: grandTotalYenOverride,
     );
   }
 }

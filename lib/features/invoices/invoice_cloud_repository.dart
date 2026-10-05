@@ -54,7 +54,7 @@ class InvoiceCloudRepository {
     final companyId = await _companyId();
     final invoices = await _client
         .from('invoices')
-        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, customers(name)')
+        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, snapshot, customers(name)')
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
@@ -102,6 +102,50 @@ class InvoiceCloudRepository {
         );
       }
 
+      if (siteResults.isEmpty) {
+        final snapshot = invoice['snapshot'];
+        final snapshotMap = snapshot is Map
+            ? Map<String, dynamic>.from(snapshot)
+            : const <String, dynamic>{};
+        final snapshotSites = snapshotMap['sites'];
+        if (snapshotSites is List) {
+          for (final rawSite in snapshotSites) {
+            if (rawSite is! Map) continue;
+            final siteMap = Map<String, dynamic>.from(rawSite);
+            final rawLines = siteMap['lines'];
+            final displayLines = <InvoiceLine>[];
+            if (rawLines is List) {
+              for (final rawLine in rawLines) {
+                if (rawLine is! Map) continue;
+                final line = Map<String, dynamic>.from(rawLine);
+                displayLines.add(
+                  InvoiceLine(
+                    label: line['work_content']?.toString() ??
+                        line['label']?.toString() ??
+                        '',
+                    quantity: _toDouble(line['quantity']),
+                    unitPriceYen: _toInt(line['unit_price']),
+                    siteLabel: line['site_label']?.toString() ?? '',
+                    workContent: line['work_content']?.toString(),
+                    unitPriceText: line['unit_price_text']?.toString(),
+                    amountYenOverride: _toInt(line['amount']),
+                  ),
+                );
+              }
+            }
+            siteResults.add(
+              SiteInvoiceCalculation(
+                siteId: siteMap['site_id']?.toString() ?? '',
+                siteName: siteMap['site_name']?.toString() ?? '',
+                lines: displayLines,
+                manualAdjustmentYen: 0,
+                welfareRateBps: 0,
+              ),
+            );
+          }
+        }
+      }
+
       final periodStart =
           DateTime.tryParse(invoice['billing_period_start']?.toString() ?? '');
       final periodEnd =
@@ -125,6 +169,9 @@ class InvoiceCloudRepository {
           issueDate: issueDate,
           periodStart: periodStart,
           periodEnd: periodEnd,
+          subtotalYenOverride: _toInt(invoice['subtotal']),
+          taxYenOverride: _toInt(invoice['tax']),
+          grandTotalYenOverride: _toInt(invoice['grand_total']),
         ),
       );
     }
@@ -283,6 +330,10 @@ class InvoiceCloudRepository {
                         'quantity': line.quantity,
                         'unit_price': line.unitPriceYen,
                         'amount': line.amountYen,
+                        'site_label': line.siteLabel,
+                        'work_content': line.workContent ?? line.label,
+                        'unit_price_text':
+                            line.unitPriceText ?? line.unitPriceYen.toString(),
                       },
                     )
                     .toList(),
