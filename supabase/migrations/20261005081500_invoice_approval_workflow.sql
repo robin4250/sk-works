@@ -31,6 +31,27 @@ create table if not exists public.invoice_approval_audit (
   created_at timestamptz not null default now()
 );
 
+-- Existing companies begin with their owner as the single invoice approver.
+insert into public.invoice_approvers(company_id,position,user_id,created_by)
+select cm.company_id,1,cm.user_id,cm.user_id
+from public.company_members cm
+where cm.role::text='owner'
+  and not exists (
+    select 1 from public.invoice_approvers ia
+    where ia.company_id=cm.company_id
+  )
+on conflict do nothing;
+
+-- Existing draft invoices receive approval rows immediately.
+insert into public.invoice_approvals(
+  invoice_id,company_id,approver_user_id,position,status
+)
+select i.id,i.company_id,ia.user_id,ia.position,'pending'
+from public.invoices i
+join public.invoice_approvers ia on ia.company_id=i.company_id
+where i.status='draft'
+on conflict(invoice_id,approver_user_id) do nothing;
+
 alter table public.invoice_approvers enable row level security;
 alter table public.invoice_approvals enable row level security;
 alter table public.invoice_approval_audit enable row level security;
