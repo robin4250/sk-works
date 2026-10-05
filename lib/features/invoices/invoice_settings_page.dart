@@ -17,6 +17,9 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
   final _taxRate = TextEditingController();
   final _welfareRate = TextEditingController();
   final _footerNote = TextEditingController();
+  final _invoiceSubject = TextEditingController();
+  final _invoiceContactName = TextEditingController();
+  final _paymentDueText = TextEditingController();
   final _bankName = TextEditingController();
   final _bankBranch = TextEditingController();
   final _accountNumber = TextEditingController();
@@ -24,6 +27,10 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
 
   String _accountType = '普通';
   String _companyName = '';
+  String _companyPostalCode = '';
+  String _companyAddress = '';
+  String _companyPhone = '';
+  String _companyFax = '';
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -41,6 +48,9 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       _taxRate,
       _welfareRate,
       _footerNote,
+      _invoiceSubject,
+      _invoiceContactName,
+      _paymentDueText,
       _bankName,
       _bankBranch,
       _accountNumber,
@@ -70,7 +80,14 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       final value = await repository.load();
       if (!mounted) return;
       _companyName = value.companyName;
+      _companyPostalCode = value.companyPostalCode;
+      _companyAddress = value.companyAddress;
+      _companyPhone = value.companyPhone;
+      _companyFax = value.companyFax;
       _templateTitle.text = value.templateTitle;
+      _invoiceSubject.text = value.invoiceSubject;
+      _invoiceContactName.text = value.invoiceContactName;
+      _paymentDueText.text = value.paymentDueText;
       _taxRate.text = value.taxRate.toString();
       _welfareRate.text = value.welfareRate.toString();
       _footerNote.text = value.footerNote;
@@ -123,6 +140,13 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
           bankAccountType: _accountType,
           bankAccountNumber: _accountNumber.text,
           bankAccountHolder: _accountHolder.text,
+          companyPostalCode: _companyPostalCode,
+          companyAddress: _companyAddress,
+          companyPhone: _companyPhone,
+          companyFax: _companyFax,
+          invoiceSubject: _invoiceSubject.text,
+          invoiceContactName: _invoiceContactName.text,
+          paymentDueText: _paymentDueText.text,
         ),
       );
       if (!mounted) return;
@@ -176,8 +200,19 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                       Card(
                         child: ListTile(
                           leading: const Icon(Icons.business_outlined),
-                          title: const Text('請求元'),
-                          subtitle: Text(_companyName),
+                          title: const Text('請求元（会社データから自動反映）'),
+                          subtitle: Text(
+                            [
+                              _companyName,
+                              if (_companyPostalCode.isNotEmpty)
+                                '〒$_companyPostalCode',
+                              if (_companyAddress.isNotEmpty) _companyAddress,
+                              if (_companyPhone.isNotEmpty)
+                                'TEL $_companyPhone',
+                              if (_companyFax.isNotEmpty)
+                                'FAX $_companyFax',
+                            ].join('\n'),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -189,6 +224,30 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                             decoration: const InputDecoration(
                               labelText: '表題',
                               hintText: '請求書',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _invoiceSubject,
+                            decoration: const InputDecoration(
+                              labelText: '件名',
+                              hintText: '例：とび工　安全設備・足場組立解体作業',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _invoiceContactName,
+                            decoration: const InputDecoration(
+                              labelText: '担当者名（確認印）',
+                              hintText: '例：斉藤',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _paymentDueText,
+                            decoration: const InputDecoration(
+                              labelText: '支払約定日',
+                              hintText: '例：翌月10日 / 令和8年11月10日',
                             ),
                           ),
                           const SizedBox(height: 12),

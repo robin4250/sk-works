@@ -54,7 +54,7 @@ class InvoiceCloudRepository {
     final companyId = await _companyId();
     final invoices = await _client
         .from('invoices')
-        .select('id, billing_period_start, detail_mode, subtotal, tax, grand_total, customers(name)')
+        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, customers(name)')
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
@@ -102,17 +102,28 @@ class InvoiceCloudRepository {
         );
       }
 
-      final periodStart = DateTime.tryParse(invoice['billing_period_start']?.toString() ?? '');
+      final periodStart =
+          DateTime.tryParse(invoice['billing_period_start']?.toString() ?? '');
+      final periodEnd =
+          DateTime.tryParse(invoice['billing_period_end']?.toString() ?? '');
+      final issueDate =
+          DateTime.tryParse(invoice['issue_date']?.toString() ?? '');
       results.add(
         InvoiceEngine.calculate(
           customerId: customerName,
-          billingPeriod: periodStart == null ? '' : '${periodStart.year}年${periodStart.month}月',
+          billingPeriod: periodStart == null
+              ? ''
+              : '${periodStart.year}年${periodStart.month}月',
           detailMode: _fromDbDetailMode(invoice['detail_mode']?.toString()),
           sites: siteResults,
           taxRateBps: _taxRateFromTotals(
             subtotal: _toInt(invoice['subtotal']),
             tax: _toInt(invoice['tax']),
           ),
+          invoiceNumber: invoice['invoice_number']?.toString() ?? '',
+          issueDate: issueDate,
+          periodStart: periodStart,
+          periodEnd: periodEnd,
         ),
       );
     }
