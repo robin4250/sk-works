@@ -68,7 +68,7 @@ void main() {
     );
 
     for (final label in ['作業所名', '工事内容', '数量', '単価', '請求金額']) {
-      expect(pdf, contains("'\$label'"));
+      expect(pdf, contains("'$label'"));
     }
     expect(repository, contains("invoice['snapshot']"));
     expect(repository, contains("line['site_label']"));
