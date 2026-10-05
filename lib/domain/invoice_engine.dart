@@ -145,8 +145,11 @@ class InvoiceEngine {
         throw ArgumentError('welfareRateBps must be >= 0');
       }
       for (final line in site.lines) {
-        if (line.label.trim().isEmpty) {
-          throw ArgumentError('line label must not be empty');
+        final hasDisplayLabel = line.label.trim().isNotEmpty ||
+            line.siteLabel.trim().isNotEmpty ||
+            (line.workContent ?? '').trim().isNotEmpty;
+        if (!hasDisplayLabel) {
+          throw ArgumentError('invoice line must have display content');
         }
         if (line.quantity < 0) {
           throw ArgumentError('line quantity must be >= 0');
