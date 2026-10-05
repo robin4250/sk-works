@@ -12,10 +12,11 @@ void main() {
     expect(source, contains("'御請求金額'"));
     expect(source, contains("'振込先："));
     expect(source, contains("'件名 ／ 工期'"));
-    expect(source, contains("'整理番号'"));
-    expect(source, contains("'人工'"));
-    expect(source, contains("'残業'"));
-    expect(source, contains("'金額'"));
+    expect(source, contains("'作業所名'"));
+    expect(source, contains("'工事内容'"));
+    expect(source, contains("'数量'"));
+    expect(source, contains("'単価'"));
+    expect(source, contains("'請求金額'"));
     expect(source, contains("'合計(税込)'"));
   });
 
