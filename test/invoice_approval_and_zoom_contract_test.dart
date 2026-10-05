@@ -66,7 +66,7 @@ void main() {
     expect(pdf, contains("visible[i].approved"));
     expect(pdf, contains("'確認印'"));
     expect(pdf, contains('_companySeal('));
-    expect(pdf, contains("'$sealText\\n之印'"));
+    expect(pdf, contains("'\$sealText\\n之印'"));
     expect(pdf, contains('pw.Positioned('));
   });
 
