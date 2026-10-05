@@ -10,7 +10,9 @@ void main() {
     expect(source, contains('御　請　求　書'));
     expect(source, contains('御請求金額'));
     expect(source, contains('件名 ／ 工期'));
-    expect(source, contains('整理番号'));
+    expect(source, contains('作業所名'));
+    expect(source, contains('工事内容'));
+    expect(source, contains('請求金額'));
     expect(source, contains('お支払約定日'));
     expect(source, contains('備考：'));
     expect(source, contains('InvoiceSettingsRepository.maybeCreate()'));
