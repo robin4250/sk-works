@@ -11,7 +11,12 @@ enum _InvoiceBrowseMode { all, company }
 enum _InvoicePeriodMode { month, year }
 
 class InvoiceCloudPage extends StatefulWidget {
-  const InvoiceCloudPage({super.key});
+  const InvoiceCloudPage({
+    super.key,
+    this.initialInvoiceId,
+  });
+
+  final String? initialInvoiceId;
 
   @override
   State<InvoiceCloudPage> createState() => _InvoiceCloudPageState();
@@ -28,6 +33,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   _InvoicePeriodMode _periodMode = _InvoicePeriodMode.month;
   DateTime _period = DateTime(DateTime.now().year, DateTime.now().month);
   String? _companyFilter;
+  bool _openedInitialInvoice = false;
 
   @override
   void initState() {
@@ -70,6 +76,17 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
           _companyFilter = null;
         }
       });
+
+      if (!_openedInitialInvoice &&
+          (widget.initialInvoiceId ?? '').isNotEmpty) {
+        _openedInitialInvoice = true;
+        final target = _invoices.where(
+          (invoice) => invoice.invoiceId == widget.initialInvoiceId,
+        );
+        if (target.isNotEmpty && mounted) {
+          await _openPreview(target.first);
+        }
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
