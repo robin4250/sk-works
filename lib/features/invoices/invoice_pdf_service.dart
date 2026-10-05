@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -203,6 +204,8 @@ class InvoicePdfService {
     final subject = (settings?.invoiceSubject ?? '').trim();
     final issueDate = invoice.issueDate ?? _monthEnd(invoice);
     final workPeriod = _workPeriod(invoice);
+    final companyLogo = _memoryImage(settings?.companyLogoBase64 ?? '');
+    final companySealImage = _memoryImage(settings?.companySealBase64 ?? '');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -241,38 +244,44 @@ class InvoicePdfService {
           ],
         ),
         pw.SizedBox(height: 18),
-        pw.Container(
-          padding: const pw.EdgeInsets.only(bottom: 4),
-          decoration: pw.BoxDecoration(
-            border: pw.Border(
-              bottom: pw.BorderSide(color: blue, width: 1.4),
+        pw.Align(
+          alignment: pw.Alignment.centerLeft,
+          child: pw.SizedBox(
+            width: 335,
+            child: pw.Container(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: blue, width: 1.4),
+                ),
+              ),
+              child: pw.Stack(
+                children: [
+                  pw.Align(
+                    alignment: pw.Alignment.center,
+                    child: pw.Text(
+                      invoice.customerId,
+                      textAlign: pw.TextAlign.center,
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  pw.Align(
+                    alignment: pw.Alignment.centerRight,
+                    child: pw.Text(
+                      '御中',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: blue,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: pw.Stack(
-            children: [
-              pw.Align(
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  invoice.customerId,
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    fontSize: 17,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Text(
-                  '御中',
-                  style: pw.TextStyle(
-                    fontSize: 10,
-                    color: blue,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
         pw.SizedBox(height: 8),
@@ -288,7 +297,7 @@ class InvoicePdfService {
             ),
             pw.SizedBox(width: 14),
             pw.SizedBox(
-              width: 220,
+              width: 245,
               child: pw.Stack(
                 children: [
                   pw.Padding(
@@ -296,40 +305,68 @@ class InvoicePdfService {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        pw.Text(
-                          settings?.companyName ?? '',
-                          style: pw.TextStyle(
-                            fontSize: 13,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.end,
+                          crossAxisAlignment: pw.CrossAxisAlignment.center,
+                          children: [
+                            if (companyLogo != null) ...[
+                              pw.SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: pw.Image(companyLogo, fit: pw.BoxFit.contain),
+                              ),
+                              pw.SizedBox(width: 5),
+                            ],
+                            pw.Text(
+                              settings?.companyName ?? '',
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                fontSize: 13,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                         if ((settings?.companyPostalCode ?? '').isNotEmpty)
                           pw.Text(
                             '〒${settings!.companyPostalCode}',
+                            textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 7.5),
                           ),
                         if ((settings?.companyAddress ?? '').isNotEmpty)
                           pw.Text(
                             settings!.companyAddress,
+                            textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 7.5),
                           ),
                         if ((settings?.companyPhone ?? '').isNotEmpty)
                           pw.Text(
                             'TEL：${settings!.companyPhone}',
+                            textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 7.5),
                           ),
                         if ((settings?.companyFax ?? '').isNotEmpty)
                           pw.Text(
                             'FAX：${settings!.companyFax}',
+                            textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 7.5),
                           ),
                       ],
                     ),
                   ),
                   pw.Positioned(
-                    right: 0,
-                    top: -4,
-                    child: _companySeal(settings?.companyName ?? ''),
+                    right: -2,
+                    top: -5,
+                    child: companySealImage == null
+                        ? _companySeal(settings?.companyName ?? '')
+                        : pw.SizedBox(
+                            width: 46,
+                            height: 46,
+                            child: pw.Image(
+                              companySealImage,
+                              fit: pw.BoxFit.contain,
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -397,8 +434,8 @@ class InvoicePdfService {
             ),
             pw.SizedBox(width: 18),
             pw.SizedBox(
-              width: 170,
-              height: 83,
+              width: 150,
+              height: 72,
               child: _approvalBoxes(
                 approvals,
                 blue,
@@ -591,81 +628,53 @@ class InvoicePdfService {
     List<InvoiceApprovalRecord> approvals,
     PdfColor blue,
   ) {
-    final visible = approvals.take(3).toList();
-    if (visible.isEmpty) {
-      return pw.Container(
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: blue, width: .8),
-        ),
-        child: pw.Column(
-          children: [
-            pw.Container(
-              height: 20,
-              alignment: pw.Alignment.center,
-              decoration: pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: blue, width: .6),
-                ),
-              ),
-              child: pw.Text(
-                '確認者',
-                style: pw.TextStyle(
-                  color: blue,
-                  fontSize: 7,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.Expanded(child: pw.SizedBox()),
-          ],
-        ),
-      );
-    }
-
+    final visible = approvals.take(2).toList();
     return pw.Row(
       children: [
-        for (var i = 0; i < visible.length; i++) ...[
+        for (var i = 0; i < 2; i++) ...[
           if (i > 0) pw.SizedBox(width: 2),
           pw.Expanded(
             child: pw.Container(
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: blue, width: .8),
+                border: pw.Border.all(color: blue, width: .72),
               ),
               child: pw.Column(
                 children: [
                   pw.Container(
-                    height: 20,
+                    height: 17,
                     alignment: pw.Alignment.center,
                     decoration: pw.BoxDecoration(
                       border: pw.Border(
-                        bottom: pw.BorderSide(color: blue, width: .6),
+                        bottom: pw.BorderSide(color: blue, width: .55),
                       ),
                     ),
                     child: pw.Text(
                       '確認者',
                       style: pw.TextStyle(
                         color: blue,
-                        fontSize: 7,
+                        fontSize: 6.5,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                   ),
                   pw.Expanded(
                     child: pw.Center(
-                      child: visible[i].approved
-                          ? _confirmationStamp(
-                              visible[i].name,
-                              visible[i].approvedAt ?? DateTime.now(),
-                              designB: visible[i].position.isEven,
-                            )
-                          : pw.Text(
-                              visible[i].name,
-                              textAlign: pw.TextAlign.center,
-                              style: pw.TextStyle(
-                                fontSize: 6.5,
-                                color: blue,
-                              ),
-                            ),
+                      child: i >= visible.length
+                          ? pw.SizedBox()
+                          : visible[i].approved
+                              ? _confirmationStamp(
+                                  visible[i].name,
+                                  visible[i].approvedAt ?? DateTime.now(),
+                                  designB: visible[i].position.isEven,
+                                )
+                              : pw.Text(
+                                  visible[i].name,
+                                  textAlign: pw.TextAlign.center,
+                                  style: pw.TextStyle(
+                                    fontSize: 6.2,
+                                    color: blue,
+                                  ),
+                                ),
                     ),
                   ),
                 ],
@@ -685,8 +694,8 @@ class InvoicePdfService {
     final red = PdfColor.fromHex('#B83232');
     final label = name.trim().isEmpty ? '確認者' : name.trim();
     return pw.Container(
-      width: 42,
-      height: 42,
+      width: 34,
+      height: 34,
       decoration: pw.BoxDecoration(
         shape: pw.BoxShape.circle,
         border: pw.Border.all(
@@ -710,7 +719,7 @@ class InvoicePdfService {
               designB ? '確認印' : '確認',
               style: pw.TextStyle(
                 color: red,
-                fontSize: designB ? 5.5 : 6,
+                fontSize: designB ? 4.7 : 5.1,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
@@ -721,7 +730,7 @@ class InvoicePdfService {
             ),
             pw.Text(
               '${date.year}.${date.month}.${date.day}',
-              style: pw.TextStyle(color: red, fontSize: 4.6),
+              style: pw.TextStyle(color: red, fontSize: 3.8),
             ),
             pw.Text(
               label,
@@ -729,7 +738,7 @@ class InvoicePdfService {
               textAlign: pw.TextAlign.center,
               style: pw.TextStyle(
                 color: red,
-                fontSize: 6.2,
+                fontSize: 5.2,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
@@ -737,6 +746,16 @@ class InvoicePdfService {
         ),
       ),
     );
+  }
+
+  static pw.MemoryImage? _memoryImage(String encoded) {
+    final value = encoded.trim();
+    if (value.isEmpty) return null;
+    try {
+      return pw.MemoryImage(base64Decode(value));
+    } catch (_) {
+      return null;
+    }
   }
 
   static pw.Widget _companySeal(String companyName) {
