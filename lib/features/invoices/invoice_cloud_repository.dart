@@ -118,15 +118,20 @@ class InvoiceCloudRepository {
               for (final rawLine in rawLines) {
                 if (rawLine is! Map) continue;
                 final line = Map<String, dynamic>.from(rawLine);
+                final workContent = line['work_content']?.toString();
+                final sourceLabel = line['label']?.toString();
+                final internalLabel = (workContent ?? '').trim().isNotEmpty
+                    ? workContent!
+                    : (sourceLabel ?? '').trim().isNotEmpty
+                        ? sourceLabel!
+                        : '通常作業';
                 displayLines.add(
                   InvoiceLine(
-                    label: line['work_content']?.toString() ??
-                        line['label']?.toString() ??
-                        '',
+                    label: internalLabel,
                     quantity: _toDouble(line['quantity']),
                     unitPriceYen: _toInt(line['unit_price']),
                     siteLabel: line['site_label']?.toString() ?? '',
-                    workContent: line['work_content']?.toString(),
+                    workContent: workContent,
                     unitPriceText: line['unit_price_text']?.toString(),
                     amountYenOverride: _toInt(line['amount']),
                   ),
