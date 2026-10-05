@@ -289,10 +289,10 @@ class InvoicePdfService {
             pw.SizedBox(width: 14),
             pw.SizedBox(
               width: 220,
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
+              child: pw.Stack(
                 children: [
-                  pw.Expanded(
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(right: 28),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
@@ -326,8 +326,11 @@ class InvoicePdfService {
                       ],
                     ),
                   ),
-                  pw.SizedBox(width: 7),
-                  _companySeal(settings?.companyName ?? ''),
+                  pw.Positioned(
+                    right: 0,
+                    top: -4,
+                    child: _companySeal(settings?.companyName ?? ''),
+                  ),
                 ],
               ),
             ),
