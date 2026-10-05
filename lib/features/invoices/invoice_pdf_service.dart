@@ -154,7 +154,8 @@ class InvoicePdfService {
             : index == 0
                 ? site.siteName
                 : '〃';
-        final workContent = (line.workContent ?? line.label).trim();
+        final rawWorkContent = (line.workContent ?? line.label).trim();
+        final workContent = rawWorkContent.isEmpty ? '通常作業' : rawWorkContent;
         rows.add(
           _InvoiceFormRow(
             siteName: siteLabel,
