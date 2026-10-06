@@ -16,6 +16,7 @@ import 'people_cloud_repository.dart';
 import 'people_page.dart';
 import 'phone_display.dart';
 import 'worker_document_send_page.dart';
+import 'worker_personnel_approver_settings_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
   const PeopleCloudPage({super.key});
@@ -31,6 +32,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   PersonKind? _filter;
   bool _loading = true;
   bool _canManagePeople = false;
+  bool _canConfigurePersonnelApprovers = false;
   String _companyName = '';
   String? _error;
 
@@ -55,6 +57,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         repository.loadAll(),
         repository.canManagePeople(),
         repository.companyName(),
+        repository.canConfigurePersonnelApprovers(),
       ]);
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
@@ -65,6 +68,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           ..addAll(loaded);
         _canManagePeople = values[1] as bool;
         _companyName = values[2] as String;
+        _canConfigurePersonnelApprovers = values[3] as bool;
         _loading = false;
         _error = null;
       });
@@ -123,6 +127,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                 : () => _openExportWithScope(PersonnelExportOperation.print),
             icon: const Icon(Icons.print_outlined),
           ),
+          if (_canConfigurePersonnelApprovers)
+            IconButton(
+              tooltip: '社員個人情報の承認者設定',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const WorkerPersonnelApproverSettingsPage(),
+                ),
+              ),
+              icon: const Icon(Icons.verified_user_outlined),
+            ),
           if (_canManagePeople)
             IconButton(
               tooltip: '利用者の権限設定',

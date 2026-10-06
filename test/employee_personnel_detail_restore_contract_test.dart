@@ -124,7 +124,7 @@ void main() {
     expect(domesticPhoneDisplay('090-1234-5678'), '090-1234-5678');
   });
 
-  test('profile and employee registration share two-approver personnel workflow', () {
+  test('profile and employee registration share configurable one-to-three approver personnel workflow', () {
     final profile = File(
       'lib/features/profile/profile_page.dart',
     ).readAsStringSync();
@@ -139,7 +139,7 @@ void main() {
     ).readAsStringSync();
     final migration = File(
       'supabase/migrations/'
-      '20261002012754_add_worker_personnel_two_approver_edits.sql',
+      '20261006192517_worker_personnel_approvers_one_to_three.sql',
     ).readAsStringSync();
     final firstFill = File(
       'supabase/migrations/'
@@ -151,11 +151,12 @@ void main() {
     expect(peopleForm, contains("'血液型'"));
     expect(peopleForm, contains("'緊急連絡先'"));
     expect(edit, contains("'変更申請を送る'"));
-    expect(approvals, contains("'承認 \$approvalCount/2 名'"));
-    expect(approvals, contains('approvalCount/2 名'));
-    expect(migration, contains('worker_personnel_change_requests'));
-    expect(migration, contains('worker_personnel_change_approvals'));
-    expect(migration, contains('v_count>=2'));
+    expect(approvals, contains("'承認 \$approvalCount/\$required 名'"));
+    expect(approvals, contains('required_approvals'));
+    expect(migration, contains('worker_personnel_approvers'));
+    expect(migration, contains('required_approvals'));
+    expect(migration, contains('between 1 and 3'));
+    expect(migration, contains('v_count>=v_required'));
     expect(migration, contains('自分の申請は承認できません'));
     expect(firstFill, contains('if not v_requires_approval then'));
   });

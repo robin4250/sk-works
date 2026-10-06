@@ -46,6 +46,11 @@ class PeopleCloudRepository {
         member.role == 'manager';
   }
 
+  Future<bool> canConfigurePersonnelApprovers() async {
+    final member = await membership();
+    return member.role == 'owner' || member.role == 'admin';
+  }
+
   Future<void> _requireManagePeople() async {
     if (!await canManagePeople()) {
       throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
@@ -268,6 +273,20 @@ class PeopleCloudRepository {
     return raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> loadPersonnelApproverSettings() async {
+    final raw = await _client.rpc('worker_personnel_approver_rows');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> savePersonnelApprovers(List<String> userIds) async {
+    await _client.rpc(
+      'set_worker_personnel_approvers',
+      params: {'p_user_ids': userIds},
+    );
   }
 
   Future<List<Map<String, dynamic>>> loadPendingPersonnelChanges() async {

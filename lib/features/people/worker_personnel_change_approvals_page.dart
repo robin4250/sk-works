@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
+import 'worker_personnel_approver_settings_page.dart';
 
 class WorkerPersonnelChangeApprovalsPage extends StatefulWidget {
   const WorkerPersonnelChangeApprovalsPage({super.key});
@@ -55,13 +56,14 @@ class _WorkerPersonnelChangeApprovalsPageState
     if (repository == null || id.isEmpty) return;
 
     final count = (row['approval_count'] as num?)?.toInt() ?? 0;
+    final required = (row['required_approvals'] as num?)?.toInt() ?? 1;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(approve ? 'この変更を承認しますか？' : 'この変更を拒否しますか？'),
         content: Text(
           approve
-              ? '現在 $count/2 名承認済みです。別の承認者と合わせて2名になると正式反映されます。'
+              ? '現在 $count/$required 名承認済みです。登録済み承認者が必要人数に達すると正式反映されます。'
               : '拒否するとこの変更申請は終了します。',
         ),
         actions: [
@@ -86,14 +88,16 @@ class _WorkerPersonnelChangeApprovalsPageState
       if (!mounted) return;
       final status = result['status']?.toString() ?? '';
       final approvalCount = (result['approval_count'] as num?)?.toInt() ?? count;
+      final resultRequired =
+          (result['required_approvals'] as num?)?.toInt() ?? required;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             status == 'approved'
-                ? '2名の承認が完了し、社員個人情報へ反映しました。'
+                ? '$resultRequired名の承認が完了し、社員個人情報へ反映しました。'
                 : status == 'rejected'
                     ? '変更申請を拒否しました。'
-                    : '承認しました。現在 $approvalCount/2 名です。',
+                    : '承認しました。現在 $approvalCount/$resultRequired 名です。',
           ),
         ),
       );
@@ -115,6 +119,20 @@ class _WorkerPersonnelChangeApprovalsPageState
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          IconButton(
+            tooltip: '承認者設定',
+            onPressed: () async {
+              await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const WorkerPersonnelApproverSettingsPage(),
+                ),
+              );
+              if (!mounted) return;
+              await _load();
+            },
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _load,
@@ -148,6 +166,8 @@ class _WorkerPersonnelChangeApprovalsPageState
                               : const <String, dynamic>{};
                           final approvalCount =
                               (row['approval_count'] as num?)?.toInt() ?? 0;
+                          final required =
+                              (row['required_approvals'] as num?)?.toInt() ?? 1;
 
                           return Card(
                             child: ExpansionTile(
@@ -158,7 +178,7 @@ class _WorkerPersonnelChangeApprovalsPageState
                                 ),
                               ),
                               subtitle: Text(
-                                '承認 $approvalCount/2 名',
+                                '承認 $approvalCount/$required 名',
                               ),
                               childrenPadding:
                                   const EdgeInsets.fromLTRB(16, 0, 16, 16),
