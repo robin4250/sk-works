@@ -341,7 +341,10 @@ class _PartnerPaymentSettingsPageState
   void _syncControllers() {
     final item = _selectedSetting();
     if (item == null) return;
-    _daily.text = item.dailyRateYen.toString();
+    _daily.text = (item.formulas.hourlyBase && item.hourlyBaseRateYen > 0
+            ? item.hourlyBaseRateYen
+            : item.dailyRateYen)
+        .toString();
     _legacyNightHourly.text = item.nightHourRateYen.toString();
     _overtime.text = item.overtimeHourRateYen.toString();
     _early.text = item.earlyHourRateYen.toString();
@@ -489,10 +492,11 @@ class _PartnerPaymentSettingsPageState
       allowances.add(PaymentAllowanceSetting(name: name, amountYen: amount));
     }
 
+    final baseInput = _int(_daily);
     return PartnerPaymentSetting(
       partnerCompanyId: current.partnerCompanyId,
       partnerCompanyName: current.partnerCompanyName,
-      dailyRateYen: _int(_daily),
+      dailyRateYen: formula.dailyBase(baseInput),
       overtimeHourRateYen: _int(_overtime),
       earlyHourRateYen: _int(_early),
       nightHourRateYen: _int(_legacyNightHourly),
@@ -503,6 +507,7 @@ class _PartnerPaymentSettingsPageState
       holidayNightDayRateYen: _int(_holidayNightDay),
       holidayNightOvertimeHourRateYen: _int(_holidayNightOvertime),
       formulas: formula,
+      hourlyBaseRateYen: formula.hourlyBase ? baseInput : 0,
       allowances: allowances,
       welfareRate: welfare,
       taxRate: tax,
@@ -587,9 +592,11 @@ class _PartnerPaymentSettingsPageState
                         children: [
                           DropdownButtonFormField<String>(
                             initialValue: _partnerId,
-                            decoration: const InputDecoration(
-                              labelText: '協力会社',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.isEnglish
+                                  ? 'Subcontractor Company'
+                                  : '協力会社',
+                              border: const OutlineInputBorder(),
                             ),
                             items: [
                               for (final item in _items)
@@ -621,8 +628,14 @@ class _PartnerPaymentSettingsPageState
                           ),
                           Text(
                             _hourlyBase
-                                ? '時給を入れると同じ倍率で自動計算します。時給の場合は÷8をせず、倍率を直接掛けます。'
+                                ? '時給を入れると同じ倍率体系で自動計算します。残業・早出は時給×倍率、夜勤・休日系の日額は時給×1日時間×倍率です。'
                                 : '1日単価を入れると下記単価を自動計算します。各金額欄へ直接入力した場合は、その金額を優先します。',
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            SkoLanguageController.isEnglish
+                                ? 'Even without settings, a zero-value draft is generated and recalculated after saving.'
+                                : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
                           ),
                           const SizedBox(height: 14),
                           _sectionTitle('計算式'),
