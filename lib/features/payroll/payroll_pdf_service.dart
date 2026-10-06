@@ -355,12 +355,26 @@ class PayrollPdfService {
           ],
         ),
         pw.SizedBox(height: 8),
-        pw.Padding(
-          padding: const pw.EdgeInsets.only(left: 175),
-          child: pw.Text(
-            'お疲れさまです。',
-            style: const pw.TextStyle(fontSize: 7.5),
-          ),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(left: 175),
+              child: pw.Text(
+                'お疲れさまです。',
+                style: const pw.TextStyle(fontSize: 7.5),
+              ),
+            ),
+            pw.Text(
+              statement.reviewConfirmed ? '確認済み' : '未確定',
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                color: statement.reviewConfirmed
+                    ? PdfColors.green700
+                    : PdfColors.red700,
+              ),
+            ),
+          ],
         ),
       ],
     );
