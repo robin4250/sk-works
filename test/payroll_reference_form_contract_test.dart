@@ -26,7 +26,8 @@ void main() {
     expect(source, contains('_hours(detail'));
     expect(source, contains('_plainNumber(detail'));
     expect(source, contains('extraEarnings'));
-    expect(source, contains('extraDeductions'));
+    expect(source, contains('allExtraDeductions'));
+    expect(source, contains('primaryExtraDeductions'));
     expect(source, contains('_customMoneyEntries(detail, direction: 1)'));
     expect(source, contains('_customMoneyEntries(detail, direction: -1)'));
     expect(source, contains('_nonMoneyDetailKeys'));
