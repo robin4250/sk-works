@@ -220,52 +220,53 @@ class PayrollPdfService {
           headerFill: headerFill,
           grid: grid,
         ),
-        pw.SizedBox(height: 9),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.SizedBox(
-            width: 615,
-            child: pw.Table(
-              border: pw.TableBorder.all(color: grid, width: .55),
-              children: [
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: headerFill),
-                  children: [
-                    for (var i = 0; i < 5; i++)
+        pw.SizedBox(height: 8),
+        pw.Row(
+          children: [
+            const pw.SizedBox(width: 28),
+            pw.Expanded(
+              child: pw.Table(
+                border: pw.TableBorder.all(color: grid, width: .55),
+                children: [
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: headerFill),
+                    children: [
                       _cell('', height: 18),
-                    _cell('総支給額', center: true, bold: true, height: 18),
-                    _cell('総控除額', center: true, bold: true, height: 18),
-                    _cell('差引支給額', center: true, bold: true, height: 18),
-                  ],
-                ),
-                pw.TableRow(
-                  children: [
-                    for (var i = 0; i < 5; i++)
+                      _cell('', height: 18),
+                      _cell('総支給額', center: true, bold: true, height: 18),
+                      _cell('総控除額', center: true, bold: true, height: 18),
+                      _cell('差引支給額', center: true, bold: true, height: 18),
+                    ],
+                  ),
+                  pw.TableRow(
+                    children: [
                       _cell('', height: 23),
-                    _cell(
-                      _number(statement.grossPay),
-                      right: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                    _cell(
-                      _number(statement.deductions),
-                      right: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                    _cell(
-                      _number(statement.netPay),
-                      right: true,
-                      bold: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                  ],
-                ),
-              ],
+                      _cell('', height: 23),
+                      _cell(
+                        _number(statement.grossPay),
+                        right: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                      _cell(
+                        _number(statement.deductions),
+                        right: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                      _cell(
+                        _number(statement.netPay),
+                        right: true,
+                        bold: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
         pw.SizedBox(height: 10),
         pw.Table(
