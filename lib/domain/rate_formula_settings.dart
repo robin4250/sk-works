@@ -98,10 +98,8 @@ class RateFormulaSettings {
             holidayNightMultiplier,
       );
   int holidayNightOvertime(int baseRate, {bool? hourlyBase}) => _round(
-        _hourlyBase(
-              holidayNight(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase),
-              hourlyBase ?? this.hourlyBase,
-            ) *
+        _hourlyBase(baseRate, hourlyBase ?? this.hourlyBase) *
+            holidayNightMultiplier *
             holidayNightOvertimeMultiplier,
       );
 
