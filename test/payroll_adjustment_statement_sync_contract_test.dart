@@ -36,6 +36,7 @@ void main() {
 
     expect(page, contains('PayrollPdfService.buildPdf(statement)'));
     expect(pdf, contains('static String _number(int value)'));
-    expect(pdf, contains('static String _amount('));
+    expect(pdf, contains('static String _formatAmount('));
+    expect(pdf, contains('_balancedMoneySection'));
   });
 }
