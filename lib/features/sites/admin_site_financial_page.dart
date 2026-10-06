@@ -482,6 +482,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     RateFormulaSettings value,
   ) =>
       {
+        'hourly_base': TextEditingController(text: value.hourlyBase ? '1' : '0'),
         'hours': TextEditingController(text: _numberText(value.hoursPerDay)),
         'overtime': TextEditingController(
           text: _numberText(value.overtimeMultiplier),
@@ -513,6 +514,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     Map<String, TextEditingController> values,
   ) =>
       RateFormulaSettings(
+        hourlyBase: values['hourly_base']?.text == '1',
         hoursPerDay: double.tryParse(values['hours']!.text) ?? 8,
         overtimeMultiplier:
             double.tryParse(values['overtime']!.text) ?? 1.25,
@@ -564,11 +566,12 @@ class _RateFormulaEditor extends StatefulWidget {
 }
 
 class _RateFormulaEditorState extends State<_RateFormulaEditor> {
-  bool _hourlyBase = false;
+  late bool _hourlyBase;
 
   @override
   void initState() {
     super.initState();
+    _hourlyBase = widget.formulaControllers['hourly_base']?.text == '1';
     for (final controller in [
       widget.baseController,
       ...widget.overrideControllers.values,
@@ -675,8 +678,12 @@ class _RateFormulaEditorState extends State<_RateFormulaEditor> {
                 ButtonSegment(value: true, label: Text('時給')),
               ],
               selected: {_hourlyBase},
-              onSelectionChanged: (value) =>
-                  setState(() => _hourlyBase = value.first),
+              onSelectionChanged: (value) {
+                final hourly = value.first;
+                widget.formulaControllers['hourly_base']!.text =
+                    hourly ? '1' : '0';
+                setState(() => _hourlyBase = hourly);
+              },
             ),
             const SizedBox(height: 10),
             Wrap(
