@@ -32,7 +32,6 @@ class PayrollPdfService {
       '住民税',
         '道具代',
       '社会保険',
-      'その他控除',
     ]);
 
     document.addPage(
@@ -105,7 +104,6 @@ class PayrollPdfService {
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
       MapEntry<String, Object?>('道具代', deductions['道具代']),
-      MapEntry<String, Object?>('その他控除', deductions['その他控除']),
       ...configuredDeductions.entries,
       ...adjustmentDeductions.entries.map(
         (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
@@ -211,6 +209,10 @@ class PayrollPdfService {
         _balancedMoneySection(
           title: '支給',
           entries: earningEntries,
+          registeredLabels: {
+            ...configuredEarnings.keys,
+            ...adjustmentEarnings.keys,
+          },
           headerFill: headerFill,
           grid: grid,
         ),
@@ -218,6 +220,10 @@ class PayrollPdfService {
         _balancedMoneySection(
           title: '控除',
           entries: deductionEntries,
+          registeredLabels: {
+            ...configuredDeductions.keys,
+            ...adjustmentDeductions.keys,
+          },
           headerFill: headerFill,
           grid: grid,
         ),
@@ -403,12 +409,18 @@ class PayrollPdfService {
   static pw.Widget _balancedMoneySection({
     required String title,
     required Map<String, Object?> entries,
+    required Set<String> registeredLabels,
     required PdfColor headerFill,
     required PdfColor grid,
   }) {
     const columns = 5;
     final visible = entries.entries
-        .where((entry) => (_asNumber(entry.value) ?? 0).abs() >= 1)
+        .where(
+          (entry) =>
+              !_isAggregatePlaceholder(entry.key) &&
+              (registeredLabels.contains(entry.key) ||
+                  (_asNumber(entry.value) ?? 0).abs() >= 1),
+        )
         .toList();
     final groups = <List<MapEntry<String, Object?>>>[];
     if (visible.isEmpty) {
@@ -422,6 +434,9 @@ class PayrollPdfService {
       }
     }
 
+    final dense = groups.length > 2;
+    final labelHeight = dense ? 15.0 : 18.0;
+    final valueHeight = dense ? 18.0 : 22.0;
     final rows = <pw.TableRow>[];
     for (final group in groups) {
       rows
@@ -433,7 +448,7 @@ class PayrollPdfService {
             ],
             headerFill: headerFill,
             bold: true,
-            height: 18,
+            height: labelHeight,
           ),
         )
         ..add(
@@ -445,7 +460,7 @@ class PayrollPdfService {
               ...List<String>.filled(columns - group.length, ''),
             ],
             right: true,
-            height: 22,
+            height: valueHeight,
           ),
         );
     }
@@ -566,8 +581,17 @@ class PayrollPdfService {
     '住民税',
     '道具代',
     '社会保険',
-    'その他控除',
   };
+
+  static const _aggregatePlaceholderLabels = <String>{
+    'その他支給',
+    'その他の支給',
+    'その他控除',
+    'その他の控除',
+  };
+
+  static bool _isAggregatePlaceholder(String label) =>
+      _aggregatePlaceholderLabels.contains(label.trim());
 
   static Map<String, Object?> _configuredMoneyEntries(
     Map<String, dynamic> detail, {
@@ -580,7 +604,8 @@ class PayrollPdfService {
       if (value is! Map) continue;
       final name = value['name']?.toString().trim() ?? '';
       final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
-      if (name.isEmpty || amount < 1) continue;
+      if (name.isEmpty) continue;
+      if (_isAggregatePlaceholder(name)) continue;
       result[name] = (result[name] as num? ?? 0) + amount;
     }
     return result;
@@ -593,7 +618,12 @@ class PayrollPdfService {
     for (final entry in entries) {
       final label = entry.key.trim();
       final amount = _asNumber(entry.value);
-      if (label.isEmpty || amount == null || amount.abs() < 1) continue;
+      if (label.isEmpty ||
+          _isAggregatePlaceholder(label) ||
+          amount == null ||
+          amount.abs() < 1) {
+        continue;
+      }
       result[label] = (result[label] as num? ?? 0) + amount.abs();
     }
     return result;
@@ -606,7 +636,8 @@ class PayrollPdfService {
     final result = <String, Object?>{};
     for (final entry in detail.entries) {
       if (_nonMoneyDetailKeys.contains(entry.key) ||
-          _fixedMoneyKeys.contains(entry.key)) {
+          _fixedMoneyKeys.contains(entry.key) ||
+          _isAggregatePlaceholder(entry.key)) {
         continue;
       }
       final value = _asNumber(entry.value);
