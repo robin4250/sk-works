@@ -66,4 +66,45 @@ void main() {
     expect(text, contains('2026年 請求書'));
     expect(RegExp('株式会社テスト').allMatches(text).length, 2);
   });
+
+  test('dense 13-line invoice still builds a non-empty A4 PDF', () async {
+    final denseInvoice = InvoiceEngine.calculate(
+      customerId: '株式会社秀中',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.consolidatedOnly,
+      sites: [
+        SiteInvoiceCalculation(
+          siteId: 'site-a',
+          siteName: '（仮称）東京海上ビルディング計画',
+          lines: List.generate(
+            6,
+            (index) => InvoiceLine(
+              label: index == 0 ? '通常作業' : '追加項目$index',
+              quantity: 1,
+              unitPriceYen: 3000 + index * 100,
+            ),
+          ),
+        ),
+        SiteInvoiceCalculation(
+          siteId: 'site-b',
+          siteName: '江戸川清掃工場建て替え工事',
+          lines: List.generate(
+            7,
+            (index) => InvoiceLine(
+              label: index == 0 ? '通常作業' : '追加項目$index',
+              quantity: 1,
+              unitPriceYen: 4000 + index * 100,
+            ),
+          ),
+        ),
+      ],
+      taxRateBps: 1000,
+    );
+
+    final bytes = await InvoicePdfService.buildPdf([denseInvoice]);
+
+    expect(bytes, isNotEmpty);
+    expect(bytes.length, greaterThan(1000));
+  });
+
 }
