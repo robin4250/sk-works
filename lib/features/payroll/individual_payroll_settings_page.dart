@@ -365,7 +365,7 @@ class _IndividualPayrollSettingsPageState
                       ],
                       const SizedBox(height: 16),
                       RateFormulaEditorCard(
-                        key: ValueKey('payroll-rate-' + (_workerId ?? '')),
+                        key: ValueKey('payroll-rate-${_workerId ?? ''}'),
                         title: '勤務単価 自動計算',
                         initialBaseRateYen:
                             (_settingValues['day_daily'] as num?)?.toInt() ?? 0,
