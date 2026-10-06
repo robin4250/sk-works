@@ -89,6 +89,7 @@ class PayrollPdfService {
     final grid = PdfColor.fromHex('#6D89A8');
     final customEarnings = _customMoneyEntries(detail, direction: 1);
     final customDeductions = _customMoneyEntries(detail, direction: -1);
+    final configuredDeductions = _configuredDeductionEntries(detail);
 
     const fixedEarningLabels = <String>[
       '基本給',
@@ -121,18 +122,28 @@ class PayrollPdfService {
       'SKB会費',
       '道具代',
     ];
-    final extraDeductions = <MapEntry<String, Object?>>[
+    final allExtraDeductions = <MapEntry<String, Object?>>[
       ...deductions.entries.where((entry) =>
           !fixedDeductionLabels.contains(entry.key) &&
           entry.key != '社会保険' &&
           _hasAmount(entry.value)),
+      ...configuredDeductions.entries,
       ...customDeductions.entries,
-    ].take(2).toList();
+    ];
+    final primaryExtraDeductions = allExtraDeductions.take(2).toList();
+    final overflowDeductions = allExtraDeductions.skip(2).toList();
     final deductionLabels = <String>[
       ...fixedDeductionLabels,
-      ...extraDeductions.map((entry) => entry.key),
-      ...List<String>.filled(2 - extraDeductions.length, ''),
+      ...primaryExtraDeductions.map((entry) => entry.key),
+      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
     ];
+    final overflowDeductionGroups = <List<MapEntry<String, Object?>>>[];
+    for (var index = 0; index < overflowDeductions.length; index += 10) {
+      final end = index + 10 < overflowDeductions.length
+          ? index + 10
+          : overflowDeductions.length;
+      overflowDeductionGroups.add(overflowDeductions.sublist(index, end));
+    }
 
     final supportValues = <String>[
       _amount(earnings, '基本給', fallbackKey: '出勤に基づく支給額'),
@@ -154,8 +165,10 @@ class PayrollPdfService {
       _amount(deductions, '住民税', absolute: true),
       _amount(deductions, 'SKB会費', absolute: true),
       _amount(deductions, '道具代', absolute: true),
-      ...extraDeductions.map((entry) => _formatAmount(entry.value, absolute: true)),
-      ...List<String>.filled(2 - extraDeductions.length, ''),
+      ...primaryExtraDeductions.map(
+        (entry) => _formatAmount(entry.value, absolute: true),
+      ),
+      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
     ];
 
     return pw.Column(
@@ -271,6 +284,25 @@ class PayrollPdfService {
           grid: grid,
           blankRows: 3,
         ),
+        for (final group in overflowDeductionGroups) ...[
+          pw.SizedBox(height: 4),
+          _singleHeaderSection(
+            title: '控除',
+            labels: [
+              ...group.map((entry) => entry.key),
+              ...List<String>.filled(10 - group.length, ''),
+            ],
+            values: [
+              ...group.map(
+                (entry) => _formatAmount(entry.value, absolute: true),
+              ),
+              ...List<String>.filled(10 - group.length, ''),
+            ],
+            headerFill: headerFill,
+            grid: grid,
+            blankRows: 0,
+          ),
+        ],
         pw.SizedBox(height: 9),
         pw.Align(
           alignment: pw.Alignment.centerRight,
@@ -576,6 +608,7 @@ class PayrollPdfService {
     '社員番号',
     '社員No',
     '社員No.',
+    'custom_deductions',
   };
 
   static const _fixedMoneyKeys = <String>{
@@ -598,6 +631,23 @@ class PayrollPdfService {
     '社会保険',
     'その他控除',
   };
+
+  static Map<String, Object?> _configuredDeductionEntries(
+    Map<String, dynamic> detail,
+  ) {
+    final raw = detail['custom_deductions'];
+    if (raw is! List) return const {};
+    final result = <String, Object?>{};
+    for (final value in raw) {
+      if (value is! Map) continue;
+      final name = value['name']?.toString().trim() ?? '';
+      final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
+      if (name.isEmpty || amount <= 0) continue;
+      final current = (result[name] as num?)?.toInt() ?? 0;
+      result[name] = current + amount;
+    }
+    return result;
+  }
 
   static Map<String, Object?> _customMoneyEntries(
     Map<String, dynamic> detail, {
