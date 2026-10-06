@@ -349,28 +349,33 @@ class PaymentCertificateRepository {
         unitPriceYen: value.dailyRateYen,
         amountYen: value.dailyRateYen,
       ),
-      if (value.overtimeHourRateYen > 0)
-        PaymentCertificateLine(
-          siteName: '〃',
-          workContent: '残業 1時間',
-          quantityLabel: '1',
-          unitPriceYen: value.overtimeHourRateYen,
-          amountYen: value.overtimeHourRateYen,
-        ),
-      if (value.earlyHourRateYen > 0)
-        PaymentCertificateLine(
-          siteName: '〃',
-          workContent: '早出 1時間',
-          quantityLabel: '1',
-          unitPriceYen: value.earlyHourRateYen,
-          amountYen: value.earlyHourRateYen,
-        ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.overtimeRate,
+        amountYen: value.overtimeRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '早出 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.earlyRate,
+        amountYen: value.earlyRate,
+      ),
       PaymentCertificateLine(
         siteName: '〃',
         workContent: '夜勤 1日',
         quantityLabel: '1',
         unitPriceYen: value.nightDayRate,
         amountYen: value.nightDayRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '夜勤残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.nightOvertimeRate,
+        amountYen: value.nightOvertimeRate,
       ),
       PaymentCertificateLine(
         siteName: '〃',
@@ -381,10 +386,24 @@ class PaymentCertificateRepository {
       ),
       PaymentCertificateLine(
         siteName: '〃',
+        workContent: '休日残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayOvertimeRate,
+        amountYen: value.holidayOvertimeRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
         workContent: '休日夜勤 1日',
         quantityLabel: '1',
         unitPriceYen: value.holidayNightDayRate,
         amountYen: value.holidayNightDayRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '休日夜勤残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayNightOvertimeRate,
+        amountYen: value.holidayNightOvertimeRate,
       ),
       for (final allowance in value.allowances)
         if (allowance.name.trim().isNotEmpty && allowance.amountYen > 0)
@@ -396,7 +415,34 @@ class PaymentCertificateRepository {
             amountYen: allowance.amountYen,
           ),
     ];
-    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+
+    final subtotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final welfare = (subtotal * value.welfareRate / 100).round();
+    if (welfare > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（福利厚生費）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: welfare,
+        ),
+      );
+    }
+    final preTax = subtotal + welfare;
+    final tax = (preTax * value.taxRate / 100).round();
+    if (tax > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（消費税）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: tax,
+        ),
+      );
+    }
+    final gross = preTax + tax;
 
     return PaymentCertificateRecord(
       id: 'settings-preview',
