@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/rate_formula_settings.dart';
 import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
 
@@ -158,24 +159,26 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     final daily = TextEditingController(
       text: record.workerDailyRateYen.toString(),
     );
-    final overtime = TextEditingController(
-      text: record.overtimeHourRateYen.toString(),
+    final workerOverrides = _overrideControllers(
+      record.workerRateOverrides,
+      fallback: {
+        'overtime': record.overtimeHourRateYen,
+        'early': record.earlyHourRateYen,
+        'night': record.nightHourRateYen,
+      },
     );
-    final early = TextEditingController(
-      text: record.earlyHourRateYen.toString(),
-    );
-    final night = TextEditingController(
-      text: record.nightHourRateYen.toString(),
-    );
+    final workerFormula = _formulaControllers(record.workerFormulas);
     final billing = TextEditingController(
       text: record.billingUnitPriceYen.toString(),
     );
-    final billingOvertime = TextEditingController(
-      text: record.billingOvertimeHourRateYen.toString(),
+    final billingOverrides = _overrideControllers(
+      record.billingRateOverrides,
+      fallback: {
+        'overtime': record.billingOvertimeHourRateYen,
+        'early': record.billingEarlyHourRateYen,
+      },
     );
-    final billingEarly = TextEditingController(
-      text: record.billingEarlyHourRateYen.toString(),
-    );
+    final billingFormula = _formulaControllers(record.billingFormulas);
     final monthly = TextEditingController(
       text: record.billingMonthlyRateYen.toString(),
     );
@@ -229,12 +232,13 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 ),
                 const SizedBox(height: 8),
                 _MoneyField(controller: daily, label: '1人工（日額）'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: overtime, label: '残業 1時間'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: early, label: '早出 1時間'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: night, label: '夜間 1時間'),
+                const SizedBox(height: 8),
+                _RateFormulaEditor(
+                  title: '給与計算用 自動計算',
+                  baseController: daily,
+                  overrideControllers: workerOverrides,
+                  formulaControllers: workerFormula,
+                ),
                 const SizedBox(height: 18),
                 const Align(
                   alignment: Alignment.centerLeft,
@@ -245,15 +249,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 ),
                 const SizedBox(height: 8),
                 _MoneyField(controller: billing, label: '1日単価'),
-                const SizedBox(height: 10),
-                _MoneyField(
-                  controller: billingOvertime,
-                  label: '残業単価（1時間）',
-                ),
-                const SizedBox(height: 10),
-                _MoneyField(
-                  controller: billingEarly,
-                  label: '早出単価（1時間）',
+                const SizedBox(height: 8),
+                _RateFormulaEditor(
+                  title: '請求書用 自動計算',
+                  baseController: billing,
+                  overrideControllers: billingOverrides,
+                  formulaControllers: billingFormula,
                 ),
                 const SizedBox(height: 10),
                 _MoneyField(controller: monthly, label: '月単価'),
@@ -378,14 +379,17 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   siteName: record.siteName,
                   status: record.status,
                   workerDailyRateYen: int.tryParse(daily.text) ?? 0,
-                  overtimeHourRateYen: int.tryParse(overtime.text) ?? 0,
-                  earlyHourRateYen: int.tryParse(early.text) ?? 0,
-                  nightHourRateYen: int.tryParse(night.text) ?? 0,
+                  overtimeHourRateYen:
+                      int.tryParse(workerOverrides['overtime']!.text) ?? 0,
+                  earlyHourRateYen:
+                      int.tryParse(workerOverrides['early']!.text) ?? 0,
+                  nightHourRateYen:
+                      int.tryParse(workerOverrides['night']!.text) ?? 0,
                   billingUnitPriceYen: manDay,
                   billingOvertimeHourRateYen:
-                      int.tryParse(billingOvertime.text) ?? 0,
+                      int.tryParse(billingOverrides['overtime']!.text) ?? 0,
                   billingEarlyHourRateYen:
-                      int.tryParse(billingEarly.text) ?? 0,
+                      int.tryParse(billingOverrides['early']!.text) ?? 0,
                   billingMonthlyRateYen: monthlyRate,
                   billingSquareMeterUnitPriceYen: squarePrice,
                   billingSquareMeterQuantity: squareQty,
@@ -400,6 +404,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   billingAllowance3Name: allowance3Name.text,
                   billingAllowance3AmountYen:
                       int.tryParse(allowance3Amount.text) ?? 0,
+                  workerFormulas: _formulaFromControllers(workerFormula),
+                  billingFormulas: _formulaFromControllers(billingFormula),
+                  workerRateOverrides:
+                      _overridesFromControllers(workerOverrides),
+                  billingRateOverrides:
+                      _overridesFromControllers(billingOverrides),
                 ),
               );
             },
@@ -411,12 +421,11 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
 
     for (final controller in [
       daily,
-      overtime,
-      early,
-      night,
+      ...workerOverrides.values,
+      ...workerFormula.values,
       billing,
-      billingOvertime,
-      billingEarly,
+      ...billingOverrides.values,
+      ...billingFormula.values,
       monthly,
       squareMeterUnitPrice,
       squareMeterQuantity,
@@ -449,11 +458,313 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     }
   }
 
+  static Map<String, TextEditingController> _overrideControllers(
+    Map<String, int> values, {
+    required Map<String, int> fallback,
+  }) =>
+      {
+        for (final key in const [
+          'overtime',
+          'early',
+          'night',
+          'night_overtime',
+          'holiday',
+          'holiday_overtime',
+          'holiday_night',
+          'holiday_night_overtime',
+        ])
+          key: TextEditingController(
+            text: (values[key] ?? fallback[key] ?? 0).toString(),
+          ),
+      };
+
+  static Map<String, TextEditingController> _formulaControllers(
+    RateFormulaSettings value,
+  ) =>
+      {
+        'hours': TextEditingController(text: _numberText(value.hoursPerDay)),
+        'overtime': TextEditingController(
+          text: _numberText(value.overtimeMultiplier),
+        ),
+        'early': TextEditingController(
+          text: _numberText(value.earlyMultiplier),
+        ),
+        'night': TextEditingController(
+          text: _numberText(value.nightMultiplier),
+        ),
+        'night_overtime': TextEditingController(
+          text: _numberText(value.nightOvertimeMultiplier),
+        ),
+        'holiday': TextEditingController(
+          text: _numberText(value.holidayMultiplier),
+        ),
+        'holiday_overtime': TextEditingController(
+          text: _numberText(value.holidayOvertimeMultiplier),
+        ),
+        'holiday_night': TextEditingController(
+          text: _numberText(value.holidayNightMultiplier),
+        ),
+        'holiday_night_overtime': TextEditingController(
+          text: _numberText(value.holidayNightOvertimeMultiplier),
+        ),
+      };
+
+  static RateFormulaSettings _formulaFromControllers(
+    Map<String, TextEditingController> values,
+  ) =>
+      RateFormulaSettings(
+        hoursPerDay: double.tryParse(values['hours']!.text) ?? 8,
+        overtimeMultiplier:
+            double.tryParse(values['overtime']!.text) ?? 1.25,
+        earlyMultiplier: double.tryParse(values['early']!.text) ?? 1.25,
+        nightMultiplier: double.tryParse(values['night']!.text) ?? 1.5,
+        nightOvertimeMultiplier:
+            double.tryParse(values['night_overtime']!.text) ?? 1.25,
+        holidayMultiplier:
+            double.tryParse(values['holiday']!.text) ?? 1.35,
+        holidayOvertimeMultiplier:
+            double.tryParse(values['holiday_overtime']!.text) ?? 1.25,
+        holidayNightMultiplier:
+            double.tryParse(values['holiday_night']!.text) ?? 1.6,
+        holidayNightOvertimeMultiplier:
+            double.tryParse(values['holiday_night_overtime']!.text) ?? 1.25,
+      );
+
+  static Map<String, int> _overridesFromControllers(
+    Map<String, TextEditingController> values,
+  ) =>
+      {
+        for (final entry in values.entries)
+          entry.key: int.tryParse(entry.value.text.trim()) ?? 0,
+      };
+
   static String _yen(int value) => '¥$value';
 
   static String _numberText(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value.toString();
+  }
+}
+
+class _RateFormulaEditor extends StatefulWidget {
+  const _RateFormulaEditor({
+    required this.title,
+    required this.baseController,
+    required this.overrideControllers,
+    required this.formulaControllers,
+  });
+
+  final String title;
+  final TextEditingController baseController;
+  final Map<String, TextEditingController> overrideControllers;
+  final Map<String, TextEditingController> formulaControllers;
+
+  @override
+  State<_RateFormulaEditor> createState() => _RateFormulaEditorState();
+}
+
+class _RateFormulaEditorState extends State<_RateFormulaEditor> {
+  bool _hourlyBase = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      widget.baseController,
+      ...widget.overrideControllers.values,
+      ...widget.formulaControllers.values,
+    ]) {
+      controller.addListener(_refresh);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      widget.baseController,
+      ...widget.overrideControllers.values,
+      ...widget.formulaControllers.values,
+    ]) {
+      controller.removeListener(_refresh);
+    }
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  RateFormulaSettings get _formula =>
+      _AdminSiteFinancialPageState._formulaFromControllers(
+        widget.formulaControllers,
+      );
+
+  int get _base => int.tryParse(widget.baseController.text.trim()) ?? 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final formula = _formula;
+    final items = <(String, String, int, String)>[
+      (
+        'overtime',
+        '残業',
+        formula.overtime(_base, hourlyBase: _hourlyBase),
+        formula.overtimeFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'early',
+        '早出',
+        formula.early(_base, hourlyBase: _hourlyBase),
+        formula.earlyFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'night',
+        '夜勤',
+        formula.night(_base, hourlyBase: _hourlyBase),
+        formula.nightFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'night_overtime',
+        '夜勤残業',
+        formula.nightOvertime(_base, hourlyBase: _hourlyBase),
+        formula.nightOvertimeFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'holiday',
+        '休日出勤',
+        formula.holiday(_base, hourlyBase: _hourlyBase),
+        formula.holidayFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'holiday_overtime',
+        '休日残業',
+        formula.holidayOvertime(_base, hourlyBase: _hourlyBase),
+        formula.holidayOvertimeFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'holiday_night',
+        '休日夜勤',
+        formula.holidayNight(_base, hourlyBase: _hourlyBase),
+        formula.holidayNightFormula(_base, hourlyBase: _hourlyBase),
+      ),
+      (
+        'holiday_night_overtime',
+        '休日夜勤残業',
+        formula.holidayNightOvertime(_base, hourlyBase: _hourlyBase),
+        formula.holidayNightOvertimeFormula(
+          _base,
+          hourlyBase: _hourlyBase,
+        ),
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.title,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('日給')),
+                ButtonSegment(value: true, label: Text('時給')),
+              ],
+              selected: {_hourlyBase},
+              onSelectionChanged: (value) =>
+                  setState(() => _hourlyBase = value.first),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _factor(widget.formulaControllers['hours']!, '1日時間'),
+                _factor(widget.formulaControllers['overtime']!, '残業倍率'),
+                _factor(widget.formulaControllers['early']!, '早出倍率'),
+                _factor(widget.formulaControllers['night']!, '夜勤倍率'),
+                _factor(
+                  widget.formulaControllers['night_overtime']!,
+                  '夜勤残業倍率',
+                ),
+                _factor(widget.formulaControllers['holiday']!, '休日倍率'),
+                _factor(
+                  widget.formulaControllers['holiday_overtime']!,
+                  '休日残業倍率',
+                ),
+                _factor(
+                  widget.formulaControllers['holiday_night']!,
+                  '休日夜勤倍率',
+                ),
+                _factor(
+                  widget.formulaControllers['holiday_night_overtime']!,
+                  '休日夜勤残業倍率',
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (final item in items)
+              _rateRow(
+                keyName: item.$1,
+                label: item.$2,
+                calculated: item.$3,
+                formula: item.$4,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _factor(TextEditingController controller, String label) =>
+      SizedBox(
+        width: 135,
+        child: TextField(
+          controller: controller,
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+      );
+
+  Widget _rateRow({
+    required String keyName,
+    required String label,
+    required int calculated,
+    required String formula,
+  }) {
+    final controller = widget.overrideControllers[keyName]!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: '$label 直接入力',
+              suffixText: '円',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '自動 ¥$calculated　式: $formula　'
+            '（0なら自動 / 1円以上なら直接入力優先）',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 }
 
