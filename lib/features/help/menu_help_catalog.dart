@@ -58,7 +58,7 @@ class MenuHelpCatalog {
     MenuHelpItem(key: 'approvals', label: '承認待ち', purpose: '日報修正等の承認申請を確認して承認・却下します。', destination: '承認待ち一覧へ移動します。', access: '管理者・承認担当者', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'today_line', label: '本日のLINE出勤候補', purpose: 'LINE連携から取り込んだ出勤候補を確認します。', destination: '本日のLINE出勤候補画面へ移動します。', access: '管理者・勤怠管理権限', roles: {ManualRole.subAdmin, ManualRole.admin}),
     MenuHelpItem(key: 'appearance', label: '背景・ヘッダー・フッター設定', purpose: '自分のホーム壁紙と、ボタン・カード・ヘッダー・フッターの透明度を調整します。', destination: '個人用のホーム外観設定画面へ移動します。', access: '本人のみ。ほかの利用者には影響しません'),
-    MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価、通知音、フローティングヘルプ等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります', details: '利用できる設定だけが表示されます。フローティングヘルプをONにすると、画面上の「？」からいつでも使い方を確認できます。通知音はアプリ全体とグループ単位で分けて設定できます。'),
+    MenuHelpItem(key: 'settings', label: '設定', purpose: '会社機能、表示、権限、単価、通知音、フローティングヘルプ等の設定を確認します。', destination: '設定画面へ移動します。', access: '表示項目は役割と付与権限で変わります', details: '利用できる設定だけが表示されます。会社単価・手当設定では手当名と同じ場所で表示単位も変更でき、「回」以外に「日」「個」「式」などを設定できます。週間表示・カレンダー表示・月集計には保存した単位が反映され、未設定時は従来どおり「回」です。フローティングヘルプをONにすると、画面上の「？」からいつでも使い方を確認できます。通知音はアプリ全体とグループ単位で分けて設定できます。'),
     MenuHelpItem(key: 'help', label: 'ヘルプ', purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。', destination: 'このヘルプ画面です。', access: '管理者・サブ管理者・一般・閲覧権限', details: '画面右側の「？」は長押しして好きな位置へ移動できます。タップすると現在画面の説明が最初に出ます。検索欄には「出勤」「日報」「チャット」「給与」「現場」などの機能名を入力して使い方を探せます。'),
   ];
 
