@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/rate_calculation_card.dart';
 import '../notifications/notification_bell.dart';
 import 'individual_payroll_settings_repository.dart';
 
@@ -47,6 +48,8 @@ class _IndividualPayrollSettingsPageState
   bool _saving = false;
   String? _error;
   DateTime? _updatedAt;
+  Map<String, dynamic> _settingValues = const {};
+  RateCalculationDraft? _rateDraft;
 
   @override
   void initState() {
@@ -152,6 +155,8 @@ class _IndividualPayrollSettingsPageState
       setState(() {
         _workerId = workerId;
         _updatedAt = setting.updatedAt;
+        _settingValues = Map<String, dynamic>.from(setting.values);
+        _rateDraft = null;
         _loading = false;
         _error = null;
       });
@@ -196,7 +201,46 @@ class _IndividualPayrollSettingsPageState
     if (confirmed != true || !mounted) return;
 
     final values = <String, dynamic>{};
-    for (final field in _amountFields) {
+    final rateDraft = _rateDraft;
+    if (rateDraft == null || rateDraft.baseRateYen < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('勤務単価の基準額を確認してください')),
+      );
+      return;
+    }
+    final hours = rateDraft.formula.hoursPerDay;
+    final nightEarly = ((rateDraft.effective('night') / hours) *
+            rateDraft.formula.earlyMultiplier)
+        .round();
+    final holidayEarly = ((rateDraft.effective('holiday') / hours) *
+            rateDraft.formula.earlyMultiplier)
+        .round();
+    final holidayNightEarly =
+        ((rateDraft.effective('holiday_night') / hours) *
+                rateDraft.formula.earlyMultiplier)
+            .round();
+
+    values
+      ..['day_daily'] = rateDraft.calculated.daily
+      ..['day_overtime'] = rateDraft.effective('overtime')
+      ..['day_early'] = rateDraft.effective('early')
+      ..['night_daily'] = rateDraft.effective('night')
+      ..['night_overtime'] = rateDraft.effective('night_overtime')
+      ..['night_early'] = nightEarly
+      ..['holiday_daily'] = rateDraft.effective('holiday')
+      ..['holiday_overtime'] = rateDraft.effective('holiday_overtime')
+      ..['holiday_early'] = holidayEarly
+      ..['holiday_night_daily'] = rateDraft.effective('holiday_night')
+      ..['holiday_night_overtime'] =
+          rateDraft.effective('holiday_night_overtime')
+      ..['holiday_night_early'] = holidayNightEarly
+      ..['hourly_rate_yen'] = rateDraft.formula.baseMode.name == 'hourly'
+          ? rateDraft.baseRateYen
+          : rateDraft.calculated.hourly
+      ..['rate_formula'] = rateDraft.formulaJson()
+      ..['rate_overrides'] = rateDraft.overrides;
+
+    for (final field in _amountFields.skip(12)) {
       final parsed = num.tryParse(_controllers[field.$1]!.text.trim());
       if (parsed == null || parsed < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -312,9 +356,16 @@ class _IndividualPayrollSettingsPageState
                         ),
                       ],
                       const SizedBox(height: 16),
-                      _sectionTitle('勤務単価'),
-                      for (final field in _amountFields.take(12))
-                        _amountField(field.$1, field.$2),
+                      RateCalculationCard(
+                        key: ValueKey('payroll-rate-' + (_workerId ?? '')),
+                        title: '勤務単価 自動計算',
+                        initialBaseRateYen:
+                            (_settingValues['day_daily'] as num?)?.toInt() ?? 0,
+                        initialFormula: _settingValues['rate_formula'],
+                        initialOverrides: _settingValues['rate_overrides'],
+                        enabled: workspace.canEdit,
+                        onChanged: (value) => _rateDraft = value,
+                      ),
                       const SizedBox(height: 12),
                       _sectionTitle('手当'),
                       for (var i = 1; i <= 3; i++) ...[
