@@ -156,6 +156,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         phone: draft.phone,
         email: draft.email,
         corporateNumber: draft.corporateNumber,
+        notes: draft.notes,
       );
       await _load();
       if (!mounted) return;
@@ -170,6 +171,123 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   Future<void> _openCompany(TradeCompanyRecord item) async {
+    final action = await showDialog<_CompanyAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(item.name),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailLine('区分', widget.mode == TradeCompanyPageMode.customer ? '取引会社' : '協力会社'),
+                _detailLine('SKO連携', _linkLabel(item.linkStatus)),
+                _detailLine('郵便番号', item.postalCode),
+                _detailLine('住所', item.address),
+                _detailLine('電話番号', item.phone),
+                _detailLine('メール', item.email),
+                _detailLine('法人番号', item.corporateNumber),
+                _detailLine('備考', item.notes),
+                const Divider(height: 24),
+                _detailLine('契約方式', _contractLabel(item.contractMethod)),
+                if (item.contractMethod == 'daily')
+                  _detailLine('1日単価', _yen(item.dailyRateYen)),
+                if (item.contractMethod == 'monthly')
+                  _detailLine('月単価', _yen(item.monthlyRateYen)),
+                if (item.contractMethod == 'square_meter') ...[
+                  _detailLine('平米単価', _yen(item.squareMeterUnitPriceYen)),
+                  _detailLine('平米数', _number(item.squareMeterQuantity)),
+                ],
+                if (item.contractMethod == 'contract')
+                  _detailLine('請負金額', _yen(item.contractAmountYen)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('閉じる'),
+          ),
+          TextButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.delete),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('削除'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.edit),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('会社情報を編集'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.contract),
+            icon: const Icon(Icons.payments_outlined),
+            label: const Text('契約設定'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _CompanyAction.edit:
+        await _editCompany(item);
+      case _CompanyAction.contract:
+        await _editContract(item);
+      case _CompanyAction.delete:
+        await _deleteCompany(item);
+    }
+  }
+
+  Widget _detailLine(String label, String value) {
+    final display = value.trim().isEmpty ? '未登録' : value;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+          Expanded(child: SelectableText(display)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editCompany(TradeCompanyRecord item) async {
+    final draft = await showDialog<_CompanyDraft>(
+      context: context,
+      builder: (_) => _CompanyRegistrationDialog(title: _title, initial: item),
+    );
+    if (draft == null || _repository == null) return;
+    try {
+      await _repository.saveCompany(
+        id: item.id,
+        name: draft.name,
+        tradeRole: item.tradeRole,
+        postalCode: draft.postalCode,
+        address: draft.address,
+        phone: draft.phone,
+        email: draft.email,
+        corporateNumber: draft.corporateNumber,
+        notes: draft.notes,
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('会社情報を更新しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('会社情報を更新できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _editContract(TradeCompanyRecord item) async {
     final result = await showDialog<_ContractDraft>(
       context: context,
       builder: (_) => _ContractDialog(item: item),
@@ -199,6 +317,54 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         SnackBar(content: Text('契約設定を保存できませんでした: $error')),
       );
     }
+  }
+
+  Future<void> _deleteCompany(TradeCompanyRecord item) async {
+    if (_repository == null) return;
+    final both = item.tradeRole == 'both';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('会社を削除しますか？'),
+        content: Text(
+          both
+              ? '${item.name} は取引会社・協力会社の両方に登録されています。削除すると両方の一覧から消え、契約設定も削除されます。'
+              : '${item.name} を削除します。関連する契約設定も削除されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _repository.deleteCompany(item.id);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('会社を削除しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('会社を削除できませんでした: $error')),
+      );
+    }
+  }
+
+  static String _yen(int value) => '¥${value.toString()}';
+
+  static String _number(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
   }
 
   Future<void> _offerLinkMerge(TradeCompanyRecord item) async {
@@ -337,6 +503,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       };
 }
 
+enum _CompanyAction { edit, contract, delete }
+
 class _CompanyDraft {
   const _CompanyDraft({
     required this.name,
@@ -345,6 +513,7 @@ class _CompanyDraft {
     required this.phone,
     required this.email,
     required this.corporateNumber,
+    required this.notes,
   });
 
   final String name;
@@ -353,11 +522,13 @@ class _CompanyDraft {
   final String phone;
   final String email;
   final String corporateNumber;
+  final String notes;
 }
 
 class _CompanyRegistrationDialog extends StatefulWidget {
-  const _CompanyRegistrationDialog({required this.title});
+  const _CompanyRegistrationDialog({required this.title, this.initial});
   final String title;
+  final TradeCompanyRecord? initial;
 
   @override
   State<_CompanyRegistrationDialog> createState() =>
@@ -366,12 +537,26 @@ class _CompanyRegistrationDialog extends StatefulWidget {
 
 class _CompanyRegistrationDialogState
     extends State<_CompanyRegistrationDialog> {
-  final _name = TextEditingController();
-  final _postalCode = TextEditingController();
-  final _address = TextEditingController();
-  final _phone = TextEditingController();
-  final _email = TextEditingController();
-  final _corporateNumber = TextEditingController();
+  late final TextEditingController _name;
+  late final TextEditingController _postalCode;
+  late final TextEditingController _address;
+  late final TextEditingController _phone;
+  late final TextEditingController _email;
+  late final TextEditingController _corporateNumber;
+  late final TextEditingController _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.initial;
+    _name = TextEditingController(text: item?.name ?? '');
+    _postalCode = TextEditingController(text: item?.postalCode ?? '');
+    _address = TextEditingController(text: item?.address ?? '');
+    _phone = TextEditingController(text: item?.phone ?? '');
+    _email = TextEditingController(text: item?.email ?? '');
+    _corporateNumber = TextEditingController(text: item?.corporateNumber ?? '');
+    _notes = TextEditingController(text: item?.notes ?? '');
+  }
 
   @override
   void dispose() {
@@ -382,6 +567,7 @@ class _CompanyRegistrationDialogState
       _phone,
       _email,
       _corporateNumber,
+      _notes,
     ]) {
       controller.dispose();
     }
@@ -391,7 +577,7 @@ class _CompanyRegistrationDialogState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('${widget.title}を登録'),
+      title: Text(widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集'),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -429,6 +615,12 @@ class _CompanyRegistrationDialogState
                 decoration: const InputDecoration(labelText: '法人番号'),
               ),
               const SizedBox(height: 10),
+              TextField(
+                controller: _notes,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: '備考'),
+              ),
+              const SizedBox(height: 10),
               const Text(
                 'SKO連携は必須ではありません。連携なしのまま請求書・支払証明書用の会社として利用できます。',
               ),
@@ -452,10 +644,11 @@ class _CompanyRegistrationDialogState
                 phone: _phone.text.trim(),
                 email: _email.text.trim(),
                 corporateNumber: _corporateNumber.text.trim(),
+                notes: _notes.text.trim(),
               ),
             );
           },
-          child: const Text('登録'),
+          child: Text(widget.initial == null ? '登録' : '保存'),
         ),
       ],
     );

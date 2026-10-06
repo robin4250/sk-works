@@ -50,7 +50,7 @@ check_cmd "Python 3" python3
 check_cmd "CocoaPods" pod
 
 if command -v flutter >/dev/null 2>&1; then
-  flutter_version="$(flutter --version 2>/dev/null | head -n 1 | awk '{print $2}')"
+  flutter_version="$(flutter --version 2>&1 | sed -nE 's/.*Flutter[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | head -n 1)"
   if [[ "$flutter_version" == "3.47.5" ]]; then
     ok "Flutter 3.47.5（CIと一致）"
   else

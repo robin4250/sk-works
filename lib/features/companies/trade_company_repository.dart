@@ -151,6 +151,13 @@ class TradeCompanyRepository {
     return value?.toString() ?? '';
   }
 
+  Future<void> deleteCompany(String id) async {
+    await _client.rpc(
+      'delete_trade_company',
+      params: {'p_trade_company_id': id},
+    );
+  }
+
   Future<void> saveContract({
     required String tradeCompanyId,
     required String contractMethod,
