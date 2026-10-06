@@ -10,6 +10,8 @@ import '../attendance/paid_leave_repository.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
 import '../daily_reports/daily_report_repository.dart';
 import '../notifications/notification_bell.dart';
+import '../sites/site_cloud_repository.dart';
+import '../sites/site_information_approvals_page.dart';
 
 class ApprovalsHubPage extends StatefulWidget {
   const ApprovalsHubPage({super.key});
@@ -24,11 +26,13 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
       AttendanceCorrectionApprovalRepository.maybeCreate();
   final _paidLeaveRepository = PaidLeaveRepository.maybeCreate();
   final _onboardingRepository = EmployeeOnboardingRepository.maybeCreate();
+  final _siteRepository = SiteCloudRepository.maybeCreate();
 
   int _dailyCount = 0;
   int _attendanceCount = 0;
   int _paidLeaveCount = 0;
   int _onboardingCount = 0;
+  int _siteInformationCount = 0;
   bool _loadingCounts = true;
 
   @override
@@ -55,6 +59,14 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
         if (repository == null || !await repository.canReview()) return 0;
         return (await repository.loadPendingApprovals()).length;
       }),
+      safe(() async {
+        final repository = _siteRepository;
+        if (repository == null) return 0;
+        final items = await repository.loadInformationRequests();
+        return items.where((item) =>
+          item['status']?.toString() == 'pending' && item['can_review'] == true
+        ).length;
+      }),
     ]);
     if (!mounted) return;
     setState(() {
@@ -62,6 +74,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
       _attendanceCount = values[1];
       _paidLeaveCount = values[2];
       _onboardingCount = values[3];
+      _siteInformationCount = values[4];
       _loadingCounts = false;
     });
   }
@@ -171,6 +184,23 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 subtitle: Text(SkoLanguageController.tr('有給申請を確認して承認・却下')),
                 trailing: _trailing(_paidLeaveCount),
                 onTap: () => _open(const PaidLeaveApprovalsPage()),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.apartment_outlined),
+                ),
+                title: Text(
+                  SkoLanguageController.tr('現場データの承認待ち'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                subtitle: Text(
+                  SkoLanguageController.tr('現場情報の変更・終了申請を確認して承認'),
+                ),
+                trailing: _trailing(_siteInformationCount),
+                onTap: () => _open(const SiteInformationApprovalsPage()),
               ),
             ),
             const SizedBox(height: 8),
