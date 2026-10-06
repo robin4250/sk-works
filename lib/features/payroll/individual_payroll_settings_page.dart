@@ -487,6 +487,9 @@ class _IndividualPayrollSettingsPageState
   }) {
     final result = <_CustomMoneyDraft>[];
     final seen = <String>{};
+
+    // A stored list is authoritative, including an empty list. Re-adding
+    // defaults here made deleted rows come back immediately after save/reload.
     if (raw is List) {
       for (final value in raw) {
         if (value is! Map) continue;
@@ -496,7 +499,10 @@ class _IndividualPayrollSettingsPageState
         seen.add(name);
         result.add(_CustomMoneyDraft(name: name, amountYen: amount));
       }
+      return result;
     }
+
+    // Defaults are only for a worker with no stored flexible-list value yet.
     for (final name in defaults) {
       if (seen.add(name)) {
         result.add(_CustomMoneyDraft(name: name));
