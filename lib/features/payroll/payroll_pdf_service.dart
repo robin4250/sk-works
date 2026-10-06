@@ -273,7 +273,7 @@ class PayrollPdfService {
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.SizedBox(
-            width: 455,
+            width: 615,
             child: pw.Table(
               border: pw.TableBorder.all(color: grid, width: .55),
               children: [
