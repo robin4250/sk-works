@@ -146,14 +146,14 @@ class PayrollPdfService {
     ];
 
     final deductionValues = <String>[
-      _amount(deductions, '健康保険料', fallbackKey: '社会保険'),
-      _amount(deductions, '介護保険料'),
-      _amount(deductions, '厚生年金保険'),
-      _amount(deductions, '雇用保険料'),
-      _amount(deductions, '所得税'),
-      _amount(deductions, '住民税'),
-      _amount(deductions, 'SKB会費'),
-      _amount(deductions, '道具代'),
+      _amount(deductions, '健康保険料', fallbackKey: '社会保険', absolute: true),
+      _amount(deductions, '介護保険料', absolute: true),
+      _amount(deductions, '厚生年金保険', absolute: true),
+      _amount(deductions, '雇用保険料', absolute: true),
+      _amount(deductions, '所得税', absolute: true),
+      _amount(deductions, '住民税', absolute: true),
+      _amount(deductions, 'SKB会費', absolute: true),
+      _amount(deductions, '道具代', absolute: true),
       ...extraDeductions.map((entry) => _formatAmount(entry.value, absolute: true)),
       ...List<String>.filled(2 - extraDeductions.length, ''),
     ];
@@ -534,10 +534,11 @@ class PayrollPdfService {
     Map<String, Object?> source,
     String key, {
     String? fallbackKey,
+    bool absolute = false,
   }) {
     final value =
         source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
-    return _formatAmount(value);
+    return _formatAmount(value, absolute: absolute);
   }
 
   static const _nonMoneyDetailKeys = <String>{
