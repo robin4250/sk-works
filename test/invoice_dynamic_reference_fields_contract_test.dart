@@ -49,7 +49,7 @@ void main() {
     expect(pdf, contains('companyLogo'));
     expect(pdf, isNot(contains('companySealImage')));
     expect(pdf, contains('settings?.paymentDueText'));
-    expect(pdf, contains("'2本指で拡大・縮小／拡大後はドラッグで移動'"));
+    expect(pdf, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
   });
 
   test('invoice number assignment is company-scoped and automatic', () {
