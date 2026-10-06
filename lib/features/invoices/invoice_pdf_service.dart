@@ -238,192 +238,194 @@ class InvoicePdfService {
           ],
         ),
         pw.SizedBox(height: 2),
-        pw.Align(
-          alignment: pw.Alignment.centerLeft,
-          child: pw.SizedBox(
-            width: 335,
-            child: pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 4),
-              decoration: pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: blue, width: 1.4),
-                ),
-              ),
-              child: pw.Stack(
-                children: [
-                  pw.Align(
-                    alignment: pw.Alignment.center,
-                    child: pw.Text(
-                      invoice.customerId,
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 17,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  pw.Align(
-                    alignment: pw.Alignment.centerRight,
-                    child: pw.Text(
-                      '御中',
-                      style: pw.TextStyle(
-                        fontSize: 10,
-                        color: blue,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        pw.SizedBox(height: 1),
+        // Keep the invoice top compact: customer/amount on the left and
+        // issuer directly below the invoice number on the right.
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Expanded(
-              child: pw.Text(
-                '下記の通り、御請求申し上げますので、お支払約定日までに、\n'
-                '下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
-                style: pw.TextStyle(fontSize: 8.5, color: blue),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.SizedBox(
+                    width: 335,
+                    child: pw.Container(
+                      padding: const pw.EdgeInsets.only(bottom: 4),
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border(
+                          bottom: pw.BorderSide(color: blue, width: 1.4),
+                        ),
+                      ),
+                      child: pw.Stack(
+                        children: [
+                          pw.Align(
+                            alignment: pw.Alignment.center,
+                            child: pw.Text(
+                              invoice.customerId,
+                              textAlign: pw.TextAlign.center,
+                              style: pw.TextStyle(
+                                fontSize: 17,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          pw.Align(
+                            alignment: pw.Alignment.centerRight,
+                            child: pw.Text(
+                              '御中',
+                              style: pw.TextStyle(
+                                fontSize: 10,
+                                color: blue,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(8),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: blue, width: 1.1),
+                    ),
+                    child: pw.Column(
+                      children: [
+                        pw.Row(
+                          children: [
+                            pw.Text(
+                              '御請求金額',
+                              style: pw.TextStyle(
+                                color: blue,
+                                fontSize: 13,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                            pw.SizedBox(width: 10),
+                            pw.Expanded(
+                              child: pw.Container(
+                                padding: const pw.EdgeInsets.symmetric(vertical: 5),
+                                decoration: pw.BoxDecoration(
+                                  border: pw.Border.all(color: blue, width: 1),
+                                ),
+                                child: pw.Text(
+                                  _yen(invoice.grandTotalYen),
+                                  textAlign: pw.TextAlign.center,
+                                  style: pw.TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: pw.FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                        if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
+                          pw.Text(
+                            '口座名義：${settings!.bankAccountHolder}',
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        pw.Text(
+                          '（振込手数料は御社にて御負担願います）',
+                          style: pw.TextStyle(fontSize: 7.5, color: blue),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 3),
+                  pw.Text(
+                    '下記の通り、御請求申し上げますので、お支払約定日までに、\\n'
+                    '下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
+                    style: pw.TextStyle(fontSize: 8.5, color: blue),
+                  ),
+                ],
               ),
             ),
             pw.SizedBox(width: 14),
             pw.SizedBox(
               width: 245,
-              child: pw.Stack(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.only(right: 28),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Row(
-                          mainAxisAlignment: pw.MainAxisAlignment.end,
-                          crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  pw.Stack(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 28),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.end,
                           children: [
-                            if (companyLogo != null) ...[
-                              pw.SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: pw.Image(companyLogo, fit: pw.BoxFit.contain),
-                              ),
-                              pw.SizedBox(width: 5),
-                            ],
-                            pw.Text(
-                              settings?.companyName ?? '',
-                              textAlign: pw.TextAlign.right,
-                              style: pw.TextStyle(
-                                fontSize: 13,
-                                fontWeight: pw.FontWeight.bold,
-                              ),
+                            pw.Row(
+                              mainAxisAlignment: pw.MainAxisAlignment.end,
+                              crossAxisAlignment: pw.CrossAxisAlignment.center,
+                              children: [
+                                if (companyLogo != null) ...[
+                                  pw.SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: pw.Image(companyLogo, fit: pw.BoxFit.contain),
+                                  ),
+                                  pw.SizedBox(width: 5),
+                                ],
+                                pw.Text(
+                                  settings?.companyName ?? '',
+                                  textAlign: pw.TextAlign.right,
+                                  style: pw.TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: pw.FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
+                            if ((settings?.companyPostalCode ?? '').isNotEmpty)
+                              pw.Text(
+                                '〒${settings!.companyPostalCode}',
+                                textAlign: pw.TextAlign.right,
+                                style: const pw.TextStyle(fontSize: 7.5),
+                              ),
+                            if ((settings?.companyAddress ?? '').isNotEmpty)
+                              pw.Text(
+                                settings!.companyAddress,
+                                textAlign: pw.TextAlign.right,
+                                style: const pw.TextStyle(fontSize: 7.5),
+                              ),
+                            if ((settings?.companyPhone ?? '').isNotEmpty)
+                              pw.Text(
+                                'TEL：${settings!.companyPhone}',
+                                textAlign: pw.TextAlign.right,
+                                style: const pw.TextStyle(fontSize: 7.5),
+                              ),
+                            if ((settings?.companyFax ?? '').isNotEmpty)
+                              pw.Text(
+                                'FAX：${settings!.companyFax}',
+                                textAlign: pw.TextAlign.right,
+                                style: const pw.TextStyle(fontSize: 7.5),
+                              ),
                           ],
                         ),
-                        if ((settings?.companyPostalCode ?? '').isNotEmpty)
-                          pw.Text(
-                            '〒${settings!.companyPostalCode}',
-                            textAlign: pw.TextAlign.right,
-                            style: const pw.TextStyle(fontSize: 7.5),
-                          ),
-                        if ((settings?.companyAddress ?? '').isNotEmpty)
-                          pw.Text(
-                            settings!.companyAddress,
-                            textAlign: pw.TextAlign.right,
-                            style: const pw.TextStyle(fontSize: 7.5),
-                          ),
-                        if ((settings?.companyPhone ?? '').isNotEmpty)
-                          pw.Text(
-                            'TEL：${settings!.companyPhone}',
-                            textAlign: pw.TextAlign.right,
-                            style: const pw.TextStyle(fontSize: 7.5),
-                          ),
-                        if ((settings?.companyFax ?? '').isNotEmpty)
-                          pw.Text(
-                            'FAX：${settings!.companyFax}',
-                            textAlign: pw.TextAlign.right,
-                            style: const pw.TextStyle(fontSize: 7.5),
-                          ),
-                      ],
-                    ),
+                      ),
+                      pw.Positioned(
+                        right: -2,
+                        top: -5,
+                        child: _companySeal(settings?.companyName ?? ''),
+                      ),
+                    ],
                   ),
-                  pw.Positioned(
-                    right: -2,
-                    top: -5,
-                    child: _companySeal(settings?.companyName ?? ''),
+                  pw.SizedBox(height: 4),
+                  pw.SizedBox(
+                    width: 142,
+                    height: 64,
+                    child: _approvalBoxes(
+                      approvals,
+                      blue,
+                    ),
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 1),
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              child: pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: blue, width: 1.1),
-                ),
-                child: pw.Column(
-                  children: [
-                    pw.Row(
-                      children: [
-                        pw.Text(
-                          '御請求金額',
-                          style: pw.TextStyle(
-                            color: blue,
-                            fontSize: 13,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.SizedBox(width: 10),
-                        pw.Expanded(
-                          child: pw.Container(
-                            padding: const pw.EdgeInsets.symmetric(vertical: 5),
-                            decoration: pw.BoxDecoration(
-                              border: pw.Border.all(color: blue, width: 1),
-                            ),
-                            child: pw.Text(
-                              _yen(invoice.grandTotalYen),
-                              textAlign: pw.TextAlign.center,
-                              style: pw.TextStyle(
-                                fontSize: 20,
-                                fontWeight: pw.FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(
-                      bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank',
-                      style: const pw.TextStyle(fontSize: 9),
-                    ),
-                    if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
-                      pw.Text(
-                        '口座名義：${settings!.bankAccountHolder}',
-                        style: const pw.TextStyle(fontSize: 8),
-                      ),
-                    pw.Text(
-                      '（振込手数料は御社にて御負担願います）',
-                      style: pw.TextStyle(fontSize: 7.5, color: blue),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            pw.SizedBox(width: 18),
-            pw.SizedBox(
-              width: 142,
-              height: 64,
-              child: _approvalBoxes(
-                approvals,
-                blue,
               ),
             ),
           ],
@@ -747,30 +749,24 @@ class InvoicePdfService {
 
   static pw.Widget _companySeal(String companyName) {
     final red = PdfColor.fromHex('#B83232');
-    final sealText = companyName.replaceAll(' ', '').trim();
-    final shown = sealText.isEmpty ? '会社之印' : sealText;
+    final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
+    // 角印案A: 一重の角枠に登録会社名をそのまま入れる。
     return pw.Container(
       width: 48,
       height: 48,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: red, width: 1.7),
+        border: pw.Border.all(color: red, width: 1.5),
       ),
-      padding: const pw.EdgeInsets.all(2),
-      child: pw.Container(
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: red, width: .55),
-        ),
-        alignment: pw.Alignment.center,
-        child: pw.Text(
-          shown,
-          textAlign: pw.TextAlign.center,
-          maxLines: 5,
-          style: pw.TextStyle(
-            color: red,
-            fontSize: 5.5,
-            fontWeight: pw.FontWeight.bold,
-            letterSpacing: .7,
-          ),
+      padding: const pw.EdgeInsets.all(3),
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        text,
+        textAlign: pw.TextAlign.center,
+        maxLines: 4,
+        style: pw.TextStyle(
+          color: red,
+          fontSize: 6.5,
+          fontWeight: pw.FontWeight.bold,
         ),
       ),
     );
