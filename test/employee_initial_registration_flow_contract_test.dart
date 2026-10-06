@@ -62,6 +62,8 @@ void main() {
     expect(repository, contains("'deliverSms': deliverSms"));
     expect(edge, contains('existingWorker'));
     expect(edge, contains('persistedWorkerId'));
+    expect(edge, contains('status: "active"'));
+    expect(edge, isNot(contains('status: "inactive"')));
     expect(edge, contains('SKO_TESTFLIGHT_URL'));
     expect(edge, contains('SKO_EMPLOYEE_INVITE_SMS_WEBHOOK'));
   });
