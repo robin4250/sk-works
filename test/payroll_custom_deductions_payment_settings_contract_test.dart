@@ -54,8 +54,9 @@ void main() {
       page,
       contains('PaymentCertificatePreviewPage(record: record)'),
     );
-    expect(repository, contains("onConflict: 'company_id,partner_company_id'"));
-    expect(repository, contains('.select('));
+    expect(repository, contains("'save_partner_payment_setting'"));
+    expect(repository, contains("'partner_payment_settings_workspace'"));
+    expect(repository, contains('final refreshed = await loadSettings()'));
     expect(repository, contains('previewForSetting'));
     expect(repository, contains("siteName: '設定プレビュー'"));
   });
