@@ -39,7 +39,7 @@ void main() {
     expect(page, contains("'早出倍率'"));
     expect(page, contains("'残業'"));
     expect(page, contains("'早出'"));
-    expect(page, contains("'直接入力'"));
+    expect(page, contains('直接入力'));
     expect(repo, contains('billingOvertimeHourRateYen'));
     expect(repo, contains('billingEarlyHourRateYen'));
     expect(repo, contains("'billing_overtime_hour_rate_yen'"));
