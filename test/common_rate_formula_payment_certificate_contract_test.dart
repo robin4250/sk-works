@@ -22,12 +22,19 @@ void main() {
     const formula = RateFormulaSettings();
     expect(formula.overtime(2000, hourlyBase: true), 2500);
     expect(formula.early(2000, hourlyBase: true), 2500);
-    expect(formula.night(2000, hourlyBase: true), 3000);
-    expect(formula.holiday(2000, hourlyBase: true), 2700);
-    expect(formula.holidayNight(2000, hourlyBase: true), 3200);
+    expect(formula.night(2000, hourlyBase: true), 24000);
+    expect(formula.holiday(2000, hourlyBase: true), 21600);
+    expect(formula.holidayNight(2000, hourlyBase: true), 25600);
+    expect(formula.nightOvertime(2000, hourlyBase: true), 3750);
+    expect(formula.holidayOvertime(2000, hourlyBase: true), 3375);
+    expect(formula.holidayNightOvertime(2000, hourlyBase: true), 4000);
     expect(
       formula.overtimeFormula(2000, hourlyBase: true),
       '2000 × 1.25',
+    );
+    expect(
+      formula.nightFormula(2000, hourlyBase: true),
+      '2000 × 8 × 1.5',
     );
   });
 
