@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/rate_formula_settings.dart';
+
 import '../notifications/notification_bell.dart';
 import 'individual_payroll_settings_repository.dart';
 
@@ -41,6 +43,8 @@ class _IndividualPayrollSettingsPageState
   final _controllers = <String, TextEditingController>{};
   final _customEarnings = <_CustomMoneyDraft>[];
   final _customDeductions = <_CustomMoneyDraft>[];
+  final _rateFormulaControllers = <String, TextEditingController>{};
+  final _rateOverrideControllers = <String, TextEditingController>{};
   IndividualPayrollWorkspace? _workspace;
   String? _workerId;
   bool _loading = true;
@@ -59,12 +63,57 @@ class _IndividualPayrollSettingsPageState
     }
     _controllers['paid_leave_granted_days'] = TextEditingController();
     _controllers['payment_day'] = TextEditingController();
+    for (final key in const [
+      'hours',
+      'overtime',
+      'early',
+      'night',
+      'night_overtime',
+      'holiday',
+      'holiday_overtime',
+      'holiday_night',
+      'holiday_night_overtime',
+    ]) {
+      _rateFormulaControllers[key] = TextEditingController();
+    }
+    for (final key in const [
+      'overtime',
+      'early',
+      'night',
+      'night_overtime',
+      'holiday',
+      'holiday_overtime',
+      'holiday_night',
+      'holiday_night_overtime',
+    ]) {
+      _rateOverrideControllers[key] = TextEditingController();
+    }
+    for (final controller in [
+      _controllers['day_daily']!,
+      ..._rateFormulaControllers.values,
+      ..._rateOverrideControllers.values,
+    ]) {
+      controller.addListener(_refreshRateFormula);
+    }
     _load();
   }
 
   @override
   void dispose() {
     for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final controller in [
+      _controllers['day_daily']!,
+      ..._rateFormulaControllers.values,
+      ..._rateOverrideControllers.values,
+    ]) {
+      controller.removeListener(_refreshRateFormula);
+    }
+    for (final controller in [
+      ..._rateFormulaControllers.values,
+      ..._rateOverrideControllers.values,
+    ]) {
       controller.dispose();
     }
     for (final item in [..._customEarnings, ..._customDeductions]) {
