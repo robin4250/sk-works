@@ -52,74 +52,67 @@ class InvoiceCloudRepository {
 
   Future<List<InvoiceCalculationResult>> loadAll() async {
     final companyId = await _companyId();
+    // Keep the primary invoice query independent from related tables. An
+    // unavailable customer/site relation must never hide an otherwise valid
+    // saved invoice.
     final invoices = await _client
         .from('invoices')
-        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, snapshot, customers(name)')
+        .select(
+          'id, customer_id, billing_period_start, billing_period_end, '
+          'invoice_number, issue_date, detail_mode, subtotal, tax, '
+          'grand_total, snapshot',
+        )
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
 
     final results = <InvoiceCalculationResult>[];
     for (final invoice in invoices) {
-      final invoiceId = invoice['id'] as String;
-      final customer = invoice['customers'];
-      final snapshot = invoice['snapshot'];
-      final snapshotMap = snapshot is Map
-          ? Map<String, dynamic>.from(snapshot)
-          : const <String, dynamic>{};
-      final joinedCustomerName =
-          customer is Map ? customer['name']?.toString().trim() ?? '' : '';
-      final snapshotCustomerName =
-          snapshotMap['customer_name']?.toString().trim() ?? '';
-      final customerName = joinedCustomerName.isNotEmpty
-          ? joinedCustomerName
-          : snapshotCustomerName.isNotEmpty
-              ? snapshotCustomerName
-              : '取引先未設定';
-      final calculations = await _client
-          .from('invoice_site_calculations')
-          .select('id, site_id, manual_adjustment_amount, welfare_rate_snapshot, sites(name)')
-          .eq('company_id', companyId)
-          .eq('invoice_id', invoiceId)
-          .order('created_at');
+      try {
+        final invoiceId = invoice['id']?.toString() ?? '';
+        if (invoiceId.isEmpty) continue;
 
-      final siteResults = <SiteInvoiceCalculation>[];
-      for (final calculation in calculations) {
-        final calculationId = calculation['id'] as String;
-        final site = calculation['sites'];
-        final siteName = site is Map ? site['name']?.toString() ?? '' : '';
-        final lines = await _client
-            .from('invoice_detail_lines')
-            .select('description, quantity, unit_price')
-            .eq('company_id', companyId)
-            .eq('invoice_site_calculation_id', calculationId)
-            .order('sort_order');
+        final snapshot = invoice['snapshot'];
+        final snapshotMap = snapshot is Map
+            ? Map<String, dynamic>.from(snapshot)
+            : const <String, dynamic>{};
 
-        siteResults.add(
-          SiteInvoiceCalculation(
-            siteId: calculation['site_id']?.toString() ?? '',
-            siteName: siteName,
-            lines: lines
-                .map<InvoiceLine>(
-                  (line) => InvoiceLine(
-                    label: line['description']?.toString() ?? '明細',
-                    quantity: _toDouble(line['quantity']),
-                    unitPriceYen: _toInt(line['unit_price']),
-                  ),
-                )
-                .toList(),
-            manualAdjustmentYen: _toInt(calculation['manual_adjustment_amount']),
-            welfareRateBps: (_toDouble(calculation['welfare_rate_snapshot']) * 100).round(),
-          ),
-        );
-      }
+        // Snapshot data is the durable display fallback for historical and
+        // auto-generated invoices. Prefer it so relation/RLS changes cannot
+        // make the invoice list disappear.
+        var customerName =
+            snapshotMap['customer_name']?.toString().trim() ?? '';
+        if (customerName.isEmpty) {
+          final customerId = invoice['customer_id']?.toString() ?? '';
+          if (customerId.isNotEmpty) {
+            try {
+              final customers = await _client
+                  .from('customers')
+                  .select('name')
+                  .eq('company_id', companyId)
+                  .eq('id', customerId)
+                  .limit(1);
+              if (customers.isNotEmpty) {
+                customerName =
+                    customers.first['name']?.toString().trim() ?? '';
+              }
+            } catch (_) {
+              // A related customer lookup must not hide the invoice.
+            }
+          }
+        }
+        if (customerName.isEmpty) customerName = '取引先未設定';
 
-      if (siteResults.isEmpty) {
+        final siteResults = <SiteInvoiceCalculation>[];
         final snapshotSites = snapshotMap['sites'];
         if (snapshotSites is List) {
           for (final rawSite in snapshotSites) {
             if (rawSite is! Map) continue;
             final siteMap = Map<String, dynamic>.from(rawSite);
+            final siteId = siteMap['site_id']?.toString().trim() ?? '';
+            final siteName = siteMap['site_name']?.toString().trim() ?? '';
+            if (siteId.isEmpty || siteName.isEmpty) continue;
+
             final rawLines = siteMap['lines'];
             final displayLines = <InvoiceLine>[];
             if (rawLines is List) {
@@ -127,7 +120,8 @@ class InvoiceCloudRepository {
                 if (rawLine is! Map) continue;
                 final line = Map<String, dynamic>.from(rawLine);
                 final sourceWorkContent = line['work_content']?.toString();
-                final allowanceName = line['allowance_name']?.toString().trim() ?? '';
+                final allowanceName =
+                    line['allowance_name']?.toString().trim() ?? '';
                 final workContent = allowanceName.isNotEmpty
                     ? '（$allowanceName）'
                     : sourceWorkContent;
@@ -150,33 +144,107 @@ class InvoiceCloudRepository {
                 );
               }
             }
+
             siteResults.add(
               SiteInvoiceCalculation(
-                siteId: siteMap['site_id']?.toString() ?? '',
-                siteName: siteMap['site_name']?.toString() ?? '',
+                siteId: siteId,
+                siteName: siteName,
                 lines: displayLines,
-                manualAdjustmentYen: 0,
-                welfareRateBps: 0,
+                manualAdjustmentYen:
+                    _toInt(siteMap['manual_adjustment']),
+                welfareRateBps: _toInt(siteMap['welfare_rate_bps']),
               ),
             );
           }
         }
-      }
 
-      final periodStart =
-          DateTime.tryParse(invoice['billing_period_start']?.toString() ?? '');
-      final periodEnd =
-          DateTime.tryParse(invoice['billing_period_end']?.toString() ?? '');
-      final issueDate =
-          DateTime.tryParse(invoice['issue_date']?.toString() ?? '');
-      final billingPeriod = periodStart == null
-          ? snapshotMap['billing_period']?.toString().trim() ?? ''
-          : '${periodStart.year}年${periodStart.month}月';
-      if (billingPeriod.isEmpty) {
-        continue;
-      }
+        // Older manually-created invoices may not carry snapshot sites.
+        // Hydrate normalized detail only in that case and keep failures local
+        // to this optional path.
+        if (siteResults.isEmpty) {
+          try {
+            final calculations = await _client
+                .from('invoice_site_calculations')
+                .select(
+                  'id, site_id, manual_adjustment_amount, '
+                  'welfare_rate_snapshot',
+                )
+                .eq('company_id', companyId)
+                .eq('invoice_id', invoiceId)
+                .order('created_at');
 
-      try {
+            for (final calculation in calculations) {
+              final calculationId = calculation['id']?.toString() ?? '';
+              final siteId = calculation['site_id']?.toString() ?? '';
+              if (calculationId.isEmpty || siteId.isEmpty) continue;
+
+              var siteName = '';
+              try {
+                final sites = await _client
+                    .from('sites')
+                    .select('name')
+                    .eq('company_id', companyId)
+                    .eq('id', siteId)
+                    .limit(1);
+                if (sites.isNotEmpty) {
+                  siteName = sites.first['name']?.toString().trim() ?? '';
+                }
+              } catch (_) {
+                // Keep optional normalized hydration isolated.
+              }
+              if (siteName.isEmpty) continue;
+
+              var lines = <dynamic>[];
+              try {
+                lines = await _client
+                    .from('invoice_detail_lines')
+                    .select('description, quantity, unit_price')
+                    .eq('company_id', companyId)
+                    .eq('invoice_site_calculation_id', calculationId)
+                    .order('sort_order');
+              } catch (_) {
+                // An unavailable detail relation should not hide the invoice.
+              }
+
+              siteResults.add(
+                SiteInvoiceCalculation(
+                  siteId: siteId,
+                  siteName: siteName,
+                  lines: lines
+                      .map<InvoiceLine>(
+                        (line) => InvoiceLine(
+                          label: line['description']?.toString() ?? '明細',
+                          quantity: _toDouble(line['quantity']),
+                          unitPriceYen: _toInt(line['unit_price']),
+                        ),
+                      )
+                      .toList(),
+                  manualAdjustmentYen:
+                      _toInt(calculation['manual_adjustment_amount']),
+                  welfareRateBps:
+                      (_toDouble(calculation['welfare_rate_snapshot']) * 100)
+                          .round(),
+                ),
+              );
+            }
+          } catch (_) {
+            // Zero-site drafts and snapshot-only invoices are still valid.
+          }
+        }
+
+        final periodStart = DateTime.tryParse(
+          invoice['billing_period_start']?.toString() ?? '',
+        );
+        final periodEnd = DateTime.tryParse(
+          invoice['billing_period_end']?.toString() ?? '',
+        );
+        final issueDate =
+            DateTime.tryParse(invoice['issue_date']?.toString() ?? '');
+        final billingPeriod = periodStart == null
+            ? snapshotMap['billing_period']?.toString().trim() ?? ''
+            : '${periodStart.year}年${periodStart.month}月';
+        if (billingPeriod.isEmpty) continue;
+
         results.add(
           InvoiceEngine.calculate(
             customerId: customerName,
@@ -187,7 +255,7 @@ class InvoiceCloudRepository {
               subtotal: _toInt(invoice['subtotal']),
               tax: _toInt(invoice['tax']),
             ),
-            invoiceId: invoice['id']?.toString() ?? '',
+            invoiceId: invoiceId,
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',
             issueDate: issueDate,
             periodStart: periodStart,
