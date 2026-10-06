@@ -4,7 +4,12 @@ import 'people_cloud_repository.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class WorkerPersonnelChangeApprovalsPage extends StatefulWidget {
-  const WorkerPersonnelChangeApprovalsPage({super.key});
+  const WorkerPersonnelChangeApprovalsPage({
+    super.key,
+    this.initialRequestId,
+  });
+
+  final String? initialRequestId;
 
   @override
   State<WorkerPersonnelChangeApprovalsPage> createState() =>
@@ -36,8 +41,18 @@ class _WorkerPersonnelChangeApprovalsPageState
     try {
       final rows = await repository.loadPendingPersonnelChanges();
       if (!mounted) return;
+      final targetId = widget.initialRequestId?.trim() ?? '';
+      final ordered = rows.toList(growable: true);
+      if (targetId.isNotEmpty) {
+        ordered.sort((a, b) {
+          final aTarget = a['id']?.toString() == targetId;
+          final bTarget = b['id']?.toString() == targetId;
+          if (aTarget == bTarget) return 0;
+          return aTarget ? -1 : 1;
+        });
+      }
       setState(() {
-        _rows = rows;
+        _rows = List<Map<String, dynamic>>.unmodifiable(ordered);
         _loading = false;
         _error = null;
       });
