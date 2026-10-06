@@ -20,6 +20,8 @@ class SiteRecord {
     required this.name,
     required this.customerName,
     required this.status,
+    this.customerId = '',
+    this.managerWorkerId = '',
     this.address = '',
     this.managerName = '',
     this.startDate = '',
@@ -38,6 +40,8 @@ class SiteRecord {
   final String name;
   final String customerName;
   final SiteStatus status;
+  final String customerId;
+  final String managerWorkerId;
   final String address;
   final String managerName;
   final String startDate;
@@ -56,6 +60,8 @@ class SiteRecord {
         'name': name,
         'customerName': customerName,
         'status': status.name,
+        'customerId': customerId,
+        'managerWorkerId': managerWorkerId,
         'address': address,
         'managerName': managerName,
         'startDate': startDate,
@@ -79,6 +85,8 @@ class SiteRecord {
         (value) => value.name == json['status'],
         orElse: () => SiteStatus.preparing,
       ),
+      customerId: json['customerId']?.toString() ?? '',
+      managerWorkerId: json['managerWorkerId']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
       managerName: json['managerName']?.toString() ?? '',
       startDate: json['startDate']?.toString() ?? '',
@@ -200,7 +208,7 @@ class _SitePageState extends State<SitePage> {
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: '現場名・得意先・担当者・住所で検索',
+                  hintText: '現場名・取引先・担当者・住所で検索',
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -290,7 +298,7 @@ class _SitePageState extends State<SitePage> {
             children: [
               Text(site.name, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
-              Text('得意先: ${site.customerName}'),
+              Text('取引先: ${site.customerName}'),
               Text('状態: ${site.status.label}'),
               if (site.managerName.isNotEmpty) Text('担当者: ${site.managerName}'),
               if (site.address.isNotEmpty) Text('住所: ${site.address}'),
@@ -407,13 +415,13 @@ class _SiteFormPageState extends State<SiteFormPage> {
               const SizedBox(height: 14),
               TextField(
                 controller: _representativeName,
-                decoration: const InputDecoration(labelText: '現場責任者名'),
+                decoration: const InputDecoration(labelText: '現場責任者'),
               ),
               const SizedBox(height: 14),
               TextField(
                 controller: _representativePhone,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: '現場責任者 電話番号'),
+                decoration: const InputDecoration(labelText: '責任者電話番号'),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -423,7 +431,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
               const SizedBox(height: 14),
               TextField(
                 controller: _nearestStation,
-                decoration: const InputDecoration(labelText: '最寄駅'),
+                decoration: const InputDecoration(labelText: '最寄りの駅'),
               ),
               const SizedBox(height: 14),
               TextField(
