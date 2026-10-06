@@ -171,77 +171,52 @@ class PaymentCertificateRepository {
   }
 
   Future<List<PartnerPaymentSetting>> loadSettings() async {
-    final companyId = await _companyId();
-    final partners = await _client
-        .from('partner_companies')
-        .select('id,name')
-        .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('name');
-
-    final settings = await _client
-        .from('partner_payment_settings')
-        .select()
-        .eq('company_id', companyId);
-
-    final byPartner = <String, Map<String, dynamic>>{
-      for (final raw in settings)
-        raw['partner_company_id'].toString(): Map<String, dynamic>.from(raw),
-    };
-
+    final raw = await _client.rpc('partner_payment_settings_workspace');
+    if (raw is! List) return const [];
     return [
-      for (final partner in partners)
-        PartnerPaymentSetting(
-          partnerCompanyId: partner['id'].toString(),
-          partnerCompanyName: partner['name']?.toString() ?? '',
-          dailyRateYen:
-              (byPartner[partner['id'].toString()]?['daily_rate_yen'] as num?)
-                      ?.toInt() ??
-                  0,
-          overtimeHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['overtime_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          earlyHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['early_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          nightHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['night_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-        ),
-    ];
+      for (final value in raw)
+        if (value is Map)
+          PartnerPaymentSetting(
+            partnerCompanyId:
+                value['partner_company_id']?.toString() ?? '',
+            partnerCompanyName:
+                value['partner_company_name']?.toString() ?? '',
+            dailyRateYen:
+                (value['daily_rate_yen'] as num?)?.toInt() ?? 0,
+            overtimeHourRateYen:
+                (value['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            earlyHourRateYen:
+                (value['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            nightHourRateYen:
+                (value['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
+          ),
+    ].where((item) => item.partnerCompanyId.isNotEmpty).toList();
   }
 
   Future<void> saveSetting(PartnerPaymentSetting value) async {
-    final companyId = await _companyId();
-    final saved = await _client
-        .from('partner_payment_settings')
-        .upsert(
-          {
-            'company_id': companyId,
-            'partner_company_id': value.partnerCompanyId,
-            'daily_rate_yen': value.dailyRateYen,
-            'overtime_hour_rate_yen': value.overtimeHourRateYen,
-            'early_hour_rate_yen': value.earlyHourRateYen,
-            'night_hour_rate_yen': value.nightHourRateYen,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          },
-          onConflict: 'company_id,partner_company_id',
-        )
-        .select(
-          'daily_rate_yen,overtime_hour_rate_yen,early_hour_rate_yen,night_hour_rate_yen',
-        )
-        .single();
+    await _client.rpc(
+      'save_partner_payment_setting',
+      params: {
+        'p_partner_company_id': value.partnerCompanyId,
+        'p_daily_rate_yen': value.dailyRateYen,
+        'p_overtime_hour_rate_yen': value.overtimeHourRateYen,
+        'p_early_hour_rate_yen': value.earlyHourRateYen,
+        'p_night_hour_rate_yen': value.nightHourRateYen,
+      },
+    );
 
-    if ((saved['daily_rate_yen'] as num?)?.toInt() != value.dailyRateYen ||
-        (saved['overtime_hour_rate_yen'] as num?)?.toInt() !=
-            value.overtimeHourRateYen ||
-        (saved['early_hour_rate_yen'] as num?)?.toInt() !=
-            value.earlyHourRateYen ||
-        (saved['night_hour_rate_yen'] as num?)?.toInt() !=
-            value.nightHourRateYen) {
+    final refreshed = await loadSettings();
+    final saved = refreshed.where(
+      (item) => item.partnerCompanyId == value.partnerCompanyId,
+    );
+    if (saved.isEmpty) {
+      throw StateError('支払証明書設定を保存できませんでした。');
+    }
+    final actual = saved.first;
+    if (actual.dailyRateYen != value.dailyRateYen ||
+        actual.overtimeHourRateYen != value.overtimeHourRateYen ||
+        actual.earlyHourRateYen != value.earlyHourRateYen ||
+        actual.nightHourRateYen != value.nightHourRateYen) {
       throw StateError('支払証明書設定を保存できませんでした。');
     }
   }
