@@ -220,9 +220,10 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                   child: TextField(
                     controller: unit,
                     maxLength: 6,
-                    decoration: const InputDecoration(
-                      labelText: '表示単位',
-                      hintText: '日・回など',
+                    decoration: InputDecoration(
+                      labelText: '手当$number 単位',
+                      hintText: '回・日・時間・件など',
+                      helperText: '週間表示・カレンダー表示・月集計に反映',
                       counterText: '',
                     ),
                   ),
