@@ -30,8 +30,8 @@ void main() {
     expect(page, contains('夜勤単価'));
     expect(page, contains('休日出勤単価'));
     expect(page, contains(r'手当$number 名称'));
-    expect(page, contains("labelText: '表示単位'"));
-    expect(page, contains("hintText: '日・回など'"));
+    expect(page, contains("labelText: '単位（回・日・個など）'"));
+    expect(page, contains("hintText: '例：回 / 日 / 個 / 式'"));
     expect(page, contains('_allowance1Unit'));
     expect(page, contains('_allowance2Unit'));
     expect(page, contains('_allowance3Unit'));
