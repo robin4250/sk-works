@@ -533,6 +533,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
         : null;
     DateTime effectiveDate =
         await repository.loadLatestStatementPeriodEnd(workerId) ?? DateTime.now();
+    if (!mounted) return;
     final amount = TextEditingController();
     final note = TextEditingController();
 
