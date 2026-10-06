@@ -643,7 +643,8 @@ class PayrollPdfService {
       final name = value['name']?.toString().trim() ?? '';
       final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
       if (name.isEmpty || amount <= 0) continue;
-      result[name] = amount;
+      final current = (result[name] as num?)?.toInt() ?? 0;
+      result[name] = current + amount;
     }
     return result;
   }
