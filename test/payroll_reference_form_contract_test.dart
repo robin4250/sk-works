@@ -27,5 +27,10 @@ void main() {
     expect(source, contains('_plainNumber(detail'));
     expect(source, contains('extraEarnings'));
     expect(source, contains('extraDeductions'));
+    expect(source, contains('_customMoneyEntries(detail, direction: 1)'));
+    expect(source, contains('_customMoneyEntries(detail, direction: -1)'));
+    expect(source, contains('_nonMoneyDetailKeys'));
+    expect(source, contains('_fixedMoneyKeys'));
+    expect(source, contains('amount.abs()'));
   });
 }
