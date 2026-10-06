@@ -486,12 +486,45 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           const SizedBox(height: 4),
           _linkRow(
+            icon: Icons.apartment_outlined,
+            label: _tr('現場名', 'Site Name'),
+            value: site.name,
+          ),
+          _linkRow(
             icon: Icons.business_outlined,
             label: _tr('取引先', 'Business Partner'),
             value: site.customerName,
             onTap: site.customerName.isEmpty
                 ? null
                 : () => _openMap(site.customerName),
+          ),
+          _linkRow(
+            icon: Icons.info_outline,
+            label: _tr('状態', 'Status'),
+            value: site.status.label,
+          ),
+          _linkRow(
+            icon: Icons.text_fields_outlined,
+            label: _tr('現場正式名称', 'Formal Site Name'),
+            value: site.formalName,
+          ),
+          _linkRow(
+            icon: Icons.person_pin_outlined,
+            label: _tr('担当者', 'Person in Charge'),
+            value: site.managerName,
+          ),
+          _linkRow(
+            icon: Icons.badge_outlined,
+            label: _tr('現場責任者', 'Site Manager'),
+            value: site.representativeName,
+          ),
+          _linkRow(
+            icon: Icons.phone_outlined,
+            label: _tr('責任者電話番号', 'Manager Phone'),
+            value: site.representativePhone,
+            onTap: site.representativePhone.isEmpty
+                ? null
+                : () => _call(site.representativePhone),
           ),
           _linkRow(
             icon: Icons.location_on_outlined,
@@ -502,26 +535,26 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
           ),
           _linkRow(
             icon: Icons.train_outlined,
-            label: _tr('最寄駅', 'Nearest Station'),
+            label: _tr('最寄りの駅', 'Nearest Station'),
             value: site.nearestStation,
             onTap: site.nearestStation.isEmpty
                 ? null
                 : () => _openMap(site.nearestStation),
           ),
           _linkRow(
-            icon: Icons.badge_outlined,
-            label: _tr('現場責任者', 'Site Manager'),
-            value: site.representativeName.isNotEmpty
-                ? site.representativeName
-                : site.managerName,
+            icon: Icons.event_available_outlined,
+            label: _tr('開始日', 'Start Date'),
+            value: site.startDate,
           ),
           _linkRow(
-            icon: Icons.phone_outlined,
-            label: _tr('電話番号', 'Phone Number'),
-            value: site.representativePhone,
-            onTap: site.representativePhone.isEmpty
-                ? null
-                : () => _call(site.representativePhone),
+            icon: Icons.event_busy_outlined,
+            label: _tr('終了日', 'End Date'),
+            value: site.endDate,
+          ),
+          _linkRow(
+            icon: Icons.notes_outlined,
+            label: _tr('備考', 'Notes'),
+            value: site.notes,
           ),
           if (site.createdAt.isNotEmpty ||
               (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt))
@@ -635,7 +668,9 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     required String value,
     VoidCallback? onTap,
   }) {
-    if (value.trim().isEmpty) return const SizedBox.shrink();
+    final displayValue = value.trim().isEmpty
+        ? _tr('未登録', 'Not registered')
+        : value;
     return ListTile(
       dense: true,
       visualDensity: const VisualDensity(vertical: -4),
@@ -647,7 +682,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
-        value,
+        displayValue,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
