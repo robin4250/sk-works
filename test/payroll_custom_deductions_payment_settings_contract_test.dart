@@ -46,6 +46,7 @@ void main() {
 
     expect(repository, contains("'partner_payment_settings_workspace'"));
     expect(repository, contains("'save_partner_payment_setting'"));
+    expect(repository, isNot(contains("from('partner_payment_settings').upsert")));
     expect(page, contains("'支払証明書プレビュー'"));
     expect(page, contains('PaymentCertificatePreviewPage('));
     expect(
