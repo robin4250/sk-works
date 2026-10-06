@@ -3,7 +3,12 @@ import 'package:flutter/material.dart';
 import 'site_cloud_repository.dart';
 
 class SiteInformationApprovalsPage extends StatefulWidget {
-  const SiteInformationApprovalsPage({super.key});
+  const SiteInformationApprovalsPage({
+    super.key,
+    this.initialRequestId,
+  });
+
+  final String? initialRequestId;
 
   @override
   State<SiteInformationApprovalsPage> createState() =>
@@ -36,10 +41,22 @@ class _SiteInformationApprovalsPageState
     try {
       final items = await repository.loadInformationRequests();
       if (!mounted) return;
+      final targetId = widget.initialRequestId?.trim() ?? '';
+      final visible = items.where((item) {
+        final id = item['id']?.toString() ?? '';
+        final status = item['status']?.toString() ?? '';
+        return status == 'pending' || (targetId.isNotEmpty && id == targetId);
+      }).toList(growable: true);
+      if (targetId.isNotEmpty) {
+        visible.sort((a, b) {
+          final aTarget = a['id']?.toString() == targetId;
+          final bTarget = b['id']?.toString() == targetId;
+          if (aTarget == bTarget) return 0;
+          return aTarget ? -1 : 1;
+        });
+      }
       setState(() {
-        _items = items
-            .where((item) => item['status']?.toString() == 'pending')
-            .toList(growable: false);
+        _items = List<Map<String, dynamic>>.unmodifiable(visible);
         _loading = false;
         _error = null;
       });
@@ -189,7 +206,9 @@ class _SiteInformationApprovalsPageState
                                     item['proposed_values'] as Map,
                                   )
                                 : const <String, dynamic>{};
-                            final canReview = item['can_review'] == true;
+                            final status = item['status']?.toString() ?? 'pending';
+                            final canReview =
+                                item['can_review'] == true && status == 'pending';
                             return Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(14),
@@ -204,6 +223,21 @@ class _SiteInformationApprovalsPageState
                                         fontSize: 16,
                                       ),
                                     ),
+                                    if (status != 'pending') ...[
+                                      const SizedBox(height: 6),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Chip(
+                                          label: Text(
+                                            status == 'approved'
+                                                ? '承認済み'
+                                                : status == 'rejected'
+                                                    ? '差し戻し済み'
+                                                    : status,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 8),
                                     for (final entry in proposed.entries)
                                       Padding(
