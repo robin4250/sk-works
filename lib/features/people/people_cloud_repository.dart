@@ -46,6 +46,11 @@ class PeopleCloudRepository {
         member.role == 'manager';
   }
 
+  Future<bool> canConfigurePersonnelApprovers() async {
+    final member = await membership();
+    return member.role == 'owner' || member.role == 'admin';
+  }
+
   Future<void> _requireManagePeople() async {
     if (!await canManagePeople()) {
       throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
