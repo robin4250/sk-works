@@ -485,76 +485,105 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                 ),
           ),
           const SizedBox(height: 4),
-          _linkRow(
-            icon: Icons.apartment_outlined,
-            label: _tr('現場名', 'Site Name'),
-            value: site.name,
-          ),
-          _linkRow(
-            icon: Icons.business_outlined,
-            label: _tr('取引先', 'Business Partner'),
-            value: site.customerName,
-            onTap: site.customerName.isEmpty
-                ? null
-                : () => _openMap(site.customerName),
-          ),
-          _linkRow(
-            icon: Icons.info_outline,
-            label: _tr('状態', 'Status'),
-            value: site.status.label,
-          ),
-          _linkRow(
-            icon: Icons.text_fields_outlined,
-            label: _tr('現場正式名称', 'Formal Site Name'),
-            value: site.formalName,
-          ),
-          _linkRow(
-            icon: Icons.person_pin_outlined,
-            label: _tr('担当者', 'Person in Charge'),
-            value: site.managerName,
-          ),
-          _linkRow(
-            icon: Icons.badge_outlined,
-            label: _tr('現場責任者', 'Site Manager'),
-            value: site.representativeName,
-          ),
-          _linkRow(
-            icon: Icons.phone_outlined,
-            label: _tr('責任者電話番号', 'Manager Phone'),
-            value: site.representativePhone,
-            onTap: site.representativePhone.isEmpty
-                ? null
-                : () => _call(site.representativePhone),
-          ),
-          _linkRow(
-            icon: Icons.location_on_outlined,
-            label: _tr('現場住所', 'Site Address'),
-            value: site.address,
-            onTap:
-                site.address.isEmpty ? null : () => _openMap(site.address),
-          ),
-          _linkRow(
-            icon: Icons.train_outlined,
-            label: _tr('最寄りの駅', 'Nearest Station'),
-            value: site.nearestStation,
-            onTap: site.nearestStation.isEmpty
-                ? null
-                : () => _openMap(site.nearestStation),
-          ),
-          _linkRow(
-            icon: Icons.event_available_outlined,
-            label: _tr('開始日', 'Start Date'),
-            value: site.startDate,
-          ),
-          _linkRow(
-            icon: Icons.event_busy_outlined,
-            label: _tr('終了日', 'End Date'),
-            value: site.endDate,
-          ),
-          _linkRow(
-            icon: Icons.notes_outlined,
-            label: _tr('備考', 'Notes'),
-            value: site.notes,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final gap = 8.0;
+              final itemWidth = constraints.maxWidth >= 360
+                  ? (constraints.maxWidth - gap) / 2
+                  : constraints.maxWidth;
+              final items = <Widget>[
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.apartment_outlined,
+                  label: _tr('現場名', 'Site Name'),
+                  value: site.name,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.business_outlined,
+                  label: _tr('取引先', 'Business Partner'),
+                  value: site.customerName,
+                  onTap: site.customerName.isEmpty
+                      ? null
+                      : () => _openMap(site.customerName),
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.info_outline,
+                  label: _tr('状態', 'Status'),
+                  value: site.status.label,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.text_fields_outlined,
+                  label: _tr('現場正式名称', 'Formal Site Name'),
+                  value: site.formalName,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.person_pin_outlined,
+                  label: _tr('担当者', 'Person in Charge'),
+                  value: site.managerName,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.badge_outlined,
+                  label: _tr('現場責任者', 'Site Manager'),
+                  value: site.representativeName,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.phone_outlined,
+                  label: _tr('責任者電話番号', 'Manager Phone'),
+                  value: site.representativePhone,
+                  onTap: site.representativePhone.isEmpty
+                      ? null
+                      : () => _call(site.representativePhone),
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.location_on_outlined,
+                  label: _tr('現場住所', 'Site Address'),
+                  value: site.address,
+                  onTap:
+                      site.address.isEmpty ? null : () => _openMap(site.address),
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.train_outlined,
+                  label: _tr('最寄りの駅', 'Nearest Station'),
+                  value: site.nearestStation,
+                  onTap: site.nearestStation.isEmpty
+                      ? null
+                      : () => _openMap(site.nearestStation),
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.event_available_outlined,
+                  label: _tr('開始日', 'Start Date'),
+                  value: site.startDate,
+                ),
+                _compactDetail(
+                  width: itemWidth,
+                  icon: Icons.event_busy_outlined,
+                  label: _tr('終了日', 'End Date'),
+                  value: site.endDate,
+                ),
+                _compactDetail(
+                  width: constraints.maxWidth,
+                  icon: Icons.notes_outlined,
+                  label: _tr('備考', 'Notes'),
+                  value: site.notes,
+                  maxLines: 2,
+                ),
+              ].where((item) => item is! SizedBox || item != const SizedBox.shrink()).toList();
+
+              return Wrap(
+                spacing: gap,
+                runSpacing: 6,
+                children: items,
+              );
+            },
           ),
           if (site.createdAt.isNotEmpty ||
               (site.updatedAt.isNotEmpty && site.updatedAt != site.createdAt))
@@ -569,25 +598,26 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               style: const TextStyle(fontSize: 10),
             ),
           const SizedBox(height: 10),
-          Text(
-            _tr('現場写真', 'Site Photos'),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
-          const SizedBox(height: 5),
           if (_loadingPhotos)
             const Center(child: CircularProgressIndicator())
-          else
+          else if (_photos.isNotEmpty || widget.canManage) ...[
+            Text(
+              _tr('現場写真', 'Site Photos'),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 4),
             Row(
               children: [
                 for (var slot = 1; slot <= 3; slot++) ...[
                   Expanded(child: _photoCard(slot)),
-                  if (slot < 3) const SizedBox(width: 8),
+                  if (slot < 3) const SizedBox(width: 6),
                 ],
               ],
             ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 8),
+          ],
           SizedBox(
             height: 40,
             child: FilledButton.icon(
@@ -662,35 +692,71 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
   }
 
-  Widget _linkRow({
+  Widget _compactDetail({
+    required double width,
     required IconData icon,
     required String label,
     required String value,
     VoidCallback? onTap,
+    int maxLines = 1,
   }) {
-    final displayValue = value.trim().isEmpty
-        ? _tr('未登録', 'Not registered')
-        : value;
-    return ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -4),
-      contentPadding: EdgeInsets.zero,
-      minLeadingWidth: 24,
-      leading: Icon(icon, size: 18),
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      trimmed,
+                      maxLines: maxLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.open_in_new, size: 14),
+              ],
+            ],
+          ),
+        ),
       ),
-      subtitle: Text(
-        displayValue,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-      ),
-      trailing: onTap == null ? null : const Icon(Icons.open_in_new),
-      onTap: onTap,
     );
   }
+
 }
 
 class _SiteEditRequestPage extends StatefulWidget {
