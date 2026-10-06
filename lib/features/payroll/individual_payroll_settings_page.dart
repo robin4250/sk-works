@@ -39,6 +39,7 @@ class _IndividualPayrollSettingsPageState
 
   final _repository = IndividualPayrollSettingsRepository.maybeCreate();
   final _controllers = <String, TextEditingController>{};
+  final _customDeductions = <_CustomDeductionDraft>[];
   IndividualPayrollWorkspace? _workspace;
   String? _workerId;
   bool _loading = true;
@@ -63,6 +64,9 @@ class _IndividualPayrollSettingsPageState
   void dispose() {
     for (final controller in _controllers.values) {
       controller.dispose();
+    }
+    for (final item in _customDeductions) {
+      item.dispose();
     }
     super.dispose();
   }
@@ -121,6 +125,12 @@ class _IndividualPayrollSettingsPageState
       }
       _controllers['paid_leave_granted_days']!.text =
           setting.amount('paid_leave_granted_days').toString();
+      for (final item in _customDeductions) {
+        item.dispose();
+      }
+      _customDeductions
+        ..clear()
+        ..addAll(_customDeductionDrafts(setting.values['custom_deductions']));
       if (!mounted) return;
       setState(() {
         _workerId = workerId;
@@ -193,6 +203,29 @@ class _IndividualPayrollSettingsPageState
       return;
     }
     values['paid_leave_granted_days'] = paidLeaveGrantedDays;
+
+    final customDeductions = <Map<String, Object>>[];
+    for (var index = 0; index < _customDeductions.length; index++) {
+      final item = _customDeductions[index];
+      final name = item.name.text.trim();
+      final amountText = item.amount.text.trim();
+      if (name.isEmpty && amountText.isEmpty) continue;
+      if (name.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('追加控除${index + 1}の名称を入力してください')),
+        );
+        return;
+      }
+      final amount = int.tryParse(amountText);
+      if (amount == null || amount < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('「$name」の金額は0以上の数字で入力してください')),
+        );
+        return;
+      }
+      customDeductions.add({'name': name, 'amount_yen': amount});
+    }
+    values['custom_deductions'] = customDeductions;
 
     setState(() => _saving = true);
     try {
@@ -303,6 +336,17 @@ class _IndividualPayrollSettingsPageState
                           'social_insurance_monthly', '社会保険・月額'),
                       _amountField(
                           'other_deduction_monthly', 'その他控除・月額'),
+                      const SizedBox(height: 4),
+                      for (var i = 0; i < _customDeductions.length; i++)
+                        _customDeductionField(i, workspace.canEdit),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: workspace.canEdit ? _addCustomDeduction : null,
+                          icon: const Icon(Icons.add),
+                          label: const Text('控除項目を追加'),
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed:
@@ -312,6 +356,75 @@ class _IndividualPayrollSettingsPageState
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+
+  void _addCustomDeduction() {
+    setState(() => _customDeductions.add(_CustomDeductionDraft()));
+  }
+
+  void _removeCustomDeduction(int index) {
+    final removed = _customDeductions.removeAt(index);
+    removed.dispose();
+    setState(() {});
+  }
+
+  List<_CustomDeductionDraft> _customDeductionDrafts(Object? raw) {
+    if (raw is! List) return const [];
+    final result = <_CustomDeductionDraft>[];
+    for (final value in raw) {
+      if (value is! Map) continue;
+      final name = value['name']?.toString() ?? '';
+      final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
+      result.add(
+        _CustomDeductionDraft(
+          name: name,
+          amountYen: amount,
+        ),
+      );
+    }
+    return result;
+  }
+
+  Widget _customDeductionField(int index, bool enabled) {
+    final item = _customDeductions[index];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            TextFormField(
+              controller: item.name,
+              enabled: enabled,
+              maxLength: 100,
+              decoration: InputDecoration(
+                labelText: '追加控除${index + 1} 名称',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            TextFormField(
+              controller: item.amount,
+              enabled: enabled,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '追加控除${index + 1} 金額',
+                suffixText: '円',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            if (enabled)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _removeCustomDeduction(index),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('この控除を削除'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -352,4 +465,19 @@ class _IndividualPayrollSettingsPageState
       '${value.day.toString().padLeft(2, '0')} '
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+}
+
+
+class _CustomDeductionDraft {
+  _CustomDeductionDraft({String name = '', int amountYen = 0})
+      : name = TextEditingController(text: name),
+        amount = TextEditingController(text: amountYen.toString());
+
+  final TextEditingController name;
+  final TextEditingController amount;
+
+  void dispose() {
+    name.dispose();
+    amount.dispose();
+  }
 }
