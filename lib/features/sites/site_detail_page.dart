@@ -490,7 +490,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
               final fieldWidth = constraints.maxWidth >= 340
                   ? (constraints.maxWidth - 8) / 2
                   : constraints.maxWidth;
-              final fields = <Widget>[
+              final fields = <Widget?>[
                 _compactField(
                   width: fieldWidth,
                   icon: Icons.apartment_outlined,
@@ -576,12 +576,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                   value: site.notes,
                   maxLines: 2,
                 ),
-              ].where((widget) => widget is! SizedBox || widget != const SizedBox.shrink()).toList();
+              ];
 
               return Wrap(
                 spacing: 8,
                 runSpacing: 6,
-                children: fields,
+                children: fields.whereType<Widget>().toList(),
               );
             },
           ),
@@ -691,7 +691,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
   }
 
-  Widget _compactField({
+  Widget? _compactField({
     required double width,
     required IconData icon,
     required String label,
@@ -700,7 +700,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     int maxLines = 1,
   }) {
     final trimmed = value.trim();
-    if (trimmed.isEmpty) return const SizedBox.shrink();
+    if (trimmed.isEmpty) return null;
 
     return SizedBox(
       width: width,
