@@ -139,7 +139,9 @@ class PayrollPdfService {
     ];
     final overflowDeductionGroups = <List<MapEntry<String, Object?>>>[];
     for (var index = 0; index < overflowDeductions.length; index += 10) {
-      final end = (index + 10).clamp(0, overflowDeductions.length);
+      final end = index + 10 < overflowDeductions.length
+          ? index + 10
+          : overflowDeductions.length;
       overflowDeductionGroups.add(overflowDeductions.sublist(index, end));
     }
 
