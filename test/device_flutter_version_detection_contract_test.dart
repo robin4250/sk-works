@@ -11,7 +11,7 @@ void main() {
     ]) {
       final source = File(path).readAsStringSync();
       expect(source, contains("sed -nE 's/.*Flutter[[:space:]]+"));
-      expect(source, isNot(contains("head -n 1 | awk '{print \\$2}'")));
+      expect(source, isNot(contains(r"head -n 1 | awk '{print $2}'")));
     }
   });
 }
