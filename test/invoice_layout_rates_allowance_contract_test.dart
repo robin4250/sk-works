@@ -38,7 +38,7 @@ void main() {
     expect(page, contains("'請求書用 自動計算'"));
     expect(page, contains("'残業'"));
     expect(page, contains("'早出'"));
-    expect(page, contains("'計算式'"));
+    expect(page, contains("'式:'"));
     expect(repo, contains('billingOvertimeHourRateYen'));
     expect(repo, contains('billingEarlyHourRateYen'));
     expect(repo, contains("'billing_overtime_hour_rate_yen'"));
