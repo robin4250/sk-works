@@ -362,6 +362,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
 
   static String _yen(int value) => '¥${value.toString()}';
 
+  static String _number(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
+  }
+
   Future<void> _offerLinkMerge(TradeCompanyRecord item) async {
     final repository = _repository;
     if (repository == null || item.linkStatus == 'linked') return;
