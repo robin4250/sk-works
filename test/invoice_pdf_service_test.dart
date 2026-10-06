@@ -3,6 +3,7 @@ import 'package:sk_works/domain/invoice_engine.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final invoice = InvoiceEngine.calculate(
     customerId: '株式会社テスト',
     billingPeriod: '2026年9月',
