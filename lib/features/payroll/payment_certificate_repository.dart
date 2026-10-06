@@ -338,43 +338,70 @@ class PaymentCertificateRepository {
         unitPriceYen: value.dailyRateYen,
         amountYen: value.dailyRateYen,
       ),
-      if (value.overtimeHourRateYen > 0)
+      if (value.overtimeRate > 0)
         PaymentCertificateLine(
           siteName: '〃',
           workContent: '残業 1時間',
           quantityLabel: '1',
-          unitPriceYen: value.overtimeHourRateYen,
-          amountYen: value.overtimeHourRateYen,
+          unitPriceYen: value.overtimeRate,
+          amountYen: value.overtimeRate,
         ),
-      if (value.earlyHourRateYen > 0)
+      if (value.earlyRate > 0)
         PaymentCertificateLine(
           siteName: '〃',
           workContent: '早出 1時間',
           quantityLabel: '1',
-          unitPriceYen: value.earlyHourRateYen,
-          amountYen: value.earlyHourRateYen,
+          unitPriceYen: value.earlyRate,
+          amountYen: value.earlyRate,
         ),
-      PaymentCertificateLine(
-        siteName: '〃',
-        workContent: '夜勤 1日',
-        quantityLabel: '1',
-        unitPriceYen: value.nightDayRate,
-        amountYen: value.nightDayRate,
-      ),
-      PaymentCertificateLine(
-        siteName: '〃',
-        workContent: '休日出勤 1日',
-        quantityLabel: '1',
-        unitPriceYen: value.holidayDayRate,
-        amountYen: value.holidayDayRate,
-      ),
-      PaymentCertificateLine(
-        siteName: '〃',
-        workContent: '休日夜勤 1日',
-        quantityLabel: '1',
-        unitPriceYen: value.holidayNightDayRate,
-        amountYen: value.holidayNightDayRate,
-      ),
+      if (value.nightDayRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '夜勤 1日',
+          quantityLabel: '1',
+          unitPriceYen: value.nightDayRate,
+          amountYen: value.nightDayRate,
+        ),
+      if (value.nightOvertimeRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '夜勤残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.nightOvertimeRate,
+          amountYen: value.nightOvertimeRate,
+        ),
+      if (value.holidayDayRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '休日出勤 1日',
+          quantityLabel: '1',
+          unitPriceYen: value.holidayDayRate,
+          amountYen: value.holidayDayRate,
+        ),
+      if (value.holidayOvertimeRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '休日残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.holidayOvertimeRate,
+          amountYen: value.holidayOvertimeRate,
+        ),
+      if (value.holidayNightDayRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '休日夜勤 1日',
+          quantityLabel: '1',
+          unitPriceYen: value.holidayNightDayRate,
+          amountYen: value.holidayNightDayRate,
+        ),
+      if (value.holidayNightOvertimeRate > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '休日夜勤残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.holidayNightOvertimeRate,
+          amountYen: value.holidayNightOvertimeRate,
+        ),
       for (final allowance in value.allowances)
         if (allowance.name.trim().isNotEmpty && allowance.amountYen > 0)
           PaymentCertificateLine(
@@ -385,7 +412,35 @@ class PaymentCertificateRepository {
             amountYen: allowance.amountYen,
           ),
     ];
-    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final beforeSummary =
+        lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final welfare =
+        (beforeSummary * value.welfareRate / 100).round();
+    if (welfare > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '福利厚生費',
+          quantityLabel: '${_number(value.welfareRate)}%',
+          unitPriceYen: 0,
+          amountYen: welfare,
+        ),
+      );
+    }
+    final taxBase = beforeSummary + welfare;
+    final tax = (taxBase * value.taxRate / 100).round();
+    if (tax > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '消費税',
+          quantityLabel: '${_number(value.taxRate)}%',
+          unitPriceYen: 0,
+          amountYen: tax,
+        ),
+      );
+    }
+    final gross = beforeSummary + welfare + tax;
 
     return PaymentCertificateRecord(
       id: 'settings-preview',
@@ -405,6 +460,11 @@ class PaymentCertificateRepository {
       lines: lines,
     );
   }
+  static String _number(double value) =>
+      value == value.roundToDouble()
+          ? value.toInt().toString()
+          : value.toString();
+
   static List<PaymentAllowanceSetting> _allowances(Object? raw) {
     if (raw is! List) return const [];
     return [
