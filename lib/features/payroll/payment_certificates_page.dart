@@ -271,6 +271,75 @@ class _PartnerPaymentSettingsPageState
     _night.text = item.nightHourRateYen.toString();
   }
 
+  Future<void> _preview() async {
+    final current = _selectedSetting();
+    if (current == null) return;
+
+    int parse(TextEditingController controller) =>
+        int.tryParse(controller.text.trim()) ?? 0;
+
+    final daily = parse(_daily);
+    final overtime = parse(_overtime);
+    final early = parse(_early);
+    final night = parse(_night);
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+    final end = DateTime(now.year, now.month + 1, 0);
+    final lines = <PaymentCertificateLine>[
+      PaymentCertificateLine(
+        siteName: '設定プレビュー',
+        workContent: '通常作業',
+        quantityLabel: '1',
+        unitPriceYen: daily,
+        amountYen: daily,
+      ),
+      if (overtime > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: overtime,
+          amountYen: overtime,
+        ),
+      if (early > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '早出 1時間',
+          quantityLabel: '1',
+          unitPriceYen: early,
+          amountYen: early,
+        ),
+      if (night > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '夜勤 1時間',
+          quantityLabel: '1',
+          unitPriceYen: night,
+          amountYen: night,
+        ),
+    ];
+    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaymentCertificatePreviewPage(
+          record: PaymentCertificateRecord(
+            id: 'settings-preview',
+            partnerCompanyName: current.partnerCompanyName,
+            periodStart: start,
+            periodEnd: end,
+            grossAmount: gross,
+            deductions: 0,
+            netAmount: gross,
+            status: 'draft',
+            revision: 1,
+            lines: lines,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     final current = _selectedSetting();
@@ -366,6 +435,16 @@ class _PartnerPaymentSettingsPageState
                             SkoLanguageController.isEnglish ? 'Even without settings, a zero-value draft is generated. It recalculates automatically after settings are saved.' : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
                           ),
                           const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: _preview,
+                            icon: const Icon(Icons.preview_outlined),
+                            label: Text(
+                              SkoLanguageController.isEnglish
+                                  ? 'Preview'
+                                  : '支払証明書プレビュー',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           FilledButton.icon(
                             onPressed: _saving ? null : _save,
                             icon: const Icon(Icons.save_outlined),
