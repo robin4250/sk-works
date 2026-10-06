@@ -127,8 +127,12 @@ class _IndividualPayrollSettingsPageState
       }
       _controllers['paid_leave_granted_days']!.text =
           setting.amount('paid_leave_granted_days').toString();
+      final configuredPaymentDay = setting.amount('payment_day').toInt();
       _controllers['payment_day']!.text =
-          setting.amount('payment_day').toStringAsFixed(0);
+          (configuredPaymentDay >= 1 && configuredPaymentDay <= 31
+                  ? configuredPaymentDay
+                  : 25)
+              .toString();
       for (final item in [..._customEarnings, ..._customDeductions]) {
         item.dispose();
       }
