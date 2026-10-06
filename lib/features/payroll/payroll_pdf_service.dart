@@ -42,8 +42,6 @@ class PayrollPdfService {
       '社会保険',
       'その他控除',
     ]);
-    final customEarnings = _customMoneyEntries(detail, direction: 1);
-    final customDeductions = _customMoneyEntries(detail, direction: -1);
 
     document.addPage(
       pw.Page(
@@ -89,6 +87,8 @@ class PayrollPdfService {
   }) {
     final headerFill = PdfColor.fromHex('#DCE8F6');
     final grid = PdfColor.fromHex('#6D89A8');
+    final customEarnings = _customMoneyEntries(detail, direction: 1);
+    final customDeductions = _customMoneyEntries(detail, direction: -1);
 
     const fixedEarningLabels = <String>[
       '基本給',
