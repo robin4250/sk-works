@@ -151,11 +151,19 @@ class TradeCompanyRepository {
     return value?.toString() ?? '';
   }
 
-  Future<void> deleteCompany(String id) async {
-    await _client.rpc(
-      'delete_trade_company',
-      params: {'p_trade_company_id': id},
-    );
+  Future<bool> deleteCompany(String id) async {
+    try {
+      final raw = await _client.rpc(
+        'delete_trade_company_checked',
+        params: {'p_trade_company_id': id},
+      );
+      if (raw is Map) {
+        return raw['deleted'] == true;
+      }
+      return false;
+    } on PostgrestException catch (error) {
+      throw StateError(error.message);
+    }
   }
 
   Future<void> saveContract({
