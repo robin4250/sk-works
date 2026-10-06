@@ -75,6 +75,23 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
             !_companies.contains(_companyFilter)) {
           _companyFilter = null;
         }
+
+        final hasCurrentPeriod = _invoices.any((invoice) {
+          final month = _invoiceMonth(invoice);
+          return month != null &&
+              month.year == _period.year &&
+              month.month == _period.month;
+        });
+        if (!hasCurrentPeriod && _invoices.isNotEmpty) {
+          final months = _invoices
+              .map(_invoiceMonth)
+              .whereType<DateTime>()
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
+          if (months.isNotEmpty) {
+            _period = DateTime(months.first.year, months.first.month);
+          }
+        }
       });
 
       if (!_openedInitialInvoice &&
