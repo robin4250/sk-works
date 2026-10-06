@@ -68,6 +68,11 @@ void main() {
     expect(repo, contains('RateFormulaSettings'));
     expect(repo, contains('p_rate_formula'));
     expect(repo, contains('p_allowances'));
+    expect(repo, contains('value.overtimeRate'));
+    expect(repo, contains('value.holidayNightOvertimeRate'));
+    expect(repo, contains("workContent: '（福利厚生費）'"));
+    expect(repo, contains("workContent: '（消費税）'"));
+    expect(repo, contains('final gross = preTax + tax'));
     expect(migration, contains('holiday_night_overtime_multiplier'));
     expect(migration, contains("'福利厚生費'"));
     expect(migration, contains("'消費税'"));
