@@ -702,42 +702,119 @@ class _SiteEditRequestPage extends StatefulWidget {
 }
 
 class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
+  final _repository = SiteCloudRepository.maybeCreate();
+
   String _tr(String ja, String en) =>
       SkoLanguageController.isEnglish ? en : ja;
 
   late final TextEditingController _name;
-  late final TextEditingController _address;
-  late final TextEditingController _station;
+  late final TextEditingController _formalName;
   late final TextEditingController _representative;
   late final TextEditingController _phone;
+  late final TextEditingController _address;
+  late final TextEditingController _station;
+  late final TextEditingController _startDate;
+  late final TextEditingController _endDate;
   late final TextEditingController _notes;
+
+  List<SiteTradeCompanyOption> _tradeCompanies = const [];
+  List<SiteManagerOption> _managers = const [];
+  String? _customerId;
+  String? _managerWorkerId;
+  late SiteStatus _status;
+  bool _loadingOptions = true;
+  String? _optionError;
 
   @override
   void initState() {
     super.initState();
     final site = widget.site;
-    _name = TextEditingController(
-      text: site.formalName.isNotEmpty ? site.formalName : site.name,
-    );
+    _name = TextEditingController(text: site.name);
+    _formalName = TextEditingController(text: site.formalName);
+    _representative = TextEditingController(text: site.representativeName);
+    _phone = TextEditingController(text: site.representativePhone);
     _address = TextEditingController(text: site.address);
     _station = TextEditingController(text: site.nearestStation);
-    _representative = TextEditingController(
-      text: site.representativeName.isNotEmpty
-          ? site.representativeName
-          : site.managerName,
-    );
-    _phone = TextEditingController(text: site.representativePhone);
+    _startDate = TextEditingController(text: site.startDate);
+    _endDate = TextEditingController(text: site.endDate);
     _notes = TextEditingController(text: site.notes);
+    _customerId = site.customerId.isEmpty ? null : site.customerId;
+    _managerWorkerId =
+        site.managerWorkerId.isEmpty ? null : site.managerWorkerId;
+    _status = site.status;
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    final repository = _repository;
+    if (repository == null) {
+      if (!mounted) return;
+      setState(() {
+        _loadingOptions = false;
+        _optionError = _tr(
+          '取引会社・担当者を読み込めませんでした',
+          'Could not load business partners or managers',
+        );
+      });
+      return;
+    }
+    try {
+      final tradeCompanies = await repository.loadCustomerTradeCompanies();
+      final managers = await repository.loadSiteManagers();
+
+      final customerItems = <SiteTradeCompanyOption>[...tradeCompanies];
+      if (_customerId != null &&
+          !customerItems.any((item) => item.customerId == _customerId) &&
+          widget.site.customerName.isNotEmpty) {
+        customerItems.insert(
+          0,
+          SiteTradeCompanyOption(
+            tradeCompanyId: '',
+            customerId: _customerId!,
+            name: widget.site.customerName,
+          ),
+        );
+      }
+
+      final managerItems = <SiteManagerOption>[...managers];
+      if (_managerWorkerId != null &&
+          !managerItems.any((item) => item.workerId == _managerWorkerId) &&
+          widget.site.managerName.isNotEmpty) {
+        managerItems.insert(
+          0,
+          SiteManagerOption(
+            workerId: _managerWorkerId!,
+            name: widget.site.managerName,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _tradeCompanies = customerItems;
+        _managers = managerItems;
+        _loadingOptions = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingOptions = false;
+        _optionError = error.toString();
+      });
+    }
   }
 
   @override
   void dispose() {
     for (final controller in [
       _name,
-      _address,
-      _station,
+      _formalName,
       _representative,
       _phone,
+      _address,
+      _station,
+      _startDate,
+      _endDate,
       _notes,
     ]) {
       controller.dispose();
@@ -745,37 +822,140 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
     super.dispose();
   }
 
+  String _dbStatus(SiteStatus value) =>
+      value == SiteStatus.preparing ? 'preparation' : value.name;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(_tr('現場 編集／登録', 'Edit / Register Site'))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _field(_name, _tr('現場名', 'Site Name')),
-          _field(_address, _tr('現場住所', 'Site Address')),
-          _field(_station, _tr('最寄駅', 'Nearest Station')),
-          _field(_representative, _tr('現場責任者名', 'Site Manager Name')),
-          _field(_phone, _tr('電話番号', 'Phone Number'),
-              keyboardType: TextInputType.phone),
-          _field(_notes, _tr('備考', 'Notes'), maxLines: 3),
-          const SizedBox(height: 6),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(context).pop({
-              'name': _name.text.trim(),
-              'formal_name': _name.text.trim(),
-              'address': _address.text.trim(),
-              'nearest_station': _station.text.trim(),
-              'representative_name': _representative.text.trim(),
-              'representative_phone': _phone.text.trim(),
-              'notes': _notes.text.trim(),
-            }),
-            icon: const Icon(Icons.check),
-            label: Text(_tr('変更内容を確認', 'Review Changes')),
-          ),
-        ],
-      ),
+      body: _loadingOptions
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_optionError != null) ...[
+                  Text(
+                    _optionError!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _field(_name, _tr('現場名', 'Site Name')),
+                DropdownButtonFormField<String>(
+                  value: _customerId,
+                  decoration: InputDecoration(
+                    labelText: _tr('取引先', 'Business Partner'),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final item in _tradeCompanies)
+                      DropdownMenuItem(
+                        value: item.customerId,
+                        child: Text(item.name),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _customerId = value),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<SiteStatus>(
+                  value: _status,
+                  decoration: InputDecoration(
+                    labelText: _tr('状態', 'Status'),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final value in SiteStatus.values)
+                      DropdownMenuItem(
+                        value: value,
+                        child: Text(value.label),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _status = value ?? _status),
+                ),
+                const SizedBox(height: 12),
+                _field(_formalName, _tr('現場正式名称', 'Formal Site Name')),
+                DropdownButtonFormField<String?>(
+                  value: _managerWorkerId,
+                  decoration: InputDecoration(
+                    labelText: _tr('担当者', 'Person in Charge'),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text(_tr('未設定', 'Not set')),
+                    ),
+                    for (final item in _managers)
+                      DropdownMenuItem<String?>(
+                        value: item.workerId,
+                        child: Text(item.name),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _managerWorkerId = value),
+                ),
+                const SizedBox(height: 12),
+                _field(
+                  _representative,
+                  _tr('現場責任者', 'Site Manager'),
+                ),
+                _field(
+                  _phone,
+                  _tr('責任者電話番号', 'Manager Phone'),
+                  keyboardType: TextInputType.phone,
+                ),
+                _field(_address, _tr('現場住所', 'Site Address')),
+                _field(_station, _tr('最寄りの駅', 'Nearest Station')),
+                _field(_startDate, _tr('開始日', 'Start Date')),
+                _field(_endDate, _tr('終了日', 'End Date')),
+                _field(_notes, _tr('備考', 'Notes'), maxLines: 3),
+                const SizedBox(height: 6),
+                FilledButton.icon(
+                  onPressed: _submit,
+                  icon: const Icon(Icons.check),
+                  label: Text(_tr('変更内容を確認', 'Review Changes')),
+                ),
+              ],
+            ),
     );
+  }
+
+  void _submit() {
+    if (_name.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_tr('現場名を入力してください', 'Enter a site name'))),
+      );
+      return;
+    }
+    if (_customerId == null || _customerId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              '登録済みの取引会社から取引先を選択してください',
+              'Select a registered business partner',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop({
+      'name': _name.text.trim(),
+      'customer_id': _customerId!,
+      'status': _dbStatus(_status),
+      'formal_name': _formalName.text.trim(),
+      'manager_worker_id': _managerWorkerId ?? '',
+      'representative_name': _representative.text.trim(),
+      'representative_phone': _phone.text.trim(),
+      'address': _address.text.trim(),
+      'nearest_station': _station.text.trim(),
+      'starts_at': _startDate.text.trim(),
+      'ends_at': _endDate.text.trim(),
+      'notes': _notes.text.trim(),
+    });
   }
 
   Widget _field(
