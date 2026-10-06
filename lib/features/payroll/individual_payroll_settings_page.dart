@@ -39,6 +39,7 @@ class _IndividualPayrollSettingsPageState
 
   final _repository = IndividualPayrollSettingsRepository.maybeCreate();
   final _controllers = <String, TextEditingController>{};
+  final _customDeductions = <_CustomDeductionEditors>[];
   IndividualPayrollWorkspace? _workspace;
   String? _workerId;
   bool _loading = true;
@@ -63,6 +64,9 @@ class _IndividualPayrollSettingsPageState
   void dispose() {
     for (final controller in _controllers.values) {
       controller.dispose();
+    }
+    for (final item in _customDeductions) {
+      item.dispose();
     }
     super.dispose();
   }
@@ -121,6 +125,23 @@ class _IndividualPayrollSettingsPageState
       }
       _controllers['paid_leave_granted_days']!.text =
           setting.amount('paid_leave_granted_days').toString();
+      for (final item in _customDeductions) {
+        item.dispose();
+      }
+      _customDeductions.clear();
+      final custom = setting.values['custom_deductions'];
+      if (custom is List) {
+        for (final raw in custom) {
+          if (raw is! Map) continue;
+          final row = Map<String, dynamic>.from(raw);
+          _customDeductions.add(
+            _CustomDeductionEditors(
+              name: row['name']?.toString() ?? '',
+              amount: (row['amount_yen'] as num?)?.toInt().toString() ?? '0',
+            ),
+          );
+        }
+      }
       if (!mounted) return;
       setState(() {
         _workerId = workerId;
@@ -193,6 +214,34 @@ class _IndividualPayrollSettingsPageState
       return;
     }
     values['paid_leave_granted_days'] = paidLeaveGrantedDays;
+
+    final customDeductions = <Map<String, dynamic>>[];
+    final seenNames = <String>{};
+    for (final item in _customDeductions) {
+      final name = item.name.text.trim();
+      final amount = int.tryParse(item.amount.text.trim());
+      if (name.isEmpty && (amount == null || amount == 0)) continue;
+      if (name.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('追加控除の名称を入力してください')),
+        );
+        return;
+      }
+      if (amount == null || amount < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$name は0以上の金額で入力してください')),
+        );
+        return;
+      }
+      if (!seenNames.add(name)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('追加控除「$name」が重複しています')),
+        );
+        return;
+      }
+      customDeductions.add({'name': name, 'amount_yen': amount});
+    }
+    values['custom_deductions'] = customDeductions;
 
     setState(() => _saving = true);
     try {
@@ -303,6 +352,70 @@ class _IndividualPayrollSettingsPageState
                           'social_insurance_monthly', '社会保険・月額'),
                       _amountField(
                           'other_deduction_monthly', 'その他控除・月額'),
+                      const SizedBox(height: 4),
+                      for (var i = 0; i < _customDeductions.length; i++)
+                        Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: TextFormField(
+                                    controller: _customDeductions[i].name,
+                                    enabled: workspace.canEdit,
+                                    maxLength: 100,
+                                    decoration: InputDecoration(
+                                      labelText: '追加控除${i + 1} 名称',
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: TextFormField(
+                                    controller: _customDeductions[i].amount,
+                                    enabled: workspace.canEdit,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(
+                                      labelText: '金額',
+                                      suffixText: '円',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ),
+                                if (workspace.canEdit)
+                                  IconButton(
+                                    tooltip: '削除',
+                                    onPressed: () {
+                                      setState(() {
+                                        final removed = _customDeductions.removeAt(i);
+                                        removed.dispose();
+                                      });
+                                    },
+                                    icon: const Icon(Icons.delete_outline),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      if (workspace.canEdit)
+                        OutlinedButton.icon(
+                          onPressed: () => setState(
+                            () => _customDeductions.add(
+                              _CustomDeductionEditors(name: '', amount: '0'),
+                            ),
+                          ),
+                          icon: const Icon(Icons.add),
+                          label: const Text('控除項目を追加'),
+                        ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '名称は自由に変更できます。追加した控除は給与明細の控除欄へ自動反映します。',
+                      ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed:
@@ -352,4 +465,19 @@ class _IndividualPayrollSettingsPageState
       '${value.day.toString().padLeft(2, '0')} '
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+}
+
+
+class _CustomDeductionEditors {
+  _CustomDeductionEditors({required String name, required String amount})
+      : name = TextEditingController(text: name),
+        amount = TextEditingController(text: amount);
+
+  final TextEditingController name;
+  final TextEditingController amount;
+
+  void dispose() {
+    name.dispose();
+    amount.dispose();
+  }
 }
