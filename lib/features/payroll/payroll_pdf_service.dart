@@ -121,13 +121,15 @@ class PayrollPdfService {
       'SKB会費',
       '道具代',
     ];
-    final extraDeductions = <MapEntry<String, Object?>>[
+    final allExtraDeductions = <MapEntry<String, Object?>>[
       ...deductions.entries.where((entry) =>
           !fixedDeductionLabels.contains(entry.key) &&
           entry.key != '社会保険' &&
           _hasAmount(entry.value)),
       ...customDeductions.entries,
-    ].take(2).toList();
+    ];
+    final extraDeductions = allExtraDeductions.take(2).toList();
+    final overflowDeductions = allExtraDeductions.skip(2).toList();
     final deductionLabels = <String>[
       ...fixedDeductionLabels,
       ...extraDeductions.map((entry) => entry.key),
@@ -271,6 +273,46 @@ class PayrollPdfService {
           grid: grid,
           blankRows: 3,
         ),
+        if (overflowDeductions.isNotEmpty) ...[
+          pw.SizedBox(height: 5),
+          for (var start = 0;
+              start < overflowDeductions.length;
+              start += 10) ...[
+            _singleHeaderSection(
+              title: '控除 続き',
+              labels: [
+                ...overflowDeductions
+                    .skip(start)
+                    .take(10)
+                    .map((entry) => entry.key),
+                ...List<String>.filled(
+                  10 -
+                      overflowDeductions.skip(start).take(10).length,
+                  '',
+                ),
+              ],
+              values: [
+                ...overflowDeductions
+                    .skip(start)
+                    .take(10)
+                    .map(
+                      (entry) =>
+                          _formatAmount(entry.value, absolute: true),
+                    ),
+                ...List<String>.filled(
+                  10 -
+                      overflowDeductions.skip(start).take(10).length,
+                  '',
+                ),
+              ],
+              headerFill: headerFill,
+              grid: grid,
+              blankRows: 1,
+            ),
+            if (start + 10 < overflowDeductions.length)
+              pw.SizedBox(height: 4),
+          ],
+        ],
         pw.SizedBox(height: 9),
         pw.Align(
           alignment: pw.Alignment.centerRight,
