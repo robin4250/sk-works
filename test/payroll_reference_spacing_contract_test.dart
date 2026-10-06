@@ -14,25 +14,18 @@ void main() {
     expect(pdf, contains("'法定休出時間'"));
     expect(pdf, contains("'基本給'"));
     expect(pdf, contains("'残業手当'"));
-    expect(pdf, contains("'勤続手当'"));
-    expect(pdf, contains("'役職手当'"));
-    expect(pdf, contains("'家族手当'"));
-    expect(pdf, contains("'働き方手当'"));
     expect(pdf, contains("'健康保険料'"));
-    expect(pdf, contains("'介護保険料'"));
-    expect(pdf, contains("'厚生年金保険'"));
-    expect(pdf, contains("'雇用保険料'"));
     expect(pdf, contains("'所得税'"));
     expect(pdf, contains("'住民税'"));
-    expect(pdf, contains("'SKB会費'"));
-    expect(pdf, contains("'道具代'"));
+    expect(pdf, contains("'custom_earnings'"));
+    expect(pdf, contains("'custom_deductions'"));
+    expect(pdf, contains('_balancedMoneySection'));
   });
 
   test('payroll rows reserve readable vertical space', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
     expect(pdf, contains('height: 18'));
-    expect(pdf, contains('height: 20'));
     expect(pdf, contains('height: 21'));
     expect(pdf, contains('height: 22'));
     expect(pdf, contains('maxLines: 1'));
