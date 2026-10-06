@@ -77,4 +77,34 @@ void main() {
     expect(migration, contains("'福利厚生費'"));
     expect(migration, contains("'消費税'"));
   });
+
+  test('final production migration keeps backend on the shared formula resolver', () {
+    final migration = read(
+      'supabase/migrations/'
+      '20261006181320_finalize_shared_rate_formula_semantics.sql',
+    );
+
+    expect(migration, contains("'{night_overtime_multiplier}','1.25'"));
+    expect(migration, contains("'{holiday_overtime_multiplier}','1.25'"));
+    expect(
+      migration,
+      contains("'{holiday_night_overtime_multiplier}','1.25'"),
+    );
+    expect(
+      migration,
+      contains("r_night_ot:=private.resolve_rate_formula("),
+    );
+    expect(
+      migration,
+      contains("r_holiday_ot:=private.resolve_rate_formula("),
+    );
+    expect(
+      migration,
+      contains("r_holiday_night_ot:=private.resolve_rate_formula("),
+    );
+    expect(
+      migration,
+      contains('CREATE OR REPLACE FUNCTION public.payment_certificate_detail_rows'),
+    );
+  });
 }
