@@ -312,6 +312,65 @@ class _IndividualPayrollSettingsPageState
     }
     values['payment_day'] = paymentDay;
 
+    final formula = _currentRateFormula();
+    if (formula == null) return;
+
+    final baseDaily = int.tryParse(_controllers['day_daily']!.text.trim()) ?? 0;
+    if (baseDaily < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('1日単価は0以上で入力してください')),
+      );
+      return;
+    }
+
+    final rateOverrides = <String, int>{};
+    for (final entry in _rateOverrideControllers.entries) {
+      final direct = int.tryParse(entry.value.text.trim()) ?? 0;
+      if (direct < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_rateLabel(entry.key)}の直接入力は0以上で入力してください'),
+          ),
+        );
+        return;
+      }
+      if (direct > 0) rateOverrides[entry.key] = direct;
+    }
+
+    int effective(String key, int calculated) =>
+        rateOverrides[key] ?? calculated;
+
+    values['day_daily'] = baseDaily;
+    values['day_overtime'] =
+        effective('overtime', formula.overtime(baseDaily));
+    values['day_early'] =
+        effective('early', formula.early(baseDaily));
+    values['night_daily'] =
+        effective('night', formula.night(baseDaily));
+    values['night_overtime'] =
+        effective('night_overtime', formula.nightOvertime(baseDaily));
+    values['night_early'] =
+        effective('night_overtime', formula.nightOvertime(baseDaily));
+    values['holiday_daily'] =
+        effective('holiday', formula.holiday(baseDaily));
+    values['holiday_overtime'] =
+        effective('holiday_overtime', formula.holidayOvertime(baseDaily));
+    values['holiday_early'] =
+        effective('holiday_overtime', formula.holidayOvertime(baseDaily));
+    values['holiday_night_daily'] =
+        effective('holiday_night', formula.holidayNight(baseDaily));
+    values['holiday_night_overtime'] = effective(
+      'holiday_night_overtime',
+      formula.holidayNightOvertime(baseDaily),
+    );
+    values['holiday_night_early'] = effective(
+      'holiday_night_overtime',
+      formula.holidayNightOvertime(baseDaily),
+    );
+    values['rate_formula'] = formula.toMap();
+    values['rate_overrides'] = rateOverrides;
+    values['hourly_rate_yen'] = 0;
+
     final customEarnings = _serializeCustomMoney(
       _customEarnings,
       sectionName: '支給',
@@ -394,8 +453,9 @@ class _IndividualPayrollSettingsPageState
                       ],
                       const SizedBox(height: 16),
                       _sectionTitle('勤務単価'),
-                      for (final field in _amountFields.take(12))
-                        _amountField(field.$1, field.$2),
+                      _amountField('day_daily', '1日単価'),
+                      const SizedBox(height: 4),
+                      _payrollRateFormulaEditor(),
                       const SizedBox(height: 12),
                       _sectionTitle('手当'),
                       for (var i = 1; i <= 3; i++) ...[
@@ -610,6 +670,203 @@ class _IndividualPayrollSettingsPageState
       ),
     );
   }
+
+  void _refreshRateFormula() {
+    if (mounted) setState(() {});
+  }
+
+  RateFormulaSettings? _currentRateFormula() {
+    double parse(String key, double fallback) =>
+        double.tryParse(_rateFormulaControllers[key]!.text.trim()) ?? fallback;
+
+    final formula = RateFormulaSettings(
+      hoursPerDay: parse('hours', 8),
+      overtimeMultiplier: parse('overtime', 1.25),
+      earlyMultiplier: parse('early', 1.25),
+      nightMultiplier: parse('night', 1.5),
+      nightOvertimeMultiplier: parse('night_overtime', 1.5),
+      holidayMultiplier: parse('holiday', 1.35),
+      holidayOvertimeMultiplier: parse('holiday_overtime', 1.35),
+      holidayNightMultiplier: parse('holiday_night', 1.6),
+      holidayNightOvertimeMultiplier:
+          parse('holiday_night_overtime', 1.6),
+    );
+
+    if (formula.hoursPerDay <= 0 ||
+        [
+          formula.overtimeMultiplier,
+          formula.earlyMultiplier,
+          formula.nightMultiplier,
+          formula.nightOvertimeMultiplier,
+          formula.holidayMultiplier,
+          formula.holidayOvertimeMultiplier,
+          formula.holidayNightMultiplier,
+          formula.holidayNightOvertimeMultiplier,
+        ].any((value) => value <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('計算式の時間・倍率は0より大きい数字で入力してください'),
+        ),
+      );
+      return null;
+    }
+    return formula;
+  }
+
+  Widget _payrollRateFormulaEditor() {
+    final base = int.tryParse(_controllers['day_daily']!.text.trim()) ?? 0;
+    final formula = RateFormulaSettings(
+      hoursPerDay:
+          double.tryParse(_rateFormulaControllers['hours']!.text) ?? 8,
+      overtimeMultiplier:
+          double.tryParse(_rateFormulaControllers['overtime']!.text) ?? 1.25,
+      earlyMultiplier:
+          double.tryParse(_rateFormulaControllers['early']!.text) ?? 1.25,
+      nightMultiplier:
+          double.tryParse(_rateFormulaControllers['night']!.text) ?? 1.5,
+      nightOvertimeMultiplier:
+          double.tryParse(_rateFormulaControllers['night_overtime']!.text) ??
+              1.5,
+      holidayMultiplier:
+          double.tryParse(_rateFormulaControllers['holiday']!.text) ?? 1.35,
+      holidayOvertimeMultiplier:
+          double.tryParse(_rateFormulaControllers['holiday_overtime']!.text) ??
+              1.35,
+      holidayNightMultiplier:
+          double.tryParse(_rateFormulaControllers['holiday_night']!.text) ??
+              1.6,
+      holidayNightOvertimeMultiplier: double.tryParse(
+            _rateFormulaControllers['holiday_night_overtime']!.text,
+          ) ??
+          1.6,
+    );
+
+    final rows = <(String, int, String)>[
+      ('overtime', formula.overtime(base), formula.overtimeFormula(base)),
+      ('early', formula.early(base), formula.earlyFormula(base)),
+      ('night', formula.night(base), formula.nightFormula(base)),
+      (
+        'night_overtime',
+        formula.nightOvertime(base),
+        formula.nightOvertimeFormula(base),
+      ),
+      ('holiday', formula.holiday(base), formula.holidayFormula(base)),
+      (
+        'holiday_overtime',
+        formula.holidayOvertime(base),
+        formula.holidayOvertimeFormula(base),
+      ),
+      (
+        'holiday_night',
+        formula.holidayNight(base),
+        formula.holidayNightFormula(base),
+      ),
+      (
+        'holiday_night_overtime',
+        formula.holidayNightOvertime(base),
+        formula.holidayNightOvertimeFormula(base),
+      ),
+    ];
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '1日単価から自動計算',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _rateFactorField('hours', '1日時間'),
+                _rateFactorField('overtime', '残業倍率'),
+                _rateFactorField('early', '早出倍率'),
+                _rateFactorField('night', '夜勤倍率'),
+                _rateFactorField('night_overtime', '夜勤残業倍率'),
+                _rateFactorField('holiday', '休日倍率'),
+                _rateFactorField('holiday_overtime', '休日残業倍率'),
+                _rateFactorField('holiday_night', '休日夜勤倍率'),
+                _rateFactorField(
+                  'holiday_night_overtime',
+                  '休日夜勤残業倍率',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final row in rows)
+              _rateOverrideRow(row.$1, row.$2, row.$3),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _rateFactorField(String key, String label) => SizedBox(
+        width: 145,
+        child: TextFormField(
+          controller: _rateFormulaControllers[key],
+          enabled: _workspace?.canEdit == true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+      );
+
+  Widget _rateOverrideRow(String key, int calculated, String formula) {
+    final direct =
+        int.tryParse(_rateOverrideControllers[key]!.text.trim()) ?? 0;
+    final effective = direct > 0 ? direct : calculated;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: _rateOverrideControllers[key],
+            enabled: _workspace?.canEdit == true,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: '${_rateLabel(key)} 直接入力',
+              helperText: '0なら自動計算 / 現在 ¥$effective',
+              suffixText: '円',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '計算式: $formula',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _rateLabel(String key) => switch (key) {
+        'overtime' => '残業',
+        'early' => '早出',
+        'night' => '夜勤',
+        'night_overtime' => '夜勤残業',
+        'holiday' => '休日出勤',
+        'holiday_overtime' => '休日残業',
+        'holiday_night' => '休日夜勤',
+        'holiday_night_overtime' => '休日夜勤残業',
+        _ => key,
+      };
+
+  static String _numberText(double value) =>
+      value == value.roundToDouble()
+          ? value.toInt().toString()
+          : value.toString();
 
   Widget _sectionTitle(String value) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
