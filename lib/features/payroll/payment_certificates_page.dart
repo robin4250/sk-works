@@ -62,7 +62,23 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
           SkoLanguageController.isEnglish ? 'Payment Certificates' : '支払証明書',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          IconButton(
+            tooltip: SkoLanguageController.isEnglish
+                ? 'Payment Certificate Settings'
+                : '支払証明書設定',
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const PartnerPaymentSettingsPage(),
+                ),
+              );
+              if (mounted) await _load();
+            },
+            icon: const Icon(Icons.tune_outlined),
+          ),
+          const SkoNotificationBell(),
+        ],
       ),
       body: SafeArea(
         child: _loading
