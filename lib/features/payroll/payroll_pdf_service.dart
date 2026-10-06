@@ -89,6 +89,7 @@ class PayrollPdfService {
     final grid = PdfColor.fromHex('#6D89A8');
     final customEarnings = _customMoneyEntries(detail, direction: 1);
     final customDeductions = _customMoneyEntries(detail, direction: -1);
+    final configuredDeductions = _configuredDeductionEntries(detail);
 
     const fixedEarningLabels = <String>[
       '基本給',
@@ -126,6 +127,7 @@ class PayrollPdfService {
           !fixedDeductionLabels.contains(entry.key) &&
           entry.key != '社会保険' &&
           _hasAmount(entry.value)),
+      ...configuredDeductions.entries,
       ...customDeductions.entries,
     ];
     final primaryExtraDeductions = allExtraDeductions.take(2).toList();
@@ -604,6 +606,7 @@ class PayrollPdfService {
     '社員番号',
     '社員No',
     '社員No.',
+    'custom_deductions',
   };
 
   static const _fixedMoneyKeys = <String>{
@@ -626,6 +629,22 @@ class PayrollPdfService {
     '社会保険',
     'その他控除',
   };
+
+  static Map<String, Object?> _configuredDeductionEntries(
+    Map<String, dynamic> detail,
+  ) {
+    final raw = detail['custom_deductions'];
+    if (raw is! List) return const {};
+    final result = <String, Object?>{};
+    for (final value in raw) {
+      if (value is! Map) continue;
+      final name = value['name']?.toString().trim() ?? '';
+      final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
+      if (name.isEmpty || amount <= 0) continue;
+      result[name] = amount;
+    }
+    return result;
+  }
 
   static Map<String, Object?> _customMoneyEntries(
     Map<String, dynamic> detail, {
