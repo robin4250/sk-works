@@ -28,6 +28,8 @@ class AdminSiteFinancialRecord {
     this.billingAllowance3AmountYen = 0,
     this.workerFormulas = const RateFormulaSettings(),
     this.billingFormulas = const RateFormulaSettings(),
+    this.workerHourlyBaseYen = 0,
+    this.billingHourlyBaseYen = 0,
     this.workerRateOverrides = const {},
     this.billingRateOverrides = const {},
   });
@@ -55,12 +57,16 @@ class AdminSiteFinancialRecord {
   final int billingAllowance3AmountYen;
   final RateFormulaSettings workerFormulas;
   final RateFormulaSettings billingFormulas;
+  final int workerHourlyBaseYen;
+  final int billingHourlyBaseYen;
   final Map<String, int> workerRateOverrides;
   final Map<String, int> billingRateOverrides;
 
   int workerRate(String key) {
     final direct = workerRateOverrides[key] ?? 0;
-    final daily = workerDailyRateYen;
+    final daily = workerFormulas.hourlyBase && workerHourlyBaseYen > 0
+        ? workerHourlyBaseYen
+        : workerDailyRateYen;
     final calculated = switch (key) {
       'overtime' => workerFormulas.overtime(daily),
       'early' => workerFormulas.early(daily),
@@ -78,7 +84,9 @@ class AdminSiteFinancialRecord {
 
   int billingRate(String key) {
     final direct = billingRateOverrides[key] ?? 0;
-    final daily = billingUnitPriceYen;
+    final daily = billingFormulas.hourlyBase && billingHourlyBaseYen > 0
+        ? billingHourlyBaseYen
+        : billingUnitPriceYen;
     final calculated = switch (key) {
       'overtime' => billingFormulas.overtime(daily),
       'early' => billingFormulas.early(daily),
@@ -264,6 +272,12 @@ class AdminSiteFinancialRepository {
         workerFormulas: RateFormulaSettings.fromMap(s['worker_rate_formula']),
         billingFormulas:
             RateFormulaSettings.fromMap(s['billing_rate_formula']),
+        workerHourlyBaseYen: s['worker_rate_formula'] is Map
+            ? ((s['worker_rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+            : 0,
+        billingHourlyBaseYen: s['billing_rate_formula'] is Map
+            ? ((s['billing_rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+            : 0,
         workerRateOverrides: _rateOverrides(s['worker_rate_overrides']),
         billingRateOverrides: _rateOverrides(s['billing_rate_overrides']),
       );
@@ -301,9 +315,13 @@ class AdminSiteFinancialRepository {
           ? null
           : record.billingAllowance3Name.trim(),
       'billing_allowance_3_amount_yen': record.billingAllowance3AmountYen,
-      'worker_rate_formula': record.workerFormulas.toMap(),
+      'worker_rate_formula': record.workerFormulas.toMap(
+        hourlyRateYen: record.workerHourlyBaseYen,
+      ),
       'worker_rate_overrides': record.workerRateOverrides,
-      'billing_rate_formula': record.billingFormulas.toMap(),
+      'billing_rate_formula': record.billingFormulas.toMap(
+        hourlyRateYen: record.billingHourlyBaseYen,
+      ),
       'billing_rate_overrides': record.billingRateOverrides,
       'updated_by': _client.auth.currentUser?.id,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
