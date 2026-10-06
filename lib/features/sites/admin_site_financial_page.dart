@@ -157,7 +157,11 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {
     final daily = TextEditingController(
-      text: record.workerDailyRateYen.toString(),
+      text: (record.workerFormulas.hourlyBase &&
+              record.workerHourlyBaseYen > 0
+          ? record.workerHourlyBaseYen
+          : record.workerDailyRateYen)
+          .toString(),
     );
     final workerOverrides = _overrideControllers(
       record.workerRateOverrides,
@@ -169,7 +173,11 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     );
     final workerFormula = _formulaControllers(record.workerFormulas);
     final billing = TextEditingController(
-      text: record.billingUnitPriceYen.toString(),
+      text: (record.billingFormulas.hourlyBase &&
+              record.billingHourlyBaseYen > 0
+          ? record.billingHourlyBaseYen
+          : record.billingUnitPriceYen)
+          .toString(),
     );
     final billingOverrides = _overrideControllers(
       record.billingRateOverrides,
@@ -281,7 +289,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '1日単価・月単価・平米・請負のどれか1方式を設定します。夜間作業の請求単価は1日単価×1.5です。平米は単価と平米数の両方が必要です。',
+                    '1日単価・月単価・平米・請負のどれか1方式を設定します。日給/時給どちらでも同じ倍率体系で残業・早出・夜勤・休日系を自動計算し、式の数字も変更保存できます。平米は単価と平米数の両方が必要です。',
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -340,7 +348,16 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           ),
           FilledButton(
             onPressed: () {
-              final manDay = int.tryParse(billing.text) ?? 0;
+              final workerFormulaValue =
+                  _formulaFromControllers(workerFormula);
+              final billingFormulaValue =
+                  _formulaFromControllers(billingFormula);
+              final workerBaseInput = int.tryParse(daily.text) ?? 0;
+              final billingBaseInput = int.tryParse(billing.text) ?? 0;
+              final workerDailyEquivalent =
+                  workerFormulaValue.dailyBase(workerBaseInput);
+              final manDay =
+                  billingFormulaValue.dailyBase(billingBaseInput);
               final monthlyRate = int.tryParse(monthly.text) ?? 0;
               final squarePrice = int.tryParse(squareMeterUnitPrice.text) ?? 0;
               final squareQty = double.tryParse(squareMeterQuantity.text) ?? 0;
@@ -378,7 +395,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   siteId: record.siteId,
                   siteName: record.siteName,
                   status: record.status,
-                  workerDailyRateYen: int.tryParse(daily.text) ?? 0,
+                  workerDailyRateYen: workerDailyEquivalent,
                   overtimeHourRateYen:
                       int.tryParse(workerOverrides['overtime']!.text) ?? 0,
                   earlyHourRateYen:
@@ -404,8 +421,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   billingAllowance3Name: allowance3Name.text,
                   billingAllowance3AmountYen:
                       int.tryParse(allowance3Amount.text) ?? 0,
-                  workerFormulas: _formulaFromControllers(workerFormula),
-                  billingFormulas: _formulaFromControllers(billingFormula),
+                  workerFormulas: workerFormulaValue,
+                  billingFormulas: billingFormulaValue,
+                  workerHourlyBaseYen:
+                      workerFormulaValue.hourlyBase ? workerBaseInput : 0,
+                  billingHourlyBaseYen:
+                      billingFormulaValue.hourlyBase ? billingBaseInput : 0,
                   workerRateOverrides:
                       _overridesFromControllers(workerOverrides),
                   billingRateOverrides:
