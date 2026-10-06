@@ -25,6 +25,10 @@ class AdminSiteFinancialRecord {
     this.billingAllowance2AmountYen = 0,
     this.billingAllowance3Name = '',
     this.billingAllowance3AmountYen = 0,
+    this.workerRateFormula = const {},
+    this.workerRateOverrides = const {},
+    this.billingRateFormula = const {},
+    this.billingRateOverrides = const {},
   });
 
   final String siteId;
@@ -48,6 +52,10 @@ class AdminSiteFinancialRecord {
   final int billingAllowance2AmountYen;
   final String billingAllowance3Name;
   final int billingAllowance3AmountYen;
+  final Map<String, dynamic> workerRateFormula;
+  final Map<String, dynamic> workerRateOverrides;
+  final Map<String, dynamic> billingRateFormula;
+  final Map<String, dynamic> billingRateOverrides;
 
   bool get hasManDayBilling => billingUnitPriceYen > 0;
   bool get hasMonthlyBilling => billingMonthlyRateYen > 0;
@@ -162,7 +170,8 @@ class AdminSiteFinancialRepository {
           'welfare_rate, billing_allowance_1_name, '
           'billing_allowance_1_amount_yen, billing_allowance_2_name, '
           'billing_allowance_2_amount_yen, billing_allowance_3_name, '
-          'billing_allowance_3_amount_yen',
+          'billing_allowance_3_amount_yen, worker_rate_formula, worker_rate_overrides, '
+          'billing_rate_formula, billing_rate_overrides',
         )
         .eq('company_id', companyId);
 
@@ -215,6 +224,18 @@ class AdminSiteFinancialRepository {
             s['billing_allowance_3_name']?.toString() ?? '',
         billingAllowance3AmountYen:
             (s['billing_allowance_3_amount_yen'] as num?)?.toInt() ?? 0,
+        workerRateFormula: s['worker_rate_formula'] is Map
+            ? Map<String, dynamic>.from(s['worker_rate_formula'] as Map)
+            : const {},
+        workerRateOverrides: s['worker_rate_overrides'] is Map
+            ? Map<String, dynamic>.from(s['worker_rate_overrides'] as Map)
+            : const {},
+        billingRateFormula: s['billing_rate_formula'] is Map
+            ? Map<String, dynamic>.from(s['billing_rate_formula'] as Map)
+            : const {},
+        billingRateOverrides: s['billing_rate_overrides'] is Map
+            ? Map<String, dynamic>.from(s['billing_rate_overrides'] as Map)
+            : const {},
       );
     }).toList();
   }
@@ -250,6 +271,10 @@ class AdminSiteFinancialRepository {
           ? null
           : record.billingAllowance3Name.trim(),
       'billing_allowance_3_amount_yen': record.billingAllowance3AmountYen,
+      'worker_rate_formula': record.workerRateFormula,
+      'worker_rate_overrides': record.workerRateOverrides,
+      'billing_rate_formula': record.billingRateFormula,
+      'billing_rate_overrides': record.billingRateOverrides,
       'updated_by': _client.auth.currentUser?.id,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
