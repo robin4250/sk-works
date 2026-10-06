@@ -287,6 +287,9 @@ class WorkerAttendanceSheetRepository {
       final date = approvedDates[i];
       if (date.isBefore(start) || !date.isBefore(end)) continue;
       final draft = drafts.putIfAbsent(date, () => _DayDraft(date));
+      // A corrected work record wins over an older approved paid-leave marker.
+      // The approval RPC also cancels the overlapping leave in production.
+      if (draft.hasWorkedData) continue;
       draft.paidLeave = true;
       draft.paidLeaveOrdinal = i + 1;
       draft.paidLeaveRemaining =
@@ -348,6 +351,11 @@ class _DayDraft {
   bool paidLeave = false;
   int paidLeaveOrdinal = 0;
   double paidLeaveRemaining = 0;
+
+  bool get hasWorkedData =>
+      (siteName?.trim().isNotEmpty ?? false) ||
+      clockIn != null ||
+      clockOut != null;
 
   WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
       WorkerAttendanceDay(
