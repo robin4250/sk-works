@@ -12,6 +12,9 @@ void main() {
     expect(source, contains("'支給'"));
     expect(source, contains("'控除'"));
     expect(source, contains("'総支給額'"));
+    expect(source, contains("'有給日数'"));
+    expect(source, contains("'早出時間'"));
+    expect(source, contains("'夜間時間'"));
     expect(source, contains("'総控除額'"));
     expect(source, contains("'差引支給額'"));
     expect(source, contains("'月次減税額'"));

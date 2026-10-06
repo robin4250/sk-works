@@ -41,6 +41,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     super.initState();
     final initial = widget.initialMonth ?? DateTime.now();
     _month = DateTime(initial.year, initial.month);
+    _selectedWeek = _weekIndexContaining(_month, initial);
     _load();
   }
 
@@ -97,6 +98,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         ),
       ),
     );
+    if (!mounted) return;
+    SkoScrollChromeController.visible.value = true;
   }
 
   Future<void> _openAttendanceCorrection() async {
@@ -105,7 +108,9 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
         builder: (_) => const BulkAttendanceCorrectionPage(),
       ),
     );
-    if (count == null || !mounted) return;
+    if (!mounted) return;
+    SkoScrollChromeController.visible.value = true;
+    if (count == null) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$count件の勤務修正を申請しました')),
     );
@@ -119,6 +124,7 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
       ),
     );
     if (!mounted) return;
+    SkoScrollChromeController.visible.value = true;
     await _load();
   }
 
@@ -128,6 +134,22 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
       _selectedWeek = 0;
     });
     await _load();
+  }
+
+  int _weekIndexContaining(DateTime month, DateTime date) {
+    final weeks = _weeksForMonth(month);
+    final target = DateTime(date.year, date.month, date.day);
+    for (var i = 0; i < weeks.length; i++) {
+      if (weeks[i].any(
+        (day) =>
+            day.year == target.year &&
+            day.month == target.month &&
+            day.day == target.day,
+      )) {
+        return i;
+      }
+    }
+    return 0;
   }
 
   List<List<DateTime>> _weeksForMonth(DateTime month) {

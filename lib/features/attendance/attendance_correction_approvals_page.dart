@@ -4,7 +4,12 @@ import '../notifications/notification_bell.dart';
 import 'attendance_correction_approval_repository.dart';
 
 class AttendanceCorrectionApprovalsPage extends StatefulWidget {
-  const AttendanceCorrectionApprovalsPage({super.key});
+  const AttendanceCorrectionApprovalsPage({
+    super.key,
+    this.initialRequestId,
+  });
+
+  final String? initialRequestId;
 
   @override
   State<AttendanceCorrectionApprovalsPage> createState() =>
@@ -19,6 +24,7 @@ class _AttendanceCorrectionApprovalsPageState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  bool _openedInitialRequest = false;
 
   @override
   void initState() {
@@ -48,6 +54,20 @@ class _AttendanceCorrectionApprovalsPageState
         _items = items;
         _loading = false;
       });
+      final initialRequestId = widget.initialRequestId;
+      if (!_openedInitialRequest &&
+          initialRequestId != null &&
+          initialRequestId.isNotEmpty) {
+        for (final item in items) {
+          if (item.id == initialRequestId) {
+            _openedInitialRequest = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _openRequest(item);
+            });
+            break;
+          }
+        }
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -284,6 +304,7 @@ class _SnapshotDiff extends StatelessWidget {
 
   static const _labels = <String, String>{
     'siteName': '現場',
+    'workCategory': '勤務区分',
     'manDays': '人工',
     'overtimeHours': '残業',
     'earlyHours': '早出',

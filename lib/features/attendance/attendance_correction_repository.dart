@@ -8,6 +8,7 @@ class AttendanceCorrectionEntry {
     required this.date,
     required this.workerName,
     required this.siteName,
+    required this.workCategory,
     required this.manDays,
     required this.overtimeHours,
     required this.earlyHours,
@@ -21,6 +22,7 @@ class AttendanceCorrectionEntry {
   final String date;
   final String workerName;
   final String siteName;
+  final String workCategory;
   final double manDays;
   final double overtimeHours;
   final double earlyHours;
@@ -33,6 +35,7 @@ class AttendanceCorrectionEntry {
         'date': date,
         'workerName': workerName,
         'siteName': siteName,
+        'workCategory': workCategory,
         'manDays': manDays,
         'overtimeHours': overtimeHours,
         'earlyHours': earlyHours,
@@ -87,7 +90,7 @@ class AttendanceCorrectionRepository {
     final rows = await _client
         .from('attendance_entries')
         .select(
-          'id, work_date, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, notes, workers(name), sites(name)',
+          'id, work_date, work_category, base_man_days, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, notes, workers(name), sites(name)',
         )
         .eq('company_id', value.companyId)
         .gte('work_date', _dbDate(start))
@@ -106,6 +109,9 @@ class AttendanceCorrectionRepository {
           siteName: raw['sites'] is Map
               ? (raw['sites'] as Map)['name']?.toString() ?? ''
               : '',
+          workCategory: raw['work_category']?.toString().trim().isNotEmpty == true
+              ? raw['work_category'].toString().trim()
+              : 'day',
           manDays: _number(raw['base_man_days']),
           overtimeHours: _number(raw['overtime_hours']),
           earlyHours: _number(raw['early_hours']),
@@ -200,6 +206,7 @@ class AttendanceCorrectionRepository {
   ) {
     final labels = <String, String>{
       'siteName': '現場',
+      'workCategory': '勤務区分',
       'manDays': '人工',
       'overtimeHours': '残業',
       'earlyHours': '早出',
