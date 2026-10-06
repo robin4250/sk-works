@@ -216,14 +216,103 @@ class PaymentCertificateRepository {
 
   Future<void> saveSetting(PartnerPaymentSetting value) async {
     final companyId = await _companyId();
-    await _client.from('partner_payment_settings').upsert({
-      'company_id': companyId,
-      'partner_company_id': value.partnerCompanyId,
-      'daily_rate_yen': value.dailyRateYen,
-      'overtime_hour_rate_yen': value.overtimeHourRateYen,
-      'early_hour_rate_yen': value.earlyHourRateYen,
-      'night_hour_rate_yen': value.nightHourRateYen,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    final saved = await _client
+        .from('partner_payment_settings')
+        .upsert(
+          {
+            'company_id': companyId,
+            'partner_company_id': value.partnerCompanyId,
+            'daily_rate_yen': value.dailyRateYen,
+            'overtime_hour_rate_yen': value.overtimeHourRateYen,
+            'early_hour_rate_yen': value.earlyHourRateYen,
+            'night_hour_rate_yen': value.nightHourRateYen,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          onConflict: 'company_id,partner_company_id',
+        )
+        .select(
+          'daily_rate_yen,overtime_hour_rate_yen,early_hour_rate_yen,night_hour_rate_yen',
+        )
+        .single();
+
+    if ((saved['daily_rate_yen'] as num?)?.toInt() != value.dailyRateYen ||
+        (saved['overtime_hour_rate_yen'] as num?)?.toInt() !=
+            value.overtimeHourRateYen ||
+        (saved['early_hour_rate_yen'] as num?)?.toInt() !=
+            value.earlyHourRateYen ||
+        (saved['night_hour_rate_yen'] as num?)?.toInt() !=
+            value.nightHourRateYen) {
+      throw StateError('支払証明書設定を保存できませんでした。');
+    }
+  }
+
+  Future<PaymentCertificateRecord> previewForSetting(
+    PartnerPaymentSetting value,
+  ) async {
+    final companyId = await _companyId();
+    final companyRows = await _client
+        .from('companies')
+        .select('name,postal_code,address,phone,fax')
+        .eq('id', companyId)
+        .limit(1);
+    final company = companyRows.isEmpty
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(companyRows.first);
+
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+    final end = DateTime(now.year, now.month + 1, 0);
+    final lines = <PaymentCertificateLine>[
+      PaymentCertificateLine(
+        siteName: '設定プレビュー',
+        workContent: '通常作業',
+        quantityLabel: '1',
+        unitPriceYen: value.dailyRateYen,
+        amountYen: value.dailyRateYen,
+      ),
+      if (value.overtimeHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.overtimeHourRateYen,
+          amountYen: value.overtimeHourRateYen,
+        ),
+      if (value.earlyHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '早出 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.earlyHourRateYen,
+          amountYen: value.earlyHourRateYen,
+        ),
+      if (value.nightHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '夜勤 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.nightHourRateYen,
+          amountYen: value.nightHourRateYen,
+        ),
+    ];
+    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+
+    return PaymentCertificateRecord(
+      id: 'settings-preview',
+      partnerCompanyName: value.partnerCompanyName,
+      periodStart: start,
+      periodEnd: end,
+      grossAmount: gross,
+      deductions: 0,
+      netAmount: gross,
+      status: 'draft',
+      revision: 1,
+      payerCompanyName: company['name']?.toString() ?? '',
+      payerPostalCode: company['postal_code']?.toString() ?? '',
+      payerAddress: company['address']?.toString() ?? '',
+      payerPhone: company['phone']?.toString() ?? '',
+      payerFax: company['fax']?.toString() ?? '',
+      lines: lines,
+    );
   }
 }
