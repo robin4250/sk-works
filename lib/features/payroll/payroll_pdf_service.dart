@@ -121,18 +121,25 @@ class PayrollPdfService {
       'SKB会費',
       '道具代',
     ];
-    final extraDeductions = <MapEntry<String, Object?>>[
+    final allExtraDeductions = <MapEntry<String, Object?>>[
       ...deductions.entries.where((entry) =>
           !fixedDeductionLabels.contains(entry.key) &&
           entry.key != '社会保険' &&
           _hasAmount(entry.value)),
       ...customDeductions.entries,
-    ].take(2).toList();
+    ];
+    final primaryExtraDeductions = allExtraDeductions.take(2).toList();
+    final overflowDeductions = allExtraDeductions.skip(2).toList();
     final deductionLabels = <String>[
       ...fixedDeductionLabels,
-      ...extraDeductions.map((entry) => entry.key),
-      ...List<String>.filled(2 - extraDeductions.length, ''),
+      ...primaryExtraDeductions.map((entry) => entry.key),
+      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
     ];
+    final overflowDeductionGroups = <List<MapEntry<String, Object?>>>[];
+    for (var index = 0; index < overflowDeductions.length; index += 10) {
+      final end = (index + 10).clamp(0, overflowDeductions.length);
+      overflowDeductionGroups.add(overflowDeductions.sublist(index, end));
+    }
 
     final supportValues = <String>[
       _amount(earnings, '基本給', fallbackKey: '出勤に基づく支給額'),
@@ -154,8 +161,10 @@ class PayrollPdfService {
       _amount(deductions, '住民税', absolute: true),
       _amount(deductions, 'SKB会費', absolute: true),
       _amount(deductions, '道具代', absolute: true),
-      ...extraDeductions.map((entry) => _formatAmount(entry.value, absolute: true)),
-      ...List<String>.filled(2 - extraDeductions.length, ''),
+      ...primaryExtraDeductions.map(
+        (entry) => _formatAmount(entry.value, absolute: true),
+      ),
+      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
     ];
 
     return pw.Column(
@@ -271,6 +280,25 @@ class PayrollPdfService {
           grid: grid,
           blankRows: 3,
         ),
+        for (final group in overflowDeductionGroups) ...[
+          pw.SizedBox(height: 4),
+          _singleHeaderSection(
+            title: '控除',
+            labels: [
+              ...group.map((entry) => entry.key),
+              ...List<String>.filled(10 - group.length, ''),
+            ],
+            values: [
+              ...group.map(
+                (entry) => _formatAmount(entry.value, absolute: true),
+              ),
+              ...List<String>.filled(10 - group.length, ''),
+            ],
+            headerFill: headerFill,
+            grid: grid,
+            blankRows: 0,
+          ),
+        ],
         pw.SizedBox(height: 9),
         pw.Align(
           alignment: pw.Alignment.centerRight,
