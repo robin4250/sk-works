@@ -189,6 +189,21 @@ class InvoicePdfService {
     while (rows.length < 10) {
       rows.add(const _InvoiceFormRow.empty());
     }
+    // The reference invoice is a single A4 sheet. Real invoices can exceed
+    // the original 10-row sample (the current production invoice has 13
+    // detail rows), so compact the detail grid before it can overflow the
+    // fixed page and make PdfPreview fail to render.
+    final detailRowCount = rows.length;
+    final detailFontSize = detailRowCount > 12
+        ? 6.1
+        : detailRowCount > 10
+            ? 6.7
+            : 7.5;
+    final detailVerticalPadding = detailRowCount > 12
+        ? 1.0
+        : detailRowCount > 10
+            ? 1.8
+            : 3.2;
 
     final bank = [
       settings?.bankName ?? '',
@@ -468,11 +483,11 @@ class InvoicePdfService {
             pw.TableRow(
               decoration: pw.BoxDecoration(color: blue),
               children: [
-                _cell('作業所名', bold: true, center: true, color: PdfColors.white),
-                _cell('工事内容', bold: true, center: true, color: PdfColors.white),
-                _cell('数量', bold: true, center: true, color: PdfColors.white),
-                _cell('単価', bold: true, center: true, color: PdfColors.white),
-                _cell('請求金額', bold: true, center: true, color: PdfColors.white),
+                _cell('作業所名', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                _cell('工事内容', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                _cell('数量', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                _cell('単価', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                _cell('請求金額', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
               ],
             ),
             for (var i = 0; i < rows.length; i++)
@@ -481,11 +496,11 @@ class InvoicePdfService {
                   color: i.isOdd ? pale : PdfColors.white,
                 ),
                 children: [
-                  _cell(rows[i].siteName),
-                  _cell(rows[i].content),
-                  _cell(rows[i].quantity, right: true),
-                  _cell(rows[i].unitPrice, right: true),
-                  _cell(rows[i].amount, right: true),
+                  _cell(rows[i].siteName, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                  _cell(rows[i].content, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                  _cell(rows[i].quantity, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                  _cell(rows[i].unitPrice, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
+                  _cell(rows[i].amount, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
                 ],
               ),
           ],
@@ -843,9 +858,11 @@ class InvoicePdfService {
     bool right = false,
     bool center = false,
     PdfColor? color,
+    double fontSize = 7.5,
+    double verticalPadding = 3.2,
   }) =>
       pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3.2),
+        padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: verticalPadding),
         child: pw.Text(
           text,
           textAlign: right
@@ -854,7 +871,7 @@ class InvoicePdfService {
                   ? pw.TextAlign.center
                   : pw.TextAlign.left,
           style: pw.TextStyle(
-            fontSize: 7.5,
+            fontSize: fontSize,
             color: color,
             fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
           ),
@@ -921,9 +938,15 @@ class InvoicePdfPreviewPage extends StatefulWidget {
 }
 
 class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
-  late Future<InvoiceSettingsData?> _settings = _loadSettings();
   final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
+  late Future<Uint8List> _previewPdf;
   int _previewRevision = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewPdf = _buildPreviewPdf();
+  }
 
   InvoiceCalculationResult? get _singleInvoice =>
       widget.invoices.length == 1 ? widget.invoices.first : null;
@@ -936,6 +959,15 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<Uint8List> _buildPreviewPdf() async {
+    final settings = await _loadSettings();
+    return InvoicePdfService.buildPdf(
+      widget.invoices,
+      title: widget.title,
+      settings: settings,
+    );
   }
 
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
@@ -961,7 +993,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (!mounted) return;
     setState(() {
       _previewRevision++;
-      _settings = _loadSettings();
+      _previewPdf = _buildPreviewPdf();
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('請求書を承認しました')),
@@ -974,12 +1006,45 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
       ),
-      body: FutureBuilder<InvoiceSettingsData?>(
-        future: _settings,
+      body: FutureBuilder<Uint8List>(
+        future: _previewPdf,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.picture_as_pdf_outlined, size: 44),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '請求書プレビューを生成できませんでした',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      snapshot.error?.toString() ?? 'PDFデータが空です。',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => setState(() {
+                        _previewRevision++;
+                        _previewPdf = _buildPreviewPdf();
+                      }),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('再試行'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          final pdfBytes = snapshot.data!;
           return FutureBuilder<List<InvoiceApprovalRecord>>(
             future: _loadApprovals(),
             builder: (context, approvalSnapshot) {
@@ -1035,11 +1100,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         widget.invoices,
                         title: widget.title,
                       ),
-                      build: (_) => InvoicePdfService.buildPdf(
-                        widget.invoices,
-                        title: widget.title,
-                        settings: snapshot.data,
-                      ),
+                      build: (_) async => pdfBytes,
                     ),
                   ),
                 ],
