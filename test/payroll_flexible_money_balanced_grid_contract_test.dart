@@ -34,15 +34,30 @@ void main() {
     expect(migration, contains("'支払日',payment_day"));
   });
 
-  test('payroll PDF hides zero optional money and balances five columns', () {
+  test('payroll PDF grows rows for every registered earning and deduction', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
     expect(pdf, contains('const columns = 5'));
-    expect(pdf, contains('amount.abs() < 1'));
-    expect(pdf, contains('(_asNumber(entry.value) ?? 0).abs() >= 1'));
+    expect(pdf, contains('for (var index = 0; index < visible.length; index += columns)'));
+    expect(pdf, contains('registeredLabels.contains(entry.key)'));
+    expect(pdf, contains('groups.length > 2'));
     expect(pdf, contains('_balancedMoneySection'));
     expect(pdf, contains("'custom_earnings'"));
     expect(pdf, contains("'custom_deductions'"));
+  });
+
+  test('legacy aggregate other earning and deduction labels are not rendered', () {
+    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
+    final page =
+        read('lib/features/payroll/individual_payroll_settings_page.dart');
+
+    expect(pdf, contains("'その他支給'"));
+    expect(pdf, contains("'その他の支給'"));
+    expect(pdf, contains("'その他控除'"));
+    expect(pdf, contains("'その他の控除'"));
+    expect(pdf, contains('_isAggregatePlaceholder'));
+    expect(page, isNot(contains("'other_deduction_monthly', 'その他控除・月額'")));
+    expect(page, isNot(contains("_amountField(\n                          'other_deduction_monthly'")));
   });
 
   test('payroll header uses configured payment day for next-month date', () {
