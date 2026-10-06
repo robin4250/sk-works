@@ -158,27 +158,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
   Future<void> _edit(AdminSiteFinancialRecord record) async {
     RateCalculationDraft? workerRateDraft;
     RateCalculationDraft? billingRateDraft;
-    final daily = TextEditingController(
-      text: record.workerDailyRateYen.toString(),
-    );
-    final overtime = TextEditingController(
-      text: record.overtimeHourRateYen.toString(),
-    );
-    final early = TextEditingController(
-      text: record.earlyHourRateYen.toString(),
-    );
-    final night = TextEditingController(
-      text: record.nightHourRateYen.toString(),
-    );
-    final billing = TextEditingController(
-      text: record.billingUnitPriceYen.toString(),
-    );
-    final billingOvertime = TextEditingController(
-      text: record.billingOvertimeHourRateYen.toString(),
-    );
-    final billingEarly = TextEditingController(
-      text: record.billingEarlyHourRateYen.toString(),
-    );
     final monthly = TextEditingController(
       text: record.billingMonthlyRateYen.toString(),
     );
@@ -433,13 +412,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     );
 
     for (final controller in [
-      daily,
-      overtime,
-      early,
-      night,
-      billing,
-      billingOvertime,
-      billingEarly,
       monthly,
       squareMeterUnitPrice,
       squareMeterQuantity,
