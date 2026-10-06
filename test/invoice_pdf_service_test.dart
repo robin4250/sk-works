@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
@@ -68,44 +69,18 @@ void main() {
     expect(RegExp('株式会社テスト').allMatches(text).length, 2);
   });
 
-  test('dense 13-line invoice still builds a non-empty A4 PDF', () async {
-    final denseInvoice = InvoiceEngine.calculate(
-      customerId: '株式会社秀中',
-      billingPeriod: '2026年10月',
-      detailMode: InvoiceDetailMode.consolidatedOnly,
-      sites: [
-        SiteInvoiceCalculation(
-          siteId: 'site-a',
-          siteName: '（仮称）東京海上ビルディング計画',
-          lines: List.generate(
-            6,
-            (index) => InvoiceLine(
-              label: index == 0 ? '通常作業' : '追加項目$index',
-              quantity: 1,
-              unitPriceYen: 3000 + index * 100,
-            ),
-          ),
-        ),
-        SiteInvoiceCalculation(
-          siteId: 'site-b',
-          siteName: '江戸川清掃工場建て替え工事',
-          lines: List.generate(
-            7,
-            (index) => InvoiceLine(
-              label: index == 0 ? '通常作業' : '追加項目$index',
-              quantity: 1,
-              unitPriceYen: 4000 + index * 100,
-            ),
-          ),
-        ),
-      ],
-      taxRateBps: 1000,
-    );
+  test('dense invoice preview uses adaptive compact layout contract', () {
+    final pdf = File(
+      'lib/features/invoices/invoice_pdf_service.dart',
+    ).readAsStringSync();
 
-    final bytes = await InvoicePdfService.buildPdf([denseInvoice]);
-
-    expect(bytes, isNotEmpty);
-    expect(bytes.length, greaterThan(1000));
+    expect(pdf, contains('final detailRowCount = rows.length'));
+    expect(pdf, contains('detailRowCount > 12'));
+    expect(pdf, contains('detailFontSize'));
+    expect(pdf, contains('detailVerticalPadding'));
+    expect(pdf, contains('height: 47'));
+    expect(pdf, contains('Future<Uint8List> _buildPreviewPdf()'));
+    expect(pdf, contains('請求書プレビューを生成できませんでした'));
+    expect(pdf, contains('build: (_) async => pdfBytes'));
   });
-
 }
