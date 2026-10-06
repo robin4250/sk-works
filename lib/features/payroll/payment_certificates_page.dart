@@ -238,6 +238,7 @@ class _PartnerPaymentSettingsPageState
 
   List<PartnerPaymentSetting> _items = const [];
   String? _partnerId;
+  bool _hourlyBase = false;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -355,6 +356,7 @@ class _PartnerPaymentSettingsPageState
     _tax.text = _number(item.taxRate);
 
     final formula = item.formulas;
+    _hourlyBase = formula.hourlyBase;
     _hoursPerDay.text = _number(formula.hoursPerDay);
     _overtimeMultiplier.text = _number(formula.overtimeMultiplier);
     _earlyMultiplier.text = _number(formula.earlyMultiplier);
@@ -391,6 +393,7 @@ class _PartnerPaymentSettingsPageState
       double.tryParse(controller.text.trim()) ?? fallback;
 
   RateFormulaSettings get _formula => RateFormulaSettings(
+        hourlyBase: _hourlyBase,
         hoursPerDay: _double(_hoursPerDay, 8),
         overtimeMultiplier: _double(_overtimeMultiplier, 1.25),
         earlyMultiplier: _double(_earlyMultiplier, 1.25),
@@ -602,9 +605,24 @@ class _PartnerPaymentSettingsPageState
                           ),
                           const SizedBox(height: 14),
                           _sectionTitle('基準単価'),
-                          _field(_daily, '1日単価'),
-                          const Text(
-                            '1日単価を入れると下記単価を自動計算します。各金額欄へ直接入力した場合は、その金額を優先します。',
+                          SegmentedButton<bool>(
+                            segments: const [
+                              ButtonSegment(value: false, label: Text('日給')),
+                              ButtonSegment(value: true, label: Text('時給')),
+                            ],
+                            selected: {_hourlyBase},
+                            onSelectionChanged: (value) =>
+                                setState(() => _hourlyBase = value.first),
+                          ),
+                          const SizedBox(height: 10),
+                          _field(
+                            _daily,
+                            _hourlyBase ? '基準時給' : '1日単価',
+                          ),
+                          Text(
+                            _hourlyBase
+                                ? '時給を入れると同じ倍率で自動計算します。時給の場合は÷8をせず、倍率を直接掛けます。'
+                                : '1日単価を入れると下記単価を自動計算します。各金額欄へ直接入力した場合は、その金額を優先します。',
                           ),
                           const SizedBox(height: 14),
                           _sectionTitle('計算式'),
