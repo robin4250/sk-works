@@ -40,7 +40,7 @@ void main() {
     expect(pdf, contains('settings?.companyPhone'));
     expect(pdf, contains('_confirmationStamp('));
     expect(pdf, contains('_companySeal('));
-    expect(pdf, contains('角印案A'));
+    expect(pdf, contains('角印案B'));
     expect(pdf, contains("final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();"));
     expect(pdf, contains('padding: const pw.EdgeInsets.all(3)'));
     expect(pdf, contains('customer and issuer share the top row'));
