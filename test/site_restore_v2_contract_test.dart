@@ -38,7 +38,7 @@ void main() {
     expect(detail, contains("'現場住所'"));
     expect(detail, contains("'最寄りの駅'"));
     expect(detail, contains("'現場責任者'"));
-    expect(detail, contains("'電話番号'"));
+    expect(detail, contains("'責任者電話番号'"));
     expect(detail, contains("'登録者の社員情報'"));
     expect(detail, contains("'登録日:"));
     expect(detail, contains("'最終更新日:"));
