@@ -223,7 +223,7 @@ class PayrollPdfService {
         pw.SizedBox(height: 8),
         pw.Row(
           children: [
-            const pw.SizedBox(width: 28),
+            pw.SizedBox(width: 28),
             pw.Expanded(
               child: pw.Table(
                 border: pw.TableBorder.all(color: grid, width: .55),
