@@ -90,7 +90,7 @@ class _EmployeePersonnelEditPageState
       builder: (context) => AlertDialog(
         title: const Text('社員個人情報を変更しますか？'),
         content: const Text(
-          '登録済みの社員個人情報は直接変更せず、承認者2名へ変更申請を送ります。',
+          '登録済みの社員個人情報は直接変更せず、登録済みの承認者へ変更申請を送ります。',
         ),
         actions: [
           TextButton(
@@ -126,11 +126,12 @@ class _EmployeePersonnelEditPageState
       });
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
+      final required = (result['required_approvals'] as num?)?.toInt() ?? 1;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             pending
-                ? '変更申請を送信しました。2名の承認後に反映されます。'
+                ? '変更申請を送信しました。$required名の承認後に反映されます。'
                 : '社員個人情報を保存しました',
           ),
         ),
@@ -157,7 +158,7 @@ class _EmployeePersonnelEditPageState
             child: Padding(
               padding: EdgeInsets.all(14),
               child: Text(
-                '未登録なら直接保存されます。登録済み情報の変更は承認者2名の承認後に反映されます。',
+                '未登録なら直接保存されます。登録済み情報の変更は、1〜3名で登録した承認者の承認後に反映されます。',
               ),
             ),
           ),

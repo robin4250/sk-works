@@ -262,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (context) => AlertDialog(
         title: const Text('社員個人情報を保存しますか？'),
         content: const Text(
-          '未登録の個人情報はそのまま登録されます。登録済み情報の変更は承認者2名の承認後に反映されます。',
+          '未登録の個人情報はそのまま登録されます。登録済み情報の変更は1〜3名で登録した承認者の承認後に反映されます。',
         ),
         actions: [
           TextButton(
@@ -305,7 +305,7 @@ class _ProfilePageState extends State<ProfilePage> {
         SnackBar(
           content: Text(
             pending
-                ? '変更申請を送信しました。2名の承認後に反映されます。'
+                ? '変更申請を送信しました。登録済み承認者の承認後に反映されます。'
                 : '社員個人情報を保存しました',
           ),
         ),
@@ -684,7 +684,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                '未登録は直接保存できます。登録済み情報の変更は承認者2名の承認後に反映されます。',
+                                '未登録は直接保存できます。登録済み情報の変更は1〜3名で登録した承認者の承認後に反映されます。',
                               ),
                               const SizedBox(height: 14),
                               TextField(
