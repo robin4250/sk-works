@@ -34,9 +34,12 @@ class RateFormulaSettings {
     }
 
     final hourly = map['hourly_base'];
+    final baseMode = map['base_mode']?.toString();
     return RateFormulaSettings(
       hoursPerDay: v('hours_per_day', 8),
-      hourlyBase: hourly == true || hourly?.toString() == 'true',
+      hourlyBase: baseMode == 'hourly' ||
+          hourly == true ||
+          hourly?.toString() == 'true',
       overtimeMultiplier: v('overtime_multiplier', 1.25),
       earlyMultiplier: v('early_multiplier', 1.25),
       nightMultiplier: v('night_multiplier', 1.5),
@@ -52,6 +55,7 @@ class RateFormulaSettings {
   Map<String, dynamic> toMap() => {
         'hours_per_day': hoursPerDay,
         'hourly_base': hourlyBase,
+        'base_mode': hourlyBase ? 'hourly' : 'daily',
         'overtime_multiplier': overtimeMultiplier,
         'early_multiplier': earlyMultiplier,
         'night_multiplier': nightMultiplier,
