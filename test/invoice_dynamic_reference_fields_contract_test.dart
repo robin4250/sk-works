@@ -44,7 +44,7 @@ void main() {
     expect(pdf, contains("final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();"));
     expect(pdf, contains('padding: const pw.EdgeInsets.all(2.2)'));
     expect(pdf, contains('customer and issuer share the top row'));
-    expect(pdf, contains('amount frame now reaches the same right edge as the confirmer frame'));
+    expect(pdf, contains('Amount and confirmer areas are independent adjacent frames'));
     expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
     expect(pdf, contains('companyLogo'));
     expect(pdf, isNot(contains('companySealImage')));
