@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
+import '../../widgets/rate_calculation_card.dart';
 import 'payment_certificate_pdf_service.dart';
 import 'payment_certificate_repository.dart';
 
@@ -209,13 +210,13 @@ class PartnerPaymentSettingsPage extends StatefulWidget {
 class _PartnerPaymentSettingsPageState
     extends State<PartnerPaymentSettingsPage> {
   final _repository = PaymentCertificateRepository.maybeCreate();
-  final _daily = TextEditingController();
-  final _overtime = TextEditingController();
-  final _early = TextEditingController();
-  final _night = TextEditingController();
+  final _welfare = TextEditingController();
+  final _tax = TextEditingController();
 
   List<PartnerPaymentSetting> _items = const [];
+  final _allowances = <_NamedAmountDraft>[];
   String? _partnerId;
+  RateCalculationDraft? _rateDraft;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -228,10 +229,11 @@ class _PartnerPaymentSettingsPageState
 
   @override
   void dispose() {
-    _daily.dispose();
-    _overtime.dispose();
-    _early.dispose();
-    _night.dispose();
+    _welfare.dispose();
+    _tax.dispose();
+    for (final item in _allowances) {
+      item.dispose();
+    }
     super.dispose();
   }
 
@@ -240,26 +242,25 @@ class _PartnerPaymentSettingsPageState
     if (repository == null) {
       setState(() {
         _loading = false;
-        _error = SkoLanguageController.isEnglish ? 'Payment certificate settings are unavailable.' : '支払証明書設定を利用できません。';
+        _error = '支払証明書設定を利用できません。';
       });
       return;
     }
-
     try {
       final items = await repository.loadSettings();
       if (!mounted) return;
-      final previousId = _partnerId;
+      final previous = _partnerId;
       setState(() {
         _items = items;
-        _loading = false;
-        _error = null;
-        _partnerId = items.any((item) => item.partnerCompanyId == previousId)
-            ? previousId
+        _partnerId = items.any((item) => item.partnerCompanyId == previous)
+            ? previous
             : items.isEmpty
                 ? null
                 : items.first.partnerCompanyId;
+        _loading = false;
+        _error = null;
       });
-      _syncControllers();
+      _syncFromSelected();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -270,57 +271,82 @@ class _PartnerPaymentSettingsPageState
   }
 
   PartnerPaymentSetting? _selectedSetting() {
-    final id = _partnerId;
-    if (id == null) return null;
     for (final item in _items) {
-      if (item.partnerCompanyId == id) return item;
+      if (item.partnerCompanyId == _partnerId) return item;
     }
     return null;
   }
 
-  void _syncControllers() {
+  void _syncFromSelected() {
     final item = _selectedSetting();
     if (item == null) return;
-    _daily.text = item.dailyRateYen.toString();
-    _overtime.text = item.overtimeHourRateYen.toString();
-    _early.text = item.earlyHourRateYen.toString();
-    _night.text = item.nightHourRateYen.toString();
+    for (final old in _allowances) {
+      old.dispose();
+    }
+    _allowances
+      ..clear()
+      ..addAll(
+        item.allowances.map(
+          (value) => _NamedAmountDraft(
+            name: value.name,
+            amountYen: value.amountYen,
+          ),
+        ),
+      );
+    _welfare.text = item.welfareRate.toString();
+    _tax.text = item.taxRate.toString();
+    _rateDraft = null;
+    if (mounted) setState(() {});
   }
 
-  PartnerPaymentSetting? _draftSetting({bool showError = true}) {
+  PartnerPaymentSetting? _draftSetting() {
     final current = _selectedSetting();
-    if (current == null) return null;
+    final rate = _rateDraft;
+    if (current == null || rate == null) return null;
 
-    int parse(TextEditingController controller) =>
-        int.tryParse(controller.text.trim()) ?? -1;
-
-    final daily = parse(_daily);
-    final overtime = parse(_overtime);
-    final early = parse(_early);
-    final night = parse(_night);
-
-    if ([daily, overtime, early, night].any((value) => value < 0)) {
-      if (showError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              SkoLanguageController.isEnglish
-                  ? 'Enter amounts as numbers greater than or equal to 0.'
-                  : '金額は0以上の数字で入力してください',
-            ),
-          ),
-        );
-      }
+    final welfare = double.tryParse(_welfare.text.trim());
+    final tax = double.tryParse(_tax.text.trim());
+    if (welfare == null || welfare < 0 || tax == null || tax < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('福利厚生費率・消費税率は0以上の数字で入力してください')),
+      );
       return null;
+    }
+
+    final allowances = <PaymentAllowanceSetting>[];
+    for (var i = 0; i < _allowances.length; i++) {
+      final name = _allowances[i].name.text.trim();
+      final amount = int.tryParse(_allowances[i].amount.text.trim());
+      if (name.isEmpty && (amount == null || amount == 0)) continue;
+      if (name.isEmpty || amount == null || amount < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('手当' + (i + 1).toString() + 'を確認してください')),
+        );
+        return null;
+      }
+      allowances.add(
+        PaymentAllowanceSetting(name: name, amountYen: amount),
+      );
     }
 
     return PartnerPaymentSetting(
       partnerCompanyId: current.partnerCompanyId,
       partnerCompanyName: current.partnerCompanyName,
-      dailyRateYen: daily,
-      overtimeHourRateYen: overtime,
-      earlyHourRateYen: early,
-      nightHourRateYen: night,
+      dailyRateYen: rate.calculated.daily,
+      overtimeHourRateYen: rate.overrides['overtime'] ?? 0,
+      earlyHourRateYen: rate.overrides['early'] ?? 0,
+      nightHourRateYen: rate.calculated.hourly,
+      nightDayRateYen: rate.overrides['night'] ?? 0,
+      nightOvertimeHourRateYen: rate.overrides['night_overtime'] ?? 0,
+      holidayDayRateYen: rate.overrides['holiday'] ?? 0,
+      holidayOvertimeHourRateYen: rate.overrides['holiday_overtime'] ?? 0,
+      holidayNightDayRateYen: rate.overrides['holiday_night'] ?? 0,
+      holidayNightOvertimeHourRateYen:
+          rate.overrides['holiday_night_overtime'] ?? 0,
+      rateFormula: rate.formulaJson(),
+      allowances: allowances,
+      welfareRate: welfare,
+      taxRate: tax,
     );
   }
 
@@ -328,29 +354,18 @@ class _PartnerPaymentSettingsPageState
     final repository = _repository;
     final draft = _draftSetting();
     if (repository == null || draft == null) return;
-
     setState(() => _saving = true);
     try {
       await repository.saveSetting(draft);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            SkoLanguageController.isEnglish
-                ? 'Payment certificate settings saved.'
-                : '支払証明書設定を保存しました',
-          ),
-        ),
+        const SnackBar(content: Text('支払証明書設定を保存しました')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${SkoLanguageController.isEnglish ? 'Could not save' : '保存できませんでした'}: $error',
-          ),
-        ),
+        SnackBar(content: Text('保存できませんでした: ' + error.toString())),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -372,22 +387,19 @@ class _PartnerPaymentSettingsPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${SkoLanguageController.isEnglish ? 'Could not preview' : 'プレビューできませんでした'}: $error',
-          ),
-        ),
+        SnackBar(content: Text('プレビューできませんでした: ' + error.toString())),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final selected = _selectedSetting();
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          SkoLanguageController.isEnglish ? 'Payment Certificate Settings' : '支払証明書設定',
-          style: const TextStyle(fontWeight: FontWeight.w900),
+        title: const Text(
+          '支払証明書設定',
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
@@ -396,16 +408,16 @@ class _PartnerPaymentSettingsPageState
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(child: Text(_error!, textAlign: TextAlign.center))
-                : _items.isEmpty
-                    ? Center(child: Text(SkoLanguageController.isEnglish ? 'No subcontractor companies are registered.' : '協力会社が登録されていません'))
+                : selected == null
+                    ? const Center(child: Text('協力会社が登録されていません'))
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                         children: [
                           DropdownButtonFormField<String>(
                             initialValue: _partnerId,
-                            decoration: InputDecoration(
-                              labelText: SkoLanguageController.isEnglish ? 'Subcontractor Company' : '協力会社',
-                              border: const OutlineInputBorder(),
+                            decoration: const InputDecoration(
+                              labelText: '協力会社',
+                              border: OutlineInputBorder(),
                             ),
                             items: [
                               for (final item in _items)
@@ -415,31 +427,51 @@ class _PartnerPaymentSettingsPageState
                                 ),
                             ],
                             onChanged: (value) {
-                              setState(() => _partnerId = value);
-                              _syncControllers();
+                              _partnerId = value;
+                              _syncFromSelected();
                             },
                           ),
-                          const SizedBox(height: 16),
-                          _field(_daily, SkoLanguageController.isEnglish ? 'Daily Rate' : '人工単価'),
-                          _field(_overtime, SkoLanguageController.isEnglish ? 'Overtime Hourly Rate' : '残業1時間単価'),
-                          _field(_early, SkoLanguageController.isEnglish ? 'Early-start Hourly Rate' : '早出1時間単価'),
-                          _field(_night, SkoLanguageController.isEnglish ? 'Night Hourly Rate' : '夜勤1時間単価'),
-                          const SizedBox(height: 8),
-                          Text(
-                            SkoLanguageController.isEnglish ? 'Even without settings, a zero-value draft is generated. It recalculates automatically after settings are saved.' : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
+                          const SizedBox(height: 14),
+                          RateCalculationCard(
+                            key: ValueKey('payment-rate-' + selected.partnerCompanyId),
+                            title: '単価 自動計算',
+                            initialBaseRateYen: selected.dailyRateYen,
+                            initialFormula: selected.rateFormula,
+                            initialOverrides: selected.rateOverrides,
+                            enabled: !_saving,
+                            onChanged: (value) => _rateDraft = value,
+                          ),
+                          const Text(
+                            '各単価は0のとき計算式から自動算出します。直接入力した単価はそちらを優先します。',
                           ),
                           const SizedBox(height: 16),
+                          const Text(
+                            '手当',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 8),
+                          for (var i = 0; i < _allowances.length; i++)
+                            _allowanceField(i),
+                          OutlinedButton.icon(
+                            onPressed: _saving
+                                ? null
+                                : () => setState(
+                                      () => _allowances.add(_NamedAmountDraft()),
+                                    ),
+                            icon: const Icon(Icons.add),
+                            label: const Text('手当を追加'),
+                          ),
+                          const SizedBox(height: 16),
+                          _decimalField(_welfare, '福利厚生費率', '%'),
+                          _decimalField(_tax, '消費税率', '%'),
+                          const SizedBox(height: 10),
                           Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: _saving ? null : _preview,
                                   icon: const Icon(Icons.preview_outlined),
-                                  label: Text(
-                                    SkoLanguageController.isEnglish
-                                        ? 'Preview'
-                                        : 'プレビュー',
-                                  ),
+                                  label: const Text('プレビュー'),
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -447,15 +479,7 @@ class _PartnerPaymentSettingsPageState
                                 child: FilledButton.icon(
                                   onPressed: _saving ? null : _save,
                                   icon: const Icon(Icons.save_outlined),
-                                  label: Text(
-                                    _saving
-                                        ? (SkoLanguageController.isEnglish
-                                            ? 'Saving…'
-                                            : '保存中…')
-                                        : (SkoLanguageController.isEnglish
-                                            ? 'Save Settings'
-                                            : '設定を保存'),
-                                  ),
+                                  label: Text(_saving ? '保存中…' : '設定を保存'),
                                 ),
                               ),
                             ],
@@ -466,16 +490,80 @@ class _PartnerPaymentSettingsPageState
     );
   }
 
-  Widget _field(TextEditingController controller, String label) => Padding(
+  Widget _allowanceField(int index) {
+    final item = _allowances[index];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            TextField(
+              controller: item.name,
+              decoration: InputDecoration(
+                labelText: '手当' + (index + 1).toString() + ' 名称',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: item.amount,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '手当' + (index + 1).toString() + ' 単価',
+                suffixText: '円',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _saving
+                    ? null
+                    : () {
+                        final removed = _allowances.removeAt(index);
+                        removed.dispose();
+                        setState(() {});
+                      },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('削除'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _decimalField(
+    TextEditingController controller,
+    String label,
+    String suffix,
+  ) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: TextFormField(
+        child: TextField(
           controller: controller,
-          keyboardType: TextInputType.number,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             labelText: label,
-            suffixText: SkoLanguageController.isEnglish ? 'JPY' : '円',
+            suffixText: suffix,
             border: const OutlineInputBorder(),
           ),
         ),
       );
+}
+
+class _NamedAmountDraft {
+  _NamedAmountDraft({String name = '', int amountYen = 0})
+      : name = TextEditingController(text: name),
+        amount = TextEditingController(text: amountYen.toString());
+
+  final TextEditingController name;
+  final TextEditingController amount;
+
+  void dispose() {
+    name.dispose();
+    amount.dispose();
+  }
 }
