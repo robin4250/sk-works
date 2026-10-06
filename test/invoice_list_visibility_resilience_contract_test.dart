@@ -20,7 +20,7 @@ void main() {
 
     expect(page, contains('final hasCurrentPeriod = _invoices.any'));
     expect(page, contains('if (!hasCurrentPeriod && _invoices.isNotEmpty)'));
-    expect(page, contains('months.sort'));
+    expect(page, contains('..sort((a, b) => b.compareTo(a))'));
     expect(page, contains('_period = DateTime(months.first.year, months.first.month)'));
   });
 }
