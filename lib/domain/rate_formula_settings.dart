@@ -71,13 +71,19 @@ class RateFormulaSettings {
   int night(int baseRate, {bool? hourlyBase}) =>
       _round(baseRate * nightMultiplier);
   int nightOvertime(int baseRate, {bool? hourlyBase}) => _round(
-        _hourlyBase(night(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase), hourlyBase) *
+        _hourlyBase(
+          night(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase),
+          hourlyBase ?? this.hourlyBase,
+        ) *
             nightOvertimeMultiplier,
       );
   int holiday(int baseRate, {bool? hourlyBase}) =>
       _round(baseRate * holidayMultiplier);
   int holidayOvertime(int baseRate, {bool? hourlyBase}) => _round(
-        _hourlyBase(holiday(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase), hourlyBase) *
+        _hourlyBase(
+          holiday(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase),
+          hourlyBase ?? this.hourlyBase,
+        ) *
             holidayOvertimeMultiplier,
       );
   int holidayNight(int baseRate, {bool? hourlyBase}) =>
@@ -85,7 +91,7 @@ class RateFormulaSettings {
   int holidayNightOvertime(int baseRate, {bool? hourlyBase}) => _round(
         _hourlyBase(
               holidayNight(baseRate, hourlyBase: hourlyBase ?? this.hourlyBase),
-              hourlyBase,
+              hourlyBase ?? this.hourlyBase,
             ) *
             holidayNightOvertimeMultiplier,
       );
