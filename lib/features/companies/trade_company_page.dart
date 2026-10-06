@@ -346,16 +346,26 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
     if (confirmed != true) return;
     try {
-      await _repository.deleteCompany(item.id);
+      final deleted = await _repository.deleteCompany(item.id);
       await _load();
       if (!mounted) return;
+      final stillExists = _items.any((value) => value.id == item.id);
+      if (!deleted || stillExists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('会社を削除できませんでした。参照中のデータを確認してください。'),
+          ),
+        );
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('会社を削除しました')),
       );
     } catch (error) {
       if (!mounted) return;
+      final message = error.toString().replaceFirst('Bad state: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('会社を削除できませんでした: $error')),
+        SnackBar(content: Text(message)),
       );
     }
   }
