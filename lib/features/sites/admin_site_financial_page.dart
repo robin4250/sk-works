@@ -170,6 +170,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     final billing = TextEditingController(
       text: record.billingUnitPriceYen.toString(),
     );
+    final billingOvertime = TextEditingController(
+      text: record.billingOvertimeHourRateYen.toString(),
+    );
+    final billingEarly = TextEditingController(
+      text: record.billingEarlyHourRateYen.toString(),
+    );
     final monthly = TextEditingController(
       text: record.billingMonthlyRateYen.toString(),
     );
@@ -239,6 +245,16 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 ),
                 const SizedBox(height: 8),
                 _MoneyField(controller: billing, label: '1日単価'),
+                const SizedBox(height: 10),
+                _MoneyField(
+                  controller: billingOvertime,
+                  label: '残業単価（1時間）',
+                ),
+                const SizedBox(height: 10),
+                _MoneyField(
+                  controller: billingEarly,
+                  label: '早出単価（1時間）',
+                ),
                 const SizedBox(height: 10),
                 _MoneyField(controller: monthly, label: '月単価'),
                 const SizedBox(height: 10),
@@ -366,6 +382,10 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   earlyHourRateYen: int.tryParse(early.text) ?? 0,
                   nightHourRateYen: int.tryParse(night.text) ?? 0,
                   billingUnitPriceYen: manDay,
+                  billingOvertimeHourRateYen:
+                      int.tryParse(billingOvertime.text) ?? 0,
+                  billingEarlyHourRateYen:
+                      int.tryParse(billingEarly.text) ?? 0,
                   billingMonthlyRateYen: monthlyRate,
                   billingSquareMeterUnitPriceYen: squarePrice,
                   billingSquareMeterQuantity: squareQty,
@@ -395,6 +415,8 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
       early,
       night,
       billing,
+      billingOvertime,
+      billingEarly,
       monthly,
       squareMeterUnitPrice,
       squareMeterQuantity,
