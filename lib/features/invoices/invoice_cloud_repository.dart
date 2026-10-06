@@ -54,7 +54,7 @@ class InvoiceCloudRepository {
     final companyId = await _companyId();
     final invoices = await _client
         .from('invoices')
-        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, snapshot, customers(name)')
+        .select('id, billing_period_start, billing_period_end, invoice_number, issue_date, detail_mode, subtotal, tax, grand_total, snapshot, customer_id')
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
@@ -62,104 +62,138 @@ class InvoiceCloudRepository {
     final results = <InvoiceCalculationResult>[];
     for (final invoice in invoices) {
       final invoiceId = invoice['id'] as String;
-      final customer = invoice['customers'];
       final snapshot = invoice['snapshot'];
       final snapshotMap = snapshot is Map
           ? Map<String, dynamic>.from(snapshot)
           : const <String, dynamic>{};
-      final joinedCustomerName =
-          customer is Map ? customer['name']?.toString().trim() ?? '' : '';
       final snapshotCustomerName =
           snapshotMap['customer_name']?.toString().trim() ?? '';
-      final customerName = joinedCustomerName.isNotEmpty
-          ? joinedCustomerName
-          : snapshotCustomerName.isNotEmpty
-              ? snapshotCustomerName
-              : '取引先未設定';
-      final calculations = await _client
-          .from('invoice_site_calculations')
-          .select('id, site_id, manual_adjustment_amount, welfare_rate_snapshot, sites(name)')
-          .eq('company_id', companyId)
-          .eq('invoice_id', invoiceId)
-          .order('created_at');
+      var customerName = snapshotCustomerName;
+      if (customerName.isEmpty) {
+        final customerId = invoice['customer_id']?.toString() ?? '';
+        if (customerId.isNotEmpty) {
+          try {
+            final customerRows = await _client
+                .from('customers')
+                .select('name')
+                .eq('company_id', companyId)
+                .eq('id', customerId)
+                .limit(1);
+            if (customerRows.isNotEmpty) {
+              customerName =
+                  customerRows.first['name']?.toString().trim() ?? '';
+            }
+          } catch (_) {
+            // Snapshot is enough to keep historical invoices visible.
+          }
+        }
+      }
+      if (customerName.isEmpty) customerName = '取引先未設定';
 
       final siteResults = <SiteInvoiceCalculation>[];
-      for (final calculation in calculations) {
-        final calculationId = calculation['id'] as String;
-        final site = calculation['sites'];
-        final siteName = site is Map ? site['name']?.toString() ?? '' : '';
-        final lines = await _client
-            .from('invoice_detail_lines')
-            .select('description, quantity, unit_price')
-            .eq('company_id', companyId)
-            .eq('invoice_site_calculation_id', calculationId)
-            .order('sort_order');
 
-        siteResults.add(
-          SiteInvoiceCalculation(
-            siteId: calculation['site_id']?.toString() ?? '',
-            siteName: siteName,
-            lines: lines
-                .map<InvoiceLine>(
-                  (line) => InvoiceLine(
-                    label: line['description']?.toString() ?? '明細',
-                    quantity: _toDouble(line['quantity']),
-                    unitPriceYen: _toInt(line['unit_price']),
-                  ),
-                )
-                .toList(),
-            manualAdjustmentYen: _toInt(calculation['manual_adjustment_amount']),
-            welfareRateBps: (_toDouble(calculation['welfare_rate_snapshot']) * 100).round(),
-          ),
-        );
+      // Automatic invoices persist a complete immutable snapshot even when the
+      // normalized site/detail tables have no rows. Rebuild from that snapshot
+      // first so list/preview visibility never depends on optional child reads.
+      final snapshotSites = snapshotMap['sites'];
+      if (snapshotSites is List) {
+        for (final rawSite in snapshotSites) {
+          if (rawSite is! Map) continue;
+          final siteMap = Map<String, dynamic>.from(rawSite);
+          final rawLines = siteMap['lines'];
+          final displayLines = <InvoiceLine>[];
+          if (rawLines is List) {
+            for (final rawLine in rawLines) {
+              if (rawLine is! Map) continue;
+              final line = Map<String, dynamic>.from(rawLine);
+              final sourceWorkContent = line['work_content']?.toString();
+              final allowanceName =
+                  line['allowance_name']?.toString().trim() ?? '';
+              final workContent = allowanceName.isNotEmpty
+                  ? '（$allowanceName）'
+                  : sourceWorkContent;
+              final sourceLabel = line['label']?.toString();
+              final internalLabel = (workContent ?? '').trim().isNotEmpty
+                  ? workContent!
+                  : (sourceLabel ?? '').trim().isNotEmpty
+                      ? sourceLabel!
+                      : '通常作業';
+              displayLines.add(
+                InvoiceLine(
+                  label: internalLabel,
+                  quantity: _toDouble(line['quantity']),
+                  unitPriceYen: _toInt(line['unit_price']),
+                  siteLabel: line['site_label']?.toString() ?? '',
+                  workContent: workContent,
+                  unitPriceText: line['unit_price_text']?.toString(),
+                  amountYenOverride: _toInt(line['amount']),
+                ),
+              );
+            }
+          }
+
+          final siteId = siteMap['site_id']?.toString().trim() ?? '';
+          final siteName = siteMap['site_name']?.toString().trim() ?? '';
+          if (siteId.isEmpty || siteName.isEmpty) continue;
+          siteResults.add(
+            SiteInvoiceCalculation(
+              siteId: siteId,
+              siteName: siteName,
+              lines: displayLines,
+              manualAdjustmentYen:
+                  _toInt(siteMap['manual_adjustment']),
+              welfareRateBps: _toInt(siteMap['welfare_rate_bps']),
+            ),
+          );
+        }
       }
 
       if (siteResults.isEmpty) {
-        final snapshotSites = snapshotMap['sites'];
-        if (snapshotSites is List) {
-          for (final rawSite in snapshotSites) {
-            if (rawSite is! Map) continue;
-            final siteMap = Map<String, dynamic>.from(rawSite);
-            final rawLines = siteMap['lines'];
-            final displayLines = <InvoiceLine>[];
-            if (rawLines is List) {
-              for (final rawLine in rawLines) {
-                if (rawLine is! Map) continue;
-                final line = Map<String, dynamic>.from(rawLine);
-                final sourceWorkContent = line['work_content']?.toString();
-                final allowanceName = line['allowance_name']?.toString().trim() ?? '';
-                final workContent = allowanceName.isNotEmpty
-                    ? '（$allowanceName）'
-                    : sourceWorkContent;
-                final sourceLabel = line['label']?.toString();
-                final internalLabel = (workContent ?? '').trim().isNotEmpty
-                    ? workContent!
-                    : (sourceLabel ?? '').trim().isNotEmpty
-                        ? sourceLabel!
-                        : '通常作業';
-                displayLines.add(
-                  InvoiceLine(
-                    label: internalLabel,
-                    quantity: _toDouble(line['quantity']),
-                    unitPriceYen: _toInt(line['unit_price']),
-                    siteLabel: line['site_label']?.toString() ?? '',
-                    workContent: workContent,
-                    unitPriceText: line['unit_price_text']?.toString(),
-                    amountYenOverride: _toInt(line['amount']),
-                  ),
-                );
-              }
-            }
+        try {
+          final calculations = await _client
+              .from('invoice_site_calculations')
+              .select(
+                'id, site_id, manual_adjustment_amount, welfare_rate_snapshot, sites(name)',
+              )
+              .eq('company_id', companyId)
+              .eq('invoice_id', invoiceId)
+              .order('created_at');
+
+          for (final calculation in calculations) {
+            final calculationId = calculation['id'] as String;
+            final site = calculation['sites'];
+            final siteName =
+                site is Map ? site['name']?.toString() ?? '' : '';
+            final lines = await _client
+                .from('invoice_detail_lines')
+                .select('description, quantity, unit_price')
+                .eq('company_id', companyId)
+                .eq('invoice_site_calculation_id', calculationId)
+                .order('sort_order');
+
             siteResults.add(
               SiteInvoiceCalculation(
-                siteId: siteMap['site_id']?.toString() ?? '',
-                siteName: siteMap['site_name']?.toString() ?? '',
-                lines: displayLines,
-                manualAdjustmentYen: 0,
-                welfareRateBps: 0,
+                siteId: calculation['site_id']?.toString() ?? '',
+                siteName: siteName,
+                lines: lines
+                    .map<InvoiceLine>(
+                      (line) => InvoiceLine(
+                        label: line['description']?.toString() ?? '明細',
+                        quantity: _toDouble(line['quantity']),
+                        unitPriceYen: _toInt(line['unit_price']),
+                      ),
+                    )
+                    .toList(),
+                manualAdjustmentYen:
+                    _toInt(calculation['manual_adjustment_amount']),
+                welfareRateBps:
+                    (_toDouble(calculation['welfare_rate_snapshot']) * 100)
+                        .round(),
               ),
             );
           }
+        } catch (_) {
+          // Optional normalized child rows must not hide the invoice itself.
         }
       }
 
