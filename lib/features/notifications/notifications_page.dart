@@ -12,6 +12,7 @@ import '../attendance/paid_leave_approvals_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
+import '../sites/site_information_approvals_page.dart';
 import '../operations/vehicle_route_page.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -103,6 +104,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const SiteShareApprovalPage(),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'site_information_request' ||
+        item.actionKey == 'site_information_request_result') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SiteInformationApprovalsPage(
+            initialRequestId: item.actionId,
+          ),
         ),
       );
       if (!mounted) return;
