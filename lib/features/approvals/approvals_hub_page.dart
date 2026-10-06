@@ -10,6 +10,8 @@ import '../attendance/paid_leave_repository.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
 import '../daily_reports/daily_report_repository.dart';
 import '../notifications/notification_bell.dart';
+import '../people/people_cloud_repository.dart';
+import '../people/worker_personnel_change_approvals_page.dart';
 import '../sites/site_cloud_repository.dart';
 import '../sites/site_information_approvals_page.dart';
 
@@ -27,12 +29,14 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
   final _paidLeaveRepository = PaidLeaveRepository.maybeCreate();
   final _onboardingRepository = EmployeeOnboardingRepository.maybeCreate();
   final _siteRepository = SiteCloudRepository.maybeCreate();
+  final _peopleRepository = PeopleCloudRepository.maybeCreate();
 
   int _dailyCount = 0;
   int _attendanceCount = 0;
   int _paidLeaveCount = 0;
   int _onboardingCount = 0;
   int _siteInformationCount = 0;
+  int _personnelChangeCount = 0;
   bool _loadingCounts = true;
 
   @override
@@ -67,6 +71,11 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
           item['status']?.toString() == 'pending' && item['can_review'] == true
         ).length;
       }),
+      safe(() async {
+        final repository = _peopleRepository;
+        if (repository == null) return 0;
+        return (await repository.loadPendingPersonnelChanges()).length;
+      }),
     ]);
     if (!mounted) return;
     setState(() {
@@ -75,6 +84,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
       _paidLeaveCount = values[2];
       _onboardingCount = values[3];
       _siteInformationCount = values[4];
+      _personnelChangeCount = values[5];
       _loadingCounts = false;
     });
   }
@@ -201,6 +211,24 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                 ),
                 trailing: _trailing(_siteInformationCount),
                 onTap: () => _open(const SiteInformationApprovalsPage()),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.manage_accounts_outlined),
+                ),
+                title: Text(
+                  SkoLanguageController.tr('社員個人情報の変更承認'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                subtitle: Text(
+                  SkoLanguageController.tr('社員個人情報の変更申請を確認して承認・拒否'),
+                ),
+                trailing: _trailing(_personnelChangeCount),
+                onTap: () =>
+                    _open(const WorkerPersonnelChangeApprovalsPage()),
               ),
             ),
             const SizedBox(height: 8),
