@@ -221,8 +221,8 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                     controller: unit,
                     maxLength: 6,
                     decoration: const InputDecoration(
-                      labelText: '表示単位',
-                      hintText: '日・回など',
+                      labelText: '単位（回・日・個など）',
+                      hintText: '例：回 / 日 / 個 / 式',
                       counterText: '',
                     ),
                   ),
