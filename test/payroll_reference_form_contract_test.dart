@@ -25,14 +25,15 @@ void main() {
     expect(source, contains('_dayCount(detail'));
     expect(source, contains('_hours(detail'));
     expect(source, contains('_plainNumber(detail'));
-    expect(source, contains('extraEarnings'));
-    expect(source, contains('allExtraDeductions'));
-    expect(source, contains('primaryExtraDeductions'));
+    expect(source, contains('earningEntries'));
+    expect(source, contains('deductionEntries'));
+    expect(source, contains('_balancedMoneySection'));
     expect(source, contains('_customMoneyEntries(detail, direction: 1)'));
     expect(source, contains('_customMoneyEntries(detail, direction: -1)'));
     expect(source, contains('_nonMoneyDetailKeys'));
     expect(source, contains('_fixedMoneyKeys'));
     expect(source, contains('amount.abs()'));
     expect(source, contains("absolute: true"));
+    expect(source, contains("_paymentDate(statement, detail)"));
   });
 }
