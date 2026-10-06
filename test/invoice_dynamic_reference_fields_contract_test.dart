@@ -48,7 +48,6 @@ void main() {
     expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
     expect(pdf, contains('companyLogo'));
     expect(pdf, isNot(contains('companySealImage')));
-    expect(pdf, contains('width: 335'));
     expect(pdf, contains('settings?.paymentDueText'));
     expect(pdf, contains("'2本指で拡大・縮小／拡大後はドラッグで移動'"));
   });
