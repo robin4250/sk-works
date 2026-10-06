@@ -35,7 +35,6 @@ class _IndividualPayrollSettingsPageState
     ('income_tax_monthly', '所得税・月額'),
     ('resident_tax_monthly', '住民税・月額'),
     ('social_insurance_monthly', '社会保険・月額'),
-    ('other_deduction_monthly', 'その他控除・月額'),
   ];
 
   final _repository = IndividualPayrollSettingsRepository.maybeCreate();
@@ -438,8 +437,6 @@ class _IndividualPayrollSettingsPageState
                       _amountField('resident_tax_monthly', '住民税・月額'),
                       _amountField(
                           'social_insurance_monthly', '社会保険・月額'),
-                      _amountField(
-                          'other_deduction_monthly', 'その他控除・月額'),
                       const SizedBox(height: 4),
                       for (var i = 0; i < _customDeductions.length; i++)
                         _customMoneyField(
