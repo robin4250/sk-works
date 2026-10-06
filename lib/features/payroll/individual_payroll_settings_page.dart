@@ -182,6 +182,34 @@ class _IndividualPayrollSettingsPageState
                   ? configuredPaymentDay
                   : 25)
               .toString();
+
+      final formula = RateFormulaSettings.fromMap(setting.values['rate_formula']);
+      _rateFormulaControllers['hours']!.text = _numberText(formula.hoursPerDay);
+      _rateFormulaControllers['overtime']!.text =
+          _numberText(formula.overtimeMultiplier);
+      _rateFormulaControllers['early']!.text =
+          _numberText(formula.earlyMultiplier);
+      _rateFormulaControllers['night']!.text =
+          _numberText(formula.nightMultiplier);
+      _rateFormulaControllers['night_overtime']!.text =
+          _numberText(formula.nightOvertimeMultiplier);
+      _rateFormulaControllers['holiday']!.text =
+          _numberText(formula.holidayMultiplier);
+      _rateFormulaControllers['holiday_overtime']!.text =
+          _numberText(formula.holidayOvertimeMultiplier);
+      _rateFormulaControllers['holiday_night']!.text =
+          _numberText(formula.holidayNightMultiplier);
+      _rateFormulaControllers['holiday_night_overtime']!.text =
+          _numberText(formula.holidayNightOvertimeMultiplier);
+
+      final overridesRaw = setting.values['rate_overrides'];
+      final overrides = overridesRaw is Map
+          ? Map<String, dynamic>.from(overridesRaw)
+          : const <String, dynamic>{};
+      for (final entry in _rateOverrideControllers.entries) {
+        final value = (overrides[entry.key] as num?)?.toInt() ?? 0;
+        entry.value.text = value > 0 ? value.toString() : '0';
+      }
       for (final item in [..._customEarnings, ..._customDeductions]) {
         item.dispose();
       }
