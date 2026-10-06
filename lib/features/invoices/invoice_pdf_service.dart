@@ -645,7 +645,8 @@ class InvoicePdfService {
                       ),
                     ),
                   ),
-                  pw.Expanded(
+                  pw.SizedBox(
+                    height: 47,
                     child: pw.Center(
                       child: i >= visible.length
                           ? pw.SizedBox()
