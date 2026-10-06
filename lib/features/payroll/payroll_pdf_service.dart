@@ -42,6 +42,8 @@ class PayrollPdfService {
       '社会保険',
       'その他控除',
     ]);
+    final customEarnings = _customMoneyEntries(detail, direction: 1);
+    final customDeductions = _customMoneyEntries(detail, direction: -1);
 
     document.addPage(
       pw.Page(
@@ -96,13 +98,13 @@ class PayrollPdfService {
       '家族手当',
       '働き方手当',
     ];
-    final extraEarnings = earnings.entries
-        .where((entry) =>
-            !fixedEarningLabels.contains(entry.key) &&
-            entry.key != '出勤に基づく支給額' &&
-            _hasAmount(entry.value))
-        .take(4)
-        .toList();
+    final extraEarnings = <MapEntry<String, Object?>>[
+      ...earnings.entries.where((entry) =>
+          !fixedEarningLabels.contains(entry.key) &&
+          entry.key != '出勤に基づく支給額' &&
+          _hasAmount(entry.value)),
+      ...customEarnings.entries,
+    ].take(4).toList();
     final earningLabels = <String>[
       ...fixedEarningLabels,
       ...extraEarnings.map((entry) => entry.key),
@@ -119,13 +121,13 @@ class PayrollPdfService {
       'SKB会費',
       '道具代',
     ];
-    final extraDeductions = deductions.entries
-        .where((entry) =>
-            !fixedDeductionLabels.contains(entry.key) &&
-            entry.key != '社会保険' &&
-            _hasAmount(entry.value))
-        .take(2)
-        .toList();
+    final extraDeductions = <MapEntry<String, Object?>>[
+      ...deductions.entries.where((entry) =>
+          !fixedDeductionLabels.contains(entry.key) &&
+          entry.key != '社会保険' &&
+          _hasAmount(entry.value)),
+      ...customDeductions.entries,
+    ].take(2).toList();
     final deductionLabels = <String>[
       ...fixedDeductionLabels,
       ...extraDeductions.map((entry) => entry.key),
@@ -152,7 +154,7 @@ class PayrollPdfService {
       _amount(deductions, '住民税'),
       _amount(deductions, 'SKB会費'),
       _amount(deductions, '道具代'),
-      ...extraDeductions.map((entry) => _formatAmount(entry.value)),
+      ...extraDeductions.map((entry) => _formatAmount(entry.value, absolute: true)),
       ...List<String>.filled(2 - extraDeductions.length, ''),
     ];
 
@@ -538,14 +540,89 @@ class PayrollPdfService {
     return _formatAmount(value);
   }
 
-  static bool _hasAmount(Object? value) {
-    if (value == null) return false;
-    if (value is num) return value != 0;
-    return value.toString().trim().isNotEmpty;
+  static const _nonMoneyDetailKeys = <String>{
+    '出勤日数',
+    '休出日数',
+    '休日出勤',
+    '休日出勤日数',
+    '有給日数',
+    '残業時間',
+    '法定休出時間',
+    '法定休日出勤時間',
+    '法定外出時間',
+    '早出時間',
+    '夜間時間',
+    '日給単価',
+    '月次減税額',
+    '減税前未済額',
+    '減税前所得税',
+    '定額減税額',
+    '定額減税未済',
+    '社員番号',
+    '社員No',
+    '社員No.',
+  };
+
+  static const _fixedMoneyKeys = <String>{
+    '基本給',
+    '残業手当',
+    '勤続手当',
+    '役職手当',
+    '家族手当',
+    '働き方手当',
+    '交通費',
+    '出勤に基づく支給額',
+    '健康保険料',
+    '介護保険料',
+    '厚生年金保険',
+    '雇用保険料',
+    '所得税',
+    '住民税',
+    'SKB会費',
+    '道具代',
+    '社会保険',
+    'その他控除',
+  };
+
+  static Map<String, Object?> _customMoneyEntries(
+    Map<String, dynamic> detail, {
+    required int direction,
+  }) {
+    final result = <String, Object?>{};
+    for (final entry in detail.entries) {
+      if (_nonMoneyDetailKeys.contains(entry.key) ||
+          _fixedMoneyKeys.contains(entry.key)) {
+        continue;
+      }
+      final value = _asNumber(entry.value);
+      if (value == null || value == 0) continue;
+      if ((direction > 0 && value > 0) ||
+          (direction < 0 && value < 0)) {
+        result[entry.key] = value;
+      }
+    }
+    return result;
   }
 
-  static String _formatAmount(Object? value) {
-    if (value is num) return _number(value.toInt());
+  static num? _asNumber(Object? value) {
+    if (value is num) return value;
+    if (value == null) return null;
+    final text = value.toString().replaceAll(',', '').trim();
+    return num.tryParse(text);
+  }
+
+  static bool _hasAmount(Object? value) {
+    final number = _asNumber(value);
+    if (number != null) return number != 0;
+    return value?.toString().trim().isNotEmpty ?? false;
+  }
+
+  static String _formatAmount(Object? value, {bool absolute = false}) {
+    final number = _asNumber(value);
+    if (number != null) {
+      final amount = number.toInt();
+      return _number(absolute ? amount.abs() : amount);
+    }
     return value?.toString() ?? '';
   }
 
