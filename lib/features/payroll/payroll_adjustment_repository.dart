@@ -167,6 +167,17 @@ class PayrollAdjustmentRepository {
     ].where((item) => item.id.isNotEmpty).toList();
   }
 
+
+  Future<DateTime?> loadLatestStatementPeriodEnd(String workerId) async {
+    final rows = await _client.rpc(
+      'payroll_adjustment_latest_statement_period',
+      params: {'p_worker_id': workerId},
+    );
+    if (rows is! List || rows.isEmpty || rows.first is! Map) return null;
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    return DateTime.tryParse(row['period_end']?.toString() ?? '');
+  }
+
   Future<void> setPageLabel(String label) async {
     await _client.rpc(
       'set_payroll_adjustment_page_label',
