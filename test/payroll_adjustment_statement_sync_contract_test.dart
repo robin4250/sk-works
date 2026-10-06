@@ -30,6 +30,15 @@ void main() {
     expect(repository, contains("row['worker_name']"));
   });
 
+
+  test('payroll PDF renders fixed-label and freeform adjustment deductions', () {
+    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
+
+    expect(pdf, contains("MapEntry<String, Object?>('道具代', deductions['道具代'])"));
+    expect(pdf, contains('final adjustmentDeductions = _customMoneyEntries'));
+    expect(pdf, contains('...adjustmentDeductions.entries.map('));
+  });
+
   test('payroll template PDF formats numeric detail values', () {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
