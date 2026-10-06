@@ -88,6 +88,7 @@ void main() {
     expect(sql, contains("'work_content','（法定福利費）'"));
     expect(sql, contains("'work_content','（消費税）'"));
     expect(sql, contains('*1.5'));
+    expect(pdf, contains("rawWorkContent.isEmpty ? '通常作業'"));
     final latest = read(
       'supabase/migrations/20261005152000_invoice_allowance_and_early_rows.sql',
     );
