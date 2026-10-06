@@ -876,25 +876,27 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                 ),
                 const SizedBox(height: 12),
                 _field(_formalName, _tr('現場正式名称', 'Formal Site Name')),
-                DropdownButtonFormField<String?>(
-                  value: _managerWorkerId,
+                DropdownButtonFormField<String>(
+                  value: _managerWorkerId ?? '',
                   decoration: InputDecoration(
                     labelText: _tr('担当者', 'Person in Charge'),
                     border: const OutlineInputBorder(),
                   ),
                   items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
+                    DropdownMenuItem<String>(
+                      value: '',
                       child: Text(_tr('未設定', 'Not set')),
                     ),
                     for (final item in _managers)
-                      DropdownMenuItem<String?>(
+                      DropdownMenuItem<String>(
                         value: item.workerId,
                         child: Text(item.name),
                       ),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _managerWorkerId = value),
+                  onChanged: (value) => setState(
+                    () => _managerWorkerId =
+                        (value == null || value.isEmpty) ? null : value,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _field(
