@@ -36,7 +36,7 @@ void main() {
     expect(detail, contains("'下請け会社・取引会社に共有'"));
     expect(detail, contains("'編集／登録'"));
     expect(detail, contains("'現場住所'"));
-    expect(detail, contains("'最寄駅'"));
+    expect(detail, contains("'最寄りの駅'"));
     expect(detail, contains("'現場責任者'"));
     expect(detail, contains("'電話番号'"));
     expect(detail, contains("'登録者の社員情報'"));
