@@ -4,6 +4,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class SiteTradeCompanyOption {
+  const SiteTradeCompanyOption({
+    required this.tradeCompanyId,
+    required this.customerId,
+    required this.name,
+  });
+
+  final String tradeCompanyId;
+  final String customerId;
+  final String name;
+}
+
+class SiteManagerOption {
+  const SiteManagerOption({required this.workerId, required this.name});
+
+  final String workerId;
+  final String name;
+}
+
 class SitePhotoRecord {
   const SitePhotoRecord({
     required this.slot,
@@ -96,6 +115,8 @@ class SiteCloudRepository {
         'id': id,
         'name': row['name'] ?? '',
         'customerName': row['customer_name'] ?? '',
+        'customerId': row['customer_id'] ?? '',
+        'managerWorkerId': row['manager_worker_id'] ?? '',
         'status': _fromDbStatus(row['status']?.toString()),
         'address': row['address'] ?? '',
         'managerName': row['manager_name'] ?? '',
@@ -111,6 +132,50 @@ class SiteCloudRepository {
         'updatedAt': _displayDateTime(dates['updated_at']?.toString()),
       };
     }).toList(growable: false);
+  }
+
+  Future<List<SiteTradeCompanyOption>> loadCustomerTradeCompanies() async {
+    final raw = await _client.rpc('trade_company_workspace');
+    if (raw is! List) return const [];
+    final result = <SiteTradeCompanyOption>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final row = Map<String, dynamic>.from(item);
+      final role = row['trade_role']?.toString() ?? '';
+      if (role != 'customer' && role != 'both') continue;
+      final customerId = row['customer_id']?.toString() ?? '';
+      final tradeCompanyId = row['id']?.toString() ?? '';
+      final name = row['name']?.toString() ?? '';
+      if (customerId.isEmpty || tradeCompanyId.isEmpty || name.isEmpty) continue;
+      result.add(
+        SiteTradeCompanyOption(
+          tradeCompanyId: tradeCompanyId,
+          customerId: customerId,
+          name: name,
+        ),
+      );
+    }
+    result.sort((a, b) => a.name.compareTo(b.name));
+    return result;
+  }
+
+  Future<List<SiteManagerOption>> loadSiteManagers() async {
+    final member = await membership();
+    final rows = await _client
+        .from('workers')
+        .select('id,name,status,affiliation')
+        .eq('company_id', member.companyId)
+        .eq('affiliation', 'employee')
+        .order('name');
+    return [
+      for (final row in rows)
+        if ((row['id']?.toString() ?? '').isNotEmpty &&
+            (row['name']?.toString() ?? '').isNotEmpty)
+          SiteManagerOption(
+            workerId: row['id'].toString(),
+            name: row['name'].toString(),
+          ),
+    ];
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
