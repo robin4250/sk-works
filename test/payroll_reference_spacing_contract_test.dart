@@ -29,7 +29,7 @@ void main() {
     expect(pdf, contains('height: 21'));
     expect(pdf, contains('height: 22'));
     expect(pdf, contains('maxLines: 1'));
-    expect(pdf, contains('pw.Alignment.centerRight'));
+    expect(pdf, contains('height: 23'));
     expect(pdf, contains('pw.Alignment.center'));
   });
 
