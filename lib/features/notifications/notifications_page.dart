@@ -132,7 +132,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (item.actionKey == 'attendance_correction_request') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const AttendanceCorrectionApprovalsPage(),
+          builder: (_) => AttendanceCorrectionApprovalsPage(
+            initialRequestId: item.actionId,
+          ),
         ),
       );
       if (!mounted) return;
