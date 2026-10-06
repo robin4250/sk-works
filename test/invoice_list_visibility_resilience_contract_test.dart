@@ -5,13 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('invoice loader falls back to snapshot customer and skips only malformed rows', () {
+  test('invoice loader uses snapshot first and skips fragile optional child reads', () {
     final repository =
         read('lib/features/invoices/invoice_cloud_repository.dart');
 
     expect(repository, contains("snapshotMap['customer_name']"));
+    expect(repository, contains("final snapshotSites = snapshotMap['sites']"));
+    expect(repository, contains('if (siteResults.isEmpty)'));
+    expect(repository, contains('Optional normalized child rows must not hide the invoice itself'));
     expect(repository, contains("'取引先未設定'"));
-    expect(repository, contains('try {'));
     expect(repository, contains('Keep other valid invoices visible'));
   });
 
