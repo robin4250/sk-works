@@ -118,7 +118,11 @@ class InvoiceCloudRepository {
               for (final rawLine in rawLines) {
                 if (rawLine is! Map) continue;
                 final line = Map<String, dynamic>.from(rawLine);
-                final workContent = line['work_content']?.toString();
+                final sourceWorkContent = line['work_content']?.toString();
+                final allowanceName = line['allowance_name']?.toString().trim() ?? '';
+                final workContent = allowanceName.isNotEmpty
+                    ? '（$allowanceName）'
+                    : sourceWorkContent;
                 final sourceLabel = line['label']?.toString();
                 final internalLabel = (workContent ?? '').trim().isNotEmpty
                     ? workContent!

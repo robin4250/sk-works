@@ -12,6 +12,8 @@ class AdminSiteFinancialRecord {
     required this.earlyHourRateYen,
     required this.nightHourRateYen,
     required this.billingUnitPriceYen,
+    required this.billingOvertimeHourRateYen,
+    required this.billingEarlyHourRateYen,
     required this.billingMonthlyRateYen,
     required this.billingSquareMeterUnitPriceYen,
     required this.billingSquareMeterQuantity,
@@ -33,6 +35,8 @@ class AdminSiteFinancialRecord {
   final int earlyHourRateYen;
   final int nightHourRateYen;
   final int billingUnitPriceYen;
+  final int billingOvertimeHourRateYen;
+  final int billingEarlyHourRateYen;
   final int billingMonthlyRateYen;
   final int billingSquareMeterUnitPriceYen;
   final double billingSquareMeterQuantity;
@@ -151,6 +155,7 @@ class AdminSiteFinancialRepository {
         .select(
           'site_id, worker_daily_rate_yen, overtime_hour_rate_yen, '
           'early_hour_rate_yen, night_hour_rate_yen, billing_unit_price_yen, '
+          'billing_overtime_hour_rate_yen, billing_early_hour_rate_yen, '
           'billing_monthly_rate_yen, '
           'billing_square_meter_unit_price_yen, '
           'billing_square_meter_quantity, billing_contract_amount_yen, '
@@ -185,6 +190,10 @@ class AdminSiteFinancialRepository {
             (s['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
         billingUnitPriceYen:
             (s['billing_unit_price_yen'] as num?)?.toInt() ?? 0,
+        billingOvertimeHourRateYen:
+            (s['billing_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+        billingEarlyHourRateYen:
+            (s['billing_early_hour_rate_yen'] as num?)?.toInt() ?? 0,
         billingMonthlyRateYen:
             (s['billing_monthly_rate_yen'] as num?)?.toInt() ?? 0,
         billingSquareMeterUnitPriceYen:
@@ -221,6 +230,8 @@ class AdminSiteFinancialRepository {
       'early_hour_rate_yen': record.earlyHourRateYen,
       'night_hour_rate_yen': record.nightHourRateYen,
       'billing_unit_price_yen': record.billingUnitPriceYen,
+      'billing_overtime_hour_rate_yen': record.billingOvertimeHourRateYen,
+      'billing_early_hour_rate_yen': record.billingEarlyHourRateYen,
       'billing_monthly_rate_yen': record.billingMonthlyRateYen,
       'billing_square_meter_unit_price_yen':
           record.billingSquareMeterUnitPriceYen,
