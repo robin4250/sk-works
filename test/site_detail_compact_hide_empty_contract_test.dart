@@ -9,7 +9,8 @@ void main() {
 
     expect(source, contains('final fieldWidth = constraints.maxWidth >= 340'));
     expect(source, contains('return Wrap('));
-    expect(source, contains('if (trimmed.isEmpty) return const SizedBox.shrink()'));
+    expect(source, contains('fields.whereType<Widget>().toList()'));
+    expect(source, contains('if (trimmed.isEmpty) return null;'));
     expect(source, contains('maxLines: maxLines'));
     expect(source, isNot(contains("'未登録', 'Not registered'")));
   });
