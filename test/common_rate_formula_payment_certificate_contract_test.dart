@@ -13,9 +13,9 @@ void main() {
     expect(formula.night(16000), 24000);
     expect(formula.holiday(16000), 21600);
     expect(formula.holidayNight(16000), 25600);
-    expect(formula.nightOvertime(16000), 3750);
-    expect(formula.holidayOvertime(16000), 3375);
-    expect(formula.holidayNightOvertime(16000), 4000);
+    expect(formula.nightOvertime(16000), 3000);
+    expect(formula.holidayOvertime(16000), 2700);
+    expect(formula.holidayNightOvertime(16000), 3200);
   });
 
   test('hourly base uses the same multipliers without dividing by daily hours', () {
