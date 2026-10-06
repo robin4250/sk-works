@@ -270,6 +270,20 @@ class PeopleCloudRepository {
         : const <String, dynamic>{};
   }
 
+  Future<Map<String, dynamic>> loadPersonnelApproverSettings() async {
+    final raw = await _client.rpc('worker_personnel_approver_rows');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> savePersonnelApprovers(List<String> userIds) async {
+    await _client.rpc(
+      'set_worker_personnel_approvers',
+      params: {'p_user_ids': userIds},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> loadPendingPersonnelChanges() async {
     final raw = await _client.rpc('pending_worker_personnel_changes');
     if (raw is! List) return const [];
