@@ -457,30 +457,6 @@ class PayrollPdfService {
     );
   }
 
-  static pw.Widget _singleHeaderSection({
-    required String title,
-    required List<String> labels,
-    required List<String> values,
-    required PdfColor headerFill,
-    required PdfColor grid,
-    required int blankRows,
-  }) {
-    return _sectionShell(
-      title: title,
-      headerFill: headerFill,
-      grid: grid,
-      rows: [
-        _row(labels, headerFill: headerFill, bold: true, height: 18),
-        _row(values, right: true, height: 22),
-        for (var i = 0; i < blankRows; i++)
-          _row(
-            List<String>.filled(labels.length, ''),
-            height: 20,
-          ),
-      ],
-    );
-  }
-
   static pw.Widget _sectionShell({
     required String title,
     required PdfColor headerFill,
@@ -550,17 +526,6 @@ class PayrollPdfService {
       }
     }
     return result;
-  }
-
-  static String _amount(
-    Map<String, Object?> source,
-    String key, {
-    String? fallbackKey,
-    bool absolute = false,
-  }) {
-    final value =
-        source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
-    return _formatAmount(value, absolute: absolute);
   }
 
   static const _nonMoneyDetailKeys = <String>{
@@ -658,12 +623,6 @@ class PayrollPdfService {
     if (value == null) return null;
     final text = value.toString().replaceAll(',', '').trim();
     return num.tryParse(text);
-  }
-
-  static bool _hasAmount(Object? value) {
-    final number = _asNumber(value);
-    if (number != null) return number != 0;
-    return value?.toString().trim().isNotEmpty ?? false;
   }
 
   static String _formatAmount(Object? value, {bool absolute = false}) {
