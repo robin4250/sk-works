@@ -88,20 +88,28 @@ class PayrollPdfService {
     final headerFill = PdfColor.fromHex('#DCE8F6');
     final grid = PdfColor.fromHex('#6D89A8');
 
-    const earningLabels = <String>[
+    const fixedEarningLabels = <String>[
       '基本給',
       '残業手当',
       '勤続手当',
       '役職手当',
       '家族手当',
       '働き方手当',
-      '',
-      '',
-      '',
-      '',
+    ];
+    final extraEarnings = earnings.entries
+        .where((entry) =>
+            !fixedEarningLabels.contains(entry.key) &&
+            entry.key != '出勤に基づく支給額' &&
+            _hasAmount(entry.value))
+        .take(4)
+        .toList();
+    final earningLabels = <String>[
+      ...fixedEarningLabels,
+      ...extraEarnings.map((entry) => entry.key),
+      ...List<String>.filled(4 - extraEarnings.length, ''),
     ];
 
-    const deductionLabels = <String>[
+    const fixedDeductionLabels = <String>[
       '健康保険料',
       '介護保険料',
       '厚生年金保険',
@@ -110,8 +118,18 @@ class PayrollPdfService {
       '住民税',
       'SKB会費',
       '道具代',
-      '',
-      '',
+    ];
+    final extraDeductions = deductions.entries
+        .where((entry) =>
+            !fixedDeductionLabels.contains(entry.key) &&
+            entry.key != '社会保険' &&
+            _hasAmount(entry.value))
+        .take(2)
+        .toList();
+    final deductionLabels = <String>[
+      ...fixedDeductionLabels,
+      ...extraDeductions.map((entry) => entry.key),
+      ...List<String>.filled(2 - extraDeductions.length, ''),
     ];
 
     final supportValues = <String>[
@@ -121,10 +139,8 @@ class PayrollPdfService {
       _amount(earnings, '役職手当'),
       _amount(earnings, '家族手当'),
       _amount(earnings, '働き方手当'),
-      '',
-      '',
-      '',
-      '',
+      ...extraEarnings.map((entry) => _formatAmount(entry.value)),
+      ...List<String>.filled(4 - extraEarnings.length, ''),
     ];
 
     final deductionValues = <String>[
@@ -136,8 +152,8 @@ class PayrollPdfService {
       _amount(deductions, '住民税'),
       _amount(deductions, 'SKB会費'),
       _amount(deductions, '道具代'),
-      '',
-      '',
+      ...extraDeductions.map((entry) => _formatAmount(entry.value)),
+      ...List<String>.filled(2 - extraDeductions.length, ''),
     ];
 
     return pw.Column(
@@ -322,7 +338,7 @@ class PayrollPdfService {
             pw.TableRow(
               children: [
                 _cell(
-                  _first(detail, const ['日給単価']),
+                  _plainNumber(detail, const ['日給単価']),
                   right: true,
                   height: 22,
                 ),
@@ -337,26 +353,12 @@ class PayrollPdfService {
           ],
         ),
         pw.SizedBox(height: 8),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(left: 175),
-              child: pw.Text(
-                'お疲れさまです。',
-                style: const pw.TextStyle(fontSize: 7.5),
-              ),
-            ),
-            pw.Text(
-              statement.reviewConfirmed ? '確認済み' : '未確定',
-              style: pw.TextStyle(
-                fontSize: 7.5,
-                color: statement.reviewConfirmed
-                    ? PdfColors.green700
-                    : PdfColors.red700,
-              ),
-            ),
-          ],
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(left: 175),
+          child: pw.Text(
+            'お疲れさまです。',
+            style: const pw.TextStyle(fontSize: 7.5),
+          ),
         ),
       ],
     );
@@ -393,9 +395,9 @@ class PayrollPdfService {
     ];
 
     final topValues = <String>[
-      _first(detail, const ['出勤日数']),
-      _first(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
-      _first(detail, const ['有給日数']),
+      _dayCount(detail, const ['出勤日数']),
+      _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
+      _dayCount(detail, const ['有給日数']),
       '',
       '',
       '',
@@ -406,10 +408,10 @@ class PayrollPdfService {
     ];
 
     final secondValues = <String>[
-      _first(detail, const ['残業時間']),
-      _first(detail, const ['法定休出時間', '法定休日出勤時間', '法定外出時間']),
-      _first(detail, const ['早出時間']),
-      _first(detail, const ['夜間時間']),
+      _hours(detail, const ['残業時間']),
+      _hours(detail, const ['法定休出時間', '法定休日出勤時間', '法定外出時間']),
+      _hours(detail, const ['早出時間']),
+      _hours(detail, const ['夜間時間']),
       '',
       '',
       '',
@@ -533,8 +535,76 @@ class PayrollPdfService {
   }) {
     final value =
         source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
+    return _formatAmount(value);
+  }
+
+  static bool _hasAmount(Object? value) {
+    if (value == null) return false;
+    if (value is num) return value != 0;
+    return value.toString().trim().isNotEmpty;
+  }
+
+  static String _formatAmount(Object? value) {
     if (value is num) return _number(value.toInt());
     return value?.toString() ?? '';
+  }
+
+  static String _dayCount(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      if (value is num) return value.toDouble().toStringAsFixed(1);
+      final parsed = double.tryParse(value.toString());
+      if (parsed != null) return parsed.toStringAsFixed(1);
+      return value.toString();
+    }
+    return '';
+  }
+
+  static String _hours(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      if (value is num) {
+        final totalMinutes = (value.toDouble() * 60).round();
+        final hours = totalMinutes ~/ 60;
+        final minutes = totalMinutes % 60;
+        return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+      }
+      final text = value.toString().trim();
+      if (text.contains(':')) return text;
+      final parsed = double.tryParse(text);
+      if (parsed != null) {
+        final totalMinutes = (parsed * 60).round();
+        final hours = totalMinutes ~/ 60;
+        final minutes = totalMinutes % 60;
+        return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+      }
+      return text;
+    }
+    return '';
+  }
+
+  static String _plainNumber(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      if (value is num) return value.toInt().toString();
+      final text = value.toString().trim();
+      final parsed = num.tryParse(text.replaceAll(',', ''));
+      if (parsed != null) return parsed.toInt().toString();
+      return text;
+    }
+    return '';
   }
 
   static String _first(
