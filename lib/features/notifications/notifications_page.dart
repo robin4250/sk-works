@@ -12,7 +12,10 @@ import '../attendance/paid_leave_approvals_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
+import '../sites/site_information_approvals_page.dart';
 import '../operations/vehicle_route_page.dart';
+import '../people/people_cloud_page.dart';
+import '../people/worker_personnel_change_approvals_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -109,6 +112,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await _load();
       return;
     }
+    if (item.actionKey == 'site_information_request' ||
+        item.actionKey == 'site_information_request_result') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SiteInformationApprovalsPage(
+            initialRequestId: item.actionId,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
     if (item.actionKey == 'vehicle_documents') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -135,6 +151,28 @@ class _NotificationsPageState extends State<NotificationsPage> {
           builder: (_) => AttendanceCorrectionApprovalsPage(
             initialRequestId: item.actionId,
           ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'worker_personnel_change') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => WorkerPersonnelChangeApprovalsPage(
+            initialRequestId: item.actionId,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+      return;
+    }
+    if (item.actionKey == 'worker_personnel_change_completed') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const PeopleCloudPage(),
         ),
       );
       if (!mounted) return;
