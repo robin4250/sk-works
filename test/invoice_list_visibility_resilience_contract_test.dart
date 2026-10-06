@@ -27,7 +27,6 @@ void main() {
     expect(page, contains('..sort((a, b) => b.compareTo(a))'));
     expect(page, contains('_period = DateTime(months.first.year, months.first.month)'));
   });
-}
 
 
   test('invoice loader prefers saved snapshot before normalized detail relations', () {
@@ -41,3 +40,4 @@ void main() {
     expect(repository, contains("manualAdjustmentYen:\n                    _toInt(siteMap['manual_adjustment'])"));
     expect(repository, contains("welfareRateBps: _toInt(siteMap['welfare_rate_bps'])"));
   });
+}
