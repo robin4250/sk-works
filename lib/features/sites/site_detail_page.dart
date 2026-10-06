@@ -576,7 +576,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                   value: site.notes,
                   maxLines: 2,
                 ),
-              ].where((item) => item is! SizedBox || item != const SizedBox.shrink()).toList();
+              ];
 
               return Wrap(
                 spacing: gap,
@@ -618,32 +618,49 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             ),
             const SizedBox(height: 8),
           ],
-          SizedBox(
-            height: 40,
-            child: FilledButton.icon(
-            onPressed: _share,
-            icon: const Icon(Icons.ios_share_outlined),
-            label: Text(_tr('下請け会社・取引会社に共有', 'Share with Subcontractors / Business Partners')),
-            ),
-          ),
-          const SizedBox(height: 4),
-          SizedBox(
-            height: 40,
-            child: OutlinedButton.icon(
-            onPressed: _edit,
-            icon: const Icon(Icons.edit_outlined),
-            label: Text(_tr('編集／登録', 'Edit / Register')),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: FilledButton.icon(
+                    onPressed: _share,
+                    icon: const Icon(Icons.ios_share_outlined, size: 17),
+                    label: Text(
+                      _tr('共有', 'Share'),
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: OutlinedButton.icon(
+                    onPressed: _edit,
+                    icon: const Icon(Icons.edit_outlined, size: 17),
+                    label: Text(
+                      _tr('編集／登録', 'Edit / Register'),
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           if (widget.canManage &&
               widget.site.status != SiteStatus.completed) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             SizedBox(
-              height: 40,
+              height: 38,
               child: OutlinedButton.icon(
-              onPressed: _requestComplete,
-              icon: const Icon(Icons.archive_outlined),
-              label: Text(_tr('現場終了を承認申請', 'Request Site Completion')),
+                onPressed: _requestComplete,
+                icon: const Icon(Icons.archive_outlined, size: 17),
+                label: Text(
+                  _tr('現場終了を承認申請', 'Request Site Completion'),
+                  maxLines: 1,
+                ),
               ),
             ),
           ],
