@@ -63,7 +63,19 @@ class InvoiceCloudRepository {
     for (final invoice in invoices) {
       final invoiceId = invoice['id'] as String;
       final customer = invoice['customers'];
-      final customerName = customer is Map ? customer['name']?.toString() ?? '' : '';
+      final snapshot = invoice['snapshot'];
+      final snapshotMap = snapshot is Map
+          ? Map<String, dynamic>.from(snapshot)
+          : const <String, dynamic>{};
+      final joinedCustomerName =
+          customer is Map ? customer['name']?.toString().trim() ?? '' : '';
+      final snapshotCustomerName =
+          snapshotMap['customer_name']?.toString().trim() ?? '';
+      final customerName = joinedCustomerName.isNotEmpty
+          ? joinedCustomerName
+          : snapshotCustomerName.isNotEmpty
+              ? snapshotCustomerName
+              : '取引先未設定';
       final calculations = await _client
           .from('invoice_site_calculations')
           .select('id, site_id, manual_adjustment_amount, welfare_rate_snapshot, sites(name)')
@@ -103,10 +115,6 @@ class InvoiceCloudRepository {
       }
 
       if (siteResults.isEmpty) {
-        final snapshot = invoice['snapshot'];
-        final snapshotMap = snapshot is Map
-            ? Map<String, dynamic>.from(snapshot)
-            : const <String, dynamic>{};
         final snapshotSites = snapshotMap['sites'];
         if (snapshotSites is List) {
           for (final rawSite in snapshotSites) {
@@ -161,28 +169,37 @@ class InvoiceCloudRepository {
           DateTime.tryParse(invoice['billing_period_end']?.toString() ?? '');
       final issueDate =
           DateTime.tryParse(invoice['issue_date']?.toString() ?? '');
-      results.add(
-        InvoiceEngine.calculate(
-          customerId: customerName,
-          billingPeriod: periodStart == null
-              ? ''
-              : '${periodStart.year}年${periodStart.month}月',
-          detailMode: _fromDbDetailMode(invoice['detail_mode']?.toString()),
-          sites: siteResults,
-          taxRateBps: _taxRateFromTotals(
-            subtotal: _toInt(invoice['subtotal']),
-            tax: _toInt(invoice['tax']),
+      final billingPeriod = periodStart == null
+          ? snapshotMap['billing_period']?.toString().trim() ?? ''
+          : '${periodStart.year}年${periodStart.month}月';
+      if (billingPeriod.isEmpty) {
+        continue;
+      }
+
+      try {
+        results.add(
+          InvoiceEngine.calculate(
+            customerId: customerName,
+            billingPeriod: billingPeriod,
+            detailMode: _fromDbDetailMode(invoice['detail_mode']?.toString()),
+            sites: siteResults,
+            taxRateBps: _taxRateFromTotals(
+              subtotal: _toInt(invoice['subtotal']),
+              tax: _toInt(invoice['tax']),
+            ),
+            invoiceId: invoice['id']?.toString() ?? '',
+            invoiceNumber: invoice['invoice_number']?.toString() ?? '',
+            issueDate: issueDate,
+            periodStart: periodStart,
+            periodEnd: periodEnd,
+            subtotalYenOverride: _toInt(invoice['subtotal']),
+            taxYenOverride: _toInt(invoice['tax']),
+            grandTotalYenOverride: _toInt(invoice['grand_total']),
           ),
-          invoiceId: invoice['id']?.toString() ?? '',
-          invoiceNumber: invoice['invoice_number']?.toString() ?? '',
-          issueDate: issueDate,
-          periodStart: periodStart,
-          periodEnd: periodEnd,
-          subtotalYenOverride: _toInt(invoice['subtotal']),
-          taxYenOverride: _toInt(invoice['tax']),
-          grandTotalYenOverride: _toInt(invoice['grand_total']),
-        ),
-      );
+        );
+      } catch (_) {
+        // Keep other valid invoices visible even if one historical row is malformed.
+      }
     }
     return results;
   }
