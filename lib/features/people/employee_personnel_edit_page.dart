@@ -35,6 +35,8 @@ class _EmployeePersonnelEditPageState
   late List<EditableFamilyMember> _familyMembers;
   late String _bloodType;
   bool _saving = false;
+  bool _directAdminSave = false;
+  bool _loadingSaveMode = true;
 
   @override
   void initState() {
@@ -55,6 +57,26 @@ class _EmployeePersonnelEditPageState
         .map(EditableFamilyMember.fromValue)
         .toList();
     _bloodType = record.bloodType;
+    _loadSaveMode();
+  }
+
+  Future<void> _loadSaveMode() async {
+    final repository = _repository;
+    if (repository == null) {
+      if (mounted) setState(() => _loadingSaveMode = false);
+      return;
+    }
+    try {
+      final member = await repository.membership();
+      if (!mounted) return;
+      setState(() {
+        _directAdminSave = member.role == 'owner' || member.role == 'admin';
+        _loadingSaveMode = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingSaveMode = false);
+    }
   }
 
   @override
@@ -88,9 +110,13 @@ class _EmployeePersonnelEditPageState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('社員個人情報を変更しますか？'),
-        content: const Text(
-          '登録済みの社員個人情報は直接変更せず、登録済みの承認者へ変更申請を送ります。',
+        title: Text(
+          _directAdminSave ? '社員個人情報を保存しますか？' : '社員個人情報を変更しますか？',
+        ),
+        content: Text(
+          _directAdminSave
+              ? '管理者は承認者設定なしで社員個人情報を直接登録・保存できます。'
+              : '登録済みの社員個人情報は直接変更せず、登録済みの承認者へ変更申請を送ります。',
         ),
         actions: [
           TextButton(
@@ -99,7 +125,7 @@ class _EmployeePersonnelEditPageState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('変更申請を送る'),
+            child: Text(_directAdminSave ? '保存する' : '変更申請を送る'),
           ),
         ],
       ),
@@ -154,11 +180,13 @@ class _EmployeePersonnelEditPageState
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(14),
+              padding: const EdgeInsets.all(14),
               child: Text(
-                '未登録なら直接保存されます。登録済み情報の変更は、1〜3名で登録した承認者の承認後に反映されます。',
+                _directAdminSave
+                    ? '管理者は社員個人情報を直接登録・保存できます。承認者の設定は不要です。'
+                    : '未登録なら直接保存されます。登録済み情報の変更は、1〜3名で登録した承認者の承認後に反映されます。',
               ),
             ),
           ),
@@ -233,9 +261,15 @@ class _EmployeePersonnelEditPageState
           ),
           const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.approval_outlined),
-            label: Text(_saving ? '送信中…' : '変更申請を送る'),
+            onPressed: _saving || _loadingSaveMode ? null : _save,
+            icon: Icon(
+              _directAdminSave ? Icons.save_outlined : Icons.approval_outlined,
+            ),
+            label: Text(
+              _saving
+                  ? (_directAdminSave ? '保存中…' : '送信中…')
+                  : (_directAdminSave ? '保存する' : '変更申請を送る'),
+            ),
           ),
         ],
       ),
