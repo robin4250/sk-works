@@ -56,6 +56,16 @@ class PaymentCertificateRecord {
   String get monthLabel => '${periodStart.year}年${periodStart.month}月';
 }
 
+class PaymentAllowanceSetting {
+  const PaymentAllowanceSetting({
+    required this.name,
+    required this.amountYen,
+  });
+
+  final String name;
+  final int amountYen;
+}
+
 class PartnerPaymentSetting {
   const PartnerPaymentSetting({
     required this.partnerCompanyId,
@@ -64,6 +74,16 @@ class PartnerPaymentSetting {
     required this.overtimeHourRateYen,
     required this.earlyHourRateYen,
     required this.nightHourRateYen,
+    this.nightDayRateYen = 0,
+    this.nightOvertimeHourRateYen = 0,
+    this.holidayDayRateYen = 0,
+    this.holidayOvertimeHourRateYen = 0,
+    this.holidayNightDayRateYen = 0,
+    this.holidayNightOvertimeHourRateYen = 0,
+    this.rateFormula = const {},
+    this.allowances = const [],
+    this.welfareRate = 0,
+    this.taxRate = 10,
   });
 
   final String partnerCompanyId;
@@ -72,6 +92,27 @@ class PartnerPaymentSetting {
   final int overtimeHourRateYen;
   final int earlyHourRateYen;
   final int nightHourRateYen;
+  final int nightDayRateYen;
+  final int nightOvertimeHourRateYen;
+  final int holidayDayRateYen;
+  final int holidayOvertimeHourRateYen;
+  final int holidayNightDayRateYen;
+  final int holidayNightOvertimeHourRateYen;
+  final Map<String, dynamic> rateFormula;
+  final List<PaymentAllowanceSetting> allowances;
+  final double welfareRate;
+  final double taxRate;
+
+  Map<String, int> get rateOverrides => {
+        'overtime': overtimeHourRateYen,
+        'early': earlyHourRateYen,
+        'night': nightDayRateYen,
+        'night_overtime': nightOvertimeHourRateYen,
+        'holiday': holidayDayRateYen,
+        'holiday_overtime': holidayOvertimeHourRateYen,
+        'holiday_night': holidayNightDayRateYen,
+        'holiday_night_overtime': holidayNightOvertimeHourRateYen,
+      };
 }
 
 class PaymentCertificateRepository {
@@ -189,6 +230,36 @@ class PaymentCertificateRepository {
                 (value['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
             nightHourRateYen:
                 (value['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            nightDayRateYen:
+                (value['night_day_rate_yen'] as num?)?.toInt() ?? 0,
+            nightOvertimeHourRateYen:
+                (value['night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayDayRateYen:
+                (value['holiday_day_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayOvertimeHourRateYen:
+                (value['holiday_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayNightDayRateYen:
+                (value['holiday_night_day_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayNightOvertimeHourRateYen:
+                (value['holiday_night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            rateFormula: value['rate_formula'] is Map
+                ? Map<String, dynamic>.from(value['rate_formula'] as Map)
+                : const {},
+            allowances: [
+              for (final item in value['allowances'] is List
+                  ? value['allowances'] as List
+                  : const [])
+                if (item is Map &&
+                    (item['name']?.toString().trim() ?? '').isNotEmpty)
+                  PaymentAllowanceSetting(
+                    name: item['name'].toString(),
+                    amountYen: (item['amount_yen'] as num?)?.toInt() ?? 0,
+                  ),
+            ],
+            welfareRate:
+                (value['welfare_rate'] as num?)?.toDouble() ?? 0,
+            taxRate:
+                (value['tax_rate'] as num?)?.toDouble() ?? 10,
           ),
     ].where((item) => item.partnerCompanyId.isNotEmpty).toList();
   }
@@ -202,6 +273,22 @@ class PaymentCertificateRepository {
         'p_overtime_hour_rate_yen': value.overtimeHourRateYen,
         'p_early_hour_rate_yen': value.earlyHourRateYen,
         'p_night_hour_rate_yen': value.nightHourRateYen,
+        'p_night_day_rate_yen': value.nightDayRateYen,
+        'p_night_overtime_hour_rate_yen':
+            value.nightOvertimeHourRateYen,
+        'p_holiday_day_rate_yen': value.holidayDayRateYen,
+        'p_holiday_overtime_hour_rate_yen':
+            value.holidayOvertimeHourRateYen,
+        'p_holiday_night_day_rate_yen': value.holidayNightDayRateYen,
+        'p_holiday_night_overtime_hour_rate_yen':
+            value.holidayNightOvertimeHourRateYen,
+        'p_rate_formula': value.rateFormula,
+        'p_allowances': [
+          for (final item in value.allowances)
+            {'name': item.name, 'amount_yen': item.amountYen},
+        ],
+        'p_welfare_rate': value.welfareRate,
+        'p_tax_rate': value.taxRate,
       },
     );
 
@@ -210,13 +297,6 @@ class PaymentCertificateRepository {
       (item) => item.partnerCompanyId == value.partnerCompanyId,
     );
     if (saved.isEmpty) {
-      throw StateError('支払証明書設定を保存できませんでした。');
-    }
-    final actual = saved.first;
-    if (actual.dailyRateYen != value.dailyRateYen ||
-        actual.overtimeHourRateYen != value.overtimeHourRateYen ||
-        actual.earlyHourRateYen != value.earlyHourRateYen ||
-        actual.nightHourRateYen != value.nightHourRateYen) {
       throw StateError('支払証明書設定を保存できませんでした。');
     }
   }
@@ -270,7 +350,45 @@ class PaymentCertificateRepository {
           amountYen: value.nightHourRateYen,
         ),
     ];
-    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    for (final item in value.allowances) {
+      if (item.name.trim().isEmpty || item.amountYen <= 0) continue;
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（' + item.name + '）',
+          quantityLabel: '1',
+          unitPriceYen: item.amountYen,
+          amountYen: item.amountYen,
+        ),
+      );
+    }
+    final subtotal =
+        lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final welfare = (subtotal * value.welfareRate / 100).round();
+    if (welfare > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（福利厚生費）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: welfare,
+        ),
+      );
+    }
+    final tax = ((subtotal + welfare) * value.taxRate / 100).round();
+    if (tax > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（消費税）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: tax,
+        ),
+      );
+    }
+    final gross = subtotal + welfare + tax;
 
     return PaymentCertificateRecord(
       id: 'settings-preview',
