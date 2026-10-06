@@ -332,55 +332,76 @@ class InvoicePdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 2),
-        // The amount frame now reaches the same right edge as the confirmer frame.
-        pw.Container(
-          padding: const pw.EdgeInsets.all(8),
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: blue, width: 1.1),
-          ),
-          child: pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
+        pw.SizedBox(height: 1),
+        // Amount and confirmer areas are independent adjacent frames.
+        // Keep the amount frame directly below the recipient name row.
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Expanded(
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: blue, width: 1.1),
+                ),
                 child: pw.Column(
                   children: [
                     pw.Row(
                       children: [
                         pw.Text(
                           '御請求金額',
-                          style: pw.TextStyle(color: blue, fontSize: 13, fontWeight: pw.FontWeight.bold),
+                          style: pw.TextStyle(
+                            color: blue,
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
                         ),
                         pw.SizedBox(width: 10),
                         pw.Expanded(
                           child: pw.Container(
                             padding: const pw.EdgeInsets.symmetric(vertical: 5),
-                            decoration: pw.BoxDecoration(border: pw.Border.all(color: blue, width: 1)),
+                            decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: blue, width: 1),
+                            ),
                             child: pw.Text(
                               _yen(invoice.grandTotalYen),
                               textAlign: pw.TextAlign.center,
-                              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                              style: pw.TextStyle(
+                                fontSize: 20,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank', style: const pw.TextStyle(fontSize: 9)),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      bank.isEmpty
+                          ? '振込先：請求書設定の口座情報'
+                          : '振込先：$bank',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
                     if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
-                      pw.Text('口座名義：${settings!.bankAccountHolder}', style: const pw.TextStyle(fontSize: 8)),
-                    pw.Text('（振込手数料は御社にて御負担願います）', style: pw.TextStyle(fontSize: 7.5, color: blue)),
+                      pw.Text(
+                        '口座名義：${settings!.bankAccountHolder}',
+                        style: const pw.TextStyle(fontSize: 8),
+                      ),
+                    pw.Text(
+                      '（振込手数料は御社にて御負担願います）',
+                      style: pw.TextStyle(fontSize: 7.5, color: blue),
+                    ),
                   ],
                 ),
               ),
-              pw.SizedBox(width: 18),
-              pw.SizedBox(
-                width: 142,
-                height: 64,
-                child: _approvalBoxes(approvals, blue),
-              ),
-            ],
-          ),
+            ),
+            pw.SizedBox(width: 4),
+            pw.SizedBox(
+              width: 142,
+              height: 66,
+              child: _approvalBoxes(approvals, blue),
+            ),
+          ],
         ),
         pw.SizedBox(height: 3),
         pw.Text(
@@ -496,49 +517,64 @@ class InvoicePdfService {
           ),
           child: pw.Row(
             children: [
-              pw.Container(
-                width: 130,
-                color: blue,
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  'お支払約定日',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 11,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
               pw.Expanded(
-                child: pw.Center(
-                  child: pw.Text(
-                    (settings?.paymentDueText ?? '').trim().isEmpty
-                        ? '未設定'
-                        : settings!.paymentDueText,
-                    style: const pw.TextStyle(fontSize: 9),
-                  ),
+                child: pw.Row(
+                  children: [
+                    pw.Container(
+                      width: 92,
+                      color: blue,
+                      alignment: pw.Alignment.center,
+                      child: pw.Text(
+                        'お支払約定日',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    pw.Expanded(
+                      child: pw.Center(
+                        child: pw.Text(
+                          (settings?.paymentDueText ?? '').trim().isEmpty
+                              ? '未設定'
+                              : settings!.paymentDueText,
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              pw.Container(
-                width: 70,
-                color: blue,
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  '金額',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 10,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.SizedBox(
-                width: 120,
-                child: pw.Center(
-                  child: pw.Text(
-                    _yen(invoice.grandTotalYen),
-                    style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-                  ),
+              pw.Container(width: .8, color: blue),
+              pw.Expanded(
+                child: pw.Row(
+                  children: [
+                    pw.Container(
+                      width: 92,
+                      color: blue,
+                      alignment: pw.Alignment.center,
+                      child: pw.Text(
+                        '金額',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    pw.Expanded(
+                      child: pw.Center(
+                        child: pw.Text(
+                          _yen(invoice.grandTotalYen),
+                          style: pw.TextStyle(
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -655,7 +691,7 @@ class InvoicePdfService {
               designB ? '確認印' : '確認',
               style: pw.TextStyle(
                 color: red,
-                fontSize: designB ? 4.7 : 5.1,
+                fontSize: designB ? 5.6 : 5.8,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
@@ -666,7 +702,7 @@ class InvoicePdfService {
             ),
             pw.Text(
               '${date.year}.${date.month}.${date.day}',
-              style: pw.TextStyle(color: red, fontSize: 3.8),
+              style: pw.TextStyle(color: red, fontSize: 4.4),
             ),
             pw.Text(
               label,
@@ -674,7 +710,7 @@ class InvoicePdfService {
               textAlign: pw.TextAlign.center,
               style: pw.TextStyle(
                 color: red,
-                fontSize: 5.2,
+                fontSize: 6.0,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
@@ -708,23 +744,30 @@ class InvoicePdfService {
   static pw.Widget _companySeal(String companyName) {
     final red = PdfColor.fromHex('#B83232');
     final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
-    // 角印案A: 一重の角枠に登録会社名をそのまま入れる。
+    // 角印案B: 太い外角枠＋細い内角枠で、角印らしい印影にする。
     return pw.Container(
       width: 48,
       height: 48,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: red, width: 1.5),
+        border: pw.Border.all(color: red, width: 2.1),
       ),
-      padding: const pw.EdgeInsets.all(3),
-      alignment: pw.Alignment.center,
-      child: pw.Text(
-        text,
-        textAlign: pw.TextAlign.center,
-        maxLines: 4,
-        style: pw.TextStyle(
-          color: red,
-          fontSize: 6.5,
-          fontWeight: pw.FontWeight.bold,
+      padding: const pw.EdgeInsets.all(2.2),
+      child: pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: red, width: .75),
+        ),
+        padding: const pw.EdgeInsets.all(2),
+        alignment: pw.Alignment.center,
+        child: pw.Text(
+          text,
+          textAlign: pw.TextAlign.center,
+          maxLines: 5,
+          style: pw.TextStyle(
+            color: red,
+            fontSize: 6.8,
+            fontWeight: pw.FontWeight.bold,
+            lineSpacing: -1,
+          ),
         ),
       ),
     );
