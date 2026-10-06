@@ -57,37 +57,72 @@ class RateFormulaSettings {
         'holiday_night_overtime_multiplier': holidayNightOvertimeMultiplier,
       };
 
-  int overtime(int daily) => _round(daily / _hours * overtimeMultiplier);
-  int early(int daily) => _round(daily / _hours * earlyMultiplier);
-  int night(int daily) => _round(daily * nightMultiplier);
-  int nightOvertime(int daily) =>
-      _round(night(daily) / _hours * nightOvertimeMultiplier);
-  int holiday(int daily) => _round(daily * holidayMultiplier);
-  int holidayOvertime(int daily) =>
-      _round(holiday(daily) / _hours * holidayOvertimeMultiplier);
-  int holidayNight(int daily) => _round(daily * holidayNightMultiplier);
-  int holidayNightOvertime(int daily) =>
-      _round(holidayNight(daily) / _hours * holidayNightOvertimeMultiplier);
+  int overtime(int baseRate, {bool hourlyBase = false}) => _round(
+        _hourlyBase(baseRate, hourlyBase) * overtimeMultiplier,
+      );
+  int early(int baseRate, {bool hourlyBase = false}) => _round(
+        _hourlyBase(baseRate, hourlyBase) * earlyMultiplier,
+      );
+  int night(int baseRate, {bool hourlyBase = false}) =>
+      _round(baseRate * nightMultiplier);
+  int nightOvertime(int baseRate, {bool hourlyBase = false}) => _round(
+        _hourlyBase(night(baseRate, hourlyBase: hourlyBase), hourlyBase) *
+            nightOvertimeMultiplier,
+      );
+  int holiday(int baseRate, {bool hourlyBase = false}) =>
+      _round(baseRate * holidayMultiplier);
+  int holidayOvertime(int baseRate, {bool hourlyBase = false}) => _round(
+        _hourlyBase(holiday(baseRate, hourlyBase: hourlyBase), hourlyBase) *
+            holidayOvertimeMultiplier,
+      );
+  int holidayNight(int baseRate, {bool hourlyBase = false}) =>
+      _round(baseRate * holidayNightMultiplier);
+  int holidayNightOvertime(int baseRate, {bool hourlyBase = false}) => _round(
+        _hourlyBase(
+              holidayNight(baseRate, hourlyBase: hourlyBase),
+              hourlyBase,
+            ) *
+            holidayNightOvertimeMultiplier,
+      );
 
   double get _hours => hoursPerDay <= 0 ? 8 : hoursPerDay;
+  double _hourlyBase(int baseRate, bool hourlyBase) =>
+      hourlyBase ? baseRate.toDouble() : baseRate / _hours;
   int _round(double value) => value.round();
 
-  String overtimeFormula(int daily) =>
-      '$daily ÷ ${_fmt(_hours)} × ${_fmt(overtimeMultiplier)}';
-  String earlyFormula(int daily) =>
-      '$daily ÷ ${_fmt(_hours)} × ${_fmt(earlyMultiplier)}';
-  String nightFormula(int daily) =>
-      '$daily × ${_fmt(nightMultiplier)}';
-  String nightOvertimeFormula(int daily) =>
-      '${night(daily)} ÷ ${_fmt(_hours)} × ${_fmt(nightOvertimeMultiplier)}';
-  String holidayFormula(int daily) =>
-      '$daily × ${_fmt(holidayMultiplier)}';
-  String holidayOvertimeFormula(int daily) =>
-      '${holiday(daily)} ÷ ${_fmt(_hours)} × ${_fmt(holidayOvertimeMultiplier)}';
-  String holidayNightFormula(int daily) =>
-      '$daily × ${_fmt(holidayNightMultiplier)}';
-  String holidayNightOvertimeFormula(int daily) =>
-      '${holidayNight(daily)} ÷ ${_fmt(_hours)} × ${_fmt(holidayNightOvertimeMultiplier)}';
+  String overtimeFormula(int baseRate, {bool hourlyBase = false}) => hourlyBase
+      ? '$baseRate × ${_fmt(overtimeMultiplier)}'
+      : '$baseRate ÷ ${_fmt(_hours)} × ${_fmt(overtimeMultiplier)}';
+  String earlyFormula(int baseRate, {bool hourlyBase = false}) => hourlyBase
+      ? '$baseRate × ${_fmt(earlyMultiplier)}'
+      : '$baseRate ÷ ${_fmt(_hours)} × ${_fmt(earlyMultiplier)}';
+  String nightFormula(int baseRate, {bool hourlyBase = false}) =>
+      '$baseRate × ${_fmt(nightMultiplier)}';
+  String nightOvertimeFormula(int baseRate, {bool hourlyBase = false}) {
+    final nightRate = night(baseRate, hourlyBase: hourlyBase);
+    return hourlyBase
+        ? '$nightRate × ${_fmt(nightOvertimeMultiplier)}'
+        : '$nightRate ÷ ${_fmt(_hours)} × ${_fmt(nightOvertimeMultiplier)}';
+  }
+  String holidayFormula(int baseRate, {bool hourlyBase = false}) =>
+      '$baseRate × ${_fmt(holidayMultiplier)}';
+  String holidayOvertimeFormula(int baseRate, {bool hourlyBase = false}) {
+    final holidayRate = holiday(baseRate, hourlyBase: hourlyBase);
+    return hourlyBase
+        ? '$holidayRate × ${_fmt(holidayOvertimeMultiplier)}'
+        : '$holidayRate ÷ ${_fmt(_hours)} × ${_fmt(holidayOvertimeMultiplier)}';
+  }
+  String holidayNightFormula(int baseRate, {bool hourlyBase = false}) =>
+      '$baseRate × ${_fmt(holidayNightMultiplier)}';
+  String holidayNightOvertimeFormula(
+    int baseRate, {
+    bool hourlyBase = false,
+  }) {
+    final holidayNightRate = holidayNight(baseRate, hourlyBase: hourlyBase);
+    return hourlyBase
+        ? '$holidayNightRate × ${_fmt(holidayNightOvertimeMultiplier)}'
+        : '$holidayNightRate ÷ ${_fmt(_hours)} × ${_fmt(holidayNightOvertimeMultiplier)}';
+  }
 
   static String _fmt(double value) => value == value.roundToDouble()
       ? value.toInt().toString()
