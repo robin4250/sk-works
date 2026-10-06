@@ -271,10 +271,9 @@ class _PartnerPaymentSettingsPageState
     _night.text = item.nightHourRateYen.toString();
   }
 
-  Future<void> _save() async {
-    final repository = _repository;
+  PartnerPaymentSetting? _draftSetting({bool showError = true}) {
     final current = _selectedSetting();
-    if (repository == null || current == null) return;
+    if (current == null) return null;
 
     int parse(TextEditingController controller) =>
         int.tryParse(controller.text.trim()) ?? -1;
@@ -285,36 +284,84 @@ class _PartnerPaymentSettingsPageState
     final night = parse(_night);
 
     if ([daily, overtime, early, night].any((value) => value < 0)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Enter amounts as numbers greater than or equal to 0.' : '金額は0以上の数字で入力してください')),
-      );
-      return;
+      if (showError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              SkoLanguageController.isEnglish
+                  ? 'Enter amounts as numbers greater than or equal to 0.'
+                  : '金額は0以上の数字で入力してください',
+            ),
+          ),
+        );
+      }
+      return null;
     }
+
+    return PartnerPaymentSetting(
+      partnerCompanyId: current.partnerCompanyId,
+      partnerCompanyName: current.partnerCompanyName,
+      dailyRateYen: daily,
+      overtimeHourRateYen: overtime,
+      earlyHourRateYen: early,
+      nightHourRateYen: night,
+    );
+  }
+
+  Future<void> _save() async {
+    final repository = _repository;
+    final draft = _draftSetting();
+    if (repository == null || draft == null) return;
 
     setState(() => _saving = true);
     try {
-      await repository.saveSetting(
-        PartnerPaymentSetting(
-          partnerCompanyId: current.partnerCompanyId,
-          partnerCompanyName: current.partnerCompanyName,
-          dailyRateYen: daily,
-          overtimeHourRateYen: overtime,
-          earlyHourRateYen: early,
-          nightHourRateYen: night,
-        ),
-      );
+      await repository.saveSetting(draft);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Payment certificate settings saved.' : '支払証明書設定を保存しました')),
+        SnackBar(
+          content: Text(
+            SkoLanguageController.isEnglish
+                ? 'Payment certificate settings saved.'
+                : '支払証明書設定を保存しました',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not save' : '保存できませんでした'}: $error')),
+        SnackBar(
+          content: Text(
+            '${SkoLanguageController.isEnglish ? 'Could not save' : '保存できませんでした'}: $error',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _preview() async {
+    final repository = _repository;
+    final draft = _draftSetting();
+    if (repository == null || draft == null) return;
+    try {
+      final record = await repository.previewForSetting(draft);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaymentCertificatePreviewPage(record: record),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${SkoLanguageController.isEnglish ? 'Could not preview' : 'プレビューできませんでした'}: $error',
+          ),
+        ),
+      );
     }
   }
 
@@ -366,10 +413,36 @@ class _PartnerPaymentSettingsPageState
                             SkoLanguageController.isEnglish ? 'Even without settings, a zero-value draft is generated. It recalculates automatically after settings are saved.' : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
                           ),
                           const SizedBox(height: 16),
-                          FilledButton.icon(
-                            onPressed: _saving ? null : _save,
-                            icon: const Icon(Icons.save_outlined),
-                            label: Text(_saving ? (SkoLanguageController.isEnglish ? 'Saving…' : '保存中…') : (SkoLanguageController.isEnglish ? 'Save Settings' : '設定を保存')),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _saving ? null : _preview,
+                                  icon: const Icon(Icons.preview_outlined),
+                                  label: Text(
+                                    SkoLanguageController.isEnglish
+                                        ? 'Preview'
+                                        : 'プレビュー',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _saving ? null : _save,
+                                  icon: const Icon(Icons.save_outlined),
+                                  label: Text(
+                                    _saving
+                                        ? (SkoLanguageController.isEnglish
+                                            ? 'Saving…'
+                                            : '保存中…')
+                                        : (SkoLanguageController.isEnglish
+                                            ? 'Save Settings'
+                                            : '設定を保存'),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
