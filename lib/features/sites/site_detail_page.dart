@@ -843,7 +843,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                 ],
                 _field(_name, _tr('現場名', 'Site Name')),
                 DropdownButtonFormField<String>(
-                  value: _customerId,
+                  initialValue: _customerId,
                   decoration: InputDecoration(
                     labelText: _tr('取引先', 'Business Partner'),
                     border: const OutlineInputBorder(),
@@ -859,7 +859,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<SiteStatus>(
-                  value: _status,
+                  initialValue: _status,
                   decoration: InputDecoration(
                     labelText: _tr('状態', 'Status'),
                     border: const OutlineInputBorder(),
@@ -877,7 +877,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                 const SizedBox(height: 12),
                 _field(_formalName, _tr('現場正式名称', 'Formal Site Name')),
                 DropdownButtonFormField<String>(
-                  value: _managerWorkerId ?? '',
+                  initialValue: _managerWorkerId ?? '',
                   decoration: InputDecoration(
                     labelText: _tr('担当者', 'Person in Charge'),
                     border: const OutlineInputBorder(),
