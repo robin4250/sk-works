@@ -28,12 +28,16 @@ void main() {
     expect(page, contains('名前と携帯電話番号だけを先に登録'));
     expect(repository, contains('registerEmployee'));
     expect(repository, contains("'register_employee_preregistration'"));
-    final migration = read(
+    final foundation = read(
       'supabase/migrations/20261005062000_secure_employee_preregistration_rpcs.sql',
     );
-    expect(migration, contains("w.affiliation = 'employee'"));
-    expect(migration, contains("'inactive'"));
-    expect(migration, contains('null'));
+    final latest = read(
+      'supabase/migrations/20261006193110_activate_preregistered_employees.sql',
+    );
+    expect(foundation, contains("w.affiliation = 'employee'"));
+    expect(latest, contains("'active'"));
+    expect(latest, contains("status='inactive'"));
+    expect(latest, contains('user_id is null'));
   });
 
   test('initial registration uses preregistered worker and delivery status', () {
@@ -58,6 +62,8 @@ void main() {
     expect(repository, contains("'deliverSms': deliverSms"));
     expect(edge, contains('existingWorker'));
     expect(edge, contains('persistedWorkerId'));
+    expect(edge, contains('status: "active"'));
+    expect(edge, isNot(contains('status: "inactive"')));
     expect(edge, contains('SKO_TESTFLIGHT_URL'));
     expect(edge, contains('SKO_EMPLOYEE_INVITE_SMS_WEBHOOK'));
   });

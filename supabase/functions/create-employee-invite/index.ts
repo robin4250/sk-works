@@ -295,7 +295,7 @@ Deno.serve(async (req: Request) => {
           headers: { Prefer: "return=minimal" },
           body: JSON.stringify({
             user_id: authUserId,
-            status: "inactive",
+            status: "active",
             updated_at: new Date().toISOString(),
           }),
         },
@@ -311,7 +311,7 @@ Deno.serve(async (req: Request) => {
           affiliation: "employee",
           name,
           phone,
-          status: "inactive",
+          status: "active",
           user_id: authUserId,
         }),
       });
