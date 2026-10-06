@@ -12,9 +12,9 @@ void main() {
     expect(source, contains("'Payment Certificate Settings'"));
     expect(source, contains("'Subcontractor Company'"));
     expect(source, contains("'Daily Rate'"));
-    expect(source, contains("'Overtime Hourly Rate'"));
-    expect(source, contains("'Early-start Hourly Rate'"));
-    expect(source, contains("'Night Hourly Rate'"));
+    expect(source, contains('Overtime Hourly Rate'));
+    expect(source, contains('Early-start Hourly Rate'));
+    expect(source, contains('Night Hourly Rate'));
     expect(source, contains("'Draft'"));
     expect(source, contains("'Finalized'"));
     expect(source, contains("'Print'"));
