@@ -15,4 +15,13 @@ void main() {
     expect(sql, contains('allowance_amount'));
     expect(sql, isNot(contains('update public.daily_reports\n        set site_id')));
   });
+
+  test('latest correction migration preserves work category and cancels overlapping leave', () {
+    final sql = File(
+      'supabase/migrations/20261006103927_fix_attendance_correction_paid_leave_work_category.sql',
+    ).readAsStringSync();
+    expect(sql, contains("work_category=coalesce(nullif(v_item.proposed_snapshot->>'workCategory',''),work_category,'day')"));
+    expect(sql, contains("status='cancelled'"));
+    expect(sql, contains('勤務修正承認により有給を取消'));
+  });
 }
