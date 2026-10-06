@@ -24,6 +24,8 @@ void main() {
 
     expect(page, contains("import '../../widgets/sko_scroll_chrome.dart';"));
     expect(page, contains('SkoScrollChromeController.visible.value = true;'));
+    expect(page, contains('_weekIndexContaining(_month, initial)'));
+    expect(page, contains('if (!mounted) return;\n    SkoScrollChromeController.visible.value = true;'));
   });
 
   test('paid leave and correction actions are obvious buttons', () {
