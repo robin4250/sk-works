@@ -41,9 +41,9 @@ void main() {
     final widget = read('lib/widgets/rate_formula_editor_card.dart');
 
     expect(page, contains('RateFormulaEditorCard'));
-    expect(page, contains("values['rate_formula']"));
-    expect(page, contains("values['rate_overrides']"));
-    expect(page, contains("values['hourly_rate_yen']"));
+    expect(page, contains("..['rate_formula']"));
+    expect(page, contains("..['rate_overrides']"));
+    expect(page, contains("..['hourly_rate_yen']"));
     expect(widget, contains("label: Text('日給')"));
     expect(widget, contains("label: Text('時給')"));
     expect(widget, contains('計算式を変更'));
