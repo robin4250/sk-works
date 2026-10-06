@@ -5,17 +5,19 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('individual payroll settings support unlimited named deductions', () {
+  test('individual payroll settings support unlimited named earnings and deductions', () {
     final page =
         read('lib/features/payroll/individual_payroll_settings_page.dart');
     final migration = read(
       'supabase/migrations/20261006142713_payroll_custom_deductions.sql',
     );
 
+    expect(page, contains("label: const Text('支給項目を追加')"));
     expect(page, contains("label: const Text('控除項目を追加')"));
+    expect(page, contains("values['custom_earnings'] = customEarnings"));
     expect(page, contains("values['custom_deductions'] = customDeductions"));
-    expect(page, contains(r'追加控除${index + 1} 名称'));
-    expect(page, contains(r'追加控除${index + 1} 金額'));
+    expect(page, contains("sectionName: '支給'"));
+    expect(page, contains("sectionName: '控除'"));
     expect(migration, contains('custom_deductions jsonb'));
     expect(migration, contains('payroll_custom_deductions_guard'));
   });
@@ -27,10 +29,10 @@ void main() {
       '20260929203000_sync_payroll_adjustments_into_statements.sql',
     );
 
-    expect(pdf, contains('_configuredDeductionEntries'));
-    expect(pdf, contains("detail['custom_deductions']"));
-    expect(pdf, contains('overflowDeductionGroups'));
-    expect(pdf, contains('customDeductions.entries'));
+    expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_earnings')"));
+    expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_deductions')"));
+    expect(pdf, contains('_balancedMoneySection'));
+    expect(pdf, contains('adjustmentDeductions.entries'));
     expect(
       adjustmentMigration,
       contains("when direction = 'deduction' then amount_yen"),
