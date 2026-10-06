@@ -72,6 +72,7 @@ class PartnerPaymentSetting {
     this.holidayNightDayRateYen = 0,
     this.holidayNightOvertimeHourRateYen = 0,
     this.formulas = const RateFormulaSettings(),
+    this.hourlyBaseRateYen = 0,
     this.allowances = const [],
     this.welfareRate = 0,
     this.taxRate = 10,
@@ -90,33 +91,38 @@ class PartnerPaymentSetting {
   final int holidayNightDayRateYen;
   final int holidayNightOvertimeHourRateYen;
   final RateFormulaSettings formulas;
+  final int hourlyBaseRateYen;
   final List<PaymentAllowanceSetting> allowances;
   final double welfareRate;
   final double taxRate;
 
+  int get formulaBaseRateYen => formulas.hourlyBase && hourlyBaseRateYen > 0
+      ? hourlyBaseRateYen
+      : dailyRateYen;
+
   int get overtimeRate =>
-      effectiveRate(overtimeHourRateYen, formulas.overtime(dailyRateYen));
+      effectiveRate(overtimeHourRateYen, formulas.overtime(formulaBaseRateYen));
   int get earlyRate =>
-      effectiveRate(earlyHourRateYen, formulas.early(dailyRateYen));
+      effectiveRate(earlyHourRateYen, formulas.early(formulaBaseRateYen));
   int get nightDayRate =>
-      effectiveRate(nightDayRateYen, formulas.night(dailyRateYen));
+      effectiveRate(nightDayRateYen, formulas.night(formulaBaseRateYen));
   int get nightOvertimeRate => effectiveRate(
         nightOvertimeHourRateYen,
-        formulas.nightOvertime(dailyRateYen),
+        formulas.nightOvertime(formulaBaseRateYen),
       );
   int get holidayDayRate =>
-      effectiveRate(holidayDayRateYen, formulas.holiday(dailyRateYen));
+      effectiveRate(holidayDayRateYen, formulas.holiday(formulaBaseRateYen));
   int get holidayOvertimeRate => effectiveRate(
         holidayOvertimeHourRateYen,
-        formulas.holidayOvertime(dailyRateYen),
+        formulas.holidayOvertime(formulaBaseRateYen),
       );
   int get holidayNightDayRate => effectiveRate(
         holidayNightDayRateYen,
-        formulas.holidayNight(dailyRateYen),
+        formulas.holidayNight(formulaBaseRateYen),
       );
   int get holidayNightOvertimeRate => effectiveRate(
         holidayNightOvertimeHourRateYen,
-        formulas.holidayNightOvertime(dailyRateYen),
+        formulas.holidayNightOvertime(formulaBaseRateYen),
       );
 }
 
@@ -258,6 +264,9 @@ class PaymentCertificateRepository {
             holidayNightOvertimeHourRateYen:
                 (value['holiday_night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
             formulas: RateFormulaSettings.fromMap(value['rate_formula']),
+            hourlyBaseRateYen: value['rate_formula'] is Map
+                ? ((value['rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+                : 0,
             allowances: _allowances(value['allowances']),
             welfareRate: (value['welfare_rate'] as num?)?.toDouble() ?? 0,
             taxRate: (value['tax_rate'] as num?)?.toDouble() ?? 10,
@@ -281,7 +290,9 @@ class PaymentCertificateRepository {
         'p_holiday_night_day_rate_yen': value.holidayNightDayRateYen,
         'p_holiday_night_overtime_hour_rate_yen':
             value.holidayNightOvertimeHourRateYen,
-        'p_rate_formula': value.formulas.toMap(),
+        'p_rate_formula': value.formulas.toMap(
+          hourlyRateYen: value.hourlyBaseRateYen,
+        ),
         'p_allowances': [
           for (final item in value.allowances)
             {'name': item.name, 'amount_yen': item.amountYen},
