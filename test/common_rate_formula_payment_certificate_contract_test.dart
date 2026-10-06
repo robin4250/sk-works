@@ -18,6 +18,19 @@ void main() {
     expect(formula.holidayNightOvertime(16000), 4000);
   });
 
+  test('hourly base uses the same multipliers without dividing by daily hours', () {
+    const formula = RateFormulaSettings();
+    expect(formula.overtime(2000, hourlyBase: true), 2500);
+    expect(formula.early(2000, hourlyBase: true), 2500);
+    expect(formula.night(2000, hourlyBase: true), 3000);
+    expect(formula.holiday(2000, hourlyBase: true), 2700);
+    expect(formula.holidayNight(2000, hourlyBase: true), 3200);
+    expect(
+      formula.overtimeFormula(2000, hourlyBase: true),
+      '2000 × 1.25',
+    );
+  });
+
   test('payment certificate settings show formulas, direct override and extras', () {
     final page = read('lib/features/payroll/payment_certificates_page.dart');
     final repo = read('lib/features/payroll/payment_certificate_repository.dart');
