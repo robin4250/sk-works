@@ -370,7 +370,7 @@ class PayrollPdfService {
     const topLabels = <String>[
       '出勤日数',
       '休出日数',
-      '',
+      '有給日数',
       '',
       '',
       '',
@@ -382,8 +382,8 @@ class PayrollPdfService {
     const secondLabels = <String>[
       '残業時間',
       '法定休出時間',
-      '',
-      '',
+      '早出時間',
+      '夜間時間',
       '',
       '',
       '',
@@ -395,7 +395,7 @@ class PayrollPdfService {
     final topValues = <String>[
       _first(detail, const ['出勤日数']),
       _first(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
-      '',
+      _first(detail, const ['有給日数']),
       '',
       '',
       '',
@@ -408,8 +408,8 @@ class PayrollPdfService {
     final secondValues = <String>[
       _first(detail, const ['残業時間']),
       _first(detail, const ['法定休出時間', '法定休日出勤時間', '法定外出時間']),
-      '',
-      '',
+      _first(detail, const ['早出時間']),
+      _first(detail, const ['夜間時間']),
       '',
       '',
       '',
