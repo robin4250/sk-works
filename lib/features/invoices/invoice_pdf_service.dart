@@ -923,7 +923,6 @@ class InvoicePdfPreviewPage extends StatefulWidget {
 class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   late Future<InvoiceSettingsData?> _settings = _loadSettings();
   final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
-  final TransformationController _zoomController = TransformationController();
   int _previewRevision = 0;
 
   InvoiceCalculationResult? get _singleInvoice =>
@@ -970,23 +969,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   }
 
   @override
-  void dispose() {
-    _zoomController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
-        actions: [
-          IconButton(
-            tooltip: '拡大縮小をリセット',
-            onPressed: () => _zoomController.value = Matrix4.identity(),
-            icon: const Icon(Icons.fit_screen_outlined),
-          ),
-        ],
       ),
       body: FutureBuilder<InvoiceSettingsData?>(
         future: _settings,
@@ -1033,35 +1019,26 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      '2本指で拡大・縮小／拡大後はドラッグで移動',
+                      'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                   Expanded(
-                    child: InteractiveViewer(
-                      transformationController: _zoomController,
-                      minScale: 1,
-                      maxScale: 5,
-                      panEnabled: true,
-                      scaleEnabled: true,
-                      boundaryMargin: const EdgeInsets.all(120),
-                      clipBehavior: Clip.none,
-                      child: PdfPreview(
-                        key: ValueKey(_previewRevision),
-                        initialPageFormat: PdfPageFormat.a4,
-                        canChangePageFormat: false,
-                        canChangeOrientation: false,
-                        allowPrinting: true,
-                        allowSharing: true,
-                        pdfFileName: InvoicePdfService.fileNameFor(
-                          widget.invoices,
-                          title: widget.title,
-                        ),
-                        build: (_) => InvoicePdfService.buildPdf(
-                          widget.invoices,
-                          title: widget.title,
-                          settings: snapshot.data,
-                        ),
+                    child: PdfPreview(
+                      key: ValueKey(_previewRevision),
+                      initialPageFormat: PdfPageFormat.a4,
+                      canChangePageFormat: false,
+                      canChangeOrientation: false,
+                      allowPrinting: true,
+                      allowSharing: true,
+                      pdfFileName: InvoicePdfService.fileNameFor(
+                        widget.invoices,
+                        title: widget.title,
+                      ),
+                      build: (_) => InvoicePdfService.buildPdf(
+                        widget.invoices,
+                        title: widget.title,
+                        settings: snapshot.data,
                       ),
                     ),
                   ),

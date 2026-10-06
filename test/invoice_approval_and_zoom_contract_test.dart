@@ -79,20 +79,22 @@ void main() {
     expect(pdf, contains('pw.Positioned('));
   });
 
-  test('invoice and payroll previews support pinch zoom pan and reset', () {
+  test('invoice preview uses PdfPreview sizing while payroll keeps outer zoom', () {
     final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    for (final source in [invoice, payroll]) {
-      expect(source, contains('InteractiveViewer('));
-      expect(source, contains('TransformationController'));
-      expect(source, contains('minScale: 1'));
-      expect(source, contains('maxScale: 5'));
-      expect(source, contains('panEnabled: true'));
-      expect(source, contains('scaleEnabled: true'));
-      expect(source, contains('Matrix4.identity()'));
-    }
+    expect(invoice, contains('child: PdfPreview('));
+    expect(invoice, isNot(contains('transformationController: _zoomController')));
+    expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
+
+    expect(payroll, contains('InteractiveViewer('));
+    expect(payroll, contains('TransformationController'));
+    expect(payroll, contains('minScale: 1'));
+    expect(payroll, contains('maxScale: 5'));
+    expect(payroll, contains('panEnabled: true'));
+    expect(payroll, contains('scaleEnabled: true'));
+    expect(payroll, contains('Matrix4.identity()'));
   });
 
   test('preview print and share keep the same PDF builders', () {
