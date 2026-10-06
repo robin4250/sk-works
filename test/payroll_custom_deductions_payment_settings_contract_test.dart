@@ -14,8 +14,8 @@ void main() {
 
     expect(page, contains("label: const Text('控除項目を追加')"));
     expect(page, contains("values['custom_deductions'] = customDeductions"));
-    expect(page, contains('追加控除${index + 1} 名称'));
-    expect(page, contains('追加控除${index + 1} 金額'));
+    expect(page, contains(r'追加控除${index + 1} 名称'));
+    expect(page, contains(r'追加控除${index + 1} 金額'));
     expect(migration, contains('custom_deductions jsonb'));
     expect(migration, contains('payroll_custom_deductions_guard'));
   });
