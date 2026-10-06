@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../companies/trade_company_repository.dart';
 import 'company_document_exchange_repository.dart';
 
 class CompanyDeliveryInboxPage extends StatefulWidget {
@@ -20,12 +21,14 @@ class CompanyDeliveryInboxPage extends StatefulWidget {
 
 class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   final _repository = CompanyDocumentExchangeRepository.maybeCreate();
+  final _tradeCompanyRepository = TradeCompanyRepository.maybeCreate();
   final _noteController = TextEditingController();
 
   final List<_ReceivedTransferItem> _items = [];
   final Set<String> _selectedKeys = {};
   Map<String, DateTime> _savedState = const {};
   List<Map<String, dynamic>> _incomingConnections = const [];
+  List<TradeCompanyRecord> _registeredPartners = const [];
   bool _loading = true;
   bool _forwarding = false;
   List<Map<String, dynamic>> _transferTargets = const [];
@@ -60,11 +63,13 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
         repository.listTransferTargets(),
         repository.loadConnectionInbox(),
         repository.loadSavedDeliveryState(),
+        _loadRegisteredPartners(),
       ]);
       final deliveries = valuesTop[0] as List<Map<String, dynamic>>;
       final transferTargets = valuesTop[1] as List<Map<String, dynamic>>;
       final connectionInbox = valuesTop[2] as Map<String, dynamic>;
       final savedState = valuesTop[3] as Map<String, DateTime>;
+      final registeredPartners = valuesTop[4] as List<TradeCompanyRecord>;
       final incomingRaw = connectionInbox['incoming'];
       final incomingConnections = incomingRaw is List
           ? incomingRaw
@@ -121,6 +126,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
         _transferTargets = transferTargets;
         _savedState = savedState;
         _incomingConnections = incomingConnections;
+        _registeredPartners = registeredPartners;
         if (_targetCompanyId != null &&
             !transferTargets.any(
               (row) => row['company_id']?.toString() == _targetCompanyId,
@@ -142,6 +148,20 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     }
   }
 
+
+  Future<List<TradeCompanyRecord>> _loadRegisteredPartners() async {
+    final repository = _tradeCompanyRepository;
+    if (repository == null) return const [];
+    try {
+      final rows = await repository.loadAll();
+      return rows
+          .where((row) => row.isSubcontractor)
+          .toList(growable: false);
+    } catch (_) {
+      // Registered partner listing is supplemental to received company data.
+      return const [];
+    }
+  }
 
   Future<void> _openPrintPreview(
     String title,
@@ -381,6 +401,39 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                     icon: const Icon(Icons.check_circle_outline),
                                   ),
                                 ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
+                      if (_registeredPartners.isNotEmpty) ...[
+                        const Text(
+                          '登録済み協力会社',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final partner in _registeredPartners)
+                          Card(
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.handshake_outlined),
+                              ),
+                              title: Text(
+                                partner.name.isEmpty ? '協力会社' : partner.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              subtitle: Text(
+                                [
+                                  if (partner.address.trim().isNotEmpty)
+                                    partner.address.trim(),
+                                  if (partner.phone.trim().isNotEmpty)
+                                    partner.phone.trim(),
+                                ].join(' / '),
                               ),
                             ),
                           ),
