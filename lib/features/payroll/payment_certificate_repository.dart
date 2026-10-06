@@ -171,59 +171,38 @@ class PaymentCertificateRepository {
   }
 
   Future<List<PartnerPaymentSetting>> loadSettings() async {
-    final companyId = await _companyId();
-    final partners = await _client
-        .from('partner_companies')
-        .select('id,name')
-        .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('name');
-
-    final settings = await _client
-        .from('partner_payment_settings')
-        .select()
-        .eq('company_id', companyId);
-
-    final byPartner = <String, Map<String, dynamic>>{
-      for (final raw in settings)
-        raw['partner_company_id'].toString(): Map<String, dynamic>.from(raw),
-    };
-
+    final raw = await _client.rpc('partner_payment_settings_workspace');
+    if (raw is! List) return const [];
     return [
-      for (final partner in partners)
-        PartnerPaymentSetting(
-          partnerCompanyId: partner['id'].toString(),
-          partnerCompanyName: partner['name']?.toString() ?? '',
-          dailyRateYen:
-              (byPartner[partner['id'].toString()]?['daily_rate_yen'] as num?)
-                      ?.toInt() ??
-                  0,
-          overtimeHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['overtime_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          earlyHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['early_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          nightHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['night_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-        ),
-    ];
+      for (final item in raw)
+        if (item is Map)
+          PartnerPaymentSetting(
+            partnerCompanyId:
+                item['partner_company_id']?.toString() ?? '',
+            partnerCompanyName:
+                item['partner_company_name']?.toString() ?? '',
+            dailyRateYen:
+                (item['daily_rate_yen'] as num?)?.toInt() ?? 0,
+            overtimeHourRateYen:
+                (item['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            earlyHourRateYen:
+                (item['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            nightHourRateYen:
+                (item['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
+          ),
+    ].where((item) => item.partnerCompanyId.isNotEmpty).toList();
   }
 
   Future<void> saveSetting(PartnerPaymentSetting value) async {
-    final companyId = await _companyId();
-    await _client.from('partner_payment_settings').upsert({
-      'company_id': companyId,
-      'partner_company_id': value.partnerCompanyId,
-      'daily_rate_yen': value.dailyRateYen,
-      'overtime_hour_rate_yen': value.overtimeHourRateYen,
-      'early_hour_rate_yen': value.earlyHourRateYen,
-      'night_hour_rate_yen': value.nightHourRateYen,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    await _client.rpc(
+      'save_partner_payment_setting',
+      params: {
+        'p_partner_company_id': value.partnerCompanyId,
+        'p_daily_rate_yen': value.dailyRateYen,
+        'p_overtime_hour_rate_yen': value.overtimeHourRateYen,
+        'p_early_hour_rate_yen': value.earlyHourRateYen,
+        'p_night_hour_rate_yen': value.nightHourRateYen,
+      },
+    );
   }
 }
