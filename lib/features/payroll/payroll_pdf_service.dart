@@ -23,22 +23,14 @@ class PayrollPdfService {
     final earnings = _pick(detail, const [
       '基本給',
       '残業手当',
-      '勤続手当',
-      '役職手当',
-      '家族手当',
-      '働き方手当',
-      '交通費',
+              '交通費',
       '出勤に基づく支給額',
     ]);
     final deductions = _pick(detail, const [
       '健康保険料',
-      '介護保険料',
-      '厚生年金保険',
-      '雇用保険料',
-      '所得税',
+            '所得税',
       '住民税',
-      'SKB会費',
-      '道具代',
+        '道具代',
       '社会保険',
       'その他控除',
     ]);
@@ -87,89 +79,37 @@ class PayrollPdfService {
   }) {
     final headerFill = PdfColor.fromHex('#DCE8F6');
     final grid = PdfColor.fromHex('#6D89A8');
-    final customEarnings = _customMoneyEntries(detail, direction: 1);
-    final customDeductions = _customMoneyEntries(detail, direction: -1);
-    final configuredDeductions = _configuredDeductionEntries(detail);
+    final configuredEarnings =
+        _configuredMoneyEntries(detail, key: 'custom_earnings');
+    final configuredDeductions =
+        _configuredMoneyEntries(detail, key: 'custom_deductions');
+    final adjustmentEarnings = _customMoneyEntries(detail, direction: 1);
+    final adjustmentDeductions = _customMoneyEntries(detail, direction: -1);
 
-    const fixedEarningLabels = <String>[
-      '基本給',
-      '残業手当',
-      '勤続手当',
-      '役職手当',
-      '家族手当',
-      '働き方手当',
-    ];
-    final extraEarnings = <MapEntry<String, Object?>>[
-      ...earnings.entries.where((entry) =>
-          !fixedEarningLabels.contains(entry.key) &&
-          entry.key != '出勤に基づく支給額' &&
-          _hasAmount(entry.value)),
-      ...customEarnings.entries,
-    ].take(4).toList();
-    final earningLabels = <String>[
-      ...fixedEarningLabels,
-      ...extraEarnings.map((entry) => entry.key),
-      ...List<String>.filled(4 - extraEarnings.length, ''),
-    ];
-
-    const fixedDeductionLabels = <String>[
-      '健康保険料',
-      '介護保険料',
-      '厚生年金保険',
-      '雇用保険料',
-      '所得税',
-      '住民税',
-      'SKB会費',
-      '道具代',
-    ];
-    final allExtraDeductions = <MapEntry<String, Object?>>[
-      ...deductions.entries.where((entry) =>
-          !fixedDeductionLabels.contains(entry.key) &&
-          entry.key != '社会保険' &&
-          _hasAmount(entry.value)),
-      ...configuredDeductions.entries,
-      ...customDeductions.entries,
-    ];
-    final primaryExtraDeductions = allExtraDeductions.take(2).toList();
-    final overflowDeductions = allExtraDeductions.skip(2).toList();
-    final deductionLabels = <String>[
-      ...fixedDeductionLabels,
-      ...primaryExtraDeductions.map((entry) => entry.key),
-      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
-    ];
-    final overflowDeductionGroups = <List<MapEntry<String, Object?>>>[];
-    for (var index = 0; index < overflowDeductions.length; index += 10) {
-      final end = index + 10 < overflowDeductions.length
-          ? index + 10
-          : overflowDeductions.length;
-      overflowDeductionGroups.add(overflowDeductions.sublist(index, end));
-    }
-
-    final supportValues = <String>[
-      _amount(earnings, '基本給', fallbackKey: '出勤に基づく支給額'),
-      _amount(earnings, '残業手当'),
-      _amount(earnings, '勤続手当'),
-      _amount(earnings, '役職手当'),
-      _amount(earnings, '家族手当'),
-      _amount(earnings, '働き方手当'),
-      ...extraEarnings.map((entry) => _formatAmount(entry.value)),
-      ...List<String>.filled(4 - extraEarnings.length, ''),
-    ];
-
-    final deductionValues = <String>[
-      _amount(deductions, '健康保険料', fallbackKey: '社会保険', absolute: true),
-      _amount(deductions, '介護保険料', absolute: true),
-      _amount(deductions, '厚生年金保険', absolute: true),
-      _amount(deductions, '雇用保険料', absolute: true),
-      _amount(deductions, '所得税', absolute: true),
-      _amount(deductions, '住民税', absolute: true),
-      _amount(deductions, 'SKB会費', absolute: true),
-      _amount(deductions, '道具代', absolute: true),
-      ...primaryExtraDeductions.map(
-        (entry) => _formatAmount(entry.value, absolute: true),
+    final earningEntries = _mergeMoneyEntries([
+      MapEntry<String, Object?>(
+        '基本給',
+        earnings['基本給'] ?? earnings['出勤に基づく支給額'],
       ),
-      ...List<String>.filled(2 - primaryExtraDeductions.length, ''),
-    ];
+      MapEntry<String, Object?>('残業手当', earnings['残業手当']),
+      MapEntry<String, Object?>('交通費', earnings['交通費']),
+      ...configuredEarnings.entries,
+      ...adjustmentEarnings.entries,
+    ]);
+
+    final deductionEntries = _mergeMoneyEntries([
+      MapEntry<String, Object?>(
+        '健康保険料',
+        deductions['健康保険料'] ?? deductions['社会保険'],
+      ),
+      MapEntry<String, Object?>('所得税', deductions['所得税']),
+      MapEntry<String, Object?>('住民税', deductions['住民税']),
+      MapEntry<String, Object?>('その他控除', deductions['その他控除']),
+      ...configuredDeductions.entries,
+      ...adjustmentDeductions.entries.map(
+        (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
+      ),
+    ]);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -203,7 +143,7 @@ class PayrollPdfService {
                     ),
                     pw.SizedBox(height: 3),
                     pw.Text(
-                      '支払日　${statement.issuedAt == null ? '' : _date(statement.issuedAt!)}',
+                      '支払日　${_paymentDate(statement, detail)}',
                       style: const pw.TextStyle(fontSize: 8),
                     ),
                     pw.SizedBox(height: 8),
@@ -267,88 +207,66 @@ class PayrollPdfService {
           grid: grid,
         ),
         pw.SizedBox(height: 10),
-        _singleHeaderSection(
+        _balancedMoneySection(
           title: '支給',
-          labels: earningLabels,
-          values: supportValues,
+          entries: earningEntries,
           headerFill: headerFill,
           grid: grid,
-          blankRows: 3,
         ),
-        pw.SizedBox(height: 10),
-        _singleHeaderSection(
+        pw.SizedBox(height: 8),
+        _balancedMoneySection(
           title: '控除',
-          labels: deductionLabels,
-          values: deductionValues,
+          entries: deductionEntries,
           headerFill: headerFill,
           grid: grid,
-          blankRows: 3,
         ),
-        for (final group in overflowDeductionGroups) ...[
-          pw.SizedBox(height: 4),
-          _singleHeaderSection(
-            title: '控除',
-            labels: [
-              ...group.map((entry) => entry.key),
-              ...List<String>.filled(10 - group.length, ''),
-            ],
-            values: [
-              ...group.map(
-                (entry) => _formatAmount(entry.value, absolute: true),
-              ),
-              ...List<String>.filled(10 - group.length, ''),
-            ],
-            headerFill: headerFill,
-            grid: grid,
-            blankRows: 0,
-          ),
-        ],
-        pw.SizedBox(height: 9),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.SizedBox(
-            width: 615,
-            child: pw.Table(
-              border: pw.TableBorder.all(color: grid, width: .55),
-              children: [
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: headerFill),
-                  children: [
-                    for (var i = 0; i < 5; i++)
+        pw.SizedBox(height: 8),
+        pw.Row(
+          children: [
+            pw.SizedBox(width: 28),
+            pw.Expanded(
+              child: pw.Table(
+                border: pw.TableBorder.all(color: grid, width: .55),
+                children: [
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: headerFill),
+                    children: [
                       _cell('', height: 18),
-                    _cell('総支給額', center: true, bold: true, height: 18),
-                    _cell('総控除額', center: true, bold: true, height: 18),
-                    _cell('差引支給額', center: true, bold: true, height: 18),
-                  ],
-                ),
-                pw.TableRow(
-                  children: [
-                    for (var i = 0; i < 5; i++)
+                      _cell('', height: 18),
+                      _cell('総支給額', center: true, bold: true, height: 18),
+                      _cell('総控除額', center: true, bold: true, height: 18),
+                      _cell('差引支給額', center: true, bold: true, height: 18),
+                    ],
+                  ),
+                  pw.TableRow(
+                    children: [
                       _cell('', height: 23),
-                    _cell(
-                      _number(statement.grossPay),
-                      right: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                    _cell(
-                      _number(statement.deductions),
-                      right: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                    _cell(
-                      _number(statement.netPay),
-                      right: true,
-                      bold: true,
-                      height: 23,
-                      fontSize: 8,
-                    ),
-                  ],
-                ),
-              ],
+                      _cell('', height: 23),
+                      _cell(
+                        _number(statement.grossPay),
+                        right: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                      _cell(
+                        _number(statement.deductions),
+                        right: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                      _cell(
+                        _number(statement.netPay),
+                        right: true,
+                        bold: true,
+                        height: 23,
+                        fontSize: 8,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
         pw.SizedBox(height: 10),
         pw.Table(
@@ -481,27 +399,61 @@ class PayrollPdfService {
     );
   }
 
-  static pw.Widget _singleHeaderSection({
+  static pw.Widget _balancedMoneySection({
     required String title,
-    required List<String> labels,
-    required List<String> values,
+    required Map<String, Object?> entries,
     required PdfColor headerFill,
     required PdfColor grid,
-    required int blankRows,
   }) {
+    const columns = 5;
+    final visible = entries.entries
+        .where((entry) => (_asNumber(entry.value) ?? 0).abs() >= 1)
+        .toList();
+    final groups = <List<MapEntry<String, Object?>>>[];
+    if (visible.isEmpty) {
+      groups.add(const []);
+    } else {
+      for (var index = 0; index < visible.length; index += columns) {
+        final end = index + columns < visible.length
+            ? index + columns
+            : visible.length;
+        groups.add(visible.sublist(index, end));
+      }
+    }
+
+    final rows = <pw.TableRow>[];
+    for (final group in groups) {
+      rows
+        ..add(
+          _row(
+            [
+              ...group.map((entry) => entry.key),
+              ...List<String>.filled(columns - group.length, ''),
+            ],
+            headerFill: headerFill,
+            bold: true,
+            height: 18,
+          ),
+        )
+        ..add(
+          _row(
+            [
+              ...group.map(
+                (entry) => _formatAmount(entry.value, absolute: true),
+              ),
+              ...List<String>.filled(columns - group.length, ''),
+            ],
+            right: true,
+            height: 22,
+          ),
+        );
+    }
+
     return _sectionShell(
       title: title,
       headerFill: headerFill,
       grid: grid,
-      rows: [
-        _row(labels, headerFill: headerFill, bold: true, height: 18),
-        _row(values, right: true, height: 22),
-        for (var i = 0; i < blankRows; i++)
-          _row(
-            List<String>.filled(labels.length, ''),
-            height: 20,
-          ),
-      ],
+      rows: rows,
     );
   }
 
@@ -576,17 +528,6 @@ class PayrollPdfService {
     return result;
   }
 
-  static String _amount(
-    Map<String, Object?> source,
-    String key, {
-    String? fallbackKey,
-    bool absolute = false,
-  }) {
-    final value =
-        source[key] ?? (fallbackKey == null ? null : source[fallbackKey]);
-    return _formatAmount(value, absolute: absolute);
-  }
-
   static const _nonMoneyDetailKeys = <String>{
     '出勤日数',
     '休出日数',
@@ -608,43 +549,51 @@ class PayrollPdfService {
     '社員番号',
     '社員No',
     '社員No.',
+    'custom_earnings',
+    'custom_earnings_total',
     'custom_deductions',
+    '支払日',
   };
 
   static const _fixedMoneyKeys = <String>{
     '基本給',
     '残業手当',
-    '勤続手当',
-    '役職手当',
-    '家族手当',
-    '働き方手当',
     '交通費',
     '出勤に基づく支給額',
     '健康保険料',
-    '介護保険料',
-    '厚生年金保険',
-    '雇用保険料',
     '所得税',
     '住民税',
-    'SKB会費',
     '道具代',
     '社会保険',
     'その他控除',
   };
 
-  static Map<String, Object?> _configuredDeductionEntries(
-    Map<String, dynamic> detail,
-  ) {
-    final raw = detail['custom_deductions'];
+  static Map<String, Object?> _configuredMoneyEntries(
+    Map<String, dynamic> detail, {
+    required String key,
+  }) {
+    final raw = detail[key];
     if (raw is! List) return const {};
     final result = <String, Object?>{};
     for (final value in raw) {
       if (value is! Map) continue;
       final name = value['name']?.toString().trim() ?? '';
       final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
-      if (name.isEmpty || amount <= 0) continue;
-      final current = (result[name] as num?)?.toInt() ?? 0;
-      result[name] = current + amount;
+      if (name.isEmpty || amount < 1) continue;
+      result[name] = (result[name] as num? ?? 0) + amount;
+    }
+    return result;
+  }
+
+  static Map<String, Object?> _mergeMoneyEntries(
+    Iterable<MapEntry<String, Object?>> entries,
+  ) {
+    final result = <String, Object?>{};
+    for (final entry in entries) {
+      final label = entry.key.trim();
+      final amount = _asNumber(entry.value);
+      if (label.isEmpty || amount == null || amount.abs() < 1) continue;
+      result[label] = (result[label] as num? ?? 0) + amount.abs();
     }
     return result;
   }
@@ -674,12 +623,6 @@ class PayrollPdfService {
     if (value == null) return null;
     final text = value.toString().replaceAll(',', '').trim();
     return num.tryParse(text);
-  }
-
-  static bool _hasAmount(Object? value) {
-    final number = _asNumber(value);
-    if (number != null) return number != 0;
-    return value?.toString().trim().isNotEmpty ?? false;
   }
 
   static String _formatAmount(Object? value, {bool absolute = false}) {
@@ -793,6 +736,28 @@ class PayrollPdfService {
         ),
       ),
     );
+  }
+
+  static String _paymentDate(
+    PayrollStatementRecord statement,
+    Map<String, dynamic> detail,
+  ) {
+    final day = (_asNumber(detail['支払日']) ?? 0).toInt();
+    if (day >= 1 && day <= 31) {
+      final nextMonth = DateTime(
+        statement.periodEnd.year,
+        statement.periodEnd.month + 1,
+        1,
+      );
+      final lastDay = DateTime(
+        nextMonth.year,
+        nextMonth.month + 1,
+        0,
+      ).day;
+      final actualDay = day > lastDay ? lastDay : day;
+      return _date(DateTime(nextMonth.year, nextMonth.month, actualDay));
+    }
+    return statement.issuedAt == null ? '' : _date(statement.issuedAt!);
   }
 
   static String _date(DateTime value) =>
