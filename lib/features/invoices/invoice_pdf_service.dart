@@ -617,6 +617,7 @@ class InvoicePdfService {
   ) {
     final visible = approvals.take(2).toList();
     return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         for (var i = 0; i < 2; i++) ...[
           if (i > 0) pw.SizedBox(width: 2),
