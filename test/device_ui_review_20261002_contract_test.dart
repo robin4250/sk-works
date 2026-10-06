@@ -94,8 +94,11 @@ void main() {
     expect(page, contains("'取引会社'"));
     expect(page, contains("'下請け会社'"));
     expect(page, contains("'最新の打刻位置'"));
-    expect(repository, contains("customers: rows('customers')"));
-    expect(repository, contains("partners: rows('partners')"));
+    expect(repository, contains("final legacyCustomers = rows('customers')"));
+    expect(repository, contains("final legacyPartners = rows('partners')"));
+    expect(repository, contains("rpc('trade_company_workspace')"));
+    expect(repository, contains("customers: customers"));
+    expect(repository, contains("partners: partners"));
     expect(migration, contains("'customers',v_customers"));
     expect(migration, contains("'partners',v_partners"));
   });
