@@ -273,10 +273,9 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
         keyboardType: TextInputType.number,
         onChanged: (_) => _emit(),
         decoration: InputDecoration(
-          labelText: label + ' 直接入力',
+          labelText: '$label 直接入力',
           suffixText: '円',
-          helperText: '自動 ¥' + auto.toString() + '　式: ' + formula +
-              '（0なら自動 / 1円以上なら直接入力優先）',
+          helperText: '自動 ¥$auto　式: $formula（0なら自動 / 1円以上なら直接入力優先）',
           helperMaxLines: 2,
           border: const OutlineInputBorder(),
         ),
