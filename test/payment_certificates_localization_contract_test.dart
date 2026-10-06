@@ -11,10 +11,11 @@ void main() {
     expect(source, contains("SkoLanguageController.isEnglish ? 'Payment Certificates'"));
     expect(source, contains("'Payment Certificate Settings'"));
     expect(source, contains("'Subcontractor Company'"));
-    expect(source, contains("'Daily Rate'"));
-    expect(source, contains("'Overtime Hourly Rate'"));
-    expect(source, contains("'Early-start Hourly Rate'"));
-    expect(source, contains("'Night Hourly Rate'"));
+    expect(source, contains("'日給'"));
+    expect(source, contains("'時給'"));
+    expect(source, contains("'残業 1時間単価'"));
+    expect(source, contains("'早出 1時間単価'"));
+    expect(source, contains("'夜勤 1日単価'"));
     expect(source, contains("'Draft'"));
     expect(source, contains("'Finalized'"));
     expect(source, contains("'Print'"));

@@ -21,7 +21,10 @@ void main() {
     expect(page, contains("'請負金額'"));
     expect(page, contains("'平米単価と平米数は両方入力してください'"));
     expect(page, contains("'請求方式は1日単価・月単価・平米・請負のどれか1つにしてください'"));
-    expect(page, contains("'夜間 1時間'"));
+    expect(page, contains("'夜勤'"));
+    expect(page, contains("'夜勤残業'"));
+    expect(page, contains("'休日出勤'"));
+    expect(page, contains("'休日夜勤'"));
     expect(page, contains("'請求書用 手当'"));
 
     expect(repo, contains('billingSquareMeterUnitPriceYen'));

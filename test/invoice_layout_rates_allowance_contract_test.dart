@@ -35,8 +35,10 @@ void main() {
       '20261006140454_invoice_billing_overtime_early_and_allowance_labels.sql',
     );
 
-    expect(page, contains("label: '残業単価（1時間）'"));
-    expect(page, contains("label: '早出単価（1時間）'"));
+    expect(page, contains("'請求書用 自動計算'"));
+    expect(page, contains("'残業'"));
+    expect(page, contains("'早出'"));
+    expect(page, contains('式:'));
     expect(repo, contains('billingOvertimeHourRateYen'));
     expect(repo, contains('billingEarlyHourRateYen'));
     expect(repo, contains("'billing_overtime_hour_rate_yen'"));

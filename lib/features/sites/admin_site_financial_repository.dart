@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../../domain/rate_formula_settings.dart';
 
 class AdminSiteFinancialRecord {
   const AdminSiteFinancialRecord({
@@ -25,6 +26,12 @@ class AdminSiteFinancialRecord {
     this.billingAllowance2AmountYen = 0,
     this.billingAllowance3Name = '',
     this.billingAllowance3AmountYen = 0,
+    this.workerFormulas = const RateFormulaSettings(),
+    this.billingFormulas = const RateFormulaSettings(),
+    this.workerHourlyBaseYen = 0,
+    this.billingHourlyBaseYen = 0,
+    this.workerRateOverrides = const {},
+    this.billingRateOverrides = const {},
   });
 
   final String siteId;
@@ -48,6 +55,52 @@ class AdminSiteFinancialRecord {
   final int billingAllowance2AmountYen;
   final String billingAllowance3Name;
   final int billingAllowance3AmountYen;
+  final RateFormulaSettings workerFormulas;
+  final RateFormulaSettings billingFormulas;
+  final int workerHourlyBaseYen;
+  final int billingHourlyBaseYen;
+  final Map<String, int> workerRateOverrides;
+  final Map<String, int> billingRateOverrides;
+
+  int workerRate(String key) {
+    final direct = workerRateOverrides[key] ?? 0;
+    final daily = workerFormulas.hourlyBase && workerHourlyBaseYen > 0
+        ? workerHourlyBaseYen
+        : workerDailyRateYen;
+    final calculated = switch (key) {
+      'overtime' => workerFormulas.overtime(daily),
+      'early' => workerFormulas.early(daily),
+      'night' => workerFormulas.night(daily),
+      'night_overtime' => workerFormulas.nightOvertime(daily),
+      'holiday' => workerFormulas.holiday(daily),
+      'holiday_overtime' => workerFormulas.holidayOvertime(daily),
+      'holiday_night' => workerFormulas.holidayNight(daily),
+      'holiday_night_overtime' =>
+        workerFormulas.holidayNightOvertime(daily),
+      _ => 0,
+    };
+    return effectiveRate(direct, calculated);
+  }
+
+  int billingRate(String key) {
+    final direct = billingRateOverrides[key] ?? 0;
+    final daily = billingFormulas.hourlyBase && billingHourlyBaseYen > 0
+        ? billingHourlyBaseYen
+        : billingUnitPriceYen;
+    final calculated = switch (key) {
+      'overtime' => billingFormulas.overtime(daily),
+      'early' => billingFormulas.early(daily),
+      'night' => billingFormulas.night(daily),
+      'night_overtime' => billingFormulas.nightOvertime(daily),
+      'holiday' => billingFormulas.holiday(daily),
+      'holiday_overtime' => billingFormulas.holidayOvertime(daily),
+      'holiday_night' => billingFormulas.holidayNight(daily),
+      'holiday_night_overtime' =>
+        billingFormulas.holidayNightOvertime(daily),
+      _ => 0,
+    };
+    return effectiveRate(direct, calculated);
+  }
 
   bool get hasManDayBilling => billingUnitPriceYen > 0;
   bool get hasMonthlyBilling => billingMonthlyRateYen > 0;
@@ -162,7 +215,8 @@ class AdminSiteFinancialRepository {
           'welfare_rate, billing_allowance_1_name, '
           'billing_allowance_1_amount_yen, billing_allowance_2_name, '
           'billing_allowance_2_amount_yen, billing_allowance_3_name, '
-          'billing_allowance_3_amount_yen',
+          'billing_allowance_3_amount_yen, worker_rate_formula, '
+          'worker_rate_overrides, billing_rate_formula, billing_rate_overrides',
         )
         .eq('company_id', companyId);
 
@@ -215,6 +269,17 @@ class AdminSiteFinancialRepository {
             s['billing_allowance_3_name']?.toString() ?? '',
         billingAllowance3AmountYen:
             (s['billing_allowance_3_amount_yen'] as num?)?.toInt() ?? 0,
+        workerFormulas: RateFormulaSettings.fromMap(s['worker_rate_formula']),
+        billingFormulas:
+            RateFormulaSettings.fromMap(s['billing_rate_formula']),
+        workerHourlyBaseYen: s['worker_rate_formula'] is Map
+            ? ((s['worker_rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+            : 0,
+        billingHourlyBaseYen: s['billing_rate_formula'] is Map
+            ? ((s['billing_rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+            : 0,
+        workerRateOverrides: _rateOverrides(s['worker_rate_overrides']),
+        billingRateOverrides: _rateOverrides(s['billing_rate_overrides']),
       );
     }).toList();
   }
@@ -250,8 +315,29 @@ class AdminSiteFinancialRepository {
           ? null
           : record.billingAllowance3Name.trim(),
       'billing_allowance_3_amount_yen': record.billingAllowance3AmountYen,
+      'worker_rate_formula': record.workerFormulas.toMap(
+        hourlyRateYen: record.workerHourlyBaseYen,
+      ),
+      'worker_rate_overrides': record.workerRateOverrides,
+      'billing_rate_formula': record.billingFormulas.toMap(
+        hourlyRateYen: record.billingHourlyBaseYen,
+      ),
+      'billing_rate_overrides': record.billingRateOverrides,
       'updated_by': _client.auth.currentUser?.id,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
   }
+  static Map<String, int> _rateOverrides(Object? raw) {
+    if (raw is! Map) return const {};
+    final result = <String, int>{};
+    for (final entry in raw.entries) {
+      final value = entry.value;
+      final parsed = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString() ?? '') ?? 0;
+      result[entry.key.toString()] = parsed;
+    }
+    return result;
+  }
+
 }

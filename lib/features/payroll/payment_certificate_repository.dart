@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../../domain/rate_formula_settings.dart';
 
 class PaymentCertificateLine {
   const PaymentCertificateLine({
@@ -64,6 +65,17 @@ class PartnerPaymentSetting {
     required this.overtimeHourRateYen,
     required this.earlyHourRateYen,
     required this.nightHourRateYen,
+    this.nightDayRateYen = 0,
+    this.nightOvertimeHourRateYen = 0,
+    this.holidayDayRateYen = 0,
+    this.holidayOvertimeHourRateYen = 0,
+    this.holidayNightDayRateYen = 0,
+    this.holidayNightOvertimeHourRateYen = 0,
+    this.formulas = const RateFormulaSettings(),
+    this.hourlyBaseRateYen = 0,
+    this.allowances = const [],
+    this.welfareRate = 0,
+    this.taxRate = 10,
   });
 
   final String partnerCompanyId;
@@ -72,6 +84,56 @@ class PartnerPaymentSetting {
   final int overtimeHourRateYen;
   final int earlyHourRateYen;
   final int nightHourRateYen;
+  final int nightDayRateYen;
+  final int nightOvertimeHourRateYen;
+  final int holidayDayRateYen;
+  final int holidayOvertimeHourRateYen;
+  final int holidayNightDayRateYen;
+  final int holidayNightOvertimeHourRateYen;
+  final RateFormulaSettings formulas;
+  final int hourlyBaseRateYen;
+  final List<PaymentAllowanceSetting> allowances;
+  final double welfareRate;
+  final double taxRate;
+
+  int get formulaBaseRateYen => formulas.hourlyBase && hourlyBaseRateYen > 0
+      ? hourlyBaseRateYen
+      : dailyRateYen;
+
+  int get overtimeRate =>
+      effectiveRate(overtimeHourRateYen, formulas.overtime(formulaBaseRateYen));
+  int get earlyRate =>
+      effectiveRate(earlyHourRateYen, formulas.early(formulaBaseRateYen));
+  int get nightDayRate =>
+      effectiveRate(nightDayRateYen, formulas.night(formulaBaseRateYen));
+  int get nightOvertimeRate => effectiveRate(
+        nightOvertimeHourRateYen,
+        formulas.nightOvertime(formulaBaseRateYen),
+      );
+  int get holidayDayRate =>
+      effectiveRate(holidayDayRateYen, formulas.holiday(formulaBaseRateYen));
+  int get holidayOvertimeRate => effectiveRate(
+        holidayOvertimeHourRateYen,
+        formulas.holidayOvertime(formulaBaseRateYen),
+      );
+  int get holidayNightDayRate => effectiveRate(
+        holidayNightDayRateYen,
+        formulas.holidayNight(formulaBaseRateYen),
+      );
+  int get holidayNightOvertimeRate => effectiveRate(
+        holidayNightOvertimeHourRateYen,
+        formulas.holidayNightOvertime(formulaBaseRateYen),
+      );
+}
+
+class PaymentAllowanceSetting {
+  const PaymentAllowanceSetting({
+    required this.name,
+    required this.amountYen,
+  });
+
+  final String name;
+  final int amountYen;
 }
 
 class PaymentCertificateRepository {
@@ -189,6 +251,25 @@ class PaymentCertificateRepository {
                 (value['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
             nightHourRateYen:
                 (value['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            nightDayRateYen:
+                (value['night_day_rate_yen'] as num?)?.toInt() ?? 0,
+            nightOvertimeHourRateYen:
+                (value['night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayDayRateYen:
+                (value['holiday_day_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayOvertimeHourRateYen:
+                (value['holiday_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayNightDayRateYen:
+                (value['holiday_night_day_rate_yen'] as num?)?.toInt() ?? 0,
+            holidayNightOvertimeHourRateYen:
+                (value['holiday_night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            formulas: RateFormulaSettings.fromMap(value['rate_formula']),
+            hourlyBaseRateYen: value['rate_formula'] is Map
+                ? ((value['rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+                : 0,
+            allowances: _allowances(value['allowances']),
+            welfareRate: (value['welfare_rate'] as num?)?.toDouble() ?? 0,
+            taxRate: (value['tax_rate'] as num?)?.toDouble() ?? 10,
           ),
     ].where((item) => item.partnerCompanyId.isNotEmpty).toList();
   }
@@ -202,6 +283,22 @@ class PaymentCertificateRepository {
         'p_overtime_hour_rate_yen': value.overtimeHourRateYen,
         'p_early_hour_rate_yen': value.earlyHourRateYen,
         'p_night_hour_rate_yen': value.nightHourRateYen,
+        'p_night_day_rate_yen': value.nightDayRateYen,
+        'p_night_overtime_hour_rate_yen': value.nightOvertimeHourRateYen,
+        'p_holiday_day_rate_yen': value.holidayDayRateYen,
+        'p_holiday_overtime_hour_rate_yen': value.holidayOvertimeHourRateYen,
+        'p_holiday_night_day_rate_yen': value.holidayNightDayRateYen,
+        'p_holiday_night_overtime_hour_rate_yen':
+            value.holidayNightOvertimeHourRateYen,
+        'p_rate_formula': value.formulas.toMap(
+          hourlyRateYen: value.hourlyBaseRateYen,
+        ),
+        'p_allowances': [
+          for (final item in value.allowances)
+            {'name': item.name, 'amount_yen': item.amountYen},
+        ],
+        'p_welfare_rate': value.welfareRate,
+        'p_tax_rate': value.taxRate,
       },
     );
 
@@ -216,7 +313,14 @@ class PaymentCertificateRepository {
     if (actual.dailyRateYen != value.dailyRateYen ||
         actual.overtimeHourRateYen != value.overtimeHourRateYen ||
         actual.earlyHourRateYen != value.earlyHourRateYen ||
-        actual.nightHourRateYen != value.nightHourRateYen) {
+        actual.nightHourRateYen != value.nightHourRateYen ||
+        actual.nightDayRateYen != value.nightDayRateYen ||
+        actual.nightOvertimeHourRateYen != value.nightOvertimeHourRateYen ||
+        actual.holidayDayRateYen != value.holidayDayRateYen ||
+        actual.holidayOvertimeHourRateYen != value.holidayOvertimeHourRateYen ||
+        actual.holidayNightDayRateYen != value.holidayNightDayRateYen ||
+        actual.holidayNightOvertimeHourRateYen !=
+            value.holidayNightOvertimeHourRateYen) {
       throw StateError('支払証明書設定を保存できませんでした。');
     }
   }
@@ -245,32 +349,100 @@ class PaymentCertificateRepository {
         unitPriceYen: value.dailyRateYen,
         amountYen: value.dailyRateYen,
       ),
-      if (value.overtimeHourRateYen > 0)
-        PaymentCertificateLine(
-          siteName: '〃',
-          workContent: '残業 1時間',
-          quantityLabel: '1',
-          unitPriceYen: value.overtimeHourRateYen,
-          amountYen: value.overtimeHourRateYen,
-        ),
-      if (value.earlyHourRateYen > 0)
-        PaymentCertificateLine(
-          siteName: '〃',
-          workContent: '早出 1時間',
-          quantityLabel: '1',
-          unitPriceYen: value.earlyHourRateYen,
-          amountYen: value.earlyHourRateYen,
-        ),
-      if (value.nightHourRateYen > 0)
-        PaymentCertificateLine(
-          siteName: '〃',
-          workContent: '夜勤 1時間',
-          quantityLabel: '1',
-          unitPriceYen: value.nightHourRateYen,
-          amountYen: value.nightHourRateYen,
-        ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.overtimeRate,
+        amountYen: value.overtimeRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '早出 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.earlyRate,
+        amountYen: value.earlyRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '夜勤 1日',
+        quantityLabel: '1',
+        unitPriceYen: value.nightDayRate,
+        amountYen: value.nightDayRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '夜勤残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.nightOvertimeRate,
+        amountYen: value.nightOvertimeRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '休日出勤 1日',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayDayRate,
+        amountYen: value.holidayDayRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '休日残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayOvertimeRate,
+        amountYen: value.holidayOvertimeRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '休日夜勤 1日',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayNightDayRate,
+        amountYen: value.holidayNightDayRate,
+      ),
+      PaymentCertificateLine(
+        siteName: '〃',
+        workContent: '休日夜勤残業 1時間',
+        quantityLabel: '1',
+        unitPriceYen: value.holidayNightOvertimeRate,
+        amountYen: value.holidayNightOvertimeRate,
+      ),
+      for (final allowance in value.allowances)
+        if (allowance.name.trim().isNotEmpty && allowance.amountYen > 0)
+          PaymentCertificateLine(
+            siteName: '〃',
+            workContent: '（${allowance.name.trim()}）',
+            quantityLabel: '1',
+            unitPriceYen: allowance.amountYen,
+            amountYen: allowance.amountYen,
+          ),
     ];
-    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+
+    final subtotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final welfare = (subtotal * value.welfareRate / 100).round();
+    if (welfare > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（福利厚生費）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: welfare,
+        ),
+      );
+    }
+    final preTax = subtotal + welfare;
+    final tax = (preTax * value.taxRate / 100).round();
+    if (tax > 0) {
+      lines.add(
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '（消費税）',
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: tax,
+        ),
+      );
+    }
+    final gross = preTax + tax;
 
     return PaymentCertificateRecord(
       id: 'settings-preview',
@@ -290,4 +462,17 @@ class PaymentCertificateRepository {
       lines: lines,
     );
   }
+  static List<PaymentAllowanceSetting> _allowances(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map &&
+            (item['name']?.toString().trim().isNotEmpty ?? false))
+          PaymentAllowanceSetting(
+            name: item['name'].toString().trim(),
+            amountYen: (item['amount_yen'] as num?)?.toInt() ?? 0,
+          ),
+    ];
+  }
+
 }
