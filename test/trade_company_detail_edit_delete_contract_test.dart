@@ -29,13 +29,15 @@ void main() {
     final repository =
         read('lib/features/companies/trade_company_repository.dart');
     final migration = read(
-      'supabase/migrations/20261006122723_add_trade_company_delete_rpc.sql',
+      'supabase/migrations/'
+      '20261006133909_site_fields_and_trade_company_delete_integrity.sql',
     );
 
-    expect(repository, contains("'delete_trade_company'"));
+    expect(repository, contains("'delete_trade_company_checked'"));
+    expect(repository, contains("raw['deleted'] == true"));
     expect(migration, contains('private.current_company_admin_id()'));
     expect(migration, contains('delete from public.trade_companies'));
-    expect(migration, contains('revoke all on function public.delete_trade_company(uuid)'));
-    expect(migration, contains('grant execute on function public.delete_trade_company(uuid)'));
+    expect(migration, contains('この取引会社は現場で使用されているため削除できません'));
+    expect(migration, contains('この取引会社は請求書で使用されているため削除できません'));
   });
 }
