@@ -399,13 +399,13 @@ class _PartnerPaymentSettingsPageState
         earlyMultiplier: _double(_earlyMultiplier, 1.25),
         nightMultiplier: _double(_nightMultiplier, 1.5),
         nightOvertimeMultiplier:
-            _double(_nightOvertimeMultiplier, 1.25),
+            _double(_nightOvertimeMultiplier, 1.5),
         holidayMultiplier: _double(_holidayMultiplier, 1.35),
         holidayOvertimeMultiplier:
-            _double(_holidayOvertimeMultiplier, 1.25),
+            _double(_holidayOvertimeMultiplier, 1.35),
         holidayNightMultiplier: _double(_holidayNightMultiplier, 1.6),
         holidayNightOvertimeMultiplier:
-            _double(_holidayNightOvertimeMultiplier, 1.25),
+            _double(_holidayNightOvertimeMultiplier, 1.6),
       );
 
   PartnerPaymentSetting? _draftSetting({bool showError = true}) {
@@ -587,9 +587,11 @@ class _PartnerPaymentSettingsPageState
                         children: [
                           DropdownButtonFormField<String>(
                             initialValue: _partnerId,
-                            decoration: const InputDecoration(
-                              labelText: '協力会社',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.isEnglish
+                                  ? 'Subcontractor Company'
+                                  : '協力会社',
+                              border: const OutlineInputBorder(),
                             ),
                             items: [
                               for (final item in _items)
@@ -602,6 +604,13 @@ class _PartnerPaymentSettingsPageState
                               setState(() => _partnerId = value);
                               _syncControllers();
                             },
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            SkoLanguageController.isEnglish
+                                ? 'Even without settings, a zero-value draft is generated. It recalculates automatically after settings are saved.'
+                                : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 14),
                           _sectionTitle('基準単価'),
@@ -617,7 +626,9 @@ class _PartnerPaymentSettingsPageState
                           const SizedBox(height: 10),
                           _field(
                             _daily,
-                            _hourlyBase ? '基準時給' : '1日単価',
+                            SkoLanguageController.isEnglish
+                                ? (_hourlyBase ? 'Hourly Rate' : 'Daily Rate')
+                                : (_hourlyBase ? '基準時給' : '1日単価'),
                           ),
                           Text(
                             _hourlyBase
@@ -625,7 +636,14 @@ class _PartnerPaymentSettingsPageState
                                 : '1日単価を入れると下記単価を自動計算します。各金額欄へ直接入力した場合は、その金額を優先します。',
                           ),
                           const SizedBox(height: 14),
-                          _sectionTitle('計算式'),
+                                                    Text(
+                            SkoLanguageController.isEnglish
+                                ? 'Overtime Hourly Rate / Early-start Hourly Rate / Night Hourly Rate are calculated automatically unless directly entered.'
+                                : '残業・早出・夜勤などは計算式から自動算出し、直接入力した金額がある場合は直接入力を優先します。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 10),
+_sectionTitle('計算式'),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(12),
