@@ -22,5 +22,10 @@ void main() {
     expect(source, contains('PdfPageFormat.a4.landscape'));
     expect(source, contains("PdfColor.fromHex('#DCE8F6')"));
     expect(source, contains("statement.reviewConfirmed ? '確認済み' : '未確定'"));
+    expect(source, contains('_dayCount(detail'));
+    expect(source, contains('_hours(detail'));
+    expect(source, contains('_plainNumber(detail'));
+    expect(source, contains('extraEarnings'));
+    expect(source, contains('extraDeductions'));
   });
 }
