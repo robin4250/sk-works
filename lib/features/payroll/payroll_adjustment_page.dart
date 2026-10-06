@@ -385,8 +385,8 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                   const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('対象日'),
-                    subtitle: Text(_date(effectiveDate)),
+                    title: const Text('給与明細への反映対象日'),
+                    subtitle: Text('${_date(effectiveDate)}（この日を含む給与期間へ反映）'),
                     trailing: const Icon(Icons.calendar_month_outlined),
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -531,7 +531,9 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     String? typeId = _types.where((item) => item.isActive).isNotEmpty
         ? _types.where((item) => item.isActive).first.id
         : null;
-    DateTime effectiveDate = DateTime.now();
+    DateTime effectiveDate =
+        await repository.loadLatestStatementPeriodEnd(workerId) ?? DateTime.now();
+    if (!mounted) return;
     final amount = TextEditingController();
     final note = TextEditingController();
 
@@ -565,10 +567,17 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                             child: Text(worker.name),
                           ),
                       ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() => workerId = value);
-                        }
+                      onChanged: (value) async {
+                        if (value == null) return;
+                        final targetDate =
+                            await repository.loadLatestStatementPeriodEnd(value);
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          workerId = value;
+                          if (targetDate != null) {
+                            effectiveDate = targetDate;
+                          }
+                        });
                       },
                     ),
                     const SizedBox(height: 12),
@@ -641,6 +650,14 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                           setDialogState(() => effectiveDate = picked);
                         }
                       },
+                    ),
+                    const SizedBox(height: 4),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '最新の給与明細がある場合は、その明細の対象期間末日を初期値にします。',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     TextField(
