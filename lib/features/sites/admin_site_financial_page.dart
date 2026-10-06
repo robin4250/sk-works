@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/rate_calculation_card.dart';
 import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
 
@@ -155,6 +156,8 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
   }
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {
+    RateCalculationDraft? workerRateDraft;
+    RateCalculationDraft? billingRateDraft;
     final daily = TextEditingController(
       text: record.workerDailyRateYen.toString(),
     );
@@ -228,13 +231,19 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _MoneyField(controller: daily, label: '1人工（日額）'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: overtime, label: '残業 1時間'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: early, label: '早出 1時間'),
-                const SizedBox(height: 10),
-                _MoneyField(controller: night, label: '夜間 1時間'),
+                RateCalculationCard(
+                  title: '給与計算用 単価',
+                  initialBaseRateYen: record.workerDailyRateYen,
+                  initialFormula: record.workerRateFormula,
+                  initialOverrides: record.workerRateOverrides.isEmpty
+                      ? {
+                          'overtime': record.overtimeHourRateYen,
+                          'early': record.earlyHourRateYen,
+                        }
+                      : record.workerRateOverrides,
+                  enabled: true,
+                  onChanged: (value) => workerRateDraft = value,
+                ),
                 const SizedBox(height: 18),
                 const Align(
                   alignment: Alignment.centerLeft,
@@ -244,16 +253,18 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _MoneyField(controller: billing, label: '1日単価'),
-                const SizedBox(height: 10),
-                _MoneyField(
-                  controller: billingOvertime,
-                  label: '残業単価（1時間）',
-                ),
-                const SizedBox(height: 10),
-                _MoneyField(
-                  controller: billingEarly,
-                  label: '早出単価（1時間）',
+                RateCalculationCard(
+                  title: '請求書用 単価',
+                  initialBaseRateYen: record.billingUnitPriceYen,
+                  initialFormula: record.billingRateFormula,
+                  initialOverrides: record.billingRateOverrides.isEmpty
+                      ? {
+                          'overtime': record.billingOvertimeHourRateYen,
+                          'early': record.billingEarlyHourRateYen,
+                        }
+                      : record.billingRateOverrides,
+                  enabled: true,
+                  onChanged: (value) => billingRateDraft = value,
                 ),
                 const SizedBox(height: 10),
                 _MoneyField(controller: monthly, label: '月単価'),
@@ -339,7 +350,15 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           ),
           FilledButton(
             onPressed: () {
-              final manDay = int.tryParse(billing.text) ?? 0;
+              final workerRate = workerRateDraft;
+              final billingRate = billingRateDraft;
+              if (workerRate == null || billingRate == null) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('単価の自動計算設定を確認してください')),
+                );
+                return;
+              }
+              final manDay = billingRate.calculated.daily;
               final monthlyRate = int.tryParse(monthly.text) ?? 0;
               final squarePrice = int.tryParse(squareMeterUnitPrice.text) ?? 0;
               final squareQty = double.tryParse(squareMeterQuantity.text) ?? 0;
@@ -377,15 +396,15 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   siteId: record.siteId,
                   siteName: record.siteName,
                   status: record.status,
-                  workerDailyRateYen: int.tryParse(daily.text) ?? 0,
-                  overtimeHourRateYen: int.tryParse(overtime.text) ?? 0,
-                  earlyHourRateYen: int.tryParse(early.text) ?? 0,
-                  nightHourRateYen: int.tryParse(night.text) ?? 0,
+                  workerDailyRateYen: workerRate.calculated.daily,
+                  overtimeHourRateYen: workerRate.effective('overtime'),
+                  earlyHourRateYen: workerRate.effective('early'),
+                  nightHourRateYen: workerRate.effective('night'),
                   billingUnitPriceYen: manDay,
                   billingOvertimeHourRateYen:
-                      int.tryParse(billingOvertime.text) ?? 0,
+                      billingRate.effective('overtime'),
                   billingEarlyHourRateYen:
-                      int.tryParse(billingEarly.text) ?? 0,
+                      billingRate.effective('early'),
                   billingMonthlyRateYen: monthlyRate,
                   billingSquareMeterUnitPriceYen: squarePrice,
                   billingSquareMeterQuantity: squareQty,
@@ -400,6 +419,10 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   billingAllowance3Name: allowance3Name.text,
                   billingAllowance3AmountYen:
                       int.tryParse(allowance3Amount.text) ?? 0,
+                  workerRateFormula: workerRate.formulaJson(),
+                  workerRateOverrides: workerRate.overrides,
+                  billingRateFormula: billingRate.formulaJson(),
+                  billingRateOverrides: billingRate.overrides,
                 ),
               );
             },
