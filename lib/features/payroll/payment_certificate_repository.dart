@@ -171,59 +171,123 @@ class PaymentCertificateRepository {
   }
 
   Future<List<PartnerPaymentSetting>> loadSettings() async {
-    final companyId = await _companyId();
-    final partners = await _client
-        .from('partner_companies')
-        .select('id,name')
-        .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('name');
-
-    final settings = await _client
-        .from('partner_payment_settings')
-        .select()
-        .eq('company_id', companyId);
-
-    final byPartner = <String, Map<String, dynamic>>{
-      for (final raw in settings)
-        raw['partner_company_id'].toString(): Map<String, dynamic>.from(raw),
-    };
-
+    final raw = await _client.rpc('partner_payment_settings_workspace');
+    if (raw is! List) return const [];
     return [
-      for (final partner in partners)
-        PartnerPaymentSetting(
-          partnerCompanyId: partner['id'].toString(),
-          partnerCompanyName: partner['name']?.toString() ?? '',
-          dailyRateYen:
-              (byPartner[partner['id'].toString()]?['daily_rate_yen'] as num?)
-                      ?.toInt() ??
-                  0,
-          overtimeHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['overtime_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          earlyHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['early_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-          nightHourRateYen: (byPartner[partner['id'].toString()]
-                      ?['night_hour_rate_yen'] as num?)
-                  ?.toInt() ??
-              0,
-        ),
-    ];
+      for (final value in raw)
+        if (value is Map)
+          PartnerPaymentSetting(
+            partnerCompanyId:
+                value['partner_company_id']?.toString() ?? '',
+            partnerCompanyName:
+                value['partner_company_name']?.toString() ?? '',
+            dailyRateYen:
+                (value['daily_rate_yen'] as num?)?.toInt() ?? 0,
+            overtimeHourRateYen:
+                (value['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            earlyHourRateYen:
+                (value['early_hour_rate_yen'] as num?)?.toInt() ?? 0,
+            nightHourRateYen:
+                (value['night_hour_rate_yen'] as num?)?.toInt() ?? 0,
+          ),
+    ].where((item) => item.partnerCompanyId.isNotEmpty).toList();
   }
 
   Future<void> saveSetting(PartnerPaymentSetting value) async {
+    await _client.rpc(
+      'save_partner_payment_setting',
+      params: {
+        'p_partner_company_id': value.partnerCompanyId,
+        'p_daily_rate_yen': value.dailyRateYen,
+        'p_overtime_hour_rate_yen': value.overtimeHourRateYen,
+        'p_early_hour_rate_yen': value.earlyHourRateYen,
+        'p_night_hour_rate_yen': value.nightHourRateYen,
+      },
+    );
+
+    final refreshed = await loadSettings();
+    final saved = refreshed.where(
+      (item) => item.partnerCompanyId == value.partnerCompanyId,
+    );
+    if (saved.isEmpty) {
+      throw StateError('支払証明書設定を保存できませんでした。');
+    }
+    final actual = saved.first;
+    if (actual.dailyRateYen != value.dailyRateYen ||
+        actual.overtimeHourRateYen != value.overtimeHourRateYen ||
+        actual.earlyHourRateYen != value.earlyHourRateYen ||
+        actual.nightHourRateYen != value.nightHourRateYen) {
+      throw StateError('支払証明書設定を保存できませんでした。');
+    }
+  }
+
+  Future<PaymentCertificateRecord> previewForSetting(
+    PartnerPaymentSetting value,
+  ) async {
     final companyId = await _companyId();
-    await _client.from('partner_payment_settings').upsert({
-      'company_id': companyId,
-      'partner_company_id': value.partnerCompanyId,
-      'daily_rate_yen': value.dailyRateYen,
-      'overtime_hour_rate_yen': value.overtimeHourRateYen,
-      'early_hour_rate_yen': value.earlyHourRateYen,
-      'night_hour_rate_yen': value.nightHourRateYen,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    final companyRows = await _client
+        .from('companies')
+        .select('name,postal_code,address,phone,fax')
+        .eq('id', companyId)
+        .limit(1);
+    final company = companyRows.isEmpty
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(companyRows.first);
+
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+    final end = DateTime(now.year, now.month + 1, 0);
+    final lines = <PaymentCertificateLine>[
+      PaymentCertificateLine(
+        siteName: '設定プレビュー',
+        workContent: '通常作業',
+        quantityLabel: '1',
+        unitPriceYen: value.dailyRateYen,
+        amountYen: value.dailyRateYen,
+      ),
+      if (value.overtimeHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '残業 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.overtimeHourRateYen,
+          amountYen: value.overtimeHourRateYen,
+        ),
+      if (value.earlyHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '早出 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.earlyHourRateYen,
+          amountYen: value.earlyHourRateYen,
+        ),
+      if (value.nightHourRateYen > 0)
+        PaymentCertificateLine(
+          siteName: '〃',
+          workContent: '夜勤 1時間',
+          quantityLabel: '1',
+          unitPriceYen: value.nightHourRateYen,
+          amountYen: value.nightHourRateYen,
+        ),
+    ];
+    final gross = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+
+    return PaymentCertificateRecord(
+      id: 'settings-preview',
+      partnerCompanyName: value.partnerCompanyName,
+      periodStart: start,
+      periodEnd: end,
+      grossAmount: gross,
+      deductions: 0,
+      netAmount: gross,
+      status: 'draft',
+      revision: 1,
+      payerCompanyName: company['name']?.toString() ?? '',
+      payerPostalCode: company['postal_code']?.toString() ?? '',
+      payerAddress: company['address']?.toString() ?? '',
+      payerPhone: company['phone']?.toString() ?? '',
+      payerFax: company['fax']?.toString() ?? '',
+      lines: lines,
+    );
   }
 }

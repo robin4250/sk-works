@@ -1009,13 +1009,13 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
-      if (_identity.isAdmin)
+      if (_identity.isManagement)
         _MenuAction(
           key: 'payment_certificate_settings',
           label: SkoLanguageController.tr('支払証明書設定'),
           icon: Icons.tune_outlined,
           homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       _MenuAction(
         key: 'profile',
