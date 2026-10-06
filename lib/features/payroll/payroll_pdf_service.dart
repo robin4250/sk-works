@@ -104,6 +104,7 @@ class PayrollPdfService {
       ),
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
+      MapEntry<String, Object?>('道具代', deductions['道具代']),
       MapEntry<String, Object?>('その他控除', deductions['その他控除']),
       ...configuredDeductions.entries,
       ...adjustmentDeductions.entries.map(
