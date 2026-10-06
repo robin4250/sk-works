@@ -766,7 +766,6 @@ class InvoicePdfService {
             color: red,
             fontSize: 6.8,
             fontWeight: pw.FontWeight.bold,
-            lineSpacing: -1,
           ),
         ),
       ),
