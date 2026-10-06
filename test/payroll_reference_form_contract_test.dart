@@ -32,5 +32,6 @@ void main() {
     expect(source, contains('_nonMoneyDetailKeys'));
     expect(source, contains('_fixedMoneyKeys'));
     expect(source, contains('amount.abs()'));
+    expect(source, contains("absolute: true"));
   });
 }
