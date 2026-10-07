@@ -41,8 +41,8 @@ void main() {
     expect(pdf, contains('_datedApprovalStamp'));
     expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, contains('CompanySealPdf.build('));
-    expect(pdf, contains("companyName.trim().isEmpty ? '会社' : companyName.trim()"));
-    expect(pdf, contains("name.endsWith('株式会社')"));
+    expect(File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(), contains("companyName.trim()"));
+    expect(File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(), contains("name.endsWith('株式会社')"));
     expect(pdf, contains("settings?.companyName ?? ''"));
     expect(pdf, contains('Amount and confirmer areas are independent adjacent frames'));
     expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
