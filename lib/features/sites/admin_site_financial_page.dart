@@ -514,7 +514,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           entry.key: int.tryParse(entry.value.text.trim()) ?? 0,
       };
 
-  static String _yen(int value) => '¥$value';
 
   static String _numberText(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
