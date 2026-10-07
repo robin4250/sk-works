@@ -215,7 +215,6 @@ class InvoicePdfService {
     final subject = (settings?.invoiceSubject ?? '').trim();
     final issueDate = invoice.issueDate ?? _monthEnd(invoice);
     final workPeriod = _workPeriod(invoice);
-    final companyLogo = _memoryImage(settings?.companyLogoBase64 ?? '');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -632,7 +631,6 @@ class InvoicePdfService {
                                   designB: visible[i].position.isEven,
                                 )
                               : pw.SizedBox(),
-                                ),
                     ),
                   ),
                 ],
