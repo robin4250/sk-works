@@ -1112,22 +1112,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         minScale: 0.5,
                         maxScale: 5,
                         boundaryMargin: const EdgeInsets.all(48),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var index = 0;
-                                index < previewData.pageImages.length;
-                                index++) ...[
-                              Image.memory(
-                                previewData.pageImages[index],
-                                key: ValueKey('invoice-pdf-page-$index'),
-                                fit: BoxFit.contain,
-                                gaplessPlayback: true,
-                              ),
-                              if (index + 1 < previewData.pageImages.length)
-                                const SizedBox(height: 12),
-                            ],
-                          ],
+                        child: _ExactInvoiceScreen(
+                          invoice: widget.invoices.first,
+                          settings: previewData.settings,
+                          approvals: previewData.approvals,
                         ),
                       ),
                     ),
@@ -1237,7 +1225,9 @@ class _ExactInvoiceScreen extends StatelessWidget {
         ));
       }
     }
-    while (rows.length < 10) rows.add(const _InvoiceFormRow.empty());
+    while (rows.length < 10) {
+      rows.add(const _InvoiceFormRow.empty());
+    }
     final bank = [settings?.bankName ?? '', settings?.bankBranch ?? '',
       settings?.bankAccountType ?? '', settings?.bankAccountNumber ?? '']
         .where((e) => e.trim().isNotEmpty).join('　');
