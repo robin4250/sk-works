@@ -171,9 +171,9 @@ class PayrollPdfService {
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Expanded(child: _moneyPanel('支給（＋）', earningEntries, blue, paleBlue)),
+            pw.Expanded(child: _moneyPanel('支給（＋）', earningEntries, detail, blue, paleBlue)),
             pw.SizedBox(width: 12),
-            pw.Expanded(child: _moneyPanel('控除（－）', deductionEntries, red, paleRed)),
+            pw.Expanded(child: _moneyPanel('控除（－）', deductionEntries, detail, red, paleRed)),
           ],
         ),
         pw.Spacer(),
@@ -236,7 +236,7 @@ class PayrollPdfService {
       MapEntry('深夜', _hours(detail, const ['深夜時間', '夜間時間'])),
       MapEntry('休日残業', _hours(detail, const ['休日残業時間', '法定休出時間'])),
       MapEntry('休日深夜', _hours(detail, const ['休日深夜時間'])),
-      MapEntry('休日深夜', _hours(detail, const ['休日深夜時間', '休日深夜残業時間'])),
+      MapEntry('休日深夜残業', _hours(detail, const ['休日深夜残業時間'])),
     ];
     return pw.Wrap(
       spacing: 5,
@@ -260,7 +260,7 @@ class PayrollPdfService {
     );
   }
 
-  static pw.Widget _moneyPanel(String title, Map<String, Object?> entries, PdfColor accent, PdfColor pale) {
+  static pw.Widget _moneyPanel(String title, Map<String, Object?> entries, Map<String, dynamic> detail, PdfColor accent, PdfColor pale) {
     final visible = entries.entries.where((e) => (_asNumber(e.value) ?? 0).abs() >= 1).toList();
     final rowHeight = visible.length <= 6 ? 27.0 : visible.length <= 9 ? 22.0 : 18.0;
     return pw.Container(
