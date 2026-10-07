@@ -4,6 +4,7 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
+import 'invoice_approval_repository.dart';
 import 'invoice_pdf_service.dart';
 import 'invoice_settings_page.dart';
 
@@ -518,24 +519,223 @@ class _PeriodHeader extends StatelessWidget {
   }
 }
 
-class InvoicePreviewPage extends StatelessWidget {
-  const InvoicePreviewPage({
-    super.key,
-    required this.invoice,
-  });
-
+class InvoicePreviewPage extends StatefulWidget {
+  const InvoicePreviewPage({super.key, required this.invoice});
   final InvoiceCalculationResult invoice;
 
   @override
-  Widget build(BuildContext context) {
-    return InvoicePdfPreviewPage(
-      invoices: [invoice],
-      title: SkoLanguageController.isEnglish
-          ? 'Invoice Preview'
-          : '請求書プレビュー',
+  State<InvoicePreviewPage> createState() => _InvoicePreviewPageState();
+}
+
+class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
+  final _approvals = InvoiceApprovalRepository.maybeCreate();
+  int _revision = 0;
+  bool _busy = false;
+
+  void _showError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('承認情報を更新できませんでした。帳票機能の更新状況と権限を確認してください。\n$error')),
     );
   }
 
+  Future<void> _manageApprovals() async {
+    final repository = _approvals;
+    if (repository == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final rows = await repository.loadForInvoice(widget.invoice.invoiceId);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '確認・承認と印影',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Text('印影の表示日付を変更しても、実際の承認日時と履歴は変わりません。'),
+                for (final row in rows)
+                  ListTile(
+                    title: Text(
+                      '${row.name}：${row.approved ? '承認済み' : '承認待ち'}',
+                    ),
+                    subtitle: Text(
+                      row.approved
+                          ? '印影日付：${_displayDate(row.stampDisplayDate)}'
+                          : '未承認の印影は表示されません',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (row.canCurrentUserEditDisplayDate)
+                          IconButton(
+                            tooltip: '印影の表示日付',
+                            icon: const Icon(Icons.edit_calendar_outlined),
+                            onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              await _editDisplayDate(row);
+                            },
+                          ),
+                        if (row.canCurrentUserCancel)
+                          TextButton(
+                            onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              try {
+                                await repository.cancel(
+                                  widget.invoice.invoiceId,
+                                );
+                                if (mounted) setState(() => _revision++);
+                              } catch (error) {
+                                _showError(error);
+                              }
+                            },
+                            child: const Text('承認取消'),
+                          ),
+                      ],
+                    ),
+                  ),
+                TextButton.icon(
+                  icon: const Icon(Icons.history),
+                  label: const Text('実際の承認履歴'),
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _showHistory();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _editDisplayDate(InvoiceApprovalRecord row) async {
+    final mode = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('印影の表示日付'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'select'),
+            child: const Text('日付を指定'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'reset'),
+            child: const Text('会社設定に戻す'),
+          ),
+        ],
+      ),
+    );
+    if (mode == null || !mounted) return;
+    DateTime? date;
+    if (mode == 'select') {
+      final initial =
+          row.displayDateOverride ?? row.stampDisplayDate ?? DateTime.now();
+      date = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(1900),
+        lastDate: DateTime(2200),
+      );
+      if (date == null || !mounted) return;
+    }
+    try {
+      await _approvals!.setDisplayDate(
+        widget.invoice.invoiceId,
+        row.userId,
+        date,
+      );
+      if (mounted) setState(() => _revision++);
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
+  Future<void> _showHistory() async {
+    try {
+      final history = await _approvals!.loadHistory(widget.invoice.invoiceId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('実際の承認履歴'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (history.isEmpty) const Text('承認履歴はありません'),
+                  for (final entry in history)
+                    ListTile(
+                      title: Text(
+                        '${entry.actorName}：${_actionLabel(entry.action)}',
+                      ),
+                      subtitle: Text(_actualTimestamp(entry.createdAt)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('閉じる'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
+  static String _actionLabel(String action) => switch (action) {
+    'approved' => '承認',
+    'cancelled' => '承認取消',
+    'invalidated' => '内容変更による再承認',
+    'display_date_changed' => '印影表示日付の変更',
+    _ => action,
+  };
+
+  static String _displayDate(DateTime? date) =>
+      date == null ? '日付なし' : '${date.year}/${date.month}/${date.day}';
+
+  static String _actualTimestamp(DateTime? timestamp) {
+    if (timestamp == null) return '日時未記録';
+    final japan = timestamp.toUtc().add(const Duration(hours: 9));
+    return '${japan.year}/${japan.month}/${japan.day} '
+        '${japan.hour.toString().padLeft(2, '0')}:${japan.minute.toString().padLeft(2, '0')}:${japan.second.toString().padLeft(2, '0')}（日本時間）';
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: InvoicePdfPreviewPage(
+      key: ValueKey(_revision),
+      invoices: [widget.invoice],
+      title: SkoLanguageController.isEnglish ? 'Invoice Preview' : '請求書プレビュー',
+    ),
+    bottomNavigationBar: _approvals == null || widget.invoice.invoiceId.isEmpty
+        ? null
+        : SafeArea(
+            child: TextButton.icon(
+              onPressed: _busy ? null : _manageApprovals,
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('承認履歴・印影設定'),
+            ),
+          ),
+  );
 }
 
 class _ErrorState extends StatelessWidget {

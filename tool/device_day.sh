@@ -9,6 +9,9 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+# Stop before any generated-project changes when the source or Xcode differs.
+bash tool/pre_install_source_backup.sh
+
 echo "[1/4] Mac初回準備を確認します"
 set +e
 bash tool/mac_first_run.sh

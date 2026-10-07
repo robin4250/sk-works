@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
@@ -14,13 +15,7 @@ void main() {
         siteId: 'site-1',
         siteName: '新宿現場',
         welfareRateBps: 150,
-        lines: [
-          InvoiceLine(
-            label: '人工',
-            quantity: 2,
-            unitPriceYen: 25000,
-          ),
-        ],
+        lines: [InvoiceLine(label: '人工', quantity: 2, unitPriceYen: 25000)],
       ),
     ],
     taxRateBps: 1000,
@@ -46,9 +41,7 @@ void main() {
         SiteInvoiceCalculation(
           siteId: 'site-2',
           siteName: '現場',
-          lines: [
-            InvoiceLine(label: '作業', quantity: 1, unitPriceYen: 1000),
-          ],
+          lines: [InvoiceLine(label: '作業', quantity: 1, unitPriceYen: 1000)],
         ),
       ],
     );
@@ -60,25 +53,24 @@ void main() {
   });
 
   test('annual PDF snapshot includes all invoices and title', () {
-    final text = InvoicePdfService.buildTextSnapshot(
-      [invoice, invoice],
-      title: '2026年 請求書',
-    );
+    final text = InvoicePdfService.buildTextSnapshot([
+      invoice,
+      invoice,
+    ], title: '2026年 請求書');
 
     expect(text, contains('2026年 請求書'));
     expect(RegExp('株式会社テスト').allMatches(text).length, 2);
   });
 
-  test('dense invoice preview uses adaptive compact layout contract', () {
-    final pdf = File(
-      'lib/features/invoices/invoice_pdf_service.dart',
-    ).readAsStringSync();
+  test('adopted invoice uses fixed 35-row paginated A4 layout', () {
+    final pdf = File('lib/features/invoices/invoice_pdf_service.dart')
+        .readAsStringSync();
 
-    expect(pdf, contains('final detailRowCount = rows.length'));
-    expect(pdf, contains('detailRowCount > 12'));
-    expect(pdf, contains('detailFontSize'));
-    expect(pdf, contains('detailVerticalPadding'));
-    expect(pdf, contains('height: 47'));
+    expect(pdf, contains('final detailPageCount ='));
+    expect(pdf, contains('pageIndex * 35'));
+    expect(pdf, contains('const gridBottom = 669.8898'));
+    expect(pdf, contains('const rowHeight ='));
+    expect(pdf, contains('regularFont ??'));
     expect(pdf, contains('Future<_InvoicePreviewData> _buildPreviewData()'));
     expect(pdf, contains('class _ExactInvoiceScreen'));
     expect(pdf, contains('_ScreenDetailTable(rows:rows)'));

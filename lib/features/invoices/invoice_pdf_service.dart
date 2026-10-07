@@ -18,14 +18,16 @@ class InvoicePdfService {
     String? title,
     InvoiceSettingsData? settings,
     PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
     final effectiveSettings = settings ?? await _loadSettings();
 
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -39,22 +41,23 @@ class InvoicePdfService {
           approvals = const [];
         }
       }
+      final detailPageCount = (_detailRows(invoice).length / 35).ceil();
+      final pageCount = detailPageCount == 0 ? 1 : detailPageCount;
+      for (var pageIndex = 0; pageIndex < pageCount; pageIndex++) {
       document.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.fromLTRB(
-            15 * PdfPageFormat.mm,
-            14 * PdfPageFormat.mm,
-            15 * PdfPageFormat.mm,
-            14 * PdfPageFormat.mm,
-          ),
+          margin: pw.EdgeInsets.zero,
           build: (_) => _sheet(
             invoice,
             effectiveSettings,
             approvals,
+            pageIndex: pageIndex,
+            pageCount: pageCount,
           ),
         ),
       );
+      }
     }
     return document.save();
   }
@@ -138,452 +141,149 @@ class InvoicePdfService {
     return buffer.toString();
   }
 
+  // Adopted invoice v8 uses absolute A4 coordinates in PDF points.
+  static List<_InvoiceFormRow> _detailRows(InvoiceCalculationResult invoice) {
+    final rows = <_InvoiceFormRow>[];
+    for (final site in invoice.siteCalculations) {
+      for (var i = 0; i < site.lines.length; i++) {
+        final line = site.lines[i];
+        rows.add(_InvoiceFormRow(
+          siteName: line.siteLabel.trim().isNotEmpty ? line.siteLabel : (i == 0 ? site.siteName : '〃'),
+          content: (line.workContent ?? line.label).trim(),
+          quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
+          unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty ? line.unitPriceText! : _number(line.unitPriceYen),
+          amount: _number(line.amountYen),
+        ));
+      }
+      if (site.welfareAmountYen != 0) {
+        rows.add(_InvoiceFormRow(siteName: '〃', content: '法定福利費', quantity: '', unitPrice: '', amount: _number(site.welfareAmountYen)));
+      }
+      if (site.manualAdjustmentYen != 0) {
+        rows.add(_InvoiceFormRow(siteName: '〃', content: '値引き・調整', quantity: '', unitPrice: '', amount: _number(site.manualAdjustmentYen)));
+      }
+    }
+    return rows;
+  }
+
   static pw.Widget _sheet(
     InvoiceCalculationResult invoice,
     InvoiceSettingsData? settings,
-    List<InvoiceApprovalRecord> approvals,
-  ) {
-    final blue = PdfColor.fromHex('#8199B5');
-    final pale = PdfColor.fromHex('#E7ECF2');
-    final rows = <_InvoiceFormRow>[];
-    for (final site in invoice.siteCalculations) {
-      for (var index = 0; index < site.lines.length; index++) {
-        final line = site.lines[index];
-        final siteLabel = line.siteLabel.trim().isNotEmpty
-            ? line.siteLabel
-            : index == 0
-                ? site.siteName
-                : '〃';
-        final rawWorkContent = (line.workContent ?? line.label).trim();
-        final workContent = rawWorkContent.isEmpty ? '通常作業' : rawWorkContent;
-        final subRowInSiteColumn =
-            siteLabel == '〃' && workContent.isNotEmpty;
-        rows.add(
-          _InvoiceFormRow(
-            siteName: subRowInSiteColumn
-                ? '〃　$workContent'
-                : siteLabel,
-            content: subRowInSiteColumn ? '' : workContent,
-            quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
-            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
-                ? line.unitPriceText!.trim()
-                : line.unitPriceYen == 0
-                    ? ''
-                    : _number(line.unitPriceYen),
-            amount: _number(line.amountYen),
-          ),
-        );
-      }
-      if (site.manualAdjustmentYen != 0) {
-        rows.add(
-          _InvoiceFormRow(
-            siteName: '〃　（値引き・調整）',
-            content: '',
-            quantity: '',
-            unitPrice: '',
-            amount: _number(site.manualAdjustmentYen),
-          ),
-        );
+    List<InvoiceApprovalRecord> approvals, {
+    int pageIndex = 0,
+    int pageCount = 1,
+  }) {
+    final blue = PdfColor.fromHex('#138BE1');
+    final ink = PdfColor.fromHex('#163F76');
+    final border = PdfColor.fromHex('#79CAE9');
+    final pale = PdfColor.fromHex('#EFF9FD');
+    final children = <pw.Widget>[];
+    void box(double x, double y, double w, double h, {PdfColor? fill, double radius = 5, double line = .42}) {
+      children.add(pw.Positioned(left: x, top: y, child: pw.Container(width: w, height: h,
+        decoration: pw.BoxDecoration(color: fill, border: pw.Border.all(color: border, width: line),
+          borderRadius: pw.BorderRadius.circular(radius)))));
+    }
+    void text(String value, double x, double y, double w, {double size = 7, bool bold = false,
+      PdfColor? color, pw.TextAlign align = pw.TextAlign.left, double h = 18}) {
+      children.add(pw.Positioned(left: x, top: y, child: pw.SizedBox(width: w, height: h,
+        child: pw.Text(value, textAlign: align, maxLines: 2,
+          style: pw.TextStyle(fontSize: size, color: color ?? ink,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)))));
+    }
+    void line(double x, double y, double w, double h, {PdfColor? color, double width = .25}) {
+      children.add(pw.Positioned(left: x, top: y, child: pw.Container(width: w == 0 ? width : w,
+        height: h == 0 ? width : h, color: color ?? border)));
+    }
+    const right = 567.2756;
+    box(16, 16, 563.2756, 809.8898, radius: 3, line: .55);
+    text('請　求　書', 222.64, 28, 150, size: 20, bold: true, align: pw.TextAlign.center, h: 27);
+    line(222.64, 55, 150, 0, color: blue, width: .55);
+    text('I N V O I C E', 222.64, 62, 150, size: 7, color: blue, align: pw.TextAlign.center);
+    text('請求書番号', 450.3, 32, 65);
+    text(invoice.invoiceNumber, 515, 32, 52.2756, align: pw.TextAlign.right);
+    text('発行日', 450.3, 47, 50);
+    text(_dateJa(invoice.issueDate ?? _monthEnd(invoice)), 490, 47, 77.2756, align: pw.TextAlign.right);
+    box(28, 80, 266, 96);
+    box(28, 80, 266, 20, fill: pale, radius: 0, line: .3);
+    text('御 請 求 先', 38, 86, 246, size: 9, bold: true);
+    text('${invoice.customerId} 御中', 38, 111, 246, size: 11, bold: true, h: 48);
+    box(316, 80, right - 316, 55);
+    box(316, 80, 104, 31, fill: blue, radius: 0, line: .3);
+    box(316, 111, 104, 24, fill: pale, radius: 0, line: .3);
+    text('ご請求金額（税込）', 332, 92, 86, size: 8, bold: true, color: PdfColors.white);
+    text(_yen(invoice.grandTotalYen), 424, 86, 131.2756, size: 18, bold: true, align: pw.TextAlign.right, h: 25);
+    text('約定日', 356, 120, 50, size: 8);
+    text(settings?.paymentDueText ?? '', 423, 120, 132.2756, size: 8, align: pw.TextAlign.right);
+    box(316, 143, right - 316, 88);
+    text('　お振込先', 330, 156, 220, size: 9, bold: true);
+    final bankValues = [settings?.bankName ?? '', settings?.bankBranch ?? '', settings?.bankAccountType ?? '', settings?.bankAccountNumber ?? '', settings?.bankAccountHolder ?? ''];
+    const bankLabels = ['銀行名', '支店名', '口座種別', '口座番号', '口座名義'];
+    for (var i = 0; i < bankLabels.length; i++) {
+      text(bankLabels[i], 364, 174 + i * 11, 50, size: 5.8);
+      text(bankValues[i], 418, 174 + i * 11, 137, size: 6.1);
+    }
+    if (bankValues.every((v) => v.trim().isEmpty)) text('未登録', 418, 174, 137, size: 6.1, color: PdfColors.red);
+    box(28, 186, 266, 20);
+    text('件名', 40, 194, 45);
+    text(settings?.invoiceSubject ?? '', 90, 193, 196, size: 8, bold: true);
+    box(28, 214, 266, 20);
+    text('工期', 40, 222, 45);
+    text(_workPeriod(invoice), 90, 222, 196);
+    const gridBottom = 669.8898;
+    const rowHeight = (gridBottom - 262) / 35;
+    box(28, 244, right - 28, gridBottom - 244, radius: 0, line: .3);
+    box(28, 244, right - 28, 18, fill: pale, radius: 0, line: .3);
+    const xs = [28.0, 62.0, 178.0, 304.0, 366.0, 408.0, 490.0, right];
+    const headings = ['No.', '現場名', '工事内容・摘要', '期間', '人数', '単価（円）', '金額（円）'];
+    for (var i = 0; i < headings.length; i++) {
+      text(headings[i], xs[i] + 3, 250, xs[i + 1] - xs[i] - 6, size: 6.2, align: pw.TextAlign.center);
+      if (i > 0) line(xs[i], 244, 0, gridBottom - 244);
+    }
+    final allRows = _detailRows(invoice);
+    final rows = allRows.skip(pageIndex * 35).take(35).toList();
+    while (rows.length < 35) { rows.add(const _InvoiceFormRow.empty()); }
+    for (var i = 0; i < 35; i++) {
+      final row = rows[i];
+      final y = 262 + rowHeight * i;
+      line(28, y + rowHeight, right - 28, 0, color: PdfColor.fromHex('#B9E5F2'), width: .2);
+      final values = ['${pageIndex * 35 + i + 1}', row.siteName, row.content, '', row.quantity, row.unitPrice, row.amount];
+      for (var col = 0; col < values.length; col++) {
+        text(values[col], xs[col] + 3, y + 3, xs[col + 1] - xs[col] - 6, size: 5.4,
+          align: col == 0 || col == 3 || col == 4 ? pw.TextAlign.center : col >= 5 ? pw.TextAlign.right : pw.TextAlign.left, h: rowHeight - 3);
       }
     }
-    while (rows.length < 35) {
-      rows.add(const _InvoiceFormRow.empty());
+    box(28, 674.8898, 306, 63);
+    text('備考', 40, 684, 30, size: 8.5, bold: true);
+    final note = (settings?.footerNote ?? '').trim();
+    text(note.isEmpty ? '・上記の通りご請求申し上げます。\n・恐れ入りますが、振込手数料は貴社にてご負担くださいますようお願い申し上げます。' : note,
+      64, 688, 260, size: 5.5, h: 42);
+    box(344, 674.8898, right - 344, 63);
+    final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
+    final labels = ['小計（税抜）', '消費税（${_quantity(invoice.taxRateBps / 100)}%）', 'ご請求金額（税込）'];
+    for (var i = 0; i < 3; i++) {
+      text(labels[i], 354, 683 + i * 21, 100, size: 6.5);
+      text(i == 2 ? _yen(totals[i]) : _number(totals[i]), 453, i == 2 ? 720 : 684 + i * 21, 104.2756,
+        size: i == 2 ? 14 : 7.5, bold: i == 2, align: pw.TextAlign.right, h: 21);
     }
-    // The reference invoice is a single A4 sheet. Real invoices can exceed
-    // the original 10-row sample (the current production invoice has 13
-    // detail rows), so compact the detail grid before it can overflow the
-    // fixed page and make PdfPreview fail to render.
-    final detailRowCount = rows.length;
-    final detailFontSize = detailRowCount > 12
-        ? 6.1
-        : detailRowCount > 10
-            ? 6.7
-            : 7.5;
-    final detailVerticalPadding = detailRowCount > 12
-        ? 1.0
-        : detailRowCount > 10
-            ? 1.8
-            : 3.2;
-
-    final bank = [
-      settings?.bankName ?? '',
-      settings?.bankBranch ?? '',
-      settings?.bankAccountType ?? '',
-      settings?.bankAccountNumber ?? '',
-    ].where((value) => value.trim().isNotEmpty).join('　');
-
-    final subject = (settings?.invoiceSubject ?? '').trim();
-    final issueDate = invoice.issueDate ?? _monthEnd(invoice);
-    final workPeriod = _workPeriod(invoice);
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Stack(
-          children: [
-            pw.Align(
-              alignment: pw.Alignment.topCenter,
-              child: pw.Text(
-                '御　請　求　書',
-                textAlign: pw.TextAlign.center,
-                style: pw.TextStyle(
-                  color: blue,
-                  fontSize: 17,
-                  fontWeight: pw.FontWeight.bold,
-                  letterSpacing: 4,
-                ),
-              ),
-            ),
-            pw.Align(
-              alignment: pw.Alignment.topRight,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    _dateJa(issueDate),
-                    style: const pw.TextStyle(fontSize: 10),
-                  ),
-                  pw.Text(
-                    '請求書番号：${invoice.invoiceNumber}',
-                    style: pw.TextStyle(fontSize: 8, color: blue),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 2),
-        // Keep the invoice top compact: customer and issuer share the top row.
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              child: pw.Container(
-                padding: const pw.EdgeInsets.only(bottom: 4),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: blue, width: 1.4),
-                  ),
-                ),
-                child: pw.Stack(
-                  children: [
-                    pw.Align(
-                      alignment: pw.Alignment.center,
-                      child: pw.Text(
-                        invoice.customerId,
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 17,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    pw.Align(
-                      alignment: pw.Alignment.centerRight,
-                      child: pw.Text(
-                        '御中',
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          color: blue,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            pw.SizedBox(width: 14),
-            pw.SizedBox(width: 70),
-          ],
-        ),
-        pw.SizedBox(height: 1),
-        // Amount and confirmer areas are independent adjacent frames.
-        // Keep the amount frame directly below the recipient name row.
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            pw.Expanded(
-              child: pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: blue, width: 1.1),
-                ),
-                child: pw.Column(
-                  children: [
-                    pw.Row(
-                      children: [
-                        pw.Text(
-                          '御請求金額',
-                          style: pw.TextStyle(
-                            color: blue,
-                            fontSize: 13,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.SizedBox(width: 10),
-                        pw.Expanded(
-                          child: pw.Container(
-                            padding: const pw.EdgeInsets.symmetric(vertical: 5),
-                            decoration: pw.BoxDecoration(
-                              border: pw.Border.all(color: blue, width: 1),
-                            ),
-                            child: pw.Text(
-                              _yen(invoice.grandTotalYen),
-                              textAlign: pw.TextAlign.center,
-                              style: pw.TextStyle(
-                                fontSize: 20,
-                                fontWeight: pw.FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    pw.SizedBox(height: 5),
-                    pw.Text(
-                      bank.isEmpty
-                          ? '振込先：請求書設定の口座情報'
-                          : '振込先：$bank',
-                      style: const pw.TextStyle(fontSize: 9),
-                    ),
-                    if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
-                      pw.Text(
-                        '口座名義：${settings!.bankAccountHolder}',
-                        style: const pw.TextStyle(fontSize: 8),
-                      ),
-                    pw.Text(
-                      '（振込手数料は御社にて御負担願います）',
-                      style: pw.TextStyle(fontSize: 7.5, color: blue),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            pw.SizedBox(width: 4),
-            pw.SizedBox(
-              width: 142,
-              height: 66,
-              child: _approvalBoxes(approvals, blue),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 3),
-        pw.Text(
-          '下記の通り、御請求申し上げますので、お支払約定日までに、\\n'
-          '下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
-          style: pw.TextStyle(fontSize: 8.5, color: blue),
-        ),
-        pw.SizedBox(height: 10),
-        pw.Container(
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: blue, width: .8),
-          ),
-          child: pw.Row(
-            children: [
-              pw.Container(
-                color: blue,
-                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                child: pw.Text(
-                  '件名 ／ 工期',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.Expanded(
-                child: pw.Padding(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 7),
-                  child: pw.Row(
-                    children: [
-                      pw.Expanded(
-                        child: pw.Text(
-                          subject.isEmpty ? '件名未設定' : subject,
-                          style: pw.TextStyle(
-                            fontSize: 8.5,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      pw.Text(
-                        workPeriod,
-                        textAlign: pw.TextAlign.right,
-                        style: const pw.TextStyle(fontSize: 8),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 7),
-        pw.Table(
-          border: pw.TableBorder.all(color: blue, width: .55),
-          columnWidths: const {
-            0: pw.FlexColumnWidth(2.15),
-            1: pw.FlexColumnWidth(2.05),
-            2: pw.FlexColumnWidth(.8),
-            3: pw.FlexColumnWidth(1.25),
-            4: pw.FlexColumnWidth(1.45),
-          },
-          children: [
-            pw.TableRow(
-              decoration: pw.BoxDecoration(color: blue),
-              children: [
-                _cell('作業所名', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                _cell('工事内容', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                _cell('数量', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                _cell('単価', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                _cell('請求金額', bold: true, center: true, color: PdfColors.white, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-              ],
-            ),
-            for (var i = 0; i < rows.length; i++)
-              pw.TableRow(
-                decoration: pw.BoxDecoration(
-                  color: i.isOdd ? pale : PdfColors.white,
-                ),
-                children: [
-                  _cell(rows[i].siteName, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                  _cell(rows[i].content, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                  _cell(rows[i].quantity, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                  _cell(rows[i].unitPrice, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                  _cell(rows[i].amount, right: true, fontSize: detailFontSize, verticalPadding: detailVerticalPadding),
-                ],
-              ),
-          ],
-        ),
-        pw.SizedBox(height: 7),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.SizedBox(
-            width: 315,
-            child: pw.Table(
-              border: pw.TableBorder.all(color: blue, width: .55),
-              columnWidths: const {
-                0: pw.FlexColumnWidth(1.25),
-                1: pw.FlexColumnWidth(2.4),
-              },
-              children: [
-                _summaryRow('計', invoice.subtotalYen, blue),
-                _summaryRow('消費税', invoice.taxYen, blue),
-                _summaryRow('合計(税込)', invoice.grandTotalYen, blue, strong: true),
-              ],
-            ),
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Container(
-          height: 39,
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: blue, width: .8),
-          ),
-          child: pw.Row(
-            children: [
-              pw.Expanded(
-                child: pw.Row(
-                  children: [
-                    pw.Container(
-                      width: 92,
-                      color: blue,
-                      alignment: pw.Alignment.center,
-                      child: pw.Text(
-                        'お支払約定日',
-                        style: pw.TextStyle(
-                          color: PdfColors.white,
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    pw.Expanded(
-                      child: pw.Center(
-                        child: pw.Text(
-                          (settings?.paymentDueText ?? '').trim().isEmpty
-                              ? '未設定'
-                              : settings!.paymentDueText,
-                          style: const pw.TextStyle(fontSize: 9),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              pw.Container(width: .8, color: blue),
-              pw.Expanded(
-                child: pw.Row(
-                  children: [
-                    pw.Container(
-                      width: 92,
-                      color: blue,
-                      alignment: pw.Alignment.center,
-                      child: pw.Text(
-                        '金額',
-                        style: pw.TextStyle(
-                          color: PdfColors.white,
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    pw.Expanded(
-                      child: pw.Center(
-                        child: pw.Text(
-                          _yen(invoice.grandTotalYen),
-                          style: pw.TextStyle(
-                            fontSize: 13,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.SizedBox(height: 7),
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Expanded(
-              child: pw.Container(
-                height: 44,
-                padding: const pw.EdgeInsets.all(7),
-                decoration: pw.BoxDecoration(border: pw.Border.all(color: blue, width: .8)),
-                child: pw.Text('備考：${settings?.footerNote ?? ''}', style: const pw.TextStyle(fontSize: 7)),
-              ),
-            ),
-            pw.SizedBox(width: 10),
-            pw.Expanded(
-              child: pw.Stack(
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.center,
-                    children: [
-                      pw.Text(settings?.companyName ?? '', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: blue)),
-                      if ((settings?.companyPostalCode ?? '').isNotEmpty) pw.Text('〒${settings!.companyPostalCode}', style: const pw.TextStyle(fontSize: 6)),
-                      if ((settings?.companyAddress ?? '').isNotEmpty) pw.Text(settings!.companyAddress, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 6)),
-                      pw.Text([
-                        if ((settings?.companyPhone ?? '').isNotEmpty) 'TEL：${settings!.companyPhone}',
-                        if ((settings?.companyFax ?? '').isNotEmpty) 'FAX：${settings!.companyFax}',
-                      ].join('　'), style: const pw.TextStyle(fontSize: 6)),
-                    ],
-                  ),
-                  pw.Positioned(right: 5, top: -3, child: CompanySealPdf.build(settings?.companyName ?? '')),
-                ],
-              ),
-            ),
-            pw.SizedBox(width: 10),
-            pw.SizedBox(width: 142, height: 44, child: _approvalBoxes(approvals, blue)),
-          ],
-        ),
-      ],
-    );
+    box(28, 744.8898, right - 28, 70);
+    line(377.2756, 749.8898, 0, 60);
+    text(settings?.companyName ?? '', 50, 756, 285, size: 11, bold: true, align: pw.TextAlign.center, h: 23);
+    text('${(settings?.companyPostalCode ?? '').isEmpty ? '' : '〒${settings!.companyPostalCode} '}${settings?.companyAddress ?? ''}', 50, 784, 285, size: 6, align: pw.TextAlign.center);
+    text([if ((settings?.companyPhone ?? '').isNotEmpty) 'TEL ${settings!.companyPhone}', if ((settings?.companyFax ?? '').isNotEmpty) 'FAX ${settings!.companyFax}'].join('　'),
+      50, 797, 285, size: 6, align: pw.TextAlign.center);
+    children.add(pw.Positioned(left: 232, top: 754, child: CompanySealPdf.build(settings?.companyName ?? '')));
+    box(384.2756, 749.8898, 176, 60, line: .3);
+    box(384.2756, 752.8898, 176, 15, fill: pale, radius: 0, line: .3);
+    text('確 認 印', 384.2756, 756, 176, size: 7, align: pw.TextAlign.center);
+    for (var i = 0; i < 3; i++) {
+      final x = 384.2756 + i * 176 / 3;
+      if (i > 0) line(x, 767.8898, 0, 42, width: .3);
+      if (i < approvals.length && approvals[i].approved) {
+        children.add(pw.Positioned(left: x + 15.3333, top: 775.8898,
+          child: pw.SizedBox(width: 28, height: 28, child: pw.FittedBox(child: _datedApprovalStamp(approvals[i], approval: i == 1)))));
+      }
+    }
+    if (pageCount > 1) text('${pageIndex + 1} / $pageCount', 510, 817, 57, size: 5, align: pw.TextAlign.right);
+    return pw.Stack(children: children);
   }
 
   static pw.Widget _approvalBoxes(
@@ -642,7 +342,7 @@ class InvoicePdfService {
     required bool approval,
   }) {
     final red = PdfColor.fromHex('#D9272E');
-    final date = record.approvedAt ?? DateTime.now();
+    final date = record.stampDisplayDate;
     final surname = _surname(record.name);
     return pw.Container(
       width: 36,
@@ -653,12 +353,12 @@ class InvoicePdfService {
       ),
       child: pw.Column(children: [
         pw.Expanded(child: pw.Center(child: pw.Text(
-          approval ? '承認' : '確認',
+          record.stampRole == 'approval' ? '承認' : '確認',
           style: pw.TextStyle(color: red, fontSize: 5.6, fontWeight: pw.FontWeight.bold),
         ))),
         pw.Container(height: .55, color: red),
         pw.Expanded(child: pw.Center(child: pw.Text(
-          '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
+          date == null ? '' : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
           style: pw.TextStyle(color: red, fontSize: 4.1),
         ))),
         pw.Container(height: .55, color: red),
@@ -673,12 +373,12 @@ class InvoicePdfService {
   static String _surname(String name) {
     final value = name.trim();
     if (value.isEmpty) return '';
-    return value.split(RegExp(r'[\\s　]+')).first;
+    return value.split(RegExp(r'[\s　]+')).first;
   }
 
   static DateTime _monthEnd(InvoiceCalculationResult invoice) {
     if (invoice.periodEnd != null) return invoice.periodEnd!;
-    final match = RegExp(r'(\\d{4})年(\\d{1,2})月').firstMatch(
+    final match = RegExp(r'(\d{4})年(\d{1,2})月').firstMatch(
       invoice.billingPeriod,
     );
     if (match == null) return DateTime.now();

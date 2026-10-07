@@ -42,6 +42,7 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  String? _stampDatePolicy;
   List<InvoiceApproverCandidate> _approverCandidates = const [];
   final List<String> _selectedApproverIds = [];
 
@@ -90,7 +91,9 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       final value = await repository.load();
       final candidates = await _approvalRepository?.loadCandidates() ??
           const <InvoiceApproverCandidate>[];
+      final datePolicy = await _approvalRepository?.loadDatePolicy();
       if (!mounted) return;
+      _stampDatePolicy = datePolicy;
       _companyName = value.companyName;
       _companyPostalCode = value.companyPostalCode;
       _companyAddress = value.companyAddress;
@@ -178,9 +181,9 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
       return;
     }
 
-    if (_selectedApproverIds.isEmpty || _selectedApproverIds.length > 2) {
+    if (_selectedApproverIds.isEmpty || _selectedApproverIds.length > 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('確認者は1～2名で設定してください')),
+        const SnackBar(content: Text('承認者は1～3名で設定してください')),
       );
       return;
     }
@@ -211,6 +214,10 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
         ),
       );
       await _approvalRepository?.saveApprovers(_selectedApproverIds);
+      final datePolicy = _stampDatePolicy;
+      if (datePolicy != null) {
+        await _approvalRepository?.saveDatePolicy(datePolicy);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請求書設定を保存しました')),
@@ -378,8 +385,22 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                       _Section(
                         title: '請求書の承認者',
                         children: [
+                          if (_stampDatePolicy != null)
+                            DropdownButtonFormField<String>(
+                              initialValue: _stampDatePolicy,
+                              decoration: const InputDecoration(labelText: '印影の日付'),
+                              items: const [
+                                DropdownMenuItem(value: 'closing', child: Text('締め日')),
+                                DropdownMenuItem(value: 'actual', child: Text('実際の承認日')),
+                                DropdownMenuItem(value: 'none', child: Text('日付なし')),
+                              ],
+                              onChanged: (value) => setState(() => _stampDatePolicy = value),
+                            )
+                          else
+                            const Text('印影の日付設定は帳票機能の更新後に利用できます。'),
+                          const Text('表示日付を変更しても実際の承認日時と履歴は変わりません。'),
                           const Text(
-                            '登録済みユーザーから1～2名を選択します。請求書には確認者欄を2枠表示し、選択順が左からの順番になります。',
+                            '登録済みユーザーから1～3名を選択します。1名の設定でも承認を完了できます。選択順が印影の表示順になります。',
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
@@ -407,12 +428,12 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                                 onChanged: (checked) {
                                   setState(() {
                                     if (checked == true) {
-                                      if (_selectedApproverIds.length >= 2) {
+                                      if (_selectedApproverIds.length >= 3) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
                                             content: Text(
-                                              '確認者は最大2名です',
+                                              '承認者は最大3名です',
                                             ),
                                           ),
                                         );

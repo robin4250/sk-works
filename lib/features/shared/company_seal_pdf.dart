@@ -44,12 +44,17 @@ class CompanySealPdf {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                 children: [
                   for (final rune in column.runes)
-                    pw.Text(
-                      String.fromCharCode(rune),
-                      style: pw.TextStyle(
-                        color: red,
-                        fontSize: size * .148,
-                        fontWeight: pw.FontWeight.bold,
+                    pw.Expanded(
+                      child: pw.FittedBox(
+                        fit: pw.BoxFit.contain,
+                        child: pw.Text(
+                          String.fromCharCode(rune),
+                          style: pw.TextStyle(
+                            color: red,
+                            fontSize: size * .24,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                 ],
