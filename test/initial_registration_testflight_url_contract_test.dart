@@ -8,6 +8,8 @@ void main(){
   final edge=read('supabase/functions/create-employee-invite/index.ts');
   expect(page,contains("'TestFlight誘導URL'"));
   expect(page,contains("'URLを保存'"));
+  expect(page,contains("'この従業員へSMSを作成'"));
+  expect(page,contains("Uri.parse('sms:"));
   expect(repo,contains("'save_initial_registration_distribution_settings'"));
   expect(edge,contains('employee_testflight_url'));
  });
