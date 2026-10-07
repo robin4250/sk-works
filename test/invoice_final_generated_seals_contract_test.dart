@@ -19,6 +19,8 @@ void main() {
     expect(s, contains("record.stampRole == 'approval' ? '承認' : '確認'"));
     expect(s, contains('_surname(record.name)'));
     expect(s, contains("date.month.toString().padLeft(2, '0')"));
-    expect(s, contains('approvals.take(3)'));
+    expect(s, contains('for (var i = 0; i < 3; i++)'));
+    expect(s, contains('approvals[i].approved'));
+    expect(s, isNot(contains('static pw.Widget _approvalBoxes(')));
   });
 }

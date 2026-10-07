@@ -128,9 +128,10 @@ void main() {
         hasLength(3),
         reason: 'More than fifteen rows must continue on readable A4 pages.',
       );
-      if (outputDirectory != null)
+      if (outputDirectory != null) {
         await File('$outputDirectory/payroll_flutter_many_rows.pdf')
             .writeAsBytes(continued);
+      }
     },
     skip: !hasFont
         ? 'Set SKO_PDF_FONT_PATH to a local Japanese TTF for real PDF rendering.'

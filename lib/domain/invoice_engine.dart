@@ -23,8 +23,7 @@ class InvoiceLine {
   final String? unitPriceText;
   final int? amountYenOverride;
 
-  int get amountYen =>
-      amountYenOverride ?? (quantity * unitPriceYen).round();
+  int get amountYen => amountYenOverride ?? (quantity * unitPriceYen).round();
 }
 
 class SiteInvoiceCalculation {
@@ -48,8 +47,7 @@ class SiteInvoiceCalculation {
       lines.fold<int>(0, (sum, line) => sum + line.amountYen) +
       manualAdjustmentYen;
 
-  int get welfareAmountYen =>
-      (baseAmountYen * welfareRateBps / 10000).round();
+  int get welfareAmountYen => (baseAmountYen * welfareRateBps / 10000).round();
 
   int get subtotalYen => baseAmountYen + welfareAmountYen;
 }
@@ -61,6 +59,8 @@ class InvoiceCalculationResult {
     required this.detailMode,
     required this.siteCalculations,
     required this.taxRateBps,
+    this.customerPostalCode = '',
+    this.customerAddress = '',
     this.invoiceId = '',
     this.invoiceNumber = '',
     this.issueDate,
@@ -73,6 +73,8 @@ class InvoiceCalculationResult {
 
   final String customerId;
   final String billingPeriod;
+  final String customerPostalCode;
+  final String customerAddress;
   final InvoiceDetailMode detailMode;
   final List<SiteInvoiceCalculation> siteCalculations;
 
@@ -87,16 +89,14 @@ class InvoiceCalculationResult {
   final int? taxYenOverride;
   final int? grandTotalYenOverride;
 
-  int get subtotalYen => subtotalYenOverride ?? siteCalculations.fold<int>(
-        0,
-        (sum, site) => sum + site.subtotalYen,
-      );
+  int get subtotalYen =>
+      subtotalYenOverride ??
+      siteCalculations.fold<int>(0, (sum, site) => sum + site.subtotalYen);
 
   int get taxYen =>
       taxYenOverride ?? (subtotalYen * taxRateBps / 10000).round();
 
-  int get grandTotalYen =>
-      grandTotalYenOverride ?? subtotalYen + taxYen;
+  int get grandTotalYen => grandTotalYenOverride ?? subtotalYen + taxYen;
 }
 
 class InvoiceEngine {
@@ -108,6 +108,8 @@ class InvoiceEngine {
     required InvoiceDetailMode detailMode,
     required List<SiteInvoiceCalculation> sites,
     int taxRateBps = 1000,
+    String customerPostalCode = '',
+    String customerAddress = '',
     String invoiceId = '',
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -145,7 +147,8 @@ class InvoiceEngine {
         throw ArgumentError('welfareRateBps must be >= 0');
       }
       for (final line in site.lines) {
-        final hasDisplayLabel = line.label.trim().isNotEmpty ||
+        final hasDisplayLabel =
+            line.label.trim().isNotEmpty ||
             line.siteLabel.trim().isNotEmpty ||
             (line.workContent ?? '').trim().isNotEmpty;
         if (!hasDisplayLabel) {
@@ -159,6 +162,8 @@ class InvoiceEngine {
 
     return InvoiceCalculationResult(
       customerId: customerId,
+      customerPostalCode: customerPostalCode,
+      customerAddress: customerAddress,
       billingPeriod: billingPeriod,
       detailMode: detailMode,
       siteCalculations: List.unmodifiable(sites),

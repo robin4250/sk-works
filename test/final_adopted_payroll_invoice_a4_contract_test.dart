@@ -18,8 +18,10 @@ void main() {
     final source = File('lib/features/invoices/invoice_pdf_service.dart')
         .readAsStringSync();
     expect(source, contains('while (rows.length < 35)'));
-    expect(source, contains('approvals.take(3)'));
+    expect(source, contains('for (var i = 0; i < 3; i++)'));
+    expect(source, contains('approvals[i].approved'));
+    expect(source, contains("PdfColor.fromHex('#B7BEC6')"));
     expect(source, isNot(contains('_surnameForStamp')));
-    expect(source, contains("'振込先："));
+    expect(source, contains("'　お振込先'"));
   });
 }

@@ -81,6 +81,8 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
     bool sampleTotals = false,
   }) => InvoiceCalculationResult(
     customerId: '株式会社 山田建設',
+    customerPostalCode: '100-0001',
+    customerAddress: '東京都千代田区丸の内1丁目1-1\n丸の内ビルディング10F',
     billingPeriod: '2026年10月',
     detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
     siteCalculations: sites,
@@ -107,6 +109,8 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
       expect(page['height'], closeTo(841.8898, .01));
       final text = page['text'] as String;
       for (final label in [
+        '100-0001',
+        '東京都千代田区丸の内1丁目1-1',
         '現場名',
         '工事内容・摘要',
         '期間',

@@ -27,7 +27,7 @@ class CompanySealPdf {
   static pw.Widget build(String companyName, {double size = 42}) {
     final columns = verticalColumns(companyName);
     if (columns.isEmpty) return pw.SizedBox(width: size, height: size);
-    final red = PdfColor.fromHex('#D9272E');
+    final red = PdfColor.fromHex('#FF0000');
     return pw.Container(
       width: size,
       height: size,

@@ -36,7 +36,9 @@ class InvoicePdfService {
       List<InvoiceApprovalRecord> approvals = const [];
       if (approvalRepository != null && invoice.invoiceId.isNotEmpty) {
         try {
-          approvals = await approvalRepository.loadForInvoice(invoice.invoiceId);
+          approvals = await approvalRepository.loadForInvoice(
+            invoice.invoiceId,
+          );
         } catch (_) {
           approvals = const [];
         }
@@ -44,19 +46,19 @@ class InvoicePdfService {
       final detailPageCount = (_detailRows(invoice).length / 35).ceil();
       final pageCount = detailPageCount == 0 ? 1 : detailPageCount;
       for (var pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-      document.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.zero,
-          build: (_) => _sheet(
-            invoice,
-            effectiveSettings,
-            approvals,
-            pageIndex: pageIndex,
-            pageCount: pageCount,
+        document.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            margin: pw.EdgeInsets.zero,
+            build: (_) => _sheet(
+              invoice,
+              effectiveSettings,
+              approvals,
+              pageIndex: pageIndex,
+              pageCount: pageCount,
+            ),
           ),
-        ),
-      );
+        );
       }
     }
     return document.save();
@@ -66,16 +68,11 @@ class InvoicePdfService {
     List<InvoiceCalculationResult> invoices, {
     String? title,
     InvoiceSettingsData? settings,
-  }) =>
-      Printing.layoutPdf(
-        name: fileNameFor(invoices, title: title),
-        format: PdfPageFormat.a4,
-        onLayout: (_) => buildPdf(
-          invoices,
-          title: title,
-          settings: settings,
-        ),
-      );
+  }) => Printing.layoutPdf(
+    name: fileNameFor(invoices, title: title),
+    format: PdfPageFormat.a4,
+    onLayout: (_) => buildPdf(invoices, title: title, settings: settings),
+  );
 
   static Future<bool> shareInvoices(
     List<InvoiceCalculationResult> invoices, {
@@ -101,8 +98,8 @@ class InvoicePdfService {
     final base = title?.trim().isNotEmpty == true
         ? title!.trim()
         : invoices.length == 1
-            ? '${invoices.first.customerId}_${invoices.first.billingPeriod}_請求書'
-            : '請求書まとめ';
+        ? '${invoices.first.customerId}_${invoices.first.billingPeriod}_請求書'
+        : '請求書まとめ';
     return '${base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').replaceAll(RegExp(r'\s+'), '_')}.pdf';
   }
 
@@ -147,19 +144,41 @@ class InvoicePdfService {
     for (final site in invoice.siteCalculations) {
       for (var i = 0; i < site.lines.length; i++) {
         final line = site.lines[i];
-        rows.add(_InvoiceFormRow(
-          siteName: line.siteLabel.trim().isNotEmpty ? line.siteLabel : (i == 0 ? site.siteName : '〃'),
-          content: (line.workContent ?? line.label).trim(),
-          quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
-          unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty ? line.unitPriceText! : _number(line.unitPriceYen),
-          amount: _number(line.amountYen),
-        ));
+        rows.add(
+          _InvoiceFormRow(
+            siteName: line.siteLabel.trim().isNotEmpty
+                ? line.siteLabel
+                : (i == 0 ? site.siteName : '〃'),
+            content: (line.workContent ?? line.label).trim(),
+            quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
+            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+                ? line.unitPriceText!
+                : _number(line.unitPriceYen),
+            amount: _number(line.amountYen),
+          ),
+        );
       }
       if (site.welfareAmountYen != 0) {
-        rows.add(_InvoiceFormRow(siteName: '〃', content: '法定福利費', quantity: '', unitPrice: '', amount: _number(site.welfareAmountYen)));
+        rows.add(
+          _InvoiceFormRow(
+            siteName: '〃',
+            content: '法定福利費',
+            quantity: '',
+            unitPrice: '',
+            amount: _number(site.welfareAmountYen),
+          ),
+        );
       }
       if (site.manualAdjustmentYen != 0) {
-        rows.add(_InvoiceFormRow(siteName: '〃', content: '値引き・調整', quantity: '', unitPrice: '', amount: _number(site.manualAdjustmentYen)));
+        rows.add(
+          _InvoiceFormRow(
+            siteName: '〃',
+            content: '値引き・調整',
+            quantity: '',
+            unitPrice: '',
+            amount: _number(site.manualAdjustmentYen),
+          ),
+        );
       }
     }
     return rows;
@@ -177,51 +196,168 @@ class InvoicePdfService {
     final border = PdfColor.fromHex('#79CAE9');
     final pale = PdfColor.fromHex('#EFF9FD');
     final children = <pw.Widget>[];
-    void box(double x, double y, double w, double h, {PdfColor? fill, double radius = 5, double line = .42}) {
-      children.add(pw.Positioned(left: x, top: y, child: pw.Container(width: w, height: h,
-        decoration: pw.BoxDecoration(color: fill, border: pw.Border.all(color: border, width: line),
-          borderRadius: pw.BorderRadius.circular(radius)))));
+    void box(
+      double x,
+      double y,
+      double w,
+      double h, {
+      PdfColor? fill,
+      double radius = 5,
+      double line = .42,
+    }) {
+      children.add(
+        pw.Positioned(
+          left: x,
+          top: y,
+          child: pw.Container(
+            width: w,
+            height: h,
+            decoration: pw.BoxDecoration(
+              color: fill,
+              border: pw.Border.all(color: border, width: line),
+              borderRadius: pw.BorderRadius.circular(radius),
+            ),
+          ),
+        ),
+      );
     }
-    void text(String value, double x, double y, double w, {double size = 7, bool bold = false,
-      PdfColor? color, pw.TextAlign align = pw.TextAlign.left, double h = 18}) {
-      children.add(pw.Positioned(left: x, top: y, child: pw.SizedBox(width: w, height: h,
-        child: pw.Text(value, textAlign: align, maxLines: 2,
-          style: pw.TextStyle(fontSize: size, color: color ?? ink,
-            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)))));
+
+    void text(
+      String value,
+      double x,
+      double y,
+      double w, {
+      double size = 7,
+      bool bold = false,
+      PdfColor? color,
+      pw.TextAlign align = pw.TextAlign.left,
+      double h = 18,
+      int maxLines = 2,
+    }) {
+      children.add(
+        pw.Positioned(
+          left: x,
+          top: y,
+          child: pw.SizedBox(
+            width: w,
+            height: h,
+            child: pw.Text(
+              value,
+              textAlign: align,
+              maxLines: maxLines,
+              style: pw.TextStyle(
+                fontSize: size,
+                color: color ?? ink,
+                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              ),
+            ),
+          ),
+        ),
+      );
     }
-    void line(double x, double y, double w, double h, {PdfColor? color, double width = .25}) {
-      children.add(pw.Positioned(left: x, top: y, child: pw.Container(width: w == 0 ? width : w,
-        height: h == 0 ? width : h, color: color ?? border)));
+
+    void line(
+      double x,
+      double y,
+      double w,
+      double h, {
+      PdfColor? color,
+      double width = .25,
+    }) {
+      children.add(
+        pw.Positioned(
+          left: x,
+          top: y,
+          child: pw.Container(
+            width: w == 0 ? width : w,
+            height: h == 0 ? width : h,
+            color: color ?? border,
+          ),
+        ),
+      );
     }
+
     const right = 567.2756;
     box(16, 16, 563.2756, 809.8898, radius: 3, line: .55);
-    text('請　求　書', 222.64, 28, 150, size: 20, bold: true, align: pw.TextAlign.center, h: 27);
+    text(
+      '請　求　書',
+      222.64,
+      28,
+      150,
+      size: 20,
+      bold: true,
+      align: pw.TextAlign.center,
+      h: 27,
+    );
     line(222.64, 55, 150, 0, color: blue, width: .55);
-    text('I N V O I C E', 222.64, 62, 150, size: 7, color: blue, align: pw.TextAlign.center);
+    text(
+      'I N V O I C E',
+      222.64,
+      62,
+      150,
+      size: 7,
+      color: blue,
+      align: pw.TextAlign.center,
+    );
     text('請求書番号', 450.3, 32, 65);
     text(invoice.invoiceNumber, 515, 32, 52.2756, align: pw.TextAlign.right);
     text('発行日', 450.3, 47, 50);
-    text(_dateJa(invoice.issueDate ?? _monthEnd(invoice)), 490, 47, 77.2756, align: pw.TextAlign.right);
+    text(
+      _dateJa(invoice.issueDate ?? _monthEnd(invoice)),
+      490,
+      47,
+      77.2756,
+      align: pw.TextAlign.right,
+    );
     box(28, 80, 266, 96);
     box(28, 80, 266, 20, fill: pale, radius: 0, line: .3);
     text('御 請 求 先', 38, 86, 246, size: 9, bold: true);
-    text('${invoice.customerId} 御中', 38, 111, 246, size: 11, bold: true, h: 48);
+    text('${invoice.customerId} 御中', 38, 111, 246, size: 11, bold: true, h: 23);
+    if (invoice.customerPostalCode.trim().isNotEmpty) {
+      text('〒${invoice.customerPostalCode}', 38, 133, 246);
+    }
+    if (invoice.customerAddress.trim().isNotEmpty) {
+      text(invoice.customerAddress, 38, 148, 246, h: 27);
+    }
     box(316, 80, right - 316, 55);
     box(316, 80, 104, 31, fill: blue, radius: 0, line: .3);
     box(316, 111, 104, 24, fill: pale, radius: 0, line: .3);
     text('ご請求金額（税込）', 332, 92, 86, size: 8, bold: true, color: PdfColors.white);
-    text(_yen(invoice.grandTotalYen), 424, 86, 131.2756, size: 18, bold: true, align: pw.TextAlign.right, h: 25);
+    text(
+      _yen(invoice.grandTotalYen),
+      424,
+      86,
+      131.2756,
+      size: 18,
+      bold: true,
+      align: pw.TextAlign.right,
+      h: 25,
+    );
     text('約定日', 356, 120, 50, size: 8);
-    text(settings?.paymentDueText ?? '', 423, 120, 132.2756, size: 8, align: pw.TextAlign.right);
+    text(
+      settings?.paymentDueText ?? '',
+      423,
+      120,
+      132.2756,
+      size: 8,
+      align: pw.TextAlign.right,
+    );
     box(316, 143, right - 316, 88);
     text('　お振込先', 330, 156, 220, size: 9, bold: true);
-    final bankValues = [settings?.bankName ?? '', settings?.bankBranch ?? '', settings?.bankAccountType ?? '', settings?.bankAccountNumber ?? '', settings?.bankAccountHolder ?? ''];
+    final bankValues = [
+      settings?.bankName ?? '',
+      settings?.bankBranch ?? '',
+      settings?.bankAccountType ?? '',
+      settings?.bankAccountNumber ?? '',
+      settings?.bankAccountHolder ?? '',
+    ];
     const bankLabels = ['銀行名', '支店名', '口座種別', '口座番号', '口座名義'];
     for (var i = 0; i < bankLabels.length; i++) {
       text(bankLabels[i], 364, 174 + i * 11, 50, size: 5.8);
       text(bankValues[i], 418, 174 + i * 11, 137, size: 6.1);
     }
-    if (bankValues.every((v) => v.trim().isEmpty)) text('未登録', 418, 174, 137, size: 6.1, color: PdfColors.red);
+    if (bankValues.every((v) => v.trim().isEmpty))
+      text('未登録', 418, 174, 137, size: 6.1, color: PdfColors.red);
     box(28, 186, 266, 20);
     text('件名', 40, 194, 45);
     text(settings?.invoiceSubject ?? '', 90, 193, 196, size: 8, bold: true);
@@ -235,42 +371,135 @@ class InvoicePdfService {
     const xs = [28.0, 62.0, 178.0, 304.0, 366.0, 408.0, 490.0, right];
     const headings = ['No.', '現場名', '工事内容・摘要', '期間', '人数', '単価（円）', '金額（円）'];
     for (var i = 0; i < headings.length; i++) {
-      text(headings[i], xs[i] + 3, 250, xs[i + 1] - xs[i] - 6, size: 6.2, align: pw.TextAlign.center);
+      text(
+        headings[i],
+        xs[i] + 3,
+        250,
+        xs[i + 1] - xs[i] - 6,
+        size: 6.2,
+        align: pw.TextAlign.center,
+      );
       if (i > 0) line(xs[i], 244, 0, gridBottom - 244);
     }
     final allRows = _detailRows(invoice);
     final rows = allRows.skip(pageIndex * 35).take(35).toList();
-    while (rows.length < 35) { rows.add(const _InvoiceFormRow.empty()); }
+    while (rows.length < 35) {
+      rows.add(const _InvoiceFormRow.empty());
+    }
     for (var i = 0; i < 35; i++) {
       final row = rows[i];
       final y = 262 + rowHeight * i;
-      line(28, y + rowHeight, right - 28, 0, color: PdfColor.fromHex('#B9E5F2'), width: .2);
-      final values = ['${pageIndex * 35 + i + 1}', row.siteName, row.content, '', row.quantity, row.unitPrice, row.amount];
+      line(
+        28,
+        y + rowHeight,
+        right - 28,
+        0,
+        color: PdfColor.fromHex('#B9E5F2'),
+        width: .2,
+      );
+      final values = [
+        '${pageIndex * 35 + i + 1}',
+        row.siteName,
+        row.content,
+        '',
+        row.quantity,
+        row.unitPrice,
+        row.amount,
+      ];
       for (var col = 0; col < values.length; col++) {
-        text(values[col], xs[col] + 3, y + 3, xs[col + 1] - xs[col] - 6, size: 5.4,
-          align: col == 0 || col == 3 || col == 4 ? pw.TextAlign.center : col >= 5 ? pw.TextAlign.right : pw.TextAlign.left, h: rowHeight - 3);
+        text(
+          values[col],
+          xs[col] + 3,
+          y + 3,
+          xs[col + 1] - xs[col] - 6,
+          size: 5.4,
+          align: col == 0 || col == 3 || col == 4
+              ? pw.TextAlign.center
+              : col >= 5
+              ? pw.TextAlign.right
+              : pw.TextAlign.left,
+          h: rowHeight - 3,
+        );
       }
     }
     box(28, 674.8898, 306, 63);
     text('備考', 40, 684, 30, size: 8.5, bold: true);
     final note = (settings?.footerNote ?? '').trim();
-    text(note.isEmpty ? '・上記の通りご請求申し上げます。\n・恐れ入りますが、振込手数料は貴社にてご負担くださいますようお願い申し上げます。' : note,
-      64, 688, 260, size: 5.5, h: 42);
+    if (note.isEmpty) {
+      text('・上記の通りご請求申し上げます。', 64, 688, 260, size: 5.5);
+      text('・恐れ入りますが、振込手数料は貴社にてご負担くださいますようお願い申し上げます。', 64, 701, 260, size: 5.5);
+      text('・ご不明な点がございましたら、担当者までご連絡ください。', 64, 714, 260, size: 5.5);
+    } else {
+      text(note, 64, 688, 260, size: 5.5, h: 42, maxLines: 5);
+    }
     box(344, 674.8898, right - 344, 63);
     final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
-    final labels = ['小計（税抜）', '消費税（${_quantity(invoice.taxRateBps / 100)}%）', 'ご請求金額（税込）'];
+    final labels = [
+      '小計（税抜）',
+      '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
+      'ご請求金額（税込）',
+    ];
     for (var i = 0; i < 3; i++) {
       text(labels[i], 354, 683 + i * 21, 100, size: 6.5);
-      text(i == 2 ? _yen(totals[i]) : _number(totals[i]), 453, i == 2 ? 720 : 684 + i * 21, 104.2756,
-        size: i == 2 ? 14 : 7.5, bold: i == 2, align: pw.TextAlign.right, h: 21);
+      text(
+        i == 2 ? _yen(totals[i]) : _number(totals[i]),
+        453,
+        i == 2 ? 720 : 684 + i * 21,
+        104.2756,
+        size: i == 2 ? 14 : 7.5,
+        bold: i == 2,
+        align: pw.TextAlign.right,
+        h: 21,
+      );
     }
     box(28, 744.8898, right - 28, 70);
     line(377.2756, 749.8898, 0, 60);
-    text(settings?.companyName ?? '', 50, 756, 285, size: 11, bold: true, align: pw.TextAlign.center, h: 23);
-    text('${(settings?.companyPostalCode ?? '').isEmpty ? '' : '〒${settings!.companyPostalCode} '}${settings?.companyAddress ?? ''}', 50, 784, 285, size: 6, align: pw.TextAlign.center);
-    text([if ((settings?.companyPhone ?? '').isNotEmpty) 'TEL ${settings!.companyPhone}', if ((settings?.companyFax ?? '').isNotEmpty) 'FAX ${settings!.companyFax}'].join('　'),
-      50, 797, 285, size: 6, align: pw.TextAlign.center);
-    children.add(pw.Positioned(left: 232, top: 754, child: CompanySealPdf.build(settings?.companyName ?? '')));
+    text(
+      settings?.companyName ?? '',
+      50,
+      756,
+      285,
+      size: 11,
+      bold: true,
+      color: PdfColors.black,
+      align: pw.TextAlign.center,
+      h: 23,
+    );
+    text(
+      '${(settings?.companyPostalCode ?? '').isEmpty ? '' : '〒${settings!.companyPostalCode} '}${settings?.companyAddress ?? ''}',
+      50,
+      784,
+      285,
+      size: 6,
+      align: pw.TextAlign.center,
+    );
+    text(
+      [
+        if ((settings?.companyPhone ?? '').isNotEmpty)
+          'TEL ${settings!.companyPhone}',
+        if ((settings?.companyFax ?? '').isNotEmpty)
+          'FAX ${settings!.companyFax}',
+      ].join('　'),
+      50,
+      797,
+      285,
+      size: 6,
+      align: pw.TextAlign.center,
+    );
+    children.add(
+      pw.Positioned(
+        left: 230.1378,
+        top: 750.6701,
+        child: pw.SizedBox(
+          width: 42,
+          height: 40.4394,
+          child: pw.FittedBox(
+            fit: pw.BoxFit.fill,
+            child: CompanySealPdf.build(settings?.companyName ?? ''),
+          ),
+        ),
+      ),
+    );
     box(384.2756, 749.8898, 176, 60, line: .3);
     box(384.2756, 752.8898, 176, 15, fill: pale, radius: 0, line: .3);
     text('確 認 印', 384.2756, 756, 176, size: 7, align: pw.TextAlign.center);
@@ -278,69 +507,51 @@ class InvoicePdfService {
       final x = 384.2756 + i * 176 / 3;
       if (i > 0) line(x, 767.8898, 0, 42, width: .3);
       if (i < approvals.length && approvals[i].approved) {
-        children.add(pw.Positioned(left: x + 15.3333, top: 775.8898,
-          child: pw.SizedBox(width: 28, height: 28, child: pw.FittedBox(child: _datedApprovalStamp(approvals[i], approval: i == 1)))));
+        children.add(
+          pw.Positioned(
+            left: x + 15.3333,
+            top: 775.8898,
+            child: pw.SizedBox(
+              width: 28,
+              height: 28,
+              child: pw.FittedBox(child: _datedApprovalStamp(approvals[i])),
+            ),
+          ),
+        );
+      } else {
+        // A neutral empty guide is not an approval stamp.
+        children.add(
+          pw.Positioned(
+            left: x + 15.3333,
+            top: 775.8898,
+            child: pw.Container(
+              width: 28,
+              height: 28,
+              decoration: pw.BoxDecoration(
+                shape: pw.BoxShape.circle,
+                border: pw.Border.all(
+                  color: PdfColor.fromHex('#B7BEC6'),
+                  width: .55,
+                ),
+              ),
+            ),
+          ),
+        );
       }
     }
-    if (pageCount > 1) text('${pageIndex + 1} / $pageCount', 510, 817, 57, size: 5, align: pw.TextAlign.right);
+    if (pageCount > 1)
+      text(
+        '${pageIndex + 1} / $pageCount',
+        510,
+        817,
+        57,
+        size: 5,
+        align: pw.TextAlign.right,
+      );
     return pw.Stack(children: children);
   }
 
-  static pw.Widget _approvalBoxes(
-    List<InvoiceApprovalRecord> approvals,
-    PdfColor blue,
-  ) {
-    final visible = approvals.take(3).toList();
-    return pw.Container(
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: blue, width: .72),
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
-      ),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < 3; i++)
-            pw.Expanded(
-              child: pw.Container(
-                decoration: i == 0
-                    ? null
-                    : pw.BoxDecoration(
-                        border: pw.Border(left: pw.BorderSide(color: blue, width: .45)),
-                      ),
-                child: pw.Column(children: [
-                  pw.Container(
-                    height: 17,
-                    alignment: pw.Alignment.center,
-                    decoration: pw.BoxDecoration(
-                      color: PdfColor.fromHex('#EFF9FD'),
-                      border: pw.Border(bottom: pw.BorderSide(color: blue, width: .4)),
-                    ),
-                    child: pw.Text('確認印',
-                      style: pw.TextStyle(color: blue, fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
-                  ),
-                  pw.SizedBox(
-                    height: 47,
-                    child: pw.Center(
-                      child: i >= visible.length || !visible[i].approved
-                          ? pw.SizedBox()
-                          : _datedApprovalStamp(
-                              visible[i],
-                              approval: i == 1,
-                            ),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _datedApprovalStamp(
-    InvoiceApprovalRecord record, {
-    required bool approval,
-  }) {
+  static pw.Widget _datedApprovalStamp(InvoiceApprovalRecord record) {
     final red = PdfColor.fromHex('#D9272E');
     final date = record.stampDisplayDate;
     final surname = _surname(record.name);
@@ -351,22 +562,46 @@ class InvoicePdfService {
         shape: pw.BoxShape.circle,
         border: pw.Border.all(color: red, width: 1.5),
       ),
-      child: pw.Column(children: [
-        pw.Expanded(child: pw.Center(child: pw.Text(
-          record.stampRole == 'approval' ? '承認' : '確認',
-          style: pw.TextStyle(color: red, fontSize: 5.6, fontWeight: pw.FontWeight.bold),
-        ))),
-        pw.Container(height: .55, color: red),
-        pw.Expanded(child: pw.Center(child: pw.Text(
-          date == null ? '' : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
-          style: pw.TextStyle(color: red, fontSize: 4.1),
-        ))),
-        pw.Container(height: .55, color: red),
-        pw.Expanded(child: pw.Center(child: pw.Text(
-          surname,
-          style: pw.TextStyle(color: red, fontSize: 6.1, fontWeight: pw.FontWeight.bold),
-        ))),
-      ]),
+      child: pw.Column(
+        children: [
+          pw.Expanded(
+            child: pw.Center(
+              child: pw.Text(
+                record.stampRole == 'approval' ? '承認' : '確認',
+                style: pw.TextStyle(
+                  color: red,
+                  fontSize: 5.6,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          pw.Container(height: .55, color: red),
+          pw.Expanded(
+            child: pw.Center(
+              child: pw.Text(
+                date == null
+                    ? ''
+                    : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
+                style: pw.TextStyle(color: red, fontSize: 4.1),
+              ),
+            ),
+          ),
+          pw.Container(height: .55, color: red),
+          pw.Expanded(
+            child: pw.Center(
+              child: pw.Text(
+                surname,
+                style: pw.TextStyle(
+                  color: red,
+                  fontSize: 6.1,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -378,9 +613,8 @@ class InvoicePdfService {
 
   static DateTime _monthEnd(InvoiceCalculationResult invoice) {
     if (invoice.periodEnd != null) return invoice.periodEnd!;
-    final match = RegExp(r'(\d{4})年(\d{1,2})月').firstMatch(
-      invoice.billingPeriod,
-    );
+    final match = RegExp(r'(\d{4})年(\d{1,2})月')
+        .firstMatch(invoice.billingPeriod);
     if (match == null) return DateTime.now();
     final year = int.parse(match.group(1)!);
     final month = int.parse(match.group(2)!);
@@ -406,66 +640,6 @@ class InvoicePdfService {
       return null;
     }
   }
-
-  static pw.TableRow _summaryRow(
-    String label,
-    int value,
-    PdfColor blue, {
-    bool strong = false,
-  }) =>
-      pw.TableRow(
-        children: [
-          pw.Container(
-            color: blue,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-            child: pw.Text(
-              label,
-              style: pw.TextStyle(
-                color: PdfColors.white,
-                fontSize: 8.5,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-          ),
-          pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-            child: pw.Text(
-              value == 0 && label == '値引き' ? '' : _yen(value),
-              textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(
-                fontSize: strong ? 10 : 8.5,
-                fontWeight: strong ? pw.FontWeight.bold : pw.FontWeight.normal,
-              ),
-            ),
-          ),
-        ],
-      );
-
-  static pw.Widget _cell(
-    String text, {
-    bool bold = false,
-    bool right = false,
-    bool center = false,
-    PdfColor? color,
-    double fontSize = 7.5,
-    double verticalPadding = 3.2,
-  }) =>
-      pw.Padding(
-        padding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: verticalPadding),
-        child: pw.Text(
-          text,
-          textAlign: right
-              ? pw.TextAlign.right
-              : center
-                  ? pw.TextAlign.center
-                  : pw.TextAlign.left,
-          style: pw.TextStyle(
-            fontSize: fontSize,
-            color: color,
-            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-          ),
-        ),
-      );
 
   static String _quantity(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
@@ -499,11 +673,11 @@ class _InvoiceFormRow {
   });
 
   const _InvoiceFormRow.empty()
-      : siteName = '',
-        content = '',
-        quantity = '',
-        unitPrice = '',
-        amount = '';
+    : siteName = '',
+      content = '',
+      quantity = '',
+      unitPrice = '',
+      amount = '';
 
   final String siteName;
   final String content;
@@ -513,11 +687,7 @@ class _InvoiceFormRow {
 }
 
 class InvoicePdfPreviewPage extends StatefulWidget {
-  const InvoicePdfPreviewPage({
-    super.key,
-    required this.invoices,
-    this.title,
-  });
+  const InvoicePdfPreviewPage({super.key, required this.invoices, this.title});
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
@@ -596,17 +766,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       _previewRevision++;
       _previewData = _buildPreviewData();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('請求書を承認しました')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('請求書を承認しました')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title ?? '請求書PDFプレビュー'),
-      ),
+      appBar: AppBar(title: Text(widget.title ?? '請求書PDFプレビュー')),
       body: FutureBuilder<_InvoicePreviewData>(
         future: _previewData,
         builder: (context, snapshot) {
@@ -651,8 +818,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
             future: _loadApprovals(),
             builder: (context, approvalSnapshot) {
               final approvals = approvalSnapshot.data ?? const [];
-              final canApprove =
-                  approvals.any((item) => item.canCurrentUserApprove);
+              final canApprove = approvals.any(
+                (item) => item.canCurrentUserApprove,
+              );
               return Column(
                 children: [
                   if (approvals.isNotEmpty)
@@ -765,9 +933,6 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   }
 }
 
-
-
-
 class _InvoicePreviewData {
   const _InvoicePreviewData({
     required this.pdfBytes,
@@ -799,35 +964,48 @@ class _ExactInvoiceScreen extends StatelessWidget {
         final line = site.lines[index];
         final siteLabel = line.siteLabel.trim().isNotEmpty
             ? line.siteLabel
-            : index == 0 ? site.siteName : '〃';
+            : index == 0
+            ? site.siteName
+            : '〃';
         final work = (line.workContent ?? line.label).trim();
         final sub = siteLabel == '〃' && work.isNotEmpty;
-        rows.add(_InvoiceFormRow(
-          siteName: sub ? '〃　$work' : siteLabel,
-          content: sub ? '' : (work.isEmpty ? '通常作業' : work),
-          quantity: line.quantity == 0 ? '' : InvoicePdfService._quantity(line.quantity),
-          unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
-              ? line.unitPriceText!.trim()
-              : line.unitPriceYen == 0 ? '' : InvoicePdfService._number(line.unitPriceYen),
-          amount: InvoicePdfService._number(line.amountYen),
-        ));
+        rows.add(
+          _InvoiceFormRow(
+            siteName: sub ? '〃　$work' : siteLabel,
+            content: sub ? '' : (work.isEmpty ? '通常作業' : work),
+            quantity: line.quantity == 0
+                ? ''
+                : InvoicePdfService._quantity(line.quantity),
+            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+                ? line.unitPriceText!.trim()
+                : line.unitPriceYen == 0
+                ? ''
+                : InvoicePdfService._number(line.unitPriceYen),
+            amount: InvoicePdfService._number(line.amountYen),
+          ),
+        );
       }
       if (site.manualAdjustmentYen != 0) {
-        rows.add(_InvoiceFormRow(
-          siteName: '〃　（値引き・調整）',
-          content: '',
-          quantity: '',
-          unitPrice: '',
-          amount: InvoicePdfService._number(site.manualAdjustmentYen),
-        ));
+        rows.add(
+          _InvoiceFormRow(
+            siteName: '〃　（値引き・調整）',
+            content: '',
+            quantity: '',
+            unitPrice: '',
+            amount: InvoicePdfService._number(site.manualAdjustmentYen),
+          ),
+        );
       }
     }
     while (rows.length < 35) {
       rows.add(const _InvoiceFormRow.empty());
     }
-    final bank = [settings?.bankName ?? '', settings?.bankBranch ?? '',
-      settings?.bankAccountType ?? '', settings?.bankAccountNumber ?? '']
-        .where((e) => e.trim().isNotEmpty).join('　');
+    final bank = [
+      settings?.bankName ?? '',
+      settings?.bankBranch ?? '',
+      settings?.bankAccountType ?? '',
+      settings?.bankAccountNumber ?? '',
+    ].where((e) => e.trim().isNotEmpty).join('　');
     final issueDate = invoice.issueDate ?? InvoicePdfService._monthEnd(invoice);
     final subject = (settings?.invoiceSubject ?? '').trim();
     final workPeriod = InvoicePdfService._workPeriod(invoice);
@@ -835,113 +1013,518 @@ class _ExactInvoiceScreen extends StatelessWidget {
       color: Colors.white,
       elevation: 2,
       child: SizedBox(
-        width: 595, height: 842,
+        width: 595,
+        height: 842,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(37, 28, 37, 28),
           child: DefaultTextStyle(
             style: const TextStyle(color: Colors.black87, fontSize: 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SizedBox(height: 40, child: Stack(children: [
-                const Align(alignment: Alignment.topCenter, child: Text('御　請　求　書',
-                  style: TextStyle(color: blue,fontSize:17,fontWeight:FontWeight.w900,letterSpacing:4))),
-                Align(alignment: Alignment.topRight, child: Column(crossAxisAlignment: CrossAxisAlignment.end,children:[
-                  Text(InvoicePdfService._dateJa(issueDate),style:const TextStyle(fontSize:10)),
-                  Text('請求書番号：${invoice.invoiceNumber}',style:const TextStyle(fontSize:8,color:blue)),
-                ])),
-              ])),
-              Row(crossAxisAlignment: CrossAxisAlignment.start,children:[
-                Expanded(child: Container(height:40,decoration:const BoxDecoration(border:Border(bottom:BorderSide(color:blue,width:1.4))),
-                  child:Stack(alignment:Alignment.center,children:[
-                    Text(invoice.customerId,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
-                    const Align(alignment:Alignment.centerRight,child:Text('御中',style:TextStyle(fontSize:10,color:blue,fontWeight:FontWeight.w900))),
-                  ]))),
-                const SizedBox(width:14),
-                SizedBox(width:245,child:Stack(children:[
-                  Padding(padding:const EdgeInsets.only(right:28),child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
-                    Text(settings?.companyName ?? '',style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
-                    if((settings?.companyPostalCode??'').isNotEmpty) Text('〒${settings!.companyPostalCode}',style:const TextStyle(fontSize:7.5)),
-                    if((settings?.companyAddress??'').isNotEmpty) Text(settings!.companyAddress,style:const TextStyle(fontSize:7.5)),
-                    if((settings?.companyPhone??'').isNotEmpty) Text('TEL：${settings!.companyPhone}',style:const TextStyle(fontSize:7.5)),
-                  ])),
-                  Positioned(right:0,top:0,child:_ScreenSeal(companyName:settings?.companyName??'')),
-                ])),
-              ]),
-              const SizedBox(height:2),
-              Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Expanded(child:Container(padding:const EdgeInsets.all(8),decoration:BoxDecoration(border:Border.all(color:blue,width:1.1)),child:Column(children:[
-                  Row(children:[const Text('御請求金額',style:TextStyle(color:blue,fontSize:13,fontWeight:FontWeight.w900)),const SizedBox(width:10),
-                    Expanded(child:Container(height:34,alignment:Alignment.center,decoration:BoxDecoration(border:Border.all(color:blue)),
-                      child:Text(InvoicePdfService._yen(invoice.grandTotalYen),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))))]),
-                  const SizedBox(height:5),
-                  Text(bank.isEmpty?'振込先：請求書設定の口座情報':'振込先：$bank',style:const TextStyle(fontSize:9)),
-                  if((settings?.bankAccountHolder??'').trim().isNotEmpty) Text('口座名義：${settings!.bankAccountHolder}',style:const TextStyle(fontSize:8)),
-                  const Text('（振込手数料は御社にて御負担願います）',style:TextStyle(fontSize:7.5,color:blue)),
-                ]))),
-                const SizedBox(width:4),
-                SizedBox(width:142,height:66,child:_ScreenApprovals(approvals:approvals)),
-              ]),
-              const SizedBox(height:3),
-              const Text('下記の通り、御請求申し上げますので、お支払約定日までに、\n下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
-                style:TextStyle(fontSize:8.5,color:blue)),
-              const SizedBox(height:10),
-              Container(height:30,decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),child:Row(children:[
-                Container(width:92,alignment:Alignment.center,color:blue,child:const Text('件名 ／ 工期',style:TextStyle(color:Colors.white,fontSize:9,fontWeight:FontWeight.w900))),
-                Expanded(child:Padding(padding:const EdgeInsets.symmetric(horizontal:7),child:Row(children:[
-                  Expanded(child:Text(subject.isEmpty?'件名未設定':subject,style:const TextStyle(fontSize:8.5,fontWeight:FontWeight.w900))),
-                  Text(workPeriod,style:const TextStyle(fontSize:8)),
-                ]))),
-              ])),
-              const SizedBox(height:7),
-              _ScreenDetailTable(rows:rows),
-              const SizedBox(height:7),
-              Align(alignment:Alignment.centerRight,child:SizedBox(width:315,child:Column(children:[
-                _summary('計',invoice.subtotalYen),_summary('消費税',invoice.taxYen),_summary('合計(税込)',invoice.grandTotalYen,strong:true),
-              ]))),
-              const SizedBox(height:8),
-              Container(height:39,decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),child:Row(children:[
-                Expanded(child:_contract('お支払約定日',(settings?.paymentDueText??'').trim().isEmpty?'未設定':settings!.paymentDueText)),
-                Container(width:.8,color:blue),
-                Expanded(child:_contract('金額',InvoicePdfService._yen(invoice.grandTotalYen),strong:true)),
-              ])),
-              const SizedBox(height:8),
-              Container(height:60,padding:const EdgeInsets.all(7),decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),
-                child:Text('備考：${settings?.footerNote??''}',style:const TextStyle(fontSize:8))),
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: Stack(
+                    children: [
+                      const Align(
+                        alignment: Alignment.topCenter,
+                        child: Text(
+                          '御　請　求　書',
+                          style: TextStyle(
+                            color: blue,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 4,
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              InvoicePdfService._dateJa(issueDate),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            Text(
+                              '請求書番号：${invoice.invoiceNumber}',
+                              style: const TextStyle(fontSize: 8, color: blue),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 40,
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: blue, width: 1.4),
+                          ),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(
+                              invoice.customerId,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '御中',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: blue,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    SizedBox(
+                      width: 245,
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 28),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  settings?.companyName ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                if ((settings?.companyPostalCode ?? '')
+                                    .isNotEmpty)
+                                  Text(
+                                    '〒${settings!.companyPostalCode}',
+                                    style: const TextStyle(fontSize: 7.5),
+                                  ),
+                                if ((settings?.companyAddress ?? '').isNotEmpty)
+                                  Text(
+                                    settings!.companyAddress,
+                                    style: const TextStyle(fontSize: 7.5),
+                                  ),
+                                if ((settings?.companyPhone ?? '').isNotEmpty)
+                                  Text(
+                                    'TEL：${settings!.companyPhone}',
+                                    style: const TextStyle(fontSize: 7.5),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: _ScreenSeal(
+                              companyName: settings?.companyName ?? '',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: blue, width: 1.1),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  '御請求金額',
+                                  style: TextStyle(
+                                    color: blue,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Container(
+                                    height: 34,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: blue),
+                                    ),
+                                    child: Text(
+                                      InvoicePdfService._yen(
+                                        invoice.grandTotalYen,
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank',
+                              style: const TextStyle(fontSize: 9),
+                            ),
+                            if ((settings?.bankAccountHolder ?? '')
+                                .trim()
+                                .isNotEmpty)
+                              Text(
+                                '口座名義：${settings!.bankAccountHolder}',
+                                style: const TextStyle(fontSize: 8),
+                              ),
+                            const Text(
+                              '（振込手数料は御社にて御負担願います）',
+                              style: TextStyle(fontSize: 7.5, color: blue),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    SizedBox(
+                      width: 142,
+                      height: 66,
+                      child: _ScreenApprovals(approvals: approvals),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  '下記の通り、御請求申し上げますので、お支払約定日までに、\n下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
+                  style: TextStyle(fontSize: 8.5, color: blue),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  height: 30,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: blue, width: .8),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 92,
+                        alignment: Alignment.center,
+                        color: blue,
+                        child: const Text(
+                          '件名 ／ 工期',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  subject.isEmpty ? '件名未設定' : subject,
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                workPeriod,
+                                style: const TextStyle(fontSize: 8),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 7),
+                _ScreenDetailTable(rows: rows),
+                const SizedBox(height: 7),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: 315,
+                    child: Column(
+                      children: [
+                        _summary('計', invoice.subtotalYen),
+                        _summary('消費税', invoice.taxYen),
+                        _summary('合計(税込)', invoice.grandTotalYen, strong: true),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 39,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: blue, width: .8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _contract(
+                          'お支払約定日',
+                          (settings?.paymentDueText ?? '').trim().isEmpty
+                              ? '未設定'
+                              : settings!.paymentDueText,
+                        ),
+                      ),
+                      Container(width: .8, color: blue),
+                      Expanded(
+                        child: _contract(
+                          '金額',
+                          InvoicePdfService._yen(invoice.grandTotalYen),
+                          strong: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 60,
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: blue, width: .8),
+                  ),
+                  child: Text(
+                    '備考：${settings?.footerNote ?? ''}',
+                    style: const TextStyle(fontSize: 8),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-  static Widget _summary(String label,int value,{bool strong=false})=>Container(height:25,decoration:BoxDecoration(border:Border.all(color:blue,width:.55)),child:Row(children:[
-    Container(width:90,alignment:Alignment.center,color:blue,child:Text(label,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w900))),
-    Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:Text(InvoicePdfService._yen(value),textAlign:TextAlign.right,style:TextStyle(fontSize:strong?11:9,fontWeight:strong?FontWeight.w900:FontWeight.w500)))),
-  ]));
-  static Widget _contract(String label,String value,{bool strong=false})=>Row(children:[
-    Container(width:92,alignment:Alignment.center,color:blue,child:Text(label,style:const TextStyle(color:Colors.white,fontSize:9,fontWeight:FontWeight.w900))),
-    Expanded(child:Center(child:Text(value,style:TextStyle(fontSize:strong?12:9,fontWeight:strong?FontWeight.w900:FontWeight.w500)))),
-  ]);
+
+  static Widget _summary(String label, int value, {bool strong = false}) =>
+      Container(
+        height: 25,
+        decoration: BoxDecoration(border: Border.all(color: blue, width: .55)),
+        child: Row(
+          children: [
+            Container(
+              width: 90,
+              alignment: Alignment.center,
+              color: blue,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  InvoicePdfService._yen(value),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: strong ? 11 : 9,
+                    fontWeight: strong ? FontWeight.w900 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+  static Widget _contract(String label, String value, {bool strong = false}) =>
+      Row(
+        children: [
+          Container(
+            width: 92,
+            alignment: Alignment.center,
+            color: blue,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: strong ? 12 : 9,
+                  fontWeight: strong ? FontWeight.w900 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
 }
+
 class _ScreenDetailTable extends StatelessWidget {
-  const _ScreenDetailTable({required this.rows}); final List<_InvoiceFormRow> rows;
-  @override Widget build(BuildContext context)=>Table(
-    border:TableBorder.all(color:_ExactInvoiceScreen.blue,width:.55),
-    columnWidths:const {0:FlexColumnWidth(2.15),1:FlexColumnWidth(2.05),2:FlexColumnWidth(.8),3:FlexColumnWidth(1.25),4:FlexColumnWidth(1.45)},
-    children:[
-      TableRow(decoration:const BoxDecoration(color:_ExactInvoiceScreen.blue),children:['作業所名','工事内容','数量','単価','請求金額'].map((e)=>_cell(e,white:true,center:true)).toList()),
-      for(var i=0;i<rows.length;i++) TableRow(decoration:BoxDecoration(color:i.isOdd?_ExactInvoiceScreen.pale:Colors.white),children:[
-        _cell(rows[i].siteName),_cell(rows[i].content),_cell(rows[i].quantity,right:true),_cell(rows[i].unitPrice,right:true),_cell(rows[i].amount,right:true),
-      ]),
-    ]);
-  Widget _cell(String s,{bool right=false,bool center=false,bool white=false})=>Padding(padding:const EdgeInsets.symmetric(horizontal:4,vertical:2.5),child:Text(s,textAlign:center?TextAlign.center:right?TextAlign.right:TextAlign.left,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:7,color:white?Colors.white:Colors.black87,fontWeight:white?FontWeight.w900:FontWeight.w500)));
+  const _ScreenDetailTable({required this.rows});
+  final List<_InvoiceFormRow> rows;
+  @override
+  Widget build(BuildContext context) => Table(
+    border: TableBorder.all(color: _ExactInvoiceScreen.blue, width: .55),
+    columnWidths: const {
+      0: FlexColumnWidth(2.15),
+      1: FlexColumnWidth(2.05),
+      2: FlexColumnWidth(.8),
+      3: FlexColumnWidth(1.25),
+      4: FlexColumnWidth(1.45),
+    },
+    children: [
+      TableRow(
+        decoration: const BoxDecoration(color: _ExactInvoiceScreen.blue),
+        children: [
+          '作業所名',
+          '工事内容',
+          '数量',
+          '単価',
+          '請求金額',
+        ].map((e) => _cell(e, white: true, center: true)).toList(),
+      ),
+      for (var i = 0; i < rows.length; i++)
+        TableRow(
+          decoration: BoxDecoration(
+            color: i.isOdd ? _ExactInvoiceScreen.pale : Colors.white,
+          ),
+          children: [
+            _cell(rows[i].siteName),
+            _cell(rows[i].content),
+            _cell(rows[i].quantity, right: true),
+            _cell(rows[i].unitPrice, right: true),
+            _cell(rows[i].amount, right: true),
+          ],
+        ),
+    ],
+  );
+  Widget _cell(
+    String s, {
+    bool right = false,
+    bool center = false,
+    bool white = false,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2.5),
+    child: Text(
+      s,
+      textAlign: center
+          ? TextAlign.center
+          : right
+          ? TextAlign.right
+          : TextAlign.left,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 7,
+        color: white ? Colors.white : Colors.black87,
+        fontWeight: white ? FontWeight.w900 : FontWeight.w500,
+      ),
+    ),
+  );
 }
+
 class _ScreenSeal extends StatelessWidget {
- const _ScreenSeal({required this.companyName}); final String companyName;
- @override Widget build(BuildContext context)=>Container(width:34,height:34,alignment:Alignment.center,decoration:BoxDecoration(border:Border.all(color:const Color(0xffb33b32),width:1.4)),child:Text(companyName.length>4?companyName.substring(0,4):companyName,textAlign:TextAlign.center,maxLines:2,style:const TextStyle(fontSize:7,color:Color(0xffb33b32),fontWeight:FontWeight.w900)));
+  const _ScreenSeal({required this.companyName});
+  final String companyName;
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 34,
+    height: 34,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xffb33b32), width: 1.4),
+    ),
+    child: Text(
+      companyName.length > 4 ? companyName.substring(0, 4) : companyName,
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      style: const TextStyle(
+        fontSize: 7,
+        color: Color(0xffb33b32),
+        fontWeight: FontWeight.w900,
+      ),
+    ),
+  );
 }
+
 class _ScreenApprovals extends StatelessWidget {
- const _ScreenApprovals({required this.approvals}); final List<InvoiceApprovalRecord> approvals;
- @override Widget build(BuildContext context)=>Row(children:[for(var i=0;i<2;i++) Expanded(child:Container(decoration:BoxDecoration(border:Border.all(color:_ExactInvoiceScreen.blue,width:.72)),child:Column(children:[
-  Container(height:17,alignment:Alignment.center,color:_ExactInvoiceScreen.blue,child:Text(i<approvals.length?approvals[i].name:'確認',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.white,fontSize:7,fontWeight:FontWeight.w900))),
-  Expanded(child:Center(child:Text(i<approvals.length&&approvals[i].approved?'承認済':'',style:const TextStyle(fontSize:7,fontWeight:FontWeight.w900)))),
- ])))]);
+  const _ScreenApprovals({required this.approvals});
+  final List<InvoiceApprovalRecord> approvals;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      for (var i = 0; i < 2; i++)
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: _ExactInvoiceScreen.blue, width: .72),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  height: 17,
+                  alignment: Alignment.center,
+                  color: _ExactInvoiceScreen.blue,
+                  child: Text(
+                    i < approvals.length ? approvals[i].name : '確認',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      i < approvals.length && approvals[i].approved
+                          ? '承認済'
+                          : '',
+                      style: const TextStyle(
+                        fontSize: 7,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
 }

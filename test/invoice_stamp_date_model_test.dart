@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/invoices/invoice_approval_repository.dart';
+import 'package:sk_works/features/invoices/invoice_approval_repository.dart';
 
 InvoiceApprovalRecord record({
   String status = 'approved',
