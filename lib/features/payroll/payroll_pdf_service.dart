@@ -38,10 +38,10 @@ class PayrollPdfService {
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(
-          6.2 * PdfPageFormat.mm,
-          13.7 * PdfPageFormat.mm,
-          6.2 * PdfPageFormat.mm,
-          13.7 * PdfPageFormat.mm,
+          13 * PdfPageFormat.mm,
+          15 * PdfPageFormat.mm,
+          13 * PdfPageFormat.mm,
+          15 * PdfPageFormat.mm,
         ),
         build: (_) => _sheet(
           statement,
@@ -110,12 +110,12 @@ class PayrollPdfService {
       ),
     ]);
 
-    final blue = PdfColor.fromHex('#0B82E6');
-    final paleBlue = PdfColor.fromHex('#EAF6FD');
-    final red = PdfColor.fromHex('#F01855');
-    final paleRed = PdfColor.fromHex('#FFF0F5');
-    final green = PdfColor.fromHex('#198754');
-    final paleGreen = PdfColor.fromHex('#EAF8EF');
+    final blue = PdfColor.fromHex('#178DE3');
+    final paleBlue = PdfColor.fromHex('#EFF8FD');
+    final red = PdfColor.fromHex('#EC4F79');
+    final paleRed = PdfColor.fromHex('#FFF3F6');
+    final green = PdfColor.fromHex('#318B61');
+    final paleGreen = PdfColor.fromHex('#F0FAF4');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -172,7 +172,7 @@ class PayrollPdfService {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Expanded(child: _moneyPanel('支給（＋）', earningEntries, detail, blue, paleBlue)),
-            pw.SizedBox(width: 12),
+            pw.SizedBox(width: 10),
             pw.Expanded(child: _moneyPanel('控除（－）', deductionEntries, detail, red, paleRed)),
           ],
         ),
@@ -262,7 +262,8 @@ class PayrollPdfService {
 
   static pw.Widget _moneyPanel(String title, Map<String, Object?> entries, Map<String, dynamic> detail, PdfColor accent, PdfColor pale) {
     final visible = entries.entries.where((e) => (_asNumber(e.value) ?? 0).abs() >= 1).toList();
-    final rowHeight = visible.length <= 6 ? 27.0 : visible.length <= 9 ? 22.0 : 18.0;
+    final rowCount = visible.length < 15 ? 15 : visible.length;
+    final rowHeight = rowCount <= 15 ? 15.0 : rowCount <= 18 ? 12.5 : 10.5;
     return pw.Container(
       decoration: pw.BoxDecoration(border: pw.Border.all(color: accent, width: .8)),
       child: pw.Column(children: [
@@ -272,10 +273,10 @@ class PayrollPdfService {
           color: pale,
           child: pw.Text(title, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: accent)),
         ),
-        if (visible.isEmpty)
-          pw.SizedBox(height: rowHeight)
-        else
-          for (final e in visible)
+        for (var index = 0; index < rowCount; index++)
+          if (index < visible.length)
+            ...[
+              (() { final e = visible[index]; return
             pw.Container(
               height: rowHeight,
               padding: const pw.EdgeInsets.symmetric(horizontal: 8),
@@ -286,6 +287,12 @@ class PayrollPdfService {
                 pw.Text(_yen((_asNumber(e.value) ?? 0).abs().toInt()),
                     style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
               ]),
+            ); })(),
+            ]
+          else
+            pw.Container(
+              height: rowHeight,
+              decoration: pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: accent, width: .2))),
             ),
       ]),
     );
