@@ -12,8 +12,8 @@ void main() {
 
   test('payroll rows adapt while preserving the adopted summary', () {
     final pdf=File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
-    expect(pdf, contains('rowHeight = visible.length <= 6 ? 27.0'));
-    expect(pdf, contains('visible.length <= 9 ? 22.0 : 18.0'));
+    expect(pdf, contains('final rowCount = visible.length < 15 ? 15 : visible.length'));
+    expect(pdf, contains('rowCount <= 15 ? 15.0'));
     expect(pdf, contains('height: rowHeight'));
     expect(pdf, contains('_moneyExplanation'));
     expect(pdf, contains('支給合計'));
