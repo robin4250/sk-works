@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../domain/invoice_engine.dart';
+import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
 import 'invoice_settings_repository.dart';
 
@@ -573,7 +574,7 @@ class InvoicePdfService {
                       ].join('　'), style: const pw.TextStyle(fontSize: 6)),
                     ],
                   ),
-                  pw.Positioned(right: 5, top: -3, child: _companySeal(settings?.companyName ?? '')),
+                  pw.Positioned(right: 5, top: -3, child: CompanySealPdf.build(settings?.companyName ?? '')),
                 ],
               ),
             ),
@@ -673,56 +674,6 @@ class InvoicePdfService {
     final value = name.trim();
     if (value.isEmpty) return '';
     return value.split(RegExp(r'[\\s　]+')).first;
-  }
-
-  static pw.Widget _companySeal(String companyName) {
-    final red = PdfColor.fromHex('#D9272E');
-    final value = companyName.trim().isEmpty ? '会社' : companyName.trim();
-    final groups = _companySealGroups(value);
-    return pw.Container(
-      width: 42,
-      height: 42,
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: red, width: 1.55),
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(2)),
-      ),
-      padding: const pw.EdgeInsets.all(2),
-      child: pw.Row(
-        children: [
-          for (final group in groups)
-            pw.Expanded(
-              child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (final rune in group.runes)
-                    pw.Text(String.fromCharCode(rune),
-                      style: pw.TextStyle(color: red, fontSize: 6.2, fontWeight: pw.FontWeight.bold)),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static List<String> _companySealGroups(String name) {
-    if (name.endsWith('株式会社')) {
-      final core = name.substring(0, name.length - 4);
-      final pivot = (core.runes.length / 2).ceil();
-      final chars = core.runes.map(String.fromCharCode).toList();
-      return [
-        chars.take(pivot).join(),
-        chars.skip(pivot).join(),
-        '株式会社',
-      ];
-    }
-    final chars = name.runes.map(String.fromCharCode).toList();
-    final chunk = (chars.length / 3).ceil();
-    return [
-      chars.take(chunk).join(),
-      chars.skip(chunk).take(chunk).join(),
-      chars.skip(chunk * 2).join(),
-    ].where((e) => e.isNotEmpty).toList();
   }
 
   static DateTime _monthEnd(InvoiceCalculationResult invoice) {
