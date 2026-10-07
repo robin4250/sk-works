@@ -11,7 +11,7 @@ void main() {
     expect(source, contains("'No payslips have been issued yet.'"));
     expect(source, contains("SkoLanguageController.isEnglish ? 'Payslip'"));
     expect(source, contains('PdfPreview('));
-    expect(source, contains('PdfPageFormat.a4.landscape'));
+    expect(source, contains('initialPageFormat: PdfPageFormat.a4,'));
     expect(source, contains("'Confirmed'"));
     expect(source, contains("'Unconfirmed'"));
 
