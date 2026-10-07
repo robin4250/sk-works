@@ -20,7 +20,7 @@ void main() {
     expect(pdf, contains('_datedApprovalStamp'));
     expect(pdf, contains("approval ? '承認' : '確認'"));
     expect(pdf, contains('_surname(record.name)'));
-    expect(pdf, contains('_companySealGroups'));
+    expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, contains("name.endsWith('株式会社')"));
   });
 
