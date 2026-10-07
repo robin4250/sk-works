@@ -719,7 +719,6 @@ class InvoicePdfService {
               '${date.year}.${date.month}.${date.day}',
               style: pw.TextStyle(color: red, fontSize: 4.4),
             ),
-            ),
           ],
         ),
       ),
