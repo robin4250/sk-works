@@ -4,7 +4,7 @@ void main() {
   test('invoice uses final generated company and dated approval seals', () {
     final s=File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
     expect(s, contains('CompanySealPdf.build('));
-    expect(s, contains("name.endsWith('株式会社')"));
+    expect(File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(), contains("name.endsWith('株式会社')"));
     expect(s, contains("'株式会社'"));
     expect(s, contains('_datedApprovalStamp'));
     expect(s, contains("approval ? '承認' : '確認'"));
