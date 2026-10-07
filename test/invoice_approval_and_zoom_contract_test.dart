@@ -84,8 +84,8 @@ void main() {
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    expect(invoice, contains('class _InvoiceNativePreview'));
-    expect(invoice, contains('invoice.siteCalculations'));
+    expect(invoice, contains('Printing.raster('));
+    expect(invoice, contains('previewData.pageImages'));
     expect(invoice, isNot(contains('transformationController: _zoomController')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
 
