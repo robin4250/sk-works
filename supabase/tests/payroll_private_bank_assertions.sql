@@ -1,3 +1,7 @@
+-- Match the live account-deletion access predicate without touching production.
+create function private.account_access_allowed() returns boolean language sql stable as $$
+ select auth.uid() is not null and coalesce(current_setting('test.account_access_denied',true),'')<>'1'
+$$;
 alter table public.companies add column name text;
 create table public.workers(id uuid primary key,company_id uuid,user_id uuid,name text);
 create table public.payroll_statements(id uuid primary key,worker_id uuid,company_id uuid,period_start date,period_end date,gross_pay int,deductions int,net_pay int,detail jsonb,issued_at timestamptz);
@@ -19,4 +23,12 @@ end $$;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',false);
 do $$begin
  if exists(select 1 from public.my_payroll_statement_rows_with_adjustments()) then raise exception 'other user leakage'; end if;
+end $$;
+
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+select set_config('test.account_access_denied','1',false);
+do $$declare r record; begin
+ select * into r from public.my_payroll_statement_rows_with_adjustments();
+ if r.id is null or r.gross_pay<>10500 or r.net_pay<>9500 then raise exception 'denied bank altered payroll calculation'; end if;
+ if r.detail->'bank_account'<>'{}'::jsonb then raise exception 'restricted bank leaked'; end if;
 end $$;

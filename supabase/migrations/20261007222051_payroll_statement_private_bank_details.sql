@@ -93,6 +93,7 @@ begin
     ) as bank_detail
     from public.worker_private_bank_accounts b
     where b.worker_id=ps.worker_id and b.company_id=ps.company_id
+      and private.account_access_allowed()
     order by b.updated_at desc nulls last
     limit 1
   ) bank on true

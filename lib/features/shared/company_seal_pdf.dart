@@ -33,6 +33,11 @@ class CompanySealPdf {
     if (name.isEmpty) return const [];
     // Japanese square seals traditionally read from the right-hand column.
     final chars = name.runes.map(String.fromCharCode).toList();
+    if (name.startsWith('株式会社') && chars.length > 4) {
+      final core = chars.sublist(4);
+      final pivot = (core.length / 2).ceil();
+      return ['株式会社', core.take(pivot).join(), core.skip(pivot).join()];
+    }
     if (name.endsWith('株式会社') && chars.length > 4) {
       final core = chars.sublist(0, chars.length - 4);
       final pivot = (core.length / 2).ceil();

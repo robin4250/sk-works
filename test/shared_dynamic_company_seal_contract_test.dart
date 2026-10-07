@@ -51,6 +51,15 @@ void main() {
     expect(columns.join(), '東京都建設工業株式会社');
   });
 
+  test(
+    'leading corporate name stays in one column without changing name order',
+    () {
+      final columns = CompanySealPdf.verticalColumns('株式会社青空工業');
+      expect(columns, ['株式会社', '青空', '工業']);
+      expect(columns.join(), '株式会社青空工業');
+    },
+  );
+
   test('all three document generators use shared company seal', () {
     final sources = [
       'lib/features/invoices/invoice_pdf_service.dart',

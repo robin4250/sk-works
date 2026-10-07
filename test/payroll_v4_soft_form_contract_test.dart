@@ -9,7 +9,8 @@ void main() {
     expect(s, contains("PdfColor.fromHex('#178DE3')"));
     expect(s, contains("PdfColor.fromHex('#EC4F79')"));
     expect(s, contains("PdfColor.fromHex('#318B61')"));
-    expect(s, contains("pw.SizedBox(width: 10)"));
+    expect(s, contains('final panelWidth = (width - 10) / 2'));
+    expect(s, contains('offset: const PdfPoint(-4, 0)'));
     expect(
       s,
       contains("final rowCount = visible.length < 15 ? 15 : visible.length"),
