@@ -102,6 +102,19 @@ class EmployeeInviteRepository {
     }
   }
 
+  Future<String> loadTestFlightUrl() async {
+    final raw = await _client.rpc('initial_registration_distribution_settings');
+    final map = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return map['testflight_url']?.toString() ?? '';
+  }
+
+  Future<void> saveTestFlightUrl(String value) async {
+    await _client.rpc(
+      'save_initial_registration_distribution_settings',
+      params: {'p_testflight_url': value.trim()},
+    );
+  }
+
   Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees() async {
     final value = await _client.rpc('initial_registration_employee_rows');
     final rows = value is List ? value : const <dynamic>[];

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
 
@@ -16,11 +17,13 @@ class EmployeeInitialRegistrationPage extends StatefulWidget {
 class _EmployeeInitialRegistrationPageState
     extends State<EmployeeInitialRegistrationPage> {
   final _repository = EmployeeInviteRepository.maybeCreate();
+  final _testFlightUrl = TextEditingController();
   List<InitialRegistrationEmployee> _employees = const [];
   bool _loading = true;
   String? _busyWorkerId;
   String? _error;
   EmployeeInviteResult? _result;
+  bool _savingUrl = false;
 
   @override
   void initState() {
@@ -38,7 +41,12 @@ class _EmployeeInitialRegistrationPageState
       return;
     }
     try {
-      final employees = await repository.loadRegisteredEmployees();
+      final results = await Future.wait([
+        repository.loadRegisteredEmployees(),
+        repository.loadTestFlightUrl(),
+      ]);
+      final employees = results[0] as List<InitialRegistrationEmployee>;
+      _testFlightUrl.text = results[1] as String;
       if (!mounted) return;
       setState(() {
         _employees = employees;
@@ -52,6 +60,30 @@ class _EmployeeInitialRegistrationPageState
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _saveTestFlightUrl() async {
+    final repository = _repository;
+    if (repository == null || _savingUrl) return;
+    setState(() => _savingUrl = true);
+    try {
+      await repository.saveTestFlightUrl(_testFlightUrl.text);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('TestFlight URLを保存しました')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+    } finally {
+      if (mounted) setState(() => _savingUrl = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _testFlightUrl.dispose();
+    super.dispose();
   }
 
   Future<void> _send(InitialRegistrationEmployee employee) async {
@@ -92,6 +124,14 @@ class _EmployeeInitialRegistrationPageState
   Future<void> _share(EmployeeInviteResult result) =>
       SharePlus.instance.share(ShareParams(text: _shareText(result)));
 
+  Future<void> _openSms(EmployeeInviteResult result) async {
+    final body = Uri.encodeComponent(_shareText(result));
+    final uri = Uri.parse('sms:${result.phone}?body=$body');
+    if (!await launchUrl(uri)) {
+      throw StateError('SMS作成画面を開けませんでした。共有ボタンをご利用ください。');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final unsent = _employees.where((item) => !item.invited).length;
@@ -122,6 +162,43 @@ class _EmployeeInitialRegistrationPageState
                       ),
                     ),
                   ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'TestFlight誘導URL',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '従業員へ送る初回登録案内に入るURLです。TestFlightの招待URLを貼り付けて保存してください。',
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _testFlightUrl,
+                            keyboardType: TextInputType.url,
+                            autocorrect: false,
+                            decoration: const InputDecoration(
+                              labelText: 'TestFlight URL',
+                              hintText: 'https://testflight.apple.com/join/...',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.link),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          FilledButton.icon(
+                            onPressed: _savingUrl ? null : _saveTestFlightUrl,
+                            icon: const Icon(Icons.save_outlined),
+                            label: Text(_savingUrl ? '保存中…' : 'URLを保存'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   if (_error != null) ...[
                     const SizedBox(height: 10),
                     Text(
@@ -177,6 +254,7 @@ class _EmployeeInitialRegistrationPageState
                     _ResultCard(
                       result: _result!,
                       onShare: () => _share(_result!),
+                      onSms: () => _openSms(_result!),
                     ),
                   ],
                 ],
@@ -187,10 +265,15 @@ class _EmployeeInitialRegistrationPageState
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result, required this.onShare});
+  const _ResultCard({
+    required this.result,
+    required this.onShare,
+    required this.onSms,
+  });
 
   final EmployeeInviteResult result;
   final VoidCallback onShare;
+  final VoidCallback onSms;
 
   @override
   Widget build(BuildContext context) {
@@ -252,9 +335,15 @@ class _ResultCard extends StatelessWidget {
               label: const Text('初期パスワードをコピー'),
             ),
             FilledButton.icon(
+              onPressed: onSms,
+              icon: const Icon(Icons.sms_outlined),
+              label: const Text('この従業員へSMSを作成'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
               onPressed: onShare,
               icon: const Icon(Icons.ios_share),
-              label: const Text('SMS・メッセージで共有'),
+              label: const Text('LINE・メッセージ等で共有'),
             ),
           ],
         ),

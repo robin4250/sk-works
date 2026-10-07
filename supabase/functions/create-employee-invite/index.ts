@@ -350,7 +350,19 @@ Deno.serve(async (req: Request) => {
       password,
     });
 
-    const testFlightUrl = Deno.env.get("SKO_TESTFLIGHT_URL") ?? "";
+    let testFlightUrl = "";
+    const companyResponse = await serviceFetch(
+      "/rest/v1/companies?id=eq." + encodeURIComponent(companyId) +
+        "&select=employee_testflight_url&limit=1",
+      { method: "GET" },
+    );
+    if (companyResponse.ok) {
+      const companyRows = await companyResponse.json();
+      testFlightUrl = String(companyRows?.[0]?.employee_testflight_url ?? "").trim();
+    }
+    if (!testFlightUrl) {
+      testFlightUrl = Deno.env.get("SKO_TESTFLIGHT_URL") ?? "";
+    }
     let smsSent = false;
     let deliveryMessage = "";
     if (deliverSms) {
