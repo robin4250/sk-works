@@ -12,11 +12,11 @@ void main() {
     expect(source, isNot(contains("aspectRatio: 1 / 1.414")));
   });
 
-  test('payroll preview renders the actual landscape template PDF', () {
+  test('payroll preview renders the actual portrait A4 template PDF', () {
     final source = read('lib/features/payroll/payroll_statements_page.dart');
 
     expect(source, contains('PdfPreview('));
-    expect(source, contains('PdfPageFormat.a4.landscape'));
+    expect(source, contains('initialPageFormat: PdfPageFormat.a4,'));
     expect(source, contains('PayrollPdfService.buildPdf(statement)'));
   });
 
