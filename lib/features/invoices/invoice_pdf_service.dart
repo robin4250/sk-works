@@ -976,17 +976,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
     }
-    final pages = <Uint8List>[];
-    await for (final page in Printing.raster(
-      pdfBytes,
-      dpi: 144,
-    )) {
-      pages.add(await page.toPng());
-    }
-    if (pages.isEmpty) {
-      throw StateError('正式PDFの画面画像を生成できませんでした。');
-    }
-    return _InvoicePreviewData(pdfBytes: pdfBytes, pageImages: pages);
+    final approvals = await _loadApprovals();
+    return _InvoicePreviewData(
+      pdfBytes: pdfBytes,
+      settings: settings,
+      approvals: approvals,
+    );
   }
 
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
@@ -1191,9 +1186,175 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 class _InvoicePreviewData {
   const _InvoicePreviewData({
     required this.pdfBytes,
-    required this.pageImages,
+    required this.settings,
+    required this.approvals,
   });
-
   final Uint8List pdfBytes;
-  final List<Uint8List> pageImages;
+  final InvoiceSettingsData? settings;
+  final List<InvoiceApprovalRecord> approvals;
+}
+
+class _ExactInvoiceScreen extends StatelessWidget {
+  const _ExactInvoiceScreen({
+    required this.invoice,
+    required this.settings,
+    required this.approvals,
+  });
+  final InvoiceCalculationResult invoice;
+  final InvoiceSettingsData? settings;
+  final List<InvoiceApprovalRecord> approvals;
+  static const blue = Color(0xff8199b5);
+  static const pale = Color(0xffe7ecf2);
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <_InvoiceFormRow>[];
+    for (final site in invoice.siteCalculations) {
+      for (var index = 0; index < site.lines.length; index++) {
+        final line = site.lines[index];
+        final siteLabel = line.siteLabel.trim().isNotEmpty
+            ? line.siteLabel
+            : index == 0 ? site.siteName : '〃';
+        final work = (line.workContent ?? line.label).trim();
+        final sub = siteLabel == '〃' && work.isNotEmpty;
+        rows.add(_InvoiceFormRow(
+          siteName: sub ? '〃　$work' : siteLabel,
+          content: sub ? '' : (work.isEmpty ? '通常作業' : work),
+          quantity: line.quantity == 0 ? '' : InvoicePdfService._quantity(line.quantity),
+          unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+              ? line.unitPriceText!.trim()
+              : line.unitPriceYen == 0 ? '' : InvoicePdfService._number(line.unitPriceYen),
+          amount: InvoicePdfService._number(line.amountYen),
+        ));
+      }
+      if (site.manualAdjustmentYen != 0) {
+        rows.add(_InvoiceFormRow(
+          siteName: '〃　（値引き・調整）',
+          content: '',
+          quantity: '',
+          unitPrice: '',
+          amount: InvoicePdfService._number(site.manualAdjustmentYen),
+        ));
+      }
+    }
+    while (rows.length < 10) rows.add(const _InvoiceFormRow.empty());
+    final bank = [settings?.bankName ?? '', settings?.bankBranch ?? '',
+      settings?.bankAccountType ?? '', settings?.bankAccountNumber ?? '']
+        .where((e) => e.trim().isNotEmpty).join('　');
+    final issueDate = invoice.issueDate ?? InvoicePdfService._monthEnd(invoice);
+    final subject = (settings?.invoiceSubject ?? '').trim();
+    final workPeriod = InvoicePdfService._workPeriod(invoice);
+    return Material(
+      color: Colors.white,
+      elevation: 2,
+      child: SizedBox(
+        width: 595, height: 842,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(37, 28, 37, 28),
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.black87, fontSize: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SizedBox(height: 40, child: Stack(children: [
+                const Align(alignment: Alignment.topCenter, child: Text('御　請　求　書',
+                  style: TextStyle(color: blue,fontSize:17,fontWeight:FontWeight.w900,letterSpacing:4))),
+                Align(alignment: Alignment.topRight, child: Column(crossAxisAlignment: CrossAxisAlignment.end,children:[
+                  Text(InvoicePdfService._dateJa(issueDate),style:const TextStyle(fontSize:10)),
+                  Text('請求書番号：${invoice.invoiceNumber}',style:const TextStyle(fontSize:8,color:blue)),
+                ])),
+              ])),
+              Row(crossAxisAlignment: CrossAxisAlignment.start,children:[
+                Expanded(child: Container(height:40,decoration:const BoxDecoration(border:Border(bottom:BorderSide(color:blue,width:1.4))),
+                  child:Stack(alignment:Alignment.center,children:[
+                    Text(invoice.customerId,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                    const Align(alignment:Alignment.centerRight,child:Text('御中',style:TextStyle(fontSize:10,color:blue,fontWeight:FontWeight.w900))),
+                  ]))),
+                const SizedBox(width:14),
+                SizedBox(width:245,child:Stack(children:[
+                  Padding(padding:const EdgeInsets.only(right:28),child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
+                    Text(settings?.companyName ?? '',style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
+                    if((settings?.companyPostalCode??'').isNotEmpty) Text('〒${settings!.companyPostalCode}',style:const TextStyle(fontSize:7.5)),
+                    if((settings?.companyAddress??'').isNotEmpty) Text(settings!.companyAddress,style:const TextStyle(fontSize:7.5)),
+                    if((settings?.companyPhone??'').isNotEmpty) Text('TEL：${settings!.companyPhone}',style:const TextStyle(fontSize:7.5)),
+                  ])),
+                  Positioned(right:0,top:0,child:_ScreenSeal(companyName:settings?.companyName??'')),
+                ])),
+              ]),
+              const SizedBox(height:2),
+              Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Expanded(child:Container(padding:const EdgeInsets.all(8),decoration:BoxDecoration(border:Border.all(color:blue,width:1.1)),child:Column(children:[
+                  Row(children:[const Text('御請求金額',style:TextStyle(color:blue,fontSize:13,fontWeight:FontWeight.w900)),const SizedBox(width:10),
+                    Expanded(child:Container(height:34,alignment:Alignment.center,decoration:BoxDecoration(border:Border.all(color:blue)),
+                      child:Text(InvoicePdfService._yen(invoice.grandTotalYen),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))))]),
+                  const SizedBox(height:5),
+                  Text(bank.isEmpty?'振込先：請求書設定の口座情報':'振込先：$bank',style:const TextStyle(fontSize:9)),
+                  if((settings?.bankAccountHolder??'').trim().isNotEmpty) Text('口座名義：${settings!.bankAccountHolder}',style:const TextStyle(fontSize:8)),
+                  const Text('（振込手数料は御社にて御負担願います）',style:TextStyle(fontSize:7.5,color:blue)),
+                ]))),
+                const SizedBox(width:4),
+                SizedBox(width:142,height:66,child:_ScreenApprovals(approvals:approvals)),
+              ]),
+              const SizedBox(height:3),
+              const Text('下記の通り、御請求申し上げますので、お支払約定日までに、\n下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
+                style:TextStyle(fontSize:8.5,color:blue)),
+              const SizedBox(height:10),
+              Container(height:30,decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),child:Row(children:[
+                Container(width:92,alignment:Alignment.center,color:blue,child:const Text('件名 ／ 工期',style:TextStyle(color:Colors.white,fontSize:9,fontWeight:FontWeight.w900))),
+                Expanded(child:Padding(padding:const EdgeInsets.symmetric(horizontal:7),child:Row(children:[
+                  Expanded(child:Text(subject.isEmpty?'件名未設定':subject,style:const TextStyle(fontSize:8.5,fontWeight:FontWeight.w900))),
+                  Text(workPeriod,style:const TextStyle(fontSize:8)),
+                ]))),
+              ])),
+              const SizedBox(height:7),
+              _ScreenDetailTable(rows:rows),
+              const SizedBox(height:7),
+              Align(alignment:Alignment.centerRight,child:SizedBox(width:315,child:Column(children:[
+                _summary('計',invoice.subtotalYen),_summary('消費税',invoice.taxYen),_summary('合計(税込)',invoice.grandTotalYen,strong:true),
+              ]))),
+              const SizedBox(height:8),
+              Container(height:39,decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),child:Row(children:[
+                Expanded(child:_contract('お支払約定日',(settings?.paymentDueText??'').trim().isEmpty?'未設定':settings!.paymentDueText)),
+                Container(width:.8,color:blue),
+                Expanded(child:_contract('金額',InvoicePdfService._yen(invoice.grandTotalYen),strong:true)),
+              ])),
+              const SizedBox(height:8),
+              Container(height:60,padding:const EdgeInsets.all(7),decoration:BoxDecoration(border:Border.all(color:blue,width:.8)),
+                child:Text('備考：${settings?.footerNote??''}',style:const TextStyle(fontSize:8))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+  static Widget _summary(String label,int value,{bool strong=false})=>Container(height:25,decoration:BoxDecoration(border:Border.all(color:blue,width:.55)),child:Row(children:[
+    Container(width:90,alignment:Alignment.center,color:blue,child:Text(label,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w900))),
+    Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:Text(InvoicePdfService._yen(value),textAlign:TextAlign.right,style:TextStyle(fontSize:strong?11:9,fontWeight:strong?FontWeight.w900:FontWeight.w500)))),
+  ]));
+  static Widget _contract(String label,String value,{bool strong=false})=>Row(children:[
+    Container(width:92,alignment:Alignment.center,color:blue,child:Text(label,style:const TextStyle(color:Colors.white,fontSize:9,fontWeight:FontWeight.w900))),
+    Expanded(child:Center(child:Text(value,style:TextStyle(fontSize:strong?12:9,fontWeight:strong?FontWeight.w900:FontWeight.w500)))),
+  ]);
+}
+class _ScreenDetailTable extends StatelessWidget {
+  const _ScreenDetailTable({required this.rows}); final List<_InvoiceFormRow> rows;
+  @override Widget build(BuildContext context)=>Table(
+    border:TableBorder.all(color:_ExactInvoiceScreen.blue,width:.55),
+    columnWidths:const {0:FlexColumnWidth(2.15),1:FlexColumnWidth(2.05),2:FlexColumnWidth(.8),3:FlexColumnWidth(1.25),4:FlexColumnWidth(1.45)},
+    children:[
+      TableRow(decoration:const BoxDecoration(color:_ExactInvoiceScreen.blue),children:['作業所名','工事内容','数量','単価','請求金額'].map((e)=>_cell(e,white:true,center:true)).toList()),
+      for(var i=0;i<rows.length;i++) TableRow(decoration:BoxDecoration(color:i.isOdd?_ExactInvoiceScreen.pale:Colors.white),children:[
+        _cell(rows[i].siteName),_cell(rows[i].content),_cell(rows[i].quantity,right:true),_cell(rows[i].unitPrice,right:true),_cell(rows[i].amount,right:true),
+      ]),
+    ]);
+  Widget _cell(String s,{bool right=false,bool center=false,bool white=false})=>Padding(padding:const EdgeInsets.symmetric(horizontal:4,vertical:2.5),child:Text(s,textAlign:center?TextAlign.center:right?TextAlign.right:TextAlign.left,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:7,color:white?Colors.white:Colors.black87,fontWeight:white?FontWeight.w900:FontWeight.w500)));
+}
+class _ScreenSeal extends StatelessWidget {
+ const _ScreenSeal({required this.companyName}); final String companyName;
+ @override Widget build(BuildContext context)=>Container(width:34,height:34,alignment:Alignment.center,decoration:BoxDecoration(border:Border.all(color:const Color(0xffb33b32),width:1.4)),child:Text(companyName.length>4?companyName.substring(0,4):companyName,textAlign:TextAlign.center,maxLines:2,style:const TextStyle(fontSize:7,color:Color(0xffb33b32),fontWeight:FontWeight.w900)));
+}
+class _ScreenApprovals extends StatelessWidget {
+ const _ScreenApprovals({required this.approvals}); final List<InvoiceApprovalRecord> approvals;
+ @override Widget build(BuildContext context)=>Row(children:[for(var i=0;i<2;i++) Expanded(child:Container(decoration:BoxDecoration(border:Border.all(color:_ExactInvoiceScreen.blue,width:.72)),child:Column(children:[
+  Container(height:17,alignment:Alignment.center,color:_ExactInvoiceScreen.blue,child:Text(i<approvals.length?approvals[i].name:'確認',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.white,fontSize:7,fontWeight:FontWeight.w900))),
+  Expanded(child:Center(child:Text(i<approvals.length&&approvals[i].approved?'承認済':'',style:const TextStyle(fontSize:7,fontWeight:FontWeight.w900)))),
+ ])))]);
 }
