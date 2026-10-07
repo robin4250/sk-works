@@ -157,7 +157,10 @@ class PayrollPdfService {
           child: pw.Row(children: [
             pw.Expanded(child: _identityText('社員番号', _first(detail, const ['社員番号', '社員No', '社員No.']))),
             pw.Expanded(flex: 2, child: _identityText('氏名', '${statement.workerName}　様')),
+            pw.Expanded(child: _identityText('所属', _first(detail, const ['所属', '部署']))),
+            pw.Expanded(child: _identityText('職種', _first(detail, const ['職種']))),
             pw.Expanded(child: _identityText('給与形態', _payTypeLabel(detail))),
+            pw.Expanded(child: _identityText('入社日', _first(detail, const ['入社日']))),
           ]),
         ),
         pw.SizedBox(height: 14),
@@ -233,7 +236,7 @@ class PayrollPdfService {
       MapEntry('深夜', _hours(detail, const ['深夜時間', '夜間時間'])),
       MapEntry('休日残業', _hours(detail, const ['休日残業時間', '法定休出時間'])),
       MapEntry('休日深夜', _hours(detail, const ['休日深夜時間'])),
-      MapEntry('休日深夜残業', _hours(detail, const ['休日深夜残業時間'])),
+      MapEntry('休日深夜', _hours(detail, const ['休日深夜時間', '休日深夜残業時間'])),
     ];
     return pw.Wrap(
       spacing: 5,
@@ -241,7 +244,7 @@ class PayrollPdfService {
       children: [
         for (final item in items)
           pw.Container(
-            width: 49,
+            width: 54,
             height: 39,
             padding: const pw.EdgeInsets.all(4),
             decoration: pw.BoxDecoration(color: pale, border: pw.Border.all(color: blue, width: .45)),
@@ -279,12 +282,24 @@ class PayrollPdfService {
               decoration: pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: accent, width: .3))),
               child: pw.Row(children: [
                 pw.Expanded(child: pw.Text(e.key, style: const pw.TextStyle(fontSize: 7.5))),
+                pw.Expanded(child: pw.Text(_moneyExplanation(e.key, detail), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 6))),
                 pw.Text(_yen((_asNumber(e.value) ?? 0).abs().toInt()),
                     style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
               ]),
             ),
       ]),
     );
+  }
+
+
+  static String _moneyExplanation(String label, Map<String, dynamic> detail) {
+    final direct = detail['${label}計算内容'] ?? detail['${label}備考'];
+    if (direct != null && direct.toString().trim().isNotEmpty) return direct.toString().trim();
+    if (label == '基本給') return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
+    if (label.contains('残業')) return '登録単価 × 残業時間';
+    if (label.contains('早出')) return '登録単価 × 早出時間';
+    if (label.contains('休日')) return '登録単価 × 休日実績';
+    return '';
   }
 
   static pw.Widget _summaryAmount(String label, int amount, PdfColor color) => pw.Column(
