@@ -1110,6 +1110,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         child: _InvoiceNativePreview(
                           invoices: widget.invoices,
                           settings: previewData.settings,
+                          approvals: approvals,
                         ),
                       ),
                     ),
@@ -1178,10 +1179,12 @@ class _InvoiceNativePreview extends StatelessWidget {
   const _InvoiceNativePreview({
     required this.invoices,
     required this.settings,
+    required this.approvals,
   });
 
   final List<InvoiceCalculationResult> invoices;
   final InvoiceSettingsData? settings;
+  final List<InvoiceApprovalRecord> approvals;
 
   @override
   Widget build(BuildContext context) {
@@ -1208,6 +1211,7 @@ class _InvoiceNativePreview extends StatelessWidget {
       elevation: 3,
       child: SizedBox(
         width: 595,
+        height: 842,
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: DefaultTextStyle(
@@ -1265,6 +1269,42 @@ class _InvoiceNativePreview extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final approval in approvals.take(3))
+                      Container(
+                        width: 58,
+                        height: 58,
+                        margin: const EdgeInsets.only(left: 5),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black38),
+                        ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.all(3),
+                        child: Text(
+                          approval.approved
+                              ? '${approval.name}\n承認済'
+                              : '${approval.name}\n確認',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    if (_sealBytes(settings?.companySealBase64) case final seal?)
+                      Container(
+                        width: 58,
+                        height: 58,
+                        margin: const EdgeInsets.only(left: 5),
+                        alignment: Alignment.center,
+                        child: Image.memory(seal, fit: BoxFit.contain),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1392,6 +1432,17 @@ class _InvoiceNativePreview extends StatelessWidget {
           ],
         ),
       );
+
+  static Uint8List? _sealBytes(String? raw) {
+    final value = (raw ?? '').trim();
+    if (value.isEmpty) return null;
+    try {
+      final payload = value.contains(',') ? value.split(',').last : value;
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
+  }
 
   static String _money(num value) {
     final digits = value.round().toString();
