@@ -38,10 +38,10 @@ class PayrollPdfService {
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(
-          14 * PdfPageFormat.mm,
-          13 * PdfPageFormat.mm,
-          14 * PdfPageFormat.mm,
-          13 * PdfPageFormat.mm,
+          6.2 * PdfPageFormat.mm,
+          13.7 * PdfPageFormat.mm,
+          6.2 * PdfPageFormat.mm,
+          13.7 * PdfPageFormat.mm,
         ),
         build: (_) => _sheet(
           statement,
@@ -110,11 +110,11 @@ class PayrollPdfService {
       ),
     ]);
 
-    final blue = PdfColor.fromHex('#2F80ED');
-    final paleBlue = PdfColor.fromHex('#EAF4FF');
-    final red = PdfColor.fromHex('#D95C73');
-    final paleRed = PdfColor.fromHex('#FFF0F3');
-    final green = PdfColor.fromHex('#2E8B57');
+    final blue = PdfColor.fromHex('#0B82E6');
+    final paleBlue = PdfColor.fromHex('#EAF6FD');
+    final red = PdfColor.fromHex('#F01855');
+    final paleRed = PdfColor.fromHex('#FFF0F5');
+    final green = PdfColor.fromHex('#198754');
     final paleGreen = PdfColor.fromHex('#EAF8EF');
 
     return pw.Column(
@@ -146,7 +146,7 @@ class PayrollPdfService {
             ),
           ],
         ),
-        pw.SizedBox(height: 14),
+        pw.SizedBox(height: 8),
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: pw.BoxDecoration(
@@ -163,11 +163,11 @@ class PayrollPdfService {
             pw.Expanded(child: _identityText('入社日', _first(detail, const ['入社日']))),
           ]),
         ),
-        pw.SizedBox(height: 14),
+        pw.SizedBox(height: 8),
         pw.Text('勤務実績', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: blue)),
         pw.SizedBox(height: 5),
         _attendanceCards(detail, blue, paleBlue),
-        pw.SizedBox(height: 16),
+        pw.SizedBox(height: 8),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
