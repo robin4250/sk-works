@@ -13,16 +13,17 @@ void main() {
     final personnel = read(
       'supabase/migrations/20261006192517_worker_personnel_approvers_one_to_three.sql',
     );
-    final approvalsHub =
-        read('lib/features/approvals/approvals_hub_page.dart');
-    final siteApprovals =
-        read('lib/features/sites/site_information_approvals_page.dart');
+    final approvalsHub = read('lib/features/approvals/approvals_hub_page.dart');
+    final siteApprovals = read(
+      'lib/features/sites/site_information_approvals_page.dart',
+    );
     final payrollTarget = read(
       'supabase/migrations/20261006190922_payroll_adjustment_latest_statement_period.sql',
     );
     final payrollPdf = read('lib/features/payroll/payroll_pdf_service.dart');
-    final invoicePreview =
-        read('lib/features/invoices/invoice_pdf_service.dart');
+    final invoicePreview = read(
+      'lib/features/invoices/invoice_pdf_service.dart',
+    );
 
     // Employees registered with name + phone must be management-visible before
     // first-login linkage, and the invite flow must not hide them again.
@@ -46,16 +47,26 @@ void main() {
 
     // Payroll adjustments target an existing payslip period and deductions are
     // rendered both for fixed names and freeform adjustment labels.
-    expect(payrollTarget, contains('payroll_adjustment_latest_statement_period'));
+    expect(
+      payrollTarget,
+      contains('payroll_adjustment_latest_statement_period'),
+    );
     expect(payrollTarget, contains('order by ps.period_end desc'));
     expect(payrollPdf, contains("MapEntry<String, Object?>('道具代'"));
-    expect(payrollPdf, contains('final adjustmentDeductions = _customMoneyEntries'));
+    expect(
+      payrollPdf,
+      contains('final adjustmentDeductions = _customMoneyEntries'),
+    );
     expect(payrollPdf, contains('...adjustmentDeductions.entries.map('));
 
     // Invoice preview must rely on PdfPreview sizing instead of reintroducing
     // the outer InteractiveViewer that made the A4 content effectively vanish.
-    expect(invoicePreview, contains('class _ExactInvoiceScreen'));
-    expect(invoicePreview, contains('_ScreenDetailTable(rows:rows)'));
+    expect(invoicePreview, contains('child: PdfPreview('));
+    expect(invoicePreview, contains('build: (_) async => pdfBytes'));
+    expect(invoicePreview, contains('onLayout: (_) async => pdfBytes'));
+    expect(invoicePreview, contains('bytes: pdfBytes'));
+    expect(invoicePreview, contains('while (rows.length < 35)'));
+    expect(invoicePreview, isNot(contains('child: _ExactInvoiceScreen(')));
     expect(
       invoicePreview,
       isNot(contains('transformationController: _zoomController')),

@@ -20,6 +20,7 @@ class InvoicePdfService {
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
+    Map<String, List<InvoiceApprovalRecord>>? approvalsByInvoice,
   }) async {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
@@ -34,7 +35,11 @@ class InvoicePdfService {
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
       List<InvoiceApprovalRecord> approvals = const [];
-      if (approvalRepository != null && invoice.invoiceId.isNotEmpty) {
+      if (approvalsByInvoice?.containsKey(invoice.invoiceId) == true) {
+        approvals = List<InvoiceApprovalRecord>.unmodifiable(
+          approvalsByInvoice![invoice.invoiceId]!,
+        );
+      } else if (approvalRepository != null && invoice.invoiceId.isNotEmpty) {
         try {
           approvals = await approvalRepository.loadForInvoice(
             invoice.invoiceId,
@@ -356,8 +361,9 @@ class InvoicePdfService {
       text(bankLabels[i], 364, 174 + i * 11, 50, size: 5.8);
       text(bankValues[i], 418, 174 + i * 11, 137, size: 6.1);
     }
-    if (bankValues.every((v) => v.trim().isEmpty))
+    if (bankValues.every((v) => v.trim().isEmpty)) {
       text('未登録', 418, 174, 137, size: 6.1, color: PdfColors.red);
+    }
     box(28, 186, 266, 20);
     text('件名', 40, 194, 45);
     text(settings?.invoiceSubject ?? '', 90, 193, 196, size: 8, bold: true);
@@ -539,7 +545,7 @@ class InvoicePdfService {
         );
       }
     }
-    if (pageCount > 1)
+    if (pageCount > 1) {
       text(
         '${pageIndex + 1} / $pageCount',
         510,
@@ -548,6 +554,7 @@ class InvoicePdfService {
         size: 5,
         align: pw.TextAlign.right,
       );
+    }
     return pw.Stack(children: children);
   }
 

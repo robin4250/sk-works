@@ -25,23 +25,26 @@ void main() {
     expect(source, contains('PdfPageFormat.a4,'));
     expect(source, contains("'給与明細書'"));
     expect(source, contains("'勤務実績'"));
-    expect(source, contains("'支給（＋）'"));
-    expect(source, contains("'控除（－）'"));
-    expect(source, contains("'支給合計'"));
-    expect(source, contains("'控除合計'"));
+    expect(source, contains("'2　　支給（＋）'"));
+    expect(source, contains("'3　　控除（－）'"));
+    expect(source, contains("'支給合計（A）'"));
+    expect(source, contains("'控除合計（B）'"));
     expect(source, contains("'差引支給額'"));
   });
 
-  test('payment certificate follows provided construction payment template', () {
-    final source = read(
-      'lib/features/payroll/payment_certificate_pdf_service.dart',
-    );
-    expect(source, contains("'工事代金支払明細書'"));
-    expect(source, contains("'作　業　所　名'"));
-    expect(source, contains("'工　事　内　容'"));
-    expect(source, contains("'数　量'"));
-    expect(source, contains("'単　価'"));
-    expect(source, contains("'支払金額'"));
-    expect(source, contains("'差　引　残　高'"));
-  });
+  test(
+    'payment certificate follows provided construction payment template',
+    () {
+      final source = read(
+        'lib/features/payroll/payment_certificate_pdf_service.dart',
+      );
+      expect(source, contains("'工事代金支払明細書'"));
+      expect(source, contains("'作　業　所　名'"));
+      expect(source, contains("'工　事　内　容'"));
+      expect(source, contains("'数　量'"));
+      expect(source, contains("'単　価'"));
+      expect(source, contains("'支払金額'"));
+      expect(source, contains("'差　引　残　高'"));
+    },
+  );
 }

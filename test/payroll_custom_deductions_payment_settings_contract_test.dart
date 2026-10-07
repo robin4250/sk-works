@@ -6,8 +6,9 @@ String read(String path) => File(path).readAsStringSync();
 
 void main() {
   test('individual payroll settings support unlimited named earnings and deductions', () {
-    final page =
-        read('lib/features/payroll/individual_payroll_settings_page.dart');
+    final page = read(
+      'lib/features/payroll/individual_payroll_settings_page.dart',
+    );
     final migration = read(
       'supabase/migrations/20261006142713_payroll_custom_deductions.sql',
     );
@@ -29,33 +30,38 @@ void main() {
       '20260929203000_sync_payroll_adjustments_into_statements.sql',
     );
 
-    expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_earnings')"));
-    expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_deductions')"));
+    for (final key in ['custom_earnings', 'custom_deductions']) {
+      expect(
+        RegExp(
+          '_configuredMoneyEntries\\(\\s*detail,\\s*key: \'$key\'',
+          multiLine: true,
+        ).hasMatch(pdf),
+        isTrue,
+        reason:
+            'Registered $key must feed the PDF through the common money mapper.',
+      );
+    }
+    expect(pdf, contains('configuredEarnings.entries'));
+    expect(pdf, contains('configuredDeductions.entries'));
     expect(pdf, contains('_moneyPanel'));
     expect(pdf, contains('adjustmentDeductions.entries'));
     expect(
       adjustmentMigration,
       contains("when direction = 'deduction' then amount_yen"),
     );
-    expect(
-      adjustmentMigration,
-      contains("else -amount_yen"),
-    );
+    expect(adjustmentMigration, contains("else -amount_yen"));
   });
 
   test('payment certificate settings verify save and preview same PDF', () {
-    final page =
-        read('lib/features/payroll/payment_certificates_page.dart');
-    final repository =
-        read('lib/features/payroll/payment_certificate_repository.dart');
+    final page = read('lib/features/payroll/payment_certificates_page.dart');
+    final repository = read(
+      'lib/features/payroll/payment_certificate_repository.dart',
+    );
 
     expect(page, contains("label: Text("));
     expect(page, contains("'プレビュー'"));
     expect(page, contains('_preview'));
-    expect(
-      page,
-      contains('PaymentCertificatePreviewPage(record: record)'),
-    );
+    expect(page, contains('PaymentCertificatePreviewPage(record: record)'));
     expect(repository, contains("'save_partner_payment_setting'"));
     expect(repository, contains("'partner_payment_settings_workspace'"));
     expect(repository, contains('final refreshed = await loadSettings()'));
