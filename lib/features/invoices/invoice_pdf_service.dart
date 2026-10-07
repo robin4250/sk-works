@@ -205,6 +205,7 @@ class InvoicePdfService {
             ? 1.8
             : 3.2;
 
+    final sealBytes = _decodeImage(settings?.companySealBase64 ?? '');
     final bank = [
       settings?.bankName ?? '',
       settings?.bankBranch ?? '',
@@ -1282,12 +1283,30 @@ class _InvoiceNativePreview extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            issuer,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  issuer,
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              if (sealBytes != null) ...[
+                                const SizedBox(width: 8),
+                                Image.memory(
+                                  sealBytes,
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.contain,
+                                ),
+                              ],
+                            ],
                           ),
                           if ((settings?.companyPostalCode ?? '').isNotEmpty)
                             Text('〒${settings!.companyPostalCode}'),
@@ -1419,6 +1438,17 @@ class _InvoiceNativePreview extends StatelessWidget {
           ],
         ),
       );
+
+  static Uint8List? _decodeImage(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      final payload = trimmed.contains(',') ? trimmed.split(',').last : trimmed;
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
+  }
 
   static String _date(DateTime value) =>
       '${value.year}年${value.month}月${value.day}日';
