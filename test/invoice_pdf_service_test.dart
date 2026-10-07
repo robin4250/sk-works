@@ -79,8 +79,10 @@ void main() {
     expect(pdf, contains('detailFontSize'));
     expect(pdf, contains('detailVerticalPadding'));
     expect(pdf, contains('height: 47'));
-    expect(pdf, contains('Future<Uint8List> _buildPreviewPdf()'));
+    expect(pdf, contains('Future<_InvoicePreviewData> _buildPreviewData()'));
+    expect(pdf, contains('Printing.raster('));
     expect(pdf, contains('請求書プレビューを生成できませんでした'));
-    expect(pdf, contains('build: (_) async => pdfBytes'));
+    expect(pdf, contains('onLayout: (_) async => pdfBytes'));
+    expect(pdf, contains('bytes: pdfBytes'));
   });
 }

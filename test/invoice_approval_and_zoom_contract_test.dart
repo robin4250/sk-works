@@ -79,12 +79,13 @@ void main() {
     expect(pdf, contains('pw.Positioned('));
   });
 
-  test('invoice preview uses PdfPreview sizing while payroll keeps outer zoom', () {
+  test('invoice preview uses rasterized PDF zoom while payroll keeps outer zoom', () {
     final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    expect(invoice, contains('child: PdfPreview('));
+    expect(invoice, contains('Printing.raster('));
+    expect(invoice, contains('Image.memory('));
     expect(invoice, isNot(contains('transformationController: _zoomController')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
 
@@ -109,4 +110,18 @@ void main() {
     expect(payroll, contains('allowPrinting: true'));
     expect(payroll, contains('allowSharing: true'));
   });
+  test('invoice preview rasterizes the same PDF bytes for reliable iOS display', () {
+    final source =
+        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
+
+    expect(source, contains('Printing.raster('));
+    expect(source, contains('final pngBytes = await raster.toPng()'));
+    expect(source, contains('Image.memory('));
+    expect(source, contains('previewData.pngBytes'));
+    expect(source, contains('InteractiveViewer('));
+    expect(source, contains('maxScale: 5'));
+    expect(source, contains('onLayout: (_) async => pdfBytes'));
+    expect(source, contains('bytes: pdfBytes'));
+  });
+
 }
