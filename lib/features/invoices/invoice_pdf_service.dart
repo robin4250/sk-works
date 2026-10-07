@@ -693,16 +693,6 @@ class InvoicePdfService {
     );
   }
 
-  static pw.MemoryImage? _memoryImage(String encoded) {
-    final value = encoded.trim();
-    if (value.isEmpty) return null;
-    try {
-      return pw.MemoryImage(base64Decode(value));
-    } catch (_) {
-      return null;
-    }
-  }
-
   static pw.Widget _companySeal(String companyName) {
     final red = PdfColor.fromHex('#B83232');
     final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
