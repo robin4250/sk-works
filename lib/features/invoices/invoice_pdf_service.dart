@@ -976,7 +976,17 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
     }
-    return _InvoicePreviewData(pdfBytes: pdfBytes, settings: settings);
+    final pages = <Uint8List>[];
+    await for (final page in Printing.raster(
+      pdfBytes,
+      dpi: 144,
+    )) {
+      pages.add(await page.toPng());
+    }
+    if (pages.isEmpty) {
+      throw StateError('正式PDFの画面画像を生成できませんでした。');
+    }
+    return _InvoicePreviewData(pdfBytes: pdfBytes, pageImages: pages);
   }
 
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
@@ -1107,10 +1117,22 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         minScale: 0.5,
                         maxScale: 5,
                         boundaryMargin: const EdgeInsets.all(48),
-                        child: _InvoiceNativePreview(
-                          invoices: widget.invoices,
-                          settings: previewData.settings,
-                          approvals: approvals,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var index = 0;
+                                index < previewData.pageImages.length;
+                                index++) ...[
+                              Image.memory(
+                                previewData.pageImages[index],
+                                key: ValueKey('invoice-pdf-page-$index'),
+                                fit: BoxFit.contain,
+                                gaplessPlayback: true,
+                              ),
+                              if (index + 1 < previewData.pageImages.length)
+                                const SizedBox(height: 12),
+                            ],
+                          ],
                         ),
                       ),
                     ),
@@ -1169,436 +1191,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 class _InvoicePreviewData {
   const _InvoicePreviewData({
     required this.pdfBytes,
-    required this.settings,
+    required this.pageImages,
   });
 
   final Uint8List pdfBytes;
-  final InvoiceSettingsData? settings;
-}
-
-class _InvoiceNativePreview extends StatelessWidget {
-  const _InvoiceNativePreview({
-    required this.invoices,
-    required this.settings,
-    required this.approvals,
-  });
-
-  final List<InvoiceCalculationResult> invoices;
-  final InvoiceSettingsData? settings;
-  final List<InvoiceApprovalRecord> approvals;
-
-  static const _blue = Color(0xff8199b5);
-
-  @override
-  Widget build(BuildContext context) {
-    final invoice = invoices.first;
-    final rows = <_InvoiceNativeRowData>[];
-    for (final site in invoice.siteCalculations) {
-      for (final line in site.lines) {
-        rows.add(_InvoiceNativeRowData(
-          site: site.siteName,
-          content: line.workContent?.trim().isNotEmpty == true
-              ? line.workContent!
-              : line.label,
-          quantity: line.quantity,
-          unitPrice: line.unitPriceYen,
-          amount: line.amountYen,
-        ));
-      }
-    }
-    final issuer = settings?.companyName.trim() ?? '';
-    final bank = [
-      settings?.bankName ?? '',
-      settings?.bankBranch ?? '',
-      settings?.bankAccountType ?? '',
-      settings?.bankAccountNumber ?? '',
-    ].where((value) => value.trim().isNotEmpty).join('　');
-    final subject = (settings?.invoiceSubject ?? '').trim();
-    final issueDate = invoice.issueDate;
-
-    return Material(
-      color: Colors.white,
-      elevation: 3,
-      child: SizedBox(
-        width: 595,
-        height: 842,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(34, 26, 34, 24),
-          child: DefaultTextStyle(
-            style: const TextStyle(color: Colors.black87, fontSize: 9),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  height: 38,
-                  child: Stack(
-                    children: [
-                      const Align(
-                        alignment: Alignment.topCenter,
-                        child: Text(
-                          '御　請　求　書',
-                          style: TextStyle(
-                            color: _blue,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (issueDate != null) Text(_date(issueDate), style: const TextStyle(fontSize: 9)),
-                            Text('請求書番号：${invoice.invoiceNumber}', style: const TextStyle(fontSize: 8, color: _blue)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        height: 38,
-                        padding: const EdgeInsets.only(bottom: 4),
-                        decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: _blue, width: 1.4)),
-                        ),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Text(invoice.customerId, textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                            const Align(
-                              alignment: Alignment.centerRight,
-                              child: Text('御中', style: TextStyle(fontSize: 10, color: _blue, fontWeight: FontWeight.w900)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    SizedBox(
-                      width: 245,
-                      height: 64,
-                      child: Stack(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: 34),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(issuer, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
-                                if ((settings?.companyPostalCode ?? '').isNotEmpty) Text('〒${settings!.companyPostalCode}', style: const TextStyle(fontSize: 7.5)),
-                                if ((settings?.companyAddress ?? '').isNotEmpty) Text(settings!.companyAddress, textAlign: TextAlign.right, style: const TextStyle(fontSize: 7.5)),
-                                if ((settings?.companyPhone ?? '').isNotEmpty) Text('TEL：${settings!.companyPhone}', style: const TextStyle(fontSize: 7.5)),
-                                if ((settings?.companyFax ?? '').isNotEmpty) Text('FAX：${settings!.companyFax}', style: const TextStyle(fontSize: 7.5)),
-                              ],
-                            ),
-                          ),
-                          Positioned(right: 0, top: 0, child: _NativeCompanySeal(companyName: issuer)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        height: 72,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(border: Border.all(color: _blue, width: 1.1)),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                const Text('御請求金額', style: TextStyle(color: _blue, fontSize: 13, fontWeight: FontWeight.w900)),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Container(
-                                    height: 34,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(border: Border.all(color: _blue)),
-                                    child: Text('¥${_money(invoice.grandTotalYen)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank', style: const TextStyle(fontSize: 8)),
-                            if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
-                              Text('口座名義：${settings!.bankAccountHolder}', style: const TextStyle(fontSize: 7.5)),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    SizedBox(width: 142, height: 72, child: _NativeApprovalBoxes(approvals: approvals)),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                const Text(
-                  '下記の通り、御請求申し上げますので、お支払約定日までに、\n下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
-                  style: TextStyle(fontSize: 8.5, color: _blue),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 30,
-                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 92,
-                        alignment: Alignment.center,
-                        color: _blue,
-                        child: const Text('件名 ／ 工期', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 7),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(subject.isEmpty ? '件名未設定' : subject, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900))),
-                              Text(invoice.billingPeriod, style: const TextStyle(fontSize: 8)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 7),
-                const _InvoiceNativeHeader(),
-                ...rows.map((row) => _InvoiceNativeLine(data: row)),
-                const SizedBox(height: 7),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SizedBox(
-                    width: 315,
-                    child: Column(
-                      children: [
-                        _summaryRow('計', invoice.subtotalYen),
-                        _summaryRow('消費税', invoice.taxYen),
-                        _summaryRow('合計(税込)', invoice.grandTotalYen, strong: true),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 39,
-                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
-                  child: Row(
-                    children: [
-                      Expanded(child: _contractBox('お支払約定日', (settings?.paymentDueText ?? '').trim().isEmpty ? '未設定' : settings!.paymentDueText)),
-                      Container(width: .8, color: _blue),
-                      Expanded(child: _contractBox('金額', '¥${_money(invoice.grandTotalYen)}', strong: true)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 60,
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
-                  child: Text('備考：${settings?.footerNote ?? ''}', style: const TextStyle(fontSize: 8)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  static Widget _summaryRow(String label, int amount, {bool strong = false}) => Container(
-    height: 26,
-    decoration: BoxDecoration(border: Border.all(color: _blue, width: .55)),
-    child: Row(children: [
-      Container(width: 86, alignment: Alignment.center, color: _blue, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900))),
-      Expanded(child: Padding(padding: const EdgeInsets.only(right: 8), child: Text('¥${_money(amount)}', textAlign: TextAlign.right, style: TextStyle(fontSize: strong ? 11 : 9, fontWeight: strong ? FontWeight.w900 : FontWeight.w600)))),
-    ]),
-  );
-
-  static Widget _contractBox(String label, String value, {bool strong = false}) => Row(children: [
-    Container(width: 92, alignment: Alignment.center, color: _blue, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900))),
-    Expanded(child: Center(child: Text(value, style: TextStyle(fontSize: strong ? 12 : 9, fontWeight: strong ? FontWeight.w900 : FontWeight.w500)))),
-  ]);
-
-  static String _date(DateTime value) => '${value.year}年${value.month}月${value.day}日';
-  static String _money(num value) {
-    final digits = value.round().toString();
-    return digits.replaceAllMapped(RegExp(r'(?<=\\d)(?=(\\d{3})+(?!\\d))'), (_) => ',');
-  }
-}
-
-class _NativeCompanySeal extends StatelessWidget {
-  const _NativeCompanySeal({required this.companyName});
-  final String companyName;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 34,
-    height: 34,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(border: Border.all(color: const Color(0xffb33b32), width: 1.5)),
-    child: Text(
-      companyName.trim().isEmpty ? '会社印' : companyName.length > 4 ? companyName.substring(0, 4) : companyName,
-      textAlign: TextAlign.center,
-      maxLines: 2,
-      style: const TextStyle(color: Color(0xffb33b32), fontSize: 7, fontWeight: FontWeight.w900, height: 1),
-    ),
-  );
-}
-
-class _NativeApprovalBoxes extends StatelessWidget {
-  const _NativeApprovalBoxes({required this.approvals});
-  final List<InvoiceApprovalRecord> approvals;
-  @override
-  Widget build(BuildContext context) {
-    final visible = approvals.take(2).toList();
-    return Row(children: [
-      for (var i=0;i<2;i++)
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(border: Border.all(color: _InvoiceNativePreview._blue, width: .8)),
-            child: Column(children: [
-              Container(height: 20, alignment: Alignment.center, color: _InvoiceNativePreview._blue, child: Text(i<visible.length ? visible[i].name : '確認', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900))),
-              Expanded(child: Center(child: Text(i<visible.length && visible[i].approved ? '承認済' : '', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900)))),
-            ]),
-          ),
-        ),
-    ]);
-  }
-}
-
-class _InvoiceNativeRowData {
-  const _InvoiceNativeRowData({
-    required this.site,
-    required this.content,
-    required this.quantity,
-    required this.unitPrice,
-    required this.amount,
-  });
-
-  final String site;
-  final String content;
-  final num quantity;
-  final int unitPrice;
-  final int amount;
-}
-
-class _InvoiceNativeHeader extends StatelessWidget {
-  const _InvoiceNativeHeader();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        height: 30,
-        decoration: BoxDecoration(
-          color: _InvoiceNativePreview._blue,
-          border: Border.all(color: _InvoiceNativePreview._blue, width: .55),
-        ),
-        child: const Row(
-          children: [
-            Expanded(flex: 3, child: _InvoiceNativeCell('作業所名', bold: true)),
-            Expanded(flex: 3, child: _InvoiceNativeCell('工事内容', bold: true)),
-            Expanded(child: _InvoiceNativeCell('数量', bold: true, center: true, white: true)),
-            Expanded(child: _InvoiceNativeCell('単価', bold: true, center: true, white: true)),
-            Expanded(
-              flex: 2,
-              child: _InvoiceNativeCell('請求金額', bold: true, center: true, white: true),
-            ),
-          ],
-        ),
-      );
-}
-
-class _InvoiceNativeLine extends StatelessWidget {
-  const _InvoiceNativeLine({required this.data});
-
-  final _InvoiceNativeRowData data;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        height: 29,
-        decoration: const BoxDecoration(
-          border: Border(
-            left: BorderSide(color: Color(0xffaebbc5)),
-            right: BorderSide(color: Color(0xffaebbc5)),
-            bottom: BorderSide(color: Color(0xffaebbc5)),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(flex: 3, child: _InvoiceNativeCell(data.site)),
-            Expanded(flex: 3, child: _InvoiceNativeCell(data.content)),
-            Expanded(
-              child: _InvoiceNativeCell(
-                data.site.isEmpty ? '' : _quantity(data.quantity),
-                right: true,
-              ),
-            ),
-            Expanded(
-              child: _InvoiceNativeCell(
-                data.site.isEmpty
-                    ? ''
-                    : _InvoiceNativePreview._money(data.unitPrice),
-                right: true,
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: _InvoiceNativeCell(
-                data.site.isEmpty ? '' : _InvoiceNativePreview._money(data.amount),
-                right: true,
-              ),
-            ),
-          ],
-        ),
-      );
-
-  static String _quantity(num value) =>
-      value == value.roundToDouble() ? value.round().toString() : value.toString();
-}
-
-class _InvoiceNativeCell extends StatelessWidget {
-  const _InvoiceNativeCell(
-    this.text, {
-    this.bold = false,
-    this.right = false,
-    this.center = false,
-    this.white = false,
-  });
-
-  final String text;
-  final bool bold;
-  final bool right;
-  final bool center;
-  final bool white;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        alignment: center
-            ? Alignment.center
-            : right
-                ? Alignment.centerRight
-                : Alignment.centerLeft,
-        child: Text(
-          text,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: white ? Colors.white : Colors.black87,
-            fontSize: 7.5,
-            height: 1.05,
-            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
-          ),
-        ),
-      );
+  final List<Uint8List> pageImages;
 }
