@@ -133,7 +133,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                         ),
                                       ),
                                       subtitle: Text(
-                                        '給与 ${_yen(item.workerDailyRateYen)} / '
                                         '請求方式 ${item.billingMethodLabel}',
                                       ),
                                       trailing: Icon(
@@ -156,22 +155,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
   }
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {
-    final daily = TextEditingController(
-      text: (record.workerFormulas.hourlyBase &&
-              record.workerHourlyBaseYen > 0
-          ? record.workerHourlyBaseYen
-          : record.workerDailyRateYen)
-          .toString(),
-    );
-    final workerOverrides = _overrideControllers(
-      record.workerRateOverrides,
-      fallback: {
-        'overtime': record.overtimeHourRateYen,
-        'early': record.earlyHourRateYen,
-        'night': record.nightHourRateYen,
-      },
-    );
-    final workerFormula = _formulaControllers(record.workerFormulas);
     final billing = TextEditingController(
       text: (record.billingFormulas.hourlyBase &&
               record.billingHourlyBaseYen > 0
@@ -231,23 +214,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '給与計算用',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _MoneyField(controller: daily, label: '1人工（日額）'),
-                const SizedBox(height: 8),
-                _RateFormulaEditor(
-                  title: '給与計算用 自動計算',
-                  baseController: daily,
-                  overrideControllers: workerOverrides,
-                  formulaControllers: workerFormula,
-                ),
-                const SizedBox(height: 18),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -348,14 +314,9 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           ),
           FilledButton(
             onPressed: () {
-              final workerFormulaValue =
-                  _formulaFromControllers(workerFormula);
               final billingFormulaValue =
                   _formulaFromControllers(billingFormula);
-              final workerBaseInput = int.tryParse(daily.text) ?? 0;
               final billingBaseInput = int.tryParse(billing.text) ?? 0;
-              final workerDailyEquivalent =
-                  workerFormulaValue.dailyBase(workerBaseInput);
               final manDay =
                   billingFormulaValue.dailyBase(billingBaseInput);
               final monthlyRate = int.tryParse(monthly.text) ?? 0;
@@ -395,13 +356,10 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   siteId: record.siteId,
                   siteName: record.siteName,
                   status: record.status,
-                  workerDailyRateYen: workerDailyEquivalent,
-                  overtimeHourRateYen:
-                      int.tryParse(workerOverrides['overtime']!.text) ?? 0,
-                  earlyHourRateYen:
-                      int.tryParse(workerOverrides['early']!.text) ?? 0,
-                  nightHourRateYen:
-                      int.tryParse(workerOverrides['night']!.text) ?? 0,
+                  workerDailyRateYen: record.workerDailyRateYen,
+                  overtimeHourRateYen: record.overtimeHourRateYen,
+                  earlyHourRateYen: record.earlyHourRateYen,
+                  nightHourRateYen: record.nightHourRateYen,
                   billingUnitPriceYen: manDay,
                   billingOvertimeHourRateYen:
                       int.tryParse(billingOverrides['overtime']!.text) ?? 0,
@@ -421,14 +379,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                   billingAllowance3Name: allowance3Name.text,
                   billingAllowance3AmountYen:
                       int.tryParse(allowance3Amount.text) ?? 0,
-                  workerFormulas: workerFormulaValue,
+                  workerFormulas: record.workerFormulas,
                   billingFormulas: billingFormulaValue,
-                  workerHourlyBaseYen:
-                      workerFormulaValue.hourlyBase ? workerBaseInput : 0,
+                  workerHourlyBaseYen: record.workerHourlyBaseYen,
                   billingHourlyBaseYen:
                       billingFormulaValue.hourlyBase ? billingBaseInput : 0,
-                  workerRateOverrides:
-                      _overridesFromControllers(workerOverrides),
+                  workerRateOverrides: record.workerRateOverrides,
                   billingRateOverrides:
                       _overridesFromControllers(billingOverrides),
                 ),
@@ -441,9 +397,6 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     );
 
     for (final controller in [
-      daily,
-      ...workerOverrides.values,
-      ...workerFormula.values,
       billing,
       ...billingOverrides.values,
       ...billingFormula.values,
