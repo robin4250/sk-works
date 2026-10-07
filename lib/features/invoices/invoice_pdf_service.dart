@@ -941,13 +941,13 @@ class InvoicePdfPreviewPage extends StatefulWidget {
 
 class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
-  late Future<Uint8List> _previewPdf;
+  late Future<_InvoicePreviewData> _previewData;
   int _previewRevision = 0;
 
   @override
   void initState() {
     super.initState();
-    _previewPdf = _buildPreviewPdf();
+    _previewData = _buildPreviewData();
   }
 
   InvoiceCalculationResult? get _singleInvoice =>
@@ -963,12 +963,28 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
   }
 
-  Future<Uint8List> _buildPreviewPdf() async {
+  Future<_InvoicePreviewData> _buildPreviewData() async {
     final settings = await _loadSettings();
-    return InvoicePdfService.buildPdf(
+    final pdfBytes = await InvoicePdfService.buildPdf(
       widget.invoices,
       title: widget.title,
       settings: settings,
+    );
+    if (pdfBytes.isEmpty) {
+      throw StateError('PDFデータが空です。');
+    }
+    final raster = await Printing.raster(
+      pdfBytes,
+      pages: const [0],
+      dpi: 144,
+    ).first;
+    final pngBytes = await raster.toPng();
+    if (pngBytes.isEmpty) {
+      throw StateError('プレビュー画像を生成できませんでした。');
+    }
+    return _InvoicePreviewData(
+      pdfBytes: pdfBytes,
+      pngBytes: pngBytes,
     );
   }
 
@@ -995,7 +1011,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (!mounted) return;
     setState(() {
       _previewRevision++;
-      _previewPdf = _buildPreviewPdf();
+      _previewData = _buildPreviewData();
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('請求書を承認しました')),
@@ -1008,13 +1024,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
       ),
-      body: FutureBuilder<Uint8List>(
-        future: _previewPdf,
+      body: FutureBuilder<_InvoicePreviewData>(
+        future: _previewData,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
+          if (snapshot.hasError || snapshot.data == null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -1036,7 +1052,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     FilledButton.icon(
                       onPressed: () => setState(() {
                         _previewRevision++;
-                        _previewPdf = _buildPreviewPdf();
+                        _previewData = _buildPreviewData();
                       }),
                       icon: const Icon(Icons.refresh),
                       label: const Text('再試行'),
@@ -1046,7 +1062,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               ),
             );
           }
-          final pdfBytes = snapshot.data!;
+          final previewData = snapshot.data!;
+          final pdfBytes = previewData.pdfBytes;
           return FutureBuilder<List<InvoiceApprovalRecord>>(
             future: _loadApprovals(),
             builder: (context, approvalSnapshot) {
@@ -1091,18 +1108,58 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     ),
                   ),
                   Expanded(
-                    child: PdfPreview(
+                    child: Container(
                       key: ValueKey(_previewRevision),
-                      initialPageFormat: PdfPageFormat.a4,
-                      canChangePageFormat: false,
-                      canChangeOrientation: false,
-                      allowPrinting: true,
-                      allowSharing: true,
-                      pdfFileName: InvoicePdfService.fileNameFor(
-                        widget.invoices,
-                        title: widget.title,
+                      color: Colors.grey.shade200,
+                      alignment: Alignment.topCenter,
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 5,
+                        boundaryMargin: const EdgeInsets.all(48),
+                        child: Image.memory(
+                          previewData.pngBytes,
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
+                        ),
                       ),
-                      build: (_) async => pdfBytes,
+                    ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => Printing.layoutPdf(
+                                name: InvoicePdfService.fileNameFor(
+                                  widget.invoices,
+                                  title: widget.title,
+                                ),
+                                format: PdfPageFormat.a4,
+                                onLayout: (_) async => pdfBytes,
+                              ),
+                              icon: const Icon(Icons.print_outlined),
+                              label: const Text('印刷'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: () => Printing.sharePdf(
+                                bytes: pdfBytes,
+                                filename: InvoicePdfService.fileNameFor(
+                                  widget.invoices,
+                                  title: widget.title,
+                                ),
+                              ),
+                              icon: const Icon(Icons.ios_share_outlined),
+                              label: const Text('共有'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1113,4 +1170,15 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       ),
     );
   }
+}
+
+
+class _InvoicePreviewData {
+  const _InvoicePreviewData({
+    required this.pdfBytes,
+    required this.pngBytes,
+  });
+
+  final Uint8List pdfBytes;
+  final Uint8List pngBytes;
 }
