@@ -24,11 +24,11 @@ void main() {
     final source = read('lib/features/payroll/payroll_pdf_service.dart');
     expect(source, contains('PdfPageFormat.a4,'));
     expect(source, contains("'給与明細書'"));
-    expect(source, contains("'勤怠'"));
-    expect(source, contains("'支給'"));
-    expect(source, contains("'控除'"));
-    expect(source, contains("'総支給額'"));
-    expect(source, contains("'総控除額'"));
+    expect(source, contains("'勤務実績'"));
+    expect(source, contains("'支給（＋）'"));
+    expect(source, contains("'控除（－）'"));
+    expect(source, contains("'支給合計'"));
+    expect(source, contains("'控除合計'"));
     expect(source, contains("'差引支給額'"));
   });
 
