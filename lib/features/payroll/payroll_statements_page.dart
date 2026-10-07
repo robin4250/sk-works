@@ -259,7 +259,7 @@ class _PayrollStatementPreviewPageState
               boundaryMargin: const EdgeInsets.all(120),
               clipBehavior: Clip.none,
               child: PdfPreview(
-                initialPageFormat: PdfPageFormat.a4.landscape,
+                initialPageFormat: PdfPageFormat.a4,
                 canChangePageFormat: false,
                 canChangeOrientation: false,
                 allowPrinting: true,
