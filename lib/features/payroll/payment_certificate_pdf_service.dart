@@ -117,49 +117,53 @@ class PaymentCertificatePdfService {
             ),
             pw.SizedBox(
               width: 210,
-              child: pw.Row(
+              child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        if (record.payerPostalCode.isNotEmpty)
-                          pw.Text(
-                            '〒${record.payerPostalCode}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        if (record.payerAddress.isNotEmpty)
-                          pw.Text(
-                            record.payerAddress,
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        pw.Text(
+                  if (record.payerPostalCode.isNotEmpty)
+                    pw.Text(
+                      '〒${record.payerPostalCode}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  if (record.payerAddress.isNotEmpty)
+                    pw.Text(
+                      record.payerAddress,
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  pw.Row(
+                    mainAxisSize: pw.MainAxisSize.min,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Flexible(
+                        child: pw.Text(
                           record.payerCompanyName,
                           style: pw.TextStyle(
                             fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
-                        if (record.payerPhone.isNotEmpty)
-                          pw.Text(
-                            'TEL　${record.payerPhone}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        if (record.payerFax.isNotEmpty)
-                          pw.Text(
-                            'FAX　${record.payerFax}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                      ],
+                      ),
+                      pw.Transform.translate(
+                        offset: const PdfPoint(-4, 0),
+                        child: CompanySealPdf.build(
+                          record.payerCompanyName,
+                          size: 55,
+                          font: sealFont,
+                          fallbackFont: fallbackFont,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (record.payerPhone.isNotEmpty)
+                    pw.Text(
+                      'TEL　${record.payerPhone}',
+                      style: const pw.TextStyle(fontSize: 8),
                     ),
-                  ),
-                  CompanySealPdf.build(
-                    record.payerCompanyName,
-                    size: 55,
-                    font: sealFont,
-                    fallbackFont: fallbackFont,
-                  ),
+                  if (record.payerFax.isNotEmpty)
+                    pw.Text(
+                      'FAX　${record.payerFax}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
                 ],
               ),
             ),

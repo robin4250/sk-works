@@ -220,12 +220,14 @@ class PayrollPdfService {
                     child: companyText,
                   ),
                 ),
-                pw.SizedBox(width: 10),
-                CompanySealPdf.build(
-                  statement.companyName,
-                  size: 32,
-                  font: sealFont,
-                  fallbackFont: fallbackFont,
+                pw.Transform.translate(
+                  offset: const PdfPoint(-4, 0),
+                  child: CompanySealPdf.build(
+                    statement.companyName,
+                    size: 32,
+                    font: sealFont,
+                    fallbackFont: fallbackFont,
+                  ),
                 ),
               ],
             ),
