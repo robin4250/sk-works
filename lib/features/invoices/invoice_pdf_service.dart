@@ -197,7 +197,7 @@ class InvoicePdfService {
     int pageCount = 1,
   }) {
     final blue = PdfColor.fromHex('#138BE1');
-    final ink = PdfColor.fromHex('#163F76');
+    final ink = PdfColor.fromHex('#12377C');
     final border = PdfColor.fromHex('#79CAE9');
     final pale = PdfColor.fromHex('#EFF9FD');
     final children = <pw.Widget>[];
@@ -238,11 +238,16 @@ class InvoicePdfService {
       pw.TextAlign align = pw.TextAlign.left,
       double h = 18,
       int maxLines = 2,
+      double letterSpacing = 0,
+      double wordSpacing = 0,
+      double lineSpacing = 0,
+      double? baseline,
     }) {
       children.add(
         pw.Positioned(
           left: x,
-          top: y,
+          // Noto Sans JP ascender is 1.16 em; align text to adopted baselines.
+          top: baseline == null ? y - size * .30 : baseline - size * 1.16,
           child: pw.SizedBox(
             width: w,
             height: h,
@@ -252,6 +257,9 @@ class InvoicePdfService {
               maxLines: maxLines,
               style: pw.TextStyle(
                 fontSize: size,
+                letterSpacing: letterSpacing,
+                wordSpacing: wordSpacing,
+                lineSpacing: lineSpacing,
                 color: color ?? ink,
                 fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
               ),
@@ -291,8 +299,10 @@ class InvoicePdfService {
       150,
       size: 20,
       bold: true,
+      wordSpacing: 15.52,
+      baseline: 46,
       align: pw.TextAlign.center,
-      h: 27,
+      h: 30,
     );
     line(222.64, 55, 150, 0, color: blue, width: .55);
     text(
@@ -305,24 +315,41 @@ class InvoicePdfService {
       align: pw.TextAlign.center,
     );
     text('請求書番号', 450.3, 32, 65);
-    text(invoice.invoiceNumber, 515, 32, 52.2756, align: pw.TextAlign.right);
+    text(
+      invoice.invoiceNumber,
+      510,
+      32,
+      57.2756,
+      letterSpacing: .816,
+      align: pw.TextAlign.right,
+    );
     text('発行日', 450.3, 47, 50);
     text(
       _dateJa(invoice.issueDate ?? _monthEnd(invoice)),
       490,
       47,
       77.2756,
+      letterSpacing: .633,
       align: pw.TextAlign.right,
     );
     box(28, 80, 266, 96);
     box(28, 80, 266, 20, fill: pale, radius: 0, line: .3);
-    text('御 請 求 先', 38, 86, 246, size: 9, bold: true);
-    text('${invoice.customerId} 御中', 38, 111, 246, size: 11, bold: true, h: 23);
+    text('御 請 求 先', 38, 86, 246, size: 9, bold: true, color: blue);
+    text(
+      '${invoice.customerId} 御中',
+      38,
+      111,
+      246,
+      size: 11,
+      bold: true,
+      baseline: 122,
+      h: 23,
+    );
     if (invoice.customerPostalCode.trim().isNotEmpty) {
-      text('〒${invoice.customerPostalCode}', 38, 133, 246);
+      text('〒${invoice.customerPostalCode}', 38, 133, 246, letterSpacing: .64);
     }
     if (invoice.customerAddress.trim().isNotEmpty) {
-      text(invoice.customerAddress, 38, 148, 246, h: 27);
+      text(invoice.customerAddress, 38, 148, 246, h: 30, lineSpacing: 4.864);
     }
     box(316, 80, right - 316, 55);
     box(316, 80, 104, 31, fill: blue, radius: 0, line: .3);
@@ -334,6 +361,8 @@ class InvoicePdfService {
       86,
       131.2756,
       size: 18,
+      letterSpacing: 1.916,
+      baseline: 103,
       bold: true,
       align: pw.TextAlign.right,
       h: 25,
@@ -345,10 +374,11 @@ class InvoicePdfService {
       120,
       132.2756,
       size: 8,
+      letterSpacing: .723,
       align: pw.TextAlign.right,
     );
     box(316, 143, right - 316, 88);
-    text('　お振込先', 330, 156, 220, size: 9, bold: true);
+    text('　お振込先', 330, 156, 220, size: 9, bold: true, color: blue);
     final bankValues = [
       settings?.bankName ?? '',
       settings?.bankBranch ?? '',
@@ -359,7 +389,14 @@ class InvoicePdfService {
     const bankLabels = ['銀行名', '支店名', '口座種別', '口座番号', '口座名義'];
     for (var i = 0; i < bankLabels.length; i++) {
       text(bankLabels[i], 364, 174 + i * 11, 50, size: 5.8);
-      text(bankValues[i], 418, 174 + i * 11, 137, size: 6.1);
+      text(
+        bankValues[i],
+        418,
+        174 + i * 11,
+        137,
+        size: 6.1,
+        letterSpacing: i == 3 ? .805 : 0,
+      );
     }
     if (bankValues.every((v) => v.trim().isEmpty)) {
       text('未登録', 418, 174, 137, size: 6.1, color: PdfColors.red);
@@ -369,7 +406,7 @@ class InvoicePdfService {
     text(settings?.invoiceSubject ?? '', 90, 193, 196, size: 8, bold: true);
     box(28, 214, 266, 20);
     text('工期', 40, 222, 45);
-    text(_workPeriod(invoice), 90, 222, 196);
+    text(_workPeriod(invoice), 90, 222, 196, letterSpacing: .4);
     const gridBottom = 669.8898;
     const rowHeight = (gridBottom - 262) / 35;
     box(28, 244, right - 28, gridBottom - 244, radius: 0, line: .3);
@@ -446,13 +483,22 @@ class InvoicePdfService {
       'ご請求金額（税込）',
     ];
     for (var i = 0; i < 3; i++) {
-      text(labels[i], 354, 683 + i * 21, 100, size: 6.5);
+      text(
+        labels[i],
+        354,
+        683 + i * 21,
+        100,
+        size: 6.5,
+        color: i == 2 ? blue : ink,
+      );
       text(
         i == 2 ? _yen(totals[i]) : _number(totals[i]),
         453,
         i == 2 ? 720 : 684 + i * 21,
         104.2756,
         size: i == 2 ? 14 : 7.5,
+        letterSpacing: (i == 2 ? 14 : 7.5) * .1065,
+        baseline: i == 2 ? 732.8898 : 690.8898 + i * 21,
         bold: i == 2,
         align: pw.TextAlign.right,
         h: 21,
@@ -468,6 +514,7 @@ class InvoicePdfService {
       size: 11,
       bold: true,
       color: PdfColors.black,
+      baseline: 766.8898,
       align: pw.TextAlign.center,
       h: 23,
     );
@@ -632,7 +679,7 @@ class InvoicePdfService {
     final end = _monthEnd(invoice);
     final start = invoice.periodStart ?? DateTime(end.year, end.month, 1);
     return '${start.year}年${start.month}月${start.day}日'
-        '～${end.year}年${end.month}月${end.day}日';
+        '　-　${end.year}年${end.month}月${end.day}日';
   }
 
   static String _dateJa(DateTime value) =>

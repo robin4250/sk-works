@@ -14,10 +14,21 @@ application data or Supabase database. Complete those backups separately before
 installation. The installed app is Release and its built Bundle ID must remain
 `com.skworks.skWorks`; the existing app is not deleted.
 
-After approved layouts, CI, main integration, and device/data backups are ready:
+Before overwriting the app, open Finder on the Mac, select the connected iPhone,
+and open General. Choose to back up all iPhone data to this Mac, enable encrypted
+local backup, and select Back Up Now. Retain the encryption password securely.
+Wait for completion and verify that the latest backup timestamp reflects this
+backup. A connected, unlocked iPhone does not confirm backup completion. This
+does not back up the Supabase database.
+
+After approved layouts, CI, main integration, and device/data backups are ready,
+run this command from a terminal already inside the existing SKO repository
+(its root or a subdirectory). It resolves the repository root without assuming
+a folder name, and selects the connected physical iPhone automatically. If more
+than one iPhone is connected, installation stops and asks for an explicit device.
 
 ```bash
-cd ~/sko-restore && git switch main && git pull --ff-only origin main && bash tool/device_day.sh 00008110-00120536010A801E
+cd "$(git rev-parse --show-toplevel)" && git switch main && git pull --ff-only origin main && bash tool/device_day.sh
 ```
 
 To restore the saved committed source to a separate directory:

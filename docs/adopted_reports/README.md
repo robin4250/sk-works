@@ -12,6 +12,6 @@ SKO_PDF_FONT_PATH=build/pdf-fixtures/NotoSansJP-Regular.ttf SKO_PDF_OUTPUT_DIR=b
 
 Flutter CI runs these tests and uploads generated PDFs as `adopted-report-pdf-comparison`. Compare the actual output against these masters visually with PyMuPDF, including all text, seven invoice columns/35 rows, equal payroll panel widths, totals, bank fields and stamps. CI alone does not certify visual equality.
 
-Current unresolved acceptance points: the shared dynamic seal uses the document font rather than the reference's seal-script glyphs; customer address and individual invoice-line dates are not yet present in the current calculation model. No replacement design is adopted. Keep PR #745 Draft until visual comparison and these points are resolved.
+Current unresolved acceptance points: the shared dynamic seal uses the document font rather than the reference's seal-script glyphs; individual invoice-line dates have no verified source. Customer address is propagated from the saved snapshot or current customer billing address. Actual generated PDFs and comparison evidence are preserved under `generated/84b2002/` and `verification_84b2002.md`; subsequent typography fixes need fresh comparison. No replacement design is adopted. Keep PR #745 Draft until visual comparison and these points are resolved.
 
 Approval and bank migrations are additive and have isolated PostgreSQL behavioral verification. Production application and physical iPhone Release verification remain separate release requirements.

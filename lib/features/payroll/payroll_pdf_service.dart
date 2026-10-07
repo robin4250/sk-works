@@ -209,10 +209,28 @@ class PayrollPdfService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Flexible(child: companyText),
+                pw.Flexible(
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 7),
+                    child: companyText,
+                  ),
+                ),
                 pw.SizedBox(width: 10),
                 CompanySealPdf.build(statement.companyName, size: 32),
               ],
+            ),
+          ),
+          at(
+            20,
+            50,
+            170,
+            12,
+            text(
+              _first(detail, const ['company_tagline', '会社スローガン']).isEmpty
+                  ? '人と現場をつなぐ　未来をつくる'
+                  : _first(detail, const ['company_tagline', '会社スローガン']),
+              size: 5.5,
+              color: PdfColor.fromHex('#073A76'),
             ),
           ),
           at(
@@ -220,32 +238,70 @@ class PayrollPdfService {
             41,
             159,
             30,
-            pw.Column(
-              children: [
-                text('給与明細書', size: 18, color: PdfColor.fromHex('#073A76')),
-                pw.SizedBox(height: 5),
-                pw.Container(height: .7, color: blue),
-                pw.SizedBox(height: 5),
-                text('SALARY STATEMENT', size: 4.5, color: blue),
-              ],
+            pw.Center(
+              child: text(
+                '給 与 明 細 書',
+                size: 19,
+                color: PdfColor.fromHex('#073A76'),
+              ),
+            ),
+          ),
+          at(200, 66, 159, .7, pw.Container(color: blue)),
+          at(
+            200,
+            70,
+            159,
+            13,
+            pw.Center(
+              child: text(
+                'S A L A R Y   S T A T E M E N T',
+                size: 5.6,
+                color: blue,
+              ),
             ),
           ),
           at(
             390,
-            30,
-            149,
-            40,
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                text(
-                  '${statement.periodEnd.year}年${statement.periodEnd.month}月分',
-                  size: 12,
-                  color: PdfColor.fromHex('#073A76'),
-                ),
-                pw.SizedBox(height: 5),
-                text('支給日　${_paymentDate(statement, detail)}', size: 6),
-              ],
+            29,
+            149.275590551,
+            25,
+            pw.Align(
+              alignment: pw.Alignment.topRight,
+              child: text(
+                '${statement.periodEnd.year}年${statement.periodEnd.month}月分',
+                size: 12.5,
+                color: PdfColor.fromHex('#073A76'),
+              ),
+            ),
+          ),
+          at(
+            390,
+            50,
+            149.275590551,
+            14,
+            pw.Align(
+              alignment: pw.Alignment.topRight,
+              child: text(
+                '支給日　${_paymentDate(statement, detail)}',
+                size: 6.4,
+                color: PdfColor.fromHex('#073A76'),
+              ),
+            ),
+          ),
+          at(
+            350,
+            80,
+            189.275590551,
+            16,
+            pw.Align(
+              alignment: pw.Alignment.topRight,
+              child: text(
+                _first(detail, const ['statement_message', '帳票メッセージ']).isEmpty
+                    ? '毎日の現場が、明日の街をつくる。'
+                    : _first(detail, const ['statement_message', '帳票メッセージ']),
+                size: 7.5,
+                color: PdfColor.fromHex('#073A76'),
+              ),
             ),
           ),
           at(
@@ -258,11 +314,15 @@ class PayrollPdfService {
               decoration: box(blue, fill: blue),
               child: pw.Row(
                 children: [
-                  text(payType, size: 15, color: PdfColors.white),
-                  pw.SizedBox(width: 16),
+                  text(
+                    payType.split('').join(' '),
+                    size: 16,
+                    color: PdfColors.white,
+                  ),
+                  pw.SizedBox(width: 34),
                   text(
                     payType == '月給' ? '（月固定給 ＋ 各種手当）' : '（勤務実績 × 登録単価 ＋ 各種手当）',
-                    size: 7,
+                    size: 8.5,
                     color: PdfColors.white,
                   ),
                 ],
@@ -296,11 +356,18 @@ class PayrollPdfService {
                     _first(detail, const ['入社日']),
                   ],
                 ])
-                  pw.Expanded(
-                    flex: field[0] == '氏名' ? 2 : 1,
+                  pw.SizedBox(
+                    width: const <String, double>{
+                      '社員番号': 62,
+                      '氏名': 108,
+                      '所属': 85,
+                      '職種': 94,
+                      '給与形態': 78,
+                      '入社日': 92.275590551,
+                    }[field[0]],
                     child: pw.Container(
                       height: 42,
-                      padding: const pw.EdgeInsets.all(7),
+                      padding: const pw.EdgeInsets.all(8),
                       decoration: box(light, fill: paleBlue, radius: 3),
                       child: _identityText(field[0], field[1]),
                     ),
@@ -447,7 +514,7 @@ class PayrollPdfService {
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [
                               for (final field in bankFields)
-                                text('${field[0]}　${field[1]}', size: 5.5),
+                                text('${field[0]}　${field[1]}', size: 5),
                             ],
                           ),
                   ),
@@ -495,7 +562,7 @@ class PayrollPdfService {
   static pw.Widget _identityText(String label, String value) => pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      pw.Text(label, style: const pw.TextStyle(fontSize: 6.5)),
+      pw.Text(label, style: const pw.TextStyle(fontSize: 6)),
       pw.SizedBox(height: 2),
       pw.Text(
         value,
@@ -519,45 +586,62 @@ class PayrollPdfService {
     PdfColor pale,
   ) {
     final items = <MapEntry<String, String>>[
-      MapEntry('出勤', _dayCount(detail, const ['出勤日数'])),
-      MapEntry('欠勤', _dayCount(detail, const ['欠勤日数'])),
-      MapEntry('有給', _dayCount(detail, const ['有給日数'])),
+      MapEntry('出勤日数', _dayCount(detail, const ['出勤日数'])),
+      MapEntry('欠勤日数', _dayCount(detail, const ['欠勤日数'])),
+      MapEntry('有給取得', _dayCount(detail, const ['有給日数'])),
       MapEntry('休日出勤', _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数'])),
-      MapEntry('残業', _hours(detail, const ['残業時間'])),
-      MapEntry('早出', _hours(detail, const ['早出時間'])),
-      MapEntry('深夜', _hours(detail, const ['深夜時間', '夜間時間'])),
-      MapEntry('休日残業', _hours(detail, const ['休日残業時間', '法定休出時間'])),
-      MapEntry('休日深夜', _hours(detail, const ['休日深夜時間'])),
+      MapEntry('残業時間', _hours(detail, const ['残業時間'])),
+      MapEntry('早出時間', _hours(detail, const ['早出時間'])),
+      MapEntry('深夜時間', _hours(detail, const ['深夜時間', '夜間時間'])),
+      MapEntry('休日残業時間', _hours(detail, const ['休日残業時間', '法定休出時間'])),
+      MapEntry('休日深夜時間', _hours(detail, const ['休日深夜時間'])),
       MapEntry('休日深夜残業', _hours(detail, const ['休日深夜残業時間'])),
     ];
-    return pw.Row(
-      children: [
-        for (final item in items.take(9))
-          pw.Expanded(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.symmetric(vertical: 9),
-              child: pw.Column(
-                children: [
-                  pw.Text(
-                    item.key,
-                    style: pw.TextStyle(fontSize: 5.4, color: blue),
-                  ),
-                  pw.SizedBox(height: 13),
-                  pw.Text(
-                    item.value.isEmpty ? '0' : item.value,
-                    style: pw.TextStyle(
-                      fontSize: 8,
-                      color:
-                          _isZeroDisplay(item.value.isEmpty ? '0' : item.value)
-                          ? PdfColors.grey400
-                          : PdfColors.blue900,
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        children: [
+          for (var index = 0; index < 9; index++)
+            pw.Expanded(
+              child: pw.Container(
+                decoration: pw.BoxDecoration(
+                  border: index == 0
+                      ? null
+                      : pw.Border(
+                          left: pw.BorderSide(
+                            color: PdfColor.fromHex('#DCEFF8'),
+                            width: .5,
+                          ),
+                        ),
+                ),
+                padding: const pw.EdgeInsets.only(top: 7),
+                child: pw.Column(
+                  children: [
+                    pw.Text(
+                      items[index].key,
+                      style: pw.TextStyle(
+                        fontSize: 5.7,
+                        color: PdfColor.fromHex('#073A76'),
+                      ),
                     ),
-                  ),
-                ],
+                    pw.SizedBox(height: 11),
+                    pw.Text(
+                      items[index].value.isEmpty
+                          ? (index < 4 ? '0日' : '0.0時間')
+                          : items[index].value,
+                      style: pw.TextStyle(
+                        fontSize: 8.2,
+                        color: _isZeroDisplay(items[index].value)
+                            ? PdfColor.fromHex('#BCCADD')
+                            : PdfColor.fromHex('#073A76'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -931,36 +1015,27 @@ class PayrollPdfService {
     for (final key in keys) {
       final value = source[key];
       if (value == null) continue;
-      if (value is num) return value.toDouble().toStringAsFixed(1);
-      final parsed = double.tryParse(value.toString());
-      if (parsed != null) return parsed.toStringAsFixed(1);
-      return value.toString();
+      final parsed = _asNumber(value.toString().replaceAll('日', ''));
+      if (parsed == null) return value.toString();
+      return '${parsed == parsed.round() ? parsed.toInt() : parsed.toStringAsFixed(1)}日';
     }
-    return '';
+    return '0日';
   }
 
   static String _hours(Map<String, dynamic> source, List<String> keys) {
     for (final key in keys) {
       final value = source[key];
       if (value == null) continue;
-      if (value is num) {
-        final totalMinutes = (value.toDouble() * 60).round();
-        final hours = totalMinutes ~/ 60;
-        final minutes = totalMinutes % 60;
-        return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
-      }
-      final text = value.toString().trim();
-      if (text.contains(':')) return text;
-      final parsed = double.tryParse(text);
-      if (parsed != null) {
-        final totalMinutes = (parsed * 60).round();
-        final hours = totalMinutes ~/ 60;
-        final minutes = totalMinutes % 60;
-        return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
-      }
-      return text;
+      final raw = value.toString().replaceAll('時間', '');
+      final parts = raw.split(':');
+      final hours = parts.length == 2
+          ? (double.tryParse(parts[0]) ?? 0) +
+                (double.tryParse(parts[1]) ?? 0) / 60
+          : double.tryParse(raw);
+      if (hours != null) return '${hours.toStringAsFixed(1)}時間';
+      return value.toString();
     }
-    return '';
+    return '0.0時間';
   }
 
   static String _paymentDate(
