@@ -69,10 +69,10 @@ void main() {
     expect(pdf, contains('approval: i == 1'));
     expect(pdf, contains('!visible[i].approved'));
     expect(pdf, contains("'確認印'"));
-    expect(pdf, contains('_companySeal('));
-    expect(pdf, contains('_companySeal('));
+    expect(pdf, contains('CompanySealPdf.build('));
+    expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, isNot(contains('companySealImage')));
-    expect(pdf, contains("_companySeal(settings?.companyName ?? '')"));
+    expect(pdf, contains("CompanySealPdf.build(settings?.companyName ?? '')"));
     expect(pdf, isNot(contains('_surnameForStamp')));
     expect(pdf, contains('approvals.take(3)'));
     expect(pdf, contains('approvals.take(3)'));
