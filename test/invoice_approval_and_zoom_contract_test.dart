@@ -124,4 +124,16 @@ void main() {
     expect(source, contains('bytes: pdfBytes'));
   });
 
+  test('invoice screen preview renders natively without PDF viewer or raster dependency', () {
+    final invoice =
+        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
+    expect(invoice, contains('class _InvoiceNativePreview'));
+    expect(invoice, contains('_InvoiceNativeHeader'));
+    expect(invoice, contains('_InvoiceNativeLine'));
+    expect(invoice, contains('invoice.siteCalculations'));
+    expect(invoice, contains('InteractiveViewer('));
+    expect(invoice, contains('onLayout: (_) async => pdfBytes'));
+    expect(invoice, contains('bytes: pdfBytes'));
+  });
+
 }
