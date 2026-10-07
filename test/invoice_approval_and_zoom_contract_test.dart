@@ -137,4 +137,13 @@ void main() {
     expect(invoice, contains('while (rows.length < 10)'));
   });
 
+  test('native invoice preview restores the registered company seal', () {
+    final invoice =
+        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
+    expect(invoice, contains('companySealBase64'));
+    expect(invoice, contains('base64Decode(payload)'));
+    expect(invoice, contains('Image.memory('));
+    expect(invoice, contains('width: 44'));
+  });
+
 }
