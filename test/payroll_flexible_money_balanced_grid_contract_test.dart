@@ -37,9 +37,9 @@ void main() {
   test('payroll PDF adapts final left-right earning and deduction panels', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
     expect(pdf, contains('_moneyPanel'));
-    expect(pdf, contains('for (final e in visible)'));
+    expect(pdf, contains('for (var index = 0; index < rowCount; index++)'));
     expect(pdf, contains("(_asNumber(e.value) ?? 0).abs() >= 1"));
-    expect(pdf, contains('visible.length <= 9'));
+    expect(pdf, contains('rowCount <= 18'));
     expect(pdf, contains("'custom_earnings'"));
     expect(pdf, contains("'custom_deductions'"));
   });
