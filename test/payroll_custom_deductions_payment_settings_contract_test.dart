@@ -31,7 +31,7 @@ void main() {
 
     expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_earnings')"));
     expect(pdf, contains("_configuredMoneyEntries(detail, key: 'custom_deductions')"));
-    expect(pdf, contains('_balancedMoneySection'));
+    expect(pdf, contains('_moneyPanel'));
     expect(pdf, contains('adjustmentDeductions.entries'));
     expect(
       adjustmentMigration,
