@@ -293,7 +293,7 @@ class PayrollPdfService {
 
 
   static String _moneyExplanation(String label, Map<String, dynamic> detail) {
-    final direct = detail['${label}計算内容'] ?? detail['${label}備考'];
+    final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) return direct.toString().trim();
     if (label == '基本給') return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
     if (label.contains('残業')) return '登録単価 × 残業時間';
