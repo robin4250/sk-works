@@ -311,6 +311,7 @@ class InvoicePdfService {
       62,
       150,
       size: 7,
+      wordSpacing: .4,
       color: blue,
       align: pw.TextAlign.center,
     );
@@ -524,6 +525,7 @@ class InvoicePdfService {
       784,
       285,
       size: 6,
+      letterSpacing: .21,
       align: pw.TextAlign.center,
     );
     text(
@@ -537,6 +539,8 @@ class InvoicePdfService {
       797,
       285,
       size: 6,
+      letterSpacing: .22,
+      wordSpacing: 4.656,
       align: pw.TextAlign.center,
     );
     children.add(
