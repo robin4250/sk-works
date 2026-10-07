@@ -1188,7 +1188,6 @@ class _InvoiceNativePreview extends StatelessWidget {
   final List<InvoiceApprovalRecord> approvals;
 
   static const _blue = Color(0xff8199b5);
-  static const _pale = Color(0xfff1f5f8);
 
   @override
   Widget build(BuildContext context) {
@@ -1486,13 +1485,6 @@ class _InvoiceNativeRowData {
     required this.unitPrice,
     required this.amount,
   });
-
-  const _InvoiceNativeRowData.empty()
-      : site = '',
-        content = '',
-        quantity = 0,
-        unitPrice = 0,
-        amount = 0;
 
   final String site;
   final String content;
