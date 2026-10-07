@@ -23,9 +23,10 @@ void main() {
   test('payroll PDF uses adopted A4 payroll statement template', () {
     final source = read('lib/features/payroll/payroll_pdf_service.dart');
     expect(source, contains('PdfPageFormat.a4,'));
-    expect(source, contains("'給与明細書'"));
+    expect(source, contains("'給 与 明 細 書'"));
+    expect(source, contains("'S A L A R Y   S T A T E M E N T'"));
     expect(source, contains("'勤務実績'"));
-    expect(source, contains("'2　　支給（＋）'"));
+    expect(source, contains("'2　●　支給（＋）'"));
     expect(source, contains("'3　　控除（－）'"));
     expect(source, contains("'支給合計（A）'"));
     expect(source, contains("'控除合計（B）'"));

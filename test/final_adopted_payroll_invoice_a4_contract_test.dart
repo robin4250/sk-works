@@ -9,7 +9,8 @@ void main() {
     expect(source, contains('pageFormat: PdfPageFormat.a4,'));
     expect(source, contains("'休日深夜残業'"));
     expect(source, contains('_isZeroDisplay'));
-    expect(source, contains('PdfColors.grey400'));
+    expect(source, contains("PdfColor.fromHex('#BCCADD')"));
+    expect(source, contains("PdfColor.fromHex('#073A76')"));
     expect(source, contains('_isAggregatePlaceholder'));
     expect(source, contains('label.isEmpty || amount == null'));
   });

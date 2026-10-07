@@ -18,6 +18,7 @@ class PayrollPdfService {
   }) async {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final sealFont = await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -81,6 +82,8 @@ class PayrollPdfService {
           margin: const pw.EdgeInsets.fromLTRB(18, 18, 18, 18),
           build: (_) => _sheet(
             statement,
+            sealFont: sealFont,
+            fallbackFont: regular,
             detail: detail,
             earningEntries: Map.fromEntries(
               earningEntries.entries.skip(pageIndex * 15).take(15),
@@ -115,6 +118,8 @@ class PayrollPdfService {
 
   static pw.Widget _sheet(
     PayrollStatementRecord statement, {
+    required pw.Font sealFont,
+    required pw.Font fallbackFont,
     required Map<String, dynamic> detail,
     required Map<String, Object?> earningEntries,
     required Map<String, Object?> deductionEntries,
@@ -216,7 +221,12 @@ class PayrollPdfService {
                   ),
                 ),
                 pw.SizedBox(width: 10),
-                CompanySealPdf.build(statement.companyName, size: 32),
+                CompanySealPdf.build(
+                  statement.companyName,
+                  size: 32,
+                  font: sealFont,
+                  fallbackFont: fallbackFont,
+                ),
               ],
             ),
           ),
@@ -319,7 +329,7 @@ class PayrollPdfService {
                     size: 16,
                     color: PdfColors.white,
                   ),
-                  pw.SizedBox(width: 34),
+                  pw.SizedBox(width: 52.416),
                   text(
                     payType == '月給' ? '（月固定給 ＋ 各種手当）' : '（勤務実績 × 登録単価 ＋ 各種手当）',
                     size: 8.5,
@@ -396,7 +406,7 @@ class PayrollPdfService {
             panelWidth,
             305,
             _moneyPanel(
-              '2　　支給（＋）',
+              '2　●　支給（＋）',
               earningEntries,
               detail,
               blue,
@@ -668,7 +678,7 @@ class PayrollPdfService {
           pw.Container(
             height: 30,
             alignment: pw.Alignment.centerLeft,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12),
+            padding: const pw.EdgeInsets.fromLTRB(12, 2, 12, 0),
             decoration: pw.BoxDecoration(
               color: accent,
               borderRadius: const pw.BorderRadius.only(
@@ -729,7 +739,7 @@ class PayrollPdfService {
           for (var i = 0; i < rowCount; i++)
             pw.Container(
               height: rowHeight,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 3),
+              padding: const pw.EdgeInsets.fromLTRB(4, 3.5, 4, 0),
               decoration: pw.BoxDecoration(
                 border: pw.Border(top: pw.BorderSide(color: pale, width: .3)),
               ),
@@ -776,7 +786,7 @@ class PayrollPdfService {
             ),
           pw.Container(
             height: 34,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 10),
+            padding: const pw.EdgeInsets.fromLTRB(10, 3.7, 10, 0),
             decoration: pw.BoxDecoration(
               color: pale,
               border: pw.Border.all(color: accent, width: .5),
@@ -792,7 +802,7 @@ class PayrollPdfService {
                 ),
                 pw.Text(
                   _number(total),
-                  style: pw.TextStyle(fontSize: 13, color: accent),
+                  style: pw.TextStyle(fontSize: 14.5, color: accent),
                 ),
               ],
             ),
@@ -842,14 +852,27 @@ class PayrollPdfService {
       border: pw.Border.all(color: color, width: .5),
       borderRadius: pw.BorderRadius.circular(5),
     ),
-    child: pw.Column(
-      mainAxisAlignment: pw.MainAxisAlignment.center,
+    child: pw.Stack(
       children: [
-        pw.Text(label, style: pw.TextStyle(fontSize: 6.3, color: color)),
-        pw.SizedBox(height: 4),
-        pw.Text(
-          '${_number(amount)} 円',
-          style: pw.TextStyle(fontSize: 12, color: color),
+        pw.Positioned(
+          left: 0,
+          right: 0,
+          top: 8.692,
+          child: pw.Text(
+            label,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(fontSize: 6.3, color: color),
+          ),
+        ),
+        pw.Positioned(
+          left: 0,
+          right: 0,
+          top: 20.08,
+          child: pw.Text(
+            '${_number(amount)} 円',
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(fontSize: 12, color: color),
+          ),
         ),
       ],
     ),

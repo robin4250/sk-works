@@ -15,7 +15,7 @@ void main() {
       contains("final rowCount = visible.length < 15 ? 15 : visible.length"),
     );
     expect(s, contains("220.0 / rowCount"));
-    expect(s, contains("'2　　支給（＋）'"));
+    expect(s, contains("'2　●　支給（＋）'"));
     expect(s, contains("'3　　控除（－）'"));
     expect(s, contains("'差引支給額'"));
   });

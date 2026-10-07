@@ -7,7 +7,7 @@ void main() {
     final s = File('lib/features/payroll/payroll_pdf_service.dart')
         .readAsStringSync();
     expect(s, contains("'勤務実績'"));
-    expect(s, contains("'2　　支給（＋）'"));
+    expect(s, contains("'2　●　支給（＋）'"));
     expect(s, contains("'3　　控除（－）'"));
     expect(s, contains('_attendanceCards'));
     expect(s, contains('_moneyPanel'));

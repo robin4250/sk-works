@@ -29,6 +29,7 @@ class InvoicePdfService {
 
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final sealFont = await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -59,6 +60,8 @@ class InvoicePdfService {
               invoice,
               effectiveSettings,
               approvals,
+              sealFont: sealFont,
+              fallbackFont: regular,
               pageIndex: pageIndex,
               pageCount: pageCount,
             ),
@@ -193,6 +196,8 @@ class InvoicePdfService {
     InvoiceCalculationResult invoice,
     InvoiceSettingsData? settings,
     List<InvoiceApprovalRecord> approvals, {
+    required pw.Font sealFont,
+    required pw.Font fallbackFont,
     int pageIndex = 0,
     int pageCount = 1,
   }) {
@@ -239,13 +244,22 @@ class InvoicePdfService {
       double h = 18,
       int maxLines = 2,
       double letterSpacing = 0,
-      double wordSpacing = 0,
+      double wordSpacing = 1,
       double lineSpacing = 0,
       double? baseline,
+      bool softWrap = true,
     }) {
       children.add(
         pw.Positioned(
-          left: x,
+          // PDF text layout includes two trailing character-spacing advances;
+          // compensate aligned spans so their visible edge matches the reference.
+          left:
+              x +
+              (align == pw.TextAlign.right
+                  ? 2 * letterSpacing
+                  : align == pw.TextAlign.center
+                  ? letterSpacing
+                  : 0),
           // Noto Sans JP ascender is 1.16 em; align text to adopted baselines.
           top: baseline == null ? y - size * .30 : baseline - size * 1.16,
           child: pw.SizedBox(
@@ -255,6 +269,7 @@ class InvoicePdfService {
               value,
               textAlign: align,
               maxLines: maxLines,
+              softWrap: softWrap,
               style: pw.TextStyle(
                 fontSize: size,
                 letterSpacing: letterSpacing,
@@ -293,13 +308,15 @@ class InvoicePdfService {
     const right = 567.2756;
     box(16, 16, 563.2756, 809.8898, radius: 3, line: .55);
     text(
-      '請　求　書',
+      '請　求　書'.replaceAll('　', ''),
       222.64,
       28,
       150,
       size: 20,
       bold: true,
-      wordSpacing: 15.52,
+      letterSpacing: 20,
+      maxLines: 1,
+      softWrap: false,
       baseline: 46,
       align: pw.TextAlign.center,
       h: 30,
@@ -311,7 +328,7 @@ class InvoicePdfService {
       62,
       150,
       size: 7,
-      wordSpacing: .4,
+      wordSpacing: 1.2551,
       color: blue,
       align: pw.TextAlign.center,
     );
@@ -540,7 +557,7 @@ class InvoicePdfService {
       285,
       size: 6,
       letterSpacing: .22,
-      wordSpacing: 4.656,
+      wordSpacing: 4.4642857,
       align: pw.TextAlign.center,
     );
     children.add(
@@ -552,7 +569,11 @@ class InvoicePdfService {
           height: 40.4394,
           child: pw.FittedBox(
             fit: pw.BoxFit.fill,
-            child: CompanySealPdf.build(settings?.companyName ?? ''),
+            child: CompanySealPdf.build(
+              settings?.companyName ?? '',
+              font: sealFont,
+              fallbackFont: fallbackFont,
+            ),
           ),
         ),
       ),

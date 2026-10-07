@@ -13,9 +13,12 @@ class PaymentCertificatePdfService {
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
     PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final sealFont = await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -29,7 +32,7 @@ class PaymentCertificatePdfService {
           12 * PdfPageFormat.mm,
           10 * PdfPageFormat.mm,
         ),
-        build: (_) => _sheet(record),
+        build: (_) => _sheet(record, sealFont, regular),
       ),
     );
 
@@ -44,7 +47,11 @@ class PaymentCertificatePdfService {
     );
   }
 
-  static pw.Widget _sheet(PaymentCertificateRecord record) {
+  static pw.Widget _sheet(
+    PaymentCertificateRecord record,
+    pw.Font sealFont,
+    pw.Font fallbackFont,
+  ) {
     final lines = record.lines.isEmpty
         ? [
             PaymentCertificateLine(
@@ -57,8 +64,7 @@ class PaymentCertificatePdfService {
           ]
         : record.lines;
 
-    final detailTotal =
-        lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final detailTotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
     final gross = record.grossAmount != 0 ? record.grossAmount : detailTotal;
     final balance = gross - record.deductions;
 
@@ -72,14 +78,8 @@ class PaymentCertificatePdfService {
               'From:${record.payerCompanyName}',
               style: const pw.TextStyle(fontSize: 7),
             ),
-            pw.Text(
-              record.payerPhone,
-              style: const pw.TextStyle(fontSize: 7),
-            ),
-            pw.Text(
-              'P.001/001',
-              style: const pw.TextStyle(fontSize: 7),
-            ),
+            pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
+            pw.Text('P.001/001', style: const pw.TextStyle(fontSize: 7)),
           ],
         ),
         pw.SizedBox(height: 22),
@@ -154,23 +154,22 @@ class PaymentCertificatePdfService {
                       ],
                     ),
                   ),
-                  CompanySealPdf.build(record.payerCompanyName, size: 55),
+                  CompanySealPdf.build(
+                    record.payerCompanyName,
+                    size: 55,
+                    font: sealFont,
+                    fallbackFont: fallbackFont,
+                  ),
                 ],
               ),
             ),
           ],
         ),
         pw.SizedBox(height: 13),
-        pw.Text(
-          '下記の通りお支払いいたします。',
-          style: const pw.TextStyle(fontSize: 9),
-        ),
+        pw.Text('下記の通りお支払いいたします。', style: const pw.TextStyle(fontSize: 9)),
         pw.SizedBox(height: 3),
         pw.Table(
-          border: pw.TableBorder.all(
-            color: PdfColors.black,
-            width: .75,
-          ),
+          border: pw.TableBorder.all(color: PdfColors.black, width: .75),
           columnWidths: const {
             0: pw.FlexColumnWidth(2.5),
             1: pw.FlexColumnWidth(2.0),
@@ -266,21 +265,17 @@ class PaymentCertificatePdfService {
     double fontSize = 8,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(
-        horizontal: 3,
-        vertical: 3.3,
-      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3.3),
       child: pw.Text(
         text,
         textAlign: right
             ? pw.TextAlign.right
             : center
-                ? pw.TextAlign.center
-                : pw.TextAlign.left,
+            ? pw.TextAlign.center
+            : pw.TextAlign.left,
         style: pw.TextStyle(
           fontSize: fontSize,
-          fontWeight:
-              bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
       ),
     );
