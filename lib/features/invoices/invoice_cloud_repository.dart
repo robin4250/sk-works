@@ -82,19 +82,32 @@ class InvoiceCloudRepository {
         // make the invoice list disappear.
         var customerName =
             snapshotMap['customer_name']?.toString().trim() ?? '';
-        if (customerName.isEmpty) {
+        final customerPostalCode =
+            snapshotMap['customer_postal_code']?.toString().trim() ?? '';
+        var customerAddress =
+            snapshotMap['customer_address']?.toString().trim() ?? '';
+        if (customerName.isEmpty || customerAddress.isEmpty) {
           final customerId = invoice['customer_id']?.toString() ?? '';
           if (customerId.isNotEmpty) {
             try {
+              // customers stores billing_address, not address/postal_code.
+              // This optional same-company read retains the table's existing RLS.
               final customers = await _client
                   .from('customers')
-                  .select('name')
+                  .select('name, billing_address')
                   .eq('company_id', companyId)
                   .eq('id', customerId)
                   .limit(1);
               if (customers.isNotEmpty) {
-                customerName =
-                    customers.first['name']?.toString().trim() ?? '';
+                if (customerName.isEmpty) {
+                  customerName =
+                      customers.first['name']?.toString().trim() ?? '';
+                }
+                if (customerAddress.isEmpty) {
+                  customerAddress =
+                      customers.first['billing_address']?.toString().trim() ??
+                      '';
+                }
               }
             } catch (_) {
               // A related customer lookup must not hide the invoice.
@@ -248,6 +261,8 @@ class InvoiceCloudRepository {
         results.add(
           InvoiceEngine.calculate(
             customerId: customerName,
+            customerPostalCode: customerPostalCode,
+            customerAddress: customerAddress,
             billingPeriod: billingPeriod,
             detailMode: _fromDbDetailMode(invoice['detail_mode']?.toString()),
             sites: siteResults,
@@ -404,6 +419,8 @@ class InvoiceCloudRepository {
 
   Map<String, dynamic> _snapshot(InvoiceCalculationResult invoice) => {
         'customer_name': invoice.customerId,
+        'customer_postal_code': invoice.customerPostalCode,
+        'customer_address': invoice.customerAddress,
         'billing_period': invoice.billingPeriod,
         'detail_mode': _toDbDetailMode(invoice.detailMode),
         'tax_rate_bps': invoice.taxRateBps,

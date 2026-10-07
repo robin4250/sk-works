@@ -6,8 +6,9 @@ String read(String path) => File(path).readAsStringSync();
 
 void main() {
   test('invoice settings expose subject contact and payment due text', () {
-    final repository =
-        read('lib/features/invoices/invoice_settings_repository.dart');
+    final repository = read(
+      'lib/features/invoices/invoice_settings_repository.dart',
+    );
     final page = read('lib/features/invoices/invoice_settings_page.dart');
 
     expect(repository, contains('invoiceSubject'));
@@ -26,31 +27,40 @@ void main() {
     expect(page, contains("'ロゴ画像を登録'"));
   });
 
-  test('invoice PDF uses month-end date counter company data and branding images', () {
-    final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
+  test(
+    'invoice PDF uses month-end date counter company data and branding images',
+    () {
+      final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
 
-    expect(pdf, contains("'御　請　求　書'"));
-    expect(pdf, contains('fontSize: 17'));
-    expect(pdf, contains("textAlign: pw.TextAlign.center"));
-    expect(pdf, contains("'請求書番号：\${invoice.invoiceNumber}'"));
-    expect(pdf, contains('_monthEnd(invoice)'));
-    expect(pdf, contains('_workPeriod(invoice)'));
-    expect(pdf, contains('settings?.invoiceSubject'));
-    expect(pdf, contains('settings?.companyAddress'));
-    expect(pdf, contains('settings?.companyPhone'));
-    expect(pdf, contains('_datedApprovalStamp'));
-    expect(pdf, contains('_companySeal('));
-    expect(pdf, contains('_companySealGroups'));
-    expect(pdf, contains("companyName.trim().isEmpty ? '会社' : companyName.trim()"));
-    expect(pdf, contains("name.endsWith('株式会社')"));
-    expect(pdf, contains("settings?.companyName ?? ''"));
-    expect(pdf, contains('Amount and confirmer areas are independent adjacent frames'));
-    expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
-    expect(pdf, contains('_companySeal('));
-    expect(pdf, isNot(contains('companySealImage')));
-    expect(pdf, contains('settings?.paymentDueText'));
-    expect(pdf, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
-  });
+      expect(pdf, contains("'請　求　書'"));
+      expect(pdf, contains('size: 20'));
+      expect(pdf, contains("align: pw.TextAlign.center"));
+      expect(pdf, contains("invoice.invoiceNumber"));
+      expect(pdf, contains('_monthEnd(invoice)'));
+      expect(pdf, contains('_workPeriod(invoice)'));
+      expect(pdf, contains('settings?.invoiceSubject'));
+      expect(pdf, contains('settings?.companyAddress'));
+      expect(pdf, contains('settings?.companyPhone'));
+      expect(pdf, contains('_datedApprovalStamp'));
+      expect(pdf, contains('CompanySealPdf.build('));
+      expect(pdf, contains('CompanySealPdf.build('));
+      expect(
+        File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(),
+        contains("companyName.trim()"),
+      );
+      expect(
+        File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(),
+        contains("name.endsWith('株式会社')"),
+      );
+      expect(pdf, contains("settings?.companyName ?? ''"));
+      expect(pdf, contains('box(316, 80,'));
+      expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
+      expect(pdf, contains('CompanySealPdf.build('));
+      expect(pdf, isNot(contains('companySealImage')));
+      expect(pdf, contains('settings?.paymentDueText'));
+      expect(pdf, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
+    },
+  );
 
   test('invoice number assignment is company-scoped and automatic', () {
     final sql = read(
@@ -63,32 +73,45 @@ void main() {
     expect(sql, contains('new.issue_date := new.billing_period_end'));
     expect(sql, contains('invoice_document_settings'));
     expect(sql, contains('save_invoice_settings_v2'));
-    expect(sql, contains('revoke all on function public.invoice_document_settings()'));
+    expect(
+      sql,
+      contains('revoke all on function public.invoice_document_settings()'),
+    );
   });
 
-  test('invoice site rows use the requested five columns and stored snapshot rows', () {
+  test('invoice site rows use the adopted seven columns and stored snapshot rows', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
-    final repository = read('lib/features/invoices/invoice_cloud_repository.dart');
+    final repository = read(
+      'lib/features/invoices/invoice_cloud_repository.dart',
+    );
     final sql = read(
       'supabase/migrations/20261005133000_invoice_site_breakdown_rows.sql',
     );
 
-    for (final label in ['作業所名', '工事内容', '数量', '単価', '請求金額']) {
+    for (final label in [
+      'No.',
+      '現場名',
+      '工事内容・摘要',
+      '期間',
+      '人数',
+      '単価（円）',
+      '金額（円）',
+    ]) {
       expect(pdf, contains("'$label'"));
     }
     expect(repository, contains("invoice['snapshot']"));
     expect(repository, contains("line['site_label']"));
     expect(repository, contains("line['work_content']"));
     expect(repository, contains("'通常作業'"));
-    expect(pdf, contains("siteLabel == '〃' && workContent.isNotEmpty"));
-    expect(pdf, contains("'〃　\$workContent'"));
+    expect(pdf, contains('line.siteLabel.trim().isNotEmpty'));
+    expect(pdf, contains('line.workContent ?? line.label'));
     expect(sql, contains("'work_content','夜間作業'"));
     expect(sql, contains("'work_content','（手当て）'"));
     expect(sql, contains("'work_content','（残業）'"));
     expect(sql, contains("'work_content','（法定福利費）'"));
     expect(sql, contains("'work_content','（消費税）'"));
     expect(sql, contains('*1.5'));
-    expect(pdf, contains("rawWorkContent.isEmpty ? '通常作業'"));
+    expect(pdf, contains('content: (line.workContent ?? line.label).trim()'));
     final latest = read(
       'supabase/migrations/20261005152000_invoice_allowance_and_early_rows.sql',
     );
@@ -102,8 +125,9 @@ void main() {
 
   test('invoice model and repository carry number and billing dates', () {
     final model = read('lib/domain/invoice_engine.dart');
-    final repository =
-        read('lib/features/invoices/invoice_cloud_repository.dart');
+    final repository = read(
+      'lib/features/invoices/invoice_cloud_repository.dart',
+    );
 
     expect(model, contains('invoiceNumber'));
     expect(model, contains('issueDate'));

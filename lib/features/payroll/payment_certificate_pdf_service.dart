@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'payment_certificate_repository.dart';
+import '../shared/company_seal_pdf.dart';
 
 class PaymentCertificatePdfService {
   const PaymentCertificatePdfService._();
@@ -12,9 +13,12 @@ class PaymentCertificatePdfService {
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
     PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final sealFont = await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -28,7 +32,7 @@ class PaymentCertificatePdfService {
           12 * PdfPageFormat.mm,
           10 * PdfPageFormat.mm,
         ),
-        build: (_) => _sheet(record),
+        build: (_) => _sheet(record, sealFont, regular),
       ),
     );
 
@@ -43,7 +47,11 @@ class PaymentCertificatePdfService {
     );
   }
 
-  static pw.Widget _sheet(PaymentCertificateRecord record) {
+  static pw.Widget _sheet(
+    PaymentCertificateRecord record,
+    pw.Font sealFont,
+    pw.Font fallbackFont,
+  ) {
     final lines = record.lines.isEmpty
         ? [
             PaymentCertificateLine(
@@ -56,8 +64,7 @@ class PaymentCertificatePdfService {
           ]
         : record.lines;
 
-    final detailTotal =
-        lines.fold<int>(0, (sum, line) => sum + line.amountYen);
+    final detailTotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
     final gross = record.grossAmount != 0 ? record.grossAmount : detailTotal;
     final balance = gross - record.deductions;
 
@@ -71,14 +78,8 @@ class PaymentCertificatePdfService {
               'From:${record.payerCompanyName}',
               style: const pw.TextStyle(fontSize: 7),
             ),
-            pw.Text(
-              record.payerPhone,
-              style: const pw.TextStyle(fontSize: 7),
-            ),
-            pw.Text(
-              'P.001/001',
-              style: const pw.TextStyle(fontSize: 7),
-            ),
+            pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
+            pw.Text('P.001/001', style: const pw.TextStyle(fontSize: 7)),
           ],
         ),
         pw.SizedBox(height: 22),
@@ -116,77 +117,63 @@ class PaymentCertificatePdfService {
             ),
             pw.SizedBox(
               width: 210,
-              child: pw.Row(
+              child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        if (record.payerPostalCode.isNotEmpty)
-                          pw.Text(
-                            '〒${record.payerPostalCode}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        if (record.payerAddress.isNotEmpty)
-                          pw.Text(
-                            record.payerAddress,
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        pw.Text(
+                  if (record.payerPostalCode.isNotEmpty)
+                    pw.Text(
+                      '〒${record.payerPostalCode}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  if (record.payerAddress.isNotEmpty)
+                    pw.Text(
+                      record.payerAddress,
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  pw.Row(
+                    mainAxisSize: pw.MainAxisSize.min,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Flexible(
+                        child: pw.Text(
                           record.payerCompanyName,
                           style: pw.TextStyle(
                             fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
-                        if (record.payerPhone.isNotEmpty)
-                          pw.Text(
-                            'TEL　${record.payerPhone}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        if (record.payerFax.isNotEmpty)
-                          pw.Text(
-                            'FAX　${record.payerFax}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                      ],
-                    ),
-                  ),
-                  pw.Container(
-                    width: 55,
-                    height: 55,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                        color: PdfColors.black,
-                        width: 1,
                       ),
-                    ),
-                    alignment: pw.Alignment.center,
-                    child: pw.Text(
-                      '会社印',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
+                      pw.Transform.translate(
+                        offset: const PdfPoint(-4, 0),
+                        child: CompanySealPdf.build(
+                          record.payerCompanyName,
+                          size: 55,
+                          font: sealFont,
+                          fallbackFont: fallbackFont,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                  if (record.payerPhone.isNotEmpty)
+                    pw.Text(
+                      'TEL　${record.payerPhone}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  if (record.payerFax.isNotEmpty)
+                    pw.Text(
+                      'FAX　${record.payerFax}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
                 ],
               ),
             ),
           ],
         ),
         pw.SizedBox(height: 13),
-        pw.Text(
-          '下記の通りお支払いいたします。',
-          style: const pw.TextStyle(fontSize: 9),
-        ),
+        pw.Text('下記の通りお支払いいたします。', style: const pw.TextStyle(fontSize: 9)),
         pw.SizedBox(height: 3),
         pw.Table(
-          border: pw.TableBorder.all(
-            color: PdfColors.black,
-            width: .75,
-          ),
+          border: pw.TableBorder.all(color: PdfColors.black, width: .75),
           columnWidths: const {
             0: pw.FlexColumnWidth(2.5),
             1: pw.FlexColumnWidth(2.0),
@@ -282,21 +269,17 @@ class PaymentCertificatePdfService {
     double fontSize = 8,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(
-        horizontal: 3,
-        vertical: 3.3,
-      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3.3),
       child: pw.Text(
         text,
         textAlign: right
             ? pw.TextAlign.right
             : center
-                ? pw.TextAlign.center
-                : pw.TextAlign.left,
+            ? pw.TextAlign.center
+            : pw.TextAlign.left,
         style: pw.TextStyle(
           fontSize: fontSize,
-          fontWeight:
-              bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
       ),
     );

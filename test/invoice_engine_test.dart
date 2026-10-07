@@ -2,6 +2,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 
 void main() {
+  test(
+    'recipient details are optional and pass through without fabrication',
+    () {
+      final blank = InvoiceEngine.calculate(
+        customerId: '会社',
+        billingPeriod: '2026年10月',
+        detailMode: InvoiceDetailMode.consolidatedOnly,
+        sites: const [],
+      );
+      expect(blank.customerPostalCode, isEmpty);
+      expect(blank.customerAddress, isEmpty);
+      final saved = InvoiceEngine.calculate(
+        customerId: '会社',
+        customerPostalCode: '100-0001',
+        customerAddress: '東京都千代田区丸の内1丁目1-1',
+        billingPeriod: '2026年10月',
+        detailMode: InvoiceDetailMode.consolidatedOnly,
+        sites: const [],
+      );
+      expect(saved.customerPostalCode, '100-0001');
+      expect(saved.customerAddress, '東京都千代田区丸の内1丁目1-1');
+    },
+  );
+
   group('InvoiceEngine', () {
     test('rolls multiple site calculations into one invoice total', () {
       final result = InvoiceEngine.calculate(
@@ -108,5 +132,4 @@ void main() {
 
     expect(result.grandTotalYen, greaterThan(0));
   });
-
 }

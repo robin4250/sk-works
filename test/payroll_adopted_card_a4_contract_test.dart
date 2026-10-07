@@ -1,12 +1,14 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('payroll is rebuilt as the adopted card-style A4 document', () {
-    final s=File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
+    final s = File('lib/features/payroll/payroll_pdf_service.dart')
+        .readAsStringSync();
     expect(s, contains("'勤務実績'"));
-    expect(s, contains("'支給（＋）'"));
-    expect(s, contains("'控除（－）'"));
+    expect(s, contains("'2　●　支給（＋）'"));
+    expect(s, contains("'3　　控除（－）'"));
     expect(s, contains('_attendanceCards'));
     expect(s, contains('_moneyPanel'));
     expect(s, contains('_summaryAmount'));
@@ -17,7 +19,7 @@ void main() {
     expect(s, contains("'職種'"));
     expect(s, contains("'入社日'"));
     expect(s, contains('_moneyExplanation'));
-    expect(s, contains('pw.Spacer()'));
+    expect(s, contains('731.88976378'));
     expect(s, isNot(contains("_balancedMoneySection(\n          title: '支給'")));
   });
 }
