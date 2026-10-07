@@ -688,7 +688,6 @@ class InvoicePdfService {
       ),
       padding: const pw.EdgeInsets.all(2),
       child: pw.Row(
-        textDirection: pw.TextDirection.rtl,
         children: [
           for (final group in groups)
             pw.Expanded(
