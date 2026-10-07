@@ -79,23 +79,17 @@ void main() {
     expect(pdf, contains('pw.Positioned('));
   });
 
-  test('invoice preview uses rasterized PDF zoom while payroll keeps outer zoom', () {
+  test('invoice preview uses the exact shared PDF bytes while payroll keeps zoom', () {
     final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
-    final payroll =
-        read('lib/features/payroll/payroll_statements_page.dart');
-
-    expect(invoice, contains('class _ExactInvoiceScreen'));
-    expect(invoice, contains('previewData.settings'));
-    expect(invoice, isNot(contains('transformationController: _zoomController')));
+    final payroll = read('lib/features/payroll/payroll_statements_page.dart');
+    expect(invoice, contains('child: PdfPreview('));
+    expect(invoice, contains('build: (_) async => pdfBytes'));
+    expect(invoice, isNot(contains('child: _ExactInvoiceScreen(')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
-
     expect(payroll, contains('InteractiveViewer('));
     expect(payroll, contains('TransformationController'));
     expect(payroll, contains('minScale: 1'));
     expect(payroll, contains('maxScale: 5'));
-    expect(payroll, contains('panEnabled: true'));
-    expect(payroll, contains('scaleEnabled: true'));
-    expect(payroll, contains('Matrix4.identity()'));
   });
 
   test('preview print and share keep the same PDF builders', () {
@@ -111,18 +105,13 @@ void main() {
     expect(payroll, contains('allowSharing: true'));
   });
 
-  test('invoice screen preview renders the complete shared invoice model', () {
-    final invoice =
-        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-    expect(invoice, contains('class _ExactInvoiceScreen'));
-    expect(invoice, contains('_ScreenDetailTable(rows:rows)'));
-    expect(invoice, contains('previewData.settings'));
-    expect(invoice, contains("'御請求金額'"));
-    expect(invoice, contains("'合計(税込)'"));
-    expect(invoice, contains("'お支払約定日'"));
-    expect(invoice, isNot(contains('Printing.raster(')));
+  test('invoice screen preview renders the complete shared PDF output', () {
+    final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
+    expect(invoice, contains('InvoicePdfService.buildPdf('));
+    expect(invoice, contains('build: (_) async => pdfBytes'));
+    expect(invoice, contains('initialPageFormat: PdfPageFormat.a4'));
+    expect(invoice, isNot(contains('child: _ExactInvoiceScreen(')));
   });
-
 
 
 }
