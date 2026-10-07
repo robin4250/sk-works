@@ -68,4 +68,14 @@ void main() {
     expect(pdf, contains('statement.periodEnd.month + 1'));
     expect(pdf, contains('day > lastDay ? lastDay : day'));
   });
+  test('other earning remains only for amount not explained by named details', () {
+    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
+
+    expect(pdf, contains("detail['その他支給']"));
+    expect(pdf, contains('configuredEarningsTotal'));
+    expect(pdf, contains('otherEarningResidual'));
+    expect(pdf, contains("MapEntry<String, Object?>('その他支給', otherEarningResidual)"));
+    expect(pdf, contains('otherDeductionResidual'));
+  });
+
 }
