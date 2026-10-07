@@ -43,10 +43,10 @@ class InvoicePdfService {
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.fromLTRB(
-            13 * PdfPageFormat.mm,
-            10 * PdfPageFormat.mm,
-            13 * PdfPageFormat.mm,
-            10 * PdfPageFormat.mm,
+            15 * PdfPageFormat.mm,
+            14 * PdfPageFormat.mm,
+            15 * PdfPageFormat.mm,
+            14 * PdfPageFormat.mm,
           ),
           build: (_) => _sheet(
             invoice,
@@ -186,7 +186,7 @@ class InvoicePdfService {
         );
       }
     }
-    while (rows.length < 10) {
+    while (rows.length < 35) {
       rows.add(const _InvoiceFormRow.empty());
     }
     // The reference invoice is a single A4 sheet. Real invoices can exceed
@@ -615,11 +615,11 @@ class InvoicePdfService {
     List<InvoiceApprovalRecord> approvals,
     PdfColor blue,
   ) {
-    final visible = approvals.take(2).toList();
+    final visible = approvals.take(3).toList();
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < 2; i++) ...[
+        for (var i = 0; i < 3; i++) ...[
           if (i > 0) pw.SizedBox(width: 2),
           pw.Expanded(
             child: pw.Container(
@@ -681,7 +681,7 @@ class InvoicePdfService {
     required bool designB,
   }) {
     final red = PdfColor.fromHex('#B83232');
-    final label = _surnameForStamp(name);
+    
     return pw.Container(
       width: 34,
       height: 34,
@@ -721,15 +721,6 @@ class InvoicePdfService {
               '${date.year}.${date.month}.${date.day}',
               style: pw.TextStyle(color: red, fontSize: 4.4),
             ),
-            pw.Text(
-              label,
-              maxLines: 1,
-              textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(
-                color: red,
-                fontSize: 6.0,
-                fontWeight: pw.FontWeight.bold,
-              ),
             ),
           ],
         ),
@@ -739,7 +730,7 @@ class InvoicePdfService {
 
   static String _surnameForStamp(String name) {
     final value = name.trim();
-    if (value.isEmpty) return '確認者';
+    if (value.isEmpty) return '';
     final parts = value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty);
     if (parts.length > 1) return parts.first;
     if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value) || value.length <= 2) {
@@ -1225,7 +1216,7 @@ class _ExactInvoiceScreen extends StatelessWidget {
         ));
       }
     }
-    while (rows.length < 10) {
+    while (rows.length < 35) {
       rows.add(const _InvoiceFormRow.empty());
     }
     final bank = [settings?.bankName ?? '', settings?.bankBranch ?? '',
