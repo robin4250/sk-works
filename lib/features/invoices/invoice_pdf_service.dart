@@ -1363,9 +1363,9 @@ class _InvoiceNativeLine extends StatelessWidget {
           children: [
             Expanded(flex: 3, child: _InvoiceNativeCell(site)),
             Expanded(flex: 3, child: _InvoiceNativeCell(content)),
-            Expanded(child: _InvoiceNativeCell('$quantity', right: true)),
-            Expanded(child: _InvoiceNativeCell('${_InvoiceNativePreview._money(unitPrice)}', right: true)),
-            Expanded(flex: 2, child: _InvoiceNativeCell('${_InvoiceNativePreview._money(amount)}', right: true)),
+            Expanded(child: _InvoiceNativeCell(quantity.toString(), right: true)),
+            Expanded(child: _InvoiceNativeCell(_InvoiceNativePreview._money(unitPrice), right: true)),
+            Expanded(flex: 2, child: _InvoiceNativeCell(_InvoiceNativePreview._money(amount), right: true)),
           ],
         ),
       );
