@@ -273,8 +273,9 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                         child: Padding(
                           padding: EdgeInsets.all(16),
                           child: Text(
-                            '初期設定で登録した請求・勤務単価を後から変更できます。'
-                            'この画面は管理者だけが利用できます。',
+                            'ここは会社共通の初期値・手当設定です。'
+                            '社員ごとの給与は「個別給与設定」、現場ごとの請求単価は「管理者用現場データ」で設定します。'
+                            '同じ単価を複数画面へ入力する必要はありません。',
                           ),
                         ),
                       ),
@@ -290,11 +291,13 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                       _moneyField(_welfare, '福利厚生費率（%）', decimal: true),
                       const SizedBox(height: 12),
                       Text(
-                        '勤務単価',
+                        '会社共通の初期勤務単価（旧互換）',
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
                       ),
+                      const SizedBox(height: 4),
+                      const Text('既存データとの互換用です。新しい社員の給与計算は個別給与設定を使用してください。'),
                       const SizedBox(height: 10),
                       _moneyField(_overtime, '残業単価（1時間・円）'),
                       _moneyField(_early, '早出単価（1時間・円）'),
