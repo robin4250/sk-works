@@ -1,0 +1,412 @@
+[
+  {
+    "backup": {
+      "ledger": [
+        {
+          "name": "worker_monthly_salary_mode",
+          "version": "20261007020919"
+        },
+        {
+          "name": "initial_registration_testflight_url_setting",
+          "version": "20261007020727"
+        },
+        {
+          "name": "allow_admin_direct_worker_personnel_save",
+          "version": "20261006230434"
+        },
+        {
+          "name": "admin_direct_worker_personnel_save",
+          "version": "20261006230333"
+        },
+        {
+          "name": "site_information_request_notifications",
+          "version": "20261006204659"
+        },
+        {
+          "name": "activate_preregistered_employees",
+          "version": "20261006193110"
+        },
+        {
+          "name": "worker_personnel_approvers_one_to_three",
+          "version": "20261006192517"
+        },
+        {
+          "name": "payroll_adjustment_latest_statement_period",
+          "version": "20261006190922"
+        }
+      ],
+      "policies": [
+        {
+          "cmd": "ALL",
+          "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "companies",
+          "permissive": "RESTRICTIVE",
+          "policyname": "account_deletion_access_guard",
+          "schemaname": "public",
+          "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = companies.id) AND (cm.user_id = ( SELECT auth.uid() AS uid)))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "companies",
+          "permissive": "PERMISSIVE",
+          "policyname": "company members can read company",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "DELETE",
+          "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = companies.id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "companies",
+          "permissive": "PERMISSIVE",
+          "policyname": "owners and admins can delete company",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "UPDATE",
+          "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = companies.id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "companies",
+          "permissive": "PERMISSIVE",
+          "policyname": "owners and admins can update company",
+          "schemaname": "public",
+          "with_check": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = companies.id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))"
+        },
+        {
+          "cmd": "ALL",
+          "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_detail_lines",
+          "permissive": "RESTRICTIVE",
+          "policyname": "account_deletion_access_guard",
+          "schemaname": "public",
+          "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+        },
+        {
+          "cmd": "DELETE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_detail_lines",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can delete invoice detail lines",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "INSERT",
+          "qual": null,
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_detail_lines",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can insert invoice detail lines",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "private.has_company_feature(company_id, 'can_view_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_detail_lines",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can read invoice detail lines",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "UPDATE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_detail_lines",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can update invoice detail lines",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "ALL",
+          "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_site_calculations",
+          "permissive": "RESTRICTIVE",
+          "policyname": "account_deletion_access_guard",
+          "schemaname": "public",
+          "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+        },
+        {
+          "cmd": "DELETE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_site_calculations",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can delete invoice site calculations",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "INSERT",
+          "qual": null,
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_site_calculations",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can insert invoice site calculations",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "private.has_company_feature(company_id, 'can_view_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_site_calculations",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can read invoice site calculations",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "UPDATE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoice_site_calculations",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can update invoice site calculations",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "ALL",
+          "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoices",
+          "permissive": "RESTRICTIVE",
+          "policyname": "account_deletion_access_guard",
+          "schemaname": "public",
+          "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+        },
+        {
+          "cmd": "DELETE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoices",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can delete invoices",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "INSERT",
+          "qual": null,
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoices",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can insert invoices",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "private.has_company_feature(company_id, 'can_view_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoices",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can read invoices",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "UPDATE",
+          "qual": "private.has_company_feature(company_id, 'can_manage_invoices'::text)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "invoices",
+          "permissive": "PERMISSIVE",
+          "policyname": "authorized users can update invoices",
+          "schemaname": "public",
+          "with_check": "private.has_company_feature(company_id, 'can_manage_invoices'::text)"
+        },
+        {
+          "cmd": "ALL",
+          "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "worker_private_bank_accounts",
+          "permissive": "RESTRICTIVE",
+          "policyname": "account_deletion_access_guard",
+          "schemaname": "public",
+          "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "((EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_private_bank_accounts.worker_id) AND (w.company_id = worker_private_bank_accounts.company_id) AND (w.user_id = ( SELECT auth.uid() AS uid))))) OR private.has_company_feature(company_id, 'can_manage_payroll'::text))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "worker_private_bank_accounts",
+          "permissive": "PERMISSIVE",
+          "policyname": "bank_read",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "INSERT",
+          "qual": null,
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "worker_private_bank_accounts",
+          "permissive": "PERMISSIVE",
+          "policyname": "bank_self_insert",
+          "schemaname": "public",
+          "with_check": "(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_private_bank_accounts.worker_id) AND (w.company_id = worker_private_bank_accounts.company_id) AND (w.user_id = ( SELECT auth.uid() AS uid)))))"
+        },
+        {
+          "cmd": "UPDATE",
+          "qual": "(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_private_bank_accounts.worker_id) AND (w.company_id = worker_private_bank_accounts.company_id) AND (w.user_id = ( SELECT auth.uid() AS uid)))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "worker_private_bank_accounts",
+          "permissive": "PERMISSIVE",
+          "policyname": "bank_self_update",
+          "schemaname": "public",
+          "with_check": "(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_private_bank_accounts.worker_id) AND (w.company_id = worker_private_bank_accounts.company_id) AND (w.user_id = ( SELECT auth.uid() AS uid)))))"
+        }
+      ],
+      "triggers": [
+        {
+          "name": "invoice_approval_rows_after_write",
+          "table": "invoices",
+          "definition": "CREATE TRIGGER invoice_approval_rows_after_write AFTER INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION private.invoice_approval_rows_trigger()"
+        },
+        {
+          "name": "invoice_blocked_finalize_guard",
+          "table": "invoices",
+          "definition": "CREATE TRIGGER invoice_blocked_finalize_guard BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION private.invoice_blocked_finalize_guard()"
+        },
+        {
+          "name": "invoice_manual_override_guard",
+          "table": "invoices",
+          "definition": "CREATE TRIGGER invoice_manual_override_guard BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION private.invoice_manual_override_guard()"
+        },
+        {
+          "name": "invoices_assign_number_and_issue_date",
+          "table": "invoices",
+          "definition": "CREATE TRIGGER invoices_assign_number_and_issue_date BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION private.assign_invoice_number_and_issue_date()"
+        }
+      ],
+      "functions": [
+        {
+          "acl": [
+            "postgres=X/postgres",
+            "anon=X/postgres",
+            "authenticated=X/postgres",
+            "service_role=X/postgres"
+          ],
+          "name": "account_access_allowed",
+          "schema": "private",
+          "arguments": "",
+          "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n"
+        },
+        {
+          "acl": [
+            "postgres=X/postgres",
+            "authenticated=X/postgres",
+            "service_role=X/postgres"
+          ],
+          "name": "approve_invoice",
+          "schema": "public",
+          "arguments": "p_invoice_id uuid",
+          "definition": "CREATE OR REPLACE FUNCTION public.approve_invoice(p_invoice_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_company_id uuid;\n  v_final boolean;\nbegin\n  if v_uid is null then raise exception 'authentication required'; end if;\n\n  select i.company_id into v_company_id\n  from public.invoices i\n  where i.id=p_invoice_id\n  for update;\n\n  if v_company_id is null then raise exception 'invoice not found'; end if;\n\n  perform private.ensure_invoice_approval_rows(p_invoice_id);\n\n  if not exists (\n    select 1 from public.invoice_approvals a\n    where a.invoice_id=p_invoice_id\n      and a.approver_user_id=v_uid\n  ) then\n    raise exception 'invoice approver permission required';\n  end if;\n\n  update public.invoice_approvals\n  set status='approved', approved_at=coalesce(approved_at,now())\n  where invoice_id=p_invoice_id\n    and approver_user_id=v_uid\n    and status='pending';\n\n  insert into public.invoice_approval_audit(\n    invoice_id,company_id,actor_user_id,action\n  )\n  values(p_invoice_id,v_company_id,v_uid,'approved');\n\n  select not exists(\n    select 1 from public.invoice_approvals\n    where invoice_id=p_invoice_id and status<>'approved'\n  ) into v_final;\n\n  if v_final then\n    update public.invoices\n    set approval_finalized_at=coalesce(approval_finalized_at,now())\n    where id=p_invoice_id;\n  end if;\n\n  return v_final;\nend;\n$function$\n"
+        },
+        {
+          "acl": null,
+          "name": "ensure_invoice_approval_rows",
+          "schema": "private",
+          "arguments": "p_invoice_id uuid",
+          "definition": "CREATE OR REPLACE FUNCTION private.ensure_invoice_approval_rows(p_invoice_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  insert into public.invoice_approvals(\n    invoice_id,company_id,approver_user_id,position,status\n  )\n  select i.id,i.company_id,ia.user_id,ia.position,'pending'\n  from public.invoices i\n  join public.invoice_approvers ia on ia.company_id=i.company_id\n  where i.id=p_invoice_id\n  on conflict(invoice_id,approver_user_id) do nothing;\nend;\n$function$\n"
+        },
+        {
+          "acl": null,
+          "name": "invoice_approval_rows_trigger",
+          "schema": "private",
+          "arguments": "",
+          "definition": "CREATE OR REPLACE FUNCTION private.invoice_approval_rows_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  r record;\nbegin\n  perform private.ensure_invoice_approval_rows(new.id);\n\n  if new.billing_period_end <=\n      (current_timestamp at time zone 'Asia/Tokyo')::date then\n    for r in\n      select a.approver_user_id\n      from public.invoice_approvals a\n      where a.invoice_id=new.id\n        and a.status='pending'\n        and not exists (\n          select 1 from public.app_notifications n\n          where n.recipient_user_id=a.approver_user_id\n            and n.action_key='invoice_approval'\n            and n.action_id=new.id\n        )\n    loop\n      perform private.enqueue_notification(\n        new.company_id,\n        r.approver_user_id,\n        'approval',\n        '請求書の確認',\n        '月末の請求書を確認して承認してください。',\n        'invoice_approval',\n        new.id\n      );\n    end loop;\n  end if;\n\n  return null;\nend;\n$function$\n"
+        },
+        {
+          "acl": [
+            "postgres=X/postgres",
+            "authenticated=X/postgres",
+            "service_role=X/postgres"
+          ],
+          "name": "invoice_approval_status_rows",
+          "schema": "public",
+          "arguments": "p_invoice_id uuid",
+          "definition": "CREATE OR REPLACE FUNCTION public.invoice_approval_status_rows(p_invoice_id uuid)\n RETURNS TABLE(approver_user_id uuid, approver_name text, \"position\" integer, status text, approved_at timestamp with time zone, can_current_user_approve boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_company_id uuid;\nbegin\n  if v_uid is null then raise exception 'authentication required'; end if;\n\n  select i.company_id into v_company_id\n  from public.invoices i\n  join public.company_members cm\n    on cm.company_id=i.company_id and cm.user_id=v_uid\n  where i.id=p_invoice_id;\n\n  if v_company_id is null then raise exception 'invoice not found'; end if;\n\n  perform private.ensure_invoice_approval_rows(p_invoice_id);\n\n  return query\n  select\n    a.approver_user_id,\n    coalesce(nullif(up.display_name,''),'SKOユーザー')::text,\n    a.position::integer,\n    a.status,\n    a.approved_at,\n    (a.approver_user_id=v_uid and a.status='pending')\n  from public.invoice_approvals a\n  left join public.user_profiles up on up.user_id=a.approver_user_id\n  where a.invoice_id=p_invoice_id\n  order by a.position;\nend;\n$function$\n"
+        },
+        {
+          "acl": [
+            "postgres=X/postgres",
+            "authenticated=X/postgres",
+            "service_role=X/postgres"
+          ],
+          "name": "my_payroll_statement_rows_with_adjustments",
+          "schema": "public",
+          "arguments": "",
+          "definition": "CREATE OR REPLACE FUNCTION public.my_payroll_statement_rows_with_adjustments()\n RETURNS TABLE(id uuid, period_start date, period_end date, gross_pay integer, deductions integer, net_pay integer, detail jsonb, issued_at timestamp with time zone, company_name text, worker_name text)\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\nbegin\n  if v_user_id is null then\n    raise exception 'authentication required';\n  end if;\n\n  return query\n  select\n    ps.id,\n    ps.period_start,\n    ps.period_end,\n    ps.gross_pay + coalesce(adj.additions_yen, 0),\n    ps.deductions + coalesce(adj.deductions_yen, 0),\n    (\n      ps.gross_pay\n      + coalesce(adj.additions_yen, 0)\n      - ps.deductions\n      - coalesce(adj.deductions_yen, 0)\n    )::integer,\n    coalesce(ps.detail, '{}'::jsonb)\n      || coalesce(adj.adjustment_detail, '{}'::jsonb),\n    ps.issued_at,\n    c.name,\n    w.name\n  from public.payroll_statements ps\n  join public.workers w\n    on w.id = ps.worker_id\n   and w.company_id = ps.company_id\n  join public.companies c\n    on c.id = ps.company_id\n  left join lateral (\n    with active as (\n      select\n        a.label_snapshot,\n        a.direction,\n        a.amount_yen\n      from public.payroll_adjustments a\n      where a.company_id = ps.company_id\n        and a.worker_id = ps.worker_id\n        and a.effective_date between ps.period_start and ps.period_end\n        and a.cancelled_at is null\n    ),\n    totals as (\n      select\n        coalesce(\n          sum(case when direction = 'addition' then amount_yen else 0 end),\n          0\n        )::integer as additions_yen,\n        coalesce(\n          sum(case when direction = 'deduction' then amount_yen else 0 end),\n          0\n        )::integer as deductions_yen\n      from active\n    ),\n    grouped as (\n      select\n        label_snapshot,\n        sum(\n          case\n            when direction = 'addition' then amount_yen\n            else -amount_yen\n          end\n        )::integer as signed_total\n      from active\n      group by label_snapshot\n    )\n    select\n      t.additions_yen,\n      t.deductions_yen,\n      coalesce(\n        (\n          select jsonb_object_agg(g.label_snapshot, g.signed_total)\n          from grouped g\n        ),\n        '{}'::jsonb\n      ) as adjustment_detail\n    from totals t\n  ) adj on true\n  where w.user_id = v_user_id\n  order by ps.period_end desc;\nend;\n$function$\n"
+        },
+        {
+          "acl": [
+            "postgres=X/postgres",
+            "authenticated=X/postgres",
+            "service_role=X/postgres"
+          ],
+          "name": "set_invoice_approvers",
+          "schema": "public",
+          "arguments": "p_user_ids uuid[]",
+          "definition": "CREATE OR REPLACE FUNCTION public.set_invoice_approvers(p_user_ids uuid[])\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_uid uuid:=auth.uid();\n  v_company_id uuid;\n  v_count integer;\n  v_item uuid;\n  v_pos integer:=0;\nbegin\n  if v_uid is null then raise exception 'authentication required'; end if;\n  select cm.company_id into v_company_id\n  from public.company_members cm\n  where cm.user_id=v_uid\n  limit 1;\n  if v_company_id is null\n     or not private.has_company_feature(v_company_id,'can_manage_invoices') then\n    raise exception 'invoice management permission required';\n  end if;\n\n  v_count:=coalesce(array_length(p_user_ids,1),0);\n  if v_count<1 or v_count>2 then\n    raise exception 'invoice confirmers must contain 1 to 2 users';\n  end if;\n  if (select count(distinct x) from unnest(p_user_ids) x)<>v_count then\n    raise exception 'invoice confirmers must be unique';\n  end if;\n\n  foreach v_item in array p_user_ids loop\n    if not exists(\n      select 1 from public.company_members cm\n      where cm.company_id=v_company_id and cm.user_id=v_item\n    ) then\n      raise exception 'confirmer must be a registered company user';\n    end if;\n  end loop;\n\n  delete from public.invoice_approvers where company_id=v_company_id;\n  foreach v_item in array p_user_ids loop\n    v_pos:=v_pos+1;\n    insert into public.invoice_approvers(company_id,position,user_id,created_by)\n    values(v_company_id,v_pos,v_item,v_uid);\n  end loop;\n\n  delete from public.invoice_approvals a\n  using public.invoices i\n  where a.invoice_id=i.id\n    and i.company_id=v_company_id\n    and i.status='draft';\n\n  update public.invoices\n  set approval_finalized_at=null\n  where company_id=v_company_id and status='draft';\n\n  insert into public.invoice_approvals(\n    invoice_id,company_id,approver_user_id,position,status\n  )\n  select i.id,i.company_id,ia.user_id,ia.position,'pending'\n  from public.invoices i\n  join public.invoice_approvers ia on ia.company_id=i.company_id\n  where i.company_id=v_company_id and i.status='draft'\n  on conflict(invoice_id,approver_user_id) do nothing;\nend;\n$function$\n"
+        }
+      ]
+    }
+  }
+]
