@@ -427,20 +427,26 @@ class PayrollPdfService {
     return result;
   }
 
+  static String _first(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  static bool _isZeroDisplay(String value) {
+    final normalized = value.trim().replaceAll('時間', '').replaceAll('日', '');
+    if (normalized.isEmpty || normalized == '00:00') return true;
+    final number = double.tryParse(normalized);
+    return number != null && number == 0;
+  }
+
   static num? _asNumber(Object? value) {
     if (value is num) return value;
     if (value == null) return null;
     final text = value.toString().replaceAll(',', '').trim();
     return num.tryParse(text);
-  }
-
-  static String _formatAmount(Object? value, {bool absolute = false}) {
-    final number = _asNumber(value);
-    if (number != null) {
-      final amount = number.toInt();
-      return _number(absolute ? amount.abs() : amount);
-    }
-    return value?.toString() ?? '';
   }
 
   static String _dayCount(
