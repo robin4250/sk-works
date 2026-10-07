@@ -1044,14 +1044,24 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       key: ValueKey(_previewRevision),
                       color: Colors.grey.shade200,
                       alignment: Alignment.topCenter,
-                      child: InteractiveViewer(
-                        minScale: 0.5,
-                        maxScale: 5,
-                        boundaryMargin: const EdgeInsets.all(48),
-                        child: _ExactInvoiceScreen(
-                          invoice: widget.invoices.first,
-                          settings: previewData.settings,
-                          approvals: previewData.approvals,
+                      child: PdfPreview(
+                        key: ValueKey('invoice_pdf_preview_$_previewRevision'),
+                        build: (_) async => pdfBytes,
+                        initialPageFormat: PdfPageFormat.a4,
+                        canChangePageFormat: false,
+                        canChangeOrientation: false,
+                        allowPrinting: false,
+                        allowSharing: false,
+                        maxPageWidth: 595,
+                        pdfPreviewPageDecoration: const BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x22000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
                       ),
                     ),
