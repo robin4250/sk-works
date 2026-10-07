@@ -8,11 +8,15 @@ class RateFormulaDraft {
     required this.baseRateYen,
     required this.formula,
     required this.overrides,
+    this.payType = 'daily',
+    this.monthlySalaryYen = 0,
   });
 
   final int baseRateYen;
   final RateFormulaSettings formula;
   final Map<String, int> overrides;
+  final String payType;
+  final int monthlySalaryYen;
 
   int effective(String key) {
     final direct = overrides[key] ?? 0;
@@ -41,6 +45,8 @@ class RateFormulaEditorCard extends StatefulWidget {
     required this.initialOverrides,
     required this.enabled,
     required this.onChanged,
+    this.initialPayType = 'daily',
+    this.initialMonthlySalaryYen = 0,
   });
 
   final String title;
@@ -49,6 +55,8 @@ class RateFormulaEditorCard extends StatefulWidget {
   final Object? initialOverrides;
   final bool enabled;
   final ValueChanged<RateFormulaDraft> onChanged;
+  final String initialPayType;
+  final int initialMonthlySalaryYen;
 
   @override
   State<RateFormulaEditorCard> createState() => _RateFormulaEditorCardState();
@@ -67,7 +75,9 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
   ];
 
   late bool _hourlyBase;
+  late String _payType;
   late final TextEditingController _base;
+  late final TextEditingController _monthlySalary;
   late final Map<String, TextEditingController> _formula;
   late final Map<String, TextEditingController> _overrides;
 
@@ -75,7 +85,12 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
   void initState() {
     super.initState();
     final formula = RateFormulaSettings.fromMap(widget.initialFormula);
-    _hourlyBase = formula.hourlyBase;
+    _payType = widget.initialPayType == 'monthly'
+        ? 'monthly'
+        : (formula.hourlyBase || widget.initialPayType == 'hourly')
+            ? 'hourly'
+            : 'daily';
+    _hourlyBase = _payType == 'hourly';
     final rawFormula = widget.initialFormula is Map
         ? Map<String, dynamic>.from(widget.initialFormula as Map)
         : const <String, dynamic>{};
@@ -83,6 +98,9 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
     _base = TextEditingController(
       text: (_hourlyBase && hourly > 0 ? hourly : widget.initialBaseRateYen)
           .toString(),
+    );
+    _monthlySalary = TextEditingController(
+      text: widget.initialMonthlySalaryYen.toString(),
     );
     _formula = {
       'hours': TextEditingController(text: _num(formula.hoursPerDay)),
@@ -117,6 +135,7 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
   @override
   void dispose() {
     _base.dispose();
+    _monthlySalary.dispose();
     for (final c in [..._formula.values, ..._overrides.values]) {
       c.dispose();
     }
@@ -147,6 +166,8 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
           for (final row in rows)
             row.$1: int.tryParse(_overrides[row.$1]!.text.trim()) ?? 0,
         },
+        payType: _payType,
+        monthlySalaryYen: int.tryParse(_monthlySalary.text.trim()) ?? 0,
       );
 
   void _emit() {
@@ -170,19 +191,36 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
-            SegmentedButton<bool>(
+            SegmentedButton<String>(
               segments: const [
-                ButtonSegment(value: false, label: Text('日給')),
-                ButtonSegment(value: true, label: Text('時給')),
+                ButtonSegment(value: 'daily', label: Text('日給')),
+                ButtonSegment(value: 'hourly', label: Text('時給')),
+                ButtonSegment(value: 'monthly', label: Text('月給')),
               ],
-              selected: {_hourlyBase},
+              selected: {_payType},
               onSelectionChanged: widget.enabled
                   ? (values) {
-                      _hourlyBase = values.first;
+                      _payType = values.first;
+                      _hourlyBase = _payType == 'hourly';
                       _emit();
                     }
                   : null,
             ),
+            if (_payType == 'monthly') ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _monthlySalary,
+                enabled: widget.enabled,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => _emit(),
+                decoration: const InputDecoration(
+                  labelText: '月固定給',
+                  suffixText: '円',
+                  helperText: '給料明細の基本給として毎月固定で反映します。',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               controller: _base,
@@ -190,8 +228,16 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
               keyboardType: TextInputType.number,
               onChanged: (_) => _emit(),
               decoration: InputDecoration(
-                labelText: _hourlyBase ? '基準時給' : '1日単価',
+                labelText: _payType == 'hourly'
+                    ? '基準時給'
+                    : _payType == 'monthly'
+                        ? '計算用 1日基本ベース'
+                        : '1日単価',
                 suffixText: '円',
+                helperText: _payType == 'monthly'
+                    ? '月固定給とは別です。残業・早出・夜勤・休日系の自動計算だけに使います。'
+                    : null,
+                helperMaxLines: 2,
                 border: const OutlineInputBorder(),
               ),
             ),

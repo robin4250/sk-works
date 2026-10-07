@@ -212,6 +212,18 @@ class _IndividualPayrollSettingsPageState
       return;
     }
     final formula = rateDraft.formula;
+    if (rateDraft.payType == 'monthly' && rateDraft.monthlySalaryYen <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('月給の場合は月固定給を入力してください')),
+      );
+      return;
+    }
+    if (rateDraft.payType == 'monthly' && rateDraft.baseRateYen <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('月給の場合は計算用1日基本ベースを入力してください')),
+      );
+      return;
+    }
     final hours = formula.hoursPerDay <= 0 ? 8 : formula.hoursPerDay;
     final dailyBase = formula.dailyBase(rateDraft.baseRateYen);
     final nightEarly =
@@ -226,6 +238,11 @@ class _IndividualPayrollSettingsPageState
             .round();
 
     values
+      ..['pay_type'] = rateDraft.payType
+      ..['monthly_salary_yen'] =
+          rateDraft.payType == 'monthly' ? rateDraft.monthlySalaryYen : 0
+      ..['calculation_daily_base_yen'] =
+          rateDraft.payType == 'monthly' ? dailyBase : 0
       ..['day_daily'] = dailyBase
       ..['day_overtime'] = rateDraft.effective('overtime')
       ..['day_early'] = rateDraft.effective('early')
@@ -367,8 +384,14 @@ class _IndividualPayrollSettingsPageState
                         key: ValueKey('payroll-rate-${_workerId ?? ''}'),
                         title: '勤務単価 自動計算',
                         initialBaseRateYen:
-                            (_settingValues['day_daily'] as num?)?.toInt() ?? 0,
+                            (_settingValues['pay_type']?.toString() == 'monthly'
+                                ? (_settingValues['calculation_daily_base_yen'] as num?)?.toInt()
+                                : (_settingValues['day_daily'] as num?)?.toInt()) ?? 0,
                         initialFormula: _settingValues['rate_formula'],
+                        initialPayType:
+                            _settingValues['pay_type']?.toString() ?? 'daily',
+                        initialMonthlySalaryYen:
+                            (_settingValues['monthly_salary_yen'] as num?)?.toInt() ?? 0,
                         initialOverrides: _settingValues['rate_overrides'],
                         enabled: workspace.canEdit,
                         onChanged: (value) => _rateDraft = value,
