@@ -39,14 +39,14 @@ void main() {
     expect(pdf, contains('settings?.companyAddress'));
     expect(pdf, contains('settings?.companyPhone'));
     expect(pdf, contains('_datedApprovalStamp'));
-    expect(pdf, contains('_companySeal('));
-    expect(pdf, contains('_companySealGroups'));
+    expect(pdf, contains('CompanySealPdf.build('));
+    expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, contains("companyName.trim().isEmpty ? '会社' : companyName.trim()"));
     expect(pdf, contains("name.endsWith('株式会社')"));
     expect(pdf, contains("settings?.companyName ?? ''"));
     expect(pdf, contains('Amount and confirmer areas are independent adjacent frames'));
     expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
-    expect(pdf, contains('_companySeal('));
+    expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, isNot(contains('companySealImage')));
     expect(pdf, contains('settings?.paymentDueText'));
     expect(pdf, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
