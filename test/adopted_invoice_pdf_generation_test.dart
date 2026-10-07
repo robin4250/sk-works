@@ -54,11 +54,12 @@ void main() {
 
   Future<Map<String, dynamic>> inspect(
     String name,
-    InvoiceCalculationResult invoice,
-  ) async {
+    InvoiceCalculationResult invoice, {
+    InvoiceSettingsData? documentSettings,
+  }) async {
     final bytes = await InvoicePdfService.buildPdf(
       [invoice],
-      settings: settings,
+      settings: documentSettings ?? settings,
       regularFont: font,
       boldFont: font,
     );
@@ -68,7 +69,7 @@ void main() {
       r'''
 import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'company_name_spans':[s['bbox'] for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['color']==0 and 740<s['bbox'][1]<780], 'seal_lefts':[d['rect'].x0 for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.1 and d['color'][2]<.1 and d['rect'].width>35], 'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
 ''',
       file.path,
     ]);
@@ -186,6 +187,39 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
         '54,709',
       ]) {
         expect(text, contains(value));
+      }
+    },
+    skip: skipReason,
+  );
+  test(
+    'company seals follow different registered names with adopted overlap',
+    () async {
+      for (final companyName in ['山田建設', '株式会社北日本総合建設']) {
+        final documentSettings = InvoiceSettingsData(
+          companyName: companyName,
+          taxRate: 10,
+          welfareRate: 0,
+          templateTitle: '請求書',
+          footerNote: '',
+          bankName: '',
+          bankBranch: '',
+          bankAccountType: '',
+          bankAccountNumber: '',
+          bankAccountHolder: '',
+        );
+        final report = await inspect(
+          'invoice_company_${companyName.runes.length}.pdf',
+          invoice([]),
+          documentSettings: documentSettings,
+        );
+        final page = (report['pages'] as List).single as Map;
+        final companySpans = page['company_name_spans'] as List;
+        expect(companySpans, hasLength(1));
+        final rightEdge = (companySpans.single as List)[2] as num;
+        final sealLefts = page['seal_lefts'] as List;
+        expect(sealLefts, isNotEmpty);
+        final sealLeft = sealLefts.cast<num>().reduce((a, b) => a < b ? a : b);
+        expect(rightEdge - sealLeft, closeTo(11.8622, .05));
       }
     },
     skip: skipReason,

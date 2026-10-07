@@ -56,10 +56,12 @@ class InvoicePdfService {
           pw.Page(
             pageFormat: PdfPageFormat.a4,
             margin: pw.EdgeInsets.zero,
-            build: (_) => _sheet(
+            build: (context) => _sheet(
               invoice,
               effectiveSettings,
               approvals,
+              context: context,
+              companyFont: bold,
               sealFont: sealFont,
               fallbackFont: regular,
               pageIndex: pageIndex,
@@ -196,6 +198,8 @@ class InvoicePdfService {
     InvoiceCalculationResult invoice,
     InvoiceSettingsData? settings,
     List<InvoiceApprovalRecord> approvals, {
+    required pw.Context context,
+    required pw.Font companyFont,
     required pw.Font sealFont,
     required pw.Font fallbackFont,
     int pageIndex = 0,
@@ -560,9 +564,21 @@ class InvoicePdfService {
       wordSpacing: 4.4642857,
       align: pw.TextAlign.center,
     );
+    // Attach the seal to the actual registered company name using the same
+    // bold font and size as the centered footer label. Keep the adopted
+    // overlap and footer geometry for every company, not only the sample.
+    final companyNameWidth =
+        (companyFont
+                    .getFont(context)
+                    .stringMetrics(settings?.companyName ?? '')
+                    .advanceWidth *
+                11)
+            .clamp(0.0, 285.0)
+            .toDouble();
+    final companySealLeft = 50 + 285 / 2 + companyNameWidth / 2 - 11.8622;
     children.add(
       pw.Positioned(
-        left: 230.1378,
+        left: companySealLeft,
         top: 750.6701,
         child: pw.SizedBox(
           width: 42,
