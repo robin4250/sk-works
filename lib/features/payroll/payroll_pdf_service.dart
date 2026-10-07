@@ -260,7 +260,13 @@ class PayrollPdfService {
                       _cell('', height: 18),
                       _cell('総支給額', center: true, bold: true, height: 18),
                       _cell('総控除額', center: true, bold: true, height: 18),
-                      _cell('差引支給額', center: true, bold: true, height: 18),
+                      _cell(
+                        '差引支給額',
+                        center: true,
+                        bold: true,
+                        height: 18,
+                        fontSize: 10.5,
+                      ),
                     ],
                   ),
                   pw.TableRow(
@@ -284,7 +290,7 @@ class PayrollPdfService {
                         right: true,
                         bold: true,
                         height: 23,
-                        fontSize: 8,
+                        fontSize: 13,
                       ),
                     ],
                   ),
