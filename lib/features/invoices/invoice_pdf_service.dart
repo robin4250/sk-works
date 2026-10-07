@@ -590,137 +590,139 @@ class InvoicePdfService {
     PdfColor blue,
   ) {
     final visible = approvals.take(3).toList();
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < 3; i++) ...[
-          if (i > 0) pw.SizedBox(width: 2),
-          pw.Expanded(
-            child: pw.Container(
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: blue, width: .72),
-              ),
-              child: pw.Column(
-                children: [
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: blue, width: .72),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < 3; i++)
+            pw.Expanded(
+              child: pw.Container(
+                decoration: i == 0
+                    ? null
+                    : pw.BoxDecoration(
+                        border: pw.Border(left: pw.BorderSide(color: blue, width: .45)),
+                      ),
+                child: pw.Column(children: [
                   pw.Container(
                     height: 17,
                     alignment: pw.Alignment.center,
                     decoration: pw.BoxDecoration(
-                      border: pw.Border(
-                        bottom: pw.BorderSide(color: blue, width: .55),
-                      ),
+                      color: PdfColor.fromHex('#EFF9FD'),
+                      border: pw.Border(bottom: pw.BorderSide(color: blue, width: .4)),
                     ),
-                    child: pw.Text(
-                      '確認者',
-                      style: pw.TextStyle(
-                        color: blue,
-                        fontSize: 6.5,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
+                    child: pw.Text('確認印',
+                      style: pw.TextStyle(color: blue, fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
                   ),
                   pw.SizedBox(
                     height: 47,
                     child: pw.Center(
-                      child: i >= visible.length
+                      child: i >= visible.length || !visible[i].approved
                           ? pw.SizedBox()
-                          : visible[i].approved
-                              ? _confirmationStamp(
-                                  visible[i].approvedAt ?? DateTime.now(),
-                                  designB: visible[i].position.isEven,
-                                )
-                              : pw.SizedBox(),
+                          : _datedApprovalStamp(
+                              visible[i],
+                              approval: i == 1,
+                            ),
                     ),
                   ),
-                ],
+                ]),
               ),
             ),
-          ),
         ],
-      ],
+      ),
     );
   }
 
-  static pw.Widget _confirmationStamp(
-    DateTime date, {
-    required bool designB,
+  static pw.Widget _datedApprovalStamp(
+    InvoiceApprovalRecord record, {
+    required bool approval,
   }) {
-    final red = PdfColor.fromHex('#B83232');
-    
+    final red = PdfColor.fromHex('#D9272E');
+    final date = record.approvedAt ?? DateTime.now();
+    final surname = _surname(record.name);
     return pw.Container(
-      width: 34,
-      height: 34,
+      width: 36,
+      height: 36,
       decoration: pw.BoxDecoration(
         shape: pw.BoxShape.circle,
-        border: pw.Border.all(
-          color: red,
-          width: designB ? 1.8 : 1.35,
-        ),
+        border: pw.Border.all(color: red, width: 1.5),
       ),
-      padding: const pw.EdgeInsets.all(2),
-      child: pw.Container(
-        decoration: designB
-            ? pw.BoxDecoration(
-                shape: pw.BoxShape.circle,
-                border: pw.Border.all(color: red, width: .55),
-              )
-            : null,
-        alignment: pw.Alignment.center,
-        child: pw.Column(
-          mainAxisAlignment: pw.MainAxisAlignment.center,
-          children: [
-            pw.Text(
-              designB ? '確認印' : '確認',
-              style: pw.TextStyle(
-                color: red,
-                fontSize: designB ? 5.6 : 5.8,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-            pw.Container(
-              margin: const pw.EdgeInsets.symmetric(vertical: 1.5),
-              height: .55,
-              color: red,
-            ),
-            pw.Text(
-              '${date.year}.${date.month}.${date.day}',
-              style: pw.TextStyle(color: red, fontSize: 4.4),
-            ),
-          ],
-        ),
-      ),
+      child: pw.Column(children: [
+        pw.Expanded(child: pw.Center(child: pw.Text(
+          approval ? '承認' : '確認',
+          style: pw.TextStyle(color: red, fontSize: 5.6, fontWeight: pw.FontWeight.bold),
+        ))),
+        pw.Container(height: .55, color: red),
+        pw.Expanded(child: pw.Center(child: pw.Text(
+          '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
+          style: pw.TextStyle(color: red, fontSize: 4.1),
+        ))),
+        pw.Container(height: .55, color: red),
+        pw.Expanded(child: pw.Center(child: pw.Text(
+          surname,
+          style: pw.TextStyle(color: red, fontSize: 6.1, fontWeight: pw.FontWeight.bold),
+        ))),
+      ]),
     );
+  }
+
+  static String _surname(String name) {
+    final value = name.trim();
+    if (value.isEmpty) return '';
+    return value.split(RegExp(r'[\\s　]+')).first;
   }
 
   static pw.Widget _companySeal(String companyName) {
-    final red = PdfColor.fromHex('#B83232');
-    final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();
-    // 角印案B: 太い外角枠＋細い内角枠で、角印らしい印影にする。
+    final red = PdfColor.fromHex('#D9272E');
+    final value = companyName.trim().isEmpty ? '会社' : companyName.trim();
+    final groups = _companySealGroups(value);
     return pw.Container(
-      width: 48,
-      height: 48,
+      width: 42,
+      height: 42,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: red, width: 2.1),
+        border: pw.Border.all(color: red, width: 1.55),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(2)),
       ),
-      padding: const pw.EdgeInsets.all(2.2),
-      child: pw.Container(
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: red, width: .75),
-        ),
-        padding: const pw.EdgeInsets.all(2),
-        alignment: pw.Alignment.center,
-        child: pw.Text(
-          text,
-          textAlign: pw.TextAlign.center,
-          maxLines: 5,
-          style: pw.TextStyle(
-            color: red,
-            fontSize: 6.8,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Row(
+        children: [
+          for (final group in groups)
+            pw.Expanded(
+              child: pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (final rune in group.runes)
+                    pw.Text(String.fromCharCode(rune),
+                      style: pw.TextStyle(color: red, fontSize: 6.2, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  static List<String> _companySealGroups(String name) {
+    if (name.endsWith('株式会社')) {
+      final core = name.substring(0, name.length - 4);
+      final pivot = (core.runes.length / 2).ceil();
+      final chars = core.runes.map(String.fromCharCode).toList();
+      return [
+        chars.take(pivot).join(),
+        chars.skip(pivot).join(),
+        '株式会社',
+      ];
+    }
+    final chars = name.runes.map(String.fromCharCode).toList();
+    final chunk = (chars.length / 3).ceil();
+    return [
+      chars.take(chunk).join(),
+      chars.skip(chunk).take(chunk).join(),
+      chars.skip(chunk * 2).join(),
+    ].where((e) => e.isNotEmpty).toList();
   }
 
   static DateTime _monthEnd(InvoiceCalculationResult invoice) {

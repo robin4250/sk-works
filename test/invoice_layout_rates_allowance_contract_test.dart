@@ -15,15 +15,13 @@ void main() {
     expect(pdf, contains("'金額'"));
   });
 
-  test('confirmation stamp text is larger and company seal B uses square double border', () {
+  test('invoice uses final generated company and dated approval seals', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
-
-    expect(pdf, contains('fontSize: designB ? 5.6 : 5.8'));
-    expect(pdf, contains('fontSize: 4.4'));
-    expect(pdf, isNot(contains('_surnameForStamp')));
-    expect(pdf, contains('角印案B'));
-    expect(pdf, contains('width: 2.1'));
-    expect(pdf, contains('width: .75'));
+    expect(pdf, contains('_datedApprovalStamp'));
+    expect(pdf, contains("approval ? '承認' : '確認'"));
+    expect(pdf, contains('_surname(record.name)'));
+    expect(pdf, contains('_companySealGroups'));
+    expect(pdf, contains("name.endsWith('株式会社')"));
   });
 
   test('admin site financials have invoice-specific overtime and early rates', () {

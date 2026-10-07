@@ -38,11 +38,11 @@ void main() {
     expect(pdf, contains('settings?.invoiceSubject'));
     expect(pdf, contains('settings?.companyAddress'));
     expect(pdf, contains('settings?.companyPhone'));
-    expect(pdf, contains('_confirmationStamp('));
+    expect(pdf, contains('_datedApprovalStamp'));
     expect(pdf, contains('_companySeal('));
-    expect(pdf, contains('角印案B'));
-    expect(pdf, contains("final text = companyName.trim().isEmpty ? '会社印' : companyName.trim();"));
-    expect(pdf, contains('padding: const pw.EdgeInsets.all(2.2)'));
+    expect(pdf, contains('_companySealGroups'));
+    expect(pdf, contains("companyName.trim().isEmpty ? '会社' : companyName.trim()"));
+    expect(pdf, contains("name.endsWith('株式会社')"));
     expect(pdf, contains("settings?.companyName ?? ''"));
     expect(pdf, contains('Amount and confirmer areas are independent adjacent frames'));
     expect(pdf, isNot(contains("final shown = sealText.isEmpty ? '会社之印'")));
