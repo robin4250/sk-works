@@ -260,7 +260,13 @@ class PayrollPdfService {
                       _cell('', height: 18),
                       _cell('総支給額', center: true, bold: true, height: 18),
                       _cell('総控除額', center: true, bold: true, height: 18),
-                      _cell('差引支給額', center: true, bold: true, height: 18),
+                      _cell(
+                        '差引支給額',
+                        center: true,
+                        bold: true,
+                        height: 18,
+                        fontSize: 10.5,
+                      ),
                     ],
                   ),
                   pw.TableRow(
@@ -284,7 +290,7 @@ class PayrollPdfService {
                         right: true,
                         bold: true,
                         height: 23,
-                        fontSize: 8,
+                        fontSize: 13,
                       ),
                     ],
                   ),
@@ -415,6 +421,7 @@ class PayrollPdfService {
       title: '勤怠',
       headerFill: headerFill,
       grid: grid,
+      sectionHeight: 78,
       rows: [
         _row(topLabels, headerFill: headerFill, bold: true, height: 18),
         _row(topValues, right: true, height: 21),
@@ -486,6 +493,7 @@ class PayrollPdfService {
       title: title,
       headerFill: headerFill,
       grid: grid,
+      sectionHeight: groups.length * (labelHeight + valueHeight),
       rows: rows,
     );
   }
@@ -494,12 +502,14 @@ class PayrollPdfService {
     required String title,
     required PdfColor headerFill,
     required PdfColor grid,
+    required double sectionHeight,
     required List<pw.TableRow> rows,
   }) {
     return pw.Row(
       children: [
         pw.Container(
           width: 28,
+          height: sectionHeight,
           decoration: pw.BoxDecoration(
             color: headerFill,
             border: pw.Border.all(color: grid, width: .55),
