@@ -80,7 +80,8 @@ void main() {
     expect(pdf, contains('detailVerticalPadding'));
     expect(pdf, contains('height: 47'));
     expect(pdf, contains('Future<_InvoicePreviewData> _buildPreviewData()'));
-    expect(pdf, contains('class _InvoiceNativePreview'));
+    expect(pdf, contains('Printing.raster('));
+    expect(pdf, contains('pages.add(await page.toPng())'));
     expect(pdf, contains('請求書プレビューを生成できませんでした'));
     expect(pdf, contains('onLayout: (_) async => pdfBytes'));
     expect(pdf, contains('bytes: pdfBytes'));
