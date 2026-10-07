@@ -21,7 +21,7 @@ void main() {
     expect(pdf, contains("approval ? '承認' : '確認'"));
     expect(pdf, contains('_surname(record.name)'));
     expect(pdf, contains('CompanySealPdf.build('));
-    expect(pdf, contains("name.endsWith('株式会社')"));
+    expect(File('lib/features/shared/company_seal_pdf.dart').readAsStringSync(), contains("name.endsWith('株式会社')"));
   });
 
   test('admin site financials have invoice-specific overtime and early rates', () {
