@@ -123,4 +123,18 @@ void main() {
     expect(invoice, contains('bytes: pdfBytes'));
   });
 
+  test('native invoice preview keeps formal A4 proportions and document sections', () {
+    final invoice =
+        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
+    expect(invoice, contains('width: 595'));
+    expect(invoice, contains('height: 842'));
+    expect(invoice, contains("'請　求　書'"));
+    expect(invoice, contains("'ご請求金額"));
+    expect(invoice, contains("'振込先'"));
+    expect(invoice, contains("settings?.companyName"));
+    expect(invoice, contains("settings?.companyAddress"));
+    expect(invoice, contains("settings?.bankName"));
+    expect(invoice, contains('while (rows.length < 10)'));
+  });
+
 }
