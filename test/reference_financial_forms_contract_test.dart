@@ -18,9 +18,9 @@ void main() {
     expect(source, contains('InvoiceSettingsRepository.maybeCreate()'));
   });
 
-  test('payroll PDF mirrors supplied landscape grid form', () {
+  test('payroll PDF mirrors adopted A4 grid form', () {
     final source = read('lib/features/payroll/payroll_pdf_service.dart');
-    expect(source, contains('PdfPageFormat.a4.landscape'));
+    expect(source, contains('PdfPageFormat.a4,'));
     expect(source, contains('給与明細書'));
     expect(source, contains('出勤日数'));
     expect(source, contains('基本給'));
