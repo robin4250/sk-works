@@ -64,10 +64,10 @@ void main() {
   test('invoice PDF uses approval boxes and stamp A B behavior', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
 
-    expect(pdf, contains("'確認者'"));
+    expect(pdf, contains("'確認印'"));
     expect(pdf, contains('_approvalBoxes('));
-    expect(pdf, contains('designB: visible[i].position.isEven'));
-    expect(pdf, contains("visible[i].approved"));
+    expect(pdf, contains('approval: i == 1'));
+    expect(pdf, contains('!visible[i].approved'));
     expect(pdf, contains("'確認印'"));
     expect(pdf, contains('_companySeal('));
     expect(pdf, contains('_companySeal('));
