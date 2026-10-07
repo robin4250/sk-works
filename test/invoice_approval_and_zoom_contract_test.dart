@@ -130,7 +130,7 @@ void main() {
     expect(invoice, contains('height: 842'));
     expect(invoice, contains("'御　請　求　書'"));
     expect(invoice, contains("'御請求金額"));
-    expect(invoice, contains("'振込先'"));
+    expect(invoice, contains("'振込先："));
     expect(invoice, contains("settings?.companyName"));
     expect(invoice, contains("settings?.companyAddress"));
     expect(invoice, contains("settings?.bankName"));
