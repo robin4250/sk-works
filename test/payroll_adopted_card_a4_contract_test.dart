@@ -12,6 +12,11 @@ void main() {
     expect(s, contains('_summaryAmount'));
     expect(s, contains("'給与形態'"));
     expect(s, contains("'休日深夜残業'"));
+    expect(s, contains("'社員番号'"));
+    expect(s, contains("'所属'"));
+    expect(s, contains("'職種'"));
+    expect(s, contains("'入社日'"));
+    expect(s, contains('_moneyExplanation'));
     expect(s, contains('pw.Spacer()'));
     expect(s, isNot(contains("_balancedMoneySection(\n          title: '支給'")));
   });
