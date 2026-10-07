@@ -8,6 +8,7 @@ import 'package:sk_works/features/payroll/payroll_pdf_service.dart';
 import 'package:sk_works/features/payroll/payroll_statement_repository.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final fontPath = Platform.environment['SKO_PDF_FONT_PATH'];
   final outputDirectory = Platform.environment['SKO_PDF_OUTPUT_DIR'];
   final hasFont = fontPath != null && File(fontPath).existsSync();

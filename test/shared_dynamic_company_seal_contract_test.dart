@@ -10,9 +10,12 @@ void main() {
   test(
     'bundled licensed seal data gives each PDF an independent font wrapper',
     () async {
-      final first = CompanySealPdf.loadFont();
-      expect(identical(first, CompanySealPdf.loadFont()), isTrue);
-      final font = await first;
+      final fonts = await Future.wait([
+        CompanySealPdf.loadFont(),
+        CompanySealPdf.loadFont(),
+      ]);
+      expect(identical(fonts[0], fonts[1]), isFalse);
+      final font = fonts[0];
       final pdf = pw.Document();
       pdf.addPage(
         pw.Page(build: (_) => CompanySealPdf.build('すみだ建設株式会社', font: font)),
