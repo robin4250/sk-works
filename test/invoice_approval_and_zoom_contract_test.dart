@@ -84,8 +84,8 @@ void main() {
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    expect(invoice, contains('Printing.raster('));
-    expect(invoice, contains('Image.memory('));
+    expect(invoice, contains('class _InvoiceNativePreview'));
+    expect(invoice, contains('invoice.siteCalculations'));
     expect(invoice, isNot(contains('transformationController: _zoomController')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
 
@@ -109,19 +109,6 @@ void main() {
     expect(payroll, contains('PayrollPdfService.buildPdf(statement)'));
     expect(payroll, contains('allowPrinting: true'));
     expect(payroll, contains('allowSharing: true'));
-  });
-  test('invoice preview rasterizes the same PDF bytes for reliable iOS display', () {
-    final source =
-        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-
-    expect(source, contains('Printing.raster('));
-    expect(source, contains('final pngBytes = await raster.toPng()'));
-    expect(source, contains('Image.memory('));
-    expect(source, contains('previewData.pngBytes'));
-    expect(source, contains('InteractiveViewer('));
-    expect(source, contains('maxScale: 5'));
-    expect(source, contains('onLayout: (_) async => pdfBytes'));
-    expect(source, contains('bytes: pdfBytes'));
   });
 
   test('invoice screen preview renders natively without PDF viewer or raster dependency', () {
