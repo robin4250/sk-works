@@ -205,7 +205,6 @@ class InvoicePdfService {
             ? 1.8
             : 3.2;
 
-    final sealBytes = _decodeImage(settings?.companySealBase64 ?? '');
     final bank = [
       settings?.bankName ?? '',
       settings?.bankBranch ?? '',
@@ -1210,6 +1209,7 @@ class _InvoiceNativePreview extends StatelessWidget {
 
     final issueDate = invoice.issueDate;
     final issuer = settings?.companyName.trim() ?? '';
+    final sealBytes = _decodeImage(settings?.companySealBase64 ?? '');
     final bank = [
       settings?.bankName ?? '',
       settings?.bankBranch ?? '',
