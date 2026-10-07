@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'payment_certificate_repository.dart';
+import '../shared/company_seal_pdf.dart';
 
 class PaymentCertificatePdfService {
   const PaymentCertificatePdfService._();
@@ -153,24 +154,7 @@ class PaymentCertificatePdfService {
                       ],
                     ),
                   ),
-                  pw.Container(
-                    width: 55,
-                    height: 55,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                        color: PdfColors.black,
-                        width: 1,
-                      ),
-                    ),
-                    alignment: pw.Alignment.center,
-                    child: pw.Text(
-                      '会社印',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  CompanySealPdf.build(record.payerCompanyName, size: 55),
                 ],
               ),
             ),
