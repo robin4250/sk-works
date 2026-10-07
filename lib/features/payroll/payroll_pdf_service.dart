@@ -84,6 +84,20 @@ class PayrollPdfService {
         _configuredMoneyEntries(detail, key: 'custom_deductions');
     final adjustmentEarnings = _customMoneyEntries(detail, direction: 1);
     final adjustmentDeductions = _customMoneyEntries(detail, direction: -1);
+    final configuredEarningsTotal = configuredEarnings.values.fold<num>(
+      0,
+      (sum, value) => sum + (_asNumber(value) ?? 0),
+    );
+    final configuredDeductionsTotal = configuredDeductions.values.fold<num>(
+      0,
+      (sum, value) => sum + (_asNumber(value) ?? 0),
+    );
+    final otherEarningResidual = ((_asNumber(detail['その他支給']) ?? 0) -
+            configuredEarningsTotal)
+        .clamp(0, double.infinity);
+    final otherDeductionResidual = ((_asNumber(detail['その他控除']) ?? 0) -
+            configuredDeductionsTotal)
+        .clamp(0, double.infinity);
 
     final earningEntries = _mergeMoneyEntries([
       MapEntry<String, Object?>(
@@ -94,6 +108,8 @@ class PayrollPdfService {
       MapEntry<String, Object?>('交通費', earnings['交通費']),
       ...configuredEarnings.entries,
       ...adjustmentEarnings.entries,
+      if (otherEarningResidual > 0)
+        MapEntry<String, Object?>('その他支給', otherEarningResidual),
     ]);
 
     final deductionEntries = _mergeMoneyEntries([
@@ -108,6 +124,8 @@ class PayrollPdfService {
       ...adjustmentDeductions.entries.map(
         (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
       ),
+      if (otherDeductionResidual > 0)
+        MapEntry<String, Object?>('その他控除', otherDeductionResidual),
     ]);
 
     return pw.Column(
@@ -417,9 +435,8 @@ class PayrollPdfService {
     final visible = entries.entries
         .where(
           (entry) =>
-              !_isAggregatePlaceholder(entry.key) &&
-              (registeredLabels.contains(entry.key) ||
-                  (_asNumber(entry.value) ?? 0).abs() >= 1),
+              registeredLabels.contains(entry.key) ||
+              (_asNumber(entry.value) ?? 0).abs() >= 1,
         )
         .toList();
     final groups = <List<MapEntry<String, Object?>>>[];
@@ -618,10 +635,7 @@ class PayrollPdfService {
     for (final entry in entries) {
       final label = entry.key.trim();
       final amount = _asNumber(entry.value);
-      if (label.isEmpty ||
-          _isAggregatePlaceholder(label) ||
-          amount == null ||
-          amount.abs() < 1) {
+      if (label.isEmpty || amount == null || amount.abs() < 1) {
         continue;
       }
       result[label] = (result[label] as num? ?? 0) + amount.abs();
