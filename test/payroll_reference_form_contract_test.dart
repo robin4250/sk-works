@@ -19,7 +19,7 @@ void main() {
     final pdf=File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
     expect(pdf, contains('fontSize: 17'));
     expect(pdf, contains('_yen(statement.netPay)'));
-    expect(pdf, contains('rowHeight = visible.length <= 6 ? 27.0'));
-    expect(pdf, contains('visible.length <= 9 ? 22.0 : 18.0'));
+    expect(pdf, contains('final rowCount = visible.length < 15 ? 15 : visible.length'));
+    expect(pdf, contains('rowCount <= 15 ? 15.0'));
   });
 }
