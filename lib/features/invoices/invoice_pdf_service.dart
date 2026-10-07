@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -215,7 +214,6 @@ class InvoicePdfService {
     final subject = (settings?.invoiceSubject ?? '').trim();
     final issueDate = invoice.issueDate ?? _monthEnd(invoice);
     final workPeriod = _workPeriod(invoice);
-    final companyLogo = _memoryImage(settings?.companyLogoBase64 ?? '');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -295,56 +293,7 @@ class InvoicePdfService {
               ),
             ),
             pw.SizedBox(width: 14),
-            pw.SizedBox(
-              width: 245,
-              child: pw.Stack(
-                children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.only(right: 28),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Row(
-                          mainAxisAlignment: pw.MainAxisAlignment.end,
-                          crossAxisAlignment: pw.CrossAxisAlignment.center,
-                          children: [
-                            if (companyLogo != null) ...[
-                              pw.SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: pw.Image(companyLogo, fit: pw.BoxFit.contain),
-                              ),
-                              pw.SizedBox(width: 5),
-                            ],
-                            pw.Text(
-                              settings?.companyName ?? '',
-                              textAlign: pw.TextAlign.right,
-                              style: pw.TextStyle(
-                                fontSize: 13,
-                                fontWeight: pw.FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if ((settings?.companyPostalCode ?? '').isNotEmpty)
-                          pw.Text('〒${settings!.companyPostalCode}', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 7.5)),
-                        if ((settings?.companyAddress ?? '').isNotEmpty)
-                          pw.Text(settings!.companyAddress, textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 7.5)),
-                        if ((settings?.companyPhone ?? '').isNotEmpty)
-                          pw.Text('TEL：${settings!.companyPhone}', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 7.5)),
-                        if ((settings?.companyFax ?? '').isNotEmpty)
-                          pw.Text('FAX：${settings!.companyFax}', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 7.5)),
-                      ],
-                    ),
-                  ),
-                  pw.Positioned(
-                    right: -2,
-                    top: -5,
-                    child: _companySeal(settings?.companyName ?? ''),
-                  ),
-                ],
-              ),
-            ),
+            pw.SizedBox(width: 70),
           ],
         ),
         pw.SizedBox(height: 1),
@@ -596,16 +545,41 @@ class InvoicePdfService {
           ),
         ),
         pw.SizedBox(height: 8),
-        pw.Container(
-          height: 60,
-          padding: const pw.EdgeInsets.all(7),
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: blue, width: .8),
-          ),
-          child: pw.Text(
-            '備考：${settings?.footerNote ?? ''}',
-            style: const pw.TextStyle(fontSize: 8),
-          ),
+        pw.SizedBox(height: 7),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Expanded(
+              child: pw.Container(
+                height: 44,
+                padding: const pw.EdgeInsets.all(7),
+                decoration: pw.BoxDecoration(border: pw.Border.all(color: blue, width: .8)),
+                child: pw.Text('備考：${settings?.footerNote ?? ''}', style: const pw.TextStyle(fontSize: 7)),
+              ),
+            ),
+            pw.SizedBox(width: 10),
+            pw.Expanded(
+              child: pw.Stack(
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Text(settings?.companyName ?? '', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: blue)),
+                      if ((settings?.companyPostalCode ?? '').isNotEmpty) pw.Text('〒${settings!.companyPostalCode}', style: const pw.TextStyle(fontSize: 6)),
+                      if ((settings?.companyAddress ?? '').isNotEmpty) pw.Text(settings!.companyAddress, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 6)),
+                      pw.Text([
+                        if ((settings?.companyPhone ?? '').isNotEmpty) 'TEL：${settings!.companyPhone}',
+                        if ((settings?.companyFax ?? '').isNotEmpty) 'FAX：${settings!.companyFax}',
+                      ].join('　'), style: const pw.TextStyle(fontSize: 6)),
+                    ],
+                  ),
+                  pw.Positioned(right: 5, top: -3, child: _companySeal(settings?.companyName ?? '')),
+                ],
+              ),
+            ),
+            pw.SizedBox(width: 10),
+            pw.SizedBox(width: 142, height: 44, child: _approvalBoxes(approvals, blue)),
+          ],
         ),
       ],
     );
@@ -655,14 +629,7 @@ class InvoicePdfService {
                                   visible[i].approvedAt ?? DateTime.now(),
                                   designB: visible[i].position.isEven,
                                 )
-                              : pw.Text(
-                                  visible[i].name,
-                                  textAlign: pw.TextAlign.center,
-                                  style: pw.TextStyle(
-                                    fontSize: 6.2,
-                                    color: blue,
-                                  ),
-                                ),
+                              : pw.SizedBox(),
                     ),
                   ),
                 ],
@@ -723,16 +690,6 @@ class InvoicePdfService {
         ),
       ),
     );
-  }
-
-  static pw.MemoryImage? _memoryImage(String encoded) {
-    final value = encoded.trim();
-    if (value.isEmpty) return null;
-    try {
-      return pw.MemoryImage(base64Decode(value));
-    } catch (_) {
-      return null;
-    }
   }
 
   static pw.Widget _companySeal(String companyName) {

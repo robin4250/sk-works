@@ -1,50 +1,24 @@
 import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
-String read(String path) => File(path).readAsStringSync();
-
 void main() {
-  test('payroll reference uses re-read labels from supplied image', () {
-    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
-
-    expect(pdf, contains("'出勤日数'"));
-    expect(pdf, contains("'休出日数'"));
-    expect(pdf, contains("'残業時間'"));
-    expect(pdf, contains("'法定休出時間'"));
-    expect(pdf, contains("'基本給'"));
-    expect(pdf, contains("'残業手当'"));
-    expect(pdf, contains("'健康保険料'"));
-    expect(pdf, contains("'所得税'"));
-    expect(pdf, contains("'住民税'"));
-    expect(pdf, contains("'custom_earnings'"));
-    expect(pdf, contains("'custom_deductions'"));
-    expect(pdf, contains('_balancedMoneySection'));
+  test('payroll reference keeps named work earning and deduction data', () {
+    final pdf=File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
+    for (final token in ['出勤日数','休出日数','残業時間','法定休出時間','基本給','残業手当','健康保険料','所得税','住民税','custom_earnings','custom_deductions']) {
+      expect(pdf, contains(token));
+    }
+    expect(pdf, contains('_moneyPanel'));
   });
 
-  test('payroll rows reserve readable vertical space', () {
-    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
-
-    expect(pdf, contains('height: 18'));
-    expect(pdf, contains('valueHeight = dense ? 20.0 : 25.0'));
-    expect(pdf, contains('height: 22'));
-    expect(pdf, contains('maxLines: 1'));
-    expect(pdf, contains('height: 23'));
-    expect(pdf, contains('pw.Alignment.center'));
-  });
-
-  test('payroll keeps reference totals and tax footer grid', () {
-    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
-
-    expect(pdf, contains("'総支給額'"));
-    expect(pdf, contains("'総控除額'"));
-    expect(pdf, contains("'差引支給額'"));
-    expect(pdf, contains("'日給単価'"));
-    expect(pdf, contains("'月次減税額'"));
-    expect(pdf, contains("'減税前未済額'"));
-    expect(pdf, contains("'減税前所得税'"));
-    expect(pdf, contains("'定額減税額'"));
-    expect(pdf, contains("'定額減税未済'"));
-    expect(pdf, contains("'お疲れさまです。'"));
+  test('payroll rows adapt while preserving the adopted summary', () {
+    final pdf=File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
+    expect(pdf, contains('rowHeight = visible.length <= 6 ? 27.0'));
+    expect(pdf, contains('visible.length <= 9 ? 22.0 : 18.0'));
+    expect(pdf, contains('height: rowHeight'));
+    expect(pdf, contains('_moneyExplanation'));
+    expect(pdf, contains('支給合計'));
+    expect(pdf, contains('控除合計'));
+    expect(pdf, contains('差引支給額'));
+    expect(pdf, contains('備考'));
   });
 }

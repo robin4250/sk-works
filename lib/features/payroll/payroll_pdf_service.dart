@@ -76,8 +76,6 @@ class PayrollPdfService {
     required Map<String, Object?> earnings,
     required Map<String, Object?> deductions,
   }) {
-    final headerFill = PdfColor.fromHex('#EAF4FF');
-    final grid = PdfColor.fromHex('#2F80ED');
     final configuredEarnings =
         _configuredMoneyEntries(detail, key: 'custom_earnings');
     final configuredDeductions =
@@ -112,429 +110,206 @@ class PayrollPdfService {
       ),
     ]);
 
+    final blue = PdfColor.fromHex('#2F80ED');
+    final paleBlue = PdfColor.fromHex('#EAF4FF');
+    final red = PdfColor.fromHex('#D95C73');
+    final paleRed = PdfColor.fromHex('#FFF0F3');
+    final green = PdfColor.fromHex('#2E8B57');
+    final paleGreen = PdfColor.fromHex('#EAF8EF');
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.SizedBox(height: 3),
-        pw.Stack(
-          children: [
-            pw.Align(
-              alignment: pw.Alignment.topCenter,
-              child: pw.Text(
-                '給与明細書',
-                style: pw.TextStyle(
-                  fontSize: 20,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.Align(
-              alignment: pw.Alignment.topRight,
-              child: pw.SizedBox(
-                width: 165,
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text(
-                      '${statement.periodEnd.year}年${statement.periodEnd.month}月分',
-                      style: pw.TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.SizedBox(height: 3),
-                    pw.Text(
-                      '支払日　${_paymentDate(statement, detail)}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Text(
-                      statement.companyName,
-                      style: pw.TextStyle(
-                        fontSize: 8.5,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 8),
         pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
-            pw.SizedBox(
-              width: 420,
-              child: pw.Table(
-                border: pw.TableBorder.all(color: grid, width: .55),
-                columnWidths: const {
-                  0: pw.FlexColumnWidth(2.4),
-                  1: pw.FlexColumnWidth(1.1),
-                  2: pw.FlexColumnWidth(2.5),
-                },
-                children: [
-                  pw.TableRow(
-                    decoration: pw.BoxDecoration(color: headerFill),
-                    children: [
-                      _cell('所属', center: true, bold: true, height: 18),
-                      _cell('社員番号', center: true, bold: true, height: 18),
-                      _cell('氏名', center: true, bold: true, height: 18),
-                    ],
-                  ),
-                  pw.TableRow(
-                    children: [
-                      _cell(statement.companyName, height: 22),
-                      _cell(
-                        _first(detail, const ['社員番号', '社員No', '社員No.']),
-                        center: true,
-                        height: 22,
-                      ),
-                      _cell(
-                        '${statement.workerName}　様',
-                        height: 22,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 10),
-        _attendanceSection(
-          detail: detail,
-          headerFill: headerFill,
-          grid: grid,
-        ),
-        pw.SizedBox(height: 10),
-        _balancedMoneySection(
-          title: '支給',
-          entries: earningEntries,
-          registeredLabels: {
-            ...configuredEarnings.keys,
-            ...adjustmentEarnings.keys,
-          },
-          headerFill: headerFill,
-          grid: grid,
-        ),
-        pw.SizedBox(height: 8),
-        _balancedMoneySection(
-          title: '控除',
-          entries: deductionEntries,
-          registeredLabels: {
-            ...configuredDeductions.keys,
-            ...adjustmentDeductions.keys,
-          },
-          headerFill: headerFill,
-          grid: grid,
-        ),
-        pw.SizedBox(height: 8),
-        pw.Row(
-          children: [
-            pw.SizedBox(width: 28),
             pw.Expanded(
-              child: pw.Table(
-                border: pw.TableBorder.all(color: grid, width: .55),
-                children: [
-                  pw.TableRow(
-                    decoration: pw.BoxDecoration(color: headerFill),
-                    children: [
-                      _cell('', height: 18),
-                      _cell('', height: 18),
-                      _cell('総支給額', center: true, bold: true, height: 18),
-                      _cell('総控除額', center: true, bold: true, height: 18),
-                      _cell(
-                        '差引支給額',
-                        center: true,
-                        bold: true,
-                        height: 18,
-                        fontSize: 10.5,
-                      ),
-                    ],
-                  ),
-                  pw.TableRow(
-                    children: [
-                      _cell('', height: 23),
-                      _cell('', height: 23),
-                      _cell(
-                        _number(statement.grossPay),
-                        right: true,
-                        height: 23,
-                        fontSize: 8,
-                      ),
-                      _cell(
-                        _number(statement.deductions),
-                        right: true,
-                        height: 23,
-                        fontSize: 8,
-                      ),
-                      _cell(
-                        _number(statement.netPay),
-                        right: true,
-                        bold: true,
-                        height: 23,
-                        fontSize: 13,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 10),
-        pw.Table(
-          border: pw.TableBorder.all(color: grid, width: .55),
-          children: [
-            pw.TableRow(
-              decoration: pw.BoxDecoration(color: headerFill),
-              children: [
-                _cell('日給単価', center: true, bold: true, height: 18),
-                _cell('', height: 18),
-                _cell('', height: 18),
-                _cell('', height: 18),
-                _cell('', height: 18),
-                _cell('月次減税額', center: true, bold: true, height: 18, fontSize: 6.5),
-                _cell('減税前未済額', center: true, bold: true, height: 18, fontSize: 6.5),
-                _cell('減税前所得税', center: true, bold: true, height: 18, fontSize: 6.5),
-                _cell('定額減税額', center: true, bold: true, height: 18, fontSize: 6.5),
-                _cell('定額減税未済', center: true, bold: true, height: 18, fontSize: 6.5),
-              ],
-            ),
-            pw.TableRow(
-              children: [
-                _cell(
-                  _plainNumber(detail, const ['日給単価']),
-                  right: true,
-                  height: 22,
-                ),
-                for (var i = 0; i < 4; i++) _cell('', height: 22),
-                _cell(_first(detail, const ['月次減税額']), right: true, height: 22),
-                _cell(_first(detail, const ['減税前未済額']), right: true, height: 22),
-                _cell(_first(detail, const ['減税前所得税']), right: true, height: 22),
-                _cell(_first(detail, const ['定額減税額']), right: true, height: 22),
-                _cell(_first(detail, const ['定額減税未済']), right: true, height: 22),
-              ],
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 8),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(left: 175),
               child: pw.Text(
-                'お疲れさまです。',
-                style: const pw.TextStyle(fontSize: 7.5),
+                statement.companyName,
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: blue),
               ),
             ),
             pw.Text(
-              statement.reviewConfirmed ? '確認済み' : '未確定',
-              style: pw.TextStyle(
-                fontSize: 6.5,
-                color: statement.reviewConfirmed
-                    ? PdfColors.green700
-                    : PdfColors.red700,
+              '給与明細書',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: blue),
+            ),
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('${statement.periodEnd.year}年${statement.periodEnd.month}月分',
+                      style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('支払日　${_paymentDate(statement, detail)}',
+                      style: const pw.TextStyle(fontSize: 7)),
+                ],
               ),
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  static pw.Widget _attendanceSection({
-    required Map<String, dynamic> detail,
-    required PdfColor headerFill,
-    required PdfColor grid,
-  }) {
-    const topLabels = <String>[
-      '出勤日数', '欠勤日数', '有給日数', '休日出勤', '残業時間',
-      '早出時間', '深夜時間', '休日残業', '休日深夜', '休日深夜残業',
-    ];
-
-    final topValues = <String>[
-      _dayCount(detail, const ['出勤日数']),
-      _dayCount(detail, const ['欠勤日数']),
-      _dayCount(detail, const ['有給日数']),
-      _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
-      _hours(detail, const ['残業時間']),
-      _hours(detail, const ['早出時間']),
-      _hours(detail, const ['深夜時間', '夜間時間']),
-      _hours(detail, const ['休日残業時間', '法定休出時間']),
-      _hours(detail, const ['休日深夜時間']),
-      _hours(detail, const ['休日深夜残業時間']),
-    ];
-
-    return _sectionShell(
-      title: '勤怠',
-      headerFill: headerFill,
-      grid: grid,
-      sectionHeight: 48,
-      rows: [
-        _row(topLabels, headerFill: headerFill, bold: true, height: 22),
-        _attendanceValueRow(topValues, grid: grid, height: 26),
-      ],
-    );
-  }
-
-  static pw.Widget _balancedMoneySection({
-    required String title,
-    required Map<String, Object?> entries,
-    required Set<String> registeredLabels,
-    required PdfColor headerFill,
-    required PdfColor grid,
-  }) {
-    const columns = 5;
-    final visible = entries.entries
-        .where(
-          (entry) =>
-              (_asNumber(entry.value) ?? 0).abs() >= 1,
-        )
-        .toList();
-    final groups = <List<MapEntry<String, Object?>>>[];
-    if (visible.isEmpty) {
-      groups.add(const []);
-    } else {
-      for (var index = 0; index < visible.length; index += columns) {
-        final end = index + columns < visible.length
-            ? index + columns
-            : visible.length;
-        groups.add(visible.sublist(index, end));
-      }
-    }
-
-    final dense = groups.length > 3;
-    final labelHeight = dense ? 17.0 : 21.0;
-    final valueHeight = dense ? 20.0 : 25.0;
-    final rows = <pw.TableRow>[];
-    for (final group in groups) {
-      rows
-        ..add(
-          _row(
-            [
-              ...group.map((entry) => entry.key),
-              ...List<String>.filled(columns - group.length, ''),
-            ],
-            headerFill: headerFill,
-            bold: true,
-            height: labelHeight,
-          ),
-        )
-        ..add(
-          _row(
-            [
-              ...group.map(
-                (entry) => _formatAmount(entry.value, absolute: true),
-              ),
-              ...List<String>.filled(columns - group.length, ''),
-            ],
-            right: true,
-            height: valueHeight,
-          ),
-        );
-    }
-
-    return _sectionShell(
-      title: title,
-      headerFill: headerFill,
-      grid: grid,
-      sectionHeight: groups.length * (labelHeight + valueHeight),
-      rows: rows,
-    );
-  }
-
-  static pw.Widget _sectionShell({
-    required String title,
-    required PdfColor headerFill,
-    required PdfColor grid,
-    required double sectionHeight,
-    required List<pw.TableRow> rows,
-  }) {
-    return pw.Row(
-      children: [
+        pw.SizedBox(height: 14),
         pw.Container(
-          width: 28,
-          height: sectionHeight,
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: pw.BoxDecoration(
-            color: headerFill,
-            border: pw.Border.all(color: grid, width: .55),
+            color: paleBlue,
+            border: pw.Border.all(color: blue, width: .8),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
           ),
-          alignment: pw.Alignment.center,
-          child: pw.Text(
-            title.split('').join('\n'),
-            textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              fontSize: 8,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
+          child: pw.Row(children: [
+            pw.Expanded(child: _identityText('社員番号', _first(detail, const ['社員番号', '社員No', '社員No.']))),
+            pw.Expanded(flex: 2, child: _identityText('氏名', '${statement.workerName}　様')),
+            pw.Expanded(child: _identityText('所属', _first(detail, const ['所属', '部署']))),
+            pw.Expanded(child: _identityText('職種', _first(detail, const ['職種']))),
+            pw.Expanded(child: _identityText('給与形態', _payTypeLabel(detail))),
+            pw.Expanded(child: _identityText('入社日', _first(detail, const ['入社日']))),
+          ]),
         ),
-        pw.Expanded(
-          child: pw.Table(
-            border: pw.TableBorder.all(color: grid, width: .55),
-            children: rows,
-          ),
+        pw.SizedBox(height: 14),
+        pw.Text('勤務実績', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: blue)),
+        pw.SizedBox(height: 5),
+        _attendanceCards(detail, blue, paleBlue),
+        pw.SizedBox(height: 16),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(child: _moneyPanel('支給（＋）', earningEntries, detail, blue, paleBlue)),
+            pw.SizedBox(width: 12),
+            pw.Expanded(child: _moneyPanel('控除（－）', deductionEntries, detail, red, paleRed)),
+          ],
         ),
-      ],
-    );
-  }
-
-
-  static pw.TableRow _attendanceValueRow(
-    List<String> values, {
-    required PdfColor grid,
-    double height = 26,
-  }) {
-    return pw.TableRow(children: [
-      for (final value in values)
+        pw.Spacer(),
         pw.Container(
-          height: height,
-          alignment: pw.Alignment.center,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 2),
-          child: pw.Text(
-            value,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              color: _isZeroDisplay(value) ? PdfColors.grey400 : PdfColors.blue900,
-            ),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: pw.BoxDecoration(
+            color: paleGreen,
+            border: pw.Border.all(color: green, width: 1),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
           ),
+          child: pw.Row(children: [
+            pw.Expanded(child: _summaryAmount('支給合計', statement.grossPay, blue)),
+            pw.Text('－', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Expanded(child: _summaryAmount('控除合計', statement.deductions, red)),
+            pw.Text('＝', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Expanded(
+              flex: 2,
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                pw.Text('差引支給額', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: green)),
+                pw.Text(_yen(statement.netPay), style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold, color: green)),
+              ]),
+            ),
+          ]),
         ),
-    ]);
+        pw.SizedBox(height: 12),
+        pw.Container(
+          height: 46,
+          padding: const pw.EdgeInsets.all(7),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: blue, width: .55)),
+          child: pw.Text('備考', style: pw.TextStyle(fontSize: 7, color: blue)),
+        ),
+      ],
+    );
   }
 
-  static bool _isZeroDisplay(String value) {
-    final normalized = value.trim().replaceAll('時間', '').replaceAll('日', '');
-    if (normalized == '00:00') return true;
-    final number = double.tryParse(normalized);
-    return number != null && number == 0;
+  static pw.Widget _identityText(String label, String value) => pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Text(label, style: const pw.TextStyle(fontSize: 6.5)),
+      pw.SizedBox(height: 2),
+      pw.Text(value, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+    ],
+  );
+
+  static String _payTypeLabel(Map<String, dynamic> detail) {
+    final raw = (detail['pay_type'] ?? detail['給与形態'] ?? '').toString().toLowerCase();
+    if (raw == 'monthly' || raw.contains('月給')) return '月給';
+    if (raw == 'hourly' || raw.contains('時給')) return '時給';
+    return '日給';
   }
 
-  static pw.TableRow _row(
-    List<String> values, {
-    PdfColor? headerFill,
-    bool bold = false,
-    bool right = false,
-    double height = 20,
-  }) {
-    return pw.TableRow(
-      decoration: headerFill == null
-          ? null
-          : pw.BoxDecoration(color: headerFill),
+  static pw.Widget _attendanceCards(Map<String, dynamic> detail, PdfColor blue, PdfColor pale) {
+    final items = <MapEntry<String, String>>[
+      MapEntry('出勤', _dayCount(detail, const ['出勤日数'])),
+      MapEntry('欠勤', _dayCount(detail, const ['欠勤日数'])),
+      MapEntry('有給', _dayCount(detail, const ['有給日数'])),
+      MapEntry('休日出勤', _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数'])),
+      MapEntry('残業', _hours(detail, const ['残業時間'])),
+      MapEntry('早出', _hours(detail, const ['早出時間'])),
+      MapEntry('深夜', _hours(detail, const ['深夜時間', '夜間時間'])),
+      MapEntry('休日残業', _hours(detail, const ['休日残業時間', '法定休出時間'])),
+      MapEntry('休日深夜', _hours(detail, const ['休日深夜時間'])),
+      MapEntry('休日深夜残業', _hours(detail, const ['休日深夜残業時間'])),
+    ];
+    return pw.Wrap(
+      spacing: 5,
+      runSpacing: 5,
       children: [
-        for (final value in values)
-          _cell(
-            value,
-            center: !right,
-            right: right,
-            bold: bold,
-            height: height,
+        for (final item in items)
+          pw.Container(
+            width: 54,
+            height: 39,
+            padding: const pw.EdgeInsets.all(4),
+            decoration: pw.BoxDecoration(color: pale, border: pw.Border.all(color: blue, width: .45)),
+            child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.center, children: [
+              pw.Text(item.key, textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 5.7, color: blue)),
+              pw.SizedBox(height: 3),
+              pw.Text(item.value.isEmpty ? '0' : item.value,
+                style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold,
+                  color: _isZeroDisplay(item.value.isEmpty ? '0' : item.value) ? PdfColors.grey400 : PdfColors.blue900)),
+            ]),
           ),
       ],
     );
   }
+
+  static pw.Widget _moneyPanel(String title, Map<String, Object?> entries, Map<String, dynamic> detail, PdfColor accent, PdfColor pale) {
+    final visible = entries.entries.where((e) => (_asNumber(e.value) ?? 0).abs() >= 1).toList();
+    final rowHeight = visible.length <= 6 ? 27.0 : visible.length <= 9 ? 22.0 : 18.0;
+    return pw.Container(
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: accent, width: .8)),
+      child: pw.Column(children: [
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 8),
+          color: pale,
+          child: pw.Text(title, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: accent)),
+        ),
+        if (visible.isEmpty)
+          pw.SizedBox(height: rowHeight)
+        else
+          for (final e in visible)
+            pw.Container(
+              height: rowHeight,
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8),
+              decoration: pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: accent, width: .3))),
+              child: pw.Row(children: [
+                pw.Expanded(child: pw.Text(e.key, style: const pw.TextStyle(fontSize: 7.5))),
+                pw.Expanded(child: pw.Text(_moneyExplanation(e.key, detail), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 6))),
+                pw.Text(_yen((_asNumber(e.value) ?? 0).abs().toInt()),
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              ]),
+            ),
+      ]),
+    );
+  }
+
+
+  static String _moneyExplanation(String label, Map<String, dynamic> detail) {
+    final direct = detail['$label計算内容'] ?? detail['$label備考'];
+    if (direct != null && direct.toString().trim().isNotEmpty) return direct.toString().trim();
+    if (label == '基本給') return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
+    if (label.contains('残業')) return '登録単価 × 残業時間';
+    if (label.contains('早出')) return '登録単価 × 早出時間';
+    if (label.contains('休日')) return '登録単価 × 休日実績';
+    return '';
+  }
+
+  static pw.Widget _summaryAmount(String label, int amount, PdfColor color) => pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.center,
+    children: [
+      pw.Text(label, style: pw.TextStyle(fontSize: 7, color: color)),
+      pw.SizedBox(height: 2),
+      pw.Text(_yen(amount), style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: color)),
+    ],
+  );
 
   static Map<String, Object?> _pick(
     Map<String, dynamic> detail,
@@ -652,20 +427,26 @@ class PayrollPdfService {
     return result;
   }
 
+  static String _first(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  static bool _isZeroDisplay(String value) {
+    final normalized = value.trim().replaceAll('時間', '').replaceAll('日', '');
+    if (normalized.isEmpty || normalized == '00:00') return true;
+    final number = double.tryParse(normalized);
+    return number != null && number == 0;
+  }
+
   static num? _asNumber(Object? value) {
     if (value is num) return value;
     if (value == null) return null;
     final text = value.toString().replaceAll(',', '').trim();
     return num.tryParse(text);
-  }
-
-  static String _formatAmount(Object? value, {bool absolute = false}) {
-    final number = _asNumber(value);
-    if (number != null) {
-      final amount = number.toInt();
-      return _number(absolute ? amount.abs() : amount);
-    }
-    return value?.toString() ?? '';
   }
 
   static String _dayCount(
@@ -708,68 +489,6 @@ class PayrollPdfService {
       return text;
     }
     return '';
-  }
-
-  static String _plainNumber(
-    Map<String, dynamic> source,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = source[key];
-      if (value == null) continue;
-      if (value is num) return value.toInt().toString();
-      final text = value.toString().trim();
-      final parsed = num.tryParse(text.replaceAll(',', ''));
-      if (parsed != null) return parsed.toInt().toString();
-      return text;
-    }
-    return '';
-  }
-
-  static String _first(
-    Map<String, dynamic> source,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = source[key];
-      if (value == null) continue;
-      if (value is num) return _number(value.toInt());
-      final text = value.toString();
-      if (text.isNotEmpty) return text;
-    }
-    return '';
-  }
-
-  static pw.Widget _cell(
-    String text, {
-    bool bold = false,
-    bool right = false,
-    bool center = false,
-    double fontSize = 7.4,
-    double height = 20,
-  }) {
-    return pw.Container(
-      height: height,
-      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-      alignment: right
-          ? pw.Alignment.centerRight
-          : center
-              ? pw.Alignment.center
-              : pw.Alignment.centerLeft,
-      child: pw.Text(
-        text,
-        maxLines: 1,
-        textAlign: right
-            ? pw.TextAlign.right
-            : center
-                ? pw.TextAlign.center
-                : pw.TextAlign.left,
-        style: pw.TextStyle(
-          fontSize: fontSize,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
-      ),
-    );
   }
 
   static String _paymentDate(

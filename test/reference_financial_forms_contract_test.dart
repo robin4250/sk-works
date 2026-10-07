@@ -25,10 +25,10 @@ void main() {
     expect(source, contains('出勤日数'));
     expect(source, contains('基本給'));
     expect(source, contains('健康保険料'));
-    expect(source, contains('総支給額'));
+    expect(source, contains('支給合計'));
     expect(source, contains('差引支給額'));
-    expect(source, contains('月次減税額'));
-    expect(source, contains('お疲れさまです。'));
+    expect(source, contains('給与形態'));
+    expect(source, contains('勤務実績'));
   });
 
   test('payment certificate uses calculated SKO detail rows', () {

@@ -34,14 +34,12 @@ void main() {
     expect(migration, contains("'支払日',payment_day"));
   });
 
-  test('payroll PDF grows rows for every registered earning and deduction', () {
+  test('payroll PDF adapts final left-right earning and deduction panels', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
-
-    expect(pdf, contains('const columns = 5'));
-    expect(pdf, contains('for (var index = 0; index < visible.length; index += columns)'));
-    expect(pdf, contains("(_asNumber(entry.value) ?? 0).abs() >= 1"));
-    expect(pdf, contains('groups.length > 3'));
-    expect(pdf, contains('_balancedMoneySection'));
+    expect(pdf, contains('_moneyPanel'));
+    expect(pdf, contains('for (final e in visible)'));
+    expect(pdf, contains("(_asNumber(e.value) ?? 0).abs() >= 1"));
+    expect(pdf, contains('visible.length <= 9'));
     expect(pdf, contains("'custom_earnings'"));
     expect(pdf, contains("'custom_deductions'"));
   });
