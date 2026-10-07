@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'payroll_statement_repository.dart';
+import '../shared/company_seal_pdf.dart';
 
 class PayrollPdfService {
   const PayrollPdfService._();
@@ -124,9 +125,21 @@ class PayrollPdfService {
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
             pw.Expanded(
-              child: pw.Text(
-                statement.companyName,
-                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: blue),
+              child: pw.Stack(
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(right: 32),
+                    child: pw.Text(
+                      statement.companyName,
+                      style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: blue),
+                    ),
+                  ),
+                  pw.Positioned(
+                    right: 0,
+                    top: 0,
+                    child: CompanySealPdf.build(statement.companyName, size: 32),
+                  ),
+                ],
               ),
             ),
             pw.Text(
