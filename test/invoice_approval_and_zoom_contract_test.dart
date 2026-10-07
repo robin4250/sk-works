@@ -109,4 +109,18 @@ void main() {
     expect(payroll, contains('allowPrinting: true'));
     expect(payroll, contains('allowSharing: true'));
   });
+  test('invoice preview rasterizes the same PDF bytes for reliable iOS display', () {
+    final source =
+        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
+
+    expect(source, contains('Printing.raster('));
+    expect(source, contains('final pngBytes = await raster.toPng()'));
+    expect(source, contains('Image.memory('));
+    expect(source, contains('previewData.pngBytes'));
+    expect(source, contains('InteractiveViewer('));
+    expect(source, contains('maxScale: 5'));
+    expect(source, contains('onLayout: (_) async => pdfBytes'));
+    expect(source, contains('bytes: pdfBytes'));
+  });
+
 }
