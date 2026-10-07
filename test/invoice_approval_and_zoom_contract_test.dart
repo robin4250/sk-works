@@ -73,8 +73,8 @@ void main() {
     expect(pdf, contains('_memoryImage('));
     expect(pdf, isNot(contains('companySealImage')));
     expect(pdf, contains("_companySeal(settings?.companyName ?? '')"));
-    expect(pdf, contains('_surnameForStamp(name)'));
-    expect(pdf, contains("return value.substring(0, 2)"));
+    expect(pdf, isNot(contains('_surnameForStamp')));
+    expect(pdf, contains('approvals.take(3)'));
     expect(pdf, contains('companyLogo'));
     expect(pdf, contains('pw.Positioned('));
   });

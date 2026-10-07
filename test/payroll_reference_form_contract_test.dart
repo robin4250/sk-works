@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('payroll PDF follows supplied statement-style table layout', () {
+  test('payroll PDF follows adopted A4 statement-style table layout', () {
     final source =
         File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
 
@@ -19,8 +19,8 @@ void main() {
     expect(source, contains("'差引支給額'"));
     expect(source, contains("'月次減税額'"));
     expect(source, contains('pw.Table('));
-    expect(source, contains('PdfPageFormat.a4.landscape'));
-    expect(source, contains("PdfColor.fromHex('#DCE8F6')"));
+    expect(source, contains('PdfPageFormat.a4,'));
+    expect(source, contains("PdfColor.fromHex('#EAF4FF')"));
     expect(source, contains("statement.reviewConfirmed ? '確認済み' : '未確定'"));
     expect(source, contains('_dayCount(detail'));
     expect(source, contains('_hours(detail'));
@@ -40,7 +40,7 @@ void main() {
     final pdf = File('lib/features/payroll/payroll_pdf_service.dart').readAsStringSync();
     expect(pdf, contains('required double sectionHeight'));
     expect(pdf, contains('height: sectionHeight'));
-    expect(pdf, contains('sectionHeight: 78'));
+    expect(pdf, contains('sectionHeight: 48'));
     expect(pdf, contains('groups.length * (labelHeight + valueHeight)'));
   });
 

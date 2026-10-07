@@ -36,12 +36,12 @@ class PayrollPdfService {
 
     document.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4.landscape,
+        pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(
-          8 * PdfPageFormat.mm,
-          7 * PdfPageFormat.mm,
-          8 * PdfPageFormat.mm,
-          7 * PdfPageFormat.mm,
+          14 * PdfPageFormat.mm,
+          13 * PdfPageFormat.mm,
+          14 * PdfPageFormat.mm,
+          13 * PdfPageFormat.mm,
         ),
         build: (_) => _sheet(
           statement,
@@ -58,7 +58,7 @@ class PayrollPdfService {
   static Future<bool> printStatement(PayrollStatementRecord statement) {
     return Printing.layoutPdf(
       name: '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-      format: PdfPageFormat.a4.landscape,
+      format: PdfPageFormat.a4,
       onLayout: (_) => buildPdf(statement),
     );
   }
@@ -76,28 +76,16 @@ class PayrollPdfService {
     required Map<String, Object?> earnings,
     required Map<String, Object?> deductions,
   }) {
-    final headerFill = PdfColor.fromHex('#DCE8F6');
-    final grid = PdfColor.fromHex('#6D89A8');
+    final headerFill = PdfColor.fromHex('#EAF4FF');
+    final grid = PdfColor.fromHex('#2F80ED');
     final configuredEarnings =
         _configuredMoneyEntries(detail, key: 'custom_earnings');
     final configuredDeductions =
         _configuredMoneyEntries(detail, key: 'custom_deductions');
     final adjustmentEarnings = _customMoneyEntries(detail, direction: 1);
     final adjustmentDeductions = _customMoneyEntries(detail, direction: -1);
-    final configuredEarningsTotal = configuredEarnings.values.fold<num>(
-      0,
-      (sum, value) => sum + (_asNumber(value) ?? 0),
-    );
-    final configuredDeductionsTotal = configuredDeductions.values.fold<num>(
-      0,
-      (sum, value) => sum + (_asNumber(value) ?? 0),
-    );
-    final otherEarningResidual = ((_asNumber(detail['その他支給']) ?? 0) -
-            configuredEarningsTotal)
-        .clamp(0, double.infinity);
-    final otherDeductionResidual = ((_asNumber(detail['その他控除']) ?? 0) -
-            configuredDeductionsTotal)
-        .clamp(0, double.infinity);
+    // Legacy aggregate placeholders are intentionally not rendered. Every visible
+    // earning/deduction must have an explicit item name.
 
     final earningEntries = _mergeMoneyEntries([
       MapEntry<String, Object?>(
@@ -108,8 +96,6 @@ class PayrollPdfService {
       MapEntry<String, Object?>('交通費', earnings['交通費']),
       ...configuredEarnings.entries,
       ...adjustmentEarnings.entries,
-      if (otherEarningResidual > 0)
-        MapEntry<String, Object?>('その他支給', otherEarningResidual),
     ]);
 
     final deductionEntries = _mergeMoneyEntries([
@@ -124,8 +110,6 @@ class PayrollPdfService {
       ...adjustmentDeductions.entries.map(
         (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
       ),
-      if (otherDeductionResidual > 0)
-        MapEntry<String, Object?>('その他控除', otherDeductionResidual),
     ]);
 
     return pw.Column(
@@ -367,66 +351,31 @@ class PayrollPdfService {
     required PdfColor grid,
   }) {
     const topLabels = <String>[
-      '出勤日数',
-      '休出日数',
-      '有給日数',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ];
-    const secondLabels = <String>[
-      '残業時間',
-      '法定休出時間',
-      '早出時間',
-      '夜間時間',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
+      '出勤日数', '欠勤日数', '有給日数', '休日出勤', '残業時間',
+      '早出時間', '深夜時間', '休日残業', '休日深夜', '休日深夜残業',
     ];
 
     final topValues = <String>[
       _dayCount(detail, const ['出勤日数']),
-      _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
+      _dayCount(detail, const ['欠勤日数']),
       _dayCount(detail, const ['有給日数']),
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ];
-
-    final secondValues = <String>[
+      _dayCount(detail, const ['休出日数', '休日出勤', '休日出勤日数']),
       _hours(detail, const ['残業時間']),
-      _hours(detail, const ['法定休出時間', '法定休日出勤時間', '法定外出時間']),
       _hours(detail, const ['早出時間']),
-      _hours(detail, const ['夜間時間']),
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
+      _hours(detail, const ['深夜時間', '夜間時間']),
+      _hours(detail, const ['休日残業時間', '法定休出時間']),
+      _hours(detail, const ['休日深夜時間']),
+      _hours(detail, const ['休日深夜残業時間']),
     ];
 
     return _sectionShell(
       title: '勤怠',
       headerFill: headerFill,
       grid: grid,
-      sectionHeight: 78,
+      sectionHeight: 48,
       rows: [
-        _row(topLabels, headerFill: headerFill, bold: true, height: 18),
-        _row(topValues, right: true, height: 21),
-        _row(secondLabels, headerFill: headerFill, bold: true, height: 18),
-        _row(secondValues, right: true, height: 21),
+        _row(topLabels, headerFill: headerFill, bold: true, height: 22),
+        _attendanceValueRow(topValues, grid: grid, height: 26),
       ],
     );
   }
@@ -442,7 +391,6 @@ class PayrollPdfService {
     final visible = entries.entries
         .where(
           (entry) =>
-              registeredLabels.contains(entry.key) ||
               (_asNumber(entry.value) ?? 0).abs() >= 1,
         )
         .toList();
@@ -458,9 +406,9 @@ class PayrollPdfService {
       }
     }
 
-    final dense = groups.length > 2;
-    final labelHeight = dense ? 15.0 : 18.0;
-    final valueHeight = dense ? 18.0 : 22.0;
+    final dense = groups.length > 3;
+    final labelHeight = dense ? 17.0 : 21.0;
+    final valueHeight = dense ? 20.0 : 25.0;
     final rows = <pw.TableRow>[];
     for (final group in groups) {
       rows
@@ -532,6 +480,36 @@ class PayrollPdfService {
         ),
       ],
     );
+  }
+
+
+  static pw.TableRow _attendanceValueRow(
+    List<String> values, {
+    required PdfColor grid,
+    double height = 26,
+  }) {
+    return pw.TableRow(children: [
+      for (final value in values)
+        pw.Container(
+          height: height,
+          alignment: pw.Alignment.center,
+          padding: const pw.EdgeInsets.symmetric(horizontal: 2),
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              color: _isZeroDisplay(value) ? PdfColors.grey400 : PdfColors.blue900,
+            ),
+          ),
+        ),
+    ]);
+  }
+
+  static bool _isZeroDisplay(String value) {
+    final normalized = value.trim().replaceAll('時間', '').replaceAll('日', '');
+    if (normalized == '00:00') return true;
+    final number = double.tryParse(normalized);
+    return number != null && number == 0;
   }
 
   static pw.TableRow _row(

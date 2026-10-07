@@ -39,8 +39,8 @@ void main() {
 
     expect(pdf, contains('const columns = 5'));
     expect(pdf, contains('for (var index = 0; index < visible.length; index += columns)'));
-    expect(pdf, contains('registeredLabels.contains(entry.key)'));
-    expect(pdf, contains('groups.length > 2'));
+    expect(pdf, contains("(_asNumber(entry.value) ?? 0).abs() >= 1"));
+    expect(pdf, contains('groups.length > 3'));
     expect(pdf, contains('_balancedMoneySection'));
     expect(pdf, contains("'custom_earnings'"));
     expect(pdf, contains("'custom_deductions'"));
@@ -68,14 +68,13 @@ void main() {
     expect(pdf, contains('statement.periodEnd.month + 1'));
     expect(pdf, contains('day > lastDay ? lastDay : day'));
   });
-  test('other earning remains only for amount not explained by named details', () {
+  test('aggregate other earning and deduction are never rendered as residuals', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
-    expect(pdf, contains("detail['その他支給']"));
-    expect(pdf, contains('configuredEarningsTotal'));
-    expect(pdf, contains('otherEarningResidual'));
-    expect(pdf, contains("MapEntry<String, Object?>('その他支給', otherEarningResidual)"));
-    expect(pdf, contains('otherDeductionResidual'));
+    expect(pdf, isNot(contains("detail['その他支給']")));
+    expect(pdf, isNot(contains('otherEarningResidual')));
+    expect(pdf, isNot(contains('otherDeductionResidual')));
+    expect(pdf, contains('_isAggregatePlaceholder'));
   });
 
 }

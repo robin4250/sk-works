@@ -20,9 +20,9 @@ void main() {
     expect(source, contains("'合計(税込)'"));
   });
 
-  test('payroll PDF uses provided landscape payroll statement template', () {
+  test('payroll PDF uses adopted A4 payroll statement template', () {
     final source = read('lib/features/payroll/payroll_pdf_service.dart');
-    expect(source, contains('PdfPageFormat.a4.landscape'));
+    expect(source, contains('PdfPageFormat.a4,'));
     expect(source, contains("'給与明細書'"));
     expect(source, contains("'勤怠'"));
     expect(source, contains("'支給'"));

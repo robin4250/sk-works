@@ -26,7 +26,7 @@ void main() {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
     expect(pdf, contains('height: 18'));
-    expect(pdf, contains('height: 21'));
+    expect(pdf, contains('valueHeight = dense ? 20.0 : 25.0'));
     expect(pdf, contains('height: 22'));
     expect(pdf, contains('maxLines: 1'));
     expect(pdf, contains('height: 23'));

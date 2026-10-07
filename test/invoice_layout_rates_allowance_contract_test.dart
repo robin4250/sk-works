@@ -20,7 +20,7 @@ void main() {
 
     expect(pdf, contains('fontSize: designB ? 5.6 : 5.8'));
     expect(pdf, contains('fontSize: 4.4'));
-    expect(pdf, contains('fontSize: 6.0'));
+    expect(pdf, isNot(contains('_surnameForStamp')));
     expect(pdf, contains('角印案B'));
     expect(pdf, contains('width: 2.1'));
     expect(pdf, contains('width: .75'));
