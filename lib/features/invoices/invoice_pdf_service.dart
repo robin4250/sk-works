@@ -976,7 +976,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
     }
-    return _InvoicePreviewData(pdfBytes: pdfBytes);
+    return _InvoicePreviewData(pdfBytes: pdfBytes, settings: settings);
   }
 
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
@@ -1109,7 +1109,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         boundaryMargin: const EdgeInsets.all(48),
                         child: _InvoiceNativePreview(
                           invoices: widget.invoices,
-                          title: widget.title,
+                          settings: previewData.settings,
                         ),
                       ),
                     ),
@@ -1165,19 +1165,23 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 
 
 class _InvoicePreviewData {
-  const _InvoicePreviewData({required this.pdfBytes});
+  const _InvoicePreviewData({
+    required this.pdfBytes,
+    required this.settings,
+  });
 
   final Uint8List pdfBytes;
+  final InvoiceSettingsData? settings;
 }
 
 class _InvoiceNativePreview extends StatelessWidget {
   const _InvoiceNativePreview({
     required this.invoices,
-    this.title,
+    required this.settings,
   });
 
   final List<InvoiceCalculationResult> invoices;
-  final String? title;
+  final InvoiceSettingsData? settings;
 
   @override
   Widget build(BuildContext context) {
@@ -1213,7 +1217,9 @@ class _InvoiceNativePreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  title ?? '請求書',
+                  settings?.templateTitle.trim().isNotEmpty == true
+                      ? settings!.templateTitle.trim()
+                      : '請求書',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 24,
@@ -1221,20 +1227,69 @@ class _InvoiceNativePreview extends StatelessWidget {
                     letterSpacing: 6,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  invoice.customerId,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        invoice.customerId,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 230,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            settings?.companyName ?? '',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if ((settings?.companyPostalCode ?? '').trim().isNotEmpty)
+                            Text('〒${settings!.companyPostalCode}'),
+                          if ((settings?.companyAddress ?? '').trim().isNotEmpty)
+                            Text(settings!.companyAddress, textAlign: TextAlign.right),
+                          if ((settings?.companyPhone ?? '').trim().isNotEmpty)
+                            Text('TEL ${settings!.companyPhone}'),
+                          if ((settings?.companyFax ?? '').trim().isNotEmpty)
+                            Text('FAX ${settings!.companyFax}'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 4),
                 const Divider(thickness: 1),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(child: Text('請求書番号  ${invoice.invoiceNumber}')),
-                    Text('対象期間  ${invoice.billingPeriod}'),
+                    Expanded(
+                      child: Text(
+                        (settings?.invoiceSubject ?? '').trim().isEmpty
+                            ? '御請求申し上げます。'
+                            : settings!.invoiceSubject,
+                      ),
+                    ),
+                    Text('請求書番号  ${invoice.invoiceNumber}'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(child: Text('対象期間  ${invoice.billingPeriod}')),
+                    if (invoice.issueDate != null)
+                      Text(
+                        '発行日  ${invoice.issueDate!.year}/${invoice.issueDate!.month.toString().padLeft(2, '0')}/${invoice.issueDate!.day.toString().padLeft(2, '0')}',
+                      ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -1257,9 +1312,33 @@ class _InvoiceNativePreview extends StatelessWidget {
                 const SizedBox(height: 18),
                 const _InvoiceNativeHeader(),
                 ...rows,
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black26),
+                        ),
+                        child: Text(
+                          [
+                            if ((settings?.bankName ?? '').trim().isNotEmpty)
+                              '振込先  ${settings!.bankName} ${settings!.bankBranch}',
+                            if ((settings?.bankAccountNumber ?? '').trim().isNotEmpty)
+                              '${settings!.bankAccountType} ${settings!.bankAccountNumber}',
+                            if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
+                              '口座名義  ${settings!.bankAccountHolder}',
+                            if ((settings?.paymentDueText ?? '').trim().isNotEmpty)
+                              settings!.paymentDueText,
+                          ].join('\n'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
                   child: SizedBox(
                     width: 250,
                     child: Column(
@@ -1270,7 +1349,16 @@ class _InvoiceNativePreview extends StatelessWidget {
                       ],
                     ),
                   ),
+                    ),
+                  ],
                 ),
+                if ((settings?.footerNote ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    settings!.footerNote,
+                    style: const TextStyle(fontSize: 9),
+                  ),
+                ],
               ],
             ),
           ),
