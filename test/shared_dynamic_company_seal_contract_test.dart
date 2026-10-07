@@ -12,6 +12,13 @@ void main() {
     ));
   });
 
+  test('company seal uses three vertical columns for long company names', () {
+    final columns = CompanySealPdf.verticalColumns('東京都建設工業株式会社');
+    expect(columns.length, 3);
+    expect(columns.last, '株式会社');
+    expect(columns.join(), '東京都建設工業株式会社');
+  });
+
   test('all three document generators use shared company seal', () {
     final sources = [
       'lib/features/invoices/invoice_pdf_service.dart',
