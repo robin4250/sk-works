@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
 
@@ -122,6 +123,14 @@ class _EmployeeInitialRegistrationPageState
 
   Future<void> _share(EmployeeInviteResult result) =>
       SharePlus.instance.share(ShareParams(text: _shareText(result)));
+
+  Future<void> _openSms(EmployeeInviteResult result) async {
+    final body = Uri.encodeComponent(_shareText(result));
+    final uri = Uri.parse('sms:${result.phone}?body=$body');
+    if (!await launchUrl(uri)) {
+      throw StateError('SMS作成画面を開けませんでした。共有ボタンをご利用ください。');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +254,7 @@ class _EmployeeInitialRegistrationPageState
                     _ResultCard(
                       result: _result!,
                       onShare: () => _share(_result!),
+                      onSms: () => _openSms(_result!),
                     ),
                   ],
                 ],
@@ -255,10 +265,15 @@ class _EmployeeInitialRegistrationPageState
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result, required this.onShare});
+  const _ResultCard({
+    required this.result,
+    required this.onShare,
+    required this.onSms,
+  });
 
   final EmployeeInviteResult result;
   final VoidCallback onShare;
+  final VoidCallback onSms;
 
   @override
   Widget build(BuildContext context) {
@@ -320,9 +335,15 @@ class _ResultCard extends StatelessWidget {
               label: const Text('初期パスワードをコピー'),
             ),
             FilledButton.icon(
+              onPressed: onSms,
+              icon: const Icon(Icons.sms_outlined),
+              label: const Text('この従業員へSMSを作成'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
               onPressed: onShare,
               icon: const Icon(Icons.ios_share),
-              label: const Text('SMS・メッセージで共有'),
+              label: const Text('LINE・メッセージ等で共有'),
             ),
           ],
         ),
