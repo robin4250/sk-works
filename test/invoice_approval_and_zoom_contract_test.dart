@@ -84,8 +84,8 @@ void main() {
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    expect(invoice, contains('class _InvoiceNativePreview'));
-    expect(invoice, contains('invoice.siteCalculations'));
+    expect(invoice, contains('Printing.raster('));
+    expect(invoice, contains('previewData.pageImages'));
     expect(invoice, isNot(contains('transformationController: _zoomController')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
 
@@ -111,38 +111,16 @@ void main() {
     expect(payroll, contains('allowSharing: true'));
   });
 
-  test('invoice screen preview renders natively without PDF viewer or raster dependency', () {
+  test('invoice screen preview rasterizes the exact generated PDF bytes', () {
     final invoice =
         File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-    expect(invoice, contains('class _InvoiceNativePreview'));
-    expect(invoice, contains('_InvoiceNativeHeader'));
-    expect(invoice, contains('_InvoiceNativeLine'));
-    expect(invoice, contains('invoice.siteCalculations'));
-    expect(invoice, contains('InteractiveViewer('));
-    expect(invoice, contains('onLayout: (_) async => pdfBytes'));
-    expect(invoice, contains('bytes: pdfBytes'));
+    expect(invoice, contains('Printing.raster('));
+    expect(invoice, contains('pages.add(await page.toPng())'));
+    expect(invoice, contains('previewData.pageImages'));
+    expect(invoice, contains('Image.memory('));
+    expect(invoice, isNot(contains('class _InvoiceNativePreview')));
   });
 
-  test('native invoice preview keeps formal A4 proportions and document sections', () {
-    final invoice =
-        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-    expect(invoice, contains('width: 595'));
-    expect(invoice, contains('height: 842'));
-    expect(invoice, contains("'御　請　求　書'"));
-    expect(invoice, contains("'御請求金額"));
-    expect(invoice, contains("'振込先'"));
-    expect(invoice, contains("settings?.companyName"));
-    expect(invoice, contains("settings?.companyAddress"));
-    expect(invoice, contains("settings?.bankName"));
-  });
 
-  test('native invoice preview restores the registered company seal', () {
-    final invoice =
-        File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-    expect(invoice, contains('class _NativeCompanySeal'));
-    expect(invoice, contains('companyName.length > 4'));
-    expect(invoice, contains('Color(0xffb33b32)'));
-    expect(invoice, contains('width: 34'));
-  });
 
 }
