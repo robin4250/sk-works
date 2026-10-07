@@ -1183,7 +1183,7 @@ class _InvoiceNativePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final invoice = invoices.first;
     final rows = <Widget>[];
-    for (final site in invoice.sites) {
+    for (final site in invoice.siteCalculations) {
       for (final line in site.lines) {
         rows.add(
           _InvoiceNativeLine(
