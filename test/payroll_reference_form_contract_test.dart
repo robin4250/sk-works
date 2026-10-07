@@ -44,4 +44,12 @@ void main() {
     expect(pdf, contains('groups.length * (labelHeight + valueHeight)'));
   });
 
+  test('差引支給額は見出しと金額を大きく太く強調する', () {
+    final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
+    expect(pdf, contains("'差引支給額'"));
+    expect(pdf, contains('fontSize: 10.5'));
+    expect(pdf, contains('_number(statement.netPay)'));
+    expect(pdf, contains('fontSize: 13'));
+  });
+
 }
