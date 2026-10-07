@@ -79,7 +79,7 @@ void main() {
     expect(pdf, contains('pw.Positioned('));
   });
 
-  test('invoice preview uses PdfPreview sizing while payroll keeps outer zoom', () {
+  test('invoice preview uses rasterized PDF zoom while payroll keeps outer zoom', () {
     final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
