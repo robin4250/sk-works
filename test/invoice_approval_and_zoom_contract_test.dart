@@ -84,8 +84,8 @@ void main() {
     final payroll =
         read('lib/features/payroll/payroll_statements_page.dart');
 
-    expect(invoice, contains('Printing.raster('));
-    expect(invoice, contains('previewData.pageImages'));
+    expect(invoice, contains('class _ExactInvoiceScreen'));
+    expect(invoice, contains('previewData.settings'));
     expect(invoice, isNot(contains('transformationController: _zoomController')));
     expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
 
@@ -111,14 +111,16 @@ void main() {
     expect(payroll, contains('allowSharing: true'));
   });
 
-  test('invoice screen preview rasterizes the exact generated PDF bytes', () {
+  test('invoice screen preview renders the complete shared invoice model', () {
     final invoice =
         File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-    expect(invoice, contains('Printing.raster('));
-    expect(invoice, contains('pages.add(await page.toPng())'));
-    expect(invoice, contains('previewData.pageImages'));
-    expect(invoice, contains('Image.memory('));
-    expect(invoice, isNot(contains('class _InvoiceNativePreview')));
+    expect(invoice, contains('class _ExactInvoiceScreen'));
+    expect(invoice, contains('_ScreenDetailTable(rows:rows)'));
+    expect(invoice, contains('previewData.settings'));
+    expect(invoice, contains("'御請求金額'"));
+    expect(invoice, contains("'合計(税込)'"));
+    expect(invoice, contains("'お支払約定日'"));
+    expect(invoice, isNot(contains('Printing.raster(')));
   });
 
 
