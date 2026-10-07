@@ -1110,6 +1110,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         child: _InvoiceNativePreview(
                           invoices: widget.invoices,
                           settings: previewData.settings,
+                          approvals: approvals,
                         ),
                       ),
                     ),
@@ -1179,10 +1180,15 @@ class _InvoiceNativePreview extends StatelessWidget {
   const _InvoiceNativePreview({
     required this.invoices,
     required this.settings,
+    required this.approvals,
   });
 
   final List<InvoiceCalculationResult> invoices;
   final InvoiceSettingsData? settings;
+  final List<InvoiceApprovalRecord> approvals;
+
+  static const _blue = Color(0xff8199b5);
+  static const _pale = Color(0xfff1f5f8);
 
   @override
   Widget build(BuildContext context) {
@@ -1190,32 +1196,26 @@ class _InvoiceNativePreview extends StatelessWidget {
     final rows = <_InvoiceNativeRowData>[];
     for (final site in invoice.siteCalculations) {
       for (final line in site.lines) {
-        rows.add(
-          _InvoiceNativeRowData(
-            site: site.siteName,
-            content: line.workContent?.trim().isNotEmpty == true
-                ? line.workContent!
-                : line.label,
-            quantity: line.quantity,
-            unitPrice: line.unitPriceYen,
-            amount: line.amountYen,
-          ),
-        );
+        rows.add(_InvoiceNativeRowData(
+          site: site.siteName,
+          content: line.workContent?.trim().isNotEmpty == true
+              ? line.workContent!
+              : line.label,
+          quantity: line.quantity,
+          unitPrice: line.unitPriceYen,
+          amount: line.amountYen,
+        ));
       }
     }
-    while (rows.length < 10) {
-      rows.add(const _InvoiceNativeRowData.empty());
-    }
-
-    final issueDate = invoice.issueDate;
     final issuer = settings?.companyName.trim() ?? '';
-    final sealBytes = _decodeImage(settings?.companySealBase64 ?? '');
     final bank = [
       settings?.bankName ?? '',
       settings?.bankBranch ?? '',
       settings?.bankAccountType ?? '',
       settings?.bankAccountNumber ?? '',
     ].where((value) => value.trim().isNotEmpty).join('　');
+    final subject = (settings?.invoiceSubject ?? '').trim();
+    final issueDate = invoice.issueDate;
 
     return Material(
       color: Colors.white,
@@ -1224,185 +1224,191 @@ class _InvoiceNativePreview extends StatelessWidget {
         width: 595,
         height: 842,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(34, 28, 34, 28),
+          padding: const EdgeInsets.fromLTRB(34, 26, 34, 24),
           child: DefaultTextStyle(
-            style: const TextStyle(color: Colors.black87, fontSize: 10),
+            style: const TextStyle(color: Colors.black87, fontSize: 9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    const Text(
-                      '請　求　書',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 5,
+                SizedBox(
+                  height: 38,
+                  child: Stack(
+                    children: [
+                      const Align(
+                        alignment: Alignment.topCenter,
+                        child: Text(
+                          '御　請　求　書',
+                          style: TextStyle(
+                            color: _blue,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 4,
+                          ),
+                        ),
                       ),
-                    ),
-                    Align(
-                      alignment: Alignment.topRight,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (issueDate != null) Text(_date(issueDate)),
-                          Text('請求書番号：${invoice.invoiceNumber}'),
-                        ],
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (issueDate != null) Text(_date(issueDate), style: const TextStyle(fontSize: 9)),
+                            Text('請求書番号：${invoice.invoiceNumber}', style: const TextStyle(fontSize: 8, color: _blue)),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 22),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Container(
-                        padding: const EdgeInsets.only(bottom: 5),
+                        height: 38,
+                        padding: const EdgeInsets.only(bottom: 4),
                         decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: Color(0xff3f6688),
-                              width: 1.4,
+                          border: Border(bottom: BorderSide(color: _blue, width: 1.4)),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(invoice.customerId, textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                            const Align(
+                              alignment: Alignment.centerRight,
+                              child: Text('御中', style: TextStyle(fontSize: 10, color: _blue, fontWeight: FontWeight.w900)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    SizedBox(
+                      width: 245,
+                      height: 64,
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 34),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(issuer, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
+                                if ((settings?.companyPostalCode ?? '').isNotEmpty) Text('〒${settings!.companyPostalCode}', style: const TextStyle(fontSize: 7.5)),
+                                if ((settings?.companyAddress ?? '').isNotEmpty) Text(settings!.companyAddress, textAlign: TextAlign.right, style: const TextStyle(fontSize: 7.5)),
+                                if ((settings?.companyPhone ?? '').isNotEmpty) Text('TEL：${settings!.companyPhone}', style: const TextStyle(fontSize: 7.5)),
+                                if ((settings?.companyFax ?? '').isNotEmpty) Text('FAX：${settings!.companyFax}', style: const TextStyle(fontSize: 7.5)),
+                              ],
                             ),
                           ),
-                        ),
-                        child: Text(
-                          '${invoice.customerId}　御中',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 28),
-                    SizedBox(
-                      width: 220,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  issuer,
-                                  textAlign: TextAlign.right,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                              if (sealBytes != null) ...[
-                                const SizedBox(width: 8),
-                                Image.memory(
-                                  sealBytes,
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.contain,
-                                ),
-                              ],
-                            ],
-                          ),
-                          if ((settings?.companyPostalCode ?? '').isNotEmpty)
-                            Text('〒${settings!.companyPostalCode}'),
-                          if ((settings?.companyAddress ?? '').isNotEmpty)
-                            Text(settings!.companyAddress),
-                          if ((settings?.companyPhone ?? '').isNotEmpty)
-                            Text('TEL ${settings!.companyPhone}'),
+                          Positioned(right: 0, top: 0, child: _NativeCompanySeal(companyName: issuer)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 2),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
                       child: Container(
-                        height: 52,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.centerLeft,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: const Color(0xff3f6688),
-                            width: 1.3,
-                          ),
-                        ),
-                        child: Text(
-                          'ご請求金額　¥${_money(invoice.grandTotalYen)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        height: 72,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(border: Border.all(color: _blue, width: 1.1)),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Text('御請求金額', style: TextStyle(color: _blue, fontSize: 13, fontWeight: FontWeight.w900)),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Container(
+                                    height: 34,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(border: Border.all(color: _blue)),
+                                    child: Text('¥${_money(invoice.grandTotalYen)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(bank.isEmpty ? '振込先：請求書設定の口座情報' : '振込先：$bank', style: const TextStyle(fontSize: 8)),
+                            if ((settings?.bankAccountHolder ?? '').trim().isNotEmpty)
+                              Text('口座名義：${settings!.bankAccountHolder}', style: const TextStyle(fontSize: 7.5)),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 18),
-                    SizedBox(
-                      width: 220,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if ((settings?.invoiceSubject ?? '').trim().isNotEmpty)
-                            Text('件名：${settings!.invoiceSubject}'),
-                          Text('対象期間：${invoice.billingPeriod}'),
-                          if ((settings?.paymentDueText ?? '').trim().isNotEmpty)
-                            Text('お支払条件：${settings!.paymentDueText}'),
-                        ],
-                      ),
-                    ),
+                    const SizedBox(width: 4),
+                    SizedBox(width: 142, height: 72, child: _NativeApprovalBoxes(approvals: approvals)),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 3),
+                const Text(
+                  '下記の通り、御請求申し上げますので、お支払約定日までに、\n下記の口座宛にお振り込み頂きますよう宜しくお願い申し上げます。',
+                  style: TextStyle(fontSize: 8.5, color: _blue),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 30,
+                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 92,
+                        alignment: Alignment.center,
+                        color: _blue,
+                        child: const Text('件名 ／ 工期', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(subject.isEmpty ? '件名未設定' : subject, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900))),
+                              Text(invoice.billingPeriod, style: const TextStyle(fontSize: 8)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 7),
                 const _InvoiceNativeHeader(),
                 ...rows.map((row) => _InvoiceNativeLine(data: row)),
-                const SizedBox(height: 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '振込先',
-                            style: TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(bank.isEmpty ? '振込先未設定' : bank),
-                          if ((settings?.bankAccountHolder ?? '').isNotEmpty)
-                            Text('口座名義　${settings!.bankAccountHolder}'),
-                          const SizedBox(height: 10),
-                          if ((settings?.footerNote ?? '').trim().isNotEmpty)
-                            Text(settings!.footerNote),
-                        ],
-                      ),
+                const SizedBox(height: 7),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: 315,
+                    child: Column(
+                      children: [
+                        _summaryRow('計', invoice.subtotalYen),
+                        _summaryRow('消費税', invoice.taxYen),
+                        _summaryRow('合計(税込)', invoice.grandTotalYen, strong: true),
+                      ],
                     ),
-                    const SizedBox(width: 18),
-                    SizedBox(
-                      width: 230,
-                      child: Column(
-                        children: [
-                          _totalRow('小計', invoice.subtotalYen),
-                          _totalRow('消費税', invoice.taxYen),
-                          _totalRow('合計', invoice.grandTotalYen, bold: true),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                const Spacer(),
-                const Divider(),
-                Text(
-                  '※ 画面プレビューと印刷・共有は同じ請求データを使用しています。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 8, color: Colors.grey.shade600),
+                const SizedBox(height: 8),
+                Container(
+                  height: 39,
+                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
+                  child: Row(
+                    children: [
+                      Expanded(child: _contractBox('お支払約定日', (settings?.paymentDueText ?? '').trim().isEmpty ? '未設定' : settings!.paymentDueText)),
+                      Container(width: .8, color: _blue),
+                      Expanded(child: _contractBox('金額', '¥${_money(invoice.grandTotalYen)}', strong: true)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 60,
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(border: Border.all(color: _blue, width: .8)),
+                  child: Text('備考：${settings?.footerNote ?? ''}', style: const TextStyle(fontSize: 8)),
                 ),
               ],
             ),
@@ -1412,53 +1418,63 @@ class _InvoiceNativePreview extends StatelessWidget {
     );
   }
 
-  static Widget _totalRow(String label, int amount, {bool bold = false}) =>
-      Container(
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.black26)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
-                ),
-              ),
-            ),
-            Text(
-              '¥${_money(amount)}',
-              style: TextStyle(
-                fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
+  static Widget _summaryRow(String label, int amount, {bool strong = false}) => Container(
+    height: 26,
+    decoration: BoxDecoration(border: Border.all(color: _blue, width: .55)),
+    child: Row(children: [
+      Container(width: 86, alignment: Alignment.center, color: _blue, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900))),
+      Expanded(child: Padding(padding: const EdgeInsets.only(right: 8), child: Text('¥${_money(amount)}', textAlign: TextAlign.right, style: TextStyle(fontSize: strong ? 11 : 9, fontWeight: strong ? FontWeight.w900 : FontWeight.w600)))),
+    ]),
+  );
 
-  static Uint8List? _decodeImage(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return null;
-    try {
-      final payload = trimmed.contains(',') ? trimmed.split(',').last : trimmed;
-      return base64Decode(payload);
-    } catch (_) {
-      return null;
-    }
-  }
+  static Widget _contractBox(String label, String value, {bool strong = false}) => Row(children: [
+    Container(width: 92, alignment: Alignment.center, color: _blue, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900))),
+    Expanded(child: Center(child: Text(value, style: TextStyle(fontSize: strong ? 12 : 9, fontWeight: strong ? FontWeight.w900 : FontWeight.w500)))),
+  ]);
 
-  static String _date(DateTime value) =>
-      '${value.year}年${value.month}月${value.day}日';
-
+  static String _date(DateTime value) => '${value.year}年${value.month}月${value.day}日';
   static String _money(num value) {
     final digits = value.round().toString();
-    return digits.replaceAllMapped(
-      RegExp(r'(?<=\\d)(?=(\\d{3})+(?!\\d))'),
-      (_) => ',',
-    );
+    return digits.replaceAllMapped(RegExp(r'(?<=\\d)(?=(\\d{3})+(?!\\d))'), (_) => ',');
+  }
+}
+
+class _NativeCompanySeal extends StatelessWidget {
+  const _NativeCompanySeal({required this.companyName});
+  final String companyName;
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 34,
+    height: 34,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(border: Border.all(color: const Color(0xffb33b32), width: 1.5)),
+    child: Text(
+      companyName.trim().isEmpty ? '会社印' : companyName.characters.take(4).toString(),
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      style: const TextStyle(color: Color(0xffb33b32), fontSize: 7, fontWeight: FontWeight.w900, height: 1),
+    ),
+  );
+}
+
+class _NativeApprovalBoxes extends StatelessWidget {
+  const _NativeApprovalBoxes({required this.approvals});
+  final List<InvoiceApprovalRecord> approvals;
+  @override
+  Widget build(BuildContext context) {
+    final visible = approvals.take(2).toList();
+    return Row(children: [
+      for (var i=0;i<2;i++)
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(border: Border.all(color: _InvoiceNativePreview._blue, width: .8)),
+            child: Column(children: [
+              Container(height: 20, alignment: Alignment.center, color: _InvoiceNativePreview._blue, child: Text(i<visible.length ? visible[i].name : '確認', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900))),
+              Expanded(child: Center(child: Text(i<visible.length && visible[i].approved ? '承認済' : '', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900)))),
+            ]),
+          ),
+        ),
+    ]);
   }
 }
 
@@ -1492,18 +1508,18 @@ class _InvoiceNativeHeader extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         height: 30,
         decoration: BoxDecoration(
-          color: const Color(0xffe8eef3),
-          border: Border.all(color: const Color(0xff6f879a)),
+          color: _InvoiceNativePreview._blue,
+          border: Border.all(color: _InvoiceNativePreview._blue, width: .55),
         ),
         child: const Row(
           children: [
             Expanded(flex: 3, child: _InvoiceNativeCell('作業所名', bold: true)),
             Expanded(flex: 3, child: _InvoiceNativeCell('工事内容', bold: true)),
-            Expanded(child: _InvoiceNativeCell('数量', bold: true, center: true)),
-            Expanded(child: _InvoiceNativeCell('単価', bold: true, center: true)),
+            Expanded(child: _InvoiceNativeCell('数量', bold: true, center: true, white: true)),
+            Expanded(child: _InvoiceNativeCell('単価', bold: true, center: true, white: true)),
             Expanded(
               flex: 2,
-              child: _InvoiceNativeCell('請求金額', bold: true, center: true),
+              child: _InvoiceNativeCell('請求金額', bold: true, center: true, white: true),
             ),
           ],
         ),
@@ -1564,12 +1580,14 @@ class _InvoiceNativeCell extends StatelessWidget {
     this.bold = false,
     this.right = false,
     this.center = false,
+    this.white = false,
   });
 
   final String text;
   final bool bold;
   final bool right;
   final bool center;
+  final bool white;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1584,7 +1602,8 @@ class _InvoiceNativeCell extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 8.5,
+            color: white ? Colors.white : Colors.black87,
+            fontSize: 7.5,
             height: 1.05,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
           ),
