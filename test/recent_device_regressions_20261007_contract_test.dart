@@ -54,8 +54,8 @@ void main() {
 
     // Invoice preview must rely on PdfPreview sizing instead of reintroducing
     // the outer InteractiveViewer that made the A4 content effectively vanish.
-    expect(invoicePreview, contains('Printing.raster('));
-    expect(invoicePreview, contains('Image.memory('));
+    expect(invoicePreview, contains('class _InvoiceNativePreview'));
+    expect(invoicePreview, contains('invoice.siteCalculations'));
     expect(
       invoicePreview,
       isNot(contains('transformationController: _zoomController')),

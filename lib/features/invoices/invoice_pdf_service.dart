@@ -964,6 +964,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   }
 
   Future<_InvoicePreviewData> _buildPreviewData() async {
+    if (widget.invoices.isEmpty) {
+      throw StateError('表示する請求書がありません。');
+    }
     final settings = await _loadSettings();
     final pdfBytes = await InvoicePdfService.buildPdf(
       widget.invoices,
@@ -973,19 +976,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
     }
-    final raster = await Printing.raster(
-      pdfBytes,
-      pages: const [0],
-      dpi: 144,
-    ).first;
-    final pngBytes = await raster.toPng();
-    if (pngBytes.isEmpty) {
-      throw StateError('プレビュー画像を生成できませんでした。');
-    }
-    return _InvoicePreviewData(
-      pdfBytes: pdfBytes,
-      pngBytes: pngBytes,
-    );
+    return _InvoicePreviewData(pdfBytes: pdfBytes);
   }
 
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
@@ -1116,10 +1107,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         minScale: 0.5,
                         maxScale: 5,
                         boundaryMargin: const EdgeInsets.all(48),
-                        child: Image.memory(
-                          previewData.pngBytes,
-                          fit: BoxFit.contain,
-                          gaplessPlayback: true,
+                        child: _InvoiceNativePreview(
+                          invoices: widget.invoices,
+                          title: widget.title,
                         ),
                       ),
                     ),
@@ -1173,12 +1163,235 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 }
 
 
+
 class _InvoicePreviewData {
-  const _InvoicePreviewData({
-    required this.pdfBytes,
-    required this.pngBytes,
-  });
+  const _InvoicePreviewData({required this.pdfBytes});
 
   final Uint8List pdfBytes;
-  final Uint8List pngBytes;
+}
+
+class _InvoiceNativePreview extends StatelessWidget {
+  const _InvoiceNativePreview({
+    required this.invoices,
+    this.title,
+  });
+
+  final List<InvoiceCalculationResult> invoices;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    final invoice = invoices.first;
+    final rows = <Widget>[];
+    for (final site in invoice.siteCalculations) {
+      for (final line in site.lines) {
+        rows.add(
+          _InvoiceNativeLine(
+            site: site.siteName,
+            content: line.workContent?.trim().isNotEmpty == true
+                ? line.workContent!
+                : line.label,
+            quantity: line.quantity,
+            unitPrice: line.unitPriceYen,
+            amount: line.amountYen,
+          ),
+        );
+      }
+    }
+
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      child: SizedBox(
+        width: 595,
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.black, fontSize: 11),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title ?? '請求書',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 6,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  invoice.customerId,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Divider(thickness: 1),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: Text('請求書番号  ${invoice.invoiceNumber}')),
+                    Text('対象期間  ${invoice.billingPeriod}'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black54),
+                  ),
+                  child: Text(
+                    'ご請求金額  ¥${_money(invoice.grandTotalYen)}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const _InvoiceNativeHeader(),
+                ...rows,
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: 250,
+                    child: Column(
+                      children: [
+                        _totalRow('小計', invoice.subtotalYen),
+                        _totalRow('消費税', invoice.taxYen),
+                        _totalRow('合計', invoice.grandTotalYen, bold: true),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _totalRow(String label, int amount, {bool bold = false}) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.black26)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              '¥${_money(amount)}',
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  static String _money(num value) {
+    final digits = value.round().toString();
+    return digits.replaceAllMapped(
+      RegExp(r'(?<=\\d)(?=(\\d{3})+(?!\\d))'),
+      (_) => ',',
+    );
+  }
+}
+
+class _InvoiceNativeHeader extends StatelessWidget {
+  const _InvoiceNativeHeader();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          border: Border.all(color: Colors.black38),
+        ),
+        child: const Row(
+          children: [
+            Expanded(flex: 3, child: _InvoiceNativeCell('作業所名', bold: true)),
+            Expanded(flex: 3, child: _InvoiceNativeCell('工事内容', bold: true)),
+            Expanded(child: _InvoiceNativeCell('数量', bold: true)),
+            Expanded(child: _InvoiceNativeCell('単価', bold: true)),
+            Expanded(flex: 2, child: _InvoiceNativeCell('請求金額', bold: true)),
+          ],
+        ),
+      );
+}
+
+class _InvoiceNativeLine extends StatelessWidget {
+  const _InvoiceNativeLine({
+    required this.site,
+    required this.content,
+    required this.quantity,
+    required this.unitPrice,
+    required this.amount,
+  });
+
+  final String site;
+  final String content;
+  final num quantity;
+  final int unitPrice;
+  final int amount;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            left: BorderSide(color: Colors.black26),
+            right: BorderSide(color: Colors.black26),
+            bottom: BorderSide(color: Colors.black26),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(flex: 3, child: _InvoiceNativeCell(site)),
+            Expanded(flex: 3, child: _InvoiceNativeCell(content)),
+            Expanded(child: _InvoiceNativeCell(quantity.toString(), right: true)),
+            Expanded(child: _InvoiceNativeCell(_InvoiceNativePreview._money(unitPrice), right: true)),
+            Expanded(flex: 2, child: _InvoiceNativeCell(_InvoiceNativePreview._money(amount), right: true)),
+          ],
+        ),
+      );
+}
+
+class _InvoiceNativeCell extends StatelessWidget {
+  const _InvoiceNativeCell(
+    this.text, {
+    this.bold = false,
+    this.right = false,
+  });
+
+  final String text;
+  final bool bold;
+  final bool right;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+        child: Text(
+          text,
+          textAlign: right ? TextAlign.right : TextAlign.left,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
+          ),
+        ),
+      );
 }
