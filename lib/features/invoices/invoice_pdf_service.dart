@@ -1449,7 +1449,7 @@ class _NativeCompanySeal extends StatelessWidget {
     alignment: Alignment.center,
     decoration: BoxDecoration(border: Border.all(color: const Color(0xffb33b32), width: 1.5)),
     child: Text(
-      companyName.trim().isEmpty ? '会社印' : companyName.characters.take(4).toString(),
+      companyName.trim().isEmpty ? '会社印' : companyName.length > 4 ? companyName.substring(0, 4) : companyName,
       textAlign: TextAlign.center,
       maxLines: 2,
       style: const TextStyle(color: Color(0xffb33b32), fontSize: 7, fontWeight: FontWeight.w900, height: 1),
