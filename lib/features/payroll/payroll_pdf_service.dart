@@ -84,14 +84,6 @@ class PayrollPdfService {
         _configuredMoneyEntries(detail, key: 'custom_deductions');
     final adjustmentEarnings = _customMoneyEntries(detail, direction: 1);
     final adjustmentDeductions = _customMoneyEntries(detail, direction: -1);
-    final configuredEarningsTotal = configuredEarnings.values.fold<num>(
-      0,
-      (sum, value) => sum + (_asNumber(value) ?? 0),
-    );
-    final configuredDeductionsTotal = configuredDeductions.values.fold<num>(
-      0,
-      (sum, value) => sum + (_asNumber(value) ?? 0),
-    );
     // Legacy aggregate placeholders are intentionally not rendered. Every visible
     // earning/deduction must have an explicit item name.
 
@@ -362,7 +354,6 @@ class PayrollPdfService {
       '出勤日数', '欠勤日数', '有給日数', '休日出勤', '残業時間',
       '早出時間', '深夜時間', '休日残業', '休日深夜', '休日深夜残業',
     ];
-    const secondLabels = <String>[];
 
     final topValues = <String>[
       _dayCount(detail, const ['出勤日数']),
