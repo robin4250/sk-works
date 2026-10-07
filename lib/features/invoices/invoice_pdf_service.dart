@@ -652,7 +652,6 @@ class InvoicePdfService {
                           ? pw.SizedBox()
                           : visible[i].approved
                               ? _confirmationStamp(
-                                  visible[i].name,
                                   visible[i].approvedAt ?? DateTime.now(),
                                   designB: visible[i].position.isEven,
                                 )
@@ -676,7 +675,6 @@ class InvoicePdfService {
   }
 
   static pw.Widget _confirmationStamp(
-    String name,
     DateTime date, {
     required bool designB,
   }) {
@@ -726,17 +724,6 @@ class InvoicePdfService {
         ),
       ),
     );
-  }
-
-  static String _surnameForStamp(String name) {
-    final value = name.trim();
-    if (value.isEmpty) return '';
-    final parts = value.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty);
-    if (parts.length > 1) return parts.first;
-    if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value) || value.length <= 2) {
-      return value;
-    }
-    return value.substring(0, 2);
   }
 
   static pw.MemoryImage? _memoryImage(String encoded) {
