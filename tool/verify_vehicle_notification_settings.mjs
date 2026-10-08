@@ -1,0 +1,53 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+const {PGlite} = await import(process.argv[2]);
+const db = new PGlite();
+await db.exec(await fs.readFile(new URL('./fixtures/source_member_notifications/schema.sql', import.meta.url), 'utf8'));
+const manifest = JSON.parse(await fs.readFile(new URL('./fixtures/source_member_notifications/manifest.json', import.meta.url), 'utf8'));
+for (const item of manifest.files) {
+  const bytes = await fs.readFile(new URL('./fixtures/source_member_notifications/' + item.path, import.meta.url));
+  assert.equal(bytes.length, item.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), item.sha256);
+  await db.exec(bytes.toString());
+}
+for (const path of ['20261008171216_source_member_notifications.sql', '20261008201729_vehicle_notification_settings_read.sql']) {
+  await db.exec(await fs.readFile(new URL('../supabase/migrations/' + path, import.meta.url), 'utf8'));
+}
+const [c, admin, viewer, manager, inactive, other, car, foreignCar] = Array.from({length: 8}, (_, i) => `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);
+await db.exec(`insert into auth.users values('${admin}'),('${viewer}'),('${manager}'),('${inactive}'); insert into companies values('${c}'),('${other}'); insert into company_members values('${c}','${admin}','admin'),('${c}','${viewer}','viewer'),('${c}','${manager}','manager'),('${c}','${inactive}','viewer'),('${other}','${admin}','viewer'); insert into workers values(gen_random_uuid(),'${c}','${viewer}','閲覧者','active'),(gen_random_uuid(),'${c}','${manager}','サブ管理者','active'),(gen_random_uuid(),'${c}','${inactive}','停止中','inactive'); insert into vehicles values('${car}','${c}','番号','自社車'),('${foreignCar}','${other}','他社番号','他社車'); set test.uid='${admin}'; set role authenticated;`);
+async function load() { return (await db.query(`select public.get_vehicle_notification_settings('${car}') t`)).rows[0].t; }
+const initial = await load();
+assert.equal(initial.enabled, false);
+assert.equal(initial.configured, false);
+assert.deepEqual(initial.user_ids, []);
+assert.deepEqual(initial.suggested_user_ids, [admin]);
+assert.deepEqual(new Set(initial.candidates.map(r => r.user_id)), new Set([admin, viewer, manager]));
+const inactiveOwner = '30000000-0000-0000-0000-000000000001';
+await db.exec(`reset role; insert into auth.users values('${inactiveOwner}'); insert into company_members values('${c}','${inactiveOwner}','owner'); insert into workers values(gen_random_uuid(),'${c}','${inactiveOwner}','停止管理者','inactive'); set role authenticated;`);
+assert(!(await load()).candidates.some(r => r.user_id === inactiveOwner));
+assert.equal((await db.query('select count(*)::int n from private.vehicle_notification_assignees').catch(() => ({rows: [{n: -1}]}))).rows[0].n, -1);
+await assert.rejects(db.query(`select public.get_vehicle_notification_settings('${foreignCar}')`), /administrator/);
+await db.exec(`set test.uid='${viewer}'`);
+await assert.rejects(load(), /administrator/);
+await db.exec(`set test.uid='${manager}'`);
+await assert.rejects(load(), /administrator/);
+await db.exec(`set test.uid='${admin}'; set test.account_allowed='false'`);
+await assert.rejects(load(), /account unavailable/);
+await db.exec(`set test.account_allowed='true'; set role anon`);
+await assert.rejects(load(), /permission denied/);
+await db.exec(`reset role; insert into private.vehicle_notification_assignees values('${car}','${c}',array['${viewer}','${inactive}']::uuid[]); set role authenticated;`);
+const saved = await load();
+assert.equal(saved.configured, true);
+assert.deepEqual(saved.user_ids, [viewer, inactive]);
+assert.deepEqual(saved.suggested_user_ids, []);
+assert(!saved.candidates.some(r => r.user_id === inactive));
+await db.exec('reset role');
+assert.equal((await db.query('select count(*)::int n from private.vehicle_notification_assignees')).rows[0].n, 1);
+assert.equal((await db.query('select count(*)::int n from private.source_notification_rollouts')).rows[0].n, 0);
+assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n, 0);
+assert.equal((await db.query(`select role from company_members where company_id='${c}' and user_id='${viewer}'`)).rows[0].role, 'viewer');
+await db.exec(`insert into private.source_notification_rollouts values('${c}',true); set role authenticated;`);
+assert.equal((await load()).enabled, true);
+console.log('PASS: exact-company owner/admin read, OFF no writes, explicit initial admin suggestion, active candidates, saved unresolved preservation, no role grant, anonymous/account rejection');
+await db.close();

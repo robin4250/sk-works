@@ -1,0 +1,13 @@
+# 車両管理者1〜3名：段階導入UI
+
+初期候補は操作中のowner/admin本人1名のみ。保存済み設定がある場合はそのIDを保持する。任意の先頭管理者を自動選定・自動保存しない。
+
+対象車両の会社にowner/adminで所属する呼出者だけが読取RPCを実行できる。候補には自社active workerと、従業員情報未登録のowner/adminを含める。表示はID・氏名・役割のみ。管理者・サブ管理者・閲覧者を選んでもcompany_membersの役割変更や管理権限付与は行わない。
+
+既存setter `set_vehicle_notification_assignees`を利用する。新しいgetter `get_vehicle_notification_settings`は読取だけでありrollout変更や通知送信を行わない。OFF/取得失敗時はUI保存を禁止。保存前に同じ車両の設定とcapabilityを再読込する。
+
+保存済み停止/不明受信者は自動削除せず、未解決表示を残す。既存setterは直接呼出しで停止受信者を拒否する完成契約ではなく、通知trigger側も停止受信者の扱いが未完成。このUIの候補制限をserver保証と呼ばない。通知rolloutは本番OFFを維持し、server停止受信者対応が完了するまで有効化しない。
+
+新規車両は保存後に一覧から編集し、通知先設定を開く。外部メール送信・整備通知間隔の設定はこの画面に含まない。
+
+検証：独立PGliteで同社owner/admin、他社会員viewerへの拒否、anon/停止caller拒否、初期本人提案、候補active制限、保存済み不明ID保持、読取で通知/rollout/役割を変更しないことを確認。Flutter検証・実機表示はCI/導入後に確認する。本番migration未適用。
