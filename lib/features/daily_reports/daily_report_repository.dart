@@ -125,6 +125,8 @@ class DailyReportEvidenceRecord {
     this.latitude,
     this.longitude,
     this.accuracyM,
+    this.gpsStatus, this.photoStatus, this.capturedAddress,
+    this.photoCapturedAt, this.gpsCapturedAt,
   });
 
   final String id;
@@ -135,6 +137,12 @@ class DailyReportEvidenceRecord {
   final double? latitude;
   final double? longitude;
   final double? accuracyM;
+
+  final String? gpsStatus;
+  final String? photoStatus;
+  final String? capturedAddress;
+  final DateTime? photoCapturedAt;
+  final DateTime? gpsCapturedAt;
 
   bool get hasLocation => latitude != null && longitude != null;
 }
@@ -556,12 +564,25 @@ class DailyReportRepository {
     String? siteId,
     String? routeAssignmentId,
   }) async {
-    var query = _client
-        .from('attendance_verifications')
-        .select(
-          'id,event_type,confirmed_at,photo_storage_path,latitude,longitude,accuracy_m,workers(name)',
-        )
-        .not('photo_storage_path', 'is', null);
+    var captureEnabled = false;
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) { throw StateError('ログインが必要です'); }
+      final memberships = await _client.from('company_members').select('company_id')
+        .eq('user_id', user.id).limit(1);
+      if (memberships.isEmpty) { throw StateError('会社情報がありません'); }
+      final companyId = memberships.first['company_id'] as String;
+      final capability = await _client.rpc('get_attendance_capture_capability',
+        params: {'p_company_id': companyId});
+      captureEnabled = capability is Map && capability['version'] == 1 &&
+        capability['company_id'] == companyId && capability['capture_enabled'] == true;
+    } catch (_) {
+      captureEnabled = false;
+    }
+    var query = _client.from('attendance_verifications').select(
+      'id,event_type,confirmed_at,photo_storage_path,latitude,longitude,accuracy_m,workers(name)'
+      '${captureEnabled ? ',capture_contract_version,gps_status,photo_status,gps_captured_at,photo_captured_at,captured_address' : ''}');
+    if (!captureEnabled) { query = query.not('photo_storage_path', 'is', null); }
     query = siteId != null
         ? query.eq('site_id', siteId)
         : query.eq('route_assignment_id', routeAssignmentId!);
@@ -578,7 +599,8 @@ class DailyReportRepository {
     final rows = await query.order('confirmed_at');
     return [
       for (final raw in rows)
-        if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty)
+        if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty ||
+            raw['capture_contract_version'] == 1)
           DailyReportEvidenceRecord(
             id: raw['id']?.toString() ?? '',
             workerName: raw['workers'] is Map
@@ -589,7 +611,12 @@ class DailyReportRepository {
                 DateTime.tryParse(raw['confirmed_at']?.toString() ?? '')
                         ?.toLocal() ??
                     DateTime.fromMillisecondsSinceEpoch(0),
-            storagePath: raw['photo_storage_path'].toString(),
+            storagePath: raw['photo_storage_path']?.toString() ?? '',
+            gpsStatus: raw['gps_status']?.toString(),
+            photoStatus: raw['photo_status']?.toString(),
+            capturedAddress: raw['captured_address']?.toString(),
+            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
+            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
             latitude: (raw['latitude'] as num?)?.toDouble(),
             longitude: (raw['longitude'] as num?)?.toDouble(),
             accuracyM: (raw['accuracy_m'] as num?)?.toDouble(),

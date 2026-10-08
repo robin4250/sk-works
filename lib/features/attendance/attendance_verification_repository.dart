@@ -2,6 +2,8 @@
 
 import 'dart:typed_data';
 
+import 'gps_photo_capture_result.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -424,6 +426,31 @@ class AttendanceVerificationRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  Future<String> captureCompanyId() => _companyId();
+
+  Future<bool> captureEnabled() async {
+    final companyId = await _companyId();
+    try {
+      final value = await _client.rpc('get_attendance_capture_capability',
+        params: {'p_company_id': companyId});
+      return value is Map && value['version'] == 1 &&
+        value['company_id'] == companyId && value['capture_enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> uploadCapturedPhoto(CapturedPhoto photo, CaptureShiftContext context,
+      String workerId) async {
+    if (context.companyId != await _companyId()) {
+      throw StateError('撮影中に会社が変更されました');
+    }
+    final path = '${context.companyId}/attendance/${context.siteId ?? context.routeId ?? 'route'}/$workerId/${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await _client.storage.from(_bucket).uploadBinary(path, photo.bytes,
+      fileOptions: const FileOptions(upsert: false));
+    return path;
+  }
+
   Future<Map<String, dynamic>> createVerification({
     required String workerId,
     String? siteId,
@@ -438,6 +465,7 @@ class AttendanceVerificationRepository {
     String? photoFilename,
     String? note,
     AttendanceShiftContext? shift,
+    GpsPhotoCaptureResult? capture,
   }) async {
     final companyId = await _companyId();
     if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
@@ -474,9 +502,18 @@ class AttendanceVerificationRepository {
       throw StateError('現場またはルートを選択してください。');
     }
 
-    String? storagePath;
+    if (capture != null && (verificationMode != 'location_photo' ||
+        capture.context.companyId != companyId ||
+        capture.context.sourceClockInId != shift?.id ||
+        capture.context.siteId != siteId ||
+        capture.context.routeId != routeId ||
+        capture.context.vehicleId != selection?['vehicle_id']?.toString() ||
+        !await captureEnabled())) {
+      throw StateError('撮影対象の勤務を再確認してください');
+    }
+    String? storagePath = capture?.storagePath;
 
-    if (photoBytes != null) {
+    if (capture == null && photoBytes != null) {
       final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
       final objectName =
           '${DateTime.now().microsecondsSinceEpoch}$extension';
@@ -505,6 +542,7 @@ class AttendanceVerificationRepository {
             'distance_to_site_m': distanceToSiteM,
             'proximity_status': proximityStatus,
             'photo_storage_path': storagePath,
+            if (capture != null) ...capture.insertMetadata,
             'note': _nullable(note),
             'vehicle_id': selection?['vehicle_id'],
             'route_assignment_id': selection?['route_assignment_id'],
@@ -514,8 +552,12 @@ class AttendanceVerificationRepository {
           .single();
       return Map<String, dynamic>.from(row);
     } catch (_) {
-      if (storagePath != null) {
-        await _client.storage.from(_bucket).remove([storagePath]);
+      if (capture == null && storagePath != null) {
+        try {
+          await _client.storage.from(_bucket).remove([storagePath]);
+        } catch (_) {
+          // Preserve the original persistence failure.
+        }
       }
       rethrow;
     }

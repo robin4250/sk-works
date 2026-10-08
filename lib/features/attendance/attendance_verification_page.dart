@@ -5,10 +5,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../daily_reports/daily_report_page.dart';
+import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'attendance_cloud_repository.dart';
 import 'attendance_verification_repository.dart';
 import 'attendance_shift_context.dart';
+import 'gps_photo_capture_controller.dart';
+import 'gps_photo_capture_result.dart';
+import 'attendance_capture_metadata_service.dart';
 import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
@@ -32,6 +36,7 @@ class _AttendanceVerificationPageState
   final _repository = AttendanceVerificationRepository.maybeCreate();
   final _bulkAttendanceRepository = AttendanceCloudRepository.maybeCreate();
   final _picker = ImagePicker();
+  final _captureMetadata = const AttendanceCaptureMetadataService();
   final _noteController = TextEditingController();
 
   List<Map<String, dynamic>> _workers = const [];
@@ -48,6 +53,7 @@ class _AttendanceVerificationPageState
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
 
   String? _vehicleName;
+  String? _vehicleId;
   String? _routeId;
   String? _routeName;
 
@@ -129,6 +135,7 @@ class _AttendanceVerificationPageState
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
         _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
         _vehicleName = status.selectedVehicleName;
+        _vehicleId = status.selectedVehicleId;
         _routeId = status.selectedRouteId;
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
@@ -153,6 +160,7 @@ class _AttendanceVerificationPageState
     _routeId = shift.routeId;
     _routeName = shift.routeName;
     _vehicleName = shift.vehicleName;
+    _vehicleId = shift.vehicleId;
     if (_mode == 'none') {
       _mode = shift.verificationMode == 'gps_auto' ? 'gps_auto' : 'manual';
     }
@@ -597,7 +605,40 @@ class _AttendanceVerificationPageState
       Uint8List? photoBytes;
       String? photoFilename;
 
-      if (_mode == 'location_photo' || _mode == 'gps_auto') {
+      GpsPhotoCaptureResult? capture;
+      if (_mode == 'location_photo' && await repository.captureEnabled()) {
+        final captureContext = CaptureShiftContext(
+          companyId: await repository.captureCompanyId(),
+          workDate: (_shift?.workDate ?? DateTime.now()).toIso8601String().substring(0, 10),
+          requestedMethod: _mode, sourceClockInId: _shift?.id,
+          siteId: siteId, routeId: _shift?.routeId ?? _routeId,
+          vehicleId: _shift?.vehicleId ?? _vehicleId);
+        capture = await GpsPhotoCaptureController(
+          camera: () async {
+            final image = await _picker.pickImage(source: ImageSource.camera,
+              imageQuality: 85, maxWidth: 2200);
+            if (image == null) { return null; }
+            final observedAt = DateTime.now();
+            return CapturedPhoto(bytes: await image.readAsBytes(), observedAt: observedAt,
+              capturedAt: await _captureMetadata.readPhotoCapturedAt(image.path));
+          },
+          sampleGps: () async {
+            final position = await _currentPosition();
+            return CapturedGpsSample(latitude: position.latitude,
+              longitude: position.longitude, sampledAt: position.timestamp,
+              accuracyM: position.accuracy,
+              address: await _captureMetadata.reverseGeocodeCapturedLocation(
+                latitude: position.latitude, longitude: position.longitude));
+          },
+          upload: (photo, context) => repository.uploadCapturedPhoto(photo, context, workerId),
+          prompt: _promptCaptureFailure, now: DateTime.now,
+        ).capture(captureContext);
+        latitude = capture.gps?.latitude;
+        longitude = capture.gps?.longitude;
+        accuracy = capture.gps?.accuracyM;
+      }
+
+      if (capture == null && (_mode == 'location_photo' || _mode == 'gps_auto')) {
         final position = await _currentPosition();
         latitude = position.latitude;
         longitude = position.longitude;
@@ -622,7 +663,18 @@ class _AttendanceVerificationPageState
         }
       }
 
-      if (_mode == 'location_photo') {
+      if (capture != null && latitude != null && longitude != null) {
+        final siteLatitude = _asDouble(_selectedSite?['latitude']);
+        final siteLongitude = _asDouble(_selectedSite?['longitude']);
+        if (siteId != null && siteLatitude != null && siteLongitude != null) {
+          distance = Geolocator.distanceBetween(latitude, longitude, siteLatitude, siteLongitude);
+          proximityStatus = distance <= 300 ? 'near_site' : 'outside_radius';
+        } else if (siteId != null) {
+          proximityStatus = 'site_location_missing';
+        }
+      }
+
+      if (_mode == 'location_photo' && capture == null) {
         final photo = await _picker.pickImage(
           source: ImageSource.camera,
           imageQuality: 85,
@@ -655,6 +707,7 @@ class _AttendanceVerificationPageState
         photoFilename: photoFilename,
         note: _noteController.text,
         shift: _shift,
+        capture: capture,
       );
 
       if (!mounted) return;
@@ -693,6 +746,23 @@ class _AttendanceVerificationPageState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<CaptureDecision> _promptCaptureFailure(CaptureFailure failure) async {
+    if (!mounted) { return CaptureDecision.confirm; }
+    final message = switch (failure) {
+      CaptureFailure.camera => '写真が未登録です。撮り直すか、未登録の状態を残して確認してください。',
+      CaptureFailure.gps => '撮影時のGPSを取得できませんでした。撮り直すか、取得失敗を残して確認してください。',
+      CaptureFailure.upload => '写真の送信に失敗しました。撮り直すか、送信失敗を残して確認してください。',
+    };
+    return await showDialog<CaptureDecision>(context: context, barrierDismissible: false,
+      builder: (context) => AlertDialog(title: Text(SkoLanguageController.tr('撮影情報の確認')),
+        content: Text(SkoLanguageController.tr(message)), actions: [
+          TextButton(onPressed: () => Navigator.pop(context, CaptureDecision.retake),
+            child: Text(SkoLanguageController.tr('撮り直す'))),
+          FilledButton(onPressed: () => Navigator.pop(context, CaptureDecision.confirm),
+            child: Text(SkoLanguageController.tr('確認'))),
+        ])) ?? CaptureDecision.confirm;
   }
 
   String _modeLabel(Object? mode) => switch (mode?.toString()) {

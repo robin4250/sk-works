@@ -1316,7 +1316,23 @@ class DailyReportEvidencePage extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    if (repository != null)
+                    if (item.photoStatus != null)
+                      Text(item.photoCapturedAt == null
+                        ? SkoLanguageController.tr('撮影日時未取得（表示時刻は勤怠登録時刻）')
+                        : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}'),
+                    if (item.gpsStatus != null && item.capturedAddress?.trim().isNotEmpty != true)
+                      Text(SkoLanguageController.tr('撮影住所未取得')),
+                    if (item.capturedAddress?.trim().isNotEmpty == true)
+                      Text(item.capturedAddress!),
+                    if (item.photoStatus != null)
+                      Text(SkoLanguageController.trParams('写真: {photo} / GPS: {gps}', {
+                        'photo': _captureStatusLabel(item.photoStatus),
+                        'gps': _captureStatusLabel(item.gpsStatus),
+                      })),
+                    if (item.storagePath.isEmpty)
+                      SizedBox(height: 180,
+                        child: Center(child: Text(SkoLanguageController.tr('写真未登録・送信失敗')))),
+                    if (repository != null && item.storagePath.isNotEmpty)
                       FutureBuilder<String>(
                         future:
                             repository.attendanceEvidenceUrl(item.storagePath),
@@ -1778,3 +1794,10 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
+String _captureStatusLabel(String? status) => SkoLanguageController.tr(switch (status) {
+  'acquired' || 'uploaded' => '登録済み',
+  'upload_failed' => '送信失敗',
+  'failed' => '取得失敗',
+  _ => '未登録',
+});
