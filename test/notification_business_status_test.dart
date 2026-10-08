@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/notifications/notification_business_status.dart';
+import 'package:sk_works/features/notifications/notification_business_status.dart';
 
 void main() {
   test('unavailable or unrecognized state remains unknown', () {
