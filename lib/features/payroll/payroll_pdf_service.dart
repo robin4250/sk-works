@@ -46,18 +46,21 @@ class PayrollPdfService {
     // Legacy aggregate placeholders are intentionally not rendered. Every visible
     // earning/deduction must have an explicit item name.
 
-    final earningEntries = _mergeMoneyEntries([
+    final legacyEarnings = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
         '基本給',
         earnings['基本給'] ?? earnings['出勤に基づく支給額'],
       ),
       MapEntry<String, Object?>('残業手当', earnings['残業手当']),
       MapEntry<String, Object?>('交通費', earnings['交通費']),
-      ...configuredEarnings.entries,
       ...adjustmentEarnings.entries,
+    ];
+    final earningEntries = _mergeMoneyEntries([
+      ..._withoutConfiguredAliases(legacyEarnings, configuredEarnings),
+      ...configuredEarnings.entries,
     ]);
 
-    final deductionEntries = _mergeMoneyEntries([
+    final legacyDeductions = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
         '健康保険料',
         deductions['健康保険料'] ?? deductions['社会保険'],
@@ -65,10 +68,13 @@ class PayrollPdfService {
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
       MapEntry<String, Object?>('道具代', deductions['道具代']),
-      ...configuredDeductions.entries,
       ...adjustmentDeductions.entries.map(
         (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
       ),
+    ];
+    final deductionEntries = _mergeMoneyEntries([
+      ..._withoutConfiguredAliases(legacyDeductions, configuredDeductions),
+      ...configuredDeductions.entries,
     ]);
 
     final largestCount = earningEntries.length > deductionEntries.length
@@ -1042,6 +1048,7 @@ class PayrollPdfService {
   }
 
   static const _nonMoneyDetailKeys = <String>{
+    'calculation_warnings',
     '出勤日数',
     '休出日数',
     '休日出勤',
@@ -1089,6 +1096,8 @@ class PayrollPdfService {
     'payment_type',
     'payroll_settings',
     'monthly_salary_yen',
+    '月固定給',
+    '計算用1日基本ベース',
     'calculation_daily_base_yen',
     'base_rate_yen',
     'hourly_rate_yen',
@@ -1156,6 +1165,17 @@ class PayrollPdfService {
     }
     return result;
   }
+
+  // The SQL attendance hook mirrors configured items as signed legacy keys.
+  // Remove only an exact label-and-amount mirror; separate amounts still add.
+  static Iterable<MapEntry<String, Object?>> _withoutConfiguredAliases(
+    Iterable<MapEntry<String, Object?>> legacy,
+    Map<String, Object?> configured,
+  ) => legacy.where((entry) {
+    final amount = _asNumber(entry.value)?.abs();
+    final registered = _asNumber(configured[entry.key.trim()])?.abs();
+    return amount == null || registered == null || amount != registered;
+  });
 
   static Map<String, Object?> _mergeMoneyEntries(
     Iterable<MapEntry<String, Object?>> entries,

@@ -36,3 +36,11 @@
 管理勤怠の20時→翌5時退勤は翌日として保存し、出勤表では日報の勤務日に対応付ける。月末・年末、更新・削除、前日夜勤の保護、匿名・閲覧者・他社の拒否を実際のRPCで検証（`tool/verify_attendance_overnight.mjs`）。日報に紐づかないGPSイベントの夜勤対応は未完了。
 
 連携検証は `tool/verify_payroll_live_linkage.mjs` で実際のテーブル登録・更新・削除と本番同等トリガーを使用。18項目で登録設定の反映、二重呼び出しの冪等性、金額変更時の確認解除を検証。有給・出勤の重複承認は拒否し、既存重複は実承認日時を保持したまま給与カウントから除外する。未来日の明細件数・時間を当日までの金額と混在させない。
+
+実トリガー保存データから給与PDFを生成する回帰テストを追加。月固定給の補助値と基本給の二重表示、同じ控除の設定配列・旧キー重複表示を除外する。同名でも異額の独立項目は保持する。個別給与設定の無関係な保存で既存単価を書き換えず、旧家族手当は金額を見て編集可能にする。会社単価と手当単位は同一RPCで原子的に保存し、失敗時はどちらも戻す。計算元の選択は登録会社・現場・取引先を検証し、選択済みでも変更可能。支払証明書の単価は下請け支払設定を使用する。
+
+## Additional isolated regression verification
+
+The four additional PostgreSQL checks pass using PGlite 0.3.14: atomic company-rate/allowance saves roll back on a second-step failure; calculation-source choices validate tenant, party and role; financial-condition warnings are idempotent and preserve final history; real attendance/settings triggers retain named family allowance, duplicate-name deductions and non-day monthly base components.
+
+Daily/hourly/monthly persisted fixtures reconcile named earnings and deductions with stored totals. Flutter PDF extraction tests must additionally verify the generated money rows; local Flutter execution is unavailable, so those checks are required in CI before completion. These new migrations have not yet been applied to production.

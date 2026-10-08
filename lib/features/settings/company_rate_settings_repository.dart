@@ -92,7 +92,7 @@ class CompanyRateSettingsRepository {
 
   Future<void> save(CompanyRateSettings value) async {
     await _client.rpc(
-      'save_company_rate_settings',
+      'save_company_rate_settings_with_units',
       params: {
         'p_tax_rate': value.taxRate,
         'p_welfare_rate': value.welfareRate,
@@ -109,11 +109,6 @@ class CompanyRateSettingsRepository {
         'p_allowance_3_name':
             value.allowance3Name.trim().isEmpty ? null : value.allowance3Name.trim(),
         'p_allowance_3_amount_yen': value.allowance3AmountYen,
-      },
-    );
-    await _client.rpc(
-      'save_company_allowance_units',
-      params: {
         'p_allowance_1_unit': value.allowance1Unit.trim().isEmpty
             ? '回'
             : value.allowance1Unit.trim(),

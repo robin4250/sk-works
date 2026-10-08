@@ -1,0 +1,45 @@
+{
+  "gross_pay": 306000,
+  "deductions": 1100,
+  "net_pay": 304900,
+  "revision": 3,
+  "approved_ids": [],
+  "detail": {
+    "pay_type": "monthly",
+    "交通費": 0,
+    "住民税": 0,
+    "基本給": 300000,
+    "所得税": 0,
+    "支払日": 25,
+    "道具代": -1100,
+    "rate_formula": {
+      "base_mode": "hourly",
+      "overtime_multiplier": 1.25
+    },
+    "休出日数": 0,
+    "出勤日数": 1,
+    "夜間時間": 0,
+    "家族手当": 0,
+    "早出手当": 0,
+    "早出時間": 0,
+    "月固定給": 300000,
+    "有給日数": 0,
+    "残業手当": 6000,
+    "残業時間": 3,
+    "社会保険": 0,
+    "給与方式": "月給",
+    "custom_earnings": [],
+    "hourly_rate_yen": 1500,
+    "その他控除": 0,
+    "custom_deductions": [
+      {
+        "name": "道具代",
+        "amount_yen": 1100
+      }
+    ],
+    "custom_earnings_total": 0,
+    "計算元選択あり": false,
+    "出勤に基づく支給額": 14900,
+    "計算用1日基本ベース": 0
+  }
+}

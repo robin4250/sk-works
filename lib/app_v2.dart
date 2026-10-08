@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart' as legacy;
@@ -66,6 +67,7 @@ import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/own_qualification_registration_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
+import 'features/settings/company_module_settings_page.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
@@ -97,6 +99,9 @@ class SkWorksApp extends StatelessWidget {
               navigatorKey: SkoScrollChromeController.navigatorKey,
               debugShowCheckedModeBanner: false,
               title: ProductBrand.displayName,
+              locale: Locale(language.languageCode),
+              supportedLocales: const [Locale('ja'), Locale('en')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
               theme: SkoTheme.light(palette),
               builder: (context, child) => Stack(
                 fit: StackFit.expand,
@@ -611,15 +616,19 @@ class _HomePageState extends State<HomePage> {
     final requiredModule = switch (key) {
       'attendance' ||
       'attendance_list' ||
+      'attendance_today' ||
+      'attendance_management' ||
+      'attendance_method_vehicle' ||
+      'workplace_select' ||
       'attendance_verify' ||
       'clock_in' ||
       'clock_out' =>
         'attendance',
-      'footer_sites' || 'site_register' || 'site_map' || 'sites' => 'sites',
+      'footer_sites' || 'site_register' || 'site_map' || 'admin_sites' || 'sites' => 'sites',
       'chat' => 'chat',
       'invoices' => 'invoices',
-      'qualifications' || 'qualification_certificates' => 'qualifications',
-      'documents' => 'documents',
+      'qualifications' || 'qualification_certificates' || 'qualification_register' || 'employee_qualifications' => 'qualifications',
+      'documents' || 'document_register' => 'documents',
       'notes' => 'notes',
       'albums' => 'albums',
       'today_line' || 'line_history' => 'line_bridge',
@@ -636,6 +645,13 @@ class _HomePageState extends State<HomePage> {
     if (key == 'people' && !_identity.isManagement) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('社員情報は管理者・サブ管理者のみ利用できます'))),
+      );
+      return;
+    }
+
+    if (key == 'company_modules' && !_isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('利用機能の変更は管理者のみ行えます')),
       );
       return;
     }
@@ -867,6 +883,9 @@ class _HomePageState extends State<HomePage> {
       case 'appearance':
         await _openHomeAppearanceSettings();
         return;
+      case 'company_modules':
+        page = const CompanyModuleSettingsPage();
+        break;
       case 'settings':
         page = const SettingsPage();
         break;
@@ -894,7 +913,7 @@ class _HomePageState extends State<HomePage> {
         key == 'route_select') {
       await _loadHomeAttendanceStatus();
     }
-    if (key == 'settings') {
+    if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
       await _loadModuleSettings();
     }
     if (key == 'profile') {
@@ -1110,6 +1129,14 @@ class _HomePageState extends State<HomePage> {
         ),
       if (_isAdmin)
         _MenuAction(
+          key: 'company_modules',
+          label: SkoLanguageController.tr('利用機能のON／OFF'),
+          icon: Icons.toggle_on_outlined,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者'),
+        ),
+      if (_isAdmin)
+        _MenuAction(
           key: 'company_documents',
           label: SkoLanguageController.tr('会社データ'),
           icon: Icons.business_center_outlined,
@@ -1125,7 +1152,7 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・請求書閲覧権限'),
         ),
-      if (_identity.can('can_view_admin_site_data'))
+      if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))
         _MenuAction(
           key: 'admin_sites',
           label: SkoLanguageController.tr('管理現場'),

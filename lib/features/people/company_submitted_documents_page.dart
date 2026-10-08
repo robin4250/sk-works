@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../common/data_date_labels.dart';
+import '../../international/language_controller.dart';
 import '../payroll/payroll_confirmation_settings_page.dart';
+import '../settings/company_module_settings_page.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
 import 'company_transfer_send_page.dart';
@@ -89,7 +91,15 @@ class _CompanySubmittedDocumentsPageState
 
   Future<void> _load() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = '会社データを取得できません。ログイン状態を確認してください。';
+        });
+      }
+      return;
+    }
     try {
       final results = await Future.wait<Object>([
         repository.listDocuments(),
@@ -129,6 +139,7 @@ class _CompanySubmittedDocumentsPageState
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('会社データ'),
@@ -161,9 +172,20 @@ class _CompanySubmittedDocumentsPageState
                   _companyDataCard(),
                   Card(
                     child: ListTile(
+                      leading: const Icon(Icons.toggle_on_outlined),
+                      title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
+                      subtitle: Text(SkoLanguageController.tr('会社共通。OFFでも登録データは残ります。')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _busy ? null : () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(builder: (_) => const CompanyModuleSettingsPage()),
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
                       leading: const Icon(Icons.event_available_outlined),
-                      title: const Text('給与の締め日・給料日・確認者'),
-                      subtitle: const Text('会社共通の給与設定'),
+                      title: Text(SkoLanguageController.tr('給与の締め日・給料日・確認者')),
+                      subtitle: Text(SkoLanguageController.tr('会社共通の給与設定')),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _busy
                           ? null

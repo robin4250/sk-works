@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
+import 'payroll_condition_warning.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../notifications/notification_bell.dart';
+import '../shared/pdf_bytes_cache.dart';
 import '../../international/language_controller.dart';
 import 'payroll_pdf_service.dart';
 import 'payroll_statement_repository.dart';
@@ -67,6 +67,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -218,7 +219,7 @@ class _PayrollStatementPreviewPageState
   bool _statementUnavailable = false;
   bool _confirmationBusy = false;
   String? _confirmationError;
-  Future<Uint8List>? _pdfBytes;
+  final _pdfBytes = PdfBytesCache();
 
   @override
   void initState() {
@@ -232,7 +233,7 @@ class _PayrollStatementPreviewPageState
     try {
       final status = await repository.loadStatus(widget.statement.periodStart);
       final reviewRepository = PayrollReviewRepository.maybeCreate();
-      if (reviewRepository == null) throw StateError('給与明細を再取得できません。');
+      if (reviewRepository == null) throw StateError(SkoLanguageController.tr('給与明細を再取得できません。'));
       final workspace = await reviewRepository.loadWorkspace(
         widget.statement.periodStart,
       );
@@ -247,10 +248,10 @@ class _PayrollStatementPreviewPageState
         if (mounted) {
           setState(() {
             _statementUnavailable = true;
-            _pdfBytes = null;
+            _pdfBytes.invalidate();
           });
         }
-        throw StateError('この給与明細を閲覧できません。');
+        throw StateError(SkoLanguageController.tr('この給与明細を閲覧できません。'));
       }
       if (mounted) {
         setState(() {
@@ -258,7 +259,7 @@ class _PayrollStatementPreviewPageState
           _refreshedStatement = refreshed;
           _statementUnavailable = false;
           _confirmationError = null;
-          _pdfBytes = null;
+          _pdfBytes.invalidate();
         });
       }
     } catch (error) {
@@ -280,7 +281,7 @@ class _PayrollStatementPreviewPageState
               }
             }
           } catch (error) {
-            reloadError = '給与明細を再取得できませんでした: $error';
+            reloadError = SkoLanguageController.trParams('給与明細を再取得できませんでした: {error}', {'error': error});
           }
         }
         if (mounted) {
@@ -289,13 +290,13 @@ class _PayrollStatementPreviewPageState
             _confirmationError = reloadError;
             _refreshedStatement = ownStatement;
             _statementUnavailable = ownStatement == null;
-            _pdfBytes = null;
+            _pdfBytes.invalidate();
           });
         }
         return;
       }
       if (mounted) {
-        setState(() => _confirmationError = '確認状態を読み込めませんでした: $error');
+        setState(() => _confirmationError = SkoLanguageController.trParams('確認状態を読み込めませんでした: {error}', {'error': error}));
       }
     }
   }
@@ -305,6 +306,10 @@ class _PayrollStatementPreviewPageState
     final status = _confirmation;
     if (repository == null || status == null || _confirmationBusy) return;
     if (cancel ? !status.canCancel : !status.canConfirm) return;
+    if (!cancel && !await confirmPayrollConditions(
+      context, payrollConditionWarnings(_pdfStatement.detail),
+    )) return;
+    if (!mounted) return;
     setState(() => _confirmationBusy = true);
     try {
       if (cancel) {
@@ -360,6 +365,7 @@ class _PayrollStatementPreviewPageState
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final statement = _pdfStatement;
     return Scaffold(
       appBar: AppBar(
@@ -380,6 +386,13 @@ class _PayrollStatementPreviewPageState
       ),
       body: Column(
         children: [
+          if (!_statementUnavailable)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: PayrollConditionWarning(
+                warnings: payrollConditionWarnings(_pdfStatement.detail),
+              ),
+            ),
           if (_confirmationError != null)
             Padding(
               padding: const EdgeInsets.all(8),
@@ -409,29 +422,29 @@ class _PayrollStatementPreviewPageState
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
-                    '確認 ${_confirmation!.confirmedCount}/${_confirmation!.requiredCount}名',
+                    SkoLanguageController.trParams('確認 {confirmed}/{required}名', {'confirmed': _confirmation!.confirmedCount, 'required': _confirmation!.requiredCount}),
                   ),
                   for (final reviewer in _confirmation!.reviewers)
                     Text(
-                      '${reviewer.name}：${reviewer.confirmed ? '確認済み' : '未確認'}',
+                      SkoLanguageController.trParams('{name}：{status}', {'name': reviewer.name, 'status': SkoLanguageController.tr(reviewer.confirmed ? '確認済み' : '未確認')}),
                     ),
                   if (_confirmation!.confirmationOpenDate != null)
                     Text(
-                      '確認開始：${_confirmation!.confirmationOpenDate!.month}/${_confirmation!.confirmationOpenDate!.day}',
+                      SkoLanguageController.trParams('確認開始：{date}', {'date': '${_confirmation!.confirmationOpenDate!.month}/${_confirmation!.confirmationOpenDate!.day}'}),
                     ),
                   if (_confirmation!.canConfirm)
                     FilledButton(
                       onPressed: _confirmationBusy
                           ? null
                           : () => _confirm(false),
-                      child: const Text('月の給与を確認'),
+                      child: Text(SkoLanguageController.tr('月の給与を確認')),
                     ),
                   if (_confirmation!.canCancel)
                     TextButton(
                       onPressed: _confirmationBusy
                           ? null
                           : () => _confirm(true),
-                      child: const Text('確認を取り消す'),
+                      child: Text(SkoLanguageController.tr('確認を取り消す')),
                     ),
                 ],
               ),
@@ -449,7 +462,7 @@ class _PayrollStatementPreviewPageState
             child: _confirmationBusy
                 ? const Center(child: CircularProgressIndicator())
                 : _statementUnavailable
-                ? const Center(child: Text('この給与明細を閲覧できません。'))
+                ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
                 : InteractiveViewer(
                     transformationController: _zoomController,
                     minScale: 1,
@@ -467,8 +480,9 @@ class _PayrollStatementPreviewPageState
                       allowSharing: true,
                       pdfFileName:
                           '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-                      build: (_) => _pdfBytes ??=
-                          PayrollPdfService.buildPdf(statement),
+                      build: (_) => _pdfBytes.get(
+                        () => PayrollPdfService.buildPdf(statement),
+                      ),
                     ),
                   ),
           ),
@@ -486,6 +500,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),

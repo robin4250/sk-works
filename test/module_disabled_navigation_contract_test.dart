@@ -18,4 +18,28 @@ void main() {
     expect(home, contains("moduleEnabled('attendance')"));
     expect(home, contains("moduleEnabled('vehicle_routes')"));
   });
+
+  test('company switches cover alternate routes without replacing permissions', () {
+    final app = File('lib/app_v2.dart').readAsStringSync();
+    final start = app.indexOf('final requiredModule = switch (key)');
+    final end = app.indexOf('if (requiredModule != null', start);
+    final routes = app.substring(start, end);
+    for (final key in [
+      'attendance_today', 'attendance_management',
+      'attendance_method_vehicle', 'workplace_select',
+      'admin_sites', 'qualification_register',
+      'employee_qualifications', 'document_register',
+    ]) {
+      expect(routes, contains("'$key'"), reason: '$key must honor its company switch');
+    }
+    final normalized = app.replaceAll(RegExp(r'\s+'), ' ');
+    expect(normalized, contains("if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))"));
+    expect(normalized, contains("if (key == 'settings' || key == 'company_documents' || key == 'company_modules')"));
+    expect(normalized, contains("if (_isAdmin) _MenuAction( key: 'company_modules'"));
+    expect(normalized, contains("if (key == 'company_modules' && !_isAdmin)"));
+    expect(normalized, contains('page = const CompanyModuleSettingsPage();'));
+    final repository = File('lib/features/settings/company_module_settings_repository.dart').readAsStringSync();
+    expect(repository, isNot(contains('.delete(')));
+    expect(repository, contains("membership.role != 'owner' && membership.role != 'admin'"));
+  });
 }

@@ -1,0 +1,56 @@
+{
+  "gross_pay": 50345,
+  "deductions": 1500,
+  "net_pay": 48845,
+  "revision": 5,
+  "approved_ids": [],
+  "detail": {
+    "pay_type": "hourly",
+    "交通費": 1000,
+    "住民税": 0,
+    "基本給": 28250,
+    "所得税": 0,
+    "支払日": 25,
+    "道具代": -1500,
+    "rate_formula": {
+      "base_mode": "hourly",
+      "overtime_multiplier": 1.25
+    },
+    "休出日数": 1,
+    "出勤日数": 2,
+    "夜間時間": 0,
+    "家族手当": 2000,
+    "早出手当": 4032,
+    "早出時間": 2,
+    "有給日数": 0,
+    "残業手当": 8063,
+    "残業時間": 4,
+    "社会保険": 0,
+    "custom_earnings": [
+      {
+        "name": "資格手当",
+        "amount_yen": 5000
+      },
+      {
+        "name": "資格手当",
+        "amount_yen": 2000
+      }
+    ],
+    "hourly_rate_yen": 1500,
+    "その他控除": 0,
+    "その他支給": 7000,
+    "custom_deductions": [
+      {
+        "name": "道具代",
+        "amount_yen": 1100
+      },
+      {
+        "name": "道具代",
+        "amount_yen": 400
+      }
+    ],
+    "custom_earnings_total": 7000,
+    "計算元選択あり": false,
+    "出勤に基づく支給額": 41845
+  }
+}

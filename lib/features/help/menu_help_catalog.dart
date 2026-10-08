@@ -153,6 +153,15 @@ class MenuHelpCatalog {
       access: '本人・管理者・サブ管理者・書類閲覧権限',
     ),
     MenuHelpItem(
+      key: 'company_modules',
+      label: '利用機能のON／OFF',
+      purpose: '会社で使う機能を選び、メニューとボタンの表示をそろえます。',
+      destination: '会社共通の利用機能設定へ移動します。',
+      access: '管理者',
+      details: 'OFFでも登録データは残り、ONに戻して再利用できます。表示設定と担当者の操作権限は別に保護します。',
+      roles: {ManualRole.admin},
+    ),
+    MenuHelpItem(
       key: 'company_documents',
       label: '会社データ',
       purpose: '会社情報・振込先・給与の締め日と給料日と確認者・会社提出書類を管理します。',
@@ -188,7 +197,7 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'subcontractors',
       label: '協力会社登録',
-      purpose: 'SKO連携なしの協力会社も登録し、会社情報の確認・編集・削除と、支払証明書に使う契約金額設定を行います。',
+      purpose: 'SKO連携なしの協力会社も登録し、会社情報の確認・編集・削除と契約設定を行います。支払証明書の単価は支払証明書設定で管理します。',
       destination: '協力会社一覧へ移動し、会社名タップで詳細を確認できます。詳細画面から会社情報の編集、削除、契約設定、SKO連携候補の統合確認を行えます。',
       access: '管理者・サブ管理者',
       details: '会社名・電話番号・郵便番号・住所・メール・法人番号・備考を確認/編集できます。1日単価・月単価・平米単価・請負金額を設定できます。削除時は確認画面を表示し、関連契約設定も削除されます。SKO未連携の協力会社でも支払証明書の計算対象にできます。後からSKO連携する場合は同一会社であることを確認して統合します。',

@@ -70,6 +70,10 @@ jobs:
           node tool/verify_paid_leave_overlap_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_payroll_live_linkage.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261008042817_prevent_paid_leave_attendance_overlap.sql supabase/migrations/20261008043151_align_future_attendance_monthly_payroll_boundary.sql
           node tool/verify_future_attendance_payroll_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_company_rate_atomic_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_calculation_source_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_payroll_financial_conditions_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_payroll_named_financial_detail_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261008045401_preserve_payroll_named_financial_details.sql
 
       - name: Prepare adopted PDF verification
         run: |
