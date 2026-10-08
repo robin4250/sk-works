@@ -28,6 +28,9 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   bool _siteLoading = true;
   bool _loading = true;
   String? _error;
+  int _loadGeneration = 0;
+  int _siteGeneration = 0;
+  String? _siteCompanyId;
 
   @override
   void initState() {
@@ -36,6 +39,9 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    ++_siteGeneration;
+    _siteCompanyId = null;
     setState(() { _siteItems = const []; _siteError = null; _siteLoading = true; });
     final repository = _repository;
     if (repository == null) {
@@ -49,15 +55,16 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
 
     try {
       final items = await repository.loadCertificates(includeRegisteredPreviews: true);
+      if (!mounted || generation != _loadGeneration) return;
+      _siteCompanyId = repository.loadedCompanyId;
       _loadSites();
-      if (!mounted) return;
       setState(() {
         _items = items;
         _loading = false;
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _siteLoading = false;
@@ -67,14 +74,18 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   }
 
   Future<void> _loadSites() async {
+    final loadGeneration = _loadGeneration;
+    final generation = ++_siteGeneration;
+    final company = _siteCompanyId;
+    bool isCurrent() => mounted && loadGeneration == _loadGeneration &&
+        generation == _siteGeneration && company == _siteCompanyId;
     try {
-      final company = _repository?.loadedCompanyId;
       final items = company == null ? const <ConfirmedSitePayment>[]
           : await _siteRepository?.load(company) ?? const <ConfirmedSitePayment>[];
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() { _siteItems = items; _siteError = null; _siteLoading = false; });
     } catch (error) {
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() { _siteError = error.toString(); _siteLoading = false; });
     }
   }
