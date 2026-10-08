@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
+import '../notifications/saved_group_report_publication.dart';
 import '../../international/language_controller.dart';
 import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
@@ -56,6 +57,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   List<DailyReportEvidenceRecord> _evidence = const [];
   bool _loading = true;
   bool _saving = false;
+  String? _notificationRetryReportId;
   int _loadGeneration = 0;
   String? _savedDraftFingerprint;
   String? _error;
@@ -476,6 +478,70 @@ class _DailyReportPageState extends State<DailyReportPage> {
       }
     }
     controller.dispose();
+  }
+
+  // Only the explicit registration action publishes. Internal draft saves for
+  // signatures, previews and reloads never publish notifications.
+  Future<void> _register() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final completeGroup = groupReportPublicationEligible(
+        anchorSourceId: _currentGroupAnchor, siteId: _siteId,
+        routeAssignmentId: _routeAssignmentId,
+        roster: _workers.map((worker) => (
+          sourceId: worker.sourceClockInId, clockOutAt: worker.sourceClockOutAt)),
+      );
+      await registerSavedGroupReport(
+        notificationEligible: completeGroup,
+        save: () => _saveDraft(ownsBusyState: false),
+        publish: (id) async {
+          if (mounted) await _publishSavedReport(id);
+        },
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _publishSavedReport(String reportId) async {
+    final repository = _repository;
+    if (repository == null) return;
+    try {
+      final available = await repository.publishSavedGroupReportNotifications(reportId);
+      if (!available) {
+        // Missing staged RPC cannot confirm an earlier unknown publication.
+        // Initial unavailable/OFF paths do not display a noisy failure warning.
+        if (mounted && _notificationRetryReportId == reportId) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            SkoLanguageController.tr('日報は登録済みです。通知機能が利用できないため、通知結果は未確認のままです'),
+          )));
+        }
+        return;
+      }
+      if (mounted && _notificationRetryReportId == reportId) {
+        setState(() => _notificationRetryReportId = null);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _notificationRetryReportId = reportId);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('日報は登録済みです。メンバー通知の結果は未確認です。通知のみ再確認できます'),
+      )));
+    }
+  }
+
+  Future<void> _retrySavedReportNotification() async {
+    final id = _notificationRetryReportId;
+    if (_saving || id == null) return;
+    setState(() => _saving = true);
+    try {
+      // Keep the saved ID even if the selected day/site or draft changed.
+      // This retries only publication, never report INSERT/save or attachments.
+      await _publishSavedReport(id);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<String?> _saveDraft({bool ownsBusyState = true}) async {
@@ -907,9 +973,15 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           const SizedBox(height: 16),
                           if (!_signed)
                             FilledButton.icon(
-                              onPressed: _saving ? null : _saveDraft,
+                              onPressed: _saving ? null : _register,
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
+                            ),
+                          if (_notificationRetryReportId != null)
+                            OutlinedButton.icon(
+                              onPressed: _saving ? null : _retrySavedReportNotification,
+                              icon: const Icon(Icons.notifications_outlined),
+                              label: Text(SkoLanguageController.tr('登録済み日報の通知のみ再確認')),
                             ),
                           if (_signed)
                             FilledButton.tonalIcon(

@@ -6,6 +6,7 @@ import 'daily_report_pdf_evidence.dart';
 import '../attendance/group_checkout_repository.dart';
 import 'group_daily_report_roster.dart';
 import 'vehicle_report_snapshot.dart';
+import '../notifications/saved_group_report_publication.dart';
 
 class DailyReportWorkerDraft {
   DailyReportWorkerDraft({
@@ -525,6 +526,14 @@ class DailyReportRepository {
     }
 
     return id;
+  }
+
+  /// The server owns rollout gating, recipient selection and durable deduplication.
+  /// A missing staged RPC is unavailable, not evidence that notifications were sent.
+  Future<bool> publishSavedGroupReportNotifications(String reportId) async {
+    return publishSavedGroupReport(reportId, invoke: (id) =>
+      _client.rpc('publish_saved_group_report_notifications',
+        params: {'p_report_id': id}));
   }
 
   Future<void> sign({
