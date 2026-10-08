@@ -9,6 +9,7 @@ create table companies(id uuid primary key,name text); create table company_memb
 create table sites(id uuid primary key,company_id uuid,name text); create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
 create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
 create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid,payload_kind text,payload jsonb);
+create table public.site_financial_settings(site_id uuid primary key,billing_square_meter_unit_price_yen integer,billing_square_meter_quantity numeric,billing_contract_amount_yen integer,billing_allowance_1_name text,billing_allowance_1_amount_yen integer,billing_allowance_2_name text,billing_allowance_2_amount_yen integer,billing_allowance_3_name text,billing_allowance_3_amount_yen integer);
 create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,accepted_site_id uuid);
 grant usage on schema private,auth to authenticated;
 `);

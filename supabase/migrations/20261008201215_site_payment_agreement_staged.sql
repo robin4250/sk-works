@@ -62,7 +62,7 @@ end $$;
 
 create function private.site_payment_agreement_workspace(p_item uuid,p_company uuid)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
-declare pair jsonb; proposals jsonb;
+declare pair jsonb; proposals jsonb; own_billing jsonb;
 begin
  pair:=private.site_payment_pair(p_item,p_company);
  select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'revision',p.revision,
@@ -71,7 +71,10 @@ begin
    'confirmed_at',c.confirmed_at)),'[]'::jsonb) from private.site_payment_confirmations c
    where c.proposal_id=p.id)) order by p.revision desc),'[]'::jsonb)
  into proposals from private.site_payment_proposals p where p.shared_item_id=p_item;
- return pair||jsonb_build_object('proposals',proposals);
+ select jsonb_build_object('billing_square_meter_unit_price_yen',f.billing_square_meter_unit_price_yen,'billing_square_meter_quantity',f.billing_square_meter_quantity,'billing_contract_amount_yen',f.billing_contract_amount_yen,'billing_allowance_1_name',f.billing_allowance_1_name,'billing_allowance_1_amount_yen',f.billing_allowance_1_amount_yen,'billing_allowance_2_name',f.billing_allowance_2_name,'billing_allowance_2_amount_yen',f.billing_allowance_2_amount_yen,'billing_allowance_3_name',f.billing_allowance_3_name,'billing_allowance_3_amount_yen',f.billing_allowance_3_amount_yen) into own_billing from public.site_financial_settings f
+ join public.sites s on s.id=f.site_id and s.company_id=p_company
+ where s.id in ((pair->>'source_site_id')::uuid,(pair->>'recipient_site_id')::uuid);
+ return pair||jsonb_build_object('proposals',proposals,'own_site_billing',own_billing);
 end $$;
 
 create function private.site_payment_finite_number(p_value jsonb)

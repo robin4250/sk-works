@@ -63,6 +63,15 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
 
   Future<void> _edit() async {
     final latest = _proposals.isEmpty ? <String, dynamic>{} : Map<String, dynamic>.from(_proposals.first['terms'] as Map);
+    if(latest.isEmpty && _workspace?['own_site_billing'] is Map) {
+      final source=Map<String,dynamic>.from(_workspace!['own_site_billing'] as Map);
+      final price=(source['billing_square_meter_unit_price_yen'] as num?)??0;
+      final area=(source['billing_square_meter_quantity'] as num?)??0;
+      final lump=(source['billing_contract_amount_yen'] as num?)??0;
+      if(price>0 && area>0) { latest.addAll({'mode':'square_meter','unit_price_yen':price,'area':area,'base_amount_yen':price*area}); }
+      else if(lump>0) { latest.addAll({'mode':'lump_sum','base_amount_yen':lump}); }
+      latest['adjustments']=[for(var i=1;i<=3;i++) if((source['billing_allowance_${i}_name']?.toString().trim()??'').isNotEmpty) {'name':source['billing_allowance_${i}_name'],'amount_yen':source['billing_allowance_${i}_amount_yen']??0,'direction':'addition'}];
+    }
     final now = DateTime.now();
     String date(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
     final fields = <String, TextEditingController>{
