@@ -28,12 +28,22 @@ async function connect() {
 function outcome(promise) { return promise.then(value=>({value}),error=>({error})); }
 async function waitBlocked(observer,pid,blocker) {
   const deadline=Date.now()+5000;
+  let lastBlockers=[];
   while(Date.now()<deadline) {
-    const r=await observer.query('select $2::integer = any(pg_blocking_pids($1::integer)) blocked',[pid,blocker]);
+    // A second tuple-lock waiter can wait behind the first waiter rather than
+    // directly on the row holder. Observe the real chain to that holder;
+    // UNION deduplicates backend IDs so an unexpected cycle cannot recurse forever.
+    const r=await observer.query(`with recursive blockers(pid) as (
+      select unnest(pg_blocking_pids($1::integer))
+      union
+      select unnest(pg_blocking_pids(blockers.pid)) from blockers
+    ) select exists(select 1 from blockers where pid=$2::integer) blocked,
+      array(select pid from blockers order by pid) blockers`,[pid,blocker]);
+    lastBlockers=r.rows[0].blockers;
     if(r.rows[0].blocked) return;
     await new Promise(resolve=>setTimeout(resolve,25));
   }
-  throw new Error(`Expected backend ${pid} to wait for ${blocker}`);
+  throw new Error(`Expected backend ${pid} to wait for ${blocker}; observed chain ${lastBlockers}`);
 }
 const propose=(c,revision)=>c.query('select public.propose_site_payment_terms($1,$2,$3,$4::jsonb) id',[item,parent,revision,JSON.stringify(terms)]);
 try {
