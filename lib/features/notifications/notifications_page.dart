@@ -139,8 +139,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (!mounted) {
         return;
       }
-      if (destination != null) {
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => destination));
+      final page = destination;
+      if (page != null) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
           SkoLanguageController.tr('お知らせを確認しました'),
