@@ -24,6 +24,13 @@ await db.exec('revoke select on private.account_deletion_access_restrictions fro
 await db.exec('alter table private.account_deletion_access_restrictions add column unexpected text');
 await assert.rejects(db.exec(migration), /columns differ/);
 await db.exec('alter table private.account_deletion_access_restrictions drop column unexpected');
+await db.exec('alter table private.account_deletion_access_restrictions force row level security');
+await assert.rejects(db.exec(migration), /owner\/RLS contract differs/);
+await db.exec('alter table private.account_deletion_access_restrictions no force row level security');
+await db.exec('create role mismatched_helper_owner; alter function private.source_notification_recipient_eligible(uuid,uuid) owner to mismatched_helper_owner');
+await assert.rejects(db.exec(migration), /helper\/restriction owner contract differs/);
+const owner = (await db.query('select current_user u')).rows[0].u;
+await db.exec(`alter function private.source_notification_recipient_eligible(uuid,uuid) owner to ${owner}`);
 await db.exec(migration);
 await db.exec(`create or replace function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select auth.uid() is not null and not exists(select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())$$;`);
 const [c, admin, recipient, aw, rw, site, car, report, job] = Array.from({length: 9}, (_, i) => `60000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);

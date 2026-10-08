@@ -14,13 +14,13 @@
 
 ## 変更と適用条件
 
-専用 migration `20261008211227_source_notification_restricted_recipients.sql` は既存テーブル、所有者/RLS、正確な列、クライアント SELECT 不可、先行 helper を確認し、契約が異なる環境では停止する。テーブルを新設したりアクセスを広げたりしない。
+専用 migration `20261008211227_source_notification_restricted_recipients.sql` は既存テーブル、所有者/RLS（FORCE 無効）、helper と table の所有者一致、正確な列、クライアント SELECT 不可、先行 helper を確認し、契約が異なる環境では停止する。テーブルを新設したりアクセスを広げたりしない。
 
 受信者 helper は会社所属と active worker（または worker 未登録 owner/admin）を維持し、その受信者の削除アクセス制限がある場合に false を返す。既存 setter/getter/発行/対象導線はこの helper を使う。保存済み選択は残し、候補から除外し、発行を止める。既に作成された通知と台帳も消さない。
 
 ## 検証
 
-実 migration を実行する隔離 PGlite 検証で、テーブル未存在・余分な列・client SELECT 権限の不一致は停止することを確認。利用可能な管理者 caller と制限された active recipient を分け、車両/日報通知が発行されないこと、候補/setter/対象導線の拒否、選択と通知/台帳の保持、role/status 不変、匿名アクセス拒否、rollout OFF 時の発行なしを確認した。
+実 migration を実行する隔離 PGlite 検証で、テーブル未存在・余分な列・FORCE RLS 有効・helper 所有者相違・client SELECT 権限の不一致は停止することを確認。利用可能な管理者 caller と制限された active recipient を分け、車両/日報通知が発行されないこと、候補/setter/対象導線の拒否、選択と通知/台帳の保持、role/status 不変、匿名アクセス拒否、rollout OFF 時の発行なしを確認した。
 
 実行: `node tool/verify_source_notification_restricted_recipients.mjs /tmp/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js`。CI 結果は PR を参照。
 

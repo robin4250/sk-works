@@ -4,7 +4,7 @@ do $$
 declare r regclass:=to_regclass('private.account_deletion_access_restrictions');
 begin
  if r is null then raise exception 'existing account deletion restrictions are required'; end if;
- if not exists(select 1 from pg_class where oid=r and relkind='r' and relrowsecurity
+ if not exists(select 1 from pg_class where oid=r and relkind='r' and relrowsecurity and not relforcerowsecurity
   and relowner=(select oid from pg_roles where rolname=current_user)) then
   raise exception 'account deletion restriction owner/RLS contract differs';
  end if;
@@ -19,6 +19,10 @@ begin
  end if;
  if to_regprocedure('private.source_notification_recipient_eligible(uuid,uuid)') is null then
   raise exception 'source notification business recipient contract is required';
+ end if;
+ if not exists(select 1 from pg_proc p join pg_class t on t.oid=r
+  where p.oid='private.source_notification_recipient_eligible(uuid,uuid)'::regprocedure and p.proowner=t.relowner) then
+  raise exception 'source notification helper/restriction owner contract differs';
  end if;
 end $$;
 
