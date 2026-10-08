@@ -110,11 +110,10 @@ class AttendanceManagementRepository {
           .eq('company_id', access.companyId).eq('worker_id', workerId);
       // A report owns its entire shift, including a next-day clock-out.
       if (reportId != null && reportId.isNotEmpty) {
-        verificationQuery = verificationQuery.eq('daily_report_id', reportId);
+        verificationQuery = verificationQuery.or('daily_report_id.eq.$reportId,work_date.eq.$day');
       } else {
         verificationQuery = verificationQuery
-            .gte('confirmed_at', start.toUtc().toIso8601String())
-            .lt('confirmed_at', end.toUtc().toIso8601String());
+            .or('work_date.eq.$day,and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})');
       }
       final verifications = await verificationQuery.order('confirmed_at');
       DateTime? clockIn;

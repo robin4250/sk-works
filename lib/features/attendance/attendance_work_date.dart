@@ -1,8 +1,10 @@
-/// Linked report dates own overnight events; unlinked events keep their civil date.
-DateTime attendanceEventWorkDate(DateTime confirmed, Object? report) {
+/// Linked reports or a server-validated shift own the work date.
+/// Unlinked legacy events keep their civil date; they are not silently repaired.
+DateTime attendanceEventWorkDate(DateTime confirmed, Object? report, {Object? workDate}) {
   final raw = report is Map ? report['report_date'] : null;
   final date = raw is String ? DateTime.tryParse(raw) : null;
-  final source = date ?? confirmed;
+  final shiftDate = workDate is String ? DateTime.tryParse(workDate) : null;
+  final source = shiftDate ?? date ?? confirmed;
   return DateTime(source.year, source.month, source.day);
 }
 
