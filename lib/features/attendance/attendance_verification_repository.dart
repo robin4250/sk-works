@@ -601,7 +601,7 @@ class AttendanceVerificationRepository {
       if (capture != null) {
         final draft = CaptureVerificationDraft(payload);
         onCaptureDraftPrepared?.call(draft);
-        return submitCaptureDraft(draft);
+        return await submitCaptureDraft(draft);
       }
       final row = await _client.from('attendance_verifications').insert(payload)
           .select('id, confirmed_at, work_date, source_clock_in_id')
