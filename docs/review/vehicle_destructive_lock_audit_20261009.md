@@ -10,7 +10,7 @@ Vehicle starts and meter registration take the company advisory lock before inse
 
 `company-start` and `company-meter` retain the same parent row FOR UPDATE lock acquired by DELETE, then launch a real second-connection vehicle write. The observer must see an actual PostgreSQL Lock wait. The parent-owning transaction then executes the real DELETE and its unchanged FK cascades/trigger. Both outcomes are collected. Any `40P01` or `55P03` fails the test; neither is considered a passing reproduction. The parent lock is a deliberate barrier representing DELETE's first lock, not a substitute implementation or fixture trigger.
 
-This remains a suspected blocker until the actual PostgreSQL run supplies SQLSTATE evidence. No company deletion was attempted on production.
+Actual PostgreSQL 16.15 run `37815352048`, head `bff8b4387a906db27669c4003541bd7de407eae9`, reproduced this blocker in both company scenarios with SQLSTATE `40P01`. No company deletion was attempted on production.
 
 ## Existing authorized attendance corrections
 
@@ -30,3 +30,15 @@ node tool/audit_vehicle_destructive_lock_interleavings.mjs /path/to/pg/lib/index
 ```
 
 Local Node syntax and diff checks pass. The sandbox cannot start a nonroot PostgreSQL service. No actual two-connection results are claimed; the dedicated workflow runs each scenario in a separate disposable PostgreSQL service with fail-fast disabled, so a company deadlock does not suppress the independent admin case. Root authorized saving this draft for investigation. A failing case must remain failing until a reviewed implementation resolves the underlying lock order.
+
+## Actual PostgreSQL results
+
+Run `37815352048` checked exact fixture provenance and used PostgreSQL 16.15.
+
+| Scenario | Job | Result | Evidence |
+| --- | --- | --- | --- |
+| company-start | `113442460789` | Failure, blocker confirmed | Actual `transactionid` Lock wait; start rejected `40P01`; DELETE completed. Server log identifies claim company FK KEY SHARE versus rollout advisory lock. |
+| company-meter | `113442460246` | Failure, blocker confirmed | Actual `transactionid` Lock wait; meter rejected `40P01`; DELETE completed. Server log identifies event company FK KEY SHARE versus rollout advisory lock. |
+| admin-meter | `113442460680` | Success | Existing authenticated admin correction wins: pending meter explicitly rejects with no event/baseline change. Meter first: committed immutable event and 1050km vehicle baseline survive correction. |
+
+The workflow failure is intentionally retained as truthful evidence of the unresolved implementation problem. No expected result, permission check, SQL definition or destructive fixture guard was weakened. The older independent race checks remain separate evidence. Company-parent locking must be resolved and this same strict investigation rerun before treating the staged vehicle feature as safe to enable. These tests do not authorize or perform production company deletion.
