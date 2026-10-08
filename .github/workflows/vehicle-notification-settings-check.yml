@@ -4,12 +4,14 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
+      - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
       - 'tool/verify_vehicle_notification_settings.mjs'
       - '.github/workflows/vehicle-notification-settings-check.yml'
   push:
     branches: [main, 'feat/vehicle-notification-assignees-*']
     paths:
       - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
+      - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
       - 'tool/verify_vehicle_notification_settings.mjs'
       - '.github/workflows/vehicle-notification-settings-check.yml'
 permissions:

@@ -11,7 +11,7 @@ for (const item of manifest.files) {
   assert.equal(createHash('sha256').update(bytes).digest('hex'), item.sha256);
   await db.exec(bytes.toString());
 }
-for (const path of ['20261008171216_source_member_notifications.sql', '20261008201729_vehicle_notification_settings_read.sql']) {
+for (const path of ['20261008171216_source_member_notifications.sql', '20261008201729_vehicle_notification_settings_read.sql', '20261008204054_source_notification_active_recipients.sql']) {
   await db.exec(await fs.readFile(new URL('../supabase/migrations/' + path, import.meta.url), 'utf8'));
 }
 const [c, admin, viewer, manager, inactive, other, car, foreignCar] = Array.from({length: 8}, (_, i) => `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);
@@ -26,6 +26,11 @@ assert.deepEqual(new Set(initial.candidates.map(r => r.user_id)), new Set([admin
 const inactiveOwner = '30000000-0000-0000-0000-000000000001';
 await db.exec(`reset role; insert into auth.users values('${inactiveOwner}'); insert into company_members values('${c}','${inactiveOwner}','owner'); insert into workers values(gen_random_uuid(),'${c}','${inactiveOwner}','停止管理者','inactive'); set role authenticated;`);
 assert(!(await load()).candidates.some(r => r.user_id === inactiveOwner));
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${inactive}']::uuid[])`), /active vehicle/);
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${inactiveOwner}']::uuid[])`), /active vehicle/);
+await db.exec(`set test.uid='${inactiveOwner}'`);
+await assert.rejects(load(), /administrator/);
+await db.exec(`set test.uid='${admin}'`);
 assert.equal((await db.query('select count(*)::int n from private.vehicle_notification_assignees').catch(() => ({rows: [{n: -1}]}))).rows[0].n, -1);
 await assert.rejects(db.query(`select public.get_vehicle_notification_settings('${foreignCar}')`), /administrator/);
 await db.exec(`set test.uid='${viewer}'`);
@@ -49,5 +54,29 @@ assert.equal((await db.query('select count(*)::int n from public.app_notificatio
 assert.equal((await db.query(`select role from company_members where company_id='${c}' and user_id='${viewer}'`)).rows[0].role, 'viewer');
 await db.exec(`insert into private.source_notification_rollouts values('${c}',true); set role authenticated;`);
 assert.equal((await load()).enabled, true);
+const driverWorker = '40000000-0000-0000-0000-000000000001';
+const site = '40000000-0000-0000-0000-000000000002';
+await db.exec(`reset role; insert into workers values('${driverWorker}','${c}','${admin}','運転手','active');`);
+async function start(number) {
+  const source = `50000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
+  await db.exec(`begin; insert into attendance_verifications values('${source}','${c}','${driverWorker}','${site}',null,'2026-10-09','clock_in',null,null,'${car}'); insert into vehicle_usage_claims values('${source}','${c}','${car}','${driverWorker}','2026-10-09'); commit;`);
+}
+await start(1);
+const notices = (await db.query("select id,recipient_user_id from app_notifications where action_key='vehicle_driver_started'")).rows;
+assert.equal(notices.length, 1);
+assert.equal(notices[0].recipient_user_id, viewer);
+await db.exec(`set role authenticated; set test.uid='${viewer}'`);
+assert.equal((await db.query(`select public.get_source_notification_target('${notices[0].id}') t`)).rows[0].t.company_id, c);
+await db.exec(`reset role; update workers set status='inactive' where user_id='${viewer}'; set role authenticated;`);
+await assert.rejects(db.query(`select public.get_source_notification_target('${notices[0].id}')`), /target unavailable/);
+await db.exec(`reset role; set test.uid='${admin}'`);
+await start(2);
+assert.equal((await db.query('select count(*)::int n from app_notifications')).rows[0].n, 1);
+assert.deepEqual((await db.query(`select user_ids from private.vehicle_notification_assignees where vehicle_id='${car}'`)).rows[0].user_ids, [viewer, inactive]);
+assert.equal((await db.query('select count(*)::int n from private.source_notification_receipts')).rows[0].n, 1);
+await db.exec(`update workers set status='active' where user_id='${viewer}'; update private.source_notification_rollouts set enabled=false;`);
+await start(3);
+assert.equal((await db.query('select count(*)::int n from app_notifications')).rows[0].n, 1);
 console.log('PASS: exact-company owner/admin read, OFF no writes, explicit initial admin suggestion, active candidates, saved unresolved preservation, no role grant, anonymous/account rejection');
+console.log('PASS: stopped recipient setter rejection, inactive owner rejection, vehicle publication skip, target refusal, preserved selection/ledger and OFF no new publication');
 await db.close();
