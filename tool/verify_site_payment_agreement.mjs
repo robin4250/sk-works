@@ -74,5 +74,21 @@ if(process.env.SKO_SITE_PAYMENT_OUTPUT_JSON) {
   await fs.writeFile(process.env.SKO_SITE_PAYMENT_OUTPUT_JSON,JSON.stringify(snapshots));
   console.log('PASS: four accepted immutable snapshots exported for real Flutter PDF fixtures');
 }
+await db.exec(`set test.uid='${admin1}'`);
+const current=(await db.query(`select public.site_payment_agreement_workspace('${item}','${parent}') v`)).rows[0].v;
+const revision=current.proposals[0].revision;
+await assert.rejects(propose(revision,{...terms,tax_amount_yen:1400,tax_override_reason:'   ',final_amount_yen:16400}),/税額/);
+const manyExtras=Array.from({length:6},(_,i)=>({name:`合意項目${i+1}`,amount_yen:100,direction:i%2?'deduction':'addition'}));
+const manualTerms={...terms,adjustments:manyExtras,tax_amount_yen:1400,tax_override_reason:'双方で確認した個別税額の調整',final_amount_yen:16400};
+const manual=await propose(revision,manualTerms);
+await db.query(`select public.confirm_site_payment_terms('${manual}','${parent}')`);
+await db.exec(`set test.uid='${admin2}'`);
+await db.query(`select public.confirm_site_payment_terms('${manual}','${child}')`);
+const manualSnapshot=(await db.query(`select public.saved_site_payment_document('${manual}','${child}') v`)).rows[0].v;
+assert.deepEqual(manualSnapshot.terms,manualTerms);
+assert.equal(manualSnapshot.terms.adjustments.length,6);
+const history=(await db.query(`select public.site_payment_agreement_workspace('${item}','${child}') v`)).rows[0].v;
+assert.deepEqual(history.proposals.find(p=>p.id===proposal).terms,terms);
+console.log('PASS: six named signed extras and manual tax reason preserved in mutually confirmed immutable snapshot');
 console.log('PASS: OFF guard, administrator scope, arithmetic, revision conflict, two-party confirmation, immutable originals, stale confirmation, outsider denial');
 await db.close();
