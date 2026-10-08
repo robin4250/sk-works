@@ -19,10 +19,10 @@ void main() {
     expect(hub, contains("'社員個人情報の変更承認'"));
     expect(hub, contains('_personnelChangeCount'));
 
-    expect(notifications, contains("item.actionKey == 'worker_personnel_change'"));
+    expect(notifications, contains("'worker_personnel_change' =>"));
     expect(
       notifications,
-      contains("item.actionKey == 'worker_personnel_change_completed'"),
+      contains("'worker_personnel_change_completed' =>"),
     );
     expect(notifications, contains('initialRequestId: item.actionId'));
     expect(notifications, contains('PeopleCloudPage'));

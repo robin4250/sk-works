@@ -133,6 +133,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(

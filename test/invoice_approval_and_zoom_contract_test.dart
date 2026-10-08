@@ -50,7 +50,7 @@ void main() {
     );
     final invoicePage = read('lib/features/invoices/invoice_cloud_page.dart');
 
-    expect(notifications, contains("item.actionKey == 'invoice_approval'"));
+    expect(notifications, contains("'invoice_approval' =>"));
     expect(notifications, contains('initialInvoiceId: item.actionId'));
     expect(invoicePage, contains('this.initialInvoiceId'));
     expect(

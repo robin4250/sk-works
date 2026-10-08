@@ -19,10 +19,10 @@ void main() {
     expect(migration, contains('site_information_request_notify_result'));
     expect(migration, contains("'site_information_request_result'"));
 
-    expect(notifications, contains("item.actionKey == 'site_information_request'"));
+    expect(notifications, contains("'site_information_request' || 'site_information_request_result' =>"));
     expect(
       notifications,
-      contains("item.actionKey == 'site_information_request_result'"),
+      contains("'site_information_request' || 'site_information_request_result' =>"),
     );
     expect(notifications, contains('initialRequestId: item.actionId'));
 

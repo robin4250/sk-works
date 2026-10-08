@@ -33,6 +33,9 @@ jobs:
       - name: Verify generated project exclusions preserve source checks
         run: bash tool/test_generated_project_git_ignore.sh
 
+      - name: Verify read-only privacy artifact audit
+        run: python3 tool/test_release_privacy_artifact.py
+
       - name: Verify migration file integrity
         run: bash tool/check_migration_files.sh
 
@@ -76,6 +79,7 @@ jobs:
           node tool/verify_company_rate_atomic_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_calculation_source_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_payroll_financial_conditions_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_payroll_split_site_allowances.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_payroll_named_financial_detail_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261008045401_preserve_payroll_named_financial_details.sql
 
       - name: Prepare adopted PDF verification

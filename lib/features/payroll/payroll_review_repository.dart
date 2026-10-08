@@ -63,6 +63,14 @@ class PayrollReviewRepository {
     return PayrollReviewRepository._(client);
   }
 
+  /// Reads only the target period through the existing statement SELECT RLS.
+  /// No wage fields, service credentials or alternate access paths are used.
+  Future<DateTime> notificationMonth(String statementId) =>
+      resolvePayrollNotificationMonth(statementId, (id) async {
+        return await _client.from('payroll_statements')
+            .select('period_start').eq('id', id).maybeSingle();
+      });
+
   Future<PayrollReviewWorkspace> loadWorkspace(DateTime month) async {
     final periodStart =
         '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01';
@@ -171,4 +179,18 @@ class PayrollReviewRepository {
       reviewerConfirmed: row['reviewer_confirmed'] == true,
     );
   }
+}
+
+Future<DateTime> resolvePayrollNotificationMonth(
+  String statementId,
+  Future<Map<String, dynamic>?> Function(String id) readVisiblePeriod,
+) async {
+  final id = statementId.trim();
+  if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(id)) {
+    throw StateError('Invalid payroll notification target');
+  }
+  final row = await readVisiblePeriod(id);
+  final date = DateTime.tryParse(row?['period_start']?.toString() ?? '');
+  if (date == null) throw StateError('Payroll notification target is unavailable');
+  return DateTime(date.year, date.month);
 }

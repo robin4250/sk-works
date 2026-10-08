@@ -7,7 +7,9 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key});
+  const PayrollReviewPage({super.key, this.initialMonth});
+
+  final DateTime? initialMonth;
 
   @override
   State<PayrollReviewPage> createState() => _PayrollReviewPageState();
@@ -24,6 +26,10 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialMonth;
+    if (initial != null) {
+      _month = DateTime(initial.year, initial.month);
+    }
     _load();
   }
 
