@@ -69,7 +69,6 @@ import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/own_qualification_registration_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
-import 'features/settings/company_module_settings_page.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
@@ -676,9 +675,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (key == 'company_modules' && !_isAdmin) {
+    if (key == 'company_modules') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('利用機能の変更は管理者のみ行えます')),
+        const SnackBar(content: Text('利用機能のON／OFFはMaster側に保管しています')),
       );
       return;
     }
@@ -918,9 +917,6 @@ class _HomePageState extends State<HomePage> {
       case 'appearance':
         await _openHomeAppearanceSettings();
         return;
-      case 'company_modules':
-        page = const CompanyModuleSettingsPage();
-        break;
       case 'settings':
         page = const SettingsPage();
         break;
@@ -1168,14 +1164,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.handshake_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
-      if (_isAdmin)
-        _MenuAction(
-          key: 'company_modules',
-          label: SkoLanguageController.tr('利用機能のON／OFF'),
-          icon: Icons.toggle_on_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_isAdmin)
         _MenuAction(
