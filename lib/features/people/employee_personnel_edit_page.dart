@@ -7,10 +7,7 @@ import 'people_page.dart';
 import 'personnel_family_member.dart';
 
 class EmployeePersonnelEditPage extends StatefulWidget {
-  const EmployeePersonnelEditPage({
-    super.key,
-    required this.record,
-  });
+  const EmployeePersonnelEditPage({super.key, required this.record});
 
   final PersonRecord record;
 
@@ -19,12 +16,14 @@ class EmployeePersonnelEditPage extends StatefulWidget {
       _EmployeePersonnelEditPageState();
 }
 
-class _EmployeePersonnelEditPageState
-    extends State<EmployeePersonnelEditPage> {
+class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   final _repository = PeopleCloudRepository.maybeCreate();
 
   late final TextEditingController _name;
   late final TextEditingController _role;
+  late final TextEditingController _employeeNumber;
+  late final TextEditingController _department;
+  DateTime? _hireDate;
   late final TextEditingController _phone;
   late final TextEditingController _address;
   late final TextEditingController _emergencyName;
@@ -44,15 +43,16 @@ class _EmployeePersonnelEditPageState
     final record = widget.record;
     _name = TextEditingController(text: record.name);
     _role = TextEditingController(text: record.role);
+    _employeeNumber = TextEditingController(text: record.employeeNumber);
+    _department = TextEditingController(text: record.department);
+    _hireDate = DateTime.tryParse(record.hireDate);
     _phone = TextEditingController(text: record.phone);
     _address = TextEditingController(text: record.address);
     _emergencyName = TextEditingController(text: record.emergencyName);
-    _emergencyRelation =
-        TextEditingController(text: record.emergencyRelation);
+    _emergencyRelation = TextEditingController(text: record.emergencyRelation);
     _emergencyPhone = TextEditingController(text: record.emergencyPhone);
     _emergencyAddress = TextEditingController(text: record.emergencyAddress);
-    _familyComposition =
-        TextEditingController(text: record.familyComposition);
+    _familyComposition = TextEditingController(text: record.familyComposition);
     _familyMembers = record.familyMembers
         .map(EditableFamilyMember.fromValue)
         .toList();
@@ -84,6 +84,8 @@ class _EmployeePersonnelEditPageState
     for (final controller in [
       _name,
       _role,
+      _employeeNumber,
+      _department,
       _phone,
       _address,
       _emergencyName,
@@ -101,18 +103,27 @@ class _EmployeePersonnelEditPageState
     final repository = _repository;
     if (repository == null || _saving) return;
     if (_name.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('名前を入力してください')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('名前を入力してください')));
       return;
     }
 
+    try {
+      PeopleCloudRepository.validatePersonnelMetadata({
+        'employeeNumber': _employeeNumber.text,
+      });
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(PeopleCloudRepository.personnelSaveError(error)),
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          _directAdminSave ? '社員個人情報を保存しますか？' : '社員個人情報を変更しますか？',
-        ),
+        title: Text(_directAdminSave ? '社員個人情報を保存しますか？' : '社員個人情報を変更しますか？'),
         content: Text(
           _directAdminSave
               ? '管理者は承認者設定なしで社員個人情報を直接登録・保存できます。'
@@ -139,6 +150,11 @@ class _EmployeePersonnelEditPageState
         'name': _name.text.trim(),
         'bloodType': _bloodType,
         'role': _role.text.trim(),
+        'employeeNumber': _employeeNumber.text.trim(),
+        'department': _department.text.trim(),
+        'hireDate': _hireDate == null
+            ? ''
+            : _hireDate!.toIso8601String().substring(0, 10),
         'phone': _phone.text.trim(),
         'address': _address.text.trim(),
         'emergencyName': _emergencyName.text.trim(),
@@ -156,9 +172,7 @@ class _EmployeePersonnelEditPageState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            pending
-                ? '変更申請を送信しました。$required名の承認後に反映されます。'
-                : '社員個人情報を保存しました',
+            pending ? '変更申請を送信しました。$required名の承認後に反映されます。' : '社員個人情報を保存しました',
           ),
         ),
       );
@@ -166,7 +180,11 @@ class _EmployeePersonnelEditPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
+        SnackBar(
+          content: Text(
+            '保存できませんでした: ${PeopleCloudRepository.personnelSaveError(error)}',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -193,6 +211,54 @@ class _EmployeePersonnelEditPageState
           const SizedBox(height: 10),
           _field(_name, '名前'),
           const SizedBox(height: 10),
+          TextField(
+            controller: _employeeNumber,
+            enabled: !_saving,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: '社員番号',
+              helperText: '未入力なら自動採番します。同じ会社内で重複する番号は使えません。',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _field(_department, '所属'),
+          const SizedBox(height: 10),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('入社日'),
+            subtitle: Text(
+              _hireDate == null
+                  ? '未登録'
+                  : _hireDate!
+                        .toIso8601String()
+                        .substring(0, 10)
+                        .replaceAll('-', '/'),
+            ),
+            leading: const Icon(Icons.event_outlined),
+            trailing: _hireDate == null
+                ? const Icon(Icons.chevron_right)
+                : IconButton(
+                    tooltip: '入社日を未登録に戻す',
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _hireDate = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+            onTap: _saving
+                ? null
+                : () async {
+                    final selected = await showDatePicker(
+                      context: context,
+                      initialDate: _hireDate ?? DateTime.now(),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime(2100),
+                    );
+                    if (selected != null && mounted)
+                      setState(() => _hireDate = selected);
+                  },
+          ),
+          const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             initialValue: _bloodType.isEmpty ? null : _bloodType,
             decoration: const InputDecoration(
@@ -217,45 +283,32 @@ class _EmployeePersonnelEditPageState
           const SizedBox(height: 10),
           _field(_address, '住所'),
           const SizedBox(height: 18),
-          const Text(
-            '緊急連絡先',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
+          const Text('緊急連絡先', style: TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 10),
           _field(_emergencyName, '氏名'),
           const SizedBox(height: 10),
           _field(_emergencyRelation, '続柄'),
           const SizedBox(height: 10),
-          _field(
-            _emergencyPhone,
-            '電話番号',
-            keyboardType: TextInputType.phone,
-          ),
+          _field(_emergencyPhone, '電話番号', keyboardType: TextInputType.phone),
           const SizedBox(height: 10),
           _field(_emergencyAddress, '住所'),
           const SizedBox(height: 20),
           const Text(
             '家族・扶養情報',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 6),
-          const Text(
-            '社員一覧には表示しません。社会保険等の手続き用の個別情報です。',
-          ),
+          const Text('社員一覧には表示しません。社会保険等の手続き用の個別情報です。'),
           const SizedBox(height: 10),
           _field(_familyComposition, '家族構成'),
           const SizedBox(height: 10),
-          for (var i = 0; i < _familyMembers.length; i++)
-            _familyMemberCard(i),
+          for (var i = 0; i < _familyMembers.length; i++) _familyMemberCard(i),
           OutlinedButton.icon(
             onPressed: _saving
                 ? null
                 : () => setState(
-                      () => _familyMembers.add(EditableFamilyMember()),
-                    ),
+                    () => _familyMembers.add(EditableFamilyMember()),
+                  ),
             icon: const Icon(Icons.person_add_alt_1_outlined),
             label: const Text('配偶者・子供・扶養家族を追加'),
           ),
@@ -328,11 +381,11 @@ class _EmployeePersonnelEditPageState
                 birth == null
                     ? '未登録'
                     : birth.year.toString() +
-                        '/' +
-                        birth.month.toString().padLeft(2, '0') +
-                        '/' +
-                        birth.day.toString().padLeft(2, '0') +
-                        (age == null ? '' : '　現在 ' + age.toString() + '歳'),
+                          '/' +
+                          birth.month.toString().padLeft(2, '0') +
+                          '/' +
+                          birth.day.toString().padLeft(2, '0') +
+                          (age == null ? '' : '　現在 ' + age.toString() + '歳'),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: _saving
@@ -368,14 +421,13 @@ class _EmployeePersonnelEditPageState
     TextEditingController controller,
     String label, {
     TextInputType? keyboardType,
-  }) =>
-      TextField(
-        controller: controller,
-        enabled: !_saving,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-      );
+  }) => TextField(
+    controller: controller,
+    enabled: !_saving,
+    keyboardType: keyboardType,
+    decoration: InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+    ),
+  );
 }

@@ -6,8 +6,9 @@ String read(String path) => File(path).readAsStringSync();
 
 void main() {
   test('employee payroll statement loads revision review status', () {
-    final repository =
-        read('lib/features/payroll/payroll_statement_repository.dart');
+    final repository = read(
+      'lib/features/payroll/payroll_statement_repository.dart',
+    );
     expect(repository, contains('my_payroll_review_statuses'));
     expect(repository, contains('reviewConfirmed'));
     expect(repository, contains("review?['review_confirmed'] == true"));
@@ -15,9 +16,21 @@ void main() {
 
   test('employee payroll statement shows confirmed or unconfirmed label', () {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
-    expect(page, contains("SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み'"));
-    expect(page, contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"));
-    expect(page, contains("item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み')"));
+    final normalized = page.replaceAll(RegExp(r'\s+'), ' ');
+    expect(
+      normalized,
+      contains("SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み'"),
+    );
+    expect(
+      normalized,
+      contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"),
+    );
+    expect(
+      normalized,
+      contains(
+        "item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み')",
+      ),
+    );
     expect(page, contains('Colors.green'));
   });
 

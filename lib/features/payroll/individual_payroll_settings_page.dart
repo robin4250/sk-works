@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../widgets/rate_formula_editor_card.dart';
 import '../notifications/notification_bell.dart';
 import 'individual_payroll_settings_repository.dart';
+import 'payroll_confirmation_repository.dart';
+import 'payroll_confirmation_settings_page.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
   const IndividualPayrollSettingsPage({super.key});
@@ -38,6 +40,8 @@ class _IndividualPayrollSettingsPageState
   ];
 
   final _repository = IndividualPayrollSettingsRepository.maybeCreate();
+  final _confirmationRepository = PayrollConfirmationRepository.maybeCreate();
+  PayrollConfirmationSettings? _companyPolicy;
   final _controllers = <String, TextEditingController>{};
   final _customEarnings = <_CustomMoneyDraft>[];
   final _customDeductions = <_CustomMoneyDraft>[];
@@ -60,7 +64,6 @@ class _IndividualPayrollSettingsPageState
       _controllers['allowance_name_$i'] = TextEditingController();
     }
     _controllers['paid_leave_granted_days'] = TextEditingController();
-    _controllers['payment_day'] = TextEditingController();
     _load();
   }
 
@@ -86,6 +89,12 @@ class _IndividualPayrollSettingsPageState
     }
     try {
       final workspace = await repository.loadWorkspace();
+      PayrollConfirmationSettings? companyPolicy;
+      try {
+        companyPolicy = await _confirmationRepository?.loadSettings();
+      } catch (_) {
+        // Keep existing individual salary permissions independent of company settings.
+      }
       if (!workspace.canView) {
         if (!mounted) return;
         setState(() {
@@ -95,11 +104,13 @@ class _IndividualPayrollSettingsPageState
         });
         return;
       }
-      final firstWorker =
-          workspace.workers.isEmpty ? null : workspace.workers.first.id;
+      final firstWorker = workspace.workers.isEmpty
+          ? null
+          : workspace.workers.first.id;
       if (!mounted) return;
       setState(() {
         _workspace = workspace;
+        _companyPolicy = companyPolicy;
         _workerId = firstWorker;
         _loading = false;
       });
@@ -120,21 +131,17 @@ class _IndividualPayrollSettingsPageState
     try {
       final setting = await repository.loadSetting(workerId);
       for (final field in _amountFields) {
-        _controllers[field.$1]!.text =
-            setting.amount(field.$1).toStringAsFixed(0);
+        _controllers[field.$1]!.text = setting
+            .amount(field.$1)
+            .toStringAsFixed(0);
       }
       for (var i = 1; i <= 3; i++) {
         final key = 'allowance_name_$i';
         _controllers[key]!.text = setting.text(key);
       }
-      _controllers['paid_leave_granted_days']!.text =
-          setting.amount('paid_leave_granted_days').toString();
-      final configuredPaymentDay = setting.amount('payment_day').toInt();
-      _controllers['payment_day']!.text =
-          (configuredPaymentDay >= 1 && configuredPaymentDay <= 31
-                  ? configuredPaymentDay
-                  : 25)
-              .toString();
+      _controllers['paid_leave_granted_days']!.text = setting
+          .amount('paid_leave_granted_days')
+          .toString();
       for (final item in [..._customEarnings, ..._customDeductions]) {
         item.dispose();
       }
@@ -178,9 +185,8 @@ class _IndividualPayrollSettingsPageState
     final workspace = _workspace;
     if (repository == null || workerId == null || workspace == null) return;
     if (!workspace.canEdit) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('個別給与設定を編集する権限がありません')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('個別給与設定を編集する権限がありません')));
       return;
     }
 
@@ -206,16 +212,14 @@ class _IndividualPayrollSettingsPageState
     final values = <String, dynamic>{};
     final rateDraft = _rateDraft;
     if (rateDraft == null || rateDraft.baseRateYen < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('勤務単価の基準額を確認してください')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('勤務単価の基準額を確認してください')));
       return;
     }
     final formula = rateDraft.formula;
     if (rateDraft.payType == 'monthly' && rateDraft.monthlySalaryYen <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('月給の場合は月固定給を入力してください')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('月給の場合は月固定給を入力してください')));
       return;
     }
     if (rateDraft.payType == 'monthly' && rateDraft.baseRateYen <= 0) {
@@ -227,22 +231,23 @@ class _IndividualPayrollSettingsPageState
     final hours = formula.hoursPerDay <= 0 ? 8 : formula.hoursPerDay;
     final dailyBase = formula.dailyBase(rateDraft.baseRateYen);
     final nightEarly =
-        (rateDraft.effective('night') / hours * formula.earlyMultiplier).round();
+        (rateDraft.effective('night') / hours * formula.earlyMultiplier)
+            .round();
     final holidayEarly =
         (rateDraft.effective('holiday') / hours * formula.earlyMultiplier)
             .round();
     final holidayNightEarly =
-        (rateDraft.effective('holiday_night') /
-                hours *
-                formula.earlyMultiplier)
+        (rateDraft.effective('holiday_night') / hours * formula.earlyMultiplier)
             .round();
 
     values
       ..['pay_type'] = rateDraft.payType
-      ..['monthly_salary_yen'] =
-          rateDraft.payType == 'monthly' ? rateDraft.monthlySalaryYen : 0
-      ..['calculation_daily_base_yen'] =
-          rateDraft.payType == 'monthly' ? dailyBase : 0
+      ..['monthly_salary_yen'] = rateDraft.payType == 'monthly'
+          ? rateDraft.monthlySalaryYen
+          : 0
+      ..['calculation_daily_base_yen'] = rateDraft.payType == 'monthly'
+          ? dailyBase
+          : 0
       ..['day_daily'] = dailyBase
       ..['day_overtime'] = rateDraft.effective('overtime')
       ..['day_early'] = rateDraft.effective('early')
@@ -253,8 +258,9 @@ class _IndividualPayrollSettingsPageState
       ..['holiday_overtime'] = rateDraft.effective('holiday_overtime')
       ..['holiday_early'] = holidayEarly
       ..['holiday_night_daily'] = rateDraft.effective('holiday_night')
-      ..['holiday_night_overtime'] =
-          rateDraft.effective('holiday_night_overtime')
+      ..['holiday_night_overtime'] = rateDraft.effective(
+        'holiday_night_overtime',
+      )
       ..['holiday_night_early'] = holidayNightEarly
       ..['hourly_rate_yen'] = formula.hourlyBase
           ? rateDraft.baseRateYen
@@ -267,9 +273,9 @@ class _IndividualPayrollSettingsPageState
     for (final field in _amountFields.skip(12)) {
       final parsed = num.tryParse(_controllers[field.$1]!.text.trim());
       if (parsed == null || parsed < 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${field.$2}は0以上の数字で入力してください')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${field.$2}は0以上の数字で入力してください')));
         return;
       }
       values[field.$1] = parsed;
@@ -282,22 +288,12 @@ class _IndividualPayrollSettingsPageState
       _controllers['paid_leave_granted_days']!.text.trim(),
     );
     if (paidLeaveGrantedDays == null || paidLeaveGrantedDays < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('有給付与日数は0以上の数字で入力してください')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('有給付与日数は0以上の数字で入力してください')));
       return;
     }
     values['paid_leave_granted_days'] = paidLeaveGrantedDays;
-
-    final paymentDay =
-        int.tryParse(_controllers['payment_day']!.text.trim());
-    if (paymentDay == null || paymentDay < 1 || paymentDay > 31) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('支払日は1～31の日付で入力してください')),
-      );
-      return;
-    }
-    values['payment_day'] = paymentDay;
 
     final customEarnings = _serializeCustomMoney(
       _customEarnings,
@@ -317,16 +313,16 @@ class _IndividualPayrollSettingsPageState
       await repository.saveSetting(workerId: workerId, values: values);
       await _loadWorker(workerId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('個別給与設定を保存しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('個別給与設定を保存しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存できませんでした: $error')));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -345,148 +341,164 @@ class _IndividualPayrollSettingsPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_error!, textAlign: TextAlign.center),
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_error!, textAlign: TextAlign.center),
+                ),
+              )
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: _workerId,
+                    decoration: const InputDecoration(
+                      labelText: '社員',
+                      border: OutlineInputBorder(),
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                    children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: _workerId,
-                        decoration: const InputDecoration(
-                          labelText: '社員',
-                          border: OutlineInputBorder(),
+                    items: [
+                      for (final worker in workspace!.workers)
+                        DropdownMenuItem(
+                          value: worker.id,
+                          child: Text(worker.name),
                         ),
-                        items: [
-                          for (final worker in workspace!.workers)
-                            DropdownMenuItem(
-                              value: worker.id,
-                              child: Text(worker.name),
-                            ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) _loadWorker(value);
-                        },
-                      ),
-                      if (_updatedAt != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          '最終更新日：${_dateTime(_updatedAt!)}',
-                          textAlign: TextAlign.right,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      RateFormulaEditorCard(
-                        key: ValueKey('payroll-rate-${_workerId ?? ''}'),
-                        title: '勤務単価 自動計算',
-                        initialBaseRateYen:
-                            (_settingValues['pay_type']?.toString() == 'monthly'
-                                ? (_settingValues['calculation_daily_base_yen'] as num?)?.toInt()
-                                : (_settingValues['day_daily'] as num?)?.toInt()) ?? 0,
-                        initialFormula: _settingValues['rate_formula'],
-                        initialPayType:
-                            _settingValues['pay_type']?.toString() ?? 'daily',
-                        initialMonthlySalaryYen:
-                            (_settingValues['monthly_salary_yen'] as num?)?.toInt() ?? 0,
-                        initialOverrides: _settingValues['rate_overrides'],
-                        enabled: workspace.canEdit,
-                        onChanged: (value) => _rateDraft = value,
-                      ),
-                      const SizedBox(height: 12),
-                      _sectionTitle('手当'),
-                      for (var i = 1; i <= 3; i++) ...[
-                        TextFormField(
-                          controller: _controllers[
-                              'allowance_name_$i'],
-                          enabled: workspace.canEdit,
-                          maxLength: 100,
-                          decoration: InputDecoration(
-                            labelText: '手当$i 名称',
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                        _amountField(
-                          'allowance_$i',
-                          '手当$i 金額',
-                        ),
-                      ],
-                      _amountField('transport_monthly', '交通費・月額'),
-                      const SizedBox(height: 12),
-                      _sectionTitle('追加支給'),
-                      for (var i = 0; i < _customEarnings.length; i++)
-                        _customMoneyField(
-                          _customEarnings,
-                          i,
-                          workspace.canEdit,
-                          sectionName: '支給',
-                        ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: workspace.canEdit
-                              ? () => _addCustomMoney(_customEarnings)
-                              : null,
-                          icon: const Icon(Icons.add),
-                          label: const Text('支給項目を追加'),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _sectionTitle('支払日'),
-                      _amountField(
-                        'payment_day',
-                        '支払日',
-                        suffixText: '日',
-                      ),
-                      const Text(
-                        '給与明細右上の支払日に、対象月の翌月として自動表示します。',
-                      ),
-                      const SizedBox(height: 12),
-                      _sectionTitle('有給'),
-                      _amountField(
-                        'paid_leave_granted_days',
-                        '有給付与日数',
-                        suffixText: '日',
-                      ),
-                      const Text(
-                        '承認済みの有給申請から使用日数と残日数を自動計算します。',
-                      ),
-                      const SizedBox(height: 12),
-                      _sectionTitle('控除'),
-                      _amountField('income_tax_monthly', '所得税・月額'),
-                      _amountField('resident_tax_monthly', '住民税・月額'),
-                      _amountField(
-                          'social_insurance_monthly', '社会保険・月額'),
-                      const SizedBox(height: 4),
-                      for (var i = 0; i < _customDeductions.length; i++)
-                        _customMoneyField(
-                          _customDeductions,
-                          i,
-                          workspace.canEdit,
-                          sectionName: '控除',
-                        ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: workspace.canEdit
-                              ? () => _addCustomMoney(_customDeductions)
-                              : null,
-                          icon: const Icon(Icons.add),
-                          label: const Text('控除項目を追加'),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed:
-                            workspace.canEdit && !_saving ? _save : null,
-                        icon: const Icon(Icons.save_outlined),
-                        label: Text(_saving ? '保存中…' : '個別給与設定を保存'),
-                      ),
                     ],
+                    onChanged: (value) {
+                      if (value != null) _loadWorker(value);
+                    },
                   ),
+                  if (_updatedAt != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '最終更新日：${_dateTime(_updatedAt!)}',
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  RateFormulaEditorCard(
+                    key: ValueKey('payroll-rate-${_workerId ?? ''}'),
+                    title: '勤務単価 自動計算',
+                    initialBaseRateYen:
+                        (_settingValues['pay_type']?.toString() == 'monthly'
+                            ? (_settingValues['calculation_daily_base_yen']
+                                      as num?)
+                                  ?.toInt()
+                            : (_settingValues['day_daily'] as num?)?.toInt()) ??
+                        0,
+                    initialFormula: _settingValues['rate_formula'],
+                    initialPayType:
+                        _settingValues['pay_type']?.toString() ?? 'daily',
+                    initialMonthlySalaryYen:
+                        (_settingValues['monthly_salary_yen'] as num?)
+                            ?.toInt() ??
+                        0,
+                    initialOverrides: _settingValues['rate_overrides'],
+                    enabled: workspace.canEdit,
+                    onChanged: (value) => _rateDraft = value,
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionTitle('手当'),
+                  for (var i = 1; i <= 3; i++) ...[
+                    TextFormField(
+                      controller: _controllers['allowance_name_$i'],
+                      enabled: workspace.canEdit,
+                      maxLength: 100,
+                      decoration: InputDecoration(
+                        labelText: '手当$i 名称',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    _amountField('allowance_$i', '手当$i 金額'),
+                  ],
+                  _amountField('transport_monthly', '交通費・月額'),
+                  const SizedBox(height: 12),
+                  _sectionTitle('追加支給'),
+                  for (var i = 0; i < _customEarnings.length; i++)
+                    _customMoneyField(
+                      _customEarnings,
+                      i,
+                      workspace.canEdit,
+                      sectionName: '支給',
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: workspace.canEdit
+                          ? () => _addCustomMoney(_customEarnings)
+                          : null,
+                      icon: const Icon(Icons.add),
+                      label: const Text('支給項目を追加'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionTitle('会社共通の給料日'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _companyPolicy == null
+                          ? '会社データで設定します'
+                          : '${_companyPolicy!.paymentMonthOffset == 2
+                                ? '翌々月'
+                                : _companyPolicy!.paymentMonthOffset == 1
+                                ? '翌月'
+                                : '当月'}${_companyPolicy!.paymentDay == 31 ? '末日' : '${_companyPolicy!.paymentDay}日'}払い・末締め',
+                    ),
+                    subtitle: const Text('全社員共通。会社データの設定を使用します。'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const PayrollConfirmationSettingsPage(),
+                        ),
+                      );
+                      final policy = await _confirmationRepository
+                          ?.loadSettings();
+                      if (mounted) {
+                        setState(() => _companyPolicy = policy);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionTitle('有給'),
+                  _amountField(
+                    'paid_leave_granted_days',
+                    '有給付与日数',
+                    suffixText: '日',
+                  ),
+                  const Text('承認済みの有給申請から使用日数と残日数を自動計算します。'),
+                  const SizedBox(height: 12),
+                  _sectionTitle('控除'),
+                  _amountField('income_tax_monthly', '所得税・月額'),
+                  _amountField('resident_tax_monthly', '住民税・月額'),
+                  _amountField('social_insurance_monthly', '社会保険・月額'),
+                  const SizedBox(height: 4),
+                  for (var i = 0; i < _customDeductions.length; i++)
+                    _customMoneyField(
+                      _customDeductions,
+                      i,
+                      workspace.canEdit,
+                      sectionName: '控除',
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: workspace.canEdit
+                          ? () => _addCustomMoney(_customDeductions)
+                          : null,
+                      icon: const Icon(Icons.add),
+                      label: const Text('控除項目を追加'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: workspace.canEdit && !_saving ? _save : null,
+                    icon: const Icon(Icons.save_outlined),
+                    label: Text(_saving ? '保存中…' : '個別給与設定を保存'),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -544,23 +556,20 @@ class _IndividualPayrollSettingsPageState
       if (name.isEmpty && amountText.isEmpty) continue;
       if (name.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$sectionName項目${index + 1}の名称を入力してください'),
-          ),
+          SnackBar(content: Text('$sectionName項目${index + 1}の名称を入力してください')),
         );
         return null;
       }
       if (!seen.add(name)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('「$name」は重複しています')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('「$name」は重複しています')));
         return null;
       }
       final amount = int.tryParse(amountText);
       if (amount == null || amount < 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('「$name」の金額は0以上の数字で入力してください')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('「$name」の金額は0以上の数字で入力してください')));
         return null;
       }
       result.add({'name': name, 'amount_yen': amount});
@@ -616,21 +625,14 @@ class _IndividualPayrollSettingsPageState
   }
 
   Widget _sectionTitle(String value) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          value,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      value,
+      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+    ),
+  );
 
-  Widget _amountField(
-    String key,
-    String label, {
-    String suffixText = '円',
-  }) =>
+  Widget _amountField(String key, String label, {String suffixText = '円'}) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: TextFormField(
@@ -653,11 +655,10 @@ class _IndividualPayrollSettingsPageState
       '${value.minute.toString().padLeft(2, '0')}';
 }
 
-
 class _CustomMoneyDraft {
   _CustomMoneyDraft({String name = '', int amountYen = 0})
-      : name = TextEditingController(text: name),
-        amount = TextEditingController(text: amountYen.toString());
+    : name = TextEditingController(text: name),
+      amount = TextEditingController(text: amountYen.toString());
 
   final TextEditingController name;
   final TextEditingController amount;

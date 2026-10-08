@@ -104,7 +104,11 @@ void main() {
     expect(repository, contains("line['work_content']"));
     expect(repository, contains("'通常作業'"));
     expect(pdf, contains('line.siteLabel.trim().isNotEmpty'));
-    expect(pdf, contains('line.workContent ?? line.label'));
+    expect(pdf, contains('line.displayWorkContent'));
+    expect(
+      read('lib/domain/invoice_engine.dart'),
+      contains('String get displayWorkContent'),
+    );
     expect(sql, contains("'work_content','夜間作業'"));
     expect(sql, contains("'work_content','（手当て）'"));
     expect(sql, contains("'work_content','（残業）'"));

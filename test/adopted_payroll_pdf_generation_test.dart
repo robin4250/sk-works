@@ -104,6 +104,97 @@ void main() {
             netPay: 312648,
             detail: values,
           );
+      final confirmationDetail = {
+        ...detail,
+        'required_count': 3,
+        'confirmed_count': 2,
+        'revision': 42,
+        'confirmed_revision': 42,
+        'payment_month_offset': 1,
+        'payment_day': 25,
+        'closing_day': 31,
+        'employee_number': '123456',
+        'payroll_confirmations': [
+          {
+            'name': '確認済甲 太郎',
+            'confirmed_at': '2026-10-31T15:30:00Z',
+            'position': 1,
+          },
+          {'name': '未確認乙 次郎', 'confirmed_at': null, 'position': 2},
+          {
+            'name': '確認済丙 三郎',
+            'confirmed_at': '2026-11-01T01:00:00Z',
+            'position': 3,
+          },
+        ],
+      };
+      final confirmationPdf = await PayrollPdfService.buildPdf(
+        record(confirmationDetail),
+        regularFont: font,
+        boldFont: font,
+      );
+      final confirmationOutput =
+          outputDirectory ??
+          (await Directory.systemTemp.createTemp('sko-payroll-confirmations-'))
+              .path;
+      await Directory(confirmationOutput).create(recursive: true);
+      final confirmationFile = File(
+        '$confirmationOutput/payroll_confirmation_stamps.pdf',
+      );
+      await confirmationFile.writeAsBytes(confirmationPdf);
+      final confirmationReport = await _inspectPayrollPdf(confirmationFile);
+      final confirmationPage =
+          (confirmationReport['pages'] as List<dynamic>).single
+              as Map<String, dynamic>;
+      final confirmationText = confirmationPage['text'] as String;
+      for (final metadataKey in [
+        'required_count',
+        'confirmed_count',
+        'revision',
+        'confirmed_revision',
+        'payment_month_offset',
+        'payment_day',
+        'closing_day',
+        'employee_number',
+      ]) {
+        expect(
+          confirmationText,
+          isNot(contains(metadataKey)),
+          reason:
+              'Administrative numeric metadata must never become salary items.',
+        );
+      }
+      expect(confirmationText, contains('312,648'));
+      expect(confirmationText, contains('408,248'));
+      expect(confirmationText, contains('95,600'));
+      expect(confirmationText, contains('確認済甲'));
+      expect(confirmationText, contains('確認済丙'));
+      expect(confirmationText, isNot(contains('未確認乙')));
+      expect(
+        confirmationText,
+        contains('26.11.1'),
+        reason: 'UTC approval timestamp displays its actual Japanese date.',
+      );
+      final confirmationSpans = (confirmationPage['spans'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final title = confirmationSpans.singleWhere(
+        (span) =>
+            (span['text'] as String).replaceAll(RegExp(r'\s+'), '') == '給与明細書',
+      );
+      expect(
+        (title['bbox'] as List<dynamic>)[1] as num,
+        lessThan(59),
+        reason: 'The title moves up 12 pt without moving salary panels.',
+      );
+      for (final name in ['確認済甲', '確認済丙']) {
+        final stamp = confirmationSpans.singleWhere(
+          (span) => span['text'] == name,
+        );
+        final bounds = (stamp['bbox'] as List<dynamic>).cast<num>();
+        expect(bounds[0], greaterThan(302));
+        expect(bounds[1], greaterThanOrEqualTo(94));
+        expect(bounds[3], lessThanOrEqualTo(126));
+      }
       final original = jsonEncode(detail);
       final pdf = await PayrollPdfService.buildPdf(
         record(detail),

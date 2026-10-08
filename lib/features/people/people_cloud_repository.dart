@@ -81,9 +81,9 @@ class PeopleCloudRepository {
     final personnelRaw = await _client.rpc('employee_personnel_rows');
     final personnelRows = personnelRaw is List
         ? personnelRaw
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(growable: false)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
         : const <Map<String, dynamic>>[];
     final personnelByWorker = <String, Map<String, dynamic>>{
       for (final row in personnelRows)
@@ -94,7 +94,7 @@ class PeopleCloudRepository {
     final companyId = await _companyId();
     final workerDates = await _client
         .from('workers')
-        .select('id,created_at,updated_at')
+        .select('id,created_at,updated_at,employee_number,department,hire_date')
         .eq('company_id', companyId);
     final partnerDates = await _client
         .from('partner_companies')
@@ -110,39 +110,45 @@ class PeopleCloudRepository {
       if (id.isNotEmpty) datesById[id] = Map<String, dynamic>.from(row);
     }
 
-    return rows.map<Map<String, dynamic>>((row) {
-      final value = Map<String, dynamic>.from(row as Map);
-      final id = value['id']?.toString() ?? '';
-      final dates = datesById[id] ?? const <String, dynamic>{};
-      final personnel =
-          personnelByWorker[id] ?? const <String, dynamic>{};
-      return {
-        'id': value['id'],
-        'kind': value['kind'],
-        'name': value['name'] ?? '',
-        'companyName': value['company_name'] ?? '',
-        'phone': value['phone'] ?? '',
-        'email': value['email'] ?? '',
-        'role': value['role'] ?? '',
-        'notes': value['notes'] ?? '',
-        'active': value['active'] == true,
-        'createdAt': dates['created_at'] ?? '',
-        'updatedAt': dates['updated_at'] ?? '',
-        'bloodType': personnel['blood_type'] ?? '',
-        'address': personnel['address'] ?? '',
-        'emergencyName': personnel['emergency_name'] ?? '',
-        'emergencyRelation': personnel['emergency_relation'] ?? '',
-        'emergencyPhone': personnel['emergency_phone'] ?? '',
-        'emergencyAddress': personnel['emergency_address'] ?? '',
-        'familyComposition': personnel['family_composition'] ?? '',
-        'familyMembers': personnel['family_members'] is List
-            ? personnel['family_members']
-            : const <dynamic>[],
-      };
-    }).toList(growable: false);
+    return rows
+        .map<Map<String, dynamic>>((row) {
+          final value = Map<String, dynamic>.from(row as Map);
+          final id = value['id']?.toString() ?? '';
+          final dates = datesById[id] ?? const <String, dynamic>{};
+          final personnel = personnelByWorker[id] ?? const <String, dynamic>{};
+          return {
+            'id': value['id'],
+            'kind': value['kind'],
+            'name': value['name'] ?? '',
+            'companyName': value['company_name'] ?? '',
+            'phone': value['phone'] ?? '',
+            'email': value['email'] ?? '',
+            'role': value['role'] ?? '',
+            'employeeNumber':
+                personnel['employee_number'] ?? dates['employee_number'] ?? '',
+            'department': personnel['department'] ?? dates['department'] ?? '',
+            'hireDate': personnel['hire_date'] ?? dates['hire_date'] ?? '',
+            'notes': value['notes'] ?? '',
+            'active': value['active'] == true,
+            'createdAt': dates['created_at'] ?? '',
+            'updatedAt': dates['updated_at'] ?? '',
+            'bloodType': personnel['blood_type'] ?? '',
+            'address': personnel['address'] ?? '',
+            'emergencyName': personnel['emergency_name'] ?? '',
+            'emergencyRelation': personnel['emergency_relation'] ?? '',
+            'emergencyPhone': personnel['emergency_phone'] ?? '',
+            'emergencyAddress': personnel['emergency_address'] ?? '',
+            'familyComposition': personnel['family_composition'] ?? '',
+            'familyMembers': personnel['family_members'] is List
+                ? personnel['family_members']
+                : const <dynamic>[],
+          };
+        })
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
+    validatePersonnelMetadata(record);
     await _requireManagePeople();
     final companyId = await _companyId();
     final kind = record['kind']?.toString() ?? 'employee';
@@ -201,10 +207,13 @@ class PeopleCloudRepository {
           'phone': _nullable(record['phone']),
           'email': _nullable(record['email']),
           'role': _nullable(record['role']),
+          'employee_number': _nullable(record['employeeNumber']),
+          'department': _nullable(record['department']),
+          'hire_date': _nullable(record['hireDate']),
           'notes': _nullable(record['notes']),
           'status': record['active'] == false ? 'inactive' : 'active',
         })
-        .select('id')
+        .select('id,employee_number')
         .single();
 
     final workerId = inserted['id']?.toString() ?? '';
@@ -218,17 +227,19 @@ class PeopleCloudRepository {
             'kind': kind,
             'blood_type': record['bloodType']?.toString() ?? '',
             'role': record['role']?.toString() ?? '',
+            'employee_number':
+                (record['employeeNumber']?.toString().trim().isNotEmpty == true)
+                ? record['employeeNumber']
+                : inserted['employee_number'],
+            'department': record['department']?.toString() ?? '',
+            'hire_date': record['hireDate']?.toString() ?? '',
             'phone': record['phone']?.toString() ?? '',
             'address': record['address']?.toString() ?? '',
             'emergency_name': record['emergencyName']?.toString() ?? '',
-            'emergency_relation':
-                record['emergencyRelation']?.toString() ?? '',
-            'emergency_phone':
-                record['emergencyPhone']?.toString() ?? '',
-            'emergency_address':
-                record['emergencyAddress']?.toString() ?? '',
-            'family_composition':
-                record['familyComposition']?.toString() ?? '',
+            'emergency_relation': record['emergencyRelation']?.toString() ?? '',
+            'emergency_phone': record['emergencyPhone']?.toString() ?? '',
+            'emergency_address': record['emergencyAddress']?.toString() ?? '',
+            'family_composition': record['familyComposition']?.toString() ?? '',
             'family_members': record['familyMembers'] is List
                 ? record['familyMembers']
                 : const <dynamic>[],
@@ -237,12 +248,17 @@ class PeopleCloudRepository {
       );
     }
 
-    return {...record, 'id': inserted['id']};
+    return {
+      ...record,
+      'id': inserted['id'],
+      'employeeNumber': inserted['employee_number'] ?? '',
+    };
   }
 
   Future<Map<String, dynamic>> savePersonnelProfile(
     Map<String, dynamic> record,
   ) async {
+    validatePersonnelMetadata(record);
     final id = record['id']?.toString() ?? '';
     if (id.isEmpty) throw StateError('社員情報を確認できません。');
     final raw = await _client.rpc(
@@ -254,16 +270,16 @@ class PeopleCloudRepository {
           'kind': record['kind']?.toString() ?? 'employee',
           'blood_type': record['bloodType']?.toString() ?? '',
           'role': record['role']?.toString() ?? '',
+          'employee_number': record['employeeNumber']?.toString() ?? '',
+          'department': record['department']?.toString() ?? '',
+          'hire_date': record['hireDate']?.toString() ?? '',
           'phone': record['phone']?.toString() ?? '',
           'address': record['address']?.toString() ?? '',
           'emergency_name': record['emergencyName']?.toString() ?? '',
-          'emergency_relation':
-              record['emergencyRelation']?.toString() ?? '',
+          'emergency_relation': record['emergencyRelation']?.toString() ?? '',
           'emergency_phone': record['emergencyPhone']?.toString() ?? '',
-          'emergency_address':
-              record['emergencyAddress']?.toString() ?? '',
-          'family_composition':
-              record['familyComposition']?.toString() ?? '',
+          'emergency_address': record['emergencyAddress']?.toString() ?? '',
+          'family_composition': record['familyComposition']?.toString() ?? '',
           'family_members': record['familyMembers'] is List
               ? record['familyMembers']
               : const <dynamic>[],
@@ -304,10 +320,7 @@ class PeopleCloudRepository {
   }) async {
     final raw = await _client.rpc(
       'decide_worker_personnel_change',
-      params: {
-        'p_request_id': requestId,
-        'p_approve': approve,
-      },
+      params: {'p_request_id': requestId, 'p_approve': approve},
     );
     return raw is Map
         ? Map<String, dynamic>.from(raw)
@@ -321,6 +334,34 @@ class PeopleCloudRepository {
     final kind = record['kind']?.toString() ?? 'employee';
     final table = kind == 'partnerCompany' ? 'partner_companies' : 'workers';
     await _client.from(table).delete().eq('id', id);
+  }
+
+  static void validatePersonnelMetadata(Map<String, dynamic> record) {
+    final number = record['employeeNumber']?.toString().trim() ?? '';
+    if (number.length > 40 || number.contains(RegExp(r'[\r\n]'))) {
+      throw StateError('社員番号は改行なしの40文字以内で入力してください。');
+    }
+    final date = record['hireDate']?.toString().trim() ?? '';
+    if (date.isNotEmpty) {
+      final parsed = DateTime.tryParse(date);
+      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date) ||
+          parsed == null ||
+          parsed.toIso8601String().substring(0, 10) != date) {
+        throw StateError('入社日を正しい日付で選択してください。');
+      }
+    }
+  }
+
+  static String personnelSaveError(Object error) {
+    final message = error.toString();
+    final lower = message.toLowerCase();
+    if (lower.contains('employee_number_duplicate') ||
+        (error is PostgrestException &&
+            error.code == '23505' &&
+            lower.contains('employee_number'))) {
+      return 'この社員番号は同じ会社で使用されています。別の番号を入力してください。';
+    }
+    return message.replaceFirst('Bad state: ', '');
   }
 
   Object? _nullable(Object? value) {

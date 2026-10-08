@@ -44,6 +44,9 @@ class _ProfilePageState extends State<ProfilePage> {
   List<EditableFamilyMember> _familyMembers = <EditableFamilyMember>[];
   String _bloodType = '';
   String? _workerId;
+  String _employeeNumber = '';
+  String _department = '';
+  String _hireDate = '';
 
   ProfileData? _data;
   bool _loading = true;
@@ -100,6 +103,9 @@ class _ProfilePageState extends State<ProfilePage> {
       _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
       _workerId = personnel?['worker_id']?.toString();
+      _employeeNumber = personnel?['employee_number']?.toString() ?? '';
+      _department = personnel?['department']?.toString() ?? '';
+      _hireDate = personnel?['hire_date']?.toString() ?? '';
       _personnelName.text =
           personnel?['name']?.toString() ?? data.displayName;
       _personnelRole.text = personnel?['role']?.toString() ?? '';
@@ -682,6 +688,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              for (final detail in [
+                                ('社員番号', _employeeNumber),
+                                ('所属', _department),
+                                ('入社日', _hireDate.replaceAll('-', '/')),
+                              ])
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  title: Text(SkoLanguageController.tr(detail.$1)),
+                                  subtitle: Text(detail.$2.isEmpty ? '未登録' : detail.$2),
+                                ),
+                              const Text('社員番号・所属・入社日は社員データに登録された情報です。変更は社員データから行います。'),
                               const SizedBox(height: 6),
                               const Text(
                                 '未登録は直接保存できます。登録済み情報の変更は1〜3名で登録した承認者の承認後に反映されます。',

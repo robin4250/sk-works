@@ -283,7 +283,7 @@ class PayrollPdfService {
           ),
           at(
             200,
-            41,
+            29,
             159,
             30,
             pw.Center(
@@ -294,10 +294,10 @@ class PayrollPdfService {
               ),
             ),
           ),
-          at(200, 66, 159, .7, pw.Container(color: blue)),
+          at(200, 54, 159, .7, pw.Container(color: blue)),
           at(
             200,
-            70,
+            58,
             159,
             13,
             pw.Center(
@@ -338,9 +338,9 @@ class PayrollPdfService {
           ),
           at(
             350,
-            80,
+            64,
             189.275590551,
-            16,
+            10,
             pw.Align(
               alignment: pw.Alignment.topRight,
               child: text(
@@ -352,6 +352,7 @@ class PayrollPdfService {
               ),
             ),
           ),
+          at(284, 76, 255.275590551, 32, _confirmationFrames(detail, blue)),
           at(
             20,
             79,
@@ -658,6 +659,84 @@ class PayrollPdfService {
     if (normalized == 'hourly' || normalized.contains('時給')) return '時給';
     if (normalized == 'daily' || normalized.contains('日給')) return '日給';
     return '未登録';
+  }
+
+  // The server supplies current-revision confirmation records in slot order.
+  // A pending reviewer never produces an impression or a fabricated date.
+  static pw.Widget _confirmationFrames(
+    Map<String, dynamic> detail,
+    PdfColor blue,
+  ) {
+    final raw = detail['payroll_confirmations'];
+    final entries = raw is List
+        ? raw
+              .whereType<Map>()
+              .map((value) => Map<String, dynamic>.from(value))
+              .toList()
+        : <Map<String, dynamic>>[];
+    final ink = PdfColor.fromHex('#D71920');
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.end,
+      children: [
+        pw.Text('確認印', style: pw.TextStyle(fontSize: 7, color: blue)),
+        pw.SizedBox(width: 8),
+        for (var index = 0; index < 3; index++) ...[
+          pw.Container(
+            width: 38,
+            height: 28,
+            alignment: pw.Alignment.center,
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: blue, width: .5),
+              borderRadius: pw.BorderRadius.circular(3),
+            ),
+            child: index < entries.length
+                ? _confirmationImpression(entries[index], ink)
+                : pw.SizedBox(),
+          ),
+          if (index < 2) pw.SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  static pw.Widget _confirmationImpression(
+    Map<String, dynamic> entry,
+    PdfColor ink,
+  ) {
+    final name = (entry['name'] ?? '').toString().trim();
+    final confirmed = DateTime.tryParse(
+      (entry['confirmed_at'] ?? '').toString(),
+    );
+    if (name.isEmpty || confirmed == null) return pw.SizedBox();
+    final japan = confirmed.isUtc
+        ? confirmed.add(const Duration(hours: 9))
+        : confirmed;
+    final surname = name.split(RegExp(r'[\s　]+')).first;
+    return pw.Container(
+      width: 25,
+      height: 25,
+      decoration: pw.BoxDecoration(
+        shape: pw.BoxShape.circle,
+        border: pw.Border.all(color: ink, width: .8),
+      ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        children: [
+          pw.FittedBox(
+            child: pw.Text(
+              surname,
+              style: pw.TextStyle(fontSize: 7, color: ink),
+            ),
+          ),
+          pw.SizedBox(height: 1),
+          pw.Text(
+            '${japan.year % 100}.${japan.month}.${japan.day}',
+            style: pw.TextStyle(fontSize: 4.2, color: ink),
+          ),
+        ],
+      ),
+    );
   }
 
   static pw.Widget _attendanceCards(
@@ -980,6 +1059,26 @@ class PayrollPdfService {
     '減税前所得税',
     '定額減税額',
     '定額減税未済',
+    'required_count',
+    'confirmed_count',
+    'confirmation_count',
+    'revision',
+    'confirmed_revision',
+    'payment_month_offset',
+    'payment_day',
+    'closing_day',
+    'payroll_payment_month_offset',
+    'payroll_payment_day',
+    'payroll_closing_day',
+    'payment_date',
+    'payroll_confirmations',
+    'employee_number',
+    'department',
+    'role',
+    'hire_date',
+    '所属',
+    '職種',
+    '入社日',
     '社員番号',
     '社員No',
     '社員No.',

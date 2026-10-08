@@ -9,10 +9,10 @@ enum PersonKind { employee, partnerCompany, partnerWorker }
 
 extension PersonKindLabel on PersonKind {
   String get label => switch (this) {
-        PersonKind.employee => '社員',
-        PersonKind.partnerCompany => '協力会社',
-        PersonKind.partnerWorker => '協力会社作業員',
-      };
+    PersonKind.employee => '社員',
+    PersonKind.partnerCompany => '協力会社',
+    PersonKind.partnerWorker => '協力会社作業員',
+  };
 }
 
 class PersonRecord {
@@ -24,6 +24,9 @@ class PersonRecord {
     this.phone = '',
     this.email = '',
     this.role = '',
+    this.employeeNumber = '',
+    this.department = '',
+    this.hireDate = '',
     this.notes = '',
     this.active = true,
     this.createdAt = '',
@@ -45,6 +48,9 @@ class PersonRecord {
   final String phone;
   final String email;
   final String role;
+  final String employeeNumber;
+  final String department;
+  final String hireDate;
   final String notes;
   final bool active;
   final String createdAt;
@@ -59,26 +65,29 @@ class PersonRecord {
   final List<PersonnelFamilyMember> familyMembers;
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'kind': kind.name,
-        'name': name,
-        'companyName': companyName,
-        'phone': phone,
-        'email': email,
-        'role': role,
-        'notes': notes,
-        'active': active,
-        'createdAt': createdAt,
-        'updatedAt': updatedAt,
-        'bloodType': bloodType,
-        'address': address,
-        'emergencyName': emergencyName,
-        'emergencyRelation': emergencyRelation,
-        'emergencyPhone': emergencyPhone,
-        'emergencyAddress': emergencyAddress,
-        'familyComposition': familyComposition,
-        'familyMembers': familyMembers.map((item) => item.toJson()).toList(),
-      };
+    'id': id,
+    'kind': kind.name,
+    'name': name,
+    'companyName': companyName,
+    'phone': phone,
+    'email': email,
+    'role': role,
+    'employeeNumber': employeeNumber,
+    'department': department,
+    'hireDate': hireDate,
+    'notes': notes,
+    'active': active,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+    'bloodType': bloodType,
+    'address': address,
+    'emergencyName': emergencyName,
+    'emergencyRelation': emergencyRelation,
+    'emergencyPhone': emergencyPhone,
+    'emergencyAddress': emergencyAddress,
+    'familyComposition': familyComposition,
+    'familyMembers': familyMembers.map((item) => item.toJson()).toList(),
+  };
 
   factory PersonRecord.fromJson(Map<String, dynamic> json) {
     return PersonRecord(
@@ -92,6 +101,10 @@ class PersonRecord {
       phone: json['phone']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? '',
+      employeeNumber:
+          (json['employeeNumber'] ?? json['employee_number'])?.toString() ?? '',
+      department: json['department']?.toString() ?? '',
+      hireDate: (json['hireDate'] ?? json['hire_date'])?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
       active: json['active'] is bool ? json['active'] as bool : true,
       createdAt: json['createdAt']?.toString() ?? '',
@@ -252,39 +265,41 @@ class _PeoplePageState extends State<PeoplePage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
-                      ? const Center(child: Text('該当する登録はありません'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final record = filtered[index];
-                            final subtitleParts = <String>[
-                              record.kind.label,
-                              if (record.companyName.isNotEmpty) record.companyName,
-                              if (record.role.isNotEmpty) record.role,
-                              if (record.phone.isNotEmpty) record.phone,
-                            ];
-                            return Card(
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  child: Icon(
-                                    record.kind == PersonKind.partnerCompany
-                                        ? Icons.business_outlined
-                                        : Icons.person_outline,
-                                  ),
-                                ),
-                                title: Text(
-                                  record.name,
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
-                                ),
-                                subtitle: Text(subtitleParts.join(' / ')),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _showDetails(record),
+                  ? const Center(child: Text('該当する登録はありません'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final record = filtered[index];
+                        final subtitleParts = <String>[
+                          record.kind.label,
+                          if (record.companyName.isNotEmpty) record.companyName,
+                          if (record.role.isNotEmpty) record.role,
+                          if (record.phone.isNotEmpty) record.phone,
+                        ];
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Icon(
+                                record.kind == PersonKind.partnerCompany
+                                    ? Icons.business_outlined
+                                    : Icons.person_outline,
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                            title: Text(
+                              record.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(subtitleParts.join(' / ')),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _showDetails(record),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -315,7 +330,8 @@ class _PeoplePageState extends State<PeoplePage> {
               Text(record.name, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
               Text('区分: ${record.kind.label}'),
-              if (record.companyName.isNotEmpty) Text('会社: ${record.companyName}'),
+              if (record.companyName.isNotEmpty)
+                Text('会社: ${record.companyName}'),
               if (record.role.isNotEmpty) Text('役割・職種: ${record.role}'),
               if (record.phone.isNotEmpty) Text('電話: ${record.phone}'),
               if (record.email.isNotEmpty) Text('メール: ${record.email}'),
@@ -395,7 +411,12 @@ class _PersonFormPageState extends State<PersonFormPage> {
                 initialValue: _kind,
                 decoration: const InputDecoration(labelText: '区分'),
                 items: PersonKind.values
-                    .map((kind) => DropdownMenuItem(value: kind, child: Text(kind.label)))
+                    .map(
+                      (kind) => DropdownMenuItem(
+                        value: kind,
+                        child: Text(kind.label),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) => setState(() => _kind = value ?? _kind),
               ),

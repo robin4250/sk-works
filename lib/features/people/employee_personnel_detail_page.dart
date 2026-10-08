@@ -82,40 +82,28 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     );
   }
 
-  Future<void> _callPhone(
-    BuildContext context,
-    String phone,
-  ) async {
+  Future<void> _callPhone(BuildContext context, String phone) async {
     final domestic = domesticPhoneDisplay(phone);
     final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
     if (dial.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: dial);
     if (!await launchUrl(uri) && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('電話を開始できませんでした')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('電話を開始できませんでした')));
     }
   }
 
-  Future<void> _openGoogleMap(
-    BuildContext context,
-    String address,
-  ) async {
+  Future<void> _openGoogleMap(BuildContext context, String address) async {
     final query = address.trim();
     if (query.isEmpty) return;
-    final uri = Uri.https(
-      'www.google.com',
-      '/maps/search/',
-      {'api': '1', 'query': query},
-    );
-    if (!await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    ) &&
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
         context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Googleマップを開けませんでした')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Googleマップを開けませんでした')));
     }
   }
 
@@ -134,16 +122,11 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
           value.trim().isEmpty ? '未登録' : value,
           style: TextStyle(
             fontWeight: FontWeight.w800,
-            color: onTap == null
-                ? null
-                : Theme.of(context).colorScheme.primary,
-            decoration:
-                onTap == null ? null : TextDecoration.underline,
+            color: onTap == null ? null : Theme.of(context).colorScheme.primary,
+            decoration: onTap == null ? null : TextDecoration.underline,
           ),
         ),
-        trailing: onTap == null
-            ? null
-            : const Icon(Icons.open_in_new),
+        trailing: onTap == null ? null : const Icon(Icons.open_in_new),
         onTap: onTap,
       ),
     );
@@ -152,10 +135,13 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
+      ('社員番号', record.employeeNumber),
       ('名前', record.name),
       ('区分', record.kind.label),
       ('血液型', record.bloodType),
+      ('所属', record.department),
       ('職種', record.role),
+      ('入社日', record.hireDate.replaceAll('-', '/')),
     ];
 
     return Scaffold(
@@ -178,20 +164,16 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   trailing: switch (row.$1) {
-                    '電話番号' || '緊急連絡先電話番号'
-                        when row.$2.trim().isNotEmpty =>
+                    '電話番号' || '緊急連絡先電話番号' when row.$2.trim().isNotEmpty =>
                       const Icon(Icons.phone_outlined),
-                    '住所' || '緊急連絡先住所'
-                        when row.$2.trim().isNotEmpty =>
+                    '住所' || '緊急連絡先住所' when row.$2.trim().isNotEmpty =>
                       const Icon(Icons.map_outlined),
                     _ => null,
                   },
                   onTap: switch (row.$1) {
-                    '電話番号' || '緊急連絡先電話番号'
-                        when row.$2.trim().isNotEmpty =>
+                    '電話番号' || '緊急連絡先電話番号' when row.$2.trim().isNotEmpty =>
                       () => _callPhone(context, row.$2),
-                    '住所' || '緊急連絡先住所'
-                        when row.$2.trim().isNotEmpty =>
+                    '住所' || '緊急連絡先住所' when row.$2.trim().isNotEmpty =>
                       () => _openGoogleMap(context, row.$2),
                     _ => null,
                   },
@@ -253,10 +235,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
               icon: Icons.location_on_outlined,
               onTap: record.emergencyAddress.trim().isEmpty
                   ? null
-                  : () => _openGoogleMap(
-                        context,
-                        record.emergencyAddress,
-                      ),
+                  : () => _openGoogleMap(context, record.emergencyAddress),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
