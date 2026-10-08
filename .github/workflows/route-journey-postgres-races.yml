@@ -1,0 +1,48 @@
+name: Route journey Postgres races
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
+      - 'tool/verify_route_journey_postgres_races.mjs'
+      - 'tool/fixtures/route_journey_capture/**'
+      - '.github/workflows/route-journey-postgres-races.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
+      - 'tool/verify_route_journey_postgres_races.mjs'
+      - 'tool/fixtures/route_journey_capture/**'
+      - '.github/workflows/route-journey-postgres-races.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture-postgres-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: route-capture-fixture
+          POSTGRES_DB: sko_route_capture_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_route_capture_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_ROUTE_RACE_DATABASE_URL: postgres://postgres:route-capture-fixture@127.0.0.1:5432/sko_route_capture_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated Postgres client
+        run: npm install --prefix "$RUNNER_TEMP/route-pg-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify observed route capture lock races in disposable database
+        run: node tool/verify_route_journey_postgres_races.mjs "$RUNNER_TEMP/route-pg-runtime/node_modules/pg/lib/index.js"
