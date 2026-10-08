@@ -1,0 +1,36 @@
+name: Group Proxy Checkout SQL
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/group-proxy-checkout-sql.yml'
+      - 'supabase/migrations/**'
+      - 'supabase/tests/group_proxy_checkout_assertions.sql'
+      - 'tool/verify_group_proxy_checkout.mjs'
+      - 'tool/verify_gps_shift_work_date.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/group-proxy-checkout-sql.yml'
+      - 'supabase/migrations/**'
+      - 'supabase/tests/group_proxy_checkout_assertions.sql'
+      - 'tool/verify_group_proxy_checkout.mjs'
+      - 'tool/verify_gps_shift_work_date.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: group-proxy-checkout-sql-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated staged proxy checkout SQL
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-group-checkout-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_group_proxy_checkout.mjs "$RUNNER_TEMP/sko-group-checkout-runtime/node_modules/@electric-sql/pglite/dist/index.js"
