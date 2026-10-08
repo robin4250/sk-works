@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/attendance/attendance_work_date.dart';
+import 'package:sk_works/features/attendance/attendance_work_date.dart';
 
 void main() {
   test('next-day end belongs to linked work date across month and year', () {

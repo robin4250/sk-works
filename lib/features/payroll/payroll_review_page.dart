@@ -205,14 +205,17 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               for (final item in items)
                                 Card(
                                   child: ListTile(
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            PayrollStatementPreviewPage(
-                                          statement: item.statement,
+                                    onTap: () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              PayrollStatementPreviewPage(
+                                            statement: item.statement,
+                                          ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                      if (mounted) await _load();
+                                    },
                                     leading: workspace.canConfirm
                                         ? Checkbox(
                                             value: item.reviewChecked,

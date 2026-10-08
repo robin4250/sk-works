@@ -13,6 +13,7 @@
 | 20261008035509_invoice_registered_method_amounts_and_formula_labels.sql | 20261008041948 |
 | 20261008040303_payroll_confirmer_visibility_guard.sql | 20261008042028 |
 | 20261008040428_generate_fixed_monthly_payroll_without_attendance.sql | 20261008042030 |
+| 20261008042058_fix_managed_attendance_overnight_chronology.sql | 20261008042530 |
 
 Supabase apply_migration が生成する本番versionとローカルCLIファイル時刻は別管理。古いmigrationをrename・再適用・ledger修正しない。
 
