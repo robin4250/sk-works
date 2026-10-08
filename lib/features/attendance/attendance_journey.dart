@@ -230,6 +230,7 @@ class AttendanceJourneyRoster {
   /// No persistence occurs here: save the resulting group transaction atomically.
   List<AttendanceJourney> proxyClockOut({
     required String actingWorkerId,
+    required String actingActorId,
     required AttendanceJourneyEvidence Function(AttendanceJourney member) evidenceFor,
   }) {
     if (!containsWorker(actingWorkerId)) {
@@ -238,7 +239,7 @@ class AttendanceJourneyRoster {
     return List.unmodifiable(members.map((member) {
       if (!member.isWorking) return member;
       final evidence = evidenceFor(member);
-      if (!evidence.isProxy || evidence.actorId != actingWorkerId) {
+      if (!evidence.isProxy || evidence.actorId != actingActorId) {
         throw StateError('代理退勤の入力者と対象者を記録してください');
       }
       return member.clockOut(place: AttendanceJourneyPlace.site, evidence: evidence);

@@ -133,14 +133,14 @@ void main() {
     expect(roster.members.length, 2);
     expect(roster.canRequestBulkCorrection('worker2'), isTrue);
     expect(roster.canRequestBulkCorrection('worker3'), isFalse);
-    final result = roster.proxyClockOut(actingWorkerId: 'worker2', evidenceFor: (member) =>
+    final result = roster.proxyClockOut(actingWorkerId: 'worker2', actingActorId: 'user2', evidenceFor: (member) =>
       AttendanceJourneyEvidence(id: 'proxy-out', workerId: member.start.clockIn.workerId,
-        actorId: 'worker2', occurredAt: DateTime.parse('2026-11-01T06:00:00+09:00'),
+        actorId: 'user2', occurredAt: DateTime.parse('2026-11-01T06:00:00+09:00'),
         origin: AttendanceJourneyOrigin.teamProxy));
     expect(result.last, same(early));
     expect(result.first.end!.evidence.isProxy, isTrue);
     expect(result.first.workDate, DateTime(2026, 10, 31));
-    expect(() => roster.proxyClockOut(actingWorkerId: 'worker3',
+    expect(() => roster.proxyClockOut(actingWorkerId: 'worker3', actingActorId: 'user3',
       evidenceFor: (_) => throw StateError('must not run')), throwsStateError);
   });
 
