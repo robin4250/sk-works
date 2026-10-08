@@ -1,0 +1,121 @@
+{
+  "captured_at": "2026-10-08T15:38:00Z",
+  "project_id": "ztktgquxvcxcjxtluspu",
+  "before_migration": "approval_assignee_viewer_scope",
+  "functions": [
+    {
+      "schema": "private",
+      "proname": "is_worker_personnel_approver",
+      "arguments": "p_company_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION private.is_worker_personnel_approver(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select exists(\n    select 1\n    from public.worker_personnel_approvers a\n    where a.company_id=p_company_id\n      and a.user_id=auth.uid()\n  )\n$function$\n",
+      "acl": null
+    },
+    {
+      "schema": "public",
+      "proname": "company_approval_assignee_rows",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION public.company_approval_assignee_rows()\n RETURNS TABLE(user_id uuid, display_name text, role text, is_assignee boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_company_id uuid;\nbegin\n  select cm.company_id\n  into v_company_id\n  from public.company_members cm\n  where cm.user_id = v_actor\n    and cm.role::text in ('owner','admin')\n  limit 1;\n\n  if v_company_id is null then\n    raise exception 'owner or admin permission required';\n  end if;\n\n  return query\n  select\n    cm.user_id,\n    coalesce(up.display_name, 'SKOユーザー')::text,\n    cm.role::text,\n    (caa.user_id is not null)\n  from public.company_members cm\n  left join public.user_profiles up on up.user_id = cm.user_id\n  left join public.company_approval_assignees caa\n    on caa.company_id = cm.company_id\n   and caa.user_id = cm.user_id\n  where cm.company_id = v_company_id\n    and cm.role::text in ('owner','admin','manager')\n  order by\n    (caa.user_id is not null) desc,\n    coalesce(up.display_name, 'SKOユーザー');\nend;\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "proname": "decide_daily_report_edit",
+      "arguments": "p_request_id uuid, p_decision text",
+      "definition": "CREATE OR REPLACE FUNCTION public.decide_daily_report_edit(p_request_id uuid, p_decision text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_company_id uuid;\n  v_requested_by uuid;\n  v_status text;\n  v_assignee_count integer;\nbegin\n  if v_user_id is null then\n    raise exception 'authentication required';\n  end if;\n\n  if p_decision not in ('approve','reject') then\n    raise exception 'invalid decision';\n  end if;\n\n  select req.company_id, req.requested_by, req.status\n  into v_company_id, v_requested_by, v_status\n  from public.daily_report_edit_requests req\n  where req.id = p_request_id\n  for update;\n\n  if v_company_id is null or v_status <> 'pending' then\n    raise exception 'pending request not found';\n  end if;\n\n  if not exists (\n    select 1\n    from public.company_approval_assignees caa\n    where caa.company_id = v_company_id\n      and caa.user_id = v_user_id\n  ) then\n    raise exception 'approval assignee permission required';\n  end if;\n\n  select count(*) into v_assignee_count\n  from public.company_approval_assignees\n  where company_id = v_company_id;\n\n  -- Multi-person companies keep separation of requester/approver.\n  -- A sole proprietor may self-approve only when they are the company's\n  -- single configured approval assignee.\n  if v_requested_by = v_user_id and v_assignee_count > 1 then\n    raise exception 'requester cannot approve own request';\n  end if;\n\n  insert into public.daily_report_edit_approvals(\n    request_id,\n    approver_user_id,\n    decision\n  )\n  values(\n    p_request_id,\n    v_user_id,\n    p_decision\n  )\n  on conflict(request_id, approver_user_id) do update\n  set decision = excluded.decision,\n      decided_at = now();\n\n  if p_decision = 'reject' then\n    update public.daily_report_edit_requests\n    set status = 'rejected',\n        resolved_at = now()\n    where id = p_request_id;\n\n    perform private.enqueue_notification(\n      v_company_id,\n      v_requested_by,\n      'warning',\n      '日報修正申請が却下されました',\n      '確定済み日報の修正申請が却下されました。',\n      'daily_report_edit_request',\n      p_request_id\n    );\n    return 'rejected';\n  end if;\n\n  update public.daily_report_edit_requests\n  set status = 'approved',\n      resolved_at = now(),\n      approvals_required = 1\n  where id = p_request_id;\n\n  perform private.enqueue_notification(\n    v_company_id,\n    v_requested_by,\n    'approval',\n    '日報を編集できます',\n    '設定された承認担当者の承認が完了しました。日報を開いて編集してください。',\n    'daily_report_edit_request',\n    p_request_id\n  );\n\n  return 'approved';\nend;\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "proname": "set_company_approval_assignee",
+      "arguments": "p_user_id uuid, p_enabled boolean",
+      "definition": "CREATE OR REPLACE FUNCTION public.set_company_approval_assignee(p_user_id uuid, p_enabled boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_company_id uuid;\n  v_target_role text;\n  v_count integer;\nbegin\n  select cm.company_id\n  into v_company_id\n  from public.company_members cm\n  where cm.user_id = v_actor\n    and cm.role::text in ('owner','admin')\n  limit 1;\n\n  if v_company_id is null then\n    raise exception 'owner or admin permission required';\n  end if;\n\n  select cm.role::text\n  into v_target_role\n  from public.company_members cm\n  where cm.company_id = v_company_id\n    and cm.user_id = p_user_id\n  limit 1;\n\n  if v_target_role is null then\n    raise exception 'target user is not in company';\n  end if;\n\n  if p_enabled and v_target_role not in ('owner','admin','manager') then\n    raise exception 'approval assignee must be sub-admin or above';\n  end if;\n\n  perform pg_advisory_xact_lock(hashtextextended(v_company_id::text, 0));\n\n  select count(*)\n  into v_count\n  from public.company_approval_assignees\n  where company_id = v_company_id;\n\n  if p_enabled then\n    if exists (\n      select 1 from public.company_approval_assignees\n      where company_id = v_company_id and user_id = p_user_id\n    ) then\n      return;\n    end if;\n\n    if v_count >= 3 then\n      raise exception 'approval_assignee_limit_reached';\n    end if;\n\n    insert into public.company_approval_assignees(\n      company_id, user_id, created_by\n    )\n    values(v_company_id, p_user_id, v_actor);\n    return;\n  end if;\n\n  if not exists (\n    select 1 from public.company_approval_assignees\n    where company_id = v_company_id and user_id = p_user_id\n  ) then\n    return;\n  end if;\n\n  if v_count <= 1 then\n    raise exception 'at_least_one_approval_assignee_required';\n  end if;\n\n  delete from public.company_approval_assignees\n  where company_id = v_company_id\n    and user_id = p_user_id;\nend;\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "proname": "set_member_feature_permissions",
+      "arguments": "p_user_id uuid, p_role text, p_permissions jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION public.set_member_feature_permissions(p_user_id uuid, p_role text, p_permissions jsonb)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_company_id uuid;\n  v_target_role text;\n  v_assignee_count integer;\n  v_can_manage_attendance boolean;\n  v_can_manage_people boolean;\n  v_can_manage_partner_chat boolean;\n  v_can_manage_vehicles boolean;\n  v_can_manage_routes boolean;\nbegin\n  select cm.company_id into v_company_id\n  from public.company_members cm\n  where cm.user_id=v_actor and cm.role::text in ('owner','admin')\n  limit 1;\n\n  if v_company_id is null then\n    raise exception 'owner or admin permission required';\n  end if;\n\n  select cm.role::text into v_target_role\n  from public.company_members cm\n  where cm.company_id=v_company_id and cm.user_id=p_user_id\n  limit 1;\n\n  if v_target_role is null then raise exception 'target user is not in company'; end if;\n  if v_target_role='owner' then raise exception 'owner role cannot be changed'; end if;\n  if p_role not in ('admin','manager','viewer') then raise exception 'invalid role'; end if;\n\n  if p_role='viewer' and exists(\n    select 1 from public.company_approval_assignees\n    where company_id=v_company_id and user_id=p_user_id\n  ) then\n    select count(*) into v_assignee_count\n    from public.company_approval_assignees\n    where company_id=v_company_id;\n    if v_assignee_count<=1 then\n      raise exception 'remove approval duty after assigning another approver';\n    end if;\n    delete from public.company_approval_assignees\n    where company_id=v_company_id and user_id=p_user_id;\n  end if;\n\n  update public.company_members\n  set role=p_role\n  where company_id=v_company_id and user_id=p_user_id;\n\n  if p_role='admin' then\n    delete from public.member_feature_permissions\n    where company_id=v_company_id and user_id=p_user_id;\n    return;\n  end if;\n\n  v_can_manage_attendance :=\n    coalesce((p_permissions->>'can_manage_attendance')::boolean,false);\n  v_can_manage_people :=\n    coalesce((p_permissions->>'can_manage_people')::boolean,false);\n  v_can_manage_partner_chat :=\n    coalesce((p_permissions->>'can_manage_partner_chat')::boolean,false);\n  v_can_manage_vehicles :=\n    coalesce((p_permissions->>'can_manage_vehicles')::boolean,false);\n  v_can_manage_routes :=\n    coalesce((p_permissions->>'can_manage_routes')::boolean,false);\n\n  insert into public.member_feature_permissions(\n    company_id,user_id,\n    can_approve_daily_report_edits,\n    can_manage_attendance,\n    can_manage_people,\n    can_view_invoices,\n    can_manage_invoices,\n    can_view_admin_site_data,\n    can_manage_admin_site_data,\n    can_manage_payroll,\n    can_manage_partner_chat,\n    can_manage_vehicles,\n    can_manage_routes,\n    updated_by,updated_at\n  ) values(\n    v_company_id,p_user_id,\n    false,\n    v_can_manage_attendance,\n    v_can_manage_people,\n    false,false,false,false,false,\n    v_can_manage_partner_chat,\n    v_can_manage_vehicles,\n    v_can_manage_routes,\n    v_actor,now()\n  )\n  on conflict(company_id,user_id) do update\n  set can_approve_daily_report_edits=false,\n      can_manage_attendance=excluded.can_manage_attendance,\n      can_manage_people=excluded.can_manage_people,\n      can_view_invoices=false,\n      can_manage_invoices=false,\n      can_view_admin_site_data=false,\n      can_manage_admin_site_data=false,\n      can_manage_payroll=false,\n      can_manage_partner_chat=excluded.can_manage_partner_chat,\n      can_manage_vehicles=excluded.can_manage_vehicles,\n      can_manage_routes=excluded.can_manage_routes,\n      updated_by=v_actor,\n      updated_at=now();\nend;\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "proname": "set_worker_personnel_approvers",
+      "arguments": "p_user_ids uuid[]",
+      "definition": "CREATE OR REPLACE FUNCTION public.set_worker_personnel_approvers(p_user_ids uuid[])\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  uid uuid:=auth.uid();\n  cid uuid;\n  role_text text;\n  candidate uuid;\n  pos integer:=0;\nbegin\n  select cm.company_id,cm.role::text into cid,role_text\n  from public.company_members cm\n  where cm.user_id=uid\n  limit 1;\n  if cid is null or role_text not in ('owner','admin') then\n    raise exception '承認者設定は管理者のみ変更できます';\n  end if;\n\n  if coalesce(array_length(p_user_ids,1),0) not between 1 and 3 then\n    raise exception '承認者は1〜3名で設定してください';\n  end if;\n\n  if (select count(distinct x) from unnest(p_user_ids) x)\n     <> array_length(p_user_ids,1) then\n    raise exception '同じ承認者を重複して登録できません';\n  end if;\n\n  foreach candidate in array p_user_ids loop\n    if not exists(\n      select 1 from public.company_members cm\n      where cm.company_id=cid\n        and cm.user_id=candidate\n        and cm.role::text in ('owner','admin','manager')\n    ) then\n      raise exception '承認者は自社の管理者・サブ管理者から選択してください';\n    end if;\n  end loop;\n\n  delete from public.worker_personnel_approvers where company_id=cid;\n\n  foreach candidate in array p_user_ids loop\n    pos:=pos+1;\n    insert into public.worker_personnel_approvers(company_id,user_id,position)\n    values(cid,candidate,pos);\n  end loop;\nend\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "schema": "public",
+      "proname": "worker_personnel_approver_rows",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION public.worker_personnel_approver_rows()\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  uid uuid:=auth.uid();\n  cid uuid;\n  role_text text;\nbegin\n  select cm.company_id,cm.role::text into cid,role_text\n  from public.company_members cm\n  where cm.user_id=uid\n  limit 1;\n  if cid is null then raise exception '会社への所属が必要です'; end if;\n  if role_text not in ('owner','admin') then\n    raise exception '承認者設定は管理者のみ利用できます';\n  end if;\n\n  return jsonb_build_object(\n    'selected',coalesce((\n      select jsonb_agg(jsonb_build_object(\n        'user_id',a.user_id,\n        'position',a.position,\n        'name',coalesce(w.name,cm.user_id::text)\n      ) order by a.position)\n      from public.worker_personnel_approvers a\n      join public.company_members cm\n        on cm.company_id=a.company_id and cm.user_id=a.user_id\n      left join public.workers w\n        on w.company_id=cm.company_id and w.user_id=cm.user_id\n      where a.company_id=cid\n    ),'[]'::jsonb),\n    'candidates',coalesce((\n      select jsonb_agg(jsonb_build_object(\n        'user_id',cm.user_id,\n        'name',coalesce(w.name,cm.user_id::text),\n        'role',cm.role::text\n      ) order by coalesce(w.name,cm.user_id::text))\n      from public.company_members cm\n      left join public.workers w\n        on w.company_id=cm.company_id and w.user_id=cm.user_id\n      where cm.company_id=cid\n        and cm.role::text in ('owner','admin','manager')\n    ),'[]'::jsonb)\n  );\nend\n$function$\n",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    }
+  ],
+  "policies": [
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "account_deletion_access_guard",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "company_members_owner_manage",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "private.has_company_role(company_id, ARRAY['owner'::app_role])",
+      "with_check": "private.has_company_role(company_id, ARRAY['owner'::app_role])"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "company_members_self_read",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(user_id = ( SELECT auth.uid() AS uid))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "daily_report_edit_approvals",
+      "policyname": "account_deletion_access_guard",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "daily_report_edit_approvals",
+      "policyname": "requester or authorized approver can read approvals",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM daily_report_edit_requests req\n  WHERE ((req.id = daily_report_edit_approvals.request_id) AND ((req.requested_by = ( SELECT auth.uid() AS uid)) OR private.has_company_feature(req.company_id, 'can_approve_daily_report_edits'::text)))))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "daily_report_edit_requests",
+      "policyname": "account_deletion_access_guard",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "daily_report_edit_requests",
+      "policyname": "requester or authorized approver can read edit requests",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((requested_by = ( SELECT auth.uid() AS uid)) OR private.has_company_feature(company_id, 'can_approve_daily_report_edits'::text))",
+      "with_check": null
+    }
+  ]
+}
