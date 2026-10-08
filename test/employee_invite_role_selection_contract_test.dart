@@ -21,12 +21,31 @@ void main() {
 
   test('only full admins can request sub-admin or approver at invite time', () {
     final edge = read('supabase/functions/create-employee-invite/index.ts');
+    final policy = read('supabase/functions/_shared/employee_invite_policy.mjs');
 
-    expect(edge, contains('callerRole === "owner" || callerRole === "admin"'));
-    expect(edge, contains('requestedRole'));
-    expect(edge, contains('requestedApprovalAssignee'));
     expect(
       edge,
+      contains(
+        "import { employeeInvitePolicy } from '../_shared/employee_invite_policy.mjs'",
+      ),
+    );
+    expect(edge, contains('employeeInvitePolicy(payload, callerRole)'));
+    expect(
+      edge,
+      contains(
+        "if ('error' in policy) return json({ error: policy.error }, policy.status)",
+      ),
+    );
+    expect(edge, contains('requestedRole'));
+    expect(edge, contains('requestedApprovalAssignee'));
+    expect(policy, contains("!['owner', 'admin'].includes(callerRole)"));
+    expect(
+      policy,
+      contains("requestedRole !== 'viewer' || requestedApprovalAssignee ||"),
+    );
+    expect(policy, contains('replaceApprovalAssigneeUserId !== null'));
+    expect(
+      policy,
       contains('サブ管理者・承認担当者の指定は管理者だけが行えます。'),
     );
     expect(edge, contains('approval_assignee_limit_reached'));
@@ -40,7 +59,17 @@ void main() {
     expect(page, contains('承認担当者は最大3名です'));
     expect(page, contains('この人を外す'));
     expect(page, contains("child: Text(_tr('閉じる', 'Close'))"));
-    expect(page, contains('_makeSubAdmin = true'));
+    expect(page, contains('_currentApprovalAssignees.length >= 3'));
+    expect(page, contains('_replaceApprovalAssigneeUserId = replacement'));
+    expect(page, contains("requestedRole: _makeSubAdmin ? 'manager' : 'viewer'"));
+    final approvalSelection = page.substring(
+      page.indexOf('Future<void> _setApprovalAssignee(bool value)'),
+      page.indexOf('Future<void> _create()'),
+    );
+    expect(approvalSelection, contains('if (replacement == null)'));
+    expect(approvalSelection, contains('_makeApprovalAssignee = false'));
+    expect(approvalSelection, contains('_makeApprovalAssignee = true'));
+    expect(approvalSelection, isNot(contains('_makeSubAdmin =')));
   });
 
   test('onboarding reviewers can see requested role and replacement', () {

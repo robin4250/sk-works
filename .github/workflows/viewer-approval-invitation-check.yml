@@ -1,0 +1,64 @@
+name: Viewer approval invitation check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'fix/viewer-approval-invitations-*']
+    paths:
+      - '.github/workflows/viewer-approval-invitation-check.yml'
+      - 'supabase/functions/create-employee-invite/**'
+      - 'supabase/functions/_shared/**'
+      - 'supabase/migrations/20261009000116_viewer_approval_invitation_role.sql'
+      - 'supabase/tests/viewer_approval_invitation_assertions.sql'
+      - 'tool/employee_invite_policy.test.mjs'
+      - 'tool/verify_viewer_approval_invitation.mjs'
+      - 'tool/fixtures/viewer_approval_invitation/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/viewer-approval-invitation-check.yml'
+      - 'supabase/functions/create-employee-invite/**'
+      - 'supabase/functions/_shared/**'
+      - 'supabase/migrations/20261009000116_viewer_approval_invitation_role.sql'
+      - 'supabase/tests/viewer_approval_invitation_assertions.sql'
+      - 'tool/employee_invite_policy.test.mjs'
+      - 'tool/verify_viewer_approval_invitation.mjs'
+      - 'tool/fixtures/viewer_approval_invitation/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viewer-invitation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-policy-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check invitation role policy
+        run: node --test tool/employee_invite_policy.test.mjs
+      - name: Verify isolated SQL with hash-checked PR 755 fixture
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-invite-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_viewer_approval_invitation.mjs "$RUNNER_TEMP/sko-invite-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+  edge-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 'v2.x'
+      - name: Type-check employee invite Edge entry
+        run: deno check --no-lock supabase/functions/create-employee-invite/index.ts
+      - name: Type-check standalone invitation policy JavaScript
+        run: deno check --no-lock --check-js supabase/functions/_shared/employee_invite_policy.mjs

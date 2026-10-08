@@ -1,3 +1,4 @@
+import { employeeInvitePolicy } from '../_shared/employee_invite_policy.mjs';
 import { serverAccountActivity } from '../_shared/account_activity.mjs';
 import { createDeletionInspection } from '../_shared/account_deletion_inspection.mjs';
 import { serverAccountAccess } from '../_shared/account_access.mjs';
@@ -162,33 +163,9 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const requestedRole =
-    payload?.requestedRole === "manager" ? "manager" : "viewer";
-  const requestedApprovalAssignee =
-    payload?.requestedApprovalAssignee === true;
-  const replaceApprovalAssigneeUserId =
-    typeof payload?.replaceApprovalAssigneeUserId === "string" &&
-      payload.replaceApprovalAssigneeUserId.trim().length > 0
-      ? payload.replaceApprovalAssigneeUserId.trim()
-      : null;
-
-  if (
-    !canAssignManagementRole &&
-    (requestedRole !== "viewer" || requestedApprovalAssignee ||
-      replaceApprovalAssigneeUserId !== null)
-  ) {
-    return json(
-      { error: "サブ管理者・承認担当者の指定は管理者だけが行えます。" },
-      403,
-    );
-  }
-
-  if (requestedApprovalAssignee && requestedRole !== "manager") {
-    return json(
-      { error: "承認担当者にする場合はサブ管理者を選択してください。" },
-      400,
-    );
-  }
+  const policy = employeeInvitePolicy(payload, callerRole);
+  if ('error' in policy) return json({ error: policy.error }, policy.status);
+  const { requestedRole, requestedApprovalAssignee, replaceApprovalAssigneeUserId } = policy;
 
   if (requestedApprovalAssignee) {
     const assigneeResponse = await serviceFetch(
