@@ -36,6 +36,11 @@ void main() {
         final snapshot = Map<String, dynamic>.from(snapshots[i] as Map);
         final terms = Map<String, dynamic>.from(snapshot['terms'] as Map);
         final record = SitePaymentAgreementDocument.fromSnapshot(snapshot);
+        expect(record.payerPostalCode, snapshot['parent_postal_code']);
+        expect(record.payerAddress, snapshot['parent_address']);
+        expect(record.payerPhone, snapshot['parent_phone']);
+        expect(record.payerFax, snapshot['parent_fax']);
+        expect(record.payerCompanySealEnabled, i == 0 || i == 3);
         final bytes = await PaymentCertificatePdfService.buildPdf(
           record, regularFont: font, boldFont: font,
         );
@@ -59,6 +64,9 @@ void main() {
         expect(text, contains(snapshot['parent_company_name'].toString()));
         expect(text, contains(snapshot['subcontractor_company_name'].toString()));
         expect(text, contains(snapshot['site_name'].toString()));
+        for(final key in ['parent_postal_code','parent_address','parent_phone','parent_fax']) {
+          expect(text, contains(snapshot[key].toString().replaceAll(RegExp(r'\s+'), '')));
+        }
         expect(text, contains(terms['mode'] == 'square_meter' ? '平米計算' : '請け負い'));
         for (final raw in terms['adjustments'] as List) {
           final item = raw as Map;
@@ -81,6 +89,15 @@ void main() {
         // Later mutable source data cannot alter the materialized PDF record.
         final originalName = record.payerCompanyName;
         snapshot['parent_company_name'] = '変更後の会社名';
+        snapshot['parent_address'] = '変更後の住所';
+        snapshot['parent_company_seal_enabled'] = !record.payerCompanySealEnabled;
+        expect(record.payerAddress, isNot('変更後の住所'));
+        expect(record.payerCompanySealEnabled, i == 0 || i == 3);
+        final legacy = SitePaymentAgreementDocument.fromSnapshot({
+          ...snapshot, for(final key in ['parent_postal_code','parent_address','parent_phone','parent_fax','parent_company_seal_enabled']) key:null,
+        });
+        expect(legacy.payerAddress, '');
+        expect(legacy.payerCompanySealEnabled, false);
         expect(record.payerCompanyName, originalName);
         final invalid = Map<String, dynamic>.from(terms)
           ..['final_amount_yen'] = record.netAmount + 1;

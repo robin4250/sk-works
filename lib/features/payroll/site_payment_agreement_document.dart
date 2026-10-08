@@ -71,8 +71,12 @@ class SitePaymentAgreementDocument {
       id: 'agreement:${snapshot['proposal_id']}',
       partnerCompanyName: snapshot['subcontractor_company_name'].toString(),
       payerCompanyName: snapshot['parent_company_name'].toString(),
-      // Seal configuration is not yet part of this immutable snapshot contract.
-      payerCompanySealEnabled: false,
+      // Legacy snapshots lack these fields and stay without inferred details.
+      payerCompanySealEnabled: snapshot['parent_company_seal_enabled'] == true,
+      payerPostalCode: snapshot['parent_postal_code']?.toString() ?? '',
+      payerAddress: snapshot['parent_address']?.toString() ?? '',
+      payerPhone: snapshot['parent_phone']?.toString() ?? '',
+      payerFax: snapshot['parent_fax']?.toString() ?? '',
       periodStart: DateTime.parse(terms['period_start'].toString()),
       periodEnd: DateTime.parse(terms['period_end'].toString()),
       grossAmount: total,
