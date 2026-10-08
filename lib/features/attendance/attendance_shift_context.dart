@@ -32,7 +32,9 @@ class AttendanceShiftContext {
     final confirmed = DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
     final id = row['id']?.toString() ?? '';
     final workerId = row['worker_id']?.toString() ?? '';
-    if (row['event_type'] != 'clock_in' || confirmed == null || id.isEmpty || workerId.isEmpty) return null;
+    if (row['event_type'] != 'clock_in' || confirmed == null || id.isEmpty || workerId.isEmpty) {
+      return null;
+    }
     String? joinedName(String key, String field) {
       final join = row[key];
       return join is Map ? join[field]?.toString() : null;
@@ -67,7 +69,9 @@ List<AttendanceShiftContext> openAttendanceShifts(
   DateTime? legacyEnd;
   for (final row in relevant) {
     final time = DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
-    if (time == null || time.isAfter(now) || row['event_type'] != 'clock_out') continue;
+    if (time == null || time.isAfter(now) || row['event_type'] != 'clock_out') {
+      continue;
+    }
     final source = row['source_clock_in_id']?.toString();
     if (source != null && source.isNotEmpty) {
       closedIds.add(source);
@@ -80,7 +84,9 @@ List<AttendanceShiftContext> openAttendanceShifts(
     final start = AttendanceShiftContext.fromRow(row);
     if (start == null || closedIds.contains(start.id) || start.clockIn.isAfter(now) ||
         start.clockIn.isBefore(previousDay) ||
-        (legacyEnd != null && !start.clockIn.isAfter(legacyEnd))) continue;
+        (legacyEnd != null && !start.clockIn.isAfter(legacyEnd))) {
+      continue;
+    }
     starts[start.id] = start;
   }
   return starts.values.toList()..sort((a, b) => a.clockIn.compareTo(b.clockIn));

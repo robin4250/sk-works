@@ -21,6 +21,8 @@ Map<String, dynamic>? dailyReportClockInSnapshot(
   }).toList()
     ..sort((a, b) => DateTime.parse(a['confirmed_at'].toString())
         .compareTo(DateTime.parse(b['confirmed_at'].toString())));
-  if (candidates.isEmpty || candidates.first['work_date'] == null) return null;
+  if (candidates.isEmpty || candidates.first['work_date'] == null) {
+    return null;
+  }
   return candidates.first;
 }
