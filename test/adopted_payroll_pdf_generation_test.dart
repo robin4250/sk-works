@@ -277,11 +277,21 @@ void main() {
       for (final sealBox in sealBoxes) {
         final coordinates = sealBox.cast<num>();
         expect(
-          shortTaglineBox[2],
-          lessThanOrEqualTo(coordinates[0] + .1),
-          reason: 'A short company name must not let the tagline intersect its overlapping seal.',
+          shortTaglineBox[1],
+          greaterThanOrEqualTo(coordinates[3] + .5),
+          reason: 'The readable short-company tagline must sit below the seal.',
         );
       }
+      expect(
+        shortTaglineBox[3],
+        lessThan(97),
+        reason: 'The tagline must stay above the adopted blue pay-type banner.',
+      );
+      expect(
+        shortTagline['size'] as num,
+        greaterThanOrEqualTo(5.4),
+        reason: 'Short company names must not shrink the tagline into unreadable text.',
+      );
       final zeroText = (zeroPage['text'] as String).replaceAll(
         RegExp(r'\s+'),
         '',
@@ -308,7 +318,7 @@ Future<Map<String, dynamic>> _inspectPayrollPdf(File file) async {
     '-c',
     r'''import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'seals':[list(d['rect']) for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.2 and d['color'][2]<.2 and d['rect'].width>25 and d['rect'].height>25],'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf]},ensure_ascii=False))''',
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'seals':[list(d['rect']) for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.2 and d['color'][2]<.2 and d['rect'].width>25 and d['rect'].height>25],'spans':[{'text':s['text'],'bbox':s['bbox'],'size':s['size']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf]},ensure_ascii=False))''',
     file.path,
   ]);
   expect(result.exitCode, 0, reason: result.stderr.toString());

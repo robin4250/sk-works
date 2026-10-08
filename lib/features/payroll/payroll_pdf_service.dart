@@ -248,26 +248,32 @@ class PayrollPdfService {
                 final availableWidth = (nameWidth - 4)
                     .clamp(1.0, 144.0)
                     .toDouble();
-                return pw.Align(
-                  alignment: pw.Alignment.topLeft,
-                  child: pw.SizedBox(
-                    width: availableWidth,
-                    height: 12,
-                    child: pw.FittedBox(
-                      fit: pw.BoxFit.scaleDown,
-                      alignment: pw.Alignment.topLeft,
-                      child: text(
-                        _first(detail, const [
-                              'company_tagline',
-                              '会社スローガン',
-                            ]).isEmpty
-                            ? '人と現場をつなぐ　未来をつくる'
-                            : _first(detail, const [
-                                'company_tagline',
-                                '会社スローガン',
-                              ]),
-                        size: 5.5,
-                        color: PdfColor.fromHex('#073A76'),
+                final registeredTagline = _first(detail, const [
+                  'company_tagline',
+                  '会社スローガン',
+                ]);
+                final tagline = registeredTagline.isEmpty
+                    ? '人と現場をつなぐ　未来をつくる'
+                    : registeredTagline;
+                final taglineWidth =
+                    fallbackFont.getFont(context).stringMetrics(tagline).width *
+                    5.5;
+                final belowSeal = taglineWidth > availableWidth;
+                return pw.Transform.translate(
+                  offset: PdfPoint(0, belowSeal ? 14 : 0),
+                  child: pw.Align(
+                    alignment: pw.Alignment.topLeft,
+                    child: pw.SizedBox(
+                      width: belowSeal ? 144 : availableWidth,
+                      height: 12,
+                      child: pw.FittedBox(
+                        fit: pw.BoxFit.scaleDown,
+                        alignment: pw.Alignment.topLeft,
+                        child: text(
+                          tagline,
+                          size: 5.5,
+                          color: PdfColor.fromHex('#073A76'),
+                        ),
                       ),
                     ),
                   ),

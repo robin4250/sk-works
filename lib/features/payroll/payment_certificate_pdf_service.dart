@@ -308,8 +308,9 @@ class PaymentCertificatePdfService {
     final trimmed = value.trim();
     // Only an entirely zero numeric quantity (with an optional known unit) is
     // blanked. Dates and descriptions containing a zero remain untouched.
-    if (RegExp(r'^[+-]?0+(?:\.0+)?\s*(?:日|時間|回|人|人工)?$').hasMatch(trimmed))
+    if (RegExp(r'^[+-]?0+(?:\.0+)?\s*(?:日|時間|回|人|人工)?$').hasMatch(trimmed)) {
       return '';
+    }
     return value;
   }
 }

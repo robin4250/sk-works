@@ -124,16 +124,27 @@ class InvoicePdfService {
         ..writeln('御請求書')
         ..writeln(invoice.billingPeriod)
         ..writeln('${invoice.customerId} 御中');
+      if (invoice.customerPostalCode.trim().isNotEmpty) {
+        buffer.writeln('〒${invoice.customerPostalCode}');
+      }
+      if (invoice.customerAddress.trim().isNotEmpty) {
+        buffer.writeln(invoice.customerAddress);
+      }
+      if (invoice.customerPhone.trim().isNotEmpty) {
+        buffer.writeln('TEL ${invoice.customerPhone}');
+      }
       for (final site in invoice.siteCalculations) {
         buffer.writeln(site.siteName);
         for (final line in site.lines) {
           buffer.writeln(
-            '${line.label} ${_quantity(line.quantity)} × '
+            '${_displayLineLabel(line, site)} ${_quantity(line.quantity)} × '
             '${_visibleYen(line.unitPriceYen)} = ${_visibleYen(line.amountYen)}',
           );
         }
-        if (site.welfareAmountYen != 0) {
-          buffer.writeln('法定福利費 ${_yen(site.welfareAmountYen)}');
+        if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
+          buffer.writeln(
+            '${_welfareLabel(site.welfareRateBps)} ${_yen(site.welfareAmountYen)}',
+          );
         }
         if (site.manualAdjustmentYen != 0) {
           buffer.writeln('値引き・調整 ${_yen(site.manualAdjustmentYen)}');
@@ -148,6 +159,24 @@ class InvoicePdfService {
     return buffer.toString();
   }
 
+  static bool _isWelfareLine(InvoiceLine line) {
+    final label = (line.workContent ?? line.label).replaceAll(
+      RegExp(r'[（）()\s]'),
+      '',
+    );
+    return label == '法定福利費' || label == '福利厚生費';
+  }
+
+  static String _welfareLabel(int rateBps) =>
+      rateBps > 0 ? '福利厚生費（${_quantity(rateBps / 100)}%）' : '福利厚生費';
+
+  static String _displayLineLabel(
+    InvoiceLine line,
+    SiteInvoiceCalculation site,
+  ) => _isWelfareLine(line)
+      ? _welfareLabel(site.welfareRateBps)
+      : (line.workContent ?? line.label).trim();
+
   // Adopted invoice v8 uses absolute A4 coordinates in PDF points.
   static List<_InvoiceFormRow> _detailRows(InvoiceCalculationResult invoice) {
     final rows = <_InvoiceFormRow>[];
@@ -159,7 +188,7 @@ class InvoicePdfService {
             siteName: line.siteLabel.trim().isNotEmpty
                 ? line.siteLabel
                 : (i == 0 ? site.siteName : '〃'),
-            content: (line.workContent ?? line.label).trim(),
+            content: _displayLineLabel(line, site),
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
             unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
                 ? _visiblePriceText(line.unitPriceText!)
@@ -168,11 +197,11 @@ class InvoicePdfService {
           ),
         );
       }
-      if (site.welfareAmountYen != 0) {
+      if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
         rows.add(
           _InvoiceFormRow(
             siteName: '〃',
-            content: '法定福利費',
+            content: _welfareLabel(site.welfareRateBps),
             quantity: '',
             unitPrice: '',
             amount: _number(site.welfareAmountYen),
@@ -370,8 +399,32 @@ class InvoicePdfService {
     if (invoice.customerPostalCode.trim().isNotEmpty) {
       text('〒${invoice.customerPostalCode}', 38, 133, 246, letterSpacing: .64);
     }
+    final hasCustomerPhone = invoice.customerPhone.trim().isNotEmpty;
     if (invoice.customerAddress.trim().isNotEmpty) {
-      text(invoice.customerAddress, 38, 148, 246, h: 30, lineSpacing: 4.864);
+      if (hasCustomerPhone) {
+        text(
+          invoice.customerAddress,
+          38,
+          146,
+          246,
+          size: 6.5,
+          h: 23,
+          lineSpacing: 1.588,
+        );
+      } else {
+        text(invoice.customerAddress, 38, 148, 246, h: 30, lineSpacing: 4.864);
+      }
+    }
+    if (hasCustomerPhone) {
+      text(
+        'TEL ${invoice.customerPhone}',
+        38,
+        168,
+        246,
+        size: 6,
+        h: 10,
+        maxLines: 1,
+      );
     }
     box(316, 80, right - 316, 55);
     box(316, 80, 104, 31, fill: blue, radius: 0, line: .3);
@@ -472,11 +525,16 @@ class InvoicePdfService {
         row.amount,
       ];
       for (var col = 0; col < values.length; col++) {
+        // Use geometry, not collapsible whitespace, for the ditto inset.
+        final siteDittoIndent =
+            col == 1 && values[col].trimLeft().startsWith('〃')
+            ? 5.5 * 5.4
+            : 0.0;
         text(
           values[col],
-          xs[col] + 3,
+          xs[col] + 3 + siteDittoIndent,
           y + 3,
-          xs[col + 1] - xs[col] - 6,
+          xs[col + 1] - xs[col] - 6 - siteDittoIndent,
           size: 5.4,
           align: col == 0 || col == 3 || col == 4
               ? pw.TextAlign.center

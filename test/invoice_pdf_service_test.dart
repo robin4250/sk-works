@@ -52,6 +52,53 @@ void main() {
     expect(nonzero, contains('人工 2 × ¥25,000 = ¥50,000'));
   });
 
+  test('welfare labels use each saved site rate without adding duplicate snapshot welfare rows', () {
+    final rates = InvoiceEngine.calculate(
+      customerId: '会社',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+      sites: const [
+        SiteInvoiceCalculation(
+          siteId: 'a',
+          siteName: 'A現場',
+          welfareRateBps: 300,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 3000,
+          subtotalYenOverride: 103000,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+            InvoiceLine(
+              label: '（法定福利費）',
+              quantity: 0,
+              unitPriceYen: 0,
+              amountYenOverride: 3000,
+            ),
+          ],
+        ),
+        SiteInvoiceCalculation(
+          siteId: 'b',
+          siteName: 'B現場',
+          welfareRateBps: 150,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 1500,
+          subtotalYenOverride: 101500,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+          ],
+        ),
+      ],
+    );
+    final text = InvoicePdfService.buildTextSnapshot([rates]);
+    expect('福利厚生費'.allMatches(text), hasLength(2));
+    expect(text, contains('福利厚生費（3%）'));
+    expect(text, contains('福利厚生費（1.5%）'));
+    expect(text, contains('¥3,000'));
+    expect(text, contains('¥1,500'));
+    expect(text, contains('計 ¥204,500'));
+    expect(text, contains('消費税 ¥20,450'));
+    expect(text, contains('請求合計 ¥224,950'));
+  });
+
   test('invoice file name is sanitized', () {
     final unsafe = InvoiceEngine.calculate(
       customerId: 'A/B株式会社',

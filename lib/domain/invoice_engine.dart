@@ -13,6 +13,7 @@ class InvoiceLine {
     this.workContent,
     this.unitPriceText,
     this.amountYenOverride,
+    this.category = '',
   });
 
   final String label;
@@ -22,17 +23,62 @@ class InvoiceLine {
   final String? workContent;
   final String? unitPriceText;
   final int? amountYenOverride;
+  final String category;
 
   int get amountYen => amountYenOverride ?? (quantity * unitPriceYen).round();
 }
 
 class SiteInvoiceCalculation {
+  factory SiteInvoiceCalculation.fromSavedDetails({
+    required String siteId,
+    required String siteName,
+    required List<InvoiceLine> lines,
+    int manualAdjustmentYen = 0,
+    int welfareRateBps = 0,
+    int? subtotalYen,
+  }) {
+    bool welfare(InvoiceLine line) =>
+        line.category == 'welfare' ||
+        const ['法定福利費', '福利厚生費'].contains(
+          (line.workContent ?? line.label)
+              .replaceAll(RegExp(r'[（）()]'), '')
+              .trim(),
+        );
+    bool tax(InvoiceLine line) =>
+        line.category == 'tax' ||
+        (line.workContent ?? line.label)
+                .replaceAll(RegExp(r'[（）()]'), '')
+                .trim() ==
+            '消費税';
+    final welfareLines = lines.where(welfare).toList();
+    final hasSavedCharges = welfareLines.isNotEmpty || lines.any(tax);
+    return SiteInvoiceCalculation(
+      siteId: siteId,
+      siteName: siteName,
+      lines: lines,
+      manualAdjustmentYen: manualAdjustmentYen,
+      welfareRateBps: welfareRateBps,
+      baseAmountYenOverride: hasSavedCharges
+          ? lines
+                    .where((line) => !welfare(line) && !tax(line))
+                    .fold<int>(0, (sum, line) => sum + line.amountYen) +
+                manualAdjustmentYen
+          : null,
+      welfareAmountYenOverride: welfareLines.isEmpty
+          ? null
+          : welfareLines.fold<int>(0, (sum, line) => sum + line.amountYen),
+      subtotalYenOverride: subtotalYen,
+    );
+  }
   const SiteInvoiceCalculation({
     required this.siteId,
     required this.siteName,
     required this.lines,
     this.manualAdjustmentYen = 0,
     this.welfareRateBps = 0,
+    this.baseAmountYenOverride,
+    this.welfareAmountYenOverride,
+    this.subtotalYenOverride,
   });
 
   final String siteId;
@@ -42,14 +88,23 @@ class SiteInvoiceCalculation {
 
   /// Basis points. Example: 150 = 1.5%.
   final int welfareRateBps;
+  // Saved automatic details can already contain welfare and tax rows.
+  // Preserve their recorded amounts instead of applying the rate twice.
+  final int? baseAmountYenOverride;
+  final int? welfareAmountYenOverride;
+  final int? subtotalYenOverride;
 
   int get baseAmountYen =>
+      baseAmountYenOverride ??
       lines.fold<int>(0, (sum, line) => sum + line.amountYen) +
-      manualAdjustmentYen;
+          manualAdjustmentYen;
 
-  int get welfareAmountYen => (baseAmountYen * welfareRateBps / 10000).round();
+  int get welfareAmountYen =>
+      welfareAmountYenOverride ??
+      (baseAmountYen * welfareRateBps / 10000).round();
 
-  int get subtotalYen => baseAmountYen + welfareAmountYen;
+  int get subtotalYen =>
+      subtotalYenOverride ?? baseAmountYen + welfareAmountYen;
 }
 
 class InvoiceCalculationResult {
@@ -61,6 +116,7 @@ class InvoiceCalculationResult {
     required this.taxRateBps,
     this.customerPostalCode = '',
     this.customerAddress = '',
+    this.customerPhone = '',
     this.invoiceId = '',
     this.invoiceNumber = '',
     this.issueDate,
@@ -75,6 +131,7 @@ class InvoiceCalculationResult {
   final String billingPeriod;
   final String customerPostalCode;
   final String customerAddress;
+  final String customerPhone;
   final InvoiceDetailMode detailMode;
   final List<SiteInvoiceCalculation> siteCalculations;
 
@@ -110,6 +167,7 @@ class InvoiceEngine {
     int taxRateBps = 1000,
     String customerPostalCode = '',
     String customerAddress = '',
+    String customerPhone = '',
     String invoiceId = '',
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -164,6 +222,7 @@ class InvoiceEngine {
       customerId: customerId,
       customerPostalCode: customerPostalCode,
       customerAddress: customerAddress,
+      customerPhone: customerPhone,
       billingPeriod: billingPeriod,
       detailMode: detailMode,
       siteCalculations: List.unmodifiable(sites),

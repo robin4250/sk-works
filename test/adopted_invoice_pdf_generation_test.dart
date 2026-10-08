@@ -69,7 +69,7 @@ void main() {
       r'''
 import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'company_name_spans':[s['bbox'] for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['color']==0 and 740<s['bbox'][1]<780], 'seal_lefts':[d['rect'].x0 for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.1 and d['color'][2]<.1 and d['rect'].width>35], 'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'company_name_spans':[s['bbox'] for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['color']==0 and 740<s['bbox'][1]<780], 'seal_lefts':[d['rect'].x0 for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.1 and d['color'][2]<.1 and d['rect'].width>35], 'recipient_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['bbox'][0]<300 and 100<s['bbox'][1]<180], 'site_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if 62<=s['bbox'][0]<178 and 262<s['bbox'][1]<674], 'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
 ''',
       file.path,
     ]);
@@ -80,9 +80,11 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
   InvoiceCalculationResult invoice(
     List<SiteInvoiceCalculation> sites, {
     bool sampleTotals = false,
+    String customerPhone = '',
   }) => InvoiceCalculationResult(
     customerId: '株式会社 山田建設',
     customerPostalCode: '100-0001',
+    customerPhone: customerPhone,
     customerAddress: '東京都千代田区丸の内1丁目1-1\n丸の内ビルディング10F',
     billingPeriod: '2026年10月',
     detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
@@ -178,7 +180,7 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
       final text = ((report['pages'] as List).single as Map)['text'] as String;
       for (final value in [
         '通常作業',
-        '法定福利費',
+        '福利厚生費（1.5%）',
         '値引き・調整',
         '735',
         '-1,000',
@@ -256,5 +258,104 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
         isTrue,
       );
     }
+  }, skip: skipReason);
+  test('saved welfare rows display each site percentage once', () async {
+    final report = await inspect(
+      'invoice_welfare_rates.pdf',
+      invoice(const [
+        SiteInvoiceCalculation(
+          siteId: 'a',
+          siteName: 'A現場',
+          welfareRateBps: 300,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 3000,
+          subtotalYenOverride: 103000,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+            InvoiceLine(
+              label: '（法定福利費）',
+              quantity: 0,
+              unitPriceYen: 0,
+              amountYenOverride: 3000,
+            ),
+          ],
+        ),
+        SiteInvoiceCalculation(
+          siteId: 'b',
+          siteName: 'B現場',
+          welfareRateBps: 150,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 1500,
+          subtotalYenOverride: 101500,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+          ],
+        ),
+      ]),
+    );
+    final text = ((report['pages'] as List).single as Map)['text'] as String;
+    expect('福利厚生費'.allMatches(text), hasLength(2));
+    expect(text, contains('福利厚生費（3%）'));
+    expect(text, contains('福利厚生費（1.5%）'));
+    expect(text, contains('3,000'));
+    expect(text, contains('1,500'));
+    expect(text, contains('204,500'));
+    expect(text, contains('20,450'));
+    expect(text, contains('224,950'));
+  }, skip: skipReason);
+  test(
+    'registered customer contact details remain inside adopted recipient frame',
+    () async {
+      final report = await inspect(
+        'invoice_customer_contact.pdf',
+        invoice([], customerPhone: '03-1234-5678'),
+      );
+      final page = (report['pages'] as List).single as Map;
+      final text = page['text'] as String;
+      for (final label in [
+        '株式会社 山田建設',
+        '100-0001',
+        '東京都千代田区丸の内1丁目1-1',
+        '丸の内ビルディング10F',
+        '03-1234-5678',
+      ]) {
+        expect(text.replaceAll(' ', ''), contains(label.replaceAll(' ', '')));
+      }
+      final phoneSpans = (page['recipient_spans'] as List).cast<Map>().where(
+        (s) => (s['text'] as String).contains('03-1234-5678'),
+      );
+      expect(phoneSpans, hasLength(1));
+      final bounds = (phoneSpans.single['bbox'] as List).cast<num>();
+      expect(bounds[0], greaterThanOrEqualTo(28));
+      expect(bounds[2], lessThanOrEqualTo(294));
+      expect(bounds[1], greaterThanOrEqualTo(80));
+      expect(bounds[3], lessThanOrEqualTo(176));
+    },
+    skip: skipReason,
+  );
+  test('site ditto mark is indented geometrically while names retain left alignment', () async {
+    final report = await inspect(
+      'invoice_ditto_indent.pdf',
+      invoice(const [
+        SiteInvoiceCalculation(
+          siteId: 'ditto',
+          siteName: '登録現場名',
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 1000),
+            InvoiceLine(label: '残業', quantity: 1, unitPriceYen: 500),
+          ],
+        ),
+      ]),
+    );
+    final spans =
+        (((report['pages'] as List).single as Map)['site_spans'] as List)
+            .cast<Map>();
+    final site = spans.singleWhere((s) => s['text'] == '登録現場名');
+    final ditto = spans.singleWhere((s) => s['text'] == '〃');
+    final siteX = (site['bbox'] as List)[0] as num;
+    final dittoX = (ditto['bbox'] as List)[0] as num;
+    expect(siteX, closeTo(65, .02));
+    expect(dittoX - siteX, closeTo(5.5 * 5.4, .02));
+    expect((ditto['bbox'] as List)[2] as num, lessThan(178));
   }, skip: skipReason);
 }
