@@ -17,7 +17,7 @@ void main() {
     );
     expect(
       preflight,
-      contains('detached HEADですが origin/main と同一コミット'),
+      contains('detached HEADですが取得したmainと同一コミット'),
     );
     expect(
       preflight,
