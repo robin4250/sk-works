@@ -38,8 +38,14 @@ class PaidLeaveApprovalBatch {
     required this.firstDate,
     required this.lastDate,
     required this.reason,
+    this.status = 'pending',
+    this.canDecide = true,
+    this.leaveDates,
   });
 
+  final String status;
+  final bool canDecide;
+  final List<DateTime>? leaveDates;
   final String batchId;
   final String requestedByName;
   final int dateCount;
@@ -161,6 +167,42 @@ class PaidLeaveRepository {
             reason: item['reason']?.toString() ?? '',
           ),
     ].where((item) => item.batchId.isNotEmpty).toList(growable: false);
+  }
+
+  /// Reads exactly the notification's batch using existing SELECT RLS.
+  Future<List<PaidLeaveApprovalBatch>> loadApprovalTarget(String batchId) async {
+    final rows = await _client
+        .from('paid_leave_requests')
+        .select('batch_id,leave_date,status,reason,workers(name)')
+        .eq('batch_id', batchId)
+        .order('leave_date');
+    if (rows.isEmpty) return const [];
+    var canDecide = false;
+    try {
+      final pending = await loadPendingApprovals();
+      canDecide = pending.any((item) => item.batchId == batchId);
+    } on PostgrestException {
+      // Applicants can view their own request without approval permission.
+    }
+    final statuses = rows.map((row) => row['status']?.toString() ?? '').toSet();
+    final status = statuses.length == 1 ? statuses.single : 'mixed';
+    final worker = rows.first['workers'];
+    return [
+      PaidLeaveApprovalBatch(
+        batchId: batchId,
+        requestedByName: worker is Map
+            ? worker['name']?.toString() ?? 'SKOユーザー' : 'SKOユーザー',
+        dateCount: rows.length,
+        firstDate: DateTime.parse(rows.first['leave_date'].toString()),
+        lastDate: DateTime.parse(rows.last['leave_date'].toString()),
+        reason: rows.first['reason']?.toString() ?? '',
+        status: status,
+        canDecide: canDecide && status == 'pending',
+        leaveDates: List.unmodifiable(rows.map(
+          (row) => DateTime.parse(row['leave_date'].toString()),
+        )),
+      ),
+    ];
   }
 
   Future<List<DateTime>> loadBatchDates(String batchId) async {
