@@ -303,10 +303,12 @@ import Flutter
 import UIKit
 import MapKit
 import CoreLocation
+import ImageIO
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var skoMapChannel: FlutterMethodChannel?
+  private var skoCaptureChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -351,6 +353,53 @@ import CoreLocation
       skoMapChannel = channel
     }
 
+    if let registrar = self.registrar(forPlugin: "SkoCaptureMetadata") {
+      let channel = FlutterMethodChannel(name: "sko.capture_metadata", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "bad_args", message: "Invalid capture metadata request", details: nil))
+          return
+        }
+        switch call.method {
+        case "photoCapturedAt":
+          guard let path = args["path"] as? String, path.hasPrefix("/") else {
+            result(nil)
+            return
+          }
+          let url = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+          let root = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.resolvingSymlinksInPath().path + "/"
+          guard url.path.hasPrefix(root),
+            let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]
+          else { result(nil); return }
+          result(SkoCaptureMetadata.capturedAt(properties))
+        case "reverseGeocode":
+          guard let latitude = args["latitude"] as? Double, let longitude = args["longitude"] as? Double,
+            latitude.isFinite, longitude.isFinite, (-90...90).contains(latitude), (-180...180).contains(longitude)
+          else { result(nil); return }
+          let geocoder = CLGeocoder()
+          var finished = false
+          let finish: (String?) -> Void = { address in
+            guard !finished else { return }
+            finished = true
+            result(address)
+          }
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            guard !finished else { return }
+            geocoder.cancelGeocode()
+            finish(nil)
+          }
+          geocoder.reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude)) { places, error in
+            guard error == nil, let place = places?.first else { finish(nil); return }
+            let parts = [place.administrativeArea, place.locality, place.subLocality, place.thoroughfare, place.subThoroughfare]
+              .compactMap { $0 }.filter { !$0.isEmpty }
+            finish(parts.isEmpty ? nil : parts.joined(separator: " "))
+          }
+        default: result(FlutterMethodNotImplemented)
+        }
+      }
+      skoCaptureChannel = channel
+    }
     return launched
   }
 
@@ -563,6 +612,39 @@ private final class SkoMultiPinMapViewController: UIViewController, MKMapViewDel
     return view
   }
 }
+
+// Unknown EXIF timezone is deliberately not interpreted using the device timezone.
+private enum SkoCaptureMetadata {
+  static func capturedAt(_ properties: [String: Any]) -> String? {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.isLenient = false
+    if let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any],
+      let original = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String,
+      let offset = exif[kCGImagePropertyExifOffsetTimeOriginal as String] as? String,
+      original.range(of: #"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$"#, options: .regularExpression) != nil,
+      offset.range(of: #"^[+-]((0[0-9]|1[0-3]):[0-5][0-9]|14:00)$"#, options: .regularExpression) != nil {
+      formatter.dateFormat = "yyyy:MM:dd HH:mm:ssXXXXX"
+      if let date = formatter.date(from: original + offset) {
+        return ISO8601DateFormatter().string(from: date)
+      }
+    }
+    if let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any],
+      let day = gps[kCGImagePropertyGPSDateStamp as String] as? String,
+      let time = gps[kCGImagePropertyGPSTimeStamp as String] as? String,
+      day.range(of: #"^\d{4}:\d{2}:\d{2}$"#, options: .regularExpression) != nil,
+      time.range(of: #"^\d{2}:\d{2}:\d{2}(\.\d+)?$"#, options: .regularExpression) != nil {
+      formatter.timeZone = TimeZone(secondsFromGMT: 0)
+      formatter.dateFormat = time.contains(".") ? "yyyy:MM:dd HH:mm:ss.SSS" : "yyyy:MM:dd HH:mm:ss"
+      if let date = formatter.date(from: day + " " + time) {
+        return ISO8601DateFormatter().string(from: date)
+      }
+    }
+    return nil
+  }
+}
+
 SWIFT
 
 echo "iOS標準MapKitの複数ピン現場マップを設定しました。"
@@ -576,4 +658,4 @@ echo "4. Bundle Identifier: $BUNDLE_ID"
 echo "5. iPhoneをUSB接続して信頼"
 echo "6. bash tool/ios_install_assistant.sh"
 echo "7. bash tool/run_ios_device.sh"
-echo "※ Xcodeの▶︎ RunもRelease構成です。Debug/Hot Reloadは bash tool/run_ios_device_debug.sh"
+echo "※ Xcodeの▶︎ RunもRelease構成です。実機導入は上記のRelease手順で行います。"

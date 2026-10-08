@@ -17,7 +17,7 @@ void main() {
     );
     expect(
       preflight,
-      contains('detached HEADですが origin/main と同一コミット'),
+      contains(r'elif [[ -z "$branch_name" ]]; then'),
     );
     expect(
       preflight,
