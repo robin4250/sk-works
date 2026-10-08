@@ -148,7 +148,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
                     ? Center(child: Text(SkoLanguageController.tr(
                         widget.initialRequestId == null
                           ? '承認待ちの現場データはありません'
-                          : '対象の現場共有は完了済み、または閲覧できません。'))))
+                          : '対象の現場共有は完了済み、または閲覧できません。')))
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.separated(

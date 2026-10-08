@@ -150,7 +150,7 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
                     ? Center(child: Text(SkoLanguageController.tr(
                         widget.initialRequestId == null
                           ? '承認待ちの有給申請はありません'
-                          : '対象の申請を表示できません。閲覧権限を確認してください。'))))
+                          : '対象の申請を表示できません。閲覧権限を確認してください。')))
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.separated(
