@@ -240,7 +240,7 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'profile',
       label: 'プロフィール',
-      purpose: '自分の氏名、電話番号、写真、会社SKO ID等を確認します。',
+      purpose: '自分の氏名、電話番号、写真、会社SKO ID等を確認します。アカウント削除の案内では受付状況を確認できます。現在、削除受付は停止しています。',
       destination: 'プロフィール画面へ移動します。',
       access: '管理者・サブ管理者・一般・閲覧権限',
     ),
