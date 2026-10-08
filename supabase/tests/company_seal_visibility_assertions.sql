@@ -60,10 +60,10 @@ end $$;
 select set_config('test.account_access_denied','',false);
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
 do $$declare changed integer; begin
- if public.company_seal_settings()<>'{"company_seal_enabled":true}'::jsonb then raise exception 'foreign company initial state changed';
+ if public.company_seal_settings()<>'{"company_seal_enabled":true}'::jsonb then raise exception 'foreign company initial state changed'; end if;
  update public.companies set company_seal_enabled=true where id='10000000-0000-0000-0000-000000000001';
  get diagnostics changed=row_count;
- if changed<>0 then raise exception 'foreign owner bypassed settings via direct UPDATE'; end if; end if;
+ if changed<>0 then raise exception 'foreign owner bypassed settings via direct UPDATE'; end if;
  perform public.save_company_seal_settings(false);
  perform public.save_company_seal_settings(true);
 end $$;
