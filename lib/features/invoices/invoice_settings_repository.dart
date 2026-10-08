@@ -23,6 +23,7 @@ class InvoiceSettingsData {
     this.paymentDueText = '',
     this.companyLogoBase64 = '',
     this.companySealBase64 = '',
+    this.companySealEnabled = true,
   });
 
   final String companyName;
@@ -44,6 +45,7 @@ class InvoiceSettingsData {
   final String paymentDueText;
   final String companyLogoBase64;
   final String companySealBase64;
+  final bool companySealEnabled;
 }
 
 class InvoiceSettingsRepository {
@@ -88,7 +90,7 @@ class InvoiceSettingsRepository {
     final companyRows = await _client
         .from('companies')
         .select(
-          'name, postal_code, address, phone, fax, '
+          'name, postal_code, address, phone, fax, company_seal_enabled, '
           'tax_rate, default_welfare_rate, '
           'invoice_template_title, invoice_footer_note',
         )
@@ -118,6 +120,7 @@ class InvoiceSettingsRepository {
 
     return InvoiceSettingsData(
       companyName: company['name']?.toString() ?? '',
+      companySealEnabled: company['company_seal_enabled'] != false,
       taxRate: (company['tax_rate'] as num?)?.toDouble() ?? 10,
       welfareRate:
           (company['default_welfare_rate'] as num?)?.toDouble() ?? 0,
@@ -152,6 +155,7 @@ class InvoiceSettingsRepository {
         : const <String, dynamic>{};
     return InvoiceSettingsData(
       companyName: row['company_name']?.toString() ?? '',
+      companySealEnabled: row['company_seal_enabled'] != false,
       taxRate: (row['tax_rate'] as num?)?.toDouble() ?? 10,
       welfareRate: (row['welfare_rate'] as num?)?.toDouble() ?? 0,
       templateTitle: row['template_title']?.toString() ?? '請求書',

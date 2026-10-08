@@ -49,6 +49,27 @@ class CompanySubmittedDocumentRepository {
     return Map<String, dynamic>.from(value);
   }
 
+  Future<bool> loadCompanySealEnabled() async {
+    await requireAdmin();
+    final value = await _client.rpc('company_seal_settings');
+    if (value is! Map || value['company_seal_enabled'] is! bool) {
+      throw StateError('会社角印の設定を読み込めませんでした。');
+    }
+    return value['company_seal_enabled'] as bool;
+  }
+
+  Future<bool> saveCompanySealEnabled(bool enabled) async {
+    await requireAdmin();
+    final value = await _client.rpc(
+      'save_company_seal_settings',
+      params: {'p_enabled': enabled},
+    );
+    if (value is! Map || value['company_seal_enabled'] is! bool) {
+      throw StateError('会社角印の設定を保存できませんでした。');
+    }
+    return value['company_seal_enabled'] as bool;
+  }
+
   Future<void> saveCompanyData({
     required String name,
     required String address,

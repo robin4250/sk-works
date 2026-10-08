@@ -6,6 +6,7 @@ import 'package:sk_works/features/payroll/individual_payroll_settings_page.dart'
 import 'package:sk_works/features/payroll/payroll_confirmation_settings_page.dart';
 import 'package:sk_works/features/settings/company_module_settings_page.dart';
 import 'package:sk_works/features/settings/company_rate_settings_page.dart';
+import 'package:sk_works/features/settings/company_seal_settings_page.dart';
 import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
@@ -19,6 +20,7 @@ void main() {
     (const PayrollConfirmationSettingsPage(), '会社の給与設定'),
     (const CompanyRateSettingsPage(), '会社単価・手当設定'),
     (const CompanyModuleSettingsPage(), '利用機能のON／OFF'),
+    (const CompanySealSettingsPage(), '会社角印'),
   ]) {
     testWidgets('${entry.$2} reacts to language changes while open', (tester) async {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve('ja');
@@ -40,6 +42,11 @@ void main() {
       expect(translated, isNot(entry.$2));
       expect(find.text(translated), findsOneWidget);
       expect(find.text(entry.$2), findsNothing);
+      if (entry.$1 is CompanySealSettingsPage) {
+        expect(find.text('Could not load company seal settings.'), findsOneWidget);
+        expect(find.text('会社角印の設定を読み込めませんでした。'), findsNothing);
+        expect(find.byType(SwitchListTile), findsNothing);
+      }
 
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve('ja');
       await tester.pumpAndSettle();

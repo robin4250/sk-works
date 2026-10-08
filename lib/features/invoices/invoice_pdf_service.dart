@@ -29,7 +29,9 @@ class InvoicePdfService {
 
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
-    final sealFont = await CompanySealPdf.loadFont();
+    final sealFont = effectiveSettings?.companySealEnabled == false
+        ? regular
+        : await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -187,7 +189,9 @@ class InvoicePdfService {
                 : (i == 0 ? site.siteName : '〃'),
             content: _displayLineLabel(line, site),
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
-            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+            unitPrice: _isWelfareLine(line)
+                ? '${_quantity(site.welfareRateBps / 100)}%'
+                : (line.unitPriceText ?? '').trim().isNotEmpty
                 ? _visiblePriceText(line.unitPriceText!)
                 : _visibleNumber(line.unitPriceYen),
             amount: _visibleNumber(line.amountYen),
@@ -200,7 +204,7 @@ class InvoicePdfService {
             siteName: '〃',
             content: _welfareLabel(site.welfareRateBps),
             quantity: '',
-            unitPrice: '',
+            unitPrice: '${_quantity(site.welfareRateBps / 100)}%',
             amount: _number(site.welfareAmountYen),
           ),
         );
@@ -633,24 +637,26 @@ class InvoicePdfService {
             .clamp(0.0, 285.0)
             .toDouble();
     final companySealLeft = 50 + 285 / 2 + companyNameWidth / 2 - 11.8622;
-    children.add(
-      pw.Positioned(
-        left: companySealLeft,
-        top: 750.6701,
-        child: pw.SizedBox(
-          width: 42,
-          height: 40.4394,
-          child: pw.FittedBox(
-            fit: pw.BoxFit.fill,
-            child: CompanySealPdf.build(
-              settings?.companyName ?? '',
-              font: sealFont,
-              fallbackFont: fallbackFont,
+    if (settings?.companySealEnabled != false) {
+      children.add(
+        pw.Positioned(
+          left: companySealLeft,
+          top: 750.6701,
+          child: pw.SizedBox(
+            width: 42,
+            height: 40.4394,
+            child: pw.FittedBox(
+              fit: pw.BoxFit.fill,
+              child: CompanySealPdf.build(
+                settings?.companyName ?? '',
+                font: sealFont,
+                fallbackFont: fallbackFont,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
     box(384.2756, 749.8898, 176, 60, line: .3);
     box(384.2756, 752.8898, 176, 15, fill: pale, radius: 0, line: .3);
     text('確 認 印', 384.2756, 756, 176, size: 7, align: pw.TextAlign.center);
@@ -700,7 +706,10 @@ class InvoicePdfService {
         align: pw.TextAlign.right,
       );
     }
-    return pw.Stack(children: children);
+    return pw.Container(
+      color: PdfColors.white,
+      child: pw.Stack(children: children),
+    );
   }
 
   static pw.Widget _datedApprovalStamp(InvoiceApprovalRecord record) {
