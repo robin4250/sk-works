@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Invokes the source-bound server publisher with only the already saved ID.
-/// False means the staged publisher is unavailable; it does not mean sent.
+/// False means unavailable or no confirmed recipients; it does not mean sent.
 /// Zero is valid for OFF or a durable receipt that already prevented a repeat.
 Future<bool> publishSavedGroupReport(String reportId, {
   required Future<dynamic> Function(String reportId) invoke,
@@ -12,7 +12,7 @@ Future<bool> publishSavedGroupReport(String reportId, {
     if (count is! int || count < 0) {
       throw StateError('日報通知の結果を確認できません');
     }
-    return true;
+    return count > 0;
   } on PostgrestException catch (error) {
     if (error.code == 'PGRST202' || error.code == '42883') return false;
     rethrow;
