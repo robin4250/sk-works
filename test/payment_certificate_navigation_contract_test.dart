@@ -15,10 +15,10 @@ void main() {
 
   test('missing-setting notifications open the related settings pages', () {
     final page = read('lib/features/notifications/notifications_page.dart');
-    expect(page, contains("item.actionKey == 'payroll_settings'"));
-    expect(page, contains("item.actionKey == 'admin_sites'"));
-    expect(page, contains("item.actionKey == 'payment_certificate_settings'"));
-    expect(page, contains("item.actionKey == 'settings'"));
+    expect(page, contains("'payroll_settings' =>"));
+    expect(page, contains("'admin_sites' =>"));
+    expect(page, contains("'payment_certificate_settings' =>"));
+    expect(page, contains("'settings' =>"));
   });
 
   test('payment certificate settings explain zero-value draft behavior', () {

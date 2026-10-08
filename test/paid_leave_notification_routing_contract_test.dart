@@ -7,9 +7,9 @@ void main() {
     final source = File(
       'lib/features/notifications/notifications_page.dart',
     ).readAsStringSync();
-    expect(source, contains("item.actionKey == 'paid_leave_request'"));
+    expect(source, contains("'paid_leave_request' =>"));
     expect(source, contains('PaidLeaveApprovalsPage'));
-    expect(source, contains("item.actionKey == 'paid_leave_request'"));
+    expect(source, contains("'paid_leave_request' =>"));
   });
 
   test('attendance correction notification opens target approval', () {
@@ -20,7 +20,7 @@ void main() {
       'lib/features/attendance/attendance_correction_approvals_page.dart',
     ).readAsStringSync();
 
-    expect(source, contains("item.actionKey == 'attendance_correction_request'"));
+    expect(source, contains("'attendance_correction_request' =>"));
     expect(source, contains('initialRequestId: item.actionId'));
     expect(approvals, contains('this.initialRequestId'));
     expect(approvals, contains('if (item.id == initialRequestId)'));
