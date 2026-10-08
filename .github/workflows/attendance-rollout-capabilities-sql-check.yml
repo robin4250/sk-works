@@ -1,0 +1,55 @@
+name: Attendance Rollout Capabilities SQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*attendance_rollout_capabilities.sql'
+      - 'supabase/tests/attendance_rollout_capabilities_assertions.sql'
+      - 'tool/verify_attendance_rollout_capabilities.mjs'
+      - 'supabase/tests/attendance_rollout_capabilities_staged_assertions.sql'
+      - 'tool/verify_attendance_rollout_capabilities_staged.mjs'
+      - '.github/workflows/attendance-rollout-capabilities-sql-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*attendance_rollout_capabilities.sql'
+      - 'supabase/tests/attendance_rollout_capabilities_assertions.sql'
+      - 'tool/verify_attendance_rollout_capabilities.mjs'
+      - 'supabase/tests/attendance_rollout_capabilities_staged_assertions.sql'
+      - 'tool/verify_attendance_rollout_capabilities_staged.mjs'
+      - '.github/workflows/attendance-rollout-capabilities-sql-check.yml'
+
+concurrency:
+  group: attendance-rollout-capabilities-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout immutable staged vehicle fixture
+        uses: actions/checkout@v4
+        with:
+          ref: 3662a29171a8a3e947780165a674c4134ea46f37
+          path: rollout-fixtures/vehicle
+      - name: Checkout immutable staged group fixture
+        uses: actions/checkout@v4
+        with:
+          ref: fa44c2badcecddb501c5637d7ca6656b13b84b36
+          path: rollout-fixtures/group
+      - name: Checkout immutable scoped report attachment fixture
+        uses: actions/checkout@v4
+        with:
+          ref: 8708d1d3101c7a3ec31ad397b9d38d6ba661ee0c
+          path: rollout-fixtures/attachment
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify read-only capability scope and fail-closed gates
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_attendance_rollout_capabilities.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify actual staged migration capability and scoped RPC contracts
+        run: node tool/verify_attendance_rollout_capabilities_staged.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" rollout-fixtures/vehicle rollout-fixtures/group rollout-fixtures/attachment
