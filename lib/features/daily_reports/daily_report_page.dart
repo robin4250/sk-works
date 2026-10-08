@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../notifications/notification_bell.dart';
 import '../notifications/saved_group_report_publication.dart';
+import '../notifications/saved_report_notification_retry_store.dart';
 import '../../international/language_controller.dart';
 import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
@@ -58,6 +59,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool _loading = true;
   bool _saving = false;
   String? _notificationRetryReportId;
+  final _notificationRetries = SavedReportNotificationRetryStore();
+  SavedReportNotificationRetry? _notificationRetry;
   int _loadGeneration = 0;
   String? _savedDraftFingerprint;
   String? _error;
@@ -99,6 +102,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _siteId = widget.initialSiteId;
     _routeAssignmentId = widget.initialRouteAssignmentId;
     _loadDay();
+    _restoreNotificationRetry();
   }
 
   @override
@@ -504,27 +508,47 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
-  Future<void> _publishSavedReport(String reportId) async {
+  Future<void> _restoreNotificationRetry() async {
+    final userId = _repository?.notificationRetryUserId;
+    if (userId == null) return;
+    try {
+      final pending = await _notificationRetries.load(userId);
+      if (!mounted || _repository?.notificationRetryUserId != userId) return;
+      setState(() {
+        _notificationRetry = pending.firstOrNull;
+        _notificationRetryReportId = _notificationRetry?.reportId;
+      });
+    } catch (_) {
+      // Corrupt or unreadable storage is retained, never reset to an empty list.
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
+      )));
+    }
+  }
+
+  Future<void> _publishSavedReport(String reportId, {SavedReportNotificationRetry? fixedRetry}) async {
     final repository = _repository;
     if (repository == null) return;
     try {
-      final available = await repository.publishSavedGroupReportNotifications(reportId);
-      if (!available) {
-        // Missing staged RPC cannot confirm an earlier unknown publication.
-        // Initial unavailable/OFF paths do not display a noisy failure warning.
-        if (mounted && _notificationRetryReportId == reportId) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-            SkoLanguageController.tr('日報は登録済みです。通知機能が利用できないため、通知結果は未確認のままです'),
-          )));
-        }
-        return;
-      }
-      if (mounted && _notificationRetryReportId == reportId) {
-        setState(() => _notificationRetryReportId = null);
-      }
+      final retry = fixedRetry ?? await repository.savedNotificationScope(reportId);
+      final sent = await retryPersistedSavedReportNotification(retry,
+        remember: _notificationRetries.remember,
+        verifySaved: repository.verifySavedNotificationScope,
+        publish: (id) {
+          if (repository.notificationRetryUserId != retry.userId) {
+            throw StateError('日報通知の利用者が変更されています');
+          }
+          return repository.publishSavedGroupReportNotifications(id);
+        },
+        confirmed: _notificationRetries.confirmed,
+      );
+      await _restoreNotificationRetry();
+      if (!sent && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('日報は登録済みです。通知結果は未確認です。同じ日報の通知のみ再確認できます'),
+      )));
     } catch (_) {
+      await _restoreNotificationRetry();
       if (!mounted) return;
-      setState(() => _notificationRetryReportId = reportId);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('日報は登録済みです。メンバー通知の結果は未確認です。通知のみ再確認できます'),
       )));
@@ -532,13 +556,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _retrySavedReportNotification() async {
-    final id = _notificationRetryReportId;
-    if (_saving || id == null) return;
+    final repository = _repository;
+    final userId = repository?.notificationRetryUserId;
+    if (_saving || _notificationRetry == null || repository == null || userId == null) return;
     setState(() => _saving = true);
     try {
-      // Keep the saved ID even if the selected day/site or draft changed.
-      // This retries only publication, never report INSERT/save or attachments.
-      await _publishSavedReport(id);
+      // Every stored identity is checked independently. OFF/zero for the oldest
+      // report cannot block later pending reports; no new report is saved.
+      final pending = await _notificationRetries.load(userId);
+      for (final retry in pending) {
+        if (!mounted || repository.notificationRetryUserId != userId) break;
+        await _publishSavedReport(retry.reportId, fixedRetry: retry);
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
+      )));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -782,6 +815,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
         actions: const [SkoNotificationBell()],
       ),
+      bottomNavigationBar: _notificationRetryReportId == null ? null : SafeArea(
+        child: Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(
+          onPressed: _saving ? null : _retrySavedReportNotification,
+          icon: const Icon(Icons.notifications_outlined),
+          label: Text(SkoLanguageController.tr('登録済み日報の通知のみ再確認')),
+        )),
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -976,12 +1016,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               onPressed: _saving ? null : _register,
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
-                            ),
-                          if (_notificationRetryReportId != null)
-                            OutlinedButton.icon(
-                              onPressed: _saving ? null : _retrySavedReportNotification,
-                              icon: const Icon(Icons.notifications_outlined),
-                              label: Text(SkoLanguageController.tr('登録済み日報の通知のみ再確認')),
                             ),
                           if (_signed)
                             FilledButton.tonalIcon(

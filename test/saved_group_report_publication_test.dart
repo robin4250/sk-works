@@ -52,7 +52,7 @@ void main() {
       expect(await publishSavedGroupReport('saved-report', invoke: (id) async {
         ids.add(id);
         return count;
-      }), isTrue);
+      }), count > 0);
       expect(ids, ['saved-report']);
     }
   });
@@ -72,7 +72,7 @@ void main() {
     }
     await expectLater(publishSavedGroupReport('fixed-saved-report', invoke: invoke),
       throwsStateError);
-    expect(await publishSavedGroupReport('fixed-saved-report', invoke: invoke), isTrue);
+    expect(await publishSavedGroupReport('fixed-saved-report', invoke: invoke), isFalse);
     expect(ids, ['fixed-saved-report', 'fixed-saved-report']);
   });
   test('recipient/author denial and malformed response remain unconfirmed', () async {

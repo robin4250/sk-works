@@ -7,6 +7,7 @@ import '../attendance/group_checkout_repository.dart';
 import 'group_daily_report_roster.dart';
 import 'vehicle_report_snapshot.dart';
 import '../notifications/saved_group_report_publication.dart';
+import '../notifications/saved_report_notification_retry_store.dart';
 
 class DailyReportWorkerDraft {
   DailyReportWorkerDraft({
@@ -540,6 +541,29 @@ class DailyReportRepository {
     }
 
     return id;
+  }
+
+  String? get notificationRetryUserId => _client.auth.currentUser?.id;
+
+  Future<SavedReportNotificationRetry> savedNotificationScope(String reportId) async {
+    final userId = notificationRetryUserId;
+    if (userId == null) throw StateError('日報通知の利用者を確認できません');
+    final row = await _client.from('daily_reports').select('id,company_id,updated_by')
+      .eq('id', reportId).eq('updated_by', userId).maybeSingle();
+    if (row == null || row['id'] != reportId || row['company_id'] is! String) {
+      throw StateError('登録済み日報を確認できません');
+    }
+    return SavedReportNotificationRetry(userId: userId,
+      companyId: row['company_id'] as String, reportId: reportId);
+  }
+
+  Future<void> verifySavedNotificationScope(SavedReportNotificationRetry retry) async {
+    if (notificationRetryUserId != retry.userId) throw StateError('日報通知の利用者が変更されています');
+    final row = await _client.from('daily_reports').select('id,company_id,updated_by')
+      .eq('id', retry.reportId).eq('company_id', retry.companyId)
+      .eq('updated_by', retry.userId).maybeSingle();
+    if (row == null || row['id'] != retry.reportId || row['company_id'] != retry.companyId ||
+        row['updated_by'] != retry.userId) throw StateError('登録済み日報を確認できません');
   }
 
   /// The server owns rollout gating, recipient selection and durable deduplication.
