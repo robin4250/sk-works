@@ -44,6 +44,11 @@ jobs:
         with:
           ref: 8708d1d3101c7a3ec31ad397b9d38d6ba661ee0c
           path: rollout-fixtures/attachment
+      - name: Checkout immutable vehicle report meter attachment fixture
+        uses: actions/checkout@v4
+        with:
+          ref: 4e5e835276d87b3a48b4f4353298201d4dd7ebeb
+          path: rollout-fixtures/vehicle-attachment
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -52,4 +57,4 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
           node tool/verify_attendance_rollout_capabilities.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify actual staged migration capability and scoped RPC contracts
-        run: node tool/verify_attendance_rollout_capabilities_staged.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" rollout-fixtures/vehicle rollout-fixtures/group rollout-fixtures/attachment
+        run: node tool/verify_attendance_rollout_capabilities_staged.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" rollout-fixtures/vehicle rollout-fixtures/group rollout-fixtures/attachment rollout-fixtures/vehicle-attachment

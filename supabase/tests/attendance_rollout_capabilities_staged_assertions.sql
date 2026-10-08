@@ -32,6 +32,13 @@ do $$ declare r jsonb; again jsonb; begin
  r:=public.attach_group_report_sources('10000000-0000-0000-0000-000000000081','10000000-0000-0000-0000-000000000051',array['10000000-0000-0000-0000-000000000051'::uuid]);
  again:=public.attach_group_report_sources('10000000-0000-0000-0000-000000000081','10000000-0000-0000-0000-000000000051',array['10000000-0000-0000-0000-000000000051'::uuid]);
  if r<>again or r->>'daily_report_id'<>'10000000-0000-0000-0000-000000000081' then raise exception 'actual report attachment result mismatch'; end if;
+ r:=public.get_report_vehicle_meter_context('10000000-0000-0000-0000-000000000081');
+ if jsonb_array_length(r)<>1 or r->0->>'event_id'<>'10000000-0000-0000-0000-000000000071' then raise exception 'actual vehicle report context mismatch'; end if;
+ perform public.attach_vehicle_meter_to_report('10000000-0000-0000-0000-000000000081','10000000-0000-0000-0000-000000000051');
+ perform public.attach_vehicle_meter_to_report('10000000-0000-0000-0000-000000000081','10000000-0000-0000-0000-000000000051');
+ if not exists(select 1 from daily_report_workers where report_id='10000000-0000-0000-0000-000000000081'
+   and vehicle_meter_event_id='10000000-0000-0000-0000-000000000071' and previous_odometer_km=1000 and odometer_km=1002.5 and trip_distance_km=2.5) then raise exception 'actual committed report meter snapshot mismatch'; end if;
+
 end $$;
 reset role;
 do $$ begin

@@ -68,6 +68,38 @@ do $$ begin
 end $$;
 reset role;
 create function private.record_vehicle_driver_meter(uuid,uuid,numeric,numeric) returns jsonb language sql as $$ select '{}'::jsonb $$;
+-- Report integration is required even when driver meter recording is installed.
+set role authenticated;
+do $$ begin
+ if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'vehicle_meter_enabled'<>'false' then raise exception 'recording without report contract enabled meter'; end if;
+end $$;
+reset role;
+create function public.get_report_vehicle_meter_context(uuid) returns jsonb language sql as $$ select '{}'::jsonb $$;
+create function public.attach_vehicle_meter_to_report(uuid,uuid) returns jsonb language sql as $$ select '{}'::jsonb $$;
+create function private.require_vehicle_meter_report_context(uuid) returns jsonb language sql as $$ select '{}'::jsonb $$;
+create table private.vehicle_meter_report_links(id uuid);
+create table public.daily_report_workers(vehicle_meter_event_id uuid,vehicle_meter_source_clock_in_id uuid,previous_odometer_km numeric,trip_distance_km numeric);
+-- Remove each exact dependency in turn; restore after checking fail-closed.
+do $$ declare n text; r jsonb; begin
+ foreach n in array array['public.get_report_vehicle_meter_context(uuid)','public.attach_vehicle_meter_to_report(uuid,uuid)','private.require_vehicle_meter_report_context(uuid)'] loop
+   execute format('alter function %s rename to fixture_missing_contract',n);
+   r:=public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001');
+   if r->>'vehicle_meter_enabled'<>'false' then raise exception 'missing report function enabled meter: %',n; end if;
+   execute format('alter function %s.fixture_missing_contract(%s) rename to %I',split_part(n,'.',1),split_part(split_part(n,'(',2),')',1),split_part(split_part(n,'.',2),'(',1));
+ end loop;
+ alter table private.vehicle_meter_report_links rename to fixture_missing_ledger;
+ if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'vehicle_meter_enabled'<>'false' then raise exception 'missing ledger enabled meter'; end if;
+ alter table private.fixture_missing_ledger rename to vehicle_meter_report_links;
+ foreach n in array array['vehicle_meter_event_id','vehicle_meter_source_clock_in_id','previous_odometer_km','trip_distance_km'] loop
+   execute format('alter table public.daily_report_workers rename column %I to fixture_missing_column',n);
+   if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'vehicle_meter_enabled'<>'false' then raise exception 'missing snapshot column enabled meter: %',n; end if;
+   execute format('alter table public.daily_report_workers rename column fixture_missing_column to %I',n);
+ end loop;
+ alter table public.daily_report_workers alter column previous_odometer_km type text;
+ if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'vehicle_meter_enabled'<>'false' then raise exception 'wrong snapshot type enabled meter'; end if;
+ alter table public.daily_report_workers alter column previous_odometer_km type numeric using previous_odometer_km::numeric;
+end $$;
+
 set role authenticated;
 do $$ begin
  if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'vehicle_meter_enabled'<>'true' then raise exception 'installed meter was unavailable'; end if;

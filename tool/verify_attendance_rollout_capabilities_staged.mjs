@@ -4,7 +4,8 @@ const { PGlite } = await import(process.argv[2]);
 const vehicleRoot = process.argv[3];
 const groupRoot = process.argv[4];
 const attachmentRoot = process.argv[5];
-if (!vehicleRoot || !groupRoot || !attachmentRoot) throw new Error('Pinned vehicle, group and report attachment dependency roots are required.');
+const vehicleAttachmentRoot = process.argv[6];
+if (!vehicleRoot || !groupRoot || !attachmentRoot || !vehicleAttachmentRoot) throw new Error('Pinned vehicle, group, group report and vehicle report attachment dependency roots are required.');
 const db = new PGlite();
 const sql = file => fs.readFileSync(file, 'utf8');
 try {
@@ -46,7 +47,7 @@ try {
     end $$; reset role;`);
   await db.exec(`alter table route_assignments add column is_active boolean not null default true;
     alter table vehicles add column odometer_km numeric(12,1) not null default 1000;
-    alter table vehicles add column updated_by uuid; alter table vehicles add column updated_at timestamptz;
+    alter table vehicles add column display_name text; alter table vehicles add column updated_by uuid; alter table vehicles add column updated_at timestamptz;
     alter table daily_report_workers add column vehicle_id uuid; alter table daily_report_workers add column route_assignment_id uuid; alter table daily_report_workers add column odometer_km numeric;`);
   await db.exec(sql('supabase/migrations/20261001232457_add_daily_report_vehicle_usage_rpc.sql'));
   await db.exec(sql(path.join(vehicleRoot,'supabase/migrations/20261008154433_vehicle_meter_snapshots.sql')));
@@ -54,12 +55,13 @@ try {
   await db.exec(`insert into private.group_checkout_rollout(company_id) values('10000000-0000-0000-0000-000000000001');`);
   await db.exec(`set role authenticated; do $$ declare r jsonb; begin
     r:=public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001');
-    if r->>'group_checkout_enabled'<>'false' or r->>'vehicle_meter_enabled'<>'true' then raise exception 'actual staged migration discovery mismatch'; end if;
+    if r->>'group_checkout_enabled'<>'false' or r->>'vehicle_meter_enabled'<>'false' then raise exception 'actual staged migration discovery mismatch'; end if;
     end $$; reset role; update private.group_checkout_rollout set enabled=true;
     set role authenticated; do $$ begin
       if public.get_attendance_rollout_capabilities('10000000-0000-0000-0000-000000000001')->>'group_checkout_enabled'<>'false' then raise exception 'actual group without report attach enabled UI'; end if;
     end $$; reset role;`);
   await db.exec(sql(path.join(attachmentRoot,'supabase/migrations/20261008161708_group_report_source_attachment.sql')));
+  await db.exec(sql(path.join(vehicleAttachmentRoot,'supabase/migrations/20261008162618_attach_vehicle_meter_to_report.sql')));
   await db.exec(sql('supabase/tests/attendance_rollout_capabilities_staged_assertions.sql'));
   console.log('PASS capabilities with actual staged claim/meter/proxy/report attachment migrations, scoped real RPCs and private gates (isolated fixture only)');
 } catch (error) { console.error(error.message,error.where ?? ''); process.exitCode=1; }
