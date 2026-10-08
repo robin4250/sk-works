@@ -106,9 +106,17 @@ class AttendanceManagementRepository {
       }
       final start = DateTime(date.year, date.month, date.day);
       final end = start.add(const Duration(days: 1));
-      final verifications = await _client.from('attendance_verifications').select('event_type,confirmed_at')
-          .eq('company_id', access.companyId).eq('worker_id', workerId)
-          .gte('confirmed_at', start.toUtc().toIso8601String()).lt('confirmed_at', end.toUtc().toIso8601String()).order('confirmed_at');
+      var verificationQuery = _client.from('attendance_verifications').select('event_type,confirmed_at')
+          .eq('company_id', access.companyId).eq('worker_id', workerId);
+      // A report owns its entire shift, including a next-day clock-out.
+      if (reportId != null && reportId.isNotEmpty) {
+        verificationQuery = verificationQuery.eq('daily_report_id', reportId);
+      } else {
+        verificationQuery = verificationQuery
+            .gte('confirmed_at', start.toUtc().toIso8601String())
+            .lt('confirmed_at', end.toUtc().toIso8601String());
+      }
+      final verifications = await verificationQuery.order('confirmed_at');
       DateTime? clockIn;
       DateTime? clockOut;
       for (final raw in verifications) {

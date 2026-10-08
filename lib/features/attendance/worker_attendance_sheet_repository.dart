@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'attendance_work_date.dart';
 
 class AttendanceWorker {
   const AttendanceWorker({required this.id, required this.name});
@@ -202,11 +203,11 @@ class WorkerAttendanceSheetRepository {
     final verificationRows = await _client
         .from('attendance_verifications')
         .select(
-          'event_type, confirmed_at, site_id, sites(name)',
+          'event_type, confirmed_at, site_id, sites(name), daily_reports(report_date)',
         )
         .eq('worker_id', targetWorkerId)
         .gte('confirmed_at', start.toUtc().toIso8601String())
-        .lt('confirmed_at', end.toUtc().toIso8601String())
+        .lt('confirmed_at', end.add(const Duration(days: 1)).toUtc().toIso8601String())
         .order('confirmed_at');
 
     final drafts = <DateTime, _DayDraft>{};
@@ -241,7 +242,8 @@ class WorkerAttendanceSheetRepository {
       final row = Map<String, dynamic>.from(raw);
       final confirmed = DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
       if (confirmed == null) continue;
-      final key = _dateOnly(confirmed);
+      final key = attendanceEventWorkDate(confirmed, row['daily_reports']);
+      if (key.isBefore(start) || !key.isBefore(end)) continue;
       final draft = drafts.putIfAbsent(key, () => _DayDraft(key));
 
       final site = row['sites'];
