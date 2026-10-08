@@ -94,7 +94,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           ? _tr('管理者', 'Administrator')
                           : item.role == 'admin'
                               ? _tr('管理者', 'Administrator')
-                              : _tr('サブ管理者', 'Sub-administrator'),
+                              : item.role == 'manager'
+                                  ? _tr('サブ管理者', 'Sub-administrator')
+                                  : _tr('閲覧者', 'Viewer'),
                     ),
                     trailing: TextButton(
                       onPressed: () =>
@@ -124,8 +126,6 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       });
       return;
     }
-
-    setState(() => _makeSubAdmin = true);
 
     if (_currentApprovalAssignees.length >= 3) {
       final replacement = await _chooseApprovalReplacement();
@@ -326,10 +326,6 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                                 final enabled = value ?? false;
                                 setState(() {
                                   _makeSubAdmin = enabled;
-                                  if (!enabled) {
-                                    _makeApprovalAssignee = false;
-                                    _replaceApprovalAssigneeUserId = null;
-                                  }
                                 });
                               },
                       ),
@@ -352,8 +348,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       if (_makeApprovalAssignee)
                         Text(
                           _tr(
-                            '承認担当者を選ぶと、サブ管理者も自動でONになります。',
-                            'Selecting an approval assignee also enables sub-administrator automatically.',
+                            '承認担当者は閲覧者のまま選択できます。選択された承認業務だけを操作でき、管理権限は追加されません。',
+                            'An approver may remain a viewer. Only the assigned approval duty is added; management permissions are not granted.',
                           ),
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
@@ -397,12 +393,14 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           fontSize: 20,
                         ),
                       ),
-                      if (_makeSubAdmin) ...[
+                      if (_makeSubAdmin || _makeApprovalAssignee) ...[
                         const SizedBox(height: 6),
                         Text(
-                          _makeApprovalAssignee
-                              ? _tr('本登録後：サブ管理者・承認担当者', 'After registration: Sub-admin + Approver')
-                              : _tr('本登録後：サブ管理者', 'After registration: Sub-administrator'),
+                          _makeSubAdmin
+                              ? _makeApprovalAssignee
+                                  ? _tr('本登録後：サブ管理者・承認担当者', 'After registration: Sub-admin + Approver')
+                                  : _tr('本登録後：サブ管理者', 'After registration: Sub-administrator')
+                              : _tr('本登録後：閲覧者・承認担当者', 'After registration: Viewer + Approver'),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ],

@@ -1,0 +1,9 @@
+{
+  "source_pr": 755,
+  "source_commit": "5b2147540291f83930041a8628fac35399871d0f",
+  "source_path": "supabase/migrations/20261008132016_approval_assignee_viewer_scope.sql",
+  "fixture_file": "approval_assignee_viewer_scope.sql",
+  "bytes": 15289,
+  "sha256": "56bd10c11e069d05f07814ba3f36df87392c0a0ef8e93c749fca5126111c7599",
+  "purpose": "Verbatim isolated-test input only; not a deployable migration."
+}
