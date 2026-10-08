@@ -37,7 +37,12 @@ begin
  if (select gross_pay from public.payroll_statements where worker_id=w)<>12000 then raise exception 'approval update failed'; end if;
  update public.worker_payroll_settings set pay_type='monthly',monthly_salary_yen=300000;
  perform private.refresh_automatic_payroll_internal(c,w,d);
- update public.payroll_statements set workflow_state='approved';
+ if (select (detail->>'有給内訳額')::integer from public.payroll_statements where worker_id=w)<>14000 then raise exception 'monthly allocation metadata'; end if;
+ update public.payroll_statements set automatic_calculation=false;
+ update public.worker_payroll_settings set monthly_salary_yen=350000;
+ perform private.refresh_automatic_payroll_internal(c,w,d);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>300000 then raise exception 'manual amount overwritten'; end if;
+ update public.payroll_statements set automatic_calculation=true,workflow_state='approved';
  update public.worker_payroll_settings set monthly_salary_yen=400000;
  perform private.refresh_automatic_payroll_internal(c,w,d);
  if (select gross_pay from public.payroll_statements where worker_id=w)<>300000 then raise exception 'history overwritten'; end if;
