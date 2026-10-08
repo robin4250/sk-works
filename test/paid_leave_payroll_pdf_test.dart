@@ -20,6 +20,7 @@ void main() {
         'company_seal_enabled': false,
         'pay_type': monthly ? 'monthly' : 'daily',
         '基本給': monthly ? 300000 : 12000,
+        '出勤日数': monthly ? 0 : 1,
         '有給日数': 1,
         '有給単価': monthly ? 14000 : 12000,
         '有給支給額': monthly ? 0 : 12000,
@@ -46,6 +47,7 @@ void main() {
       expect(data['pages'], 1);
       final text = (data['text'] as String).replaceAll(RegExp(r'\s+'), '');
       expect(RegExp('有給支給額').allMatches(text).length, monthly ? 0 : 1);
+      if (!monthly) expect(text, contains('12,000円×1日'));
       expect(text, isNot(contains('有給単価')));
       expect(text, isNot(contains('有給内訳額')));
       expect(text, isNot(contains('paid_leave_wage_contract')));

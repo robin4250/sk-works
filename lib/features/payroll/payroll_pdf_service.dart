@@ -975,7 +975,9 @@ class PayrollPdfService {
   }
 
   static String _quantity(String label, Map<String, dynamic> detail) {
-    final key = label.contains('休日残業')
+    final key = label == '有給支給額'
+        ? '有給日数'
+        : label.contains('休日残業')
         ? '休日残業時間'
         : label.contains('残業')
         ? '残業時間'
@@ -993,6 +995,9 @@ class PayrollPdfService {
     final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
+    }
+    if (label == '有給支給額' && detail['有給単価'] != null) {
+      return '${_number(_asNumber(detail['有給単価']) ?? 0)}円 × ${detail['有給日数'] ?? 0}日';
     }
     if (label == '基本給') {
       return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
