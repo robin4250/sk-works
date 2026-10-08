@@ -34,10 +34,10 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
         _error = null;
         _busy = false;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '$error';
+        _error = '会社角印の設定を読み込めませんでした。';
         _busy = false;
       });
     }
@@ -59,10 +59,10 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('会社角印の設定を保存しました'))),
       );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '$error';
+        _error = '会社角印の設定を保存できませんでした。';
         _busy = false;
       });
     }
