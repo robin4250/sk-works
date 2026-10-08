@@ -7,6 +7,11 @@ begin
  select gross_pay into amount from public.payroll_statements where worker_id=w;
  if amount<>12000 then raise exception 'daily leave-only gross %',amount; end if;
  if (select (detail->>'有給支給額')::integer from public.payroll_statements where worker_id=w)<>12000 then raise exception 'missing named leave amount'; end if;
+ insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours)
+ values(gen_random_uuid(),c,w,'70000000-0000-0000-0000-000000000001',d-1,'day',1,2,0);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>27126 then raise exception 'leave and worked overtime totals'; end if;
+ if coalesce((select (detail->>'その他支給')::integer from public.payroll_statements where worker_id=w),0)<>0 then raise exception 'leave duplicated as unnamed earning'; end if;
+ delete from public.attendance_entries;
  select revision into revision_before from public.payroll_statements where worker_id=w;
  perform private.refresh_automatic_payroll_internal(c,w,d);
  if (select revision from public.payroll_statements where worker_id=w)<>revision_before then raise exception 'unstable revision'; end if;

@@ -48,6 +48,7 @@ begin
   where s.company_id=cid and s.worker_id=wid;
 
   select md5(
+    'paid_leave_wage_contract:1'||
     coalesce((settings-'updated_at'-'payment_day')::text,'')||
     coalesce((select jsonb_build_object('payment_day',c.payroll_payment_day,
       'payment_month_offset',c.payroll_payment_month_offset,
@@ -168,7 +169,7 @@ begin
   end if;
 
   -- A registered positive monthly salary is payable independently of attendance.
-  -- Daily/hourly empty-month behavior is unchanged; no paid-leave amount is invented.
+  -- Daily/hourly approved leave-only months use the configured wage contract.
   if count_rows=0 and leave_days=0 and not (coalesce(settings->>'pay_type','daily')='monthly'
     and coalesce((settings->>'monthly_salary_yen')::numeric,0)>0) then
     if current_statement.id is not null and current_statement.workflow_state='draft' and current_statement.automatic_calculation then
