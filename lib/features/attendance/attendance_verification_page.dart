@@ -12,6 +12,7 @@ import 'attendance_verification_repository.dart';
 import 'attendance_shift_context.dart';
 import 'gps_photo_capture_controller.dart';
 import 'gps_photo_capture_result.dart';
+import 'capture_verification_draft.dart';
 import 'attendance_capture_metadata_service.dart';
 import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
@@ -59,6 +60,8 @@ class _AttendanceVerificationPageState
 
   bool _loading = true;
   bool _saving = false;
+  CaptureVerificationDraft? _pendingCaptureDraft;
+  bool get _editingLocked => _saving || _pendingCaptureDraft != null;
   bool _canManageAttendance = false;
   String? _error;
 
@@ -120,6 +123,7 @@ class _AttendanceVerificationPageState
       final selectedSiteId = selection['site_id']?.toString() ??
           schedule['site_id']?.toString();
 
+      final pendingCapture = await repository.loadPendingCaptureDraft();
       if (!mounted) return;
       setState(() {
         _workers = values[0] as List<Map<String, dynamic>>;
@@ -142,6 +146,20 @@ class _AttendanceVerificationPageState
         _openShifts = status.openShifts;
         _shift = _eventType == 'clock_out' && _openShifts.length == 1 ? _openShifts.single : null;
         if (_shift != null) _selectShift(_shift!);
+        _pendingCaptureDraft = pendingCapture;
+        if (pendingCapture != null) {
+          _shift = null;
+          for (final shift in _openShifts) {
+            if (shift.id == pendingCapture.payload['source_clock_in_id']) { _shift = shift; }
+          }
+          _eventType = pendingCapture.payload['event_type'] as String;
+          _mode = 'location_photo';
+          _workerId = pendingCapture.payload['worker_id'] as String;
+          _siteId = pendingCapture.payload['site_id'] as String?;
+          _routeId = pendingCapture.payload['route_assignment_id'] as String?;
+          _vehicleId = pendingCapture.payload['vehicle_id'] as String?;
+          _noteController.text = pendingCapture.payload['note'] as String? ?? '';
+        }
         _loading = false;
         _error = null;
       });
@@ -223,7 +241,7 @@ class _AttendanceVerificationPageState
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
-            onPressed: _saving ? null : _load,
+            onPressed: _editingLocked ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -234,6 +252,9 @@ class _AttendanceVerificationPageState
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
                 children: [
+                  if (_pendingCaptureDraft != null)
+                    Card(child: Padding(padding: const EdgeInsets.all(12),
+                      child: Text(SkoLanguageController.tr('撮影記録の登録結果が未確認です。同じ記録で再確認してください。対象・写真は変更できません。')))),
                   if (_error != null)
                     Card(
                       child: Padding(
@@ -259,7 +280,7 @@ class _AttendanceVerificationPageState
                         for (final shift in _openShifts)
                           DropdownMenuItem(value: shift.id, child: Text(_shiftLabel(shift), overflow: TextOverflow.ellipsis)),
                       ],
-                      onChanged: _saving ? null : (value) {
+                      onChanged: _editingLocked ? null : (value) {
                         if (value == null) return;
                         setState(() => _selectShift(_openShifts.firstWhere((shift) => shift.id == value)));
                       },
@@ -292,7 +313,7 @@ class _AttendanceVerificationPageState
                         child: Text('位置情報＋写真（確定時のみ）'),
                       ),
                     ],
-                    onChanged: _saving ? null : _changeMode,
+                    onChanged: _editingLocked ? null : _changeMode,
                   ),
                   if (_mode == 'gps_auto') ...[
                     const SizedBox(height: 8),
@@ -307,7 +328,7 @@ class _AttendanceVerificationPageState
                           ).label,
                         ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: _saving
+                        onTap: _editingLocked
                             ? null
                             : () async {
                                 final schedule =
@@ -346,7 +367,7 @@ class _AttendanceVerificationPageState
                           child: Text(site['name']?.toString() ?? '現場'),
                         ),
                     ],
-                    onChanged: _saving || _shift != null
+                    onChanged: _editingLocked || _shift != null
                         ? null
                         : (value) => setState(() => _siteId = value),
                   ),
@@ -361,7 +382,7 @@ class _AttendanceVerificationPageState
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
                           onPressed:
-                              _saving ? null : _setSelectedSiteLocation,
+                              _editingLocked ? null : _setSelectedSiteLocation,
                           icon: const Icon(Icons.my_location),
                           label: const Text('この現場の基準位置を現在地で登録'),
                         ),
@@ -386,7 +407,7 @@ class _AttendanceVerificationPageState
                   const SizedBox(height: 12),
                   TextField(
                     controller: _noteController,
-                    enabled: !_saving,
+                    enabled: !_editingLocked,
                     maxLines: 3,
                     decoration: const InputDecoration(
                       labelText: 'メモ',
@@ -396,10 +417,10 @@ class _AttendanceVerificationPageState
                   ),
                   const SizedBox(height: 18),
                   FilledButton.icon(
-                    onPressed: _saving ||
+                    onPressed: _saving || (_pendingCaptureDraft == null && (
                             _workerId == null ||
                             (_siteId == null && _routeId == null) ||
-                            (isClockOut && _openShifts.length > 1 && _shift == null)
+                            (isClockOut && _openShifts.length > 1 && _shift == null)))
                         ? null
                         : _confirm,
                     icon: _saving
@@ -411,7 +432,9 @@ class _AttendanceVerificationPageState
                     label: Text(
                       _saving
                           ? '確認中…'
-                          : isClockOut
+                          : _pendingCaptureDraft != null
+                              ? SkoLanguageController.tr('同じ撮影記録で再確認')
+                              : isClockOut
                               ? '退勤を確定'
                               : '出勤を確定',
                     ),
@@ -422,7 +445,7 @@ class _AttendanceVerificationPageState
                   if (!isClockOut && _canManageAttendance) ...[
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
-                      onPressed: _saving ? null : _openPastBulkAttendance,
+                      onPressed: _editingLocked ? null : _openPastBulkAttendance,
                       icon: const Icon(Icons.playlist_add_check_circle_outlined),
                       label: const Text('過去の出勤をまとめて登録する'),
                       style: OutlinedButton.styleFrom(
@@ -539,10 +562,10 @@ class _AttendanceVerificationPageState
     final repository = _repository;
     final workerId = _workerId;
     final siteId = _siteId;
-    if (_saving || (_openShifts.length > 1 && _eventType == 'clock_out' && _shift == null) ||
-        repository == null ||
-        workerId == null ||
-        (siteId == null && _routeId == null)) {
+    if (_saving || repository == null ||
+        (_pendingCaptureDraft == null &&
+          ((_openShifts.length > 1 && _eventType == 'clock_out' && _shift == null) ||
+           workerId == null || (siteId == null && _routeId == null)))) {
       return;
     }
 
@@ -555,6 +578,14 @@ class _AttendanceVerificationPageState
 
     setState(() => _saving = true);
     try {
+      final pending = _pendingCaptureDraft;
+      if (pending != null) {
+        final saved = await repository.submitCaptureDraft(pending);
+        if (mounted) { setState(() => _pendingCaptureDraft = null); }
+        await _finishSavedVerification(saved);
+        return;
+      }
+      if (workerId == null) { throw StateError('社員情報を確認してください'); }
       if (_mode == 'gps_auto') {
         final allowed = await ensureGpsAutoLocationPermission(context);
         if (!allowed || !mounted) return;
@@ -708,8 +739,24 @@ class _AttendanceVerificationPageState
         note: _noteController.text,
         shift: _shift,
         capture: capture,
+        onCaptureDraftPrepared: (draft) {
+          if (mounted) { setState(() => _pendingCaptureDraft = draft); }
+        },
       );
 
+      if (mounted) { setState(() => _pendingCaptureDraft = null); }
+      await _finishSavedVerification(saved);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('確認を登録できませんでした: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _finishSavedVerification(Map<String, dynamic> saved) async {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -720,32 +767,26 @@ class _AttendanceVerificationPageState
       );
 
       if (_eventType == 'clock_out') {
-        final anchor = _shift;
-        if (anchor != null && anchor.siteId != null && anchor.routeId == null) {
-          await showGroupCheckoutAfterPersonalSave(context,
-            anchorId: anchor.id, workDate: anchor.workDate);
+        final sourceId = saved['source_clock_in_id']?.toString() ?? _shift?.id;
+        final date = DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate;
+        final siteId = saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId;
+        final routeId = saved['route_assignment_id']?.toString() ?? _shift?.routeId ?? _routeId;
+        if (sourceId != null && date != null && siteId != null && routeId == null) {
+          await showGroupCheckoutAfterPersonalSave(context, anchorId: sourceId, workDate: date);
           if (!mounted) return;
         }
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => DailyReportPage(
             initialDate: DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate,
-            initialSiteId: _shift?.siteId ?? siteId,
-            initialRouteAssignmentId: _shift?.routeId ?? _routeId,
-            vehicleClockInId: _shift?.id,
-            groupClockInAnchorId: _shift?.id,
+            initialSiteId: saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId,
+            initialRouteAssignmentId: saved['route_assignment_id']?.toString() ?? _shift?.routeId ?? _routeId,
+            vehicleClockInId: saved['source_clock_in_id']?.toString() ?? _shift?.id,
+            groupClockInAnchorId: saved['source_clock_in_id']?.toString() ?? _shift?.id,
           )),
         );
       } else {
         Navigator.of(context).pop(true);
       }
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('確認を登録できませんでした: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 
   Future<CaptureDecision> _promptCaptureFailure(CaptureFailure failure) async {

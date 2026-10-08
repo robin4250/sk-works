@@ -4,6 +4,8 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "撮影記録の登録結果が未確認です。同じ記録で再確認してください。対象・写真は変更できません。": "The capture registration result is unknown. Recheck the same record; its target and photo remain fixed.",
+    "同じ撮影記録で再確認": "Recheck the Same Capture",
     "勤怠登録時刻": "Attendance Registration Time",
     "撮影日時未取得": "Capture time unavailable",
     "GPS取得時刻": "GPS Capture Time",
