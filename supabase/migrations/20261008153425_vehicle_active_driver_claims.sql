@@ -66,8 +66,10 @@ begin
     if not exists(select 1 from public.workers w
       where w.id=NEW.worker_id and w.company_id=NEW.company_id and w.user_id=v_actor
     ) then raise exception 'vehicle clock in must be made by its driver'; end if;
+    -- Attendance's vehicle FK already holds KEY SHARE. A key-changing lock
+    -- would deadlock when two starts upgrade that lock simultaneously.
     perform 1 from public.vehicles v where v.id=NEW.vehicle_id
-      and v.company_id=NEW.company_id and v.is_active for update;
+      and v.company_id=NEW.company_id and v.is_active for no key update;
     if not found then raise exception 'vehicle is unavailable'; end if;
     if NEW.work_date is null then raise exception 'vehicle shift needs canonical work date'; end if;
     insert into public.vehicle_usage_claims(
