@@ -187,7 +187,9 @@ class InvoicePdfService {
                 : (i == 0 ? site.siteName : '〃'),
             content: _displayLineLabel(line, site),
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
-            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
+            unitPrice: _isWelfareLine(line)
+                ? '${_quantity(site.welfareRateBps / 100)}%'
+                : (line.unitPriceText ?? '').trim().isNotEmpty
                 ? _visiblePriceText(line.unitPriceText!)
                 : _visibleNumber(line.unitPriceYen),
             amount: _visibleNumber(line.amountYen),
@@ -200,7 +202,7 @@ class InvoicePdfService {
             siteName: '〃',
             content: _welfareLabel(site.welfareRateBps),
             quantity: '',
-            unitPrice: '',
+            unitPrice: '${_quantity(site.welfareRateBps / 100)}%',
             amount: _number(site.welfareAmountYen),
           ),
         );
@@ -700,7 +702,10 @@ class InvoicePdfService {
         align: pw.TextAlign.right,
       );
     }
-    return pw.Stack(children: children);
+    return pw.Container(
+      color: PdfColors.white,
+      child: pw.Stack(children: children),
+    );
   }
 
   static pw.Widget _datedApprovalStamp(InvoiceApprovalRecord record) {

@@ -1,0 +1,8 @@
+niseten by devizou
+Official source: https://2ttf.com/HYPIvTKm8WE
+Font download: https://2ttf.com/webfont/HYPIvTKm8WE/webfont.ttf
+Retrieved: 2026-10-08 UTC
+Original TTF bytes, unmodified.
+Official source license HTML:
+		<div class="font_info_license">License : <!--i>&#xE723;</i--> <i class="icon-cc-zero"></i> <a target=_blank href="https://creativecommons.org/publicdomain/zero/1.0/">PD</a></div>
+SHA256: 4b95d30870d5b08c8675226d171f23a2defe6eb0edee0c5e84b50d02da8c3395

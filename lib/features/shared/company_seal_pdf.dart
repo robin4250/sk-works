@@ -20,7 +20,7 @@ class CompanySealPdf {
   static Future<ByteData> _loadFontData() async {
     try {
       return await rootBundle.load(
-        'assets/fonts/company-seal/NotoSansJP-Bold.ttf',
+        'assets/fonts/company-seal/niseten.ttf',
       );
     } catch (_) {
       _fontData = null;
@@ -79,21 +79,52 @@ class CompanySealPdf {
                 children: [
                   for (final rune in column.runes)
                     pw.Expanded(
-                      child: pw.FittedBox(
-                        fit: pw.BoxFit.fill,
-                        child: pw.Text(
-                          String.fromCharCode(rune),
-                          style: pw.TextStyle(
-                            color: red,
-                            fontSize: size * .24,
-                            font: font,
-                            // Keep rare registered characters visible using the
-                            // document's full Japanese font when absent here.
-                            fontFallback: fallbackFont == null
-                                ? const []
-                                : [fallbackFont],
-                          ),
-                        ),
+                      child: pw.Builder(
+                        builder: (context) {
+                          final primary = (font ?? pw.Font.helvetica())
+                              .getFont(context);
+                          // Select the font before measuring: fallback glyphs
+                          // have different bearings and ink bounds.
+                          final selected = primary.isRuneSupported(rune)
+                              ? primary
+                              : (fallbackFont?.getFont(context) ?? primary);
+                          final metrics = selected.glyphMetrics(rune);
+                          return pw.CustomPaint(
+                            size: PdfPoint(size, size),
+                            painter: (canvas, cell) {
+                              if (metrics.width <= 0 || metrics.height <= 0) {
+                                return;
+                              }
+                              // Fit actual glyph ink rather than the font's
+                              // ascent/descent line box. Seal lettering fills
+                              // each vertical cell without clipping strokes.
+                              final inkWidth = cell.x * .92;
+                              final inkHeight = cell.y * .92;
+                              final fontSize = inkHeight / metrics.height;
+                              final horizontalScale =
+                                  inkWidth / (metrics.width * fontSize);
+                              canvas
+                                ..saveContext()
+                                ..setFillColor(red)
+                                ..setStrokeColor(red)
+                                ..setLineWidth(
+                                  (cell.x < cell.y ? cell.x : cell.y) * .035,
+                                )
+                                ..drawString(
+                                  selected,
+                                  fontSize,
+                                  String.fromCharCode(rune),
+                                  (cell.x - inkWidth) / 2 -
+                                      metrics.left * fontSize * horizontalScale,
+                                  (cell.y - inkHeight) / 2 -
+                                      metrics.top * fontSize,
+                                  scale: horizontalScale,
+                                  mode: PdfTextRenderingMode.fillAndStroke,
+                                )
+                                ..restoreContext();
+                            },
+                          );
+                        },
                       ),
                     ),
                 ],
