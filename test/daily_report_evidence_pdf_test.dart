@@ -56,6 +56,14 @@ void main() {
           photoBytes: base64Decode('iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAACA0lEQVR4nO3bPU4DMRAF4BfCMThKJMqUuQUFh0iRQ1DkFpQpkXIK6jRcAQmJYqXVar3rN7bHY4jnVcD+ePJl7F2xyebz6xue9Ty0LuCvx4FIHIjEgUgciMSBSByIxIFIHIjkMb75+eXNpo6G+Ti/RrZ6B5E4EAmZYmPiffgfI1w9vINIHIikU6DdaS/cs0egQefn6V2yc3dA096RGPUFNJtZ29uBHtIRUIYO+gGa6VyPF+GBXQBl66AHoBId3D1QoQ7uG6hcB5ZAQ7nyW1iV4cbk6cAMaKpjYKSlAxugUGR32tdjUtSBAVAEwqCVCnVQFUjSJupG0xOW66Ae0OIrvx4vYdGK001dB5WA1nRmP9BDygctj/R/0vKEhYYiw19mew6/5r3zugvzNModJNGJb8pohHo60AVK0onskGRUVQeKQBk6427ZK3dtHagALb6Y1FozWslAB+VA8QtWUpKMbHRQCKSoMx4rmW5mOigBWpxWKrXGW8lSB9n3QeWLTjyRG6V6gy4mp4PMCo2f1kAHGUDGb+PayW10kDTF1JdkYcLpZqYDeQe10pmNpXUdkEcEtPgM27jQJiNCMsVCnSaFtgrvoNkz7K50kHoV600HQqChiTrUgfwyv70devhQeZh7fvSsEgci2fi3nuPxDiJxIBIHInEgEgcicSASByJxIBIHIvkFUQHikY9nhEsAAAAASUVORK5CYII=')),
         DailyReportPdfEvidence(record: record(path: '', address: '')),
         DailyReportPdfEvidence(record: record(), downloadFailed: true),
+        DailyReportPdfEvidence(record: DailyReportEvidenceRecord(id: 'route-capture',
+          workerName: '合成運転手', eventType: 'route_stop', confirmedAt: DateTime(2026, 11, 1, 6, 30),
+          storagePath: '', storageBucket: 'attendance-route-evidence',
+          stopLabel: '登録済み途中現場', sourceClockInId: 'actual-route-start', routeStopId: 'actual-route-stop',
+          originKind: 'company', photoStatus: 'upload_failed', gpsStatus: 'acquired',
+          photoObservedAt: DateTime(2026, 11, 1, 6, 25),
+          gpsCapturedAt: DateTime(2026, 11, 1, 6, 25), capturedAddress: '途中現場の実GPS住所',
+          latitude: 35.68, longitude: 139.76)),
       ]);
     final file = File('${directory.path}/daily_report_capture_evidence.pdf')..writeAsBytesSync(bytes);
     final result = await Process.run('python', ['-c',
@@ -63,7 +71,7 @@ void main() {
       file.path, directory.path]);
     expect(result.exitCode, 0, reason: result.stderr.toString());
     final actual = jsonDecode(result.stdout.toString()) as Map<String, dynamic>;
-    expect(actual['pages'], 4);
+    expect(actual['pages'], 5);
     expect(actual['images'], greaterThanOrEqualTo(1));
     final text = actual['text'] as String;
     // PDF text extraction may omit a visual Japanese word-space. Keep the
@@ -75,5 +83,8 @@ void main() {
     expect(text, contains('撮影日時未取得'));
     expect(text, contains('送信失敗'));
     expect(text, contains('保存済み写真を読み込めませんでした'));
+    expect(text.replaceAll(RegExp(r'\s+'), ''), contains('途中現場の実GPS住所'));
+    expect(text, contains('写真観測時刻'));
+    expect(text, contains('2026-11-01T06:25:00.000'));
   }, skip: fontPath == null ? 'Set SKO_PDF_FONT_PATH for actual Flutter PDF rendering.' : false);
 }

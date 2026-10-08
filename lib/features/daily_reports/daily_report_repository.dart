@@ -128,7 +128,9 @@ class DailyReportEvidenceRecord {
     this.longitude,
     this.accuracyM,
     this.gpsStatus, this.photoStatus, this.capturedAddress,
-    this.photoCapturedAt, this.gpsCapturedAt,
+    this.photoCapturedAt, this.gpsCapturedAt, this.photoObservedAt,
+    this.storageBucket = 'attendance-evidence', this.stopLabel,
+    this.sourceClockInId, this.routeStopId, this.originKind,
   });
 
   final String id;
@@ -145,6 +147,9 @@ class DailyReportEvidenceRecord {
   final String? capturedAddress;
   final DateTime? photoCapturedAt;
   final DateTime? gpsCapturedAt;
+  final DateTime? photoObservedAt;
+  final String storageBucket;
+  final String? stopLabel, sourceClockInId, routeStopId, originKind;
 
   bool get hasLocation => latitude != null && longitude != null;
 }
@@ -525,6 +530,15 @@ class DailyReportRepository {
       }
     }
 
+    if (routeAssignmentId != null) {
+      try {
+        await _client.rpc('link_route_journey_report', params: {'p_report_id': id});
+      } on PostgrestException catch (error) {
+        if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+        // New staged migration is optional while OFF; no legacy data changes.
+      }
+    }
+
     return id;
   }
 
@@ -590,8 +604,8 @@ class DailyReportRepository {
       captureEnabled = false;
     }
     var query = _client.from('attendance_verifications').select(
-      'id,event_type,confirmed_at,photo_storage_path,latitude,longitude,accuracy_m,workers(name)'
-      '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,captured_address' : ''}');
+      'id,event_type,confirmed_at,source_clock_in_id,photo_storage_path,latitude,longitude,accuracy_m,workers(name)'
+      '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,photo_observed_at,captured_address' : ''}');
     if (!captureEnabled) { query = query.not('photo_storage_path', 'is', null); }
     query = siteId != null
         ? query.eq('site_id', siteId)
@@ -607,7 +621,7 @@ class DailyReportRepository {
     }
 
     final rows = await query.order('confirmed_at');
-    return [
+    final evidence = <DailyReportEvidenceRecord>[
       for (final raw in rows)
         if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty ||
             raw['capture_contract_version'] == 1)
@@ -627,11 +641,44 @@ class DailyReportRepository {
             capturedAddress: raw['captured_address']?.toString(),
             gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
             photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
+            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '')?.toLocal(),
+            sourceClockInId: raw['source_clock_in_id']?.toString(),
             latitude: (raw['latitude'] as num?)?.toDouble(),
             longitude: (raw['longitude'] as num?)?.toDouble(),
             accuracyM: (raw['accuracy_m'] as num?)?.toDouble(),
           ),
     ];
+    if (routeAssignmentId != null && reportId != null && reportId.isNotEmpty) {
+      try {
+        final value = await _client.rpc('route_journey_report_evidence', params: {'p_report_id': reportId});
+        if (value is! List) throw StateError('途中現場の証跡を確認できません');
+        for (final row in value) {
+          if (row is! Map || row['payload'] is! Map || row['route_assignment_id'] != routeAssignmentId ||
+              row['daily_report_id'] != reportId || row['work_date'] != _dbDate(date)) {
+            throw StateError('途中現場の証跡が対象日報と一致しません');
+          }
+          final raw = row['payload'] as Map;
+          final recorded = DateTime.tryParse(row['recorded_at']?.toString() ?? '');
+          if (recorded == null) throw StateError('途中現場の記録時刻を確認できません');
+          evidence.add(DailyReportEvidenceRecord(id: row['id'] as String,
+            workerName: row['worker_name']?.toString() ?? '', eventType: 'route_stop',
+            confirmedAt: recorded.toLocal(), storagePath: raw['photo_storage_path']?.toString() ?? '',
+            storageBucket: 'attendance-route-evidence', stopLabel: row['stop_label']?.toString(),
+            sourceClockInId: row['source_clock_in_id']?.toString(), routeStopId: row['route_stop_id']?.toString(),
+            originKind: row['origin_kind']?.toString(), gpsStatus: raw['gps_capture_status']?.toString(),
+            photoStatus: raw['photo_capture_status']?.toString(), capturedAddress: raw['captured_address']?.toString(),
+            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
+            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
+            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '')?.toLocal(),
+            latitude: (raw['latitude'] as num?)?.toDouble(), longitude: (raw['longitude'] as num?)?.toDouble(),
+            accuracyM: (raw['accuracy_m'] as num?)?.toDouble()));
+        }
+      } on PostgrestException catch (error) {
+        if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+      }
+    }
+    evidence.sort((a, b) => a.confirmedAt.compareTo(b.confirmedAt));
+    return evidence;
   }
 
   Future<List<DailyReportPdfEvidence>> loadPdfEvidence(List<DailyReportEvidenceRecord> records) async {
@@ -642,7 +689,7 @@ class DailyReportRepository {
         continue;
       }
       try {
-        final bytes = await _client.storage.from('attendance-evidence')
+        final bytes = await _client.storage.from(record.storageBucket)
           .download(record.storagePath).timeout(const Duration(seconds: 15));
         attachments.add(DailyReportPdfEvidence(record: record, photoBytes: bytes));
       } catch (_) {
@@ -652,9 +699,9 @@ class DailyReportRepository {
     return attachments;
   }
 
-  Future<String> attendanceEvidenceUrl(String path) {
+  Future<String> attendanceEvidenceUrl(String path, {String bucket = 'attendance-evidence'}) {
     return _client.storage
-        .from('attendance-evidence')
+        .from(bucket)
         .createSignedUrl(path, 3600);
   }
 

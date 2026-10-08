@@ -1369,7 +1369,7 @@ class DailyReportEvidencePage extends StatelessWidget {
                     Text(
                       item.workerName +
                           ' / ' +
-                          (item.eventType == 'clock_out' ? SkoLanguageController.tr('退勤') : SkoLanguageController.tr('出勤')),
+                          (item.eventType == 'route_stop' ? SkoLanguageController.tr('途中現場') : item.eventType == 'clock_out' ? SkoLanguageController.tr('退勤') : SkoLanguageController.tr('出勤')),
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                       ),
@@ -1393,9 +1393,12 @@ class DailyReportEvidencePage extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
+                    if (item.stopLabel != null) Text('${SkoLanguageController.tr('対象現場')}: ${item.stopLabel}'),
+                    if (item.originKind != null) Text(SkoLanguageController.tr(item.originKind == 'company' ? '会社出勤後に現場へ' : '直行直帰')),
+                    if (item.photoObservedAt != null) Text('${SkoLanguageController.tr('写真観測時刻')}: ${item.photoObservedAt!.toIso8601String()}'),
                     if (item.photoStatus != null)
                       Text(item.photoCapturedAt == null
-                        ? SkoLanguageController.tr('撮影日時未取得（表示時刻は勤怠登録時刻）')
+                        ? SkoLanguageController.tr(item.eventType == 'route_stop' ? '撮影日時未取得（表示時刻は途中現場の記録時刻）' : '撮影日時未取得（表示時刻は勤怠登録時刻）')
                         : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}'),
                     if (item.gpsStatus != null && item.capturedAddress?.trim().isNotEmpty != true)
                       Text(SkoLanguageController.tr('撮影住所未取得')),
@@ -1411,8 +1414,9 @@ class DailyReportEvidencePage extends StatelessWidget {
                         child: Center(child: Text(SkoLanguageController.tr('写真未登録・送信失敗')))),
                     if (repository != null && item.storagePath.isNotEmpty)
                       FutureBuilder<String>(
+                        key: ValueKey('${item.storageBucket}:${item.storagePath}'),
                         future:
-                            repository.attendanceEvidenceUrl(item.storagePath),
+                            repository.attendanceEvidenceUrl(item.storagePath, bucket: item.storageBucket),
                         builder: (context, snapshot) {
                           final url = snapshot.data;
                           if (url == null) {

@@ -14,6 +14,8 @@ import 'gps_photo_capture_controller.dart';
 import 'gps_photo_capture_result.dart';
 import 'capture_verification_draft.dart';
 import 'attendance_capture_metadata_service.dart';
+import 'route_journey_capture_repository.dart';
+import 'route_journey_capture_page.dart';
 import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
@@ -37,6 +39,9 @@ class _AttendanceVerificationPageState
   final _repository = AttendanceVerificationRepository.maybeCreate();
   final _bulkAttendanceRepository = AttendanceCloudRepository.maybeCreate();
   final _picker = ImagePicker();
+  final _journeyRepository = RouteJourneyCaptureRepository.maybeCreate();
+  List<AttendanceShiftContext> _journeyShifts = const [];
+  List<String> _pendingJourneySourceIds = const [];
   final _captureMetadata = const AttendanceCaptureMetadataService();
   final _noteController = TextEditingController();
 
@@ -125,6 +130,16 @@ class _AttendanceVerificationPageState
           schedule['site_id']?.toString();
 
       final pendingCapture = await repository.loadPendingCaptureDraft();
+      final journeyShifts = <AttendanceShiftContext>[];
+      List<String> pendingJourneySourceIds = const [];
+      final journeys = _journeyRepository;
+      if (journeys != null) {
+        // Staged optional feature must never block existing attendance loading.
+        try { pendingJourneySourceIds = (await journeys.allPending()).map((draft) => draft.sourceId).toList(); } catch (_) { /* Preserve the stored record. */ }
+        for (final shift in status.openShifts.where((row) => row.routeId != null && row.verificationMode == 'location_photo')) {
+          if (await journeys.enabled(shift.id)) journeyShifts.add(shift);
+        }
+      }
       if (!mounted) return;
       setState(() {
         _workers = values[0] as List<Map<String, dynamic>>;
@@ -145,6 +160,8 @@ class _AttendanceVerificationPageState
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
         _openShifts = status.openShifts;
+        _journeyShifts = journeyShifts;
+        _pendingJourneySourceIds = pendingJourneySourceIds;
         _shift = _eventType == 'clock_out' && _openShifts.length == 1 ? _openShifts.single : null;
         if (_shift != null) _selectShift(_shift!);
         _pendingCaptureDraft = pendingCapture;
@@ -268,6 +285,16 @@ class _AttendanceVerificationPageState
                         ),
                       ),
                     ),
+                  for (final pendingJourneySourceId in _pendingJourneySourceIds)
+                    OutlinedButton.icon(onPressed: _saving ? null : () async {
+                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RouteJourneyCapturePage(sourceId: pendingJourneySourceId)));
+                      if (mounted) await _load();
+                    }, icon: const Icon(Icons.camera_alt_outlined), label: Text(SkoLanguageController.tr('保留中の途中現場記録を再確認'))),
+                  for (final journey in _journeyShifts)
+                    OutlinedButton.icon(onPressed: _saving || _pendingCaptureDraft != null ? null : () async {
+                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RouteJourneyCapturePage(sourceId: journey.id)));
+                      if (mounted) await _load();
+                    }, icon: const Icon(Icons.add_a_photo_outlined), label: Text('${SkoLanguageController.tr('途中現場のGPS＋写真')}: ${_shiftLabel(journey)}')),
                   if (isClockOut && _openShifts.isNotEmpty) ...[
                     DropdownButtonFormField<String>(
                       key: ValueKey('shift:${_shift?.id}:${_openShifts.length}'),

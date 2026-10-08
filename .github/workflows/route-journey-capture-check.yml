@@ -1,0 +1,31 @@
+name: Route journey capture check
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
+      - 'tool/verify_route_journey_capture.mjs'
+      - 'tool/fixtures/route_journey_capture/**'
+      - '.github/workflows/route-journey-capture-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
+      - 'tool/verify_route_journey_capture.mjs'
+      - 'tool/fixtures/route_journey_capture/**'
+      - '.github/workflows/route-journey-capture-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture-storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/route-capture-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify immutable route capture, exact parent and scoped storage
+        run: node tool/verify_route_journey_capture.mjs "$RUNNER_TEMP/route-capture-runtime/node_modules/@electric-sql/pglite/dist/index.js"
