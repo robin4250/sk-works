@@ -384,26 +384,29 @@ class PayrollPdfService {
                       ),
                     ),
                   ),
-                  pw.Positioned(
-                    left: 88,
-                    right: 0,
-                    top: 8,
-                    child: pw.FittedBox(
-                      fit: pw.BoxFit.scaleDown,
-                      alignment: pw.Alignment.centerLeft,
-                      child: text(
-                        payType == '月給'
-                            ? '（月固定給 ＋ 各種手当）'
-                            : payType == '時給'
-                            ? '（勤務時間 × 登録単価 ＋ 各種手当）'
-                            : payType == '日給'
-                            ? '（勤務日数 × 登録単価 ＋ 各種手当）'
-                            : '',
-                        size: 8.5,
-                        color: PdfColors.white,
+                  // A legacy statement may not have a registered pay type.
+                  // Keep its label empty without fitting zero-width text.
+                  if (payType != '未登録')
+                    pw.Positioned(
+                      left: 88,
+                      right: 0,
+                      top: 8,
+                      child: pw.FittedBox(
+                        fit: pw.BoxFit.scaleDown,
+                        alignment: pw.Alignment.centerLeft,
+                        child: text(
+                          payType == '月給'
+                              ? '（月固定給 ＋ 各種手当）'
+                              : payType == '時給'
+                              ? '（勤務時間 × 登録単価 ＋ 各種手当）'
+                              : payType == '日給'
+                              ? '（勤務日数 × 登録単価 ＋ 各種手当）'
+                              : '',
+                          size: 8.5,
+                          color: PdfColors.white,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

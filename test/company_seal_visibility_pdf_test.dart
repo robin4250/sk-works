@@ -92,8 +92,21 @@ void main() {
           payerCompanySealEnabled: enabled,
           payerPhone: '03-1234-5678',
         );
+        Future<Uint8List> generate(
+          String report,
+          Future<Uint8List> Function() build,
+        ) async {
+          try {
+            return await build();
+          } catch (error, stack) {
+            Error.throwWithStackTrace(
+              TestFailure('$report company seal ${enabled ? 'ON' : 'OFF'}: $error'),
+              stack,
+            );
+          }
+        }
         final files = {
-          'invoice': await InvoicePdfService.buildPdf(
+          'invoice': await generate('invoice', () => InvoicePdfService.buildPdf(
             [invoice], settings: settings(enabled),
             approvalsByInvoice: const {
               '': [InvoiceApprovalRecord(
@@ -103,13 +116,13 @@ void main() {
               )],
             },
             regularFont: font(), boldFont: font(),
-          ),
-          'payroll': await PayrollPdfService.buildPdf(
+          )),
+          'payroll': await generate('payroll', () => PayrollPdfService.buildPdf(
             payroll, regularFont: font(), boldFont: font(),
-          ),
-          'certificate': await PaymentCertificatePdfService.buildPdf(
+          )),
+          'certificate': await generate('certificate', () => PaymentCertificatePdfService.buildPdf(
             certificate, regularFont: font(), boldFont: font(),
-          ),
+          )),
         };
         for (final entry in files.entries) {
           File('${output.path}/company_seal_${entry.key}_${enabled ? 'on' : 'off'}.pdf')
