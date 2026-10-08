@@ -5,7 +5,7 @@ import 'package:sk_works/features/attendance/group_checkout_dialog.dart';
 import 'package:sk_works/features/attendance/group_checkout_repository.dart';
 
 class RetryRepository extends GroupCheckoutRepository {
-  RetryRepository(SupabaseClient client) : super(client);
+  RetryRepository(super.client);
   final List<GroupCheckoutRequest> requests = [];
   @override
   Future<void> commit(GroupCheckoutRequest request) async {
