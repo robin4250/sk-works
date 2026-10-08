@@ -1,7 +1,7 @@
 -- Staged OFF: no publication until the UI final-save call and target route exist.
 create table private.source_notification_rollouts(company_id uuid primary key references public.companies(id) on delete cascade, enabled boolean not null default false);
 create table private.vehicle_notification_assignees(vehicle_id uuid primary key references public.vehicles(id) on delete cascade, company_id uuid not null references public.companies(id) on delete cascade, user_ids uuid[] not null check(cardinality(user_ids) between 1 and 3));
-create table private.source_notification_receipts(notification_id uuid primary key references public.app_notifications(id) on delete cascade, company_id uuid not null, event_key text not null, source_id uuid not null, recipient_user_id uuid not null, work_date date not null, unique(event_key,source_id,recipient_user_id));
+create table private.source_notification_receipts(id uuid primary key default gen_random_uuid(), notification_id uuid unique references public.app_notifications(id) on delete set null, company_id uuid not null, event_key text not null, source_id uuid not null, recipient_user_id uuid not null, work_date date not null, unique(event_key,source_id,recipient_user_id));
 alter table private.source_notification_rollouts enable row level security;
 alter table private.vehicle_notification_assignees enable row level security;
 alter table private.source_notification_receipts enable row level security;
@@ -25,6 +25,8 @@ create function private.publish_saved_group_report_notifications(p_report_id uui
 declare d public.daily_reports%rowtype; r record; n uuid; count_sent integer:=0; actor_name text;
 begin
  if auth.uid() is null or not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501'; end if;
+ -- Serialize publication before validating the roster or checking the ledger.
+ -- The lock remains held through notification + receipt insertion.
  select * into d from public.daily_reports where id=p_report_id for update;
  if not found or d.updated_by is distinct from auth.uid() or not exists(select 1 from public.company_members where company_id=d.company_id and user_id=auth.uid()) then raise exception 'saved report author required' using errcode='42501'; end if;
  if not exists(select 1 from private.source_notification_rollouts where company_id=d.company_id and enabled) then return 0; end if;
@@ -36,7 +38,7 @@ begin
  for r in select distinct w.user_id from public.daily_report_workers rw join public.workers w on w.id=rw.worker_id join public.company_members cm on cm.company_id=d.company_id and cm.user_id=w.user_id where rw.report_id=d.id and w.company_id=d.company_id and w.status='active' and w.user_id<>auth.uid() loop
   if not exists(select 1 from private.source_notification_receipts where event_key='group_report_saved' and source_id=d.id and recipient_user_id=r.user_id) then
    n:=private.enqueue_notification(d.company_id,r.user_id,'info',actor_name||'さんが日報登録しました。確認しますか？',to_char(d.report_date,'YYYY-MM-DD')||' の日報','group_report_saved',d.id);
-   insert into private.source_notification_receipts values(n,d.company_id,'group_report_saved',d.id,r.user_id,d.report_date);
+   insert into private.source_notification_receipts(notification_id,company_id,event_key,source_id,recipient_user_id,work_date) values(n,d.company_id,'group_report_saved',d.id,r.user_id,d.report_date);
    count_sent:=count_sent+1;
   end if;
  end loop;
@@ -63,7 +65,7 @@ begin
  for r in select distinct x from private.vehicle_notification_assignees a cross join lateral unnest(a.user_ids)x join public.company_members cm on cm.company_id=a.company_id and cm.user_id=x where a.vehicle_id=v.id and a.company_id=v.company_id loop
   if not exists(select 1 from private.source_notification_receipts where event_key='vehicle_driver_started' and source_id=new.id and recipient_user_id=r) then
    n:=private.enqueue_notification(new.company_id,r,'info',driver_name||'さんが'||coalesce(nullif(v.registration_number,''),v.display_name)||'の利用を開始しました',to_char(new.work_date,'YYYY-MM-DD'),'vehicle_driver_started',new.id);
-   insert into private.source_notification_receipts values(n,new.company_id,'vehicle_driver_started',new.id,r,new.work_date);
+   insert into private.source_notification_receipts(notification_id,company_id,event_key,source_id,recipient_user_id,work_date) values(n,new.company_id,'vehicle_driver_started',new.id,r,new.work_date);
   end if;
  end loop;
  return new;

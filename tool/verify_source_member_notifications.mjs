@@ -3,10 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 const {PGlite}=await import(process.argv[2]);
 const db=new PGlite();
-await db.exec(`create schema private; create schema auth; create role anon; create role authenticated; grant usage on schema public,private,auth to authenticated,anon; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$; create function private.account_access_allowed() returns boolean language sql as $$select coalesce(current_setting('test.account_allowed',true),'true')<>'false'$$;
-create table public.companies(id uuid primary key); create table public.company_members(company_id uuid,user_id uuid,role text); create table public.workers(id uuid primary key,company_id uuid,user_id uuid,name text,status text); create table public.vehicles(id uuid primary key,company_id uuid,registration_number text,display_name text); create table public.daily_reports(id uuid primary key,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date,updated_by uuid); create table public.daily_report_workers(report_id uuid,worker_id uuid); create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,work_date date,event_type text,source_clock_in_id uuid,daily_report_id uuid,vehicle_id uuid);
-create table public.vehicle_usage_claims(source_clock_in_id uuid,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date);
-`);
+await db.exec(await fs.readFile(new URL('./fixtures/source_member_notifications/schema.sql',import.meta.url),'utf8'));
 const fixtureRoot=new URL('./fixtures/source_member_notifications/',import.meta.url);
 const manifest=JSON.parse(await fs.readFile(new URL('manifest.json',fixtureRoot),'utf8'));
 for(const item of manifest.files){const bytes=await fs.readFile(new URL(item.path,fixtureRoot));assert.equal(bytes.length,item.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),item.sha256);await db.exec(bytes.toString());}
@@ -60,6 +57,14 @@ const third='20000000-0000-0000-0000-000000000001',foreign='20000000-0000-0000-0
 await db.exec(`reset role; insert into auth.users values('${third}'),('${foreign}'); insert into companies values('${otherCompany}'); insert into company_members values('${c}','${third}','viewer'),('${otherCompany}','${foreign}','admin'); set role authenticated;`);
 for(const values of [`array['${v}']::uuid[]`,`array['${u}','${v}']::uuid[]`,`array['${u}','${v}','${third}']::uuid[]`]){await db.query(`select public.set_vehicle_notification_assignees('${car}',${values})`);}
 await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${foreign}']::uuid[])`),/belong/);
+await db.exec(`reset role; delete from app_notifications where id='${notice}'; set role authenticated; set test.uid='${u}'`);
+assert.equal((await db.query(`select public.publish_saved_group_report_notifications('${report}') n`)).rows[0].n,0);
+await db.exec('reset role');
+const ledger=(await db.query(`select id,notification_id,source_id,recipient_user_id,work_date::text from private.source_notification_receipts where event_key='group_report_saved'`)).rows;
+assert.equal(ledger.length,1);assert.equal(ledger[0].notification_id,null);assert.equal(ledger[0].source_id,report);assert.equal(ledger[0].recipient_user_id,v);assert.equal(ledger[0].work_date,'2026-09-30');
+assert.equal((await db.query("select count(*)::int n from app_notifications where action_key='group_report_saved'")).rows[0].n,0);
+await db.exec(`set role authenticated; set test.uid='${v}'`);
+await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/unavailable/);
 await db.exec(`reset role; delete from company_members where company_id='${c}' and user_id='${v}'; set role authenticated; set test.uid='${v}'`);
 await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/unavailable/);
 console.log('PASS: OFF, author, incomplete roster, exact work date, dedup after read, viewer assignee/admin restriction, transactional genuine driver claim');await db.close();
