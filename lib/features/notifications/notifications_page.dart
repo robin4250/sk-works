@@ -2,6 +2,7 @@ import '../../international/language_controller.dart';
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import 'notification_business_status.dart';
 import '../auth/secondary_protected_page.dart';
 import '../invoices/invoice_cloud_page.dart';
 import '../chat/chat_cloud_page.dart';
@@ -220,6 +221,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                       const SizedBox(height: 4),
                                       Text(item.body),
                                     ],
+                                    if (item.hasBusinessTarget) ...[
+                                      const SizedBox(height: 4),
+                                      Text(_businessDescription(item)),
+                                    ],
                                     const SizedBox(height: 4),
                                     Text(
                                       _formatDate(item.createdAt),
@@ -240,6 +245,27 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       ),
       ),
     );
+  }
+
+  String _businessDescription(AppNotificationRecord item) {
+    final status = item.businessStatus;
+    final label = switch (status.state) {
+      NotificationBusinessState.pending => '未確認',
+      NotificationBusinessState.completed => '確認済み',
+      NotificationBusinessState.rejected => '却下済み',
+      NotificationBusinessState.cancelled => '取消済み',
+      NotificationBusinessState.unknown => '状態を確認できません',
+    };
+    final date = status.targetDate;
+    final targetDate = date == null ? null
+        : item.actionKey == 'payroll_review' || item.actionKey == 'invoice_approval'
+            ? '${date.year}/${date.month.toString().padLeft(2, '0')}'
+            : '${date.year}/${date.month}/${date.day}';
+    return [
+      if (status.targetName?.isNotEmpty == true) status.targetName!,
+      if (targetDate != null) targetDate,
+      SkoLanguageController.tr(label),
+    ].join(' / ');
   }
 
   IconData _icon(String kind) => switch (kind) {

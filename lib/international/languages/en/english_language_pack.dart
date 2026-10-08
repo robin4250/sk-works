@@ -818,6 +818,8 @@ const englishLanguagePack = LanguagePack(
     '選択範囲を一括削除': 'Delete Selected Range',
     '設定を保存しました': 'Settings saved',
     '給料一覧': 'Payroll List',
+    '取消済み': 'Cancelled',
+    '状態を確認できません': 'Status unavailable',
     '確認済み': 'Confirmed',
     '未確定': 'Unconfirmed',
     '支払証明書': 'Payment Certificate',
