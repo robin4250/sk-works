@@ -71,6 +71,7 @@ create function private.record_vehicle_driver_meter(
 declare
  v_actor uuid:=auth.uid();
  v_claim public.vehicle_usage_claims%rowtype;
+ v_identity public.vehicle_usage_claims%rowtype;
  v_event public.vehicle_meter_events%rowtype;
  v_current numeric;
  v_decreased boolean;
@@ -84,7 +85,10 @@ begin
      or p_manual_distance_km<>round(p_manual_distance_km,1))) then
    raise exception 'メーター値と移動距離は0以上・小数1桁の数値を入力してください';
  end if;
- -- Read identity before locking, then use vehicle -> claim order, matching
+ if current_setting('transaction_isolation')<>'read committed' then
+   raise exception 'vehicle meter registration requires read committed isolation';
+ end if;
+ -- Read identity before locking, then company -> vehicle -> claim order, matching
  -- starts and vehicle deletion cascades. Recheck the locked claim below.
  select * into v_claim from public.vehicle_usage_claims c
    where c.source_clock_in_id=p_source_clock_in_id;
@@ -94,19 +98,26 @@ begin
      and w.company_id=v_claim.company_id and w.user_id=v_actor and w.status='active') then
    raise exception '車両の運転手本人だけがメーターを登録できます';
  end if;
+ v_identity:=v_claim;
+ perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||v_identity.company_id::text,0));
  perform 1 from public.vehicles v
    where v.id=v_claim.vehicle_id and v.company_id=v_claim.company_id for no key update;
+ if not found then raise exception '車両を確認できません'; end if;
  -- Claim identity may have changed through an administrator's deletion cascade.
  select * into v_claim from public.vehicle_usage_claims c
    where c.source_clock_in_id=p_source_clock_in_id for update;
- if not found or not exists(select 1 from public.company_members m
+ if not found or row(v_claim.company_id,v_claim.vehicle_id,v_claim.driver_worker_id,
+      v_claim.work_date,v_claim.started_at,v_claim.claimed_at)
+      is distinct from row(v_identity.company_id,v_identity.vehicle_id,v_identity.driver_worker_id,
+      v_identity.work_date,v_identity.started_at,v_identity.claimed_at)
+   or not exists(select 1 from public.company_members m
      where m.company_id=v_claim.company_id and m.user_id=v_actor)
    or not exists(select 1 from public.workers w where w.id=v_claim.driver_worker_id
      and w.company_id=v_claim.company_id and w.user_id=v_actor and w.status='active') then
    raise exception '車両の運転手本人だけがメーターを登録できます';
  end if;
  perform 1 from private.vehicle_usage_rollout r
-   where r.company_id=v_claim.company_id and r.enabled for share;
+   where r.company_id=v_claim.company_id and r.enabled;
  if not found then raise exception '車両連携はまだ有効ではありません'; end if;
  -- Retry must reuse the committed snapshot, before reading mutable vehicle data.
  select * into v_event from public.vehicle_meter_events e

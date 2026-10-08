@@ -58,5 +58,6 @@ create table companies(id uuid primary key);
   await db.exec(fs.readFileSync('supabase/migrations/20261001232457_add_daily_report_vehicle_usage_rpc.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261008154433_vehicle_meter_snapshots.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/tests/vehicle_meter_snapshots_assertions.sql','utf8'));
+  await db.exec(fs.readFileSync('supabase/tests/vehicle_rollout_serialization_assertions.sql','utf8'));
   console.log('PASS driver meter snapshots: ownership, exact decrease/manual mileage, immutable retry, old-report/current baseline protection, pending warning dedup and unchanged OFF RPC');
 } catch (error) { console.error(error.message, error.where ?? ''); process.exitCode = 1; } finally { await db.close(); }

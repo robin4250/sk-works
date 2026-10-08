@@ -9,7 +9,7 @@
 新RPC `record_vehicle_driver_meter(source_clock_in_id, event_id, current_km, manual_distance_km)` は退勤後の運転手本人だけが利用できる。日報を他メンバーが入力しても、運転手のメーターはこの独立RPCから登録する。
 
 1. 現在の会社所属・active worker・account guard・有効なrollout・claimの所有を検証。
-2. claim/rollout/車両をロックし、別利用や管理者の基準値変更がないことを検証。
+2. 所属／本人claimを確認後、会社advisory→車両NO KEY UPDATE→claim UPDATEの順に取得する。取得後のclaim identityを再検証し、rolloutはMVCCで読む（行lockなし）。別利用や管理者の基準値変更がないことを検証。fresh snapshotのためREAD COMMITTED限定。
 3. 前回／今回／当日距離／勤務日／入力者をimmutable eventとして記録し、車両現在値を同じトランザクションで更新。
 4. 今回値が減る場合は、その日の走行距離の手入力が必要。負の差分から距離を推測しない。前回値を保持し、今回値を新しい車両基準にする。
 5. 減少eventにつき一つだけ、管理者向け警告をprivate outboxへ保存。dispatcher未接続なので「管理者へ送信済み」と表示してはいけない。

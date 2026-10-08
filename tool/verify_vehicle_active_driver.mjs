@@ -55,5 +55,6 @@ create table companies(id uuid primary key);
   await db.exec(originalGps.slice(wrapperStart, wrapperEnd));
   await db.exec(fs.readFileSync('supabase/migrations/20261008153425_vehicle_active_driver_claims.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/tests/vehicle_active_driver_assertions.sql','utf8'));
+  await db.exec(fs.readFileSync('supabase/tests/vehicle_rollout_serialization_assertions.sql','utf8'));
   console.log('PASS staged vehicle claims: actual GPS RPC, direct insert RLS, driver ownership, exclusive index, rollback, month-boundary checkout release and account guard');
 } catch (error) { console.error(error.message, error.where ?? ''); process.exitCode = 1; } finally { await db.close(); }
