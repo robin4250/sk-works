@@ -199,6 +199,7 @@ class PayrollPdfService {
       ],
     ];
     final remarks = _first(detail, const ['備考', 'remarks', 'notes']);
+    final leaveAllocation = _monthlyPaidLeaveAllocationNote(detail);
     final payType = _payTypeLabel(detail);
     return pw.Container(
       width: 559.275590551,
@@ -558,6 +559,13 @@ class PayrollPdfService {
               ),
             ),
           ),
+          if (leaveAllocation.isNotEmpty)
+            at(20, 655, width, 28,
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 10),
+                child: text(leaveAllocation, size: 7),
+              ),
+            ),
           at(
             20,
             731.88976378,
@@ -974,8 +982,21 @@ class PayrollPdfService {
     );
   }
 
+  static String _monthlyPaidLeaveAllocationNote(Map<String, dynamic> detail) {
+    if (_payTypeLabel(detail) != '月給') return '';
+    final unit = _asNumber(detail['有給単価']);
+    final days = _asNumber(detail['有給日数']);
+    final allocation = _asNumber(detail['有給内訳額']);
+    if (unit == null || days == null || allocation == null || days <= 0) {
+      return '';
+    }
+    return '有給内訳：${_number(unit.round())}円 × ${_number(days.round())}日 ＝ ${_number(allocation.round())}円（月給に含む・加算なし）';
+  }
+
   static String _quantity(String label, Map<String, dynamic> detail) {
-    final key = label.contains('休日残業')
+    final key = label == '有給支給額'
+        ? '有給日数'
+        : label.contains('休日残業')
         ? '休日残業時間'
         : label.contains('残業')
         ? '残業時間'
@@ -993,6 +1014,9 @@ class PayrollPdfService {
     final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
+    }
+    if (label == '有給支給額' && detail['有給単価'] != null) {
+      return '${_number((_asNumber(detail['有給単価']) ?? 0).round())}円 × ${detail['有給日数'] ?? 0}日';
     }
     if (label == '基本給') {
       return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
@@ -1061,6 +1085,9 @@ class PayrollPdfService {
     '休日出勤',
     '休日出勤日数',
     '有給日数',
+    '有給単価',
+    '有給内訳額',
+    'paid_leave_wage_contract',
     '残業時間',
     '法定休出時間',
     '法定休日出勤時間',
