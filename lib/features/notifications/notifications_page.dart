@@ -2,6 +2,8 @@ import '../../international/language_controller.dart';
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import 'source_notification_target.dart';
+import 'source_notification_target_page.dart';
 import 'attention_center_repository.dart';
 import 'attention_center_item.dart';
 import '../people/own_document_registration_page.dart';
@@ -108,7 +110,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
         }
         payrollMonth = await review.notificationMonth(target.actionId ?? '');
       }
-      final destination = notificationDestination(target, payrollMonth: payrollMonth);
+      Widget? destination;
+      if (SourceNotificationTarget.supports(target.actionKey)) {
+        final repository = _notifications;
+        if (repository == null) {
+          throw StateError('Notifications unavailable');
+        }
+        final savedTarget = await repository.sourceTarget(target);
+        destination = SourceNotificationTargetPage(target: savedTarget);
+      } else {
+        destination = notificationDestination(target, payrollMonth: payrollMonth);
+      }
       if (!mounted) {
         return;
       }

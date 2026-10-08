@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'notification_business_status.dart';
+import 'source_notification_target.dart';
 
 class AppNotificationRecord {
   const AppNotificationRecord({
@@ -158,6 +159,20 @@ class AppNotificationRepository {
       // A failed enrichment must never remove the notification itself.
       return const NotificationBusinessStatus();
     }
+  }
+
+  Future<SourceNotificationTarget> sourceTarget(AppNotificationRecord item) async {
+    if (!SourceNotificationTarget.supports(item.actionKey) || item.id.isEmpty || item.actionId == null) {
+      throw const FormatException('Source notification unavailable');
+    }
+    final userId = _client.auth.currentUser?.id;
+    final result = await _client.rpc('get_source_notification_target',
+      params: {'p_notification_id': item.id});
+    if (userId == null || _client.auth.currentUser?.id != userId) {
+      throw StateError('Account changed');
+    }
+    return SourceNotificationTarget.parse(result, expectedKey: item.actionKey!,
+      expectedSourceId: item.actionId!);
   }
 
   Future<int> unreadCount() async {
