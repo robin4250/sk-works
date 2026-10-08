@@ -1,0 +1,65 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+const {PGlite}=await import(process.argv[2]);
+const db=new PGlite();
+await db.exec(`create schema private; create schema auth; create role anon; create role authenticated; grant usage on schema public,private,auth to authenticated,anon; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$; create function private.account_access_allowed() returns boolean language sql as $$select coalesce(current_setting('test.account_allowed',true),'true')<>'false'$$;
+create table public.companies(id uuid primary key); create table public.company_members(company_id uuid,user_id uuid,role text); create table public.workers(id uuid primary key,company_id uuid,user_id uuid,name text,status text); create table public.vehicles(id uuid primary key,company_id uuid,registration_number text,display_name text); create table public.daily_reports(id uuid primary key,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date,updated_by uuid); create table public.daily_report_workers(report_id uuid,worker_id uuid); create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,work_date date,event_type text,source_clock_in_id uuid,daily_report_id uuid,vehicle_id uuid);
+create table public.vehicle_usage_claims(source_clock_in_id uuid,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date);
+`);
+const fixtureRoot=new URL('./fixtures/source_member_notifications/',import.meta.url);
+const manifest=JSON.parse(await fs.readFile(new URL('manifest.json',fixtureRoot),'utf8'));
+for(const item of manifest.files){const bytes=await fs.readFile(new URL(item.path,fixtureRoot));assert.equal(bytes.length,item.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),item.sha256);await db.exec(bytes.toString());}
+// Existing Supabase API grants are fixture infrastructure; production migration
+// explicitly revokes INSERT/DELETE and keeps SELECT/UPDATE under own-row RLS.
+await db.exec('grant select,update on public.app_notifications to authenticated');
+await db.exec(await fs.readFile(new URL('../supabase/migrations/20261008171216_source_member_notifications.sql',import.meta.url),'utf8'));
+const ids=Array.from({length:10},(_,i)=>`00000000-0000-0000-0000-${String(i+1).padStart(12,'0')}`); const[c,u,v,w,x,site,report,si,sj,car]=ids;
+await db.exec(`reset role; set test.uid='${u}'; insert into auth.users values('${u}'),('${v}'); insert into companies values('${c}'); insert into company_members values('${c}','${u}','admin'),('${c}','${v}','viewer'); insert into workers values('${w}','${c}','${u}','作成者','active'),('${x}','${c}','${v}','参加者','active'); insert into vehicles values('${car}','${c}','品川123','車'); insert into daily_reports values('${report}','${c}','${site}',null,'2026-09-30','${u}'); insert into daily_report_workers values('${report}','${w}'),('${report}','${x}');`);
+await db.exec('set role authenticated');
+assert.equal((await db.query(`select public.publish_saved_group_report_notifications('${report}') n`)).rows[0].n,0);
+await db.exec('reset role');
+await db.exec(`insert into private.source_notification_rollouts values('${c}',true)`);
+await db.exec('set role authenticated');await assert.rejects(db.query(`select public.publish_saved_group_report_notifications('${report}')`),/participating/);await db.exec('reset role');
+await db.exec(`insert into attendance_verifications values('${si}','${c}','${w}','${site}',null,'2026-09-30','clock_in',null,'${report}',null),('${sj}','${c}','${x}','${site}',null,'2026-09-30','clock_in',null,'${report}',null)`);
+await db.exec('set role authenticated');await assert.rejects(db.query(`select public.publish_saved_group_report_notifications('${report}')`),/incomplete/);await db.exec('reset role');
+await db.exec(`insert into attendance_verifications select gen_random_uuid(),company_id,worker_id,site_id,null,work_date,'clock_out',id,daily_report_id,null from attendance_verifications where event_type='clock_in'`);
+await db.exec('set role authenticated');assert.equal((await db.query(`select public.publish_saved_group_report_notifications('${report}') n`)).rows[0].n,1);await db.exec('reset role');
+await db.exec('update app_notifications set read_at=now()');
+assert.equal((await db.query(`select public.publish_saved_group_report_notifications('${report}') n`)).rows[0].n,0);
+assert.equal((await db.query('select work_date::text d from private.source_notification_receipts')).rows[0].d,'2026-09-30');
+await db.exec(`set role authenticated; select public.set_vehicle_notification_assignees('${car}',array['${v}']::uuid[])`);
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${v}','${v}']::uuid[])`),/distinct/);
+await db.exec(`set test.uid='${v}'`);await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${v}']::uuid[])`),/administrator/);
+await db.exec(`reset role; set test.uid='${u}'; begin; insert into attendance_verifications values('10000000-0000-0000-0000-000000000001','${c}','${w}','${site}',null,'2026-09-30','clock_in',null,null,'${car}'); insert into vehicle_usage_claims values('10000000-0000-0000-0000-000000000001','${c}','${car}','${w}','2026-09-30'); commit;`);
+assert.equal((await db.query("select count(*)::int n from app_notifications where action_key='vehicle_driver_started'")).rows[0].n,1);
+const notice=(await db.query("select id from app_notifications where action_key='group_report_saved'")).rows[0].id;
+await db.exec('set role authenticated');
+await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/unavailable/);
+await db.exec(`set test.uid='${v}'`);
+const target=(await db.query(`select public.get_source_notification_target('${notice}') t`)).rows[0].t;
+assert.equal(target.source_id,report);assert.equal(target.work_date,'2026-09-30');
+await db.exec(`reset role; set test.uid='${u}'; insert into attendance_verifications values('10000000-0000-0000-0000-000000000002','${c}','${w}','${site}',null,'2026-10-01','clock_in',null,null,'${car}');`);
+assert.equal((await db.query("select count(*)::int n from app_notifications where action_key='vehicle_driver_started'")).rows[0].n,1);
+await db.exec(`begin; insert into attendance_verifications values('10000000-0000-0000-0000-000000000003','${c}','${w}','${site}',null,'2026-10-01','clock_in',null,null,'${car}'); insert into vehicle_usage_claims values('10000000-0000-0000-0000-000000000003','${c}','${car}','${w}','2026-10-01'); rollback;`);
+assert.equal((await db.query("select count(*)::int n from app_notifications where action_key='vehicle_driver_started'")).rows[0].n,1);
+await db.exec('set role anon');
+await assert.rejects(db.query(`select public.publish_saved_group_report_notifications('${report}')`),/permission denied/);
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${v}']::uuid[])`),/permission denied/);
+await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/permission denied/);
+await db.exec('set role authenticated');
+await assert.rejects(db.query('select * from private.source_notification_rollouts'),/permission denied/);
+await assert.rejects(db.query('select * from private.source_notification_receipts'),/permission denied/);
+await db.exec(`set test.account_allowed='false'`);
+await assert.rejects(db.query(`select public.publish_saved_group_report_notifications('${report}')`),/account unavailable/);
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${v}']::uuid[])`),/account unavailable/);
+await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/account unavailable/);
+await db.exec(`set test.account_allowed='true'`);
+for(const values of ["array[]::uuid[]",`array['${u}','${v}','${u}','${v}']::uuid[]`,"array[null]::uuid[]"]){await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',${values})`),/distinct/);}
+const third='20000000-0000-0000-0000-000000000001',foreign='20000000-0000-0000-0000-000000000002',otherCompany='20000000-0000-0000-0000-000000000003';
+await db.exec(`reset role; insert into auth.users values('${third}'),('${foreign}'); insert into companies values('${otherCompany}'); insert into company_members values('${c}','${third}','viewer'),('${otherCompany}','${foreign}','admin'); set role authenticated;`);
+for(const values of [`array['${v}']::uuid[]`,`array['${u}','${v}']::uuid[]`,`array['${u}','${v}','${third}']::uuid[]`]){await db.query(`select public.set_vehicle_notification_assignees('${car}',${values})`);}
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${foreign}']::uuid[])`),/belong/);
+await db.exec(`reset role; delete from company_members where company_id='${c}' and user_id='${v}'; set role authenticated; set test.uid='${v}'`);
+await assert.rejects(db.query(`select public.get_source_notification_target('${notice}')`),/unavailable/);
+console.log('PASS: OFF, author, incomplete roster, exact work date, dedup after read, viewer assignee/admin restriction, transactional genuine driver claim');await db.close();

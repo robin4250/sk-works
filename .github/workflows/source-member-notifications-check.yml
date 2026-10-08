@@ -1,0 +1,39 @@
+name: Source member notifications check
+
+on:
+  push:
+    branches: [main, 'feat/member-source-notifications-*']
+    paths:
+      - 'supabase/migrations/20261008171216_source_member_notifications.sql'
+      - 'tool/verify_source_member_notifications.mjs'
+      - 'tool/fixtures/source_member_notifications/**'
+      - '.github/workflows/source-member-notifications-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008171216_source_member_notifications.sql'
+      - 'tool/verify_source_member_notifications.mjs'
+      - 'tool/fixtures/source_member_notifications/**'
+      - '.github/workflows/source-member-notifications-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-member-notifications-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-source-bound-notifications:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned synthetic SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/source-notifications-runtime" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify exact notification baseline and staged security boundary
+        run: node tool/verify_source_member_notifications.mjs "$RUNNER_TEMP/source-notifications-runtime/node_modules/@electric-sql/pglite/dist/index.js"

@@ -1,0 +1,15 @@
+# Saved group report and vehicle driver notifications
+
+This staged migration is OFF for every company and creates no enabled rows. It has not been applied to production.
+
+`publish_saved_group_report_notifications(report_id)` must be called only after successful final roster save and attendance attachment. It validates the current author is an actual participating worker, every saved roster worker has attached original clock-in and matched clock-out for the exact company, site and work date, and derives recipients from those workers' current company memberships. No caller supplied recipient list is accepted. Draft database writes do not themselves notify. A retry or notification read never creates a duplicate report/recipient notification. This initial policy publishes once per report, not every subsequent edit.
+
+Vehicle start notifications are deferred until transaction completion and require a genuine matching `vehicle_usage_claims` driver claim. Missing claim schema, absent gate or absent explicitly configured vehicle assignees produces no notification. Owner/admin may set 1–3 distinct current company members; selected viewers are permitted without granting any vehicle management privilege. External email and guessed recipients are not implemented.
+
+Recipient-only `get_source_notification_target` returns immutable source ID and work date. It does not mark business review complete. New action keys `group_report_saved` and `vehicle_driver_started` need UI routes before gate activation; do not reuse approval request keys. Notification text is Japanese server text; language-specific rendering remains a UI follow-up.
+
+Synthetic PGlite verification exercises OFF, invalid author, incomplete roster, successful publication, immutable September 30 date, retry after read, admin-only assignment with viewer inclusion, duplicate assignment rejection and transactional driver claim notification. Actual Postgres concurrent testing, UI final publish/target wiring, production rollout and physical-device checks remain unfinished.
+
+The fixture imports verbatim notification definitions and restricted table grants from main commit `8ee1969`; its manifest verifies exact bytes and SHA-256 before SQL execution. Test infrastructure grants schema usage and notification SELECT/UPDATE; the actual table RLS remains active. RPC tests now execute as authenticated and anon, including blocked accounts, inaccessible private tables, 0/1/2/3/4 recipient configurations, outside-company recipients and notification target access after company membership removal.
+
+Initial administrator-one selection requires the forthcoming vehicle setup UI to select the administrator explicitly. The server does not guess the first administrator or notify all managers. A recipient-specific account suspension/deletion predicate has not yet been established from the tracked SQL baseline; this remains a gate-activation blocker, alongside final-save/target UI wiring and notification language rendering. Actor account access and recipient current-company membership are enforced now.
