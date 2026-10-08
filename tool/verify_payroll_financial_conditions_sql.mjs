@@ -12,7 +12,10 @@ try {
  await db.exec(read('supabase/migrations/20261008042817_prevent_paid_leave_attendance_overlap.sql'));
  await db.exec(read('supabase/migrations/20261004105043_dedupe_generation_setting_notifications.sql'));
  await db.exec(read('supabase/migrations/20261008044613_payroll_financial_condition_attention.sql'));
+ const triggerBefore=(await db.query("select oid from pg_catalog.pg_trigger where tgrelid='public.paid_leave_requests'::regclass and tgname='paid_leave_refresh_generation_setting_issues'")).rows[0]?.oid;
  await db.exec(read('supabase/migrations/20261008044613_payroll_financial_condition_attention.sql'));
+ const triggerAfter=(await db.query("select oid from pg_catalog.pg_trigger where tgrelid='public.paid_leave_requests'::regclass and tgname='paid_leave_refresh_generation_setting_issues'")).rows[0]?.oid;
+ if(!triggerBefore || triggerBefore!==triggerAfter) throw new Error('Reapplying must preserve the existing paid-leave trigger.');
  await db.exec(assertions);
  console.log('Payroll financial condition warnings assertions passed');
 }finally{await db.close();}

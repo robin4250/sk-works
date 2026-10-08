@@ -178,7 +178,17 @@ language sql stable security definer set search_path='' as $$
 $$;
 
 -- Paid-leave approvals also change the conditions reported by the existing issue pipeline.
-drop trigger if exists paid_leave_refresh_generation_setting_issues on public.paid_leave_requests;
-create trigger paid_leave_refresh_generation_setting_issues
- after insert or update or delete on public.paid_leave_requests
- for each row execute function private.refresh_generation_setting_issues_trigger();
+do $$
+begin
+ if not exists (
+  select 1 from pg_catalog.pg_trigger
+  where tgrelid='public.paid_leave_requests'::regclass
+   and tgname='paid_leave_refresh_generation_setting_issues'
+   and not tgisinternal
+ ) then
+  create trigger paid_leave_refresh_generation_setting_issues
+   after insert or update or delete on public.paid_leave_requests
+   for each row execute function private.refresh_generation_setting_issues_trigger();
+ end if;
+end;
+$$;
