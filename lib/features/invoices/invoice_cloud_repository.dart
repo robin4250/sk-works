@@ -88,11 +88,14 @@ class InvoiceCloudRepository {
           final contact = Map<String, dynamic>.from(rawContact);
           final linkedCustomer = contact['customer_id']?.toString() ?? '';
           if (linkedCustomer.isEmpty) continue;
-          if (registeredContacts.containsKey(linkedCustomer))
+          if (registeredContacts.containsKey(linkedCustomer)) {
             ambiguous.add(linkedCustomer);
+          }
           registeredContacts[linkedCustomer] = contact;
         }
-        for (final id in ambiguous) registeredContacts.remove(id);
+        for (final id in ambiguous) {
+          registeredContacts.remove(id);
+        }
       }
     } catch (_) {
       // Retain snapshot/customer fallback for viewers without directory access.
@@ -108,9 +111,9 @@ class InvoiceCloudRepository {
             ? Map<String, dynamic>.from(snapshot)
             : const <String, dynamic>{};
 
-        // Snapshot data is the durable display fallback for historical and
-        // auto-generated invoices. Prefer it so relation/RLS changes cannot
-        // make the invoice list disappear.
+        // Snapshot data is the durable fallback when the current registered
+        // directory or related customer is unavailable. Optional lookup/RLS
+        // changes must never make the saved invoice list disappear.
         var customerName =
             snapshotMap['customer_name']?.toString().trim() ?? '';
         var customerPostalCode =

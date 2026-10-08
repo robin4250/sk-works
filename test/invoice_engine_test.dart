@@ -12,12 +12,14 @@ void main() {
         InvoiceLine(label: '通常作業', quantity: 8, unitPriceYen: 12500),
         InvoiceLine(
           label: '（法定福利費）',
+          workContent: '',
           quantity: 0,
           unitPriceYen: 0,
           amountYenOverride: 3000,
         ),
         InvoiceLine(
           label: '（消費税）',
+          workContent: '',
           quantity: 0,
           unitPriceYen: 0,
           amountYenOverride: 10300,

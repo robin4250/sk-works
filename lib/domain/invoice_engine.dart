@@ -25,6 +25,9 @@ class InvoiceLine {
   final int? amountYenOverride;
   final String category;
 
+  String get displayWorkContent =>
+      (workContent ?? '').trim().isEmpty ? label : workContent!;
+
   int get amountYen => amountYenOverride ?? (quantity * unitPriceYen).round();
 }
 
@@ -40,15 +43,11 @@ class SiteInvoiceCalculation {
     bool welfare(InvoiceLine line) =>
         line.category == 'welfare' ||
         const ['法定福利費', '福利厚生費'].contains(
-          (line.workContent ?? line.label)
-              .replaceAll(RegExp(r'[（）()]'), '')
-              .trim(),
+          line.displayWorkContent.replaceAll(RegExp(r'[（）()]'), '').trim(),
         );
     bool tax(InvoiceLine line) =>
         line.category == 'tax' ||
-        (line.workContent ?? line.label)
-                .replaceAll(RegExp(r'[（）()]'), '')
-                .trim() ==
+        line.displayWorkContent.replaceAll(RegExp(r'[（）()]'), '').trim() ==
             '消費税';
     final welfareLines = lines.where(welfare).toList();
     final hasSavedCharges = welfareLines.isNotEmpty || lines.any(tax);

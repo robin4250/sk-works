@@ -260,7 +260,7 @@ class PayrollPdfService {
                     5.5;
                 final belowSeal = taglineWidth > availableWidth;
                 return pw.Transform.translate(
-                  offset: PdfPoint(0, belowSeal ? 14 : 0),
+                  offset: PdfPoint(0, belowSeal ? -14 : 0),
                   child: pw.Align(
                     alignment: pw.Alignment.topLeft,
                     child: pw.SizedBox(

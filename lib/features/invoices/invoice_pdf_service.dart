@@ -160,11 +160,8 @@ class InvoicePdfService {
   }
 
   static bool _isWelfareLine(InvoiceLine line) {
-    final label = (line.workContent ?? line.label).replaceAll(
-      RegExp(r'[（）()\s]'),
-      '',
-    );
-    return label == '法定福利費' || label == '福利厚生費';
+    final label = line.displayWorkContent.replaceAll(RegExp(r'[（）()\s]'), '');
+    return line.category == 'welfare' || label == '法定福利費' || label == '福利厚生費';
   }
 
   static String _welfareLabel(int rateBps) =>
@@ -175,7 +172,7 @@ class InvoicePdfService {
     SiteInvoiceCalculation site,
   ) => _isWelfareLine(line)
       ? _welfareLabel(site.welfareRateBps)
-      : (line.workContent ?? line.label).trim();
+      : line.displayWorkContent.trim();
 
   // Adopted invoice v8 uses absolute A4 coordinates in PDF points.
   static List<_InvoiceFormRow> _detailRows(InvoiceCalculationResult invoice) {
@@ -1262,7 +1259,7 @@ class _ExactInvoiceScreen extends StatelessWidget {
             : index == 0
             ? site.siteName
             : '〃';
-        final work = (line.workContent ?? line.label).trim();
+        final work = line.displayWorkContent.trim();
         final sub = siteLabel == '〃' && work.isNotEmpty;
         rows.add(
           _InvoiceFormRow(
