@@ -13,7 +13,6 @@ const englishLanguagePack = LanguagePack(
     "会社の必要書類指定": "Company document requirements",
     "本人の資格": "Your qualifications",
     "給与の締め日": "Payroll closing day",
-    "給料日": "Payday",
     "給与の支払月": "Payroll payment month",
     "給与確認者（1〜3名）": "Payroll reviewers (1–3 people)",
     "給与の支払日整合性": "Payroll payment timing",
