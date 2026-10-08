@@ -2,7 +2,7 @@
 
 This is a separate draft investigation lane; it must not be merged into main while a lock blocker remains. It does not change production SQL, enable a rollout, or add intentionally failing cases to the previously passing Attendance PostgreSQL Races workflow.
 
-CI checks out the exact previously passing race head `fef8f4caf471887d948c2740e65623c8a70834cb`, validates its Git SHA, copies only its fixture files into the ephemeral workspace, and validates their committed `SHA256SUMS`. The draft contains only this document, the standalone audit script and its dedicated workflow; no unmerged SQL or other race changes are mixed into main. The new script loads those unchanged migrations and the existing main `force_manage_attendance` definition. Only a disposable loopback database named `sko_race_fixture` is allowed. Each invocation destroys and rebuilds its fixture schemas; do not run invocations concurrently in the same database.
+The historical run below used the exact previously passing race head `fef8f4caf471887d948c2740e65623c8a70834cb`. The rerun now validates this branch's committed `SHA256SUMS` and uses verbatim SQL from reviewed source commit `fb572a1` in `sk-works-company-lock`: claim, group checkout and meter migrations. This avoids accidentally retesting the known-broken historical snapshots. The scripts still load the existing main `force_manage_attendance` definition. Only a disposable loopback database named `sko_race_fixture` is allowed. Each invocation destroys and rebuilds its fixture schemas; do not run invocations concurrently in the same database. No production migrations or flags are changed.
 
 ## Suspected company cascade cycle
 
@@ -42,3 +42,7 @@ Run `37815352048` checked exact fixture provenance and used PostgreSQL 16.15.
 | admin-meter | `113442460680` | Success | Existing authenticated admin correction wins: pending meter explicitly rejects with no event/baseline change. Meter first: committed immutable event and 1050km vehicle baseline survive correction. |
 
 The workflow failure is intentionally retained as truthful evidence of the unresolved implementation problem. No expected result, permission check, SQL definition or destructive fixture guard was weakened. The older independent race checks remain separate evidence. Company-parent locking must be resolved and this same strict investigation rerun before treating the staged vehicle feature as safe to enable. These tests do not authorize or perform production company deletion.
+
+## Parent-lock correction rerun
+
+The reviewed correction takes `companies FOR KEY SHARE` before the company advisory lock. The same strict destructive scenarios remain, and now additionally require DELETE to commit, the contender to explicitly reject the deleted company with SQLSTATE `P0001`, and no surviving company/claim/event row. Historical `40P01` evidence is retained above. Manifest and local Node/diff checks pass; actual PostgreSQL rerun results are pending and must not be represented as successful before CI finishes.

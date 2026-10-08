@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'tool/audit_vehicle_destructive_lock_interleavings.mjs'
+      - 'tool/fixtures/attendance_race/**'
+      - 'supabase/migrations/20261008042058_fix_managed_attendance_overnight_chronology.sql'
+      - 'supabase/migrations/20261008124940_gps_shift_work_date_evidence.sql'
+      - 'supabase/migrations/20261001232457_add_daily_report_vehicle_usage_rpc.sql'
       - '.github/workflows/vehicle-destructive-lock-audit.yml'
   workflow_dispatch:
 jobs:
@@ -28,17 +32,17 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch exact previously verified SQL fixtures
+      - name: Fetch reviewed company-lock SQL fixtures
         uses: actions/checkout@v4
         with:
-          ref: fef8f4caf471887d948c2740e65623c8a70834cb
+          ref: bcae65e3764227f49466cd1a8c10d99100b5e11e
           path: verified-race-fixtures
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Validate immutable fixture provenance
         run: |
-          test "$(git -C verified-race-fixtures rev-parse HEAD)" = fef8f4caf471887d948c2740e65623c8a70834cb
+          test "$(git -C verified-race-fixtures rev-parse HEAD)" = bcae65e3764227f49466cd1a8c10d99100b5e11e
           mkdir -p tool/fixtures/attendance_race
           cp verified-race-fixtures/tool/fixtures/attendance_race/* tool/fixtures/attendance_race/
           sha256sum --check tool/fixtures/attendance_race/SHA256SUMS

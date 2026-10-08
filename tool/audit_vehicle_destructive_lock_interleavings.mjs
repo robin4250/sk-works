@@ -54,7 +54,7 @@ async function initialize() {
   }
 }
 
-// Separate, unpublished audit lane: never imported by the proven race workflow.
+// Separate destructive-operation audit: each scenario uses its own disposable service.
 const scenario = process.argv[3];
 if (!['company-start', 'company-meter', 'admin-meter'].includes(scenario)) {
   throw new Error('Select company-start, company-meter, or admin-meter explicitly');
@@ -109,7 +109,15 @@ try {
       'Company cascade and vehicle operation have a lock-order deadlock');
     assert.equal(summary.some(result => result.code === '55P03'), false,
       'Lock timeout must not disguise a cycle');
-    console.log('PASS company cascade contention has no deadlock');
+    assert.equal(deletionOutcome.status, 'fulfilled', 'Company DELETE must commit after acquiring its parent lock');
+    assert.equal(operationOutcome.status, 'rejected', 'Contending write must reject the deleted company');
+    assert.equal(operationOutcome.reason.code, 'P0001');
+    assert.match(operationOutcome.reason.message, scenario === 'company-start'
+      ? /vehicle attendance company is unavailable/ : /車両の会社を確認できません/);
+    for (const table of ['companies', 'vehicle_usage_claims', 'vehicle_meter_events']) {
+      assert.equal((await b.query(`select count(*)::int n from ${table} where ${table === 'companies' ? 'id' : 'company_id'}=$1`, [id(1)])).rows[0].n, 0, table + ' must contain no surviving deleted-company row');
+    }
+    console.log('PASS company cascade wins: contender explicitly rejects, with no deadlock or claim/event residue');
   } else {
     await closedShift();
     await admin.query("insert into company_members values($1,$2,'admin')", [id(1), id(20)]);
