@@ -61,7 +61,8 @@ class _AttendanceVerificationPageState
   bool _loading = true;
   bool _saving = false;
   CaptureVerificationDraft? _pendingCaptureDraft;
-  bool get _editingLocked => _saving || _pendingCaptureDraft != null;
+  Map<String, dynamic>? _savedCaptureVerification;
+  bool get _editingLocked => _saving || _pendingCaptureDraft != null || _savedCaptureVerification != null;
   bool _canManageAttendance = false;
   String? _error;
 
@@ -417,7 +418,7 @@ class _AttendanceVerificationPageState
                   ),
                   const SizedBox(height: 18),
                   FilledButton.icon(
-                    onPressed: _saving || (_pendingCaptureDraft == null && (
+                    onPressed: _saving || (_pendingCaptureDraft == null && _savedCaptureVerification == null && (
                             _workerId == null ||
                             (_siteId == null && _routeId == null) ||
                             (isClockOut && _openShifts.length > 1 && _shift == null)))
@@ -432,7 +433,9 @@ class _AttendanceVerificationPageState
                     label: Text(
                       _saving
                           ? '確認中…'
-                          : _pendingCaptureDraft != null
+                          : _savedCaptureVerification != null
+                              ? SkoLanguageController.tr('登録済みの日報を開く')
+                              : _pendingCaptureDraft != null
                               ? SkoLanguageController.tr('同じ撮影記録で再確認')
                               : isClockOut
                               ? '退勤を確定'
@@ -563,7 +566,7 @@ class _AttendanceVerificationPageState
     final workerId = _workerId;
     final siteId = _siteId;
     if (_saving || repository == null ||
-        (_pendingCaptureDraft == null &&
+        (_pendingCaptureDraft == null && _savedCaptureVerification == null &&
           ((_openShifts.length > 1 && _eventType == 'clock_out' && _shift == null) ||
            workerId == null || (siteId == null && _routeId == null)))) {
       return;
@@ -578,10 +581,18 @@ class _AttendanceVerificationPageState
 
     setState(() => _saving = true);
     try {
+      final completed = _savedCaptureVerification;
+      if (completed != null) {
+        await _finishSavedVerification(completed);
+        return;
+      }
       final pending = _pendingCaptureDraft;
       if (pending != null) {
         final saved = await repository.submitCaptureDraft(pending);
-        if (mounted) { setState(() => _pendingCaptureDraft = null); }
+        if (mounted) { setState(() {
+          _pendingCaptureDraft = null;
+          _savedCaptureVerification = saved;
+        }); }
         await _finishSavedVerification(saved);
         return;
       }
@@ -744,7 +755,10 @@ class _AttendanceVerificationPageState
         },
       );
 
-      if (mounted) { setState(() => _pendingCaptureDraft = null); }
+      if (mounted) { setState(() {
+        _pendingCaptureDraft = null;
+        if (capture != null) { _savedCaptureVerification = saved; }
+      }); }
       await _finishSavedVerification(saved);
     } catch (error) {
       if (!mounted) return;

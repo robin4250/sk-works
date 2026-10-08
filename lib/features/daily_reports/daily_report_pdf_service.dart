@@ -90,7 +90,11 @@ class DailyReportPdfService {
               ],
             ),
             pw.SizedBox(height: 8),
-            pw.Row(
+            // A Column lays out non-flex children with unbounded height. Give
+            // this stretched row a finite height before its signature flexes.
+            pw.SizedBox(
+              height: 78,
+              child: pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
                 pw.Expanded(
@@ -126,6 +130,7 @@ class DailyReportPdfService {
                   ),
                 ),
               ],
+              ),
             ),
             pw.SizedBox(height: 7),
             pw.Row(
@@ -272,7 +277,8 @@ class DailyReportPdfService {
       for (final worker in workers) [worker.workerId, worker.overtimeHours, worker.earlyHours,
         worker.nightHours, worker.allowanceAmount, worker.allowanceLabel, worker.vehicleId,
         worker.routeId, worker.odometerKm, worker.previousOdometerKm, worker.tripDistanceKm,
-        worker.meterEventId],
+        worker.meterEventId, worker.meterSourceClockInId, worker.sourceClockInId,
+        worker.sourceClockOutAt?.toIso8601String(), worker.meterManaged],
       report?.id, report?.status, report?.signerName, report?.signatureJson,
       report?.reporterSignerName, report?.reporterSignatureJson,
       report?.responsibleSignerName, report?.responsibleSignatureJson,

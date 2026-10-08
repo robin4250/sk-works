@@ -4,6 +4,7 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "登録済みの日報を開く": "Open the Saved Report",
     "撮影記録の登録結果が未確認です。同じ記録で再確認してください。対象・写真は変更できません。": "The capture registration result is unknown. Recheck the same record; its target and photo remain fixed.",
     "同じ撮影記録で再確認": "Recheck the Same Capture",
     "勤怠登録時刻": "Attendance Registration Time",
