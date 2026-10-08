@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/notifications/source_notification_target.dart';
+import 'package:sk_works/features/notifications/source_notification_target.dart';
 
 void main() {
   const company = '11111111-1111-1111-1111-111111111111';
