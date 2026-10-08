@@ -11,6 +11,7 @@ import '../common/data_date_labels.dart';
 import '../../international/language_controller.dart';
 import '../payroll/payroll_confirmation_settings_page.dart';
 import '../settings/company_module_settings_page.dart';
+import '../settings/company_seal_settings_page.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
 import 'company_transfer_send_page.dart';
@@ -170,6 +171,17 @@ class _CompanySubmittedDocumentsPageState
                 padding: const EdgeInsets.all(16),
                 children: [
                   _companyDataCard(),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.approval_outlined),
+                      title: Text(SkoLanguageController.tr('会社角印')),
+                      subtitle: Text(SkoLanguageController.tr('会社角印のON／OFF')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _busy ? null : () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(builder: (_) => const CompanySealSettingsPage()),
+                      ),
+                    ),
+                  ),
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.toggle_on_outlined),

@@ -18,7 +18,9 @@ class PayrollPdfService {
   }) async {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
-    final sealFont = await CompanySealPdf.loadFont();
+    final sealFont = statement.detail['company_seal_enabled'] == false
+        ? regular
+        : await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -228,12 +230,14 @@ class PayrollPdfService {
                 ),
                 pw.Transform.translate(
                   offset: const PdfPoint(-4, 0),
-                  child: CompanySealPdf.build(
-                    statement.companyName,
-                    size: 32,
-                    font: sealFont,
-                    fallbackFont: fallbackFont,
-                  ),
+                  child: detail['company_seal_enabled'] == false
+                      ? pw.SizedBox(width: 32, height: 32)
+                      : CompanySealPdf.build(
+                          statement.companyName,
+                          size: 32,
+                          font: sealFont,
+                          fallbackFont: fallbackFont,
+                        ),
                 ),
               ],
             ),

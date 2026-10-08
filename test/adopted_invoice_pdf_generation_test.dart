@@ -69,7 +69,7 @@ void main() {
       r'''
 import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'company_name_spans':[s['bbox'] for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['color']==0 and 740<s['bbox'][1]<780], 'seal_lefts':[d['rect'].x0 for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.1 and d['color'][2]<.1 and d['rect'].width>35], 'recipient_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['bbox'][0]<300 and 100<s['bbox'][1]<180], 'site_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if 62<=s['bbox'][0]<178 and 262<s['bbox'][1]<674], 'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'company_name_spans':[s['bbox'] for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['color']==0 and 740<s['bbox'][1]<780], 'seal_lefts':[d['rect'].x0 for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.1 and d['color'][2]<.1 and d['rect'].width>35], 'recipient_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if s['bbox'][0]<300 and 100<s['bbox'][1]<180], 'site_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if 62<=s['bbox'][0]<178 and 262<s['bbox'][1]<674], 'unit_price_spans':[{ 'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if 419<s['bbox'][0]<487 and 262<s['bbox'][1]<674], 'paper_rgba':list(p.get_pixmap(alpha=True).samples[:4]), 'horizontal_lines':[round(d['rect'].y0,2) for d in p.get_drawings() if abs(d['rect'].height)<.4 and d['rect'].width>530]} for p in pdf]},ensure_ascii=False))
 ''',
       file.path,
     ]);
@@ -302,6 +302,12 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
     expect(text, contains('204,500'));
     expect(text, contains('20,450'));
     expect(text, contains('224,950'));
+    final page = (report['pages'] as List).single as Map;
+    final prices = (page['unit_price_spans'] as List)
+        .map((span) => (span as Map)['text'])
+        .toList();
+    expect(prices, containsAll(['3%', '1.5%']));
+    expect(page['paper_rgba'], [255, 255, 255, 255]);
   }, skip: skipReason);
   test(
     'registered customer contact details remain inside adopted recipient frame',

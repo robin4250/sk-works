@@ -18,7 +18,9 @@ class PaymentCertificatePdfService {
   }) async {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
-    final sealFont = await CompanySealPdf.loadFont();
+    final sealFont = record.payerCompanySealEnabled
+        ? await CompanySealPdf.loadFont()
+        : regular;
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -144,12 +146,14 @@ class PaymentCertificatePdfService {
                       ),
                       pw.Transform.translate(
                         offset: const PdfPoint(-4, 0),
-                        child: CompanySealPdf.build(
-                          record.payerCompanyName,
-                          size: 55,
-                          font: sealFont,
-                          fallbackFont: fallbackFont,
-                        ),
+                        child: !record.payerCompanySealEnabled
+                            ? pw.SizedBox(width: 55, height: 55)
+                            : CompanySealPdf.build(
+                                record.payerCompanyName,
+                                size: 55,
+                                font: sealFont,
+                                fallbackFont: fallbackFont,
+                              ),
                       ),
                     ],
                   ),

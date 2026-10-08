@@ -31,6 +31,7 @@ class PaymentCertificateRecord {
     required this.status,
     required this.revision,
     this.payerCompanyName = '',
+    this.payerCompanySealEnabled = true,
     this.payerPostalCode = '',
     this.payerAddress = '',
     this.payerPhone = '',
@@ -49,6 +50,7 @@ class PaymentCertificateRecord {
   final String status;
   final int revision;
   final String payerCompanyName;
+  final bool payerCompanySealEnabled;
   final String payerPostalCode;
   final String payerAddress;
   final String payerPhone;
@@ -174,7 +176,7 @@ class PaymentCertificateRepository {
 
     final companyRows = await _client
         .from('companies')
-        .select('name,postal_code,address,phone,fax')
+        .select('name,postal_code,address,phone,fax,company_seal_enabled')
         .eq('id', companyId)
         .limit(1);
     final company = companyRows.isEmpty
@@ -224,6 +226,7 @@ class PaymentCertificateRepository {
           status: raw['status']?.toString() ?? 'draft',
           revision: (raw['revision'] as num?)?.toInt() ?? 1,
           payerCompanyName: company['name']?.toString() ?? '',
+          payerCompanySealEnabled: company['company_seal_enabled'] != false,
           payerPostalCode: company['postal_code']?.toString() ?? '',
           payerAddress: company['address']?.toString() ?? '',
           payerPhone: company['phone']?.toString() ?? '',
@@ -294,6 +297,7 @@ class PaymentCertificateRepository {
     status: 'preview',
     revision: 0,
     payerCompanyName: company['name']?.toString() ?? '',
+    payerCompanySealEnabled: company['company_seal_enabled'] != false,
     payerPostalCode: company['postal_code']?.toString() ?? '',
     payerAddress: company['address']?.toString() ?? '',
     payerPhone: company['phone']?.toString() ?? '',
@@ -424,7 +428,7 @@ class PaymentCertificateRepository {
     final companyId = await _companyId();
     final companyRows = await _client
         .from('companies')
-        .select('name,postal_code,address,phone,fax')
+        .select('name,postal_code,address,phone,fax,company_seal_enabled')
         .eq('id', companyId)
         .limit(1);
     final company = companyRows.isEmpty
@@ -548,6 +552,7 @@ class PaymentCertificateRepository {
       status: 'draft',
       revision: 1,
       payerCompanyName: company['name']?.toString() ?? '',
+      payerCompanySealEnabled: company['company_seal_enabled'] != false,
       payerPostalCode: company['postal_code']?.toString() ?? '',
       payerAddress: company['address']?.toString() ?? '',
       payerPhone: company['phone']?.toString() ?? '',

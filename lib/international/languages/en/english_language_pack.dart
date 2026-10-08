@@ -4,6 +4,16 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    '締め日は末日、給料日は支払月と日付を会社共通で設定します。確認者を1〜3名選びます。個別の給与単価は個別給与設定で管理します。会社角印のON／OFFは会社共通で、請求書・給与明細・支払証明書に反映します。OFFでも確認印・承認印と承認履歴は残ります。': 'Closing is at month end. Configure the payday month and date company-wide and select one to three reviewers. Manage individual pay rates in Payroll Settings. Company seal ON / OFF applies company-wide to invoices, payslips and payment certificates. Confirmation and approval stamps and approval history are retained when OFF.',
+    '会社角印': 'Company Seal',
+    '会社角印のON／OFF': 'Company Seal ON / OFF',
+    '会社角印を表示': 'Show Company Seal',
+    '会社共通。請求書・給与明細・支払証明書に反映します。': 'Applies company-wide to invoices, payslips and payment certificates.',
+    'OFFでも確認印・承認印と承認履歴は残ります。': 'Confirmation and approval stamps and approval history are retained when OFF.',
+    '会社角印の設定を保存しました': 'Company seal settings saved.',
+    '会社角印の設定を読み込めませんでした。': 'Could not load company seal settings.',
+    '会社角印の設定を保存できませんでした。': 'Could not save company seal settings.',
+
     '対象の給与明細を開けません。閲覧権限と通知の対象を確認してください。': 'Cannot open the target payslip. Check your viewing permission and the notification target.',
     "通知センターを利用できません。": "Notification Center is unavailable.",
     "お知らせを確認しました": "Notification reviewed.",
