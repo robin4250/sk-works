@@ -1,6 +1,10 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'dart:convert';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import '../shared/pdf_bytes_cache.dart';
+import 'daily_report_pdf_evidence.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -923,6 +927,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   workers: _workers,
                                   workDescription: _workDescription.text,
                                   report: _report,
+                                  evidence: _evidence,
                                 ),
                               ),
                             ),
@@ -1373,391 +1378,58 @@ class DailyReportEvidencePage extends StatelessWidget {
   }
 }
 
-class DailyReportPrintPreviewPage extends StatelessWidget {
-  const DailyReportPrintPreviewPage({
-    super.key,
-    required this.date,
-    required this.siteName,
-    required this.workers,
-    required this.workDescription,
-    required this.report,
-  });
+class DailyReportPrintPreviewPage extends StatefulWidget {
+  const DailyReportPrintPreviewPage({super.key, required this.date,
+    required this.siteName, required this.workers, required this.workDescription,
+    required this.report, this.evidence = const []});
 
   final DateTime date;
   final String siteName;
   final List<DailyReportWorkerDraft> workers;
   final String workDescription;
   final DailyReportRecord? report;
+  final List<DailyReportEvidenceRecord> evidence;
 
   @override
-  Widget build(BuildContext context) {
-    SkoLanguageController.watch(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
-        actions: const [SkoNotificationBell()],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ColoredBox(
-                color: Theme.of(context).colorScheme.surfaceContainerLowest,
-                child: InteractiveViewer(
-                  minScale: 0.55,
-                  maxScale: 5,
-                  constrained: false,
-                  boundaryMargin: const EdgeInsets.all(240),
-                  clipBehavior: Clip.none,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: _DailyReportPaper(
-                      date: date,
-                      siteName: siteName,
-                      workers: workers,
-                      workDescription: workDescription,
-                      report: report,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-              child: FilledButton.icon(
-                onPressed: () => DailyReportPdfService.printReport(
-                  date: date,
-                  siteName: siteName,
-                  workers: workers,
-                  workDescription: workDescription,
-                  report: report,
-                ),
-                icon: const Icon(Icons.print),
-                label: Text(SkoLanguageController.tr('印刷')),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  State<DailyReportPrintPreviewPage> createState() => _DailyReportPrintPreviewPageState();
 }
 
-class _DailyReportPaper extends StatelessWidget {
-  const _DailyReportPaper({
-    required this.date,
-    required this.siteName,
-    required this.workers,
-    required this.workDescription,
-    required this.report,
-  });
+class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPage> {
+  final _pdfBytes = PdfBytesCache();
+  String? _fingerprint;
 
-  final DateTime date;
-  final String siteName;
-  final List<DailyReportWorkerDraft> workers;
-  final String workDescription;
-  final DailyReportRecord? report;
+  Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
+    final repository = DailyReportRepository.maybeCreate();
+    if (repository == null) {
+      return [for (final record in widget.evidence)
+        DailyReportPdfEvidence(record: record, downloadFailed: record.storagePath.isNotEmpty)];
+    }
+    return repository.loadPdfEvidence(widget.evidence);
+  }
 
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
-    final reporterStrokes =
-        SignatureResult.fromJson(report?.reporterSignatureJson);
-    final supervisorStrokes = SignatureResult.fromJson(
-      report?.responsibleSignatureJson ?? report?.signatureJson,
-    );
-    final totalOvertime =
-        workers.fold<double>(0, (sum, worker) => sum + worker.overtimeHours);
-    final totalEarly =
-        workers.fold<double>(0, (sum, worker) => sum + worker.earlyHours);
-    final totalNight =
-        workers.fold<double>(0, (sum, worker) => sum + worker.nightHours);
-    final allowanceCounts = <String, int>{};
-    for (final worker in workers) {
-      final label = worker.allowanceLabel.trim();
-      if (label.isEmpty) continue;
-      allowanceCounts[label] = (allowanceCounts[label] ?? 0) + 1;
+    final fingerprint = DailyReportPdfService.fingerprint(date: widget.date,
+      siteName: widget.siteName, workers: widget.workers,
+      workDescription: widget.workDescription, report: widget.report,
+      evidence: [for (final record in widget.evidence) DailyReportPdfEvidence(record: record)]);
+    if (_fingerprint != fingerprint) {
+      _fingerprint = fingerprint;
+      _pdfBytes.invalidate();
     }
-    final summaryItems = <MapEntry<String, String>>[
-      MapEntry(SkoLanguageController.tr('計'), SkoLanguageController.isEnglish ? '${workers.length} workers' : '${workers.length}人工'),
-      if (totalEarly > 0) MapEntry(SkoLanguageController.tr('早出'), '${_num(totalEarly)}H'),
-      if (totalOvertime > 0) MapEntry(SkoLanguageController.tr('残業'), '${_num(totalOvertime)}H'),
-      if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間'), '${_num(totalNight)}H'),
-      for (final entry in allowanceCounts.entries)
-        MapEntry(entry.key, entry.value.toString()),
-    ];
-
-    return Material(
-      color: Colors.white,
-      elevation: 3,
-      child: SizedBox(
-        width: 720,
-        height: 1018,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(38, 34, 38, 34),
-          child: DefaultTextStyle(
-            style: const TextStyle(color: Colors.black, fontSize: 13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        SkoLanguageController.isEnglish ? 'DAILY WORK REPORT' : SkoLanguageController.tr('作 業 日 報'),
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 4,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      SkoLanguageController.isEnglish ? '${date.year}/${date.month}/${date.day}' : '${date.year}年 ${date.month}月 ${date.day}日',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 118,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                    Expanded(
-                      flex: 5,
-                      child: _reportBox(
-                        label: SkoLanguageController.tr('現場名'),
-                        child: Text(
-                          siteName.isEmpty ? SkoLanguageController.tr('未登録') : siteName,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: _signatureBox(
-                        label: SkoLanguageController.tr('報告者サイン'),
-                        name: report?.reporterSignerName ?? '',
-                        strokes: reporterStrokes,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: _signatureBox(
-                        label: SkoLanguageController.tr('責任者サイン'),
-                        name: report?.responsibleSignerName ?? report?.signerName ?? '',
-                        strokes: supervisorStrokes,
-                      ),
-                    ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _reportBox(
-                  label: SkoLanguageController.tr('作業内容'),
-                  height: 210,
-                  child: Text(
-                    workDescription.trim().isEmpty
-                        ? SkoLanguageController.tr('（記載なし）')
-                        : workDescription,
-                    style: const TextStyle(fontSize: 15, height: 1.55),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  SkoLanguageController.isEnglish ? 'WORKERS' : SkoLanguageController.tr('作 業 者 名'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Table(
-                  border: TableBorder.all(color: Colors.black87, width: 1),
-                  columnWidths: const {
-                    0: FlexColumnWidth(2.2),
-                    1: FlexColumnWidth(0.9),
-                    2: FlexColumnWidth(0.9),
-                    3: FlexColumnWidth(0.9),
-                    4: FlexColumnWidth(1.8),
-                  },
-                  children: [
-                    TableRow(
-                      decoration: const BoxDecoration(color: Color(0xFFF1F1F1)),
-                      children: [
-                        _tableCell(SkoLanguageController.tr('氏名'), bold: true),
-                        _tableCell(SkoLanguageController.tr('早出'), bold: true),
-                        _tableCell(SkoLanguageController.tr('残業'), bold: true),
-                        _tableCell(SkoLanguageController.tr('夜間'), bold: true),
-                        _tableCell(SkoLanguageController.tr('手当・車両等'), bold: true),
-                      ],
-                    ),
-                    for (var index = 0; index < 9; index++)
-                      TableRow(
-                        children: index < workers.length
-                            ? _workerCells(workers[index])
-                            : [
-                                _tableCell(''),
-                                _tableCell(''),
-                                _tableCell(''),
-                                _tableCell(''),
-                                _tableCell(''),
-                              ],
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    for (var index = 0; index < summaryItems.length; index++) ...[
-                      if (index > 0) const SizedBox(width: 8),
-                      Expanded(
-                        child: _summaryBox(
-                          summaryItems[index].key,
-                          summaryItems[index].value,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const Spacer(),
-                const Divider(color: Colors.black87, height: 1),
-                const SizedBox(height: 8),
-                Text(
-                  SkoLanguageController.tr('出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11, color: Colors.black54),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return Scaffold(
+      appBar: AppBar(title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
+        actions: const [SkoNotificationBell()]),
+      body: PdfPreview(initialPageFormat: PdfPageFormat.a4,
+        canChangePageFormat: false, canChangeOrientation: false,
+        allowPrinting: true, allowSharing: true,
+        pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
+        build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
+          date: widget.date, siteName: widget.siteName, workers: widget.workers,
+          workDescription: widget.workDescription, report: widget.report,
+          evidence: await _loadEvidence()))),
     );
-  }
-
-  static List<Widget> _workerCells(DailyReportWorkerDraft worker) => [
-        _tableCell(worker.workerName),
-        _tableCell(worker.earlyHours > 0 ? _num(worker.earlyHours) : ''),
-        _tableCell(worker.overtimeHours > 0 ? _num(worker.overtimeHours) : ''),
-        _tableCell(worker.nightHours > 0 ? _num(worker.nightHours) : ''),
-        _tableCell(
-          [
-            if (worker.allowanceLabel.trim().isNotEmpty) worker.allowanceLabel,
-            if (worker.vehicleName?.trim().isNotEmpty == true)
-              worker.vehicleName!,
-            if (worker.routeName?.trim().isNotEmpty == true)
-              worker.routeName!,
-          ].join(' / '),
-        ),
-      ];
-
-  static Widget _reportBox({
-    required String label,
-    required Widget child,
-    double? height,
-  }) =>
-      Container(
-        height: height,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black87, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 5),
-            Expanded(child: child),
-          ],
-        ),
-      );
-
-  static Widget _signatureBox({
-    required String label,
-    required String name,
-    required List<List<Offset>> strokes,
-  }) =>
-      Container(
-        height: 118,
-        padding: const EdgeInsets.all(7),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black87, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
-            ),
-            if (name.isNotEmpty)
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10),
-              ),
-            const SizedBox(height: 2),
-            Expanded(
-              child: strokes.isEmpty
-                  ? const SizedBox.shrink()
-                  : SignaturePreview(strokes: strokes, height: 72),
-            ),
-          ],
-        ),
-      );
-
-  static Widget _summaryBox(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black87),
-        ),
-        child: Row(
-          children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
-            const Spacer(),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
-          ],
-        ),
-      );
-
-  static Widget _tableCell(String value, {bool bold = false}) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Text(
-          value,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
-          ),
-        ),
-      );
-
-  static String _num(double value) {
-    if (value == value.roundToDouble()) return value.toInt().toString();
-    return value
-        .toStringAsFixed(2)
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
   }
 }
 

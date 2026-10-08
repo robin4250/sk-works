@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'daily_report_shift_context.dart';
+import 'daily_report_pdf_evidence.dart';
 import '../attendance/group_checkout_repository.dart';
 import 'group_daily_report_roster.dart';
 import 'vehicle_report_snapshot.dart';
@@ -622,6 +623,24 @@ class DailyReportRepository {
             accuracyM: (raw['accuracy_m'] as num?)?.toDouble(),
           ),
     ];
+  }
+
+  Future<List<DailyReportPdfEvidence>> loadPdfEvidence(List<DailyReportEvidenceRecord> records) async {
+    final attachments = <DailyReportPdfEvidence>[];
+    for (final record in records) {
+      if (record.storagePath.isEmpty) {
+        attachments.add(DailyReportPdfEvidence(record: record));
+        continue;
+      }
+      try {
+        final bytes = await _client.storage.from('attendance-evidence')
+          .download(record.storagePath).timeout(const Duration(seconds: 15));
+        attachments.add(DailyReportPdfEvidence(record: record, photoBytes: bytes));
+      } catch (_) {
+        attachments.add(DailyReportPdfEvidence(record: record, downloadFailed: true));
+      }
+    }
+    return attachments;
   }
 
   Future<String> attendanceEvidenceUrl(String path) {
