@@ -13,6 +13,17 @@ import 'daily_report_repository.dart';
 class DailyReportPdfService {
   const DailyReportPdfService._();
 
+  static String _meterSummary(DailyReportWorkerDraft worker) {
+    if (worker.meterEventId == null) {
+      return SkoLanguageController.tr('運転手のメーター登録待ち');
+    }
+    return [
+      if (worker.previousOdometerKm != null) '${SkoLanguageController.tr('前回距離')} ${_number(worker.previousOdometerKm!)}km',
+      if (worker.odometerKm != null) '${SkoLanguageController.tr('今回距離')} ${_number(worker.odometerKm!)}km',
+      if (worker.tripDistanceKm != null) '${SkoLanguageController.tr('当日の走行距離')} ${_number(worker.tripDistanceKm!)}km',
+    ].join(' / ');
+  }
+
   static Future<Uint8List> buildPdf({
     required DateTime date,
     required String siteName,
@@ -165,6 +176,7 @@ class DailyReportPdfService {
                         worker.vehicleName!,
                       if (worker.routeName?.trim().isNotEmpty == true)
                         worker.routeName!,
+                      if (worker.meterManaged) _meterSummary(worker),
                     ].join(' / '),
                   ],
                 for (var i = workers.length; i < 9; i++)
@@ -392,7 +404,8 @@ class DailyReportPdfService {
           SkoLanguageController.tr('車両') + ' ' + worker.vehicleName!,
         if (worker.routeName?.trim().isNotEmpty == true)
           SkoLanguageController.tr('ルート') + ' ' + worker.routeName!,
-        if (worker.odometerKm != null)
+        if (worker.meterManaged) _meterSummary(worker),
+        if (!worker.meterManaged && worker.odometerKm != null)
           SkoLanguageController.tr('走行') + ' ' + _number(worker.odometerKm!) + 'km',
       ].join(' / '));
     }

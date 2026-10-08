@@ -9,6 +9,7 @@ import '../notifications/notification_bell.dart';
 import 'attendance_cloud_repository.dart';
 import 'attendance_verification_repository.dart';
 import 'attendance_shift_context.dart';
+import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
@@ -666,11 +667,19 @@ class _AttendanceVerificationPageState
       );
 
       if (_eventType == 'clock_out') {
+        final anchor = _shift;
+        if (anchor != null && anchor.siteId != null && anchor.routeId == null) {
+          await showGroupCheckoutAfterPersonalSave(context,
+            anchorId: anchor.id, workDate: anchor.workDate);
+          if (!mounted) return;
+        }
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => DailyReportPage(
             initialDate: DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate,
             initialSiteId: _shift?.siteId ?? siteId,
             initialRouteAssignmentId: _shift?.routeId ?? _routeId,
+            vehicleClockInId: _shift?.id,
+            groupClockInAnchorId: _shift?.id,
           )),
         );
       } else {

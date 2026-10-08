@@ -10,6 +10,7 @@ import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
+import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
@@ -20,11 +21,15 @@ class DailyReportPage extends StatefulWidget {
     this.initialDate,
     this.initialSiteId,
     this.initialRouteAssignmentId,
+    this.vehicleClockInId,
+    this.groupClockInAnchorId,
   });
 
   final DateTime? initialDate;
   final String? initialSiteId;
   final String? initialRouteAssignmentId;
+  final String? vehicleClockInId;
+  final String? groupClockInAnchorId;
 
   @override
   State<DailyReportPage> createState() => _DailyReportPageState();
@@ -32,6 +37,7 @@ class DailyReportPage extends StatefulWidget {
 
 class _DailyReportPageState extends State<DailyReportPage> {
   final _repository = DailyReportRepository.maybeCreate();
+  String? _evidenceAttachmentFingerprint;
   final _workDescription = TextEditingController();
   final _picker = ImagePicker();
   final _odometerRecognition = const OdometerTextRecognitionEngine();
@@ -58,6 +64,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final Map<String, TextEditingController> _odometer = {};
 
   bool get _signed => _report?.signed == true;
+
+  String? get _currentGroupAnchor {
+    final date = widget.initialDate;
+    if (date == null || _siteId != widget.initialSiteId || _routeAssignmentId != null ||
+        _date.year != date.year || _date.month != date.month || _date.day != date.day) {
+      return null;
+    }
+    return widget.groupClockInAnchorId;
+  }
+
+  String? get _currentVehicleAnchor {
+    final date = widget.initialDate;
+    if (date == null || _siteId != widget.initialSiteId || _routeAssignmentId != widget.initialRouteAssignmentId ||
+        _date.year != date.year || _date.month != date.month || _date.day != date.day) {
+      return null;
+    }
+    return widget.vehicleClockInId;
+  }
+
   bool get _editable => !_signed && !_saving;
 
   @override
@@ -171,6 +196,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         date: date,
         siteId: siteId,
         routeAssignmentId: routeAssignmentId,
+        vehicleClockInAnchorId: _currentVehicleAnchor,
       );
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
@@ -187,9 +213,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
                 g.routeAssignmentId == routeAssignmentId,
           )
           .firstOrNull;
-      final workers = existing?.workers.isNotEmpty == true
+      var workers = existing?.workers.isNotEmpty == true
           ? existing!.workers
           : List<DailyReportWorkerDraft>.from(group?.workers ?? const []);
+      final anchor = _currentGroupAnchor;
+      if (anchor != null) {
+        workers = await repository.loadAnchoredWorkers(anchorId: anchor, workDate: date,
+          existing: workers, fallback: List<DailyReportWorkerDraft>.from(group?.workers ?? const []),
+          allowNewMembers: existing?.signed != true);
+        if (!mounted || generation != _loadGeneration) return;
+      }
+
+
+      final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor);
+      if (meterEnabled) {
+        for (final worker in workers.where((worker) => worker.vehicleId != null)) {
+          worker.meterManaged = true;
+        }
+      }
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _error = null;
@@ -278,7 +320,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           int.tryParse(_allowance[worker.workerId]?.text ?? '') ?? 0;
       worker.allowanceLabel =
           _allowanceLabel[worker.workerId]?.text.trim() ?? '';
-      if (worker.vehicleId != null) {
+      if (worker.vehicleId != null && !worker.meterManaged) {
         worker.odometerKm = double.tryParse(
           _odometer[worker.workerId]?.text.trim() ?? '',
         );
@@ -295,16 +337,53 @@ class _DailyReportPageState extends State<DailyReportPage> {
         'vehicle_id': worker.vehicleId,
         'route_id': worker.routeId,
         'odometer_km': worker.odometerKm,
+        'source_clock_in_id': worker.sourceClockInId,
+        'source_clock_out_at': worker.sourceClockOutAt?.toIso8601String(),
+        'vehicle_meter_event_id': worker.meterEventId,
+        'vehicle_meter_source_clock_in_id': worker.meterSourceClockInId,
+        'previous_odometer_km': worker.previousOdometerKm,
+        'trip_distance_km': worker.tripDistanceKm,
       }).toList(),
     });
   }
 
   Future<String?> _saveBeforeSignature() async {
     if (_signed) return _report?.id;
+    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+      return null;
+    }
+    if (_workers.any((worker) => worker.sourceClockInId != null && worker.sourceClockOutAt == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('未退勤のメンバーがいます。下書き保存後、退勤を確認して日報を再読み込みしてください'))));
+      return null;
+    }
+    if (((_currentGroupAnchor != null && _workers.any((worker) => worker.sourceClockInId != null)) ||
+         (_currentVehicleAnchor != null && _workers.any((worker) => worker.meterManaged))) &&
+        _evidenceAttachmentFingerprint != _draftFingerprint()) {
+      final id = await _saveDraft(ownsBusyState: false);
+      if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+        }
+        return null;
+      }
+      return id;
+    }
     if (_report != null && _savedDraftFingerprint == _draftFingerprint()) {
       return _report!.id;
     }
-    return _saveDraft(ownsBusyState: false);
+    final id = await _saveDraft(ownsBusyState: false);
+    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+      }
+      return null;
+    }
+    return id;
   }
 
   Future<void> _captureOdometer(
@@ -408,7 +487,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _applyControllers();
 
     final missingOdometer = _workers.where(
-      (worker) => worker.vehicleId != null && worker.odometerKm == null,
+      (worker) => worker.vehicleId != null && !worker.meterManaged && worker.odometerKm == null,
     );
     if (missingOdometer.isNotEmpty) {
       final names = missingOdometer.map((worker) => worker.workerName).join('、');
@@ -431,8 +510,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         date: _date,
         workDescription: _workDescription.text,
         workers: _workers,
+        groupClockInAnchorId: _currentGroupAnchor,
+        vehicleClockInAnchorId: _currentVehicleAnchor,
       );
       if (!mounted) return id;
+      _evidenceAttachmentFingerprint = _draftFingerprint();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('日報を登録しました'))),
       );
@@ -714,6 +796,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ],
                           const SizedBox(height: 16),
+                          if (widget.vehicleClockInId != null)
+                            VehicleDriverMeterEntry(
+                              sourceClockInId: widget.vehicleClockInId!,
+                              expectedSiteId: _siteId,
+                              expectedRouteId: _routeAssignmentId,
+                              requireDestinationMatch: true,
+                              expectedWorkDate: '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
+                            ),
                           TextField(
                             controller: _workDescription,
                             enabled: _editable,
@@ -892,6 +982,9 @@ class _WorkerDetailCard extends StatelessWidget {
         subtitle: Text(
           [
             SkoLanguageController.tr('個別の残業・早出・手当を設定'),
+            if (worker.sourceClockInId != null)
+              SkoLanguageController.tr(worker.sourceClockOutAt == null
+                ? '退勤未登録・確定前に確認' : '退勤済み・元勤務と連携'),
             if (worker.vehicleName?.trim().isNotEmpty == true)
               SkoLanguageController.trParams('車両：{name}', {'name': worker.vehicleName!}),
             if (worker.routeName?.trim().isNotEmpty == true)
@@ -916,7 +1009,18 @@ class _WorkerDetailCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
-          if (worker.vehicleId != null) ...[
+          if (worker.meterManaged) ...[
+            Text(SkoLanguageController.tr(worker.meterEventId == null
+              ? '運転手のメーター登録待ち' : '車両距離は運転手の登録記録から表示します')),
+            if (worker.previousOdometerKm != null)
+              Text('${SkoLanguageController.tr('前回距離')}: ${worker.previousOdometerKm} km'),
+            if (worker.meterEventId != null && worker.odometerKm != null)
+              Text('${SkoLanguageController.tr('今回距離')}: ${worker.odometerKm} km'),
+            if (worker.tripDistanceKm != null)
+              Text('${SkoLanguageController.tr('当日の走行距離')}: ${worker.tripDistanceKm} km'),
+            const SizedBox(height: 10),
+          ],
+          if (worker.vehicleId != null && !worker.meterManaged) ...[
             TextField(
               controller: odometer,
               enabled: editable,
