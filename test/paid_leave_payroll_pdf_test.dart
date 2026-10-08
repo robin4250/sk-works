@@ -18,6 +18,7 @@ void main() {
     for (final monthly in [false, true]) {
       final detail = <String, dynamic>{
         'company_seal_enabled': false,
+        '備考': '登録済み備考を保持',
         'pay_type': monthly ? 'monthly' : 'daily',
         '基本給': monthly ? 300000 : 12000,
         '出勤日数': monthly ? 0 : 1,
@@ -48,6 +49,11 @@ void main() {
       final text = (data['text'] as String).replaceAll(RegExp(r'\s+'), '');
       expect(RegExp('有給支給額').allMatches(text).length, monthly ? 0 : 1);
       if (!monthly) expect(text, contains('12,000円×1日'));
+      if (monthly) {
+        expect(text, contains('有給内訳：14,000円×1日＝14,000円'));
+        expect(text, contains('月給に含む・加算なし'));
+      }
+      expect(text, contains('登録済み備考を保持'));
       expect(text, isNot(contains('有給単価')));
       expect(text, isNot(contains('有給内訳額')));
       expect(text, isNot(contains('paid_leave_wage_contract')));

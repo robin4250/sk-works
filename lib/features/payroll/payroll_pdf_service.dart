@@ -199,6 +199,7 @@ class PayrollPdfService {
       ],
     ];
     final remarks = _first(detail, const ['備考', 'remarks', 'notes']);
+    final leaveAllocation = _monthlyPaidLeaveAllocationNote(detail);
     final payType = _payTypeLabel(detail);
     return pw.Container(
       width: 559.275590551,
@@ -558,6 +559,13 @@ class PayrollPdfService {
               ),
             ),
           ),
+          if (leaveAllocation.isNotEmpty)
+            at(20, 655, width, 28,
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 10),
+                child: text(leaveAllocation, size: 7),
+              ),
+            ),
           at(
             20,
             731.88976378,
@@ -972,6 +980,17 @@ class PayrollPdfService {
         ],
       ),
     );
+  }
+
+  static String _monthlyPaidLeaveAllocationNote(Map<String, dynamic> detail) {
+    if (_payTypeLabel(detail) != '月給') return '';
+    final unit = _asNumber(detail['有給単価']);
+    final days = _asNumber(detail['有給日数']);
+    final allocation = _asNumber(detail['有給内訳額']);
+    if (unit == null || days == null || allocation == null || days <= 0) {
+      return '';
+    }
+    return '有給内訳：${_number(unit.round())}円 × ${_number(days.round())}日 ＝ ${_number(allocation.round())}円（月給に含む・加算なし）';
   }
 
   static String _quantity(String label, Map<String, dynamic> detail) {
