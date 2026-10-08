@@ -5,16 +5,22 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/*vehicle_active_driver_claims.sql'
+      - 'supabase/migrations/*vehicle_meter_snapshots.sql'
       - 'supabase/migrations/20261008124940_gps_shift_work_date_evidence.sql'
       - 'supabase/tests/vehicle_active_driver_assertions.sql'
       - 'tool/verify_vehicle_active_driver.mjs'
+      - 'supabase/tests/vehicle_meter_snapshots_assertions.sql'
+      - 'tool/verify_vehicle_meter_snapshots.mjs'
       - '.github/workflows/vehicle-usage-sql-check.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/*vehicle_active_driver_claims.sql'
+      - 'supabase/migrations/*vehicle_meter_snapshots.sql'
       - 'supabase/tests/vehicle_active_driver_assertions.sql'
       - 'tool/verify_vehicle_active_driver.mjs'
+      - 'supabase/tests/vehicle_meter_snapshots_assertions.sql'
+      - 'tool/verify_vehicle_meter_snapshots.mjs'
       - '.github/workflows/vehicle-usage-sql-check.yml'
 
 concurrency:
@@ -33,3 +39,4 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
           node tool/verify_vehicle_active_driver.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_vehicle_meter_snapshots.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
