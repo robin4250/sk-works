@@ -13,7 +13,9 @@ class SitePaymentTermsComparison {
       for (final value in workspace['proposals'] is List
           ? workspace['proposals'] as List : const []) {
         if (value is! Map || value['proposed_company_id'] != company ||
-            value['revision'] is! num || value['terms'] is! Map) continue;
+            value['revision'] is! num || value['terms'] is! Map) {
+          continue;
+        }
         if (latest == null || (value['revision'] as num) > (latest['revision'] as num)) {
           latest = Map<String, dynamic>.from(value);
         }
