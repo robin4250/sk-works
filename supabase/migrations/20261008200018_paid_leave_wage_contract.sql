@@ -62,7 +62,8 @@ begin
     ),'')||
     coalesce((select jsonb_agg(jsonb_build_object('leave_date',pl.leave_date,'status',pl.status)
       order by pl.leave_date)::text from public.paid_leave_requests pl
-      where pl.company_id=cid and pl.worker_id=wid and pl.leave_date between start_day and end_day),'')||
+      where pl.company_id=cid and pl.worker_id=wid and pl.leave_date between start_day and end_day
+        and pl.leave_date<=(current_timestamp at time zone 'Asia/Tokyo')::date),'')||
     coalesce((
       select jsonb_agg(
         jsonb_build_object(
