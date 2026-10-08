@@ -44,6 +44,8 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/notifications/notifications_page.dart';
+import 'features/tutorial/tutorial_home_card.dart';
+import 'features/tutorial/tutorial_page.dart';
 import 'features/operations/vehicle_route_page.dart';
 import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
@@ -162,6 +164,9 @@ class _HomePageState extends State<HomePage> {
     companyName: 'SKO',
     displayName: 'ユーザー',
   );
+  int _tutorialRefreshToken = 0;
+  String? _tutorialCompanyId;
+  String? _tutorialUserId;
   int _selectedIndex = 0;
   bool _chromeVisible = true;
   VoidCallback? _chromeListener;
@@ -259,7 +264,26 @@ class _HomePageState extends State<HomePage> {
     try {
       final identity = await repository.loadIdentity();
       if (!mounted) return;
-      setState(() => _identity = identity);
+      String? companyId;
+      final userId = SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id : null;
+      if (userId != null) {
+        try {
+          final rows = await SupabaseBackend.client.from('company_members')
+              .select('company_id').eq('user_id', userId).limit(1);
+          if (rows.isNotEmpty) {
+            companyId = rows.first['company_id']?.toString();
+          }
+        } catch (_) {
+          // Optional guide scope must never prevent authoritative identity loading.
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _identity = identity;
+        _tutorialUserId = userId;
+        _tutorialCompanyId = companyId;
+      });
     } catch (_) {
       // Keep the safest default if identity loading fails.
     }
@@ -271,7 +295,10 @@ class _HomePageState extends State<HomePage> {
     try {
       final value = await repository.loadRequiredDocumentAttention();
       if (!mounted) return;
-      setState(() => _requiredDocumentAttention = value);
+      setState(() {
+        _requiredDocumentAttention = value;
+        _tutorialRefreshToken++;
+      });
     } catch (_) {
       // Missing-document attention must not block the home screen.
     }
@@ -810,6 +837,14 @@ class _HomePageState extends State<HomePage> {
           role: ManualContent.fromMembershipRole(_identity.role),
         );
         break;
+      case 'tutorial':
+        final userId = _tutorialUserId;
+        final companyId = _tutorialCompanyId;
+        if (userId == null || companyId == null) return;
+        page = TutorialPage(userId: userId, companyId: companyId,
+          availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+          onOpenAction: _openHomeAction);
+        break;
       case 'help':
         page = HelpPage(
           role: ManualContent.fromMembershipRole(_identity.role),
@@ -904,6 +939,10 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (_) => page!),
     );
 
+    if (!mounted) return;
+    setState(() => _tutorialRefreshToken++);
+    await _loadRequiredDocumentAttention();
+
     if (key == 'clock_in' ||
         key == 'clock_out' ||
         key == 'attendance_verify' ||
@@ -927,6 +966,9 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      _MenuAction(key: 'tutorial', label: SkoLanguageController.tr('準備ガイド'),
+        icon: Icons.school_outlined, homeEligible: false,
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_verify',
@@ -1331,6 +1373,11 @@ class _HomePageState extends State<HomePage> {
           body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
+          tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
+              ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
+                  availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+                  onOpenAction: _openHomeAction, refreshToken: _tutorialRefreshToken)
+              : null,
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,

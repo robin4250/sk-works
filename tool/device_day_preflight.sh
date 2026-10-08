@@ -31,23 +31,23 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   if git remote get-url origin >/dev/null 2>&1; then
     if git fetch --quiet origin main 2>/dev/null; then
       local_full="$(git rev-parse HEAD)"
-      remote_full="$(git rev-parse origin/main)"
+      remote_full="$(git rev-parse FETCH_HEAD)"
       if [[ "$local_full" == "$remote_full" ]]; then
         if [[ "$branch_name" == "main" ]]; then
           ok "Git branch: main @ $head_sha"
         elif [[ -z "$branch_name" ]]; then
-          ok "detached HEADですが origin/main と同一コミット: $head_sha"
+          ok "detached HEADですが 取得したmainと同一コミット: $head_sha"
         else
-          warn "branchは $branch_name ですがHEADは origin/main と同一です"
+          warn "branchは $branch_name ですがHEADは 取得したmainと同一です"
         fi
-        ok "ローカルHEADは origin/main と一致"
+        ok "ローカルHEADは取得したmainと一致"
       elif git merge-base --is-ancestor "$local_full" "$remote_full" 2>/dev/null; then
-        fail "ローカルmainがorigin/mainより古いです"
+        fail "ローカルmainが取得したmainより古いです"
         echo "  作業差分が無いことを確認してから: git pull --ff-only origin main"
       else
-        fail "ローカルHEADとorigin/mainが分岐しています"
+        fail "ローカルHEADと取得したmainが分岐しています"
         echo "  自動pullや強制更新は行いません。git status / git logを確認してください"
-        echo "  実機テストはorigin/mainと一致するmainから実行してください"
+        echo "  実機テストは取得したmainと一致するmainから実行してください"
       fi
     else
       warn "origin/mainの最新状態を取得できませんでした（ネットワークを確認）"

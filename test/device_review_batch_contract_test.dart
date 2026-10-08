@@ -32,6 +32,9 @@ void main() {
     final report = File(
       'lib/features/daily_reports/daily_report_page.dart',
     ).readAsStringSync();
+    final reportPdf = File(
+      'lib/features/daily_reports/daily_report_pdf_service.dart',
+    ).readAsStringSync();
     final reportRepository = File(
       'lib/features/daily_reports/daily_report_repository.dart',
     ).readAsStringSync();
@@ -94,11 +97,11 @@ void main() {
     expect(prepareIos, isNot(contains('if let controller = window?.rootViewController')));
     expect(map, contains('on MissingPluginException'));
 
-    expect(report, contains("'報告者サイン'"));
-    expect(report, contains("'責任者サイン'"));
-    expect(report, contains("if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間')"));
-    expect(report, contains('allowanceCounts[label] ='));
-    expect(report, contains('MapEntry(entry.key, entry.value.toString())'));
+    expect(reportPdf, contains("'報告者サイン'"));
+    expect(reportPdf, contains("'責任者サイン'"));
+    expect(reportPdf, contains("if (totalNight > 0) MapEntry(SkoLanguageController.tr('夜間')"));
+    expect(reportPdf, contains('allowanceCounts[label] ='));
+    expect(reportPdf, contains('MapEntry(entry.key, entry.value.toString())'));
     expect(report, contains("'現場／ルート'"));
     expect(report, contains('initialRouteAssignmentId'));
     expect(reportRepository, contains("rpc(\n      'daily_report_clocked_in_destinations'"));

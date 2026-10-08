@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -9,9 +10,21 @@ import '../../international/language_controller.dart';
 import 'package:printing/printing.dart';
 
 import 'daily_report_repository.dart';
+import 'daily_report_pdf_evidence.dart';
 
 class DailyReportPdfService {
   const DailyReportPdfService._();
+
+  static String _meterSummary(DailyReportWorkerDraft worker) {
+    if (worker.meterEventId == null) {
+      return SkoLanguageController.tr('運転手のメーター登録待ち');
+    }
+    return [
+      if (worker.previousOdometerKm != null) '${SkoLanguageController.tr('前回距離')} ${_number(worker.previousOdometerKm!)}km',
+      if (worker.odometerKm != null) '${SkoLanguageController.tr('今回距離')} ${_number(worker.odometerKm!)}km',
+      if (worker.tripDistanceKm != null) '${SkoLanguageController.tr('当日の走行距離')} ${_number(worker.tripDistanceKm!)}km',
+    ].join(' / ');
+  }
 
   static Future<Uint8List> buildPdf({
     required DateTime date,
@@ -20,9 +33,12 @@ class DailyReportPdfService {
     required String workDescription,
     required DailyReportRecord? report,
     PdfPageFormat format = PdfPageFormat.a4,
+    List<DailyReportPdfEvidence> evidence = const [],
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -74,7 +90,11 @@ class DailyReportPdfService {
               ],
             ),
             pw.SizedBox(height: 8),
-            pw.Row(
+            // A Column lays out non-flex children with unbounded height. Give
+            // this stretched row a finite height before its signature flexes.
+            pw.SizedBox(
+              height: 78,
+              child: pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
                 pw.Expanded(
@@ -110,6 +130,7 @@ class DailyReportPdfService {
                   ),
                 ),
               ],
+              ),
             ),
             pw.SizedBox(height: 7),
             pw.Row(
@@ -165,6 +186,7 @@ class DailyReportPdfService {
                         worker.vehicleName!,
                       if (worker.routeName?.trim().isNotEmpty == true)
                         worker.routeName!,
+                      if (worker.meterManaged) _meterSummary(worker),
                     ].join(' / '),
                   ],
                 for (var i = workers.length; i < 9; i++)
@@ -205,7 +227,9 @@ class DailyReportPdfService {
             pw.Spacer(),
             pw.Divider(thickness: 0.8),
             pw.Text(
-              SkoLanguageController.tr('出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'),
+              SkoLanguageController.tr(evidence.isEmpty
+                ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
+                : '出勤・退勤の写真と取得情報は添付ページに記載しています。'),
               textAlign: pw.TextAlign.center,
               style: const pw.TextStyle(
                 fontSize: 8.5,
@@ -216,8 +240,49 @@ class DailyReportPdfService {
         ),
       ),
     );
+    for (final attachment in evidence) {
+      pw.MemoryImage? image;
+      if (attachment.photoBytes != null) {
+        try { image = pw.MemoryImage(attachment.photoBytes!); } catch (_) { image = null; }
+      }
+      document.addPage(pw.MultiPage(pageFormat: format,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        build: (_) => [
+          pw.Text(SkoLanguageController.tr('日報の写真・GPS記録'),
+            style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 10),
+          for (final caption in attachment.captions)
+            pw.Padding(padding: const pw.EdgeInsets.only(bottom: 5),
+              child: pw.Text(caption, style: const pw.TextStyle(fontSize: 10))),
+          pw.SizedBox(height: 8),
+          if (image != null)
+            pw.SizedBox(height: 145 * PdfPageFormat.mm,
+              child: pw.Image(image, fit: pw.BoxFit.contain))
+          else
+            pw.Container(height: 50 * PdfPageFormat.mm,
+              alignment: pw.Alignment.center, color: PdfColors.grey100,
+              child: pw.Text(SkoLanguageController.tr(attachment.record.storagePath.isEmpty
+                ? '写真未登録・送信失敗' : '保存済み写真を読み込めませんでした'))),
+        ]));
+    }
     return document.save();
   }
+
+  static String fingerprint({required DateTime date, required String siteName,
+    required List<DailyReportWorkerDraft> workers, required String workDescription,
+    required DailyReportRecord? report, List<DailyReportPdfEvidence> evidence = const []}) =>
+    jsonEncode([SkoLanguageController.isEnglish, date.toIso8601String(), siteName,
+      workDescription, buildTextSnapshot(date: date, siteName: siteName, workers: workers,
+        workDescription: workDescription, report: report),
+      for (final worker in workers) [worker.workerId, worker.overtimeHours, worker.earlyHours,
+        worker.nightHours, worker.allowanceAmount, worker.allowanceLabel, worker.vehicleId,
+        worker.routeId, worker.odometerKm, worker.previousOdometerKm, worker.tripDistanceKm,
+        worker.meterEventId, worker.meterSourceClockInId, worker.sourceClockInId,
+        worker.sourceClockOutAt?.toIso8601String(), worker.meterManaged],
+      report?.id, report?.status, report?.signerName, report?.signatureJson,
+      report?.reporterSignerName, report?.reporterSignatureJson,
+      report?.responsibleSignerName, report?.responsibleSignatureJson,
+      for (final attachment in evidence) attachment.fingerprintData]);
 
   static Future<bool> printReport({
     required DateTime date,
@@ -392,7 +457,8 @@ class DailyReportPdfService {
           SkoLanguageController.tr('車両') + ' ' + worker.vehicleName!,
         if (worker.routeName?.trim().isNotEmpty == true)
           SkoLanguageController.tr('ルート') + ' ' + worker.routeName!,
-        if (worker.odometerKm != null)
+        if (worker.meterManaged) _meterSummary(worker),
+        if (!worker.meterManaged && worker.odometerKm != null)
           SkoLanguageController.tr('走行') + ' ' + _number(worker.odometerKm!) + 'km',
       ].join(' / '));
     }

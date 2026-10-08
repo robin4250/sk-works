@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import '../../international/language_controller.dart';
 import 'notifications_page.dart';
 
 class SkoNotificationBell extends StatefulWidget {
@@ -42,7 +43,7 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      tooltip: 'お知らせ',
+      tooltip: SkoLanguageController.tr('お知らせ'),
       onPressed: _open,
       icon: Badge(
         isLabelVisible: _unread > 0,
