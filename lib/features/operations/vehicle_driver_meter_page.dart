@@ -34,7 +34,9 @@ class _VehicleDriverMeterEntryState extends State<VehicleDriverMeterEntry> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.sourceClockInId != widget.sourceClockInId || oldWidget.expectedWorkDate != widget.expectedWorkDate ||
         oldWidget.expectedSiteId != widget.expectedSiteId || oldWidget.expectedRouteId != widget.expectedRouteId ||
-        oldWidget.requireDestinationMatch != widget.requireDestinationMatch || oldWidget.repository != widget.repository) _load();
+        oldWidget.requireDestinationMatch != widget.requireDestinationMatch || oldWidget.repository != widget.repository) {
+      _load();
+    }
   }
   Future<void> _load() async {
     final generation = ++_generation;

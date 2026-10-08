@@ -5,7 +5,7 @@ import 'package:sk_works/features/attendance/group_checkout_dialog.dart';
 import 'package:sk_works/features/attendance/group_checkout_repository.dart';
 
 class RetryRepository extends GroupCheckoutRepository {
-  RetryRepository() : super(SupabaseClient('https://example.invalid', 'test-anon'));
+  RetryRepository(SupabaseClient client) : super(client);
   final List<GroupCheckoutRequest> requests = [];
   @override
   Future<void> commit(GroupCheckoutRequest request) async {
@@ -18,7 +18,10 @@ class RetryRepository extends GroupCheckoutRepository {
 
 void main() {
   testWidgets('uncertain send retries identical token and leaves early checkout unselected', (tester) async {
-    final repository = RetryRepository();
+    final client = SupabaseClient('https://example.invalid', 'test-anon',
+      authOptions: const AuthClientOptions(autoRefreshToken: false));
+    addTearDown(client.dispose);
+    final repository = RetryRepository(client);
     final date = DateTime(2026, 10, 31);
     await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => TextButton(
       onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => GroupCheckoutPage(

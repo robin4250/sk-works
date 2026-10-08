@@ -471,6 +471,7 @@ class DailyReportRepository {
         });
         if (attached is! Map || attached['attached'] != true || attached['has_claim'] != true || attached['has_event'] != true ||
             attached['previous_km'] == null || attached['current_km'] == null || attached['distance_km'] == null ||
+            attached['source_clock_in_id'] != snapshot.sourceId ||
             attached['event_id'] != snapshot.eventId ||
             attached['worker_id'] != snapshot.workerId || attached['vehicle_id'] != snapshot.vehicleId ||
             attached['work_date'] != _dbDate(date) ||

@@ -102,7 +102,9 @@ class VehicleDriverMeterRepository {
     }
     // Recheck driver and capability before RPC; server performs its own checks.
     if (!context.canRecord || !await _source.isDriver(context.companyId, context.workerId) ||
-        !await _source.isEnabled(context.companyId)) throw StateError('Vehicle meter is unavailable');
+        !await _source.isEnabled(context.companyId)) {
+      throw StateError('Vehicle meter is unavailable');
+    }
     final id = _operationIds.putIfAbsent(context.sourceClockInId, _newEventId);
     final result = await _source.record({
       'p_source_clock_in_id': context.sourceClockInId, 'p_event_id': id,
