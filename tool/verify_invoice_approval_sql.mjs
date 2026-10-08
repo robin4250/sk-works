@@ -34,6 +34,10 @@ try {
  await db.exec(read('supabase/migrations/20261008010518_payroll_confirmation_document_metadata.sql'));
  await db.exec(confirmAssertions);
  console.log('Assigned payroll confirmation assertions passed');
+ await db.exec(read('supabase/migrations/20261008034850_payroll_default_company_confirmer.sql'));
+ await db.exec(read('supabase/tests/payroll_default_company_confirmer_assertions.sql'));
+ await db.exec(read('supabase/migrations/20261008034850_payroll_default_company_confirmer.sql'));
+ console.log('Future company default confirmer assertions passed');
  const [employeeFixture,employeeAssertions]=read('supabase/tests/employee_registered_identity_assertions.sql').split('-- ASSERTIONS');
  const employeeDb=new PGlite();
  try {
