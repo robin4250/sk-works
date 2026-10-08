@@ -65,6 +65,10 @@ begin
     select 1 from public.company_members m
       where m.company_id=NEW.company_id and m.user_id=v_actor
   )) then raise exception 'vehicle usage requires current company membership'; end if;
+  -- Lock the FK parent before company serialization. Company deletion already
+  -- holds this parent before cascades reach the rollout guard.
+  perform 1 from public.companies c where c.id=NEW.company_id for key share;
+  if not found then raise exception 'vehicle attendance company is unavailable'; end if;
   perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||NEW.company_id::text,0));
   return NEW;
 end $$;
@@ -177,6 +181,10 @@ begin
   if TG_OP='UPDATE' and NEW.company_id is distinct from OLD.company_id then
     raise exception 'vehicle rollout company is immutable';
   end if;
+  -- DELETE cascades may have removed the parent in this transaction. Preserve
+  -- that existing path; ordinary calls acquire the parent before the advisory.
+  perform 1 from public.companies c where c.id=
+    (case when TG_OP='DELETE' then OLD.company_id else NEW.company_id end) for key share;
   perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||
     (case when TG_OP='DELETE' then OLD.company_id else NEW.company_id end)::text,0));
   -- VOLATILE trigger queries obtain a fresh READ COMMITTED snapshot after the
