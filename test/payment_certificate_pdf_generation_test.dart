@@ -17,9 +17,11 @@ void main() {
       final font = pw.Font.ttf(
         ByteData.sublistView(await File(fontPath!).readAsBytes()),
       );
-      final output = Directory.systemTemp.createTempSync(
-        'sko-zero-certificate-',
-      );
+      final configured = Platform.environment['SKO_PDF_OUTPUT_DIR'];
+      final output = configured == null
+          ? Directory.systemTemp.createTempSync('sko-zero-certificate-')
+          : Directory(configured);
+      output.createSync(recursive: true);
       try {
         final record = PaymentCertificateRecord(
           id: 'zero-certificate',
@@ -36,7 +38,7 @@ void main() {
             PaymentCertificateLine(
               siteName: '零額現場',
               workContent: '零額明細',
-              quantityLabel: '1日',
+              quantityLabel: '0日',
               unitPriceYen: 0,
               amountYen: 0,
             ),
@@ -47,7 +49,8 @@ void main() {
           regularFont: font,
           boldFont: font,
         );
-        final file = File('${output.path}/zero.pdf')..writeAsBytesSync(bytes);
+        final file = File('${output.path}/payment_certificate_zero.pdf')
+          ..writeAsBytesSync(bytes);
         final result = await Process.run('python', [
           '-c',
           'import fitz,sys; d=fitz.open(sys.argv[1]); '
@@ -62,8 +65,9 @@ void main() {
         expect(text, contains('差'));
         expect(text, isNot(matches(RegExp(r'(^|\n)\s*[¥￥]?0(?:円)?\s*(\n|$)'))));
         expect(text, isNot(contains('¥')));
+        expect(text, isNot(contains('0日')));
       } finally {
-        output.deleteSync(recursive: true);
+        if (configured == null) output.deleteSync(recursive: true);
       }
     },
     skip: fontPath == null

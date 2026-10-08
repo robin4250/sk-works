@@ -39,7 +39,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
     }
 
     try {
-      final items = await repository.loadCertificates();
+      final items = await repository.loadCertificates(includeRegisteredPreviews: true);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -94,7 +94,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                 : _items.isEmpty
                     ? Center(
                         child: Text(
-                          SkoLanguageController.isEnglish ? 'A draft is created automatically when subcontractor attendance is recorded.' : '下請け作業員の出勤が入ると自動で下書きを作成します',
+                          SkoLanguageController.isEnglish ? 'Register a subcontractor company to preview its payment certificate.' : '下請け会社を登録すると、出勤実績がなくても支払証明書をプレビューできます。',
                           textAlign: TextAlign.center,
                         ),
                       )
@@ -123,7 +123,9 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                                   ),
                                 ),
                                 subtitle: Text(
-                                  '${item.monthLabel} ・ '
+                                  item.isPreview
+                                      ? '${item.monthLabel} ・ ${SkoLanguageController.isEnglish ? 'Preview · No attendance' : 'プレビュー・出勤実績なし'}'
+                                      : '${item.monthLabel} ・ '
                                   '${item.status == 'draft' ? (SkoLanguageController.isEnglish ? 'Draft' : '下書き') : (SkoLanguageController.isEnglish ? 'Finalized' : '確定')} ・ '
                                   'revision ${item.revision}',
                                 ),
@@ -131,7 +133,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      _yen(item.netAmount),
+                                      item.isPreview ? '' : _yen(item.netAmount),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                       ),

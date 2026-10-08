@@ -237,12 +237,42 @@ class PayrollPdfService {
             50,
             170,
             12,
-            text(
-              _first(detail, const ['company_tagline', '会社スローガン']).isEmpty
-                  ? '人と現場をつなぐ　未来をつくる'
-                  : _first(detail, const ['company_tagline', '会社スローガン']),
-              size: 5.5,
-              color: PdfColor.fromHex('#073A76'),
+            pw.LayoutBuilder(
+              builder: (context, constraints) {
+                final nameWidth =
+                    fallbackFont
+                        .getFont(context)
+                        .stringMetrics(statement.companyName)
+                        .width *
+                    10;
+                final availableWidth = (nameWidth - 4)
+                    .clamp(1.0, 144.0)
+                    .toDouble();
+                return pw.Align(
+                  alignment: pw.Alignment.topLeft,
+                  child: pw.SizedBox(
+                    width: availableWidth,
+                    height: 12,
+                    child: pw.FittedBox(
+                      fit: pw.BoxFit.scaleDown,
+                      alignment: pw.Alignment.topLeft,
+                      child: text(
+                        _first(detail, const [
+                              'company_tagline',
+                              '会社スローガン',
+                            ]).isEmpty
+                            ? '人と現場をつなぐ　未来をつくる'
+                            : _first(detail, const [
+                                'company_tagline',
+                                '会社スローガン',
+                              ]),
+                        size: 5.5,
+                        color: PdfColor.fromHex('#073A76'),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           at(

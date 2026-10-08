@@ -35,6 +35,7 @@ class PaymentCertificateRecord {
     this.payerAddress = '',
     this.payerPhone = '',
     this.payerFax = '',
+    this.partnerCompanyId = '',
     this.lines = const [],
   });
 
@@ -52,9 +53,11 @@ class PaymentCertificateRecord {
   final String payerAddress;
   final String payerPhone;
   final String payerFax;
+  final String partnerCompanyId;
   final List<PaymentCertificateLine> lines;
 
   String get monthLabel => '${periodStart.year}年${periodStart.month}月';
+  bool get isPreview => status == 'preview';
 }
 
 class PartnerPaymentSetting {
@@ -107,30 +110,27 @@ class PartnerPaymentSetting {
   int get nightDayRate =>
       effectiveRate(nightDayRateYen, formulas.night(formulaBaseRateYen));
   int get nightOvertimeRate => effectiveRate(
-        nightOvertimeHourRateYen,
-        formulas.nightOvertime(formulaBaseRateYen),
-      );
+    nightOvertimeHourRateYen,
+    formulas.nightOvertime(formulaBaseRateYen),
+  );
   int get holidayDayRate =>
       effectiveRate(holidayDayRateYen, formulas.holiday(formulaBaseRateYen));
   int get holidayOvertimeRate => effectiveRate(
-        holidayOvertimeHourRateYen,
-        formulas.holidayOvertime(formulaBaseRateYen),
-      );
+    holidayOvertimeHourRateYen,
+    formulas.holidayOvertime(formulaBaseRateYen),
+  );
   int get holidayNightDayRate => effectiveRate(
-        holidayNightDayRateYen,
-        formulas.holidayNight(formulaBaseRateYen),
-      );
+    holidayNightDayRateYen,
+    formulas.holidayNight(formulaBaseRateYen),
+  );
   int get holidayNightOvertimeRate => effectiveRate(
-        holidayNightOvertimeHourRateYen,
-        formulas.holidayNightOvertime(formulaBaseRateYen),
-      );
+    holidayNightOvertimeHourRateYen,
+    formulas.holidayNightOvertime(formulaBaseRateYen),
+  );
 }
 
 class PaymentAllowanceSetting {
-  const PaymentAllowanceSetting({
-    required this.name,
-    required this.amountYen,
-  });
+  const PaymentAllowanceSetting({required this.name, required this.amountYen});
 
   final String name;
   final int amountYen;
@@ -160,12 +160,14 @@ class PaymentCertificateRepository {
     return rows.first['company_id'].toString();
   }
 
-  Future<List<PaymentCertificateRecord>> loadCertificates() async {
+  Future<List<PaymentCertificateRecord>> loadCertificates({
+    bool includeRegisteredPreviews = false,
+  }) async {
     final companyId = await _companyId();
     final rows = await _client
         .from('payment_certificates')
         .select(
-          'id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,partner_companies(name)',
+          'id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,partner_companies(name)',
         )
         .eq('company_id', companyId)
         .order('period_start', ascending: false);
@@ -206,15 +208,16 @@ class PaymentCertificateRepository {
       result.add(
         PaymentCertificateRecord(
           id: id,
+          partnerCompanyId: raw['partner_company_id']?.toString() ?? '',
           partnerCompanyName: raw['partner_companies'] is Map
               ? (raw['partner_companies']['name']?.toString() ?? '')
               : '',
           periodStart:
               DateTime.tryParse(raw['period_start']?.toString() ?? '') ??
-                  DateTime.now(),
+              DateTime.now(),
           periodEnd:
               DateTime.tryParse(raw['period_end']?.toString() ?? '') ??
-                  DateTime.now(),
+              DateTime.now(),
           grossAmount: (raw['gross_amount'] as num?)?.toInt() ?? 0,
           deductions: (raw['deductions'] as num?)?.toInt() ?? 0,
           netAmount: (raw['net_amount'] as num?)?.toInt() ?? 0,
@@ -229,8 +232,97 @@ class PaymentCertificateRepository {
         ),
       );
     }
-    return result;
+    if (!includeRegisteredPreviews) return result;
+    // The existing admin-scoped settings RPC includes registered companies even
+    // without attendance. Previews are in-memory only; no certificate is saved.
+    final List<PartnerPaymentSetting> settings;
+    try {
+      settings = await loadSettings();
+    } on PostgrestException catch (error) {
+      if (!isPreviewPermissionDenied(error)) rethrow;
+      // Certificate read access is independent of settings administration.
+      // Keep the records already authorized by RLS; do not grant previews.
+      return result;
+    }
+    return withRegisteredCompanyPreviews(
+      result,
+      settings,
+      company: company,
+      month: DateTime.now(),
+    );
   }
+
+  static bool isPreviewPermissionDenied(PostgrestException error) =>
+      error.code == '42501' ||
+      (error.code == 'P0001' && error.message == '管理者のみ操作できます。');
+
+  static List<PaymentCertificateRecord> withRegisteredCompanyPreviews(
+    List<PaymentCertificateRecord> certificates,
+    List<PartnerPaymentSetting> settings, {
+    required Map<String, dynamic> company,
+    required DateTime month,
+  }) {
+    final existing = certificates
+        .where(
+          (item) =>
+              item.periodStart.year == month.year &&
+              item.periodStart.month == month.month,
+        )
+        .map((item) => item.partnerCompanyId)
+        .toSet();
+    return [
+      for (final setting in settings)
+        if (!existing.contains(setting.partnerCompanyId))
+          emptyPreview(setting, company: company, month: month),
+      ...certificates,
+    ];
+  }
+
+  static PaymentCertificateRecord emptyPreview(
+    PartnerPaymentSetting setting, {
+    required Map<String, dynamic> company,
+    required DateTime month,
+  }) => PaymentCertificateRecord(
+    id: 'preview:${setting.partnerCompanyId}:${month.year}-${month.month}',
+    partnerCompanyId: setting.partnerCompanyId,
+    partnerCompanyName: setting.partnerCompanyName,
+    periodStart: DateTime(month.year, month.month, 1),
+    periodEnd: DateTime(month.year, month.month + 1, 0),
+    grossAmount: 0,
+    deductions: 0,
+    netAmount: 0,
+    status: 'preview',
+    revision: 0,
+    payerCompanyName: company['name']?.toString() ?? '',
+    payerPostalCode: company['postal_code']?.toString() ?? '',
+    payerAddress: company['address']?.toString() ?? '',
+    payerPhone: company['phone']?.toString() ?? '',
+    payerFax: company['fax']?.toString() ?? '',
+    lines: [
+      for (final label in [
+        '通常作業',
+        '残業',
+        '早出',
+        '夜勤',
+        '夜勤残業',
+        '休日出勤',
+        '休日残業',
+        '休日夜勤',
+        '休日夜勤残業',
+        for (final allowance in setting.allowances)
+          if (allowance.name.trim().isNotEmpty) allowance.name.trim(),
+        '福利厚生費',
+        '消費税',
+      ])
+        PaymentCertificateLine(
+          siteName: '',
+          workContent: label,
+          quantityLabel: '',
+          unitPriceYen: 0,
+          amountYen: 0,
+        ),
+    ],
+  );
 
   Future<List<PartnerPaymentSetting>> loadSettings() async {
     final raw = await _client.rpc('partner_payment_settings_workspace');
@@ -239,12 +331,9 @@ class PaymentCertificateRepository {
       for (final value in raw)
         if (value is Map)
           PartnerPaymentSetting(
-            partnerCompanyId:
-                value['partner_company_id']?.toString() ?? '',
-            partnerCompanyName:
-                value['partner_company_name']?.toString() ?? '',
-            dailyRateYen:
-                (value['daily_rate_yen'] as num?)?.toInt() ?? 0,
+            partnerCompanyId: value['partner_company_id']?.toString() ?? '',
+            partnerCompanyName: value['partner_company_name']?.toString() ?? '',
+            dailyRateYen: (value['daily_rate_yen'] as num?)?.toInt() ?? 0,
             overtimeHourRateYen:
                 (value['overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
             earlyHourRateYen:
@@ -262,10 +351,14 @@ class PaymentCertificateRepository {
             holidayNightDayRateYen:
                 (value['holiday_night_day_rate_yen'] as num?)?.toInt() ?? 0,
             holidayNightOvertimeHourRateYen:
-                (value['holiday_night_overtime_hour_rate_yen'] as num?)?.toInt() ?? 0,
+                (value['holiday_night_overtime_hour_rate_yen'] as num?)
+                    ?.toInt() ??
+                0,
             formulas: RateFormulaSettings.fromMap(value['rate_formula']),
             hourlyBaseRateYen: value['rate_formula'] is Map
-                ? ((value['rate_formula']['hourly_rate_yen'] as num?)?.toInt() ?? 0)
+                ? ((value['rate_formula']['hourly_rate_yen'] as num?)
+                          ?.toInt() ??
+                      0)
                 : 0,
             allowances: _allowances(value['allowances']),
             welfareRate: (value['welfare_rate'] as num?)?.toDouble() ?? 0,
@@ -462,6 +555,7 @@ class PaymentCertificateRepository {
       lines: lines,
     );
   }
+
   static List<PaymentAllowanceSetting> _allowances(Object? raw) {
     if (raw is! List) return const [];
     return [
@@ -474,5 +568,4 @@ class PaymentCertificateRepository {
           ),
     ];
   }
-
 }

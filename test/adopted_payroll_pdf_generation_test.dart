@@ -126,6 +126,87 @@ void main() {
         await Directory(outputDirectory).create(recursive: true);
         await File('$outputDirectory/payroll_flutter_v4.pdf').writeAsBytes(pdf);
       }
+      final verificationOutput =
+          outputDirectory ??
+          (await Directory.systemTemp.createTemp('sko-payroll-pdf-')).path;
+      await Directory(verificationOutput).create(recursive: true);
+      for (final mode in <String, String>{
+        'monthly': '月給',
+        'hourly': '時給',
+        'daily': '日給',
+      }.entries) {
+        final modeDetail = {
+          ...detail,
+          'pay_type': mode.key == 'monthly' ? '' : mode.key,
+          '給与方式': mode.value,
+        };
+        final modePdf = await PayrollPdfService.buildPdf(
+          record(modeDetail),
+          regularFont: font,
+          boldFont: font,
+        );
+        final modeFile = File(
+          '$verificationOutput/payroll_flutter_${mode.key}.pdf',
+        );
+        await modeFile.writeAsBytes(modePdf);
+        final extracted = await _inspectPayrollPdf(modeFile);
+        final pages = extracted['pages'] as List<dynamic>;
+        expect(pages, hasLength(1));
+        final page = pages.single as Map<String, dynamic>;
+        expect(page['width'], closeTo(595.2756, .01));
+        expect(page['height'], closeTo(841.8898, .01));
+        final spans = (page['spans'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        final banner = spans.where((span) {
+          final box = (span['bbox'] as List<dynamic>).cast<num>();
+          return box[1] >= 97 && box[1] < 125 && box[0] < 270;
+        }).toList();
+        final label = banner.singleWhere(
+          (span) =>
+              (span['text'] as String).replaceAll(RegExp(r'\s+'), '') ==
+              mode.value,
+        );
+        final labelBox = (label['bbox'] as List<dynamic>).cast<num>();
+        expect(labelBox[0], closeTo(50, .1));
+        expect(
+          labelBox[3],
+          lessThanOrEqualTo(125.1),
+          reason: 'Pay type must remain inside the adopted blue banner.',
+        );
+        final expectedExplanation = mode.key == 'monthly'
+            ? '月固定給'
+            : mode.key == 'hourly'
+            ? '勤務時間'
+            : '勤務日数';
+        final explanation = banner.singleWhere(
+          (span) => (span['text'] as String).contains(expectedExplanation),
+        );
+        final explanationBox = (explanation['bbox'] as List<dynamic>)
+            .cast<num>();
+        expect(
+          explanationBox[0],
+          closeTo(138, .1),
+          reason:
+              'Adjacent explanation must not move when the pay type changes.',
+        );
+        expect(
+          explanationBox[2],
+          lessThanOrEqualTo(256.1),
+          reason: 'The explanation must fit without clipping or overlapping.',
+        );
+        expect(explanationBox[3], lessThanOrEqualTo(125.1));
+        final normalizedText = (page['text'] as String).replaceAll(
+          RegExp(r'\s+'),
+          '',
+        );
+        expect(normalizedText, contains(mode.value));
+        expect(
+          RegExp(r'(?<![0-9.])0(?:\.0)?(?:日|時間|円)').hasMatch(normalizedText),
+          isFalse,
+          reason:
+              'Zero work metrics and amounts must be blank in the actual PDF.',
+        );
+      }
       final many = {
         ...detail,
         'custom_earnings': [
@@ -174,10 +255,43 @@ void main() {
         hasLength(1),
         reason: 'Zero-value registered items must not produce extra pages.',
       );
-      if (outputDirectory != null) {
-        await File('$outputDirectory/payroll_flutter_zero_amounts.pdf')
-            .writeAsBytes(zeroPdf);
+      final zeroFile = File(
+        '$verificationOutput/payroll_flutter_zero_amounts.pdf',
+      );
+      await zeroFile.writeAsBytes(zeroPdf);
+      final zeroReport = await _inspectPayrollPdf(zeroFile);
+      final zeroPage =
+          (zeroReport['pages'] as List<dynamic>).single as Map<String, dynamic>;
+      final shortCompanySpans = (zeroPage['spans'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final shortTagline = shortCompanySpans.singleWhere(
+        (span) => (span['text'] as String)
+            .replaceAll(RegExp(r'\s+'), '')
+            .contains('人と現場をつなぐ未来をつくる'),
+      );
+      final shortTaglineBox = (shortTagline['bbox'] as List<dynamic>)
+          .cast<num>();
+      final sealBoxes = (zeroPage['seals'] as List<dynamic>)
+          .cast<List<dynamic>>();
+      expect(sealBoxes, isNotEmpty);
+      for (final sealBox in sealBoxes) {
+        final coordinates = sealBox.cast<num>();
+        expect(
+          shortTaglineBox[2],
+          lessThanOrEqualTo(coordinates[0] + .1),
+          reason: 'A short company name must not let the tagline intersect its overlapping seal.',
+        );
       }
+      final zeroText = (zeroPage['text'] as String).replaceAll(
+        RegExp(r'\s+'),
+        '',
+      );
+      expect(zeroText, isNot(contains('未支給項目')));
+      expect(zeroText, isNot(contains('未控除項目')));
+      expect(
+        RegExp(r'(?<![0-9.])0(?:\.0)?(?:日|時間|円)').hasMatch(zeroText),
+        isFalse,
+      );
       if (outputDirectory != null) {
         await File('$outputDirectory/payroll_flutter_many_rows.pdf')
             .writeAsBytes(continued);
@@ -187,4 +301,16 @@ void main() {
         ? 'Set SKO_PDF_FONT_PATH to a local Japanese TTF for real PDF rendering.'
         : false,
   );
+}
+
+Future<Map<String, dynamic>> _inspectPayrollPdf(File file) async {
+  final result = await Process.run('python', [
+    '-c',
+    r'''import fitz,json,sys
+pdf=fitz.open(sys.argv[1])
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'seals':[list(d['rect']) for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.2 and d['color'][2]<.2 and d['rect'].width>25 and d['rect'].height>25],'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf]},ensure_ascii=False))''',
+    file.path,
+  ]);
+  expect(result.exitCode, 0, reason: result.stderr.toString());
+  return jsonDecode(result.stdout.toString()) as Map<String, dynamic>;
 }

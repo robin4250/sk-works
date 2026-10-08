@@ -32,6 +32,26 @@ void main() {
     expect(text, contains('請求合計'));
   });
 
+  test('invoice text snapshot hides zero quantities and amounts while retaining nonzero values', () {
+    final zero = InvoiceEngine.calculate(
+      customerId: '会社',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+      sites: const [
+        SiteInvoiceCalculation(
+          siteId: 'zero',
+          siteName: '未設定現場',
+          lines: [InvoiceLine(label: '未設定作業', quantity: 0, unitPriceYen: 0)],
+        ),
+      ],
+    );
+    final zeroText = InvoicePdfService.buildTextSnapshot([zero]);
+    expect(zeroText, contains('未設定作業  ×  = '));
+    expect(zeroText, isNot(contains('¥0')));
+    final nonzero = InvoicePdfService.buildTextSnapshot([invoice]);
+    expect(nonzero, contains('人工 2 × ¥25,000 = ¥50,000'));
+  });
+
   test('invoice file name is sanitized', () {
     final unsafe = InvoiceEngine.calculate(
       customerId: 'A/B株式会社',

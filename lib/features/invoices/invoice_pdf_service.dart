@@ -129,7 +129,7 @@ class InvoicePdfService {
         for (final line in site.lines) {
           buffer.writeln(
             '${line.label} ${_quantity(line.quantity)} × '
-            '${_yen(line.unitPriceYen)} = ${_yen(line.amountYen)}',
+            '${_visibleYen(line.unitPriceYen)} = ${_visibleYen(line.amountYen)}',
           );
         }
         if (site.welfareAmountYen != 0) {
@@ -140,10 +140,10 @@ class InvoicePdfService {
         }
       }
       buffer
-        ..writeln('計 ${_yen(invoice.subtotalYen)}')
-        ..writeln('消費税 ${_yen(invoice.taxYen)}')
-        ..writeln('合計(税込) ${_yen(invoice.grandTotalYen)}')
-        ..writeln('請求合計 ${_yen(invoice.grandTotalYen)}');
+        ..writeln('計 ${_visibleYen(invoice.subtotalYen)}')
+        ..writeln('消費税 ${_visibleYen(invoice.taxYen)}')
+        ..writeln('合計(税込) ${_visibleYen(invoice.grandTotalYen)}')
+        ..writeln('請求合計 ${_visibleYen(invoice.grandTotalYen)}');
     }
     return buffer.toString();
   }
@@ -501,7 +501,9 @@ class InvoicePdfService {
     final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
     final labels = [
       '小計（税抜）',
-      '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
+      invoice.taxRateBps == 0
+          ? '消費税'
+          : '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
       'ご請求金額（税込）',
     ];
     for (var i = 0; i < 3; i++) {
@@ -737,6 +739,7 @@ class InvoicePdfService {
   }
 
   static String _quantity(double value) {
+    if (value == 0) return '';
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value
         .toStringAsFixed(2)

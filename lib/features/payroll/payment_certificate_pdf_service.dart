@@ -196,7 +196,7 @@ class PaymentCertificatePdfService {
                 children: [
                   _cell(line.siteName),
                   _cell(line.workContent),
-                  _cell(line.quantityLabel, right: true),
+                  _cell(_quantity(line.quantityLabel), right: true),
                   _cell(
                     line.unitPriceYen == 0
                         ? ''
@@ -250,7 +250,9 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
             pw.Text(
-              record.status == 'draft'
+              record.isPreview
+                  ? 'プレビュー・出勤実績なし'
+                  : record.status == 'draft'
                   ? '下書き・第${record.revision}版'
                   : '確定・第${record.revision}版',
               style: const pw.TextStyle(fontSize: 7),
@@ -300,5 +302,14 @@ class PaymentCertificatePdfService {
       out.write(digits[i]);
     }
     return '${negative ? '-' : ''}$out';
+  }
+
+  static String _quantity(String value) {
+    final trimmed = value.trim();
+    // Only an entirely zero numeric quantity (with an optional known unit) is
+    // blanked. Dates and descriptions containing a zero remain untouched.
+    if (RegExp(r'^[+-]?0+(?:\.0+)?\s*(?:日|時間|回|人|人工)?$').hasMatch(trimmed))
+      return '';
+    return value;
   }
 }
