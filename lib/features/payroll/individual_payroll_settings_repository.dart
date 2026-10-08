@@ -49,6 +49,15 @@ class IndividualPayrollSettingsRepository {
     return IndividualPayrollSettingsRepository._(client);
   }
 
+  Future<bool> supportsPaidLeaveWages() async {
+    try {
+      return await _client.rpc('paid_leave_wage_contract_version') == 1;
+    } catch (_) {
+      // Older servers and failed reads must never be presented as active.
+      return false;
+    }
+  }
+
   Future<IndividualPayrollWorkspace> loadWorkspace() async {
     final raw = await _client.rpc('payroll_workspace');
     final value =

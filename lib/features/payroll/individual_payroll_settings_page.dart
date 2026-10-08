@@ -9,6 +9,7 @@ import '../notifications/notification_bell.dart';
 import 'individual_payroll_settings_repository.dart';
 import 'payroll_confirmation_repository.dart';
 import 'payroll_confirmation_settings_page.dart';
+import 'paid_leave_pay.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
   const IndividualPayrollSettingsPage({super.key});
@@ -54,6 +55,7 @@ class _IndividualPayrollSettingsPageState
   int _loadGeneration = 0;
   bool _loading = true;
   bool _saving = false;
+  bool _paidLeaveWagesAvailable = false;
   String? _error;
   DateTime? _updatedAt;
   Map<String, dynamic> _settingValues = const {};
@@ -70,6 +72,7 @@ class _IndividualPayrollSettingsPageState
       _controllers['allowance_name_$i'] = TextEditingController();
     }
     _controllers['paid_leave_granted_days'] = TextEditingController();
+    _controllers['paid_leave_daily_yen'] = TextEditingController();
     _load();
   }
 
@@ -98,6 +101,7 @@ class _IndividualPayrollSettingsPageState
     }
     try {
       final workspace = await repository.loadWorkspace();
+      final paidLeaveWagesAvailable = await repository.supportsPaidLeaveWages();
       if (!mounted || generation != _loadGeneration) return;
       PayrollConfirmationSettings? companyPolicy;
       try {
@@ -122,6 +126,7 @@ class _IndividualPayrollSettingsPageState
       setState(() {
         _workspace = workspace;
         _companyPolicy = companyPolicy;
+        _paidLeaveWagesAvailable = paidLeaveWagesAvailable;
         _workerId = firstWorker;
         _loading = false;
       });
@@ -165,6 +170,9 @@ class _IndividualPayrollSettingsPageState
       _controllers['paid_leave_granted_days']!.text = setting
           .amount('paid_leave_granted_days')
           .toString();
+      final storedFormula = setting.values['rate_formula'];
+      final leaveOverride = storedFormula is Map ? storedFormula['paid_leave_daily_yen'] : null;
+      _controllers['paid_leave_daily_yen']!.text = leaveOverride?.toString() ?? '';
       for (final item in [..._customEarnings, ..._customDeductions]) {
         item.dispose();
       }
@@ -289,9 +297,13 @@ class _IndividualPayrollSettingsPageState
       ..['hourly_rate_yen'] = formula.hourlyBase
           ? rateDraft.baseRateYen
           : (dailyBase / hours).round()
-      ..['rate_formula'] = formula.toMap(
-        hourlyRateYen: formula.hourlyBase ? rateDraft.baseRateYen : 0,
-      )
+      ..['rate_formula'] = {
+        if (_settingValues['rate_formula'] is Map)
+          ...Map<String, dynamic>.from(_settingValues['rate_formula'] as Map),
+        ...formula.toMap(
+          hourlyRateYen: formula.hourlyBase ? rateDraft.baseRateYen : 0,
+        ),
+      }
       ..['rate_overrides'] = rateDraft.overrides;
 
     preserveUnchangedPayrollRates(
@@ -324,6 +336,22 @@ class _IndividualPayrollSettingsPageState
       return;
     }
     values['paid_leave_granted_days'] = paidLeaveGrantedDays;
+    if (_paidLeaveWagesAvailable && rateDraft.payType == 'hourly') {
+      final text = _controllers['paid_leave_daily_yen']!.text.trim();
+      final amount = text.isEmpty ? null : int.tryParse(text);
+      if (text.isNotEmpty && (amount == null || amount < 0)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(SkoLanguageController.tr('有給1日分の金額は0以上の整数で入力してください'))),
+        );
+        return;
+      }
+      final storedFormula = values['rate_formula'] as Map<String, dynamic>;
+      if (amount == null) {
+        storedFormula.remove('paid_leave_daily_yen');
+      } else {
+        storedFormula['paid_leave_daily_yen'] = amount;
+      }
+    }
 
     final customEarnings = _serializeCustomMoney(
       _customEarnings,
@@ -446,7 +474,7 @@ class _IndividualPayrollSettingsPageState
                     enabled: workspace.canEdit,
                     onChanged: (value) {
                       _initialRateSignature ??= _rateSignature(value);
-                      _rateDraft = value;
+                      setState(() => _rateDraft = value);
                     },
                   ),
                   SizedBox(height: 12),
@@ -526,6 +554,17 @@ class _IndividualPayrollSettingsPageState
                     suffixText: SkoLanguageController.tr('日'),
                   ),
                   Text(SkoLanguageController.tr('承認済みの有給申請から使用日数と残日数を自動計算します。')),
+                  if (!_paidLeaveWagesAvailable)
+                    Text(SkoLanguageController.tr('有給額の自動計算はサーバー準備待ちです。現在の給与条件の警告を確認してください。'))
+                  else ...[
+                    if (_rateDraft?.payType == 'hourly' ||
+                        (_rateDraft == null && _settingValues['pay_type'] == 'hourly'))
+                      _amountField('paid_leave_daily_yen',
+                        SkoLanguageController.tr('有給1日分（空欄は時給×8時間）')),
+                    Text(SkoLanguageController.trParams('有給1日分：{amount}円',
+                      {'amount': _currentPaidLeavePay().dailyAmountYen})),
+                    Text(SkoLanguageController.tr('日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。')),
+                  ],
                   SizedBox(height: 12),
                   _sectionTitle(SkoLanguageController.tr('控除')),
                   _amountField('income_tax_monthly', SkoLanguageController.tr('所得税・月額')),
@@ -559,6 +598,24 @@ class _IndividualPayrollSettingsPageState
               ),
       ),
     );
+  }
+
+  PaidLeavePay _currentPaidLeavePay() {
+    final values = Map<String, dynamic>.from(_settingValues);
+    final draft = _rateDraft;
+    if (draft != null) {
+      values['pay_type'] = draft.payType;
+      values['day_daily'] = draft.formula.dailyBase(draft.baseRateYen);
+      values['hourly_rate_yen'] = draft.baseRateYen;
+      values['calculation_daily_base_yen'] = draft.baseRateYen;
+    }
+    final text = _controllers['paid_leave_daily_yen']!.text.trim();
+    values['rate_formula'] = {
+      if (values['rate_formula'] is Map)
+        ...Map<String, dynamic>.from(values['rate_formula'] as Map),
+      'paid_leave_daily_yen': text.isEmpty ? null : int.tryParse(text),
+    };
+    return PaidLeavePay.fromSettings(values);
   }
 
   void _addCustomMoney(List<_CustomMoneyDraft> items) {
@@ -697,6 +754,7 @@ class _IndividualPayrollSettingsPageState
           controller: _controllers[key],
           enabled: _workspace?.canEdit == true,
           keyboardType: TextInputType.number,
+          onChanged: key == 'paid_leave_daily_yen' ? (_) => setState(() {}) : null,
           decoration: InputDecoration(
             labelText: SkoLanguageController.tr(label),
             suffixText: SkoLanguageController.tr(suffixText),
