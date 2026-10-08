@@ -8,6 +8,7 @@ import '../daily_reports/daily_report_page.dart';
 import '../notifications/notification_bell.dart';
 import 'attendance_cloud_repository.dart';
 import 'attendance_verification_repository.dart';
+import 'attendance_shift_context.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
@@ -35,6 +36,8 @@ class _AttendanceVerificationPageState
   List<Map<String, dynamic>> _workers = const [];
   List<Map<String, dynamic>> _sites = const [];
   List<Map<String, dynamic>> _recent = const [];
+  List<AttendanceShiftContext> _openShifts = const [];
+  AttendanceShiftContext? _shift;
 
   String _mode = 'none';
   String? _workerId;
@@ -114,7 +117,7 @@ class _AttendanceVerificationPageState
       setState(() {
         _workers = values[0] as List<Map<String, dynamic>>;
         _sites = sites
-            .where((row) => row['status']?.toString() != 'completed')
+            .where((row) => row['status']?.toString() != 'completed' || status.openShifts.any((shift) => shift.siteId == row['id']?.toString()))
             .toList(growable: false);
         _recent = values[2] as List<Map<String, dynamic>>;
         _workerId =
@@ -128,6 +131,9 @@ class _AttendanceVerificationPageState
         _routeId = status.selectedRouteId;
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
+        _openShifts = status.openShifts;
+        _shift = _eventType == 'clock_out' && _openShifts.length == 1 ? _openShifts.single : null;
+        if (_shift != null) _selectShift(_shift!);
         _loading = false;
         _error = null;
       });
@@ -138,6 +144,24 @@ class _AttendanceVerificationPageState
         _error = error.toString();
       });
     }
+  }
+
+  void _selectShift(AttendanceShiftContext shift) {
+    _shift = shift;
+    _siteId = shift.siteId;
+    _routeId = shift.routeId;
+    _routeName = shift.routeName;
+    _vehicleName = shift.vehicleName;
+    if (_mode == 'none') {
+      _mode = shift.verificationMode == 'gps_auto' ? 'gps_auto' : 'manual';
+    }
+  }
+
+  String _shiftLabel(AttendanceShiftContext shift) {
+    final time = shift.clockIn;
+    return '${shift.workDate.month}/${shift.workDate.day} '
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} '
+        '${shift.siteName ?? shift.routeName ?? '勤務'}';
   }
 
   Future<void> _openPastBulkAttendance() async {
@@ -213,7 +237,28 @@ class _AttendanceVerificationPageState
                         ),
                       ),
                     ),
+                  if (isClockOut && _openShifts.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('shift:${_shift?.id}:${_openShifts.length}'),
+                      initialValue: _shift?.id,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: '退勤する勤務',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final shift in _openShifts)
+                          DropdownMenuItem(value: shift.id, child: Text(_shiftLabel(shift), overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: _saving ? null : (value) {
+                        if (value == null) return;
+                        setState(() => _selectShift(_openShifts.firstWhere((shift) => shift.id == value)));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   DropdownButtonFormField<String>(
+                    key: ValueKey('method:$_mode'),
                     initialValue: _mode,
                     decoration: const InputDecoration(
                       labelText: '出勤方法',
@@ -274,6 +319,7 @@ class _AttendanceVerificationPageState
                   ],
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
+                    key: ValueKey('site:$_siteId'),
                     initialValue: _siteId,
                     decoration: const InputDecoration(
                       labelText: '現場',
@@ -291,7 +337,7 @@ class _AttendanceVerificationPageState
                           child: Text(site['name']?.toString() ?? '現場'),
                         ),
                     ],
-                    onChanged: _saving
+                    onChanged: _saving || _shift != null
                         ? null
                         : (value) => setState(() => _siteId = value),
                   ),
@@ -343,7 +389,8 @@ class _AttendanceVerificationPageState
                   FilledButton.icon(
                     onPressed: _saving ||
                             _workerId == null ||
-                            (_siteId == null && _routeId == null)
+                            (_siteId == null && _routeId == null) ||
+                            (isClockOut && _openShifts.length > 1 && _shift == null)
                         ? null
                         : _confirm,
                     icon: _saving
@@ -483,7 +530,8 @@ class _AttendanceVerificationPageState
     final repository = _repository;
     final workerId = _workerId;
     final siteId = _siteId;
-    if (repository == null ||
+    if (_saving || (_openShifts.length > 1 && _eventType == 'clock_out' && _shift == null) ||
+        repository == null ||
         workerId == null ||
         (siteId == null && _routeId == null)) {
       return;
@@ -496,14 +544,14 @@ class _AttendanceVerificationPageState
       return;
     }
 
-    if (_mode == 'gps_auto') {
-      final allowed = await ensureGpsAutoLocationPermission(context);
-      if (!allowed || !mounted) return;
-    }
-
     setState(() => _saving = true);
     try {
-      await repository.saveAttendanceSelection(
+      if (_mode == 'gps_auto') {
+        final allowed = await ensureGpsAutoLocationPermission(context);
+        if (!allowed || !mounted) return;
+      }
+      if (_eventType == 'clock_in') {
+        await repository.saveAttendanceSelection(
         mode: _mode,
         siteId: siteId,
         weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
@@ -511,7 +559,8 @@ class _AttendanceVerificationPageState
             ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
-      await GpsAutoAttendanceService.instance.refresh();
+        await GpsAutoAttendanceService.instance.refresh();
+      }
 
       if (_mode == 'gps_auto' && _eventType == 'clock_in') {
         final position = await _currentPosition();
@@ -591,7 +640,7 @@ class _AttendanceVerificationPageState
         photoFilename = photo.name;
       }
 
-      await repository.createVerification(
+      final saved = await repository.createVerification(
         workerId: workerId,
         siteId: siteId,
         eventType: _eventType,
@@ -604,6 +653,7 @@ class _AttendanceVerificationPageState
         photoBytes: photoBytes,
         photoFilename: photoFilename,
         note: _noteController.text,
+        shift: _shift,
       );
 
       if (!mounted) return;
@@ -617,7 +667,11 @@ class _AttendanceVerificationPageState
 
       if (_eventType == 'clock_out') {
         await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const DailyReportPage()),
+          MaterialPageRoute(builder: (_) => DailyReportPage(
+            initialDate: DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate,
+            initialSiteId: _shift?.siteId ?? siteId,
+            initialRouteAssignmentId: _shift?.routeId ?? _routeId,
+          )),
         );
       } else {
         Navigator.of(context).pop(true);

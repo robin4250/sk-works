@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'daily_report_shift_context.dart';
 
 class DailyReportWorkerDraft {
   DailyReportWorkerDraft({
@@ -185,6 +186,19 @@ class DailyReportRepository {
           .eq('work_date', _dbDate(date))
           .inFilter('worker_id', workerIds);
 
+      final start = DateTime(date.year, date.month, date.day);
+      final end = DateTime(date.year, date.month, date.day + 1);
+      final starts = await _client
+          .from('attendance_verifications')
+          .select(
+            'worker_id,event_type,confirmed_at,work_date,site_id,route_assignment_id,vehicle_id,'
+            'vehicles(display_name,odometer_km),route_assignments(route_name)',
+          )
+          .eq('event_type', 'clock_in')
+          .inFilter('worker_id', workerIds)
+          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})')
+          .order('confirmed_at');
+
       final byWorker = <String, Map<String, dynamic>>{
         for (final raw in selections)
           raw['worker_id'].toString(): Map<String, dynamic>.from(raw),
@@ -192,7 +206,11 @@ class DailyReportRepository {
 
       for (final group in byDestination.values) {
         for (final worker in group.workers) {
-          final selection = byWorker[worker.workerId];
+          final snapshot = dailyReportClockInSnapshot(
+            starts, workerId: worker.workerId, workDate: date,
+            siteId: group.siteId, routeId: group.routeAssignmentId,
+          );
+          final selection = snapshot ?? byWorker[worker.workerId];
           if (selection == null) continue;
           final vehicle = selection['vehicles'];
           final route = selection['route_assignments'];
@@ -399,8 +417,7 @@ class DailyReportRepository {
       final start = DateTime(date.year, date.month, date.day);
       final end = start.add(const Duration(days: 1));
       query = query
-          .gte('confirmed_at', start.toUtc().toIso8601String())
-          .lt('confirmed_at', end.toUtc().toIso8601String());
+          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})');
     }
 
     final rows = await query.order('confirmed_at');

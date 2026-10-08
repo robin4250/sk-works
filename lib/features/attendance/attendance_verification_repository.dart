@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'attendance_shift_context.dart';
+import 'attendance_work_date.dart';
 
 enum HomeAttendancePhase {
   notStarted,
@@ -25,6 +27,7 @@ class HomeAttendanceStatus {
     this.gpsWeekdays = const [],
     this.gpsTime,
     this.phase = HomeAttendancePhase.notStarted,
+    this.openShifts = const [],
   });
 
   final String verificationMode;
@@ -38,6 +41,7 @@ class HomeAttendanceStatus {
   final List<int> gpsWeekdays;
   final String? gpsTime;
   final HomeAttendancePhase phase;
+  final List<AttendanceShiftContext> openShifts;
 
   String get verificationModeLabel => switch (verificationMode) {
         'none' => '未選択',
@@ -277,16 +281,20 @@ class AttendanceVerificationRepository {
     final end = start.add(const Duration(days: 1));
     final rows = await _client
         .from('attendance_verifications')
-        .select('event_type, verification_mode, confirmed_at, sites(name)')
+        .select('id, worker_id, event_type, verification_mode, confirmed_at, work_date, source_clock_in_id, site_id, route_assignment_id, vehicle_id, sites(name), route_assignments(route_name), vehicles(display_name), daily_reports(report_date)')
         .eq('worker_id', workerId)
-        .gte('confirmed_at', start.toUtc().toIso8601String())
+        .gte('confirmed_at', DateTime(now.year, now.month, now.day - 1).toUtc().toIso8601String())
         .lt('confirmed_at', end.toUtc().toIso8601String())
         .order('confirmed_at');
 
-    DateTime? clockIn;
+    final openShifts = openAttendanceShifts(
+      List<Map<String, dynamic>>.from(rows), workerId: workerId, now: now,
+    );
+    final activeShift = openShifts.length == 1 ? openShifts.single : null;
+    DateTime? clockIn = activeShift?.clockIn;
     DateTime? clockOut;
-    String? siteName = dailySelection['site_name']?.toString();
-    if ((siteName ?? '').isEmpty && scheduledToday) {
+    String? siteName = openShifts.length > 1 ? null : activeShift == null ? dailySelection['site_name']?.toString() : (activeShift.siteName ?? activeShift.routeName);
+    if (openShifts.isEmpty && (siteName ?? '').isEmpty && scheduledToday) {
       siteName = gpsSchedule['site_name']?.toString();
     }
     String? latestEventType;
@@ -296,24 +304,27 @@ class AttendanceVerificationRepository {
       final confirmed =
           DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
       final eventType = row['event_type']?.toString();
+      if (confirmed == null || attendanceEventWorkDate(confirmed, row['daily_reports'], workDate: row['work_date']) != start) continue;
       final site = row['sites'];
 
-      if ((siteName ?? '').isEmpty &&
+      if (openShifts.isEmpty && (siteName ?? '').isEmpty &&
           site is Map &&
           (site['name']?.toString().trim().isNotEmpty ?? false)) {
         siteName = site['name'].toString();
       }
-      if (eventType == 'clock_in' && confirmed != null) {
-        clockIn ??= confirmed;
-      } else if (eventType == 'clock_out' && confirmed != null) {
-        clockOut = confirmed;
+      if (openShifts.isEmpty) {
+        if (eventType == 'clock_in') {
+          clockIn ??= confirmed;
+        } else if (eventType == 'clock_out') {
+          clockOut = confirmed;
+        }
       }
       if (eventType == 'clock_in' || eventType == 'clock_out') {
         latestEventType = eventType;
       }
     }
 
-    final phase = switch (latestEventType) {
+    final phase = openShifts.isNotEmpty ? HomeAttendancePhase.working : switch (latestEventType) {
       'clock_in' => HomeAttendancePhase.working,
       'clock_out' => HomeAttendancePhase.finished,
       _ => HomeAttendancePhase.notStarted,
@@ -333,6 +344,7 @@ class AttendanceVerificationRepository {
       gpsWeekdays: scheduleWeekdays,
       gpsTime: gpsSchedule['local_time']?.toString(),
       phase: phase,
+      openShifts: openShifts,
     );
   }
 
@@ -425,8 +437,12 @@ class AttendanceVerificationRepository {
     Uint8List? photoBytes,
     String? photoFilename,
     String? note,
+    AttendanceShiftContext? shift,
   }) async {
     final companyId = await _companyId();
+    if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
+      throw StateError('退勤対象の勤務を確認してください');
+    }
 
     Map<String, dynamic>? selection;
     try {
@@ -449,6 +465,9 @@ class AttendanceVerificationRepository {
       selection = null;
     }
 
+    if (shift != null) {
+      selection = {'vehicle_id': shift.vehicleId, 'route_assignment_id': shift.routeId};
+    }
     final routeId = selection?['route_assignment_id']?.toString();
     if ((siteId == null || siteId.trim().isEmpty) &&
         (routeId == null || routeId.trim().isEmpty)) {
@@ -478,6 +497,7 @@ class AttendanceVerificationRepository {
             'worker_id': workerId,
             'site_id': _nullable(siteId),
             'event_type': eventType,
+            if (shift != null) 'source_clock_in_id': shift.id,
             'verification_mode': verificationMode,
             'latitude': latitude,
             'longitude': longitude,
@@ -490,7 +510,7 @@ class AttendanceVerificationRepository {
             'route_assignment_id': selection?['route_assignment_id'],
             'created_by': _client.auth.currentUser?.id,
           })
-          .select('id, confirmed_at')
+          .select('id, confirmed_at, work_date, source_clock_in_id')
           .single();
       return Map<String, dynamic>.from(row);
     } catch (_) {
