@@ -50,7 +50,7 @@ jobs:
         run: flutter --version
 
       - name: Create Android project files
-        run: flutter create . --platforms=android --project-name sk_works --org com.skworks
+        run: flutter create . --no-pub --platforms=android --project-name sk_works --org com.skworks
 
       - name: Scan tracked files for production secrets
         run: bash tool/check_no_client_secrets.sh
@@ -59,7 +59,7 @@ jobs:
         run: bash tool/check_dependency_pins.sh
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Verify lockfile is stable
         run: git diff --exit-code -- pubspec.lock
