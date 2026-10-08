@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/attendance/group_checkout_dialog.dart';
 import 'package:sk_works/features/attendance/group_checkout_repository.dart';
 
-class RetryRepository extends GroupCheckoutRepository {
-  RetryRepository(super.client);
+class RetryRepository implements GroupCheckoutRepository {
   final List<GroupCheckoutRequest> requests = [];
+  @override
+  Future<List<GroupCheckoutCandidate>?> loadIfEnabled(String anchorId, DateTime workDate) async =>
+      throw StateError('This test supplies its initial roster');
   @override
   Future<void> commit(GroupCheckoutRequest request) async {
     requests.add(request);
@@ -18,10 +19,7 @@ class RetryRepository extends GroupCheckoutRepository {
 
 void main() {
   testWidgets('uncertain send retries identical token and leaves early checkout unselected', (tester) async {
-    final client = SupabaseClient('https://example.invalid', 'test-anon',
-      authOptions: const AuthClientOptions(autoRefreshToken: false));
-    addTearDown(client.dispose);
-    final repository = RetryRepository(client);
+    final repository = RetryRepository();
     final date = DateTime(2026, 10, 31);
     await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => TextButton(
       onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => GroupCheckoutPage(
