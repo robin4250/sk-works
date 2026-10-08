@@ -5,7 +5,7 @@ create function private.snapshot_vehicle_claim_meter()
 returns trigger language plpgsql security definer set search_path='' as $$
 begin
   select v.odometer_km into NEW.start_odometer_km from public.vehicles v
-    where v.id=NEW.vehicle_id and v.company_id=NEW.company_id for update;
+    where v.id=NEW.vehicle_id and v.company_id=NEW.company_id for no key update;
   if not found or NEW.start_odometer_km is null or NEW.start_odometer_km<0
     or NEW.start_odometer_km::text in ('NaN','Infinity','-Infinity') then
     raise exception 'vehicle baseline is unavailable';
@@ -84,6 +84,19 @@ begin
      or p_manual_distance_km<>round(p_manual_distance_km,1))) then
    raise exception 'メーター値と移動距離は0以上・小数1桁の数値を入力してください';
  end if;
+ -- Read identity before locking, then use vehicle -> claim order, matching
+ -- starts and vehicle deletion cascades. Recheck the locked claim below.
+ select * into v_claim from public.vehicle_usage_claims c
+   where c.source_clock_in_id=p_source_clock_in_id;
+ if not found or not exists(select 1 from public.company_members m
+     where m.company_id=v_claim.company_id and m.user_id=v_actor)
+   or not exists(select 1 from public.workers w where w.id=v_claim.driver_worker_id
+     and w.company_id=v_claim.company_id and w.user_id=v_actor and w.status='active') then
+   raise exception '車両の運転手本人だけがメーターを登録できます';
+ end if;
+ perform 1 from public.vehicles v
+   where v.id=v_claim.vehicle_id and v.company_id=v_claim.company_id for no key update;
+ -- Claim identity may have changed through an administrator's deletion cascade.
  select * into v_claim from public.vehicle_usage_claims c
    where c.source_clock_in_id=p_source_clock_in_id for update;
  if not found or not exists(select 1 from public.company_members m
@@ -110,7 +123,7 @@ begin
    raise exception '導入前の車両勤務には基準値がありません。管理者へ確認してください';
  end if;
  select v.odometer_km into v_current from public.vehicles v
-   where v.id=v_claim.vehicle_id and v.company_id=v_claim.company_id for update;
+   where v.id=v_claim.vehicle_id and v.company_id=v_claim.company_id for no key update;
  if not found then raise exception '車両を確認できません'; end if;
  if v_current is distinct from v_claim.start_odometer_km or exists(
    select 1 from public.vehicle_usage_claims other where other.vehicle_id=v_claim.vehicle_id
