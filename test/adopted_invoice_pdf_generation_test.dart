@@ -224,4 +224,43 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
     },
     skip: skipReason,
   );
+  test(
+    'zero monetary values are blank without removing detail rows or frames',
+    () async {
+      final report = await inspect(
+        'invoice_zero_amounts.pdf',
+        invoice(const [
+          SiteInvoiceCalculation(
+            siteId: 'zero',
+            siteName: '金額未設定現場',
+            lines: [
+              InvoiceLine(
+                label: '通常作業',
+                quantity: 1,
+                unitPriceYen: 0,
+                unitPriceText: '0',
+              ),
+            ],
+          ),
+        ]),
+      );
+      final page = (report['pages'] as List).single as Map;
+      final text = page['text'] as String;
+      expect(text, contains('金額未設定現場'));
+      expect(text, contains('通常作業'));
+      expect(text, contains('小計（税抜）'));
+      expect(text, isNot(contains('¥0')));
+      expect(RegExp(r'^0$', multiLine: true).hasMatch(text), isFalse);
+      final lines = (page['horizontal_lines'] as List).cast<num>();
+      for (var row = 1; row <= 35; row++) {
+        expect(
+          lines.any(
+            (y) => (y - (262 + row * (669.8898 - 262) / 35)).abs() < .35,
+          ),
+          isTrue,
+        );
+      }
+    },
+    skip: skipReason,
+  );
 }

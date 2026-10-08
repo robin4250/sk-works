@@ -6,6 +6,19 @@ import 'package:sk_works/domain/rate_formula_settings.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
+  test('hourly overtime uses hourly rate without a second daily divisor', () {
+    const hourly = RateFormulaSettings(hourlyBase: true);
+    expect(hourly.overtime(1500), 1875);
+    expect(hourly.early(1500), 1875);
+    expect(hourly.overtimeFormula(1500), '1500 × 1.25');
+    expect(hourly.dailyBase(1500), 12000);
+    const shorterDay = RateFormulaSettings(hourlyBase: true, hoursPerDay: 6);
+    expect(shorterDay.overtime(1500), 1875);
+    expect(shorterDay.dailyBase(1500), 9000);
+    const edited = RateFormulaSettings(hourlyBase: true, overtimeMultiplier: 1.5);
+    expect(edited.overtime(1500), 2250);
+    expect(const RateFormulaSettings().overtime(10000), 1563);
+  });
   test('hourly and daily bases share the same multiplier system', () {
     const daily = RateFormulaSettings();
     const hourly = RateFormulaSettings(hourlyBase: true);

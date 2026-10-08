@@ -162,9 +162,9 @@ class InvoicePdfService {
             content: (line.workContent ?? line.label).trim(),
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
             unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
-                ? line.unitPriceText!
-                : _number(line.unitPriceYen),
-            amount: _number(line.amountYen),
+                ? _visiblePriceText(line.unitPriceText!)
+                : _visibleNumber(line.unitPriceYen),
+            amount: _visibleNumber(line.amountYen),
           ),
         );
       }
@@ -378,7 +378,7 @@ class InvoicePdfService {
     box(316, 111, 104, 24, fill: pale, radius: 0, line: .3);
     text('ご請求金額（税込）', 332, 92, 86, size: 8, bold: true, color: PdfColors.white);
     text(
-      _yen(invoice.grandTotalYen),
+      _visibleYen(invoice.grandTotalYen),
       424,
       86,
       131.2756,
@@ -514,7 +514,7 @@ class InvoicePdfService {
         color: i == 2 ? blue : ink,
       );
       text(
-        i == 2 ? _yen(totals[i]) : _number(totals[i]),
+        i == 2 ? _visibleYen(totals[i]) : _visibleNumber(totals[i]),
         453,
         i == 2 ? 720 : 684 + i * 21,
         104.2756,
@@ -744,6 +744,17 @@ class InvoicePdfService {
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  static String _visibleNumber(int value) => value == 0 ? '' : _number(value);
+
+  static String _visibleYen(int value) => value == 0 ? '' : _yen(value);
+
+  static String _visiblePriceText(String value) {
+    final parsed = num.tryParse(
+      value.trim().replaceAll(RegExp(r'[,¥￥\s]'), ''),
+    );
+    return parsed == 0 ? '' : value;
+  }
+
   static String _yen(int value) => '¥${_number(value)}';
 
   static String _number(int value) {
@@ -958,25 +969,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       key: ValueKey(_previewRevision),
                       color: Colors.grey.shade200,
                       alignment: Alignment.topCenter,
-                      child: PdfPreview(
+                      child: _InvoicePdfZoomView(
                         key: ValueKey('invoice_pdf_preview_$_previewRevision'),
-                        build: (_) async => pdfBytes,
-                        initialPageFormat: PdfPageFormat.a4,
-                        canChangePageFormat: false,
-                        canChangeOrientation: false,
-                        allowPrinting: false,
-                        allowSharing: false,
-                        maxPageWidth: 595,
-                        pdfPreviewPageDecoration: const BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Color(0x22000000),
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
+                        pdfBytes: pdfBytes,
                       ),
                     ),
                   ),
@@ -1026,6 +1021,150 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       ),
     );
   }
+}
+
+/// Displays raster pages from the exact PDF used for printing and sharing.
+/// The viewport stays bounded before applying scale, including on iPhone.
+class _InvoicePdfZoomView extends StatefulWidget {
+  const _InvoicePdfZoomView({super.key, required this.pdfBytes});
+  final Uint8List pdfBytes;
+  @override
+  State<_InvoicePdfZoomView> createState() => _InvoicePdfZoomViewState();
+}
+
+class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
+  final TransformationController _pdfZoom = TransformationController();
+  late Future<List<Uint8List>> _pages;
+  bool _isZoomed = false;
+  double _scale = 1;
+  Size _viewport = Size.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = _rasterPages();
+    _pdfZoom.addListener(_readScale);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InvoicePdfZoomView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.pdfBytes, widget.pdfBytes)) {
+      _pages = _rasterPages();
+      _pdfZoom.value = Matrix4.identity();
+    }
+  }
+
+  Future<List<Uint8List>> _rasterPages() async {
+    final pages = <Uint8List>[];
+    await for (final page in Printing.raster(widget.pdfBytes, dpi: 120)) {
+      pages.add(await page.toPng());
+    }
+    return pages;
+  }
+
+  void _readScale() {
+    final scale = _pdfZoom.value.getMaxScaleOnAxis();
+    if (mounted && (scale - _scale).abs() > .005) {
+      setState(() {
+        _scale = scale;
+        _isZoomed = scale > 1.01;
+      });
+    }
+  }
+
+  void _setScale(double scale) {
+    final bounded = scale.clamp(1.0, 5.0).toDouble();
+    _pdfZoom.value = Matrix4.identity()
+      ..translateByDouble(
+        -_viewport.width * (bounded - 1) / 2,
+        -_viewport.height * (bounded - 1) / 2,
+        0,
+        1,
+      )
+      ..scaleByDouble(bounded, bounded, 1, 1);
+  }
+
+  @override
+  void dispose() {
+    _pdfZoom.removeListener(_readScale);
+    _pdfZoom.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            tooltip: '縮小',
+            onPressed: _scale > 1.01 ? () => _setScale(_scale / 1.4) : null,
+            icon: const Icon(Icons.zoom_out),
+          ),
+          TextButton(
+            onPressed: () => _setScale(1),
+            child: Text('${(_scale * 100).round()}%'),
+          ),
+          IconButton(
+            tooltip: '拡大',
+            onPressed: _scale < 4.99 ? () => _setScale(_scale * 1.4) : null,
+            icon: const Icon(Icons.zoom_in),
+          ),
+        ],
+      ),
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _viewport = Size(constraints.maxWidth, constraints.maxHeight);
+            return FutureBuilder<List<Uint8List>>(
+              future: _pages,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('PDFを表示できませんでした：${snapshot.error}'),
+                  );
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return InteractiveViewer(
+                  transformationController: _pdfZoom,
+                  minScale: 1,
+                  maxScale: 5,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    child: SingleChildScrollView(
+                      physics: _isZoomed
+                          ? const NeverScrollableScrollPhysics()
+                          : const ClampingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          for (final page in snapshot.data!)
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Image.memory(
+                                page,
+                                width: constraints.maxWidth - 24,
+                                fit: BoxFit.fitWidth,
+                                gaplessPlayback: true,
+                                filterQuality: FilterQuality.high,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ],
+  );
 }
 
 class _InvoicePreviewData {

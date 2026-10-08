@@ -12,7 +12,10 @@ void main() {
     expect(source, contains("PdfColor.fromHex('#BCCADD')"));
     expect(source, contains("PdfColor.fromHex('#073A76')"));
     expect(source, contains('_isAggregatePlaceholder'));
-    expect(source, contains('label.isEmpty || amount == null'));
+    expect(
+      source,
+      contains('label.isEmpty || amount == null || amount.abs() < 1'),
+    );
   });
 
   test('final invoice A4 design contract', () {

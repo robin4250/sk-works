@@ -130,7 +130,7 @@ void main() {
         ...detail,
         'custom_earnings': [
           for (var i = 0; i < 31; i++)
-            {'name': '登録手当${i + 1}', 'amount_yen': i * 100},
+            {'name': '登録手当${i + 1}', 'amount_yen': (i + 1) * 100},
         ],
       };
       final continued = await PayrollPdfService.buildPdf(
@@ -143,6 +143,41 @@ void main() {
         hasLength(3),
         reason: 'More than fifteen rows must continue on readable A4 pages.',
       );
+      final zeroItems = {
+        ...detail,
+        'custom_earnings': [
+          for (var i = 0; i < 31; i++)
+            {'name': '未支給項目${i + 1}', 'amount_yen': 0},
+        ],
+        'custom_deductions': [
+          for (var i = 0; i < 31; i++)
+            {'name': '未控除項目${i + 1}', 'amount_yen': 0},
+        ],
+      };
+      final zeroPdf = await PayrollPdfService.buildPdf(
+        PayrollStatementRecord(
+          id: 'zero-amounts',
+          companyName: '登録会社',
+          workerName: '登録社員',
+          periodStart: DateTime(2026, 10, 1),
+          periodEnd: DateTime(2026, 10, 31),
+          grossPay: 0,
+          deductions: 0,
+          netPay: 0,
+          detail: zeroItems,
+        ),
+        regularFont: font,
+        boldFont: font,
+      );
+      expect(
+        RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(zeroPdf)),
+        hasLength(1),
+        reason: 'Zero-value registered items must not produce extra pages.',
+      );
+      if (outputDirectory != null) {
+        await File('$outputDirectory/payroll_flutter_zero_amounts.pdf')
+            .writeAsBytes(zeroPdf);
+      }
       if (outputDirectory != null) {
         await File('$outputDirectory/payroll_flutter_many_rows.pdf')
             .writeAsBytes(continued);

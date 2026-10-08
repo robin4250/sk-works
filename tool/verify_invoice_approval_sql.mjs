@@ -20,4 +20,10 @@ try {
  await db.exec(read('supabase/migrations/20261007222051_payroll_statement_private_bank_details.sql'));
  await db.exec(assertions);
  console.log('Payroll private bank assertions passed');
+ const [payFixture,payAssertions]=read('supabase/tests/payroll_pay_type_metadata_assertions.sql').split('-- ASSERTIONS');
+ await db.exec(payFixture);
+ await db.exec(read('supabase/migrations/20261007021000_worker_monthly_salary_mode.sql'));
+ await db.exec(read('supabase/migrations/20261008001025_payroll_statement_pay_type_metadata.sql'));
+ await db.exec(payAssertions);
+ console.log('Payroll pay type metadata assertions passed');
 } finally {await db.close();}

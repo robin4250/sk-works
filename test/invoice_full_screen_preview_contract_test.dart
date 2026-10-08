@@ -1,16 +1,23 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
-void main(){
- test('invoice screen renders every formal section without PDF viewer or raster',(){
-  final s=File('lib/features/invoices/invoice_pdf_service.dart').readAsStringSync();
-  expect(s,contains('class _ExactInvoiceScreen'));
-  expect(s,isNot(contains('Printing.raster(')));
-  for(final x in ['御　請　求　書','御請求金額','振込先：','件名 ／ 工期','作業所名','工事内容','請求金額','合計(税込)','お支払約定日','備考：']){
-    expect(s,contains(x));
-  }
-  expect(s,contains('width: 595'));
-  expect(s,contains('height: 842'));
-  expect(s,contains('onLayout: (_) async => pdfBytes'));
-  expect(s,contains('bytes: pdfBytes'));
- });
+
+void main() {
+  test(
+    'invoice zoom renders all pages of the shared PDF in a bounded viewport',
+    () {
+      final s = File('lib/features/invoices/invoice_pdf_service.dart')
+          .readAsStringSync();
+      expect(s, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
+      expect(s, contains('InteractiveViewer('));
+      expect(s, contains('height: constraints.maxHeight'));
+      expect(s, contains('SingleChildScrollView('));
+      expect(s, contains('for (final page in snapshot.data!)'));
+      expect(s, contains('minScale: 1'));
+      expect(s, contains('maxScale: 5'));
+      expect(s, contains('onLayout: (_) async => pdfBytes'));
+      expect(s, contains('bytes: pdfBytes'));
+      expect(s, isNot(contains('child: _ExactInvoiceScreen(')));
+    },
+  );
 }

@@ -20,7 +20,7 @@ class CompanySealPdf {
   static Future<ByteData> _loadFontData() async {
     try {
       return await rootBundle.load(
-        'assets/fonts/company-seal/aoyagireisyosimo_ttf_2_01.ttf',
+        'assets/fonts/company-seal/NotoSansJP-Bold.ttf',
       );
     } catch (_) {
       _fontData = null;

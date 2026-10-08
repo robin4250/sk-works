@@ -111,10 +111,10 @@ class PayrollPdfService {
 
   static String buildTextSnapshot(PayrollStatementRecord statement) =>
       '給与明細書\n${statement.companyName}\n${statement.workerName}\n'
-      '${statement.monthLabel}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
-      '総支給額 ${_yen(statement.grossPay)}\n'
-      '総控除額 ${_yen(statement.deductions)}\n'
-      '差引支給額 ${_yen(statement.netPay)}';
+      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
+      '総支給額 ${statement.grossPay == 0 ? '' : _yen(statement.grossPay)}\n'
+      '総控除額 ${statement.deductions == 0 ? '' : _yen(statement.deductions)}\n'
+      '差引支給額 ${statement.netPay == 0 ? '' : _yen(statement.netPay)}';
 
   static pw.Widget _sheet(
     PayrollStatementRecord statement, {
@@ -324,18 +324,38 @@ class PayrollPdfService {
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 12),
               decoration: box(blue, fill: blue),
-              child: pw.Row(
+              child: pw.Stack(
                 children: [
-                  text(
-                    payType.split('').join(' '),
-                    size: 16,
-                    color: PdfColors.white,
+                  pw.Positioned(
+                    left: 0,
+                    top: 2.8,
+                    child: pw.Text(
+                      payType.split('').join(' '),
+                      style: const pw.TextStyle(
+                        fontSize: 16,
+                        color: PdfColors.white,
+                      ),
+                    ),
                   ),
-                  pw.SizedBox(width: 52.416),
-                  text(
-                    payType == '月給' ? '（月固定給 ＋ 各種手当）' : '（勤務実績 × 登録単価 ＋ 各種手当）',
-                    size: 8.5,
-                    color: PdfColors.white,
+                  pw.Positioned(
+                    left: 88,
+                    right: 0,
+                    top: 8,
+                    child: pw.FittedBox(
+                      fit: pw.BoxFit.scaleDown,
+                      alignment: pw.Alignment.centerLeft,
+                      child: text(
+                        payType == '月給'
+                            ? '（月固定給 ＋ 各種手当）'
+                            : payType == '時給'
+                            ? '（勤務時間 × 登録単価 ＋ 各種手当）'
+                            : payType == '日給'
+                            ? '（勤務日数 × 登録単価 ＋ 各種手当）'
+                            : '',
+                        size: 8.5,
+                        color: PdfColors.white,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -584,12 +604,24 @@ class PayrollPdfService {
   );
 
   static String _payTypeLabel(Map<String, dynamic> detail) {
-    final raw = (detail['pay_type'] ?? detail['給与形態'] ?? '')
-        .toString()
-        .toLowerCase();
-    if (raw == 'monthly' || raw.contains('月給')) return '月給';
-    if (raw == 'hourly' || raw.contains('時給')) return '時給';
-    return '日給';
+    final nested = detail['payroll_settings'] is Map
+        ? Map<String, dynamic>.from(detail['payroll_settings'] as Map)
+        : const <String, dynamic>{};
+    final raw = _first(detail, const [
+      'pay_type',
+      '給与形態',
+      '給与方式',
+      'salary_type',
+      'payment_type',
+    ]);
+    final normalized =
+        (raw.isEmpty ? _first(nested, const ['pay_type', '給与形態', '給与方式']) : raw)
+            .trim()
+            .toLowerCase();
+    if (normalized == 'monthly' || normalized.contains('月給')) return '月給';
+    if (normalized == 'hourly' || normalized.contains('時給')) return '時給';
+    if (normalized == 'daily' || normalized.contains('日給')) return '日給';
+    return '未登録';
   }
 
   static pw.Widget _attendanceCards(
@@ -638,8 +670,8 @@ class PayrollPdfService {
                     ),
                     pw.SizedBox(height: 11),
                     pw.Text(
-                      items[index].value.isEmpty
-                          ? (index < 4 ? '0日' : '0.0時間')
+                      _isZeroDisplay(items[index].value)
+                          ? ''
                           : items[index].value,
                       style: pw.TextStyle(
                         fontSize: 8.2,
@@ -803,7 +835,7 @@ class PayrollPdfService {
                   ),
                 ),
                 pw.Text(
-                  _number(total),
+                  total == 0 ? '' : _number(total),
                   style: pw.TextStyle(fontSize: 14.5, color: accent),
                 ),
               ],
@@ -825,6 +857,7 @@ class PayrollPdfService {
         ? '休出日数'
         : '';
     if (key.isEmpty || detail[key] == null) return '－';
+    if ((_asNumber(detail[key]) ?? 0) == 0) return '';
     return '${detail[key]}${key.endsWith('日数') ? '日' : '時間'}';
   }
 
@@ -871,7 +904,7 @@ class PayrollPdfService {
           right: 0,
           top: 20.08,
           child: pw.Text(
-            '${_number(amount)} 円',
+            amount == 0 ? '' : '${_number(amount)} 円',
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(fontSize: 12, color: color),
           ),
@@ -914,6 +947,16 @@ class PayrollPdfService {
     '社員番号',
     '社員No',
     '社員No.',
+    'pay_type',
+    '給与形態',
+    '給与方式',
+    'salary_type',
+    'payment_type',
+    'payroll_settings',
+    'monthly_salary_yen',
+    'calculation_daily_base_yen',
+    'base_rate_yen',
+    'hourly_rate_yen',
     'custom_earnings',
     'custom_earnings_total',
     'custom_deductions',
@@ -986,7 +1029,7 @@ class PayrollPdfService {
     for (final entry in entries) {
       final label = entry.key.trim();
       final amount = _asNumber(entry.value);
-      if (label.isEmpty || amount == null) {
+      if (label.isEmpty || amount == null || amount.abs() < 1) {
         continue;
       }
       result[label] = (result[label] as num? ?? 0) + amount.abs();

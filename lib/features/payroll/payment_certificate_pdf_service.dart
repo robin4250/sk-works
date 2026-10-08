@@ -232,7 +232,7 @@ class PaymentCertificatePdfService {
                 _cell(''),
                 _cell(''),
                 _cell(
-                  '¥${_number(balance)}',
+                  balance == 0 ? '' : '¥${_number(balance)}',
                   right: true,
                   bold: true,
                   fontSize: 10,
@@ -289,6 +289,7 @@ class PaymentCertificatePdfService {
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 
   static String _number(int value) {
+    if (value == 0) return '';
     final negative = value < 0;
     final digits = value.abs().toString();
     final out = StringBuffer();

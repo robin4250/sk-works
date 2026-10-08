@@ -72,8 +72,8 @@ void main() {
     expect(pdf, contains('const rowHeight ='));
     expect(pdf, contains('regularFont ??'));
     expect(pdf, contains('Future<_InvoicePreviewData> _buildPreviewData()'));
-    expect(pdf, contains('child: PdfPreview('));
-    expect(pdf, contains('build: (_) async => pdfBytes'));
+    expect(pdf, contains('child: _InvoicePdfZoomView('));
+    expect(pdf, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
     expect(pdf, contains('while (rows.length < 35)'));
     expect(pdf, isNot(contains('child: _ExactInvoiceScreen(')));
     expect(pdf, contains('請求書プレビューを生成できませんでした'));
