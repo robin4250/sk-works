@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
-import 'payment_certificate_repository.dart';
+import 'site_payment_agreement_document.dart';
 import 'payment_certificates_page.dart';
 
 /// Only the deployed, enabled server workspace exposes editable agreements.
@@ -146,22 +146,9 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
   Future<void> _openPreview(Map<String,dynamic> proposal) async {
     final rawSnapshot=await _client.rpc('saved_site_payment_document',params:{'p_proposal':proposal['id'],'p_company':_company});
     final snapshot=Map<String,dynamic>.from(rawSnapshot as Map);
-    final terms=Map<String,dynamic>.from(snapshot['terms'] as Map);
-    final parent=_workspace!['parent_company_id'].toString();
-    final child=_workspace!['child_company_id'].toString();
-    // Both confirmations are server-authorized; an equal amount is insufficient.
-    final confirmed={for(final c in proposal['confirmations'] as List) (c as Map)['company_id'].toString()};
-    if(!confirmed.contains(parent) || !confirmed.contains(child)) return;
-
-    final lines=<PaymentCertificateLine>[
-      PaymentCertificateLine(siteName:snapshot['site_name'].toString(),workContent:terms['mode']=='square_meter'?'平米計算':'請け負い',quantityLabel:terms['mode']=='square_meter'?'${terms['area']}㎡':'一式',unitPriceYen:((terms['mode']=='square_meter'?terms['unit_price_yen']:terms['base_amount_yen']) as num).toInt(),amountYen:(terms['base_amount_yen'] as num).toInt()),
-      for(final raw in terms['adjustments'] as List)
-        PaymentCertificateLine(siteName:'〃',workContent:(raw as Map)['name'].toString(),quantityLabel:'',unitPriceYen:0,amountYen:(raw['amount_yen'] as num).toInt()*(raw['direction']=='deduction'?-1:1)),
-      if(terms['tax_included']!=true) PaymentCertificateLine(siteName:'〃',workContent:'消費税',quantityLabel:'',unitPriceYen:0,amountYen:(terms['tax_amount_yen'] as num).toInt()),
-    ];
-    final total=(terms['final_amount_yen'] as num).toInt();
+    final record=SitePaymentAgreementDocument.fromSnapshot(snapshot);
     if(!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>PaymentCertificatePreviewPage(record:PaymentCertificateRecord(id:'agreement:${proposal['id']}',partnerCompanyName:snapshot['subcontractor_company_name'].toString(),payerCompanyName:snapshot['parent_company_name'].toString(),payerCompanySealEnabled:false,periodStart:DateTime.parse(terms['period_start'].toString()),periodEnd:DateTime.parse(terms['period_end'].toString()),grossAmount:total,deductions:0,netAmount:total,status:'draft',revision:proposal['revision'] as int,lines:lines))));
+    await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>PaymentCertificatePreviewPage(record:record)));
   }
 
   @override

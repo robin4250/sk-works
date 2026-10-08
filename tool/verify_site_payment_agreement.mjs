@@ -48,5 +48,31 @@ await assert.rejects(db.query(`select public.confirm_site_payment_terms('${propo
 result=(await db.query(`select public.site_payment_agreement_workspace('${item}','${parent}') v`)).rows[0].v;
 await assert.rejects(db.query(`select public.saved_site_payment_document('${newer}','${parent}')`),/双方/);
 assert.equal(result.proposals.length,2); assert.equal(result.proposals[0].id,newer); assert.equal(result.proposals[0].confirmations.length,0); assert.deepEqual(result.proposals[1].terms,terms);
+if(process.env.SKO_SITE_PAYMENT_OUTPUT_JSON) {
+  const snapshots=[original];
+  await db.exec(`reset role; update companies set name=case when id='${parent}' then '株式会社青空工業' else '株式会社山田建設' end; update sites set name='都内共同工事現場・外壁改修工事および仮設足場撤去作業'; set role authenticated;`);
+  async function confirmAndSave(id) {
+    await db.exec(`set test.uid='${admin1}'`);
+    await db.query(`select public.confirm_site_payment_terms('${id}','${parent}')`);
+    await db.exec(`set test.uid='${admin2}'`);
+    await db.query(`select public.confirm_site_payment_terms('${id}','${child}')`);
+    return (await db.query(`select public.saved_site_payment_document('${id}','${child}') v`)).rows[0].v;
+  }
+  snapshots.push(await confirmAndSave(newer));
+  const adjustments=[
+    {name:'追加工事・養生資材搬入および夜間近隣安全誘導に関する合意額',amount_yen:2000,direction:'addition'},
+    {name:'福利厚生費',amount_yen:500,direction:'deduction'},
+    {name:'追加資材',amount_yen:800,direction:'addition'},
+    {name:'返却資材精算',amount_yen:300,direction:'deduction'},
+  ];
+  await db.exec(`set test.uid='${admin1}'`);
+  const inclusive=await propose(2,{...terms,tax_included:true,adjustments,final_amount_yen:17000});
+  snapshots.push(await confirmAndSave(inclusive));
+  await db.exec(`set test.uid='${admin1}'`);
+  const lump=await propose(3,{...terms,mode:'lump_sum',base_amount_yen:20000,adjustments,final_amount_yen:23500});
+  snapshots.push(await confirmAndSave(lump));
+  await fs.writeFile(process.env.SKO_SITE_PAYMENT_OUTPUT_JSON,JSON.stringify(snapshots));
+  console.log('PASS: four accepted immutable snapshots exported for real Flutter PDF fixtures');
+}
 console.log('PASS: OFF guard, administrator scope, arithmetic, revision conflict, two-party confirmation, immutable originals, stale confirmation, outsider denial');
 await db.close();

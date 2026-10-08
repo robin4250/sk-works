@@ -118,6 +118,7 @@ begin
  if base is null or base<0 or base<>trunc(base) then raise exception '基本額が不正です。'; end if;
  if mode='square_meter' then
   if coalesce(private.site_payment_finite_number(p_terms->'unit_price_yen'),-1)<0 or
+   private.site_payment_finite_number(p_terms->'unit_price_yen')<>trunc(private.site_payment_finite_number(p_terms->'unit_price_yen')) or
    coalesce(private.site_payment_finite_number(p_terms->'area'),-1)<0 then raise exception '平米単価と平米数が必要です。'; end if;
   amount:=private.site_payment_finite_number(p_terms->'unit_price_yen')*private.site_payment_finite_number(p_terms->'area');
   amount:=case rounding when 'floor' then floor(amount) when 'ceil' then ceil(amount) else round(amount) end;
