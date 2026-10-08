@@ -113,9 +113,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         await repository.markRead(item.id);
       }
       if (!mounted) return;
-      if (destination != null) {
+      final targetPage = destination;
+      if (targetPage != null) {
         await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => destination,
+          builder: (_) => targetPage,
         ));
         if (!mounted) return;
       } else {
