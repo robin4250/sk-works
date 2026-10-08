@@ -131,11 +131,16 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       ]))),
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('取消')),FilledButton(onPressed:(){
         if(manualTax && taxReason.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('消費税額を変更する理由を入力してください。'))); return; }
+        for(final extra in extras) {
+          final amount=num.tryParse(extra['amount_yen']!.text);
+          if(extra['name']!.text.trim().isEmpty && (amount==null || amount!=0)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('金額を入力した追加項目には名称も入力してください。'))); return; }
+        }
         final adjustments = [for(var i=0;i<extras.length;i++) if(extras[i]['name']!.text.trim().isNotEmpty) {'name':extras[i]['name']!.text.trim(),'amount_yen':num.tryParse(extras[i]['amount_yen']!.text),'direction':directions[i]}];
         final base=num.tryParse(fields['base_amount_yen']!.text);
         final tax=num.tryParse(fields['tax_amount_yen']!.text);
         if(base==null || !base.isFinite || tax==null || !tax.isFinite || adjustments.any((a)=>a['amount_yen']==null || !(a['amount_yen'] as num).isFinite)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('金額は数値で入力してください。'))); return; }
         final total=base+adjustments.fold<num>(0,(s,a)=>s+(a['amount_yen'] as num)*(a['direction']=='deduction'?-1:1))+(included?0:tax);
+        if(!total.isFinite || total<0) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('最終額は0円以上の有限の金額にしてください。加算・控除と消費税額を確認してください。'))); return; }
         Navigator.pop(context,<String,dynamic>{'mode':mode,'rounding_rule':rounding,'tax_included':included,if(manualTax) 'tax_override_reason':taxReason.text.trim(),for(final e in fields.entries) e.key:e.key.startsWith('period_')?e.value.text:num.tryParse(e.value.text),'adjustments':adjustments,'final_amount_yen':total});
       },child:const Text('提案を保存'))],
     )));
