@@ -254,8 +254,9 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
                       firstDate: DateTime(1900),
                       lastDate: DateTime(2100),
                     );
-                    if (selected != null && mounted)
+                    if (selected != null && mounted) {
                       setState(() => _hireDate = selected);
+                    }
                   },
           ),
           const SizedBox(height: 10),

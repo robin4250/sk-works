@@ -6,7 +6,7 @@ String read(String path) => File(path).readAsStringSync();
 
 void main() {
   test(
-    'payroll settings seed optional earnings deductions and payment day',
+    'individual payroll settings keep amounts and refer to company payment policy',
     () {
       final page = read(
         'lib/features/payroll/individual_payroll_settings_page.dart',
@@ -30,7 +30,9 @@ void main() {
         expect(migration, contains(label));
       }
 
-      expect(page, contains("'payment_day'"));
+      expect(page, contains('PayrollConfirmationRepository'));
+      expect(page, contains('PayrollConfirmationSettingsPage'));
+      expect(page, isNot(contains("values['payment_day']")));
       expect(page, contains("label: const Text('支給項目を追加')"));
       expect(page, contains("label: const Text('控除項目を追加')"));
       expect(migration, contains('payment_day integer not null default 25'));
