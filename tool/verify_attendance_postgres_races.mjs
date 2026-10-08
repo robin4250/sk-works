@@ -28,6 +28,8 @@ const id = (n) => `10000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 async function initialize() {
   await admin.query('drop schema if exists private cascade; drop schema if exists auth cascade; drop schema public cascade; create schema public');
   await admin.query(`do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; end $$`);
+  // DROP/CREATE public loses initdb's default PUBLIC schema usage grant.
+  await admin.query('grant usage on schema public to authenticated');
   await admin.query(read(fixtures + 'schema.sql').replace('create role anon; create role authenticated;', ''));
   for (const path of ['20261008042058_fix_managed_attendance_overnight_chronology.sql', '20261008124940_gps_shift_work_date_evidence.sql']) {
     await admin.query(read('supabase/migrations/' + path));

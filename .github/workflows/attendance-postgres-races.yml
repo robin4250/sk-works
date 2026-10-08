@@ -19,7 +19,7 @@ jobs:
           POSTGRES_DB: sko_race_fixture
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d sko_race_fixture"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
