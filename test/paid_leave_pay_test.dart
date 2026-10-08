@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/payroll/paid_leave_pay.dart';
+import 'package:sk_works/features/payroll/paid_leave_pay.dart';
 
 void main() {
   test('daily paid leave uses exactly one registered daily wage per day', () {

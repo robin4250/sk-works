@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
-import '../lib/features/payroll/payroll_pdf_service.dart';
-import '../lib/features/payroll/payroll_statement_repository.dart';
+import 'package:sk_works/features/payroll/payroll_pdf_service.dart';
+import 'package:sk_works/features/payroll/payroll_statement_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
