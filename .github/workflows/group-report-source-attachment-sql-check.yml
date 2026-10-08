@@ -1,0 +1,39 @@
+name: Group Report Source Attachment SQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*group_report_source_attachment.sql'
+      - 'supabase/tests/group_report_source_attachment_assertions.sql'
+      - 'tool/verify_group_report_source_attachment.mjs'
+      - '.github/workflows/group-report-source-attachment-sql-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*group_report_source_attachment.sql'
+      - 'supabase/tests/group_report_source_attachment_assertions.sql'
+      - 'tool/verify_group_report_source_attachment.mjs'
+      - '.github/workflows/group-report-source-attachment-sql-check.yml'
+
+concurrency:
+  group: group-report-source-attachment-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout immutable staged proxy checkout dependency
+        uses: actions/checkout@v4
+        with:
+          ref: fa44c2badcecddb501c5637d7ca6656b13b84b36
+          path: rollout-fixtures/group
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify scoped source/report attachment with real staged proxy RPCs
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_group_report_source_attachment.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" rollout-fixtures/group
