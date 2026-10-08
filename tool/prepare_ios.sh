@@ -26,10 +26,17 @@ if [[ -d ios/Runner.xcworkspace && -f ios/Runner.xcodeproj/project.pbxproj ]]; t
   echo "既存のiOSプロジェクトを再利用します。Signing Team設定を保持します。"
 else
   echo "iOSプロジェクトを新規生成します..."
-  flutter create . --platforms=ios --project-name sk_works --org com.skworks
+  (
+    # Flutter create rewrites the lock even with --no-pub. Preserve the caller's
+    # exact existing resolution, including any intentional local lock changes.
+    lock_backup=$(mktemp)
+    cp pubspec.lock "$lock_backup"
+    trap 'cp "$lock_backup" pubspec.lock; rm -f "$lock_backup"' EXIT
+    flutter create . --no-pub --platforms=ios --project-name sk_works --org com.skworks
+  )
 fi
 
-flutter pub get
+flutter pub get --enforce-lockfile
 
 
 APPICON_DIR="ios/Runner/Assets.xcassets/AppIcon.appiconset"
@@ -569,4 +576,4 @@ echo "4. Bundle Identifier: $BUNDLE_ID"
 echo "5. iPhoneをUSB接続して信頼"
 echo "6. bash tool/ios_install_assistant.sh"
 echo "7. bash tool/run_ios_device.sh"
-echo "※ Xcodeの▶︎ RunもRelease構成です。Debug/Hot Reloadは bash tool/run_ios_device_debug.sh"
+echo "※ Xcodeの▶︎ RunもRelease構成です。実機導入は上記のRelease手順で行います。"
