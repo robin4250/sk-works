@@ -14,14 +14,14 @@ void main() {
       source.indexOf('git fetch --quiet origin main'),
       lessThan(source.indexOf('git rev-parse FETCH_HEAD')),
     );
-    expect(source, contains('ローカルHEADは取得したmainと一致'));
+    expect(source, contains(r'if [[ "$local_full" == "$remote_full" ]]; then'));
     expect(
       source,
-      contains('detached HEADですが取得したmainと同一コミット'),
+      contains(r'elif [[ -z "$branch_name" ]]; then'),
     );
     expect(
       source,
-      contains('ローカルmainが取得したmainより古いです'),
+      contains(r'git merge-base --is-ancestor "$local_full" "$remote_full"'),
     );
     expect(
       source,
