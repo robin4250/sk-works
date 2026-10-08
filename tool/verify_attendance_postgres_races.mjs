@@ -105,6 +105,35 @@ try {
 
   await a.query('reset role'); await b.query('reset role');
   await initialize();
+  // Deletion cascades and driver meter writes must use a consistent lock order.
+  await a.query(startSql, [id(61), id(1), id(12), id(4), id(5), id(2)]);
+  await a.query(`insert into attendance_verifications(company_id,worker_id,site_id,vehicle_id,event_type,verification_mode,confirmed_at,source_clock_in_id,created_by) values($1,$2,$3,$4,'clock_out','manual','2026-02-01 05:00+09',$5,$6)`,
+    [id(1), id(12), id(4), id(5), id(61), id(2)]);
+  await b.query('reset role');
+  await admin.query('begin');
+  await admin.query('select 1 from vehicles where id=$1 for update', [id(5)]);
+  const deletionRace = Promise.allSettled([
+    a.query('select public.record_vehicle_driver_meter($1,$2,1050,null) result', [id(61), id(62)]),
+    b.query('delete from vehicles where id=$1 returning id', [id(5)]),
+  ]);
+  await waitBothBlocked();
+  await admin.query('commit');
+  const deletionResults = await deletionRace;
+  assert.equal(deletionResults[1].status, 'fulfilled');
+  assert.equal(deletionResults[1].value.rowCount, 1);
+  if (deletionResults[0].status === 'rejected') {
+    // Deletion winning the race invalidates the claim; it is a clear business
+    // validation failure, never a deadlock or partially committed meter event.
+    assert.equal(deletionResults[0].reason.code, 'P0001');
+  }
+  assert.equal((await admin.query('select count(*)::int n from vehicle_meter_events')).rows[0].n,
+    deletionResults[0].status === 'fulfilled' ? 1 : 0);
+  assert.equal((await admin.query('select count(*)::int n from private.vehicle_meter_notice_outbox')).rows[0].n, 0);
+  assert.equal((await admin.query('select count(*)::int n from vehicle_usage_claims')).rows[0].n, 0);
+  console.log('PASS meter versus vehicle deletion: serialization or explicit validation, no deadlock/partial meter event');
+  await a.query('reset role');
+  await initialize();
+
   // Group test excludes vehicle claims: vehicle/group ON compatibility remains separate.
   await a.query(startSql, [id(31), id(1), id(12), id(4), null, id(2)]);
   await b.query(startSql, [id(32), id(1), id(13), id(4), null, id(3)]);
