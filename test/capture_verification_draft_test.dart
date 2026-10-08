@@ -6,7 +6,8 @@ void main() {
     'company_id': 'company', 'worker_id': 'worker', 'created_by': 'actor',
     'site_id': 'site', 'source_clock_in_id': 'source',
     'verification_mode': 'location_photo', 'capture_contract_version': 1,
-    'gps_captured_at': '2026-10-31T22:00:00.000Z', 'photo_status': 'uploaded',
+    'gps_captured_at': '2026-10-31T22:00:00.000Z',
+    'gps_capture_status': 'acquired', 'photo_capture_status': 'uploaded',
     'photo_storage_path': 'company/owned.jpg', 'latitude': 35.0, 'longitude': 139.0,
   });
   Map<String, dynamic> saved(CaptureVerificationDraft d) => {...d.payload,
@@ -41,7 +42,8 @@ void main() {
   });
   test('different source or photo cannot recover even with the same ID', () async {
     final d = draft();
-    for (final key in ['source_clock_in_id', 'photo_storage_path', 'company_id', 'worker_id']) {
+    for (final key in ['source_clock_in_id', 'photo_storage_path', 'company_id', 'worker_id',
+      'photo_capture_status', 'gps_capture_status']) {
       final row = saved(d)..[key] = 'different';
       await expectLater(recoverOrInsertCaptureDraft(d, readExact: () async => row,
         insert: () async => throw StateError('must not insert')), throwsStateError);

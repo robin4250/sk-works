@@ -582,7 +582,7 @@ class DailyReportRepository {
     }
     var query = _client.from('attendance_verifications').select(
       'id,event_type,confirmed_at,photo_storage_path,latitude,longitude,accuracy_m,workers(name)'
-      '${captureEnabled ? ',capture_contract_version,gps_status,photo_status,gps_captured_at,photo_captured_at,captured_address' : ''}');
+      '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,captured_address' : ''}');
     if (!captureEnabled) { query = query.not('photo_storage_path', 'is', null); }
     query = siteId != null
         ? query.eq('site_id', siteId)
@@ -613,8 +613,8 @@ class DailyReportRepository {
                         ?.toLocal() ??
                     DateTime.fromMillisecondsSinceEpoch(0),
             storagePath: raw['photo_storage_path']?.toString() ?? '',
-            gpsStatus: raw['gps_status']?.toString(),
-            photoStatus: raw['photo_status']?.toString(),
+            gpsStatus: raw['gps_capture_status']?.toString(),
+            photoStatus: raw['photo_capture_status']?.toString(),
             capturedAddress: raw['captured_address']?.toString(),
             gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
             photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
