@@ -55,8 +55,10 @@ void main() {
     expect(repo, contains(r"static String _subAdminKey(String key) => 'subadmin_home:$key'"));
     expect(repo, contains('loadSubAdminHomeStates'));
     expect(repo, contains('setSubAdminHomeEnabled'));
-    expect(page, contains("'サブ管理者に表示する機能'"));
+    expect(page, contains("'既存のサブ管理者共通表示設定（保管中）'"));
     expect(page, contains('CheckboxListTile'));
+    expect(page, contains('onChanged: null'));
+    expect(page, isNot(contains('repository.setSubAdminHomeEnabled')));
     expect(
       app,
       contains(

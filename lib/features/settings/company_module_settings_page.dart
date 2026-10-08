@@ -78,7 +78,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
     SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(SkoLanguageController.tr('利用機能のON／OFF（保管中）')),
+        title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
         actions: [
           IconButton(
             tooltip: 'この画面について',

@@ -9,7 +9,7 @@ void main() {
     final admin = MenuHelpCatalog.visibleFor(role: ManualRole.admin);
     String details(String key) => admin.singleWhere((item) => item.key == key).details;
     expect(details('company_documents'), contains('個別の給与単価は個別給与設定'));
-    expect(details('company_modules'), contains('OFFでも登録データは残り'));
+    expect(admin.where((item) => item.key == 'company_modules'), isEmpty);
     expect(details('payroll'), contains('同一PDF'));
     expect(details('payroll'), contains('実際の確認日時'));
     expect(details('payroll'), contains('夜間割増'));

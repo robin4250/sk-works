@@ -35,9 +35,13 @@ void main() {
     final normalized = app.replaceAll(RegExp(r'\s+'), ' ');
     expect(normalized, contains("if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))"));
     expect(normalized, contains("if (key == 'settings' || key == 'company_documents' || key == 'company_modules')"));
-    expect(normalized, contains("if (_isAdmin) _MenuAction( key: 'company_modules'"));
-    expect(normalized, contains("if (key == 'company_modules' && !_isAdmin)"));
-    expect(normalized, contains('page = const CompanyModuleSettingsPage();'));
+    expect(normalized, isNot(contains("key: 'company_modules'")));
+    expect(normalized, contains("if (key == 'company_modules')"));
+    expect(normalized, isNot(contains('page = const CompanyModuleSettingsPage();')));
+    final settings = File('lib/features/settings/settings_page.dart').readAsStringSync();
+    final masterSection = settings.substring(settings.indexOf('if (_isMasterAdmin) ...['));
+    expect(masterSection, contains('child: CompanyModuleSettingsPage()'));
+    expect(masterSection, contains('MasterProtectedPage('));
     final repository = File('lib/features/settings/company_module_settings_repository.dart').readAsStringSync();
     expect(repository, isNot(contains('.delete(')));
     expect(repository, contains("membership.role != 'owner' && membership.role != 'admin'"));
