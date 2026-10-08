@@ -6,7 +6,11 @@ if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
     url.pathname !== '/sko_race_fixture') {
   throw new Error('Only local disposable sko_race_fixture database is permitted');
 }
-const { Client } = await import(process.argv[2]);
+const pgModule = await import(process.argv[2]);
+const Client = pgModule.Client ?? pgModule.default?.Client;
+if (typeof Client !== 'function') {
+  throw new Error('The pg runtime does not export a Client constructor');
+}
 const connections = [];
 async function connect(name) {
   const client = new Client({ connectionString, application_name: name });
