@@ -997,7 +997,7 @@ class PayrollPdfService {
       return direct.toString().trim();
     }
     if (label == '有給支給額' && detail['有給単価'] != null) {
-      return '${_number(_asNumber(detail['有給単価']) ?? 0)}円 × ${detail['有給日数'] ?? 0}日';
+      return '${_number((_asNumber(detail['有給単価']) ?? 0).round())}円 × ${detail['有給日数'] ?? 0}日';
     }
     if (label == '基本給') {
       return _payTypeLabel(detail) == '月給' ? '月固定給' : '勤務実績 × 基本単価';
