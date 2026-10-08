@@ -104,14 +104,18 @@ void main() {
     expect(repository, contains("line['work_content']"));
     expect(repository, contains("'通常作業'"));
     expect(pdf, contains('line.siteLabel.trim().isNotEmpty'));
-    expect(pdf, contains('line.workContent ?? line.label'));
+    expect(pdf, contains('line.displayWorkContent'));
+    expect(
+      read('lib/domain/invoice_engine.dart'),
+      contains('String get displayWorkContent'),
+    );
     expect(sql, contains("'work_content','夜間作業'"));
     expect(sql, contains("'work_content','（手当て）'"));
     expect(sql, contains("'work_content','（残業）'"));
     expect(sql, contains("'work_content','（法定福利費）'"));
     expect(sql, contains("'work_content','（消費税）'"));
     expect(sql, contains('*1.5'));
-    expect(pdf, contains('content: (line.workContent ?? line.label).trim()'));
+    expect(pdf, contains('content: _displayLineLabel(line, site)'));
     final latest = read(
       'supabase/migrations/20261005152000_invoice_allowance_and_early_rows.sql',
     );

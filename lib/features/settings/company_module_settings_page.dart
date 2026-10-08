@@ -1,3 +1,4 @@
+import '../../international/language_controller.dart';
 import 'package:flutter/material.dart';
 
 import 'company_module_settings_repository.dart';
@@ -76,7 +77,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
       if (!mounted) return;
       setState(() => _states = {..._states, key: previous});
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('モジュール設定を保存できませんでした: $error')),
+        SnackBar(content: Text(SkoLanguageController.trParams('モジュール設定を保存できませんでした: {error}', {'error': error}))),
       );
     }
   }
@@ -94,39 +95,40 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
       if (!mounted) return;
       setState(() => _subAdminStates = {..._subAdminStates, key: previous});
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('サブ管理者表示設定を保存できませんでした: $error')),
+        SnackBar(content: Text(SkoLanguageController.trParams('サブ管理者表示設定を保存できませんでした: {error}', {'error': error}))),
       );
     }
   }
 
   String _subAdminLabel(String key) => switch (key) {
-        'people' => '社員データ',
-        'company_deliveries' => '協力会社',
-        'vehicle_routes' => '車両ルート',
-        'employee_register' => '従業員登録',
-        'approvals' => '承認待ち',
-        'documents' => '必要書類',
-        'employee_qualifications' => '従業員資格',
-        'signatures' => 'サイン一覧',
+        'people' => SkoLanguageController.tr('社員データ'),
+        'company_deliveries' => SkoLanguageController.tr('協力会社'),
+        'vehicle_routes' => SkoLanguageController.tr('車両ルート'),
+        'employee_register' => SkoLanguageController.tr('従業員登録'),
+        'approvals' => SkoLanguageController.tr('承認待ち'),
+        'documents' => SkoLanguageController.tr('必要書類'),
+        'employee_qualifications' => SkoLanguageController.tr('従業員資格'),
+        'signatures' => SkoLanguageController.tr('サイン一覧'),
         _ => key,
       };
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('利用機能の設定'),
+        title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
         actions: [
           IconButton(
-            tooltip: '再読み込み',
+            tooltip: SkoLanguageController.tr('再読み込み'),
             onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(child: CircularProgressIndicator())
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -135,18 +137,18 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         _canManage
-                            ? '使わない機能をOFFにしても、過去のデータは削除されません。必要になったら再びONにできます。'
-                            : '利用機能の状態を確認できます。変更は会社のオーナーまたは管理者のみ行えます。',
+                            ? SkoLanguageController.tr('会社全員に共通の設定です。使う機能はON、使わない機能はOFFにしてください。OFFでも登録データは残り、ONに戻すと再び利用できます。')
+                            : SkoLanguageController.tr('会社共通の利用機能を確認できます。ON／OFFの変更は管理者が行います。'),
                       ),
                     ),
                   ),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          _error!,
+                          SkoLanguageController.tr(_error!),
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
                           ),
@@ -154,37 +156,37 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   Text(
-                    '常に利用する基本機能',
+                    SkoLanguageController.tr('常に利用する基本機能'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   for (final module
                       in [ProductModules.people, ProductModules.settings])
                     Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: const Icon(Icons.lock_outline),
-                        title: Text(module.label),
-                        subtitle: Text(module.description),
-                        trailing: const Text('ON'),
+                        leading: Icon(Icons.lock_outline),
+                        title: Text(SkoLanguageController.tr(module.label)),
+                        subtitle: Text(SkoLanguageController.tr(module.description)),
+                        trailing: Text(SkoLanguageController.tr('ON')),
                       ),
                     ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                   Text(
-                    'サブ管理者に表示する機能',
+                    SkoLanguageController.tr('サブ管理者に表示する機能'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '一般ユーザー用・閲覧者用は自動で表示されます。下記はチェックONの項目だけサブ管理者へ表示します。',
+                  SizedBox(height: 4),
+                  Text(
+                    SkoLanguageController.tr('一般ユーザー用・閲覧者用は自動で表示されます。下記はチェックONの項目だけサブ管理者へ表示します。'),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   for (final key
                       in CompanyModuleSettingsRepository.subAdminHomeKeys)
                     Card(
@@ -197,20 +199,20 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                             : null,
                       ),
                     ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                   Text(
-                    '任意機能',
+                    SkoLanguageController.tr('会社で使う機能（ON／OFF）'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   for (final module in ProductModules.optional)
                     Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: SwitchListTile(
-                        title: Text(module.label),
-                        subtitle: Text(module.description),
+                        title: Text(SkoLanguageController.tr(module.label)),
+                        subtitle: Text(SkoLanguageController.tr(module.description)),
                         value: _states[module.key] ?? true,
                         onChanged: _canManage
                             ? (enabled) => _setEnabled(module.key, enabled)

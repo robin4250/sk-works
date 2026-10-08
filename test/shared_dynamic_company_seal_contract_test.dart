@@ -22,15 +22,11 @@ void main() {
       );
       final bytes = await pdf.save();
       expect(bytes.length, greaterThan(1000));
-      for (final name in [
-        'original-use-instructions.txt',
-        'original-font-description.pdf',
-        'original-font-description.doc',
-      ]) {
+      for (final name in ['OFL.txt', 'README.md']) {
         expect(
           File('assets/fonts/company-seal/$name').existsSync(),
           isTrue,
-          reason: 'Original redistribution documentation must accompany font',
+          reason: 'Font license documentation must accompany bundled font',
         );
       }
     },

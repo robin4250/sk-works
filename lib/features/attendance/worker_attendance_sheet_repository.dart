@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'attendance_work_date.dart';
 
 class AttendanceWorker {
   const AttendanceWorker({required this.id, required this.name});
@@ -18,6 +19,8 @@ class WorkerAttendanceDay {
     this.overtimeHours = 0,
     this.earlyHours = 0,
     this.nightHours = 0,
+    this.manDays = 0,
+    this.hasHolidayWork = false,
     this.allowanceYen = 0,
     this.allowanceNames = const <String>[],
     this.allowanceUnits = const <String, String>{},
@@ -33,6 +36,8 @@ class WorkerAttendanceDay {
   final double overtimeHours;
   final double earlyHours;
   final double nightHours;
+  final double manDays;
+  final bool hasHolidayWork;
   final int allowanceYen;
   final List<String> allowanceNames;
   final Map<String, String> allowanceUnits;
@@ -42,8 +47,15 @@ class WorkerAttendanceDay {
 
   bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
 
-  bool get worked =>
-      (siteName?.trim().isNotEmpty ?? false) || clockIn != null || clockOut != null;
+  bool get worked => attendanceDayHasWorkedData(
+    manDays: manDays,
+    overtimeHours: overtimeHours,
+    earlyHours: earlyHours,
+    nightHours: nightHours,
+    siteName: siteName,
+    clockIn: clockIn,
+    clockOut: clockOut,
+  );
 }
 
 class WorkerAttendanceMonth {
@@ -60,6 +72,11 @@ class WorkerAttendanceMonth {
   final Map<String, String> allowanceUnits;
 
   int get workedDays => days.values.where((day) => day.worked).length;
+  /// Calendar days and billable man-days are intentionally separate units.
+  double get manDays => days.values.fold(0, (sum, day) => sum + day.manDays);
+  int get holidayWorkedDays =>
+      days.values.where((day) => day.hasHolidayWork && day.worked).length;
+
   int get paidLeaveDays => days.values.where((day) => day.paidLeave).length;
 
   double get overtimeHours =>
@@ -192,7 +209,7 @@ class WorkerAttendanceSheetRepository {
     final attendanceRows = await _client
         .from('attendance_entries')
         .select(
-          'id, work_date, site_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
+          'id, work_date, site_id, base_man_days, work_category, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
         )
         .eq('worker_id', targetWorkerId)
         .gte('work_date', startText)
@@ -202,11 +219,11 @@ class WorkerAttendanceSheetRepository {
     final verificationRows = await _client
         .from('attendance_verifications')
         .select(
-          'event_type, confirmed_at, site_id, sites(name)',
+          'event_type, confirmed_at, site_id, sites(name), daily_reports(report_date)',
         )
         .eq('worker_id', targetWorkerId)
         .gte('confirmed_at', start.toUtc().toIso8601String())
-        .lt('confirmed_at', end.toUtc().toIso8601String())
+        .lt('confirmed_at', end.add(const Duration(days: 1)).toUtc().toIso8601String())
         .order('confirmed_at');
 
     final drafts = <DateTime, _DayDraft>{};
@@ -221,6 +238,12 @@ class WorkerAttendanceSheetRepository {
       final site = row['sites'];
       if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
         draft.siteName ??= site['name'].toString();
+      }
+      final manDays = _number(row['base_man_days']);
+      draft.manDays += manDays;
+      if (manDays > 0 &&
+          const ['holiday', 'holiday_night'].contains(row['work_category'])) {
+        draft.hasHolidayWork = true;
       }
       draft.overtimeHours += _number(row['overtime_hours']);
       draft.earlyHours += _number(row['early_hours']);
@@ -241,7 +264,8 @@ class WorkerAttendanceSheetRepository {
       final row = Map<String, dynamic>.from(raw);
       final confirmed = DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
       if (confirmed == null) continue;
-      final key = _dateOnly(confirmed);
+      final key = attendanceEventWorkDate(confirmed, row['daily_reports']);
+      if (key.isBefore(start) || !key.isBefore(end)) continue;
       final draft = drafts.putIfAbsent(key, () => _DayDraft(key));
 
       final site = row['sites'];
@@ -346,16 +370,23 @@ class _DayDraft {
   double overtimeHours = 0;
   double earlyHours = 0;
   double nightHours = 0;
+  double manDays = 0;
+  bool hasHolidayWork = false;
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
   bool paidLeave = false;
   int paidLeaveOrdinal = 0;
   double paidLeaveRemaining = 0;
 
-  bool get hasWorkedData =>
-      (siteName?.trim().isNotEmpty ?? false) ||
-      clockIn != null ||
-      clockOut != null;
+  bool get hasWorkedData => attendanceDayHasWorkedData(
+    manDays: manDays,
+    overtimeHours: overtimeHours,
+    earlyHours: earlyHours,
+    nightHours: nightHours,
+    siteName: siteName,
+    clockIn: clockIn,
+    clockOut: clockOut,
+  );
 
   WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
       WorkerAttendanceDay(
@@ -366,6 +397,8 @@ class _DayDraft {
         overtimeHours: overtimeHours,
         earlyHours: earlyHours,
         nightHours: nightHours,
+        manDays: manDays,
+        hasHolidayWork: hasHolidayWork,
         allowanceYen: allowanceYen,
         allowanceNames: List<String>.unmodifiable(allowanceNames),
         allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),

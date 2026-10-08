@@ -2,6 +2,14 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+// Formatting may split translated widget arguments across lines.
+Matcher containsUi(String expected) => predicate<String>(
+  (source) => source.replaceAll(RegExp(r'\s+'), '').contains(
+    expected.replaceAll(RegExp(r'\s+'), ''),
+  ),
+  'contains translated UI contract: $expected',
+);
+
 void main() {
   test('company rate settings stay behind admin RPCs', () {
     final sql = File(
@@ -29,9 +37,9 @@ void main() {
     expect(page, contains('早出単価'));
     expect(page, contains('夜勤単価'));
     expect(page, contains('休日出勤単価'));
-    expect(page, contains(r'手当$number 名称'));
-    expect(page, contains("labelText: '手当\$number 単位'"));
-    expect(page, contains("hintText: '回・日・時間・件など'"));
+    expect(page, containsUi("SkoLanguageController.trParams('手当{number} 名称', {'number': number})"));
+    expect(page, containsUi("labelText: SkoLanguageController.trParams('手当{number} 単位', {'number': number})"));
+    expect(page, containsUi("hintText: SkoLanguageController.tr('回・日・時間・件など')"));
     expect(page, contains('週間表示・カレンダー表示・月集計に反映'));
     expect(page, contains('_allowance1Unit'));
     expect(page, contains('_allowance2Unit'));

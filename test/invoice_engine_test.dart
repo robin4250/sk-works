@@ -2,6 +2,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 
 void main() {
+  test('saved welfare and tax rows do not enter the welfare base twice', () {
+    final site = SiteInvoiceCalculation.fromSavedDetails(
+      siteId: 'site',
+      siteName: '現場',
+      welfareRateBps: 300,
+      subtotalYen: 103000,
+      lines: const [
+        InvoiceLine(label: '通常作業', quantity: 8, unitPriceYen: 12500),
+        InvoiceLine(
+          label: '（法定福利費）',
+          workContent: '',
+          quantity: 0,
+          unitPriceYen: 0,
+          amountYenOverride: 3000,
+        ),
+        InvoiceLine(
+          label: '（消費税）',
+          workContent: '',
+          quantity: 0,
+          unitPriceYen: 0,
+          amountYenOverride: 10300,
+        ),
+      ],
+    );
+    expect(site.baseAmountYen, 100000);
+    expect(site.welfareAmountYen, 3000);
+    expect(site.subtotalYen, 103000);
+    final invoice = InvoiceEngine.calculate(
+      customerId: '登録会社',
+      customerPhone: '03-1234-5678',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.consolidatedOnly,
+      sites: [site],
+    );
+    expect(invoice.grandTotalYen, 113300);
+    expect(invoice.customerPhone, '03-1234-5678');
+    expect(site.lines.last.amountYen, 10300);
+  });
   test(
     'recipient details are optional and pass through without fabrication',
     () {

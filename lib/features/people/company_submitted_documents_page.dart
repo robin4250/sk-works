@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../common/data_date_labels.dart';
+import '../../international/language_controller.dart';
+import '../payroll/payroll_confirmation_settings_page.dart';
+import '../settings/company_module_settings_page.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
 import 'company_transfer_send_page.dart';
@@ -88,7 +91,15 @@ class _CompanySubmittedDocumentsPageState
 
   Future<void> _load() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = '会社データを取得できません。ログイン状態を確認してください。';
+        });
+      }
+      return;
+    }
     try {
       final results = await Future.wait<Object>([
         repository.listDocuments(),
@@ -105,8 +116,10 @@ class _CompanySubmittedDocumentsPageState
       _companyEmail.text = company['email']?.toString() ?? '';
       _bankName.text = company['bank_name']?.toString() ?? '';
       _bankBranch.text = company['bank_branch']?.toString() ?? '';
-      _bankAccountNumber.text = company['bank_account_number']?.toString() ?? '';
-      _bankAccountHolder.text = company['bank_account_holder']?.toString() ?? '';
+      _bankAccountNumber.text =
+          company['bank_account_number']?.toString() ?? '';
+      _bankAccountHolder.text =
+          company['bank_account_holder']?.toString() ?? '';
       setState(() {
         _documents = rows;
         _selected.removeWhere(
@@ -126,6 +139,7 @@ class _CompanySubmittedDocumentsPageState
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('会社データ'),
@@ -151,89 +165,110 @@ class _CompanySubmittedDocumentsPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(child: Text(_error!, textAlign: TextAlign.center))
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _companyDataCard(),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Text(
-                            '書類',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                          ),
-                          const Spacer(),
-                          OutlinedButton.icon(
-                            onPressed: _busy ? null : _create,
-                            icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('追加'),
-                          ),
-                        ],
+            ? Center(child: Text(_error!, textAlign: TextAlign.center))
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _companyDataCard(),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.toggle_on_outlined),
+                      title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
+                      subtitle: Text(SkoLanguageController.tr('会社共通。OFFでも登録データは残ります。')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _busy ? null : () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(builder: (_) => const CompanyModuleSettingsPage()),
                       ),
-                      const SizedBox(height: 8),
-                      if (_documents.isEmpty)
-                        const Card(
-                          child: Padding(
-                            padding: EdgeInsets.all(18),
-                            child: Text('会社提出書類はまだ登録されていません'),
-                          ),
-                        ),
-                      for (final row in _documents) _documentCard(row),
-                      if (false && _selected.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        Text(
-                          '上位会社へ送信（' + _selected.length.toString() + '件）',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _receiveCode,
-                          decoration: const InputDecoration(
-                            labelText: '上位会社の受取コード',
-                            prefixIcon: Icon(Icons.vpn_key_outlined),
-                          ),
-                          onChanged: (_) =>
-                              setState(() => _targetCompany = null),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _resolveTarget,
-                          icon: const Icon(Icons.verified_outlined),
-                          label: const Text('送信先会社を確認'),
-                        ),
-                        if (_targetCompany != null)
-                          ListTile(
-                            leading: const Icon(Icons.business_outlined),
-                            title: const Text('送信先'),
-                            subtitle: Text(
-                              _targetCompany!,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.event_available_outlined),
+                      title: Text(SkoLanguageController.tr('給与の締め日・給料日・確認者')),
+                      subtitle: Text(SkoLanguageController.tr('会社共通の給与設定')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _busy
+                          ? null
+                          : () => Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const PayrollConfirmationSettingsPage(),
+                              ),
                             ),
-                          ),
-                        TextField(
-                          controller: _note,
-                          maxLines: 3,
-                          maxLength: 2000,
-                          decoration:
-                              const InputDecoration(labelText: '案内・メモ（任意）'),
-                        ),
-                        FilledButton.icon(
-                          onPressed: _busy || _targetCompany == null
-                              ? null
-                              : _confirmSend,
-                          icon: const Icon(Icons.send_outlined),
-                          label: const Text('内容を確認して送信'),
-                        ),
-                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Text(
+                        '書類',
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const Spacer(),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _create,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('追加'),
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (_documents.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(18),
+                        child: Text('会社提出書類はまだ登録されていません'),
+                      ),
+                    ),
+                  for (final row in _documents) _documentCard(row),
+                  if (false && _selected.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      '上位会社へ送信（' + _selected.length.toString() + '件）',
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _receiveCode,
+                      decoration: const InputDecoration(
+                        labelText: '上位会社の受取コード',
+                        prefixIcon: Icon(Icons.vpn_key_outlined),
+                      ),
+                      onChanged: (_) => setState(() => _targetCompany = null),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _resolveTarget,
+                      icon: const Icon(Icons.verified_outlined),
+                      label: const Text('送信先会社を確認'),
+                    ),
+                    if (_targetCompany != null)
+                      ListTile(
+                        leading: const Icon(Icons.business_outlined),
+                        title: const Text('送信先'),
+                        subtitle: Text(
+                          _targetCompany!,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    TextField(
+                      controller: _note,
+                      maxLines: 3,
+                      maxLength: 2000,
+                      decoration: const InputDecoration(labelText: '案内・メモ（任意）'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _busy || _targetCompany == null
+                          ? null
+                          : _confirmSend,
+                      icon: const Icon(Icons.send_outlined),
+                      label: const Text('内容を確認して送信'),
+                    ),
+                  ],
+                ],
+              ),
       ),
     );
   }
@@ -247,9 +282,8 @@ class _CompanySubmittedDocumentsPageState
           children: [
             Text(
               '会社情報',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 12),
             _companyField(_companyName, '会社名'),
@@ -318,8 +352,7 @@ class _CompanySubmittedDocumentsPageState
   Future<void> _saveCompanyData() async {
     final repository = _repository;
     if (repository == null || _busy) return;
-    final corporate =
-        _corporateNumber.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final corporate = _corporateNumber.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (corporate.isNotEmpty && corporate.length != 13) {
       setState(() => _error = '法人番号は13桁で入力してください。');
       return;
@@ -342,9 +375,8 @@ class _CompanySubmittedDocumentsPageState
         bankAccountHolder: _bankAccountHolder.text,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('会社データを保存しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('会社データを保存しました')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = '会社データを保存できませんでした: $error');
@@ -365,12 +397,12 @@ class _CompanySubmittedDocumentsPageState
             onChanged: path.isEmpty
                 ? null
                 : (value) => setState(() {
-                      if (value == true) {
-                        _selected.add(id);
-                      } else {
-                        _selected.remove(id);
-                      }
-                    }),
+                    if (value == true) {
+                      _selected.add(id);
+                    } else {
+                      _selected.remove(id);
+                    }
+                  }),
             title: Text(
               row['name']?.toString() ?? '会社提出書類',
               style: const TextStyle(fontWeight: FontWeight.w800),
@@ -452,8 +484,7 @@ class _CompanySubmittedDocumentsPageState
 
   Future<_DocumentDraft?> _metadataDialog({Map<String, dynamic>? row}) async {
     final name = TextEditingController(text: row?['name']?.toString() ?? '');
-    final notes =
-        TextEditingController(text: row?['notes']?.toString() ?? '');
+    final notes = TextEditingController(text: row?['notes']?.toString() ?? '');
     DateTime? expiresAt = _parseDate(row?['expires_at']);
     final result = await showDialog<_DocumentDraft>(
       context: context,
@@ -694,9 +725,8 @@ class _CompanySubmittedDocumentsPageState
         note: _note.text,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(target + 'へ会社提出書類を送信しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(target + 'へ会社提出書類を送信しました')));
       setState(() {
         _selected.clear();
         _targetCompany = null;
@@ -741,8 +771,9 @@ class _CompanySubmittedDocumentsPageState
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex =
-        bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+    final hex = bytes
+        .map((value) => value.toRadixString(16).padLeft(2, '0'))
+        .join();
     return hex.substring(0, 8) +
         '-' +
         hex.substring(8, 12) +

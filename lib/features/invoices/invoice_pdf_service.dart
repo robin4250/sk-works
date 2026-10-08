@@ -124,29 +124,55 @@ class InvoicePdfService {
         ..writeln('御請求書')
         ..writeln(invoice.billingPeriod)
         ..writeln('${invoice.customerId} 御中');
+      if (invoice.customerPostalCode.trim().isNotEmpty) {
+        buffer.writeln('〒${invoice.customerPostalCode}');
+      }
+      if (invoice.customerAddress.trim().isNotEmpty) {
+        buffer.writeln(invoice.customerAddress);
+      }
+      if (invoice.customerPhone.trim().isNotEmpty) {
+        buffer.writeln('TEL ${invoice.customerPhone}');
+      }
       for (final site in invoice.siteCalculations) {
         buffer.writeln(site.siteName);
         for (final line in site.lines) {
           buffer.writeln(
-            '${line.label} ${_quantity(line.quantity)} × '
-            '${_yen(line.unitPriceYen)} = ${_yen(line.amountYen)}',
+            '${_displayLineLabel(line, site)} ${_quantity(line.quantity)} × '
+            '${_visibleYen(line.unitPriceYen)} = ${_visibleYen(line.amountYen)}',
           );
         }
-        if (site.welfareAmountYen != 0) {
-          buffer.writeln('法定福利費 ${_yen(site.welfareAmountYen)}');
+        if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
+          buffer.writeln(
+            '${_welfareLabel(site.welfareRateBps)} ${_yen(site.welfareAmountYen)}',
+          );
         }
         if (site.manualAdjustmentYen != 0) {
           buffer.writeln('値引き・調整 ${_yen(site.manualAdjustmentYen)}');
         }
       }
       buffer
-        ..writeln('計 ${_yen(invoice.subtotalYen)}')
-        ..writeln('消費税 ${_yen(invoice.taxYen)}')
-        ..writeln('合計(税込) ${_yen(invoice.grandTotalYen)}')
-        ..writeln('請求合計 ${_yen(invoice.grandTotalYen)}');
+        ..writeln('計 ${_visibleYen(invoice.subtotalYen)}')
+        ..writeln('消費税 ${_visibleYen(invoice.taxYen)}')
+        ..writeln('合計(税込) ${_visibleYen(invoice.grandTotalYen)}')
+        ..writeln('請求合計 ${_visibleYen(invoice.grandTotalYen)}');
     }
     return buffer.toString();
   }
+
+  static bool _isWelfareLine(InvoiceLine line) {
+    final label = line.displayWorkContent.replaceAll(RegExp(r'[（）()\s]'), '');
+    return line.category == 'welfare' || label == '法定福利費' || label == '福利厚生費';
+  }
+
+  static String _welfareLabel(int rateBps) =>
+      rateBps > 0 ? '福利厚生費（${_quantity(rateBps / 100)}%）' : '福利厚生費';
+
+  static String _displayLineLabel(
+    InvoiceLine line,
+    SiteInvoiceCalculation site,
+  ) => _isWelfareLine(line)
+      ? _welfareLabel(site.welfareRateBps)
+      : line.displayWorkContent.trim();
 
   // Adopted invoice v8 uses absolute A4 coordinates in PDF points.
   static List<_InvoiceFormRow> _detailRows(InvoiceCalculationResult invoice) {
@@ -159,20 +185,20 @@ class InvoicePdfService {
             siteName: line.siteLabel.trim().isNotEmpty
                 ? line.siteLabel
                 : (i == 0 ? site.siteName : '〃'),
-            content: (line.workContent ?? line.label).trim(),
+            content: _displayLineLabel(line, site),
             quantity: line.quantity == 0 ? '' : _quantity(line.quantity),
             unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
-                ? line.unitPriceText!
-                : _number(line.unitPriceYen),
-            amount: _number(line.amountYen),
+                ? _visiblePriceText(line.unitPriceText!)
+                : _visibleNumber(line.unitPriceYen),
+            amount: _visibleNumber(line.amountYen),
           ),
         );
       }
-      if (site.welfareAmountYen != 0) {
+      if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
         rows.add(
           _InvoiceFormRow(
             siteName: '〃',
-            content: '法定福利費',
+            content: _welfareLabel(site.welfareRateBps),
             quantity: '',
             unitPrice: '',
             amount: _number(site.welfareAmountYen),
@@ -370,15 +396,39 @@ class InvoicePdfService {
     if (invoice.customerPostalCode.trim().isNotEmpty) {
       text('〒${invoice.customerPostalCode}', 38, 133, 246, letterSpacing: .64);
     }
+    final hasCustomerPhone = invoice.customerPhone.trim().isNotEmpty;
     if (invoice.customerAddress.trim().isNotEmpty) {
-      text(invoice.customerAddress, 38, 148, 246, h: 30, lineSpacing: 4.864);
+      if (hasCustomerPhone) {
+        text(
+          invoice.customerAddress,
+          38,
+          146,
+          246,
+          size: 6.5,
+          h: 23,
+          lineSpacing: 1.588,
+        );
+      } else {
+        text(invoice.customerAddress, 38, 148, 246, h: 30, lineSpacing: 4.864);
+      }
+    }
+    if (hasCustomerPhone) {
+      text(
+        'TEL ${invoice.customerPhone}',
+        38,
+        168,
+        246,
+        size: 6,
+        h: 10,
+        maxLines: 1,
+      );
     }
     box(316, 80, right - 316, 55);
     box(316, 80, 104, 31, fill: blue, radius: 0, line: .3);
     box(316, 111, 104, 24, fill: pale, radius: 0, line: .3);
     text('ご請求金額（税込）', 332, 92, 86, size: 8, bold: true, color: PdfColors.white);
     text(
-      _yen(invoice.grandTotalYen),
+      _visibleYen(invoice.grandTotalYen),
       424,
       86,
       131.2756,
@@ -472,11 +522,16 @@ class InvoicePdfService {
         row.amount,
       ];
       for (var col = 0; col < values.length; col++) {
+        // Use geometry, not collapsible whitespace, for the ditto inset.
+        final siteDittoIndent =
+            col == 1 && values[col].trimLeft().startsWith('〃')
+            ? 5.5 * 5.4
+            : 0.0;
         text(
           values[col],
-          xs[col] + 3,
+          xs[col] + 3 + siteDittoIndent,
           y + 3,
-          xs[col + 1] - xs[col] - 6,
+          xs[col + 1] - xs[col] - 6 - siteDittoIndent,
           size: 5.4,
           align: col == 0 || col == 3 || col == 4
               ? pw.TextAlign.center
@@ -501,7 +556,9 @@ class InvoicePdfService {
     final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
     final labels = [
       '小計（税抜）',
-      '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
+      invoice.taxRateBps == 0
+          ? '消費税'
+          : '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
       'ご請求金額（税込）',
     ];
     for (var i = 0; i < 3; i++) {
@@ -514,7 +571,7 @@ class InvoicePdfService {
         color: i == 2 ? blue : ink,
       );
       text(
-        i == 2 ? _yen(totals[i]) : _number(totals[i]),
+        i == 2 ? _visibleYen(totals[i]) : _visibleNumber(totals[i]),
         453,
         i == 2 ? 720 : 684 + i * 21,
         104.2756,
@@ -737,11 +794,23 @@ class InvoicePdfService {
   }
 
   static String _quantity(double value) {
+    if (value == 0) return '';
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  static String _visibleNumber(int value) => value == 0 ? '' : _number(value);
+
+  static String _visibleYen(int value) => value == 0 ? '' : _yen(value);
+
+  static String _visiblePriceText(String value) {
+    final parsed = num.tryParse(
+      value.trim().replaceAll(RegExp(r'[,¥￥\s]'), ''),
+    );
+    return parsed == 0 ? '' : value;
   }
 
   static String _yen(int value) => '¥${_number(value)}';
@@ -958,25 +1027,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       key: ValueKey(_previewRevision),
                       color: Colors.grey.shade200,
                       alignment: Alignment.topCenter,
-                      child: PdfPreview(
+                      child: _InvoicePdfZoomView(
                         key: ValueKey('invoice_pdf_preview_$_previewRevision'),
-                        build: (_) async => pdfBytes,
-                        initialPageFormat: PdfPageFormat.a4,
-                        canChangePageFormat: false,
-                        canChangeOrientation: false,
-                        allowPrinting: false,
-                        allowSharing: false,
-                        maxPageWidth: 595,
-                        pdfPreviewPageDecoration: const BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Color(0x22000000),
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
+                        pdfBytes: pdfBytes,
                       ),
                     ),
                   ),
@@ -1028,6 +1081,150 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   }
 }
 
+/// Displays raster pages from the exact PDF used for printing and sharing.
+/// The viewport stays bounded before applying scale, including on iPhone.
+class _InvoicePdfZoomView extends StatefulWidget {
+  const _InvoicePdfZoomView({super.key, required this.pdfBytes});
+  final Uint8List pdfBytes;
+  @override
+  State<_InvoicePdfZoomView> createState() => _InvoicePdfZoomViewState();
+}
+
+class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
+  final TransformationController _pdfZoom = TransformationController();
+  late Future<List<Uint8List>> _pages;
+  bool _isZoomed = false;
+  double _scale = 1;
+  Size _viewport = Size.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = _rasterPages();
+    _pdfZoom.addListener(_readScale);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InvoicePdfZoomView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.pdfBytes, widget.pdfBytes)) {
+      _pages = _rasterPages();
+      _pdfZoom.value = Matrix4.identity();
+    }
+  }
+
+  Future<List<Uint8List>> _rasterPages() async {
+    final pages = <Uint8List>[];
+    await for (final page in Printing.raster(widget.pdfBytes, dpi: 120)) {
+      pages.add(await page.toPng());
+    }
+    return pages;
+  }
+
+  void _readScale() {
+    final scale = _pdfZoom.value.getMaxScaleOnAxis();
+    if (mounted && (scale - _scale).abs() > .005) {
+      setState(() {
+        _scale = scale;
+        _isZoomed = scale > 1.01;
+      });
+    }
+  }
+
+  void _setScale(double scale) {
+    final bounded = scale.clamp(1.0, 5.0).toDouble();
+    _pdfZoom.value = Matrix4.identity()
+      ..translateByDouble(
+        -_viewport.width * (bounded - 1) / 2,
+        -_viewport.height * (bounded - 1) / 2,
+        0,
+        1,
+      )
+      ..scaleByDouble(bounded, bounded, 1, 1);
+  }
+
+  @override
+  void dispose() {
+    _pdfZoom.removeListener(_readScale);
+    _pdfZoom.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            tooltip: '縮小',
+            onPressed: _scale > 1.01 ? () => _setScale(_scale / 1.4) : null,
+            icon: const Icon(Icons.zoom_out),
+          ),
+          TextButton(
+            onPressed: () => _setScale(1),
+            child: Text('${(_scale * 100).round()}%'),
+          ),
+          IconButton(
+            tooltip: '拡大',
+            onPressed: _scale < 4.99 ? () => _setScale(_scale * 1.4) : null,
+            icon: const Icon(Icons.zoom_in),
+          ),
+        ],
+      ),
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _viewport = Size(constraints.maxWidth, constraints.maxHeight);
+            return FutureBuilder<List<Uint8List>>(
+              future: _pages,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('PDFを表示できませんでした：${snapshot.error}'),
+                  );
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return InteractiveViewer(
+                  transformationController: _pdfZoom,
+                  minScale: 1,
+                  maxScale: 5,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    child: SingleChildScrollView(
+                      physics: _isZoomed
+                          ? const NeverScrollableScrollPhysics()
+                          : const ClampingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          for (final page in snapshot.data!)
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Image.memory(
+                                page,
+                                width: constraints.maxWidth - 24,
+                                fit: BoxFit.fitWidth,
+                                gaplessPlayback: true,
+                                filterQuality: FilterQuality.high,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ],
+  );
+}
+
 class _InvoicePreviewData {
   const _InvoicePreviewData({
     required this.pdfBytes,
@@ -1062,7 +1259,7 @@ class _ExactInvoiceScreen extends StatelessWidget {
             : index == 0
             ? site.siteName
             : '〃';
-        final work = (line.workContent ?? line.label).trim();
+        final work = line.displayWorkContent.trim();
         final sub = siteLabel == '〃' && work.isNotEmpty;
         rows.add(
           _InvoiceFormRow(

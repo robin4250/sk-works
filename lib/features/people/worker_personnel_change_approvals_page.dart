@@ -4,10 +4,7 @@ import 'people_cloud_repository.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class WorkerPersonnelChangeApprovalsPage extends StatefulWidget {
-  const WorkerPersonnelChangeApprovalsPage({
-    super.key,
-    this.initialRequestId,
-  });
+  const WorkerPersonnelChangeApprovalsPage({super.key, this.initialRequestId});
 
   final String? initialRequestId;
 
@@ -102,7 +99,8 @@ class _WorkerPersonnelChangeApprovalsPageState
       );
       if (!mounted) return;
       final status = result['status']?.toString() ?? '';
-      final approvalCount = (result['approval_count'] as num?)?.toInt() ?? count;
+      final approvalCount =
+          (result['approval_count'] as num?)?.toInt() ?? count;
       final resultRequired =
           (result['required_approvals'] as num?)?.toInt() ?? required;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,8 +109,8 @@ class _WorkerPersonnelChangeApprovalsPageState
             status == 'approved'
                 ? '$resultRequired名の承認が完了し、社員個人情報へ反映しました。'
                 : status == 'rejected'
-                    ? '変更申請を拒否しました。'
-                    : '承認しました。現在 $approvalCount/$resultRequired 名です。',
+                ? '変更申請を拒否しました。'
+                : '承認しました。現在 $approvalCount/$resultRequired 名です。',
           ),
         ),
       );
@@ -120,7 +118,11 @@ class _WorkerPersonnelChangeApprovalsPageState
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('処理できませんでした: $error')),
+        SnackBar(
+          content: Text(
+            '処理できませんでした: ${PeopleCloudRepository.personnelSaveError(error)}',
+          ),
+        ),
       );
     }
   }
@@ -139,8 +141,7 @@ class _WorkerPersonnelChangeApprovalsPageState
             onPressed: () async {
               await Navigator.of(context).push<bool>(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      const WorkerPersonnelApproverSettingsPage(),
+                  builder: (_) => const WorkerPersonnelApproverSettingsPage(),
                 ),
               );
               if (!mounted) return;
@@ -159,78 +160,73 @@ class _WorkerPersonnelChangeApprovalsPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(child: Text(_error!, textAlign: TextAlign.center))
-                : _rows.isEmpty
-                    ? const Center(
-                        child: Text(
-                          '変更承認待ちはありません',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final row = _rows[index];
-                          final proposed = row['proposed'] is Map
-                              ? Map<String, dynamic>.from(
-                                  row['proposed'] as Map,
-                                )
-                              : const <String, dynamic>{};
-                          final approvalCount =
-                              (row['approval_count'] as num?)?.toInt() ?? 0;
-                          final required =
-                              (row['required_approvals'] as num?)?.toInt() ?? 1;
+            ? Center(child: Text(_error!, textAlign: TextAlign.center))
+            : _rows.isEmpty
+            ? const Center(
+                child: Text(
+                  '変更承認待ちはありません',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemCount: _rows.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final row = _rows[index];
+                  final proposed = row['proposed'] is Map
+                      ? Map<String, dynamic>.from(row['proposed'] as Map)
+                      : const <String, dynamic>{};
+                  final approvalCount =
+                      (row['approval_count'] as num?)?.toInt() ?? 0;
+                  final required =
+                      (row['required_approvals'] as num?)?.toInt() ?? 1;
 
-                          return Card(
-                            child: ExpansionTile(
-                              title: Text(
-                                row['worker_name']?.toString() ?? '社員',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '承認 $approvalCount/$required 名',
-                              ),
-                              childrenPadding:
-                                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              children: [
-                                _line('名前', proposed['name']),
-                                _line('血液型', proposed['blood_type']),
-                                _line('職種', proposed['role']),
-                                _line('電話番号', proposed['phone']),
-                                _line('住所', proposed['address']),
-                                const Divider(),
-                                _line('緊急連絡先氏名', proposed['emergency_name']),
-                                _line('続柄', proposed['emergency_relation']),
-                                _line('緊急電話番号', proposed['emergency_phone']),
-                                _line('緊急住所', proposed['emergency_address']),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: () => _decide(row, false),
-                                        child: const Text('拒否'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: FilledButton(
-                                        onPressed: () => _decide(row, true),
-                                        child: const Text('承認'),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                  return Card(
+                    child: ExpansionTile(
+                      title: Text(
+                        row['worker_name']?.toString() ?? '社員',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
+                      subtitle: Text('承認 $approvalCount/$required 名'),
+                      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      children: [
+                        _line('名前', proposed['name']),
+                        _line('血液型', proposed['blood_type']),
+                        _line('社員番号', proposed['employee_number']),
+                        _line('所属', proposed['department']),
+                        _line('職種', proposed['role']),
+                        _line('入社日', proposed['hire_date']),
+                        _line('電話番号', proposed['phone']),
+                        _line('住所', proposed['address']),
+                        const Divider(),
+                        _line('緊急連絡先氏名', proposed['emergency_name']),
+                        _line('続柄', proposed['emergency_relation']),
+                        _line('緊急電話番号', proposed['emergency_phone']),
+                        _line('緊急住所', proposed['emergency_address']),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => _decide(row, false),
+                                child: const Text('拒否'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () => _decide(row, true),
+                                child: const Text('承認'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }

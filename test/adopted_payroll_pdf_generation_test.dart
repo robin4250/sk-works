@@ -104,6 +104,97 @@ void main() {
             netPay: 312648,
             detail: values,
           );
+      final confirmationDetail = {
+        ...detail,
+        'required_count': 3,
+        'confirmed_count': 2,
+        'revision': 42,
+        'confirmed_revision': 42,
+        'payment_month_offset': 1,
+        'payment_day': 25,
+        'closing_day': 31,
+        'employee_number': '123456',
+        'payroll_confirmations': [
+          {
+            'name': '確認済甲 太郎',
+            'confirmed_at': '2026-10-31T15:30:00Z',
+            'position': 1,
+          },
+          {'name': '未確認乙 次郎', 'confirmed_at': null, 'position': 2},
+          {
+            'name': '確認済丙 三郎',
+            'confirmed_at': '2026-11-01T01:00:00Z',
+            'position': 3,
+          },
+        ],
+      };
+      final confirmationPdf = await PayrollPdfService.buildPdf(
+        record(confirmationDetail),
+        regularFont: font,
+        boldFont: font,
+      );
+      final confirmationOutput =
+          outputDirectory ??
+          (await Directory.systemTemp.createTemp('sko-payroll-confirmations-'))
+              .path;
+      await Directory(confirmationOutput).create(recursive: true);
+      final confirmationFile = File(
+        '$confirmationOutput/payroll_confirmation_stamps.pdf',
+      );
+      await confirmationFile.writeAsBytes(confirmationPdf);
+      final confirmationReport = await _inspectPayrollPdf(confirmationFile);
+      final confirmationPage =
+          (confirmationReport['pages'] as List<dynamic>).single
+              as Map<String, dynamic>;
+      final confirmationText = confirmationPage['text'] as String;
+      for (final metadataKey in [
+        'required_count',
+        'confirmed_count',
+        'revision',
+        'confirmed_revision',
+        'payment_month_offset',
+        'payment_day',
+        'closing_day',
+        'employee_number',
+      ]) {
+        expect(
+          confirmationText,
+          isNot(contains(metadataKey)),
+          reason:
+              'Administrative numeric metadata must never become salary items.',
+        );
+      }
+      expect(confirmationText, contains('312,648'));
+      expect(confirmationText, contains('408,248'));
+      expect(confirmationText, contains('95,600'));
+      expect(confirmationText, contains('確認済甲'));
+      expect(confirmationText, contains('確認済丙'));
+      expect(confirmationText, isNot(contains('未確認乙')));
+      expect(
+        confirmationText,
+        contains('26.11.1'),
+        reason: 'UTC approval timestamp displays its actual Japanese date.',
+      );
+      final confirmationSpans = (confirmationPage['spans'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final title = confirmationSpans.singleWhere(
+        (span) =>
+            (span['text'] as String).replaceAll(RegExp(r'\s+'), '') == '給与明細書',
+      );
+      expect(
+        (title['bbox'] as List<dynamic>)[1] as num,
+        lessThan(59),
+        reason: 'The title moves up 12 pt without moving salary panels.',
+      );
+      for (final name in ['確認済甲', '確認済丙']) {
+        final stamp = confirmationSpans.singleWhere(
+          (span) => span['text'] == name,
+        );
+        final bounds = (stamp['bbox'] as List<dynamic>).cast<num>();
+        expect(bounds[0], greaterThan(302));
+        expect(bounds[1], greaterThanOrEqualTo(94));
+        expect(bounds[3], lessThanOrEqualTo(126));
+      }
       final original = jsonEncode(detail);
       final pdf = await PayrollPdfService.buildPdf(
         record(detail),
@@ -126,11 +217,92 @@ void main() {
         await Directory(outputDirectory).create(recursive: true);
         await File('$outputDirectory/payroll_flutter_v4.pdf').writeAsBytes(pdf);
       }
+      final verificationOutput =
+          outputDirectory ??
+          (await Directory.systemTemp.createTemp('sko-payroll-pdf-')).path;
+      await Directory(verificationOutput).create(recursive: true);
+      for (final mode in <String, String>{
+        'monthly': '月給',
+        'hourly': '時給',
+        'daily': '日給',
+      }.entries) {
+        final modeDetail = {
+          ...detail,
+          'pay_type': mode.key == 'monthly' ? '' : mode.key,
+          '給与方式': mode.value,
+        };
+        final modePdf = await PayrollPdfService.buildPdf(
+          record(modeDetail),
+          regularFont: font,
+          boldFont: font,
+        );
+        final modeFile = File(
+          '$verificationOutput/payroll_flutter_${mode.key}.pdf',
+        );
+        await modeFile.writeAsBytes(modePdf);
+        final extracted = await _inspectPayrollPdf(modeFile);
+        final pages = extracted['pages'] as List<dynamic>;
+        expect(pages, hasLength(1));
+        final page = pages.single as Map<String, dynamic>;
+        expect(page['width'], closeTo(595.2756, .01));
+        expect(page['height'], closeTo(841.8898, .01));
+        final spans = (page['spans'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        final banner = spans.where((span) {
+          final box = (span['bbox'] as List<dynamic>).cast<num>();
+          return box[1] >= 97 && box[1] < 125 && box[0] < 270;
+        }).toList();
+        final label = banner.singleWhere(
+          (span) =>
+              (span['text'] as String).replaceAll(RegExp(r'\s+'), '') ==
+              mode.value,
+        );
+        final labelBox = (label['bbox'] as List<dynamic>).cast<num>();
+        expect(labelBox[0], closeTo(50, .1));
+        expect(
+          labelBox[3],
+          lessThanOrEqualTo(125.1),
+          reason: 'Pay type must remain inside the adopted blue banner.',
+        );
+        final expectedExplanation = mode.key == 'monthly'
+            ? '月固定給'
+            : mode.key == 'hourly'
+            ? '勤務時間'
+            : '勤務日数';
+        final explanation = banner.singleWhere(
+          (span) => (span['text'] as String).contains(expectedExplanation),
+        );
+        final explanationBox = (explanation['bbox'] as List<dynamic>)
+            .cast<num>();
+        expect(
+          explanationBox[0],
+          closeTo(138, .1),
+          reason:
+              'Adjacent explanation must not move when the pay type changes.',
+        );
+        expect(
+          explanationBox[2],
+          lessThanOrEqualTo(256.1),
+          reason: 'The explanation must fit without clipping or overlapping.',
+        );
+        expect(explanationBox[3], lessThanOrEqualTo(125.1));
+        final normalizedText = (page['text'] as String).replaceAll(
+          RegExp(r'\s+'),
+          '',
+        );
+        expect(normalizedText, contains(mode.value));
+        expect(
+          RegExp(r'(?<![0-9.])0(?:\.0)?(?:日|時間|円)').hasMatch(normalizedText),
+          isFalse,
+          reason:
+              'Zero work metrics and amounts must be blank in the actual PDF.',
+        );
+      }
       final many = {
         ...detail,
         'custom_earnings': [
           for (var i = 0; i < 31; i++)
-            {'name': '登録手当${i + 1}', 'amount_yen': i * 100},
+            {'name': '登録手当${i + 1}', 'amount_yen': (i + 1) * 100},
         ],
       };
       final continued = await PayrollPdfService.buildPdf(
@@ -143,6 +315,84 @@ void main() {
         hasLength(3),
         reason: 'More than fifteen rows must continue on readable A4 pages.',
       );
+      final zeroItems = {
+        ...detail,
+        'custom_earnings': [
+          for (var i = 0; i < 31; i++)
+            {'name': '未支給項目${i + 1}', 'amount_yen': 0},
+        ],
+        'custom_deductions': [
+          for (var i = 0; i < 31; i++)
+            {'name': '未控除項目${i + 1}', 'amount_yen': 0},
+        ],
+      };
+      final zeroPdf = await PayrollPdfService.buildPdf(
+        PayrollStatementRecord(
+          id: 'zero-amounts',
+          companyName: '登録会社',
+          workerName: '登録社員',
+          periodStart: DateTime(2026, 10, 1),
+          periodEnd: DateTime(2026, 10, 31),
+          grossPay: 0,
+          deductions: 0,
+          netPay: 0,
+          detail: zeroItems,
+        ),
+        regularFont: font,
+        boldFont: font,
+      );
+      expect(
+        RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(zeroPdf)),
+        hasLength(1),
+        reason: 'Zero-value registered items must not produce extra pages.',
+      );
+      final zeroFile = File(
+        '$verificationOutput/payroll_flutter_zero_amounts.pdf',
+      );
+      await zeroFile.writeAsBytes(zeroPdf);
+      final zeroReport = await _inspectPayrollPdf(zeroFile);
+      final zeroPage =
+          (zeroReport['pages'] as List<dynamic>).single as Map<String, dynamic>;
+      final shortCompanySpans = (zeroPage['spans'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final shortTagline = shortCompanySpans.singleWhere(
+        (span) => (span['text'] as String)
+            .replaceAll(RegExp(r'\s+'), '')
+            .contains('人と現場をつなぐ未来をつくる'),
+      );
+      final shortTaglineBox = (shortTagline['bbox'] as List<dynamic>)
+          .cast<num>();
+      final sealBoxes = (zeroPage['seals'] as List<dynamic>)
+          .cast<List<dynamic>>();
+      expect(sealBoxes, isNotEmpty);
+      for (final sealBox in sealBoxes) {
+        final coordinates = sealBox.cast<num>();
+        expect(
+          shortTaglineBox[1],
+          greaterThanOrEqualTo(coordinates[3] + .5),
+          reason: 'The readable short-company tagline must sit below the seal.',
+        );
+      }
+      expect(
+        shortTaglineBox[3],
+        lessThan(97),
+        reason: 'The tagline must stay above the adopted blue pay-type banner.',
+      );
+      expect(
+        shortTagline['size'] as num,
+        greaterThanOrEqualTo(5.4),
+        reason: 'Short company names must not shrink the tagline into unreadable text.',
+      );
+      final zeroText = (zeroPage['text'] as String).replaceAll(
+        RegExp(r'\s+'),
+        '',
+      );
+      expect(zeroText, isNot(contains('未支給項目')));
+      expect(zeroText, isNot(contains('未控除項目')));
+      expect(
+        RegExp(r'(?<![0-9.])0(?:\.0)?(?:日|時間|円)').hasMatch(zeroText),
+        isFalse,
+      );
       if (outputDirectory != null) {
         await File('$outputDirectory/payroll_flutter_many_rows.pdf')
             .writeAsBytes(continued);
@@ -152,4 +402,16 @@ void main() {
         ? 'Set SKO_PDF_FONT_PATH to a local Japanese TTF for real PDF rendering.'
         : false,
   );
+}
+
+Future<Map<String, dynamic>> _inspectPayrollPdf(File file) async {
+  final result = await Process.run('python', [
+    '-c',
+    r'''import fitz,json,sys
+pdf=fitz.open(sys.argv[1])
+print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'seals':[list(d['rect']) for d in p.get_drawings() if d['color'] and d['color'][0]>.9 and d['color'][1]<.2 and d['color'][2]<.2 and d['rect'].width>25 and d['rect'].height>25],'spans':[{'text':s['text'],'bbox':s['bbox'],'size':s['size']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf]},ensure_ascii=False))''',
+    file.path,
+  ]);
+  expect(result.exitCode, 0, reason: result.stderr.toString());
+  return jsonDecode(result.stdout.toString()) as Map<String, dynamic>;
 }

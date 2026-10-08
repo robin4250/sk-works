@@ -94,8 +94,8 @@ void main() {
     () {
       final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
       final payroll = read('lib/features/payroll/payroll_statements_page.dart');
-      expect(invoice, contains('child: PdfPreview('));
-      expect(invoice, contains('build: (_) async => pdfBytes'));
+      expect(invoice, contains('child: _InvoicePdfZoomView('));
+      expect(invoice, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
       expect(invoice, isNot(contains('child: _ExactInvoiceScreen(')));
       expect(invoice, contains("'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'"));
       expect(payroll, contains('InteractiveViewer('));
@@ -120,8 +120,9 @@ void main() {
   test('invoice screen preview renders the complete shared PDF output', () {
     final invoice = read('lib/features/invoices/invoice_pdf_service.dart');
     expect(invoice, contains('InvoicePdfService.buildPdf('));
-    expect(invoice, contains('build: (_) async => pdfBytes'));
-    expect(invoice, contains('initialPageFormat: PdfPageFormat.a4'));
+    expect(invoice, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
+    expect(invoice, contains('minScale: 1'));
+    expect(invoice, contains('maxScale: 5'));
     expect(invoice, isNot(contains('child: _ExactInvoiceScreen(')));
   });
 }

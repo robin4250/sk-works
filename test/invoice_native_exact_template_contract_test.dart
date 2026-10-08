@@ -9,14 +9,14 @@ void main() {
       final s = File('lib/features/invoices/invoice_pdf_service.dart')
           .readAsStringSync();
       expect(s, contains('final pdfBytes = await InvoicePdfService.buildPdf('));
-      expect(s, contains('child: PdfPreview('));
-      expect(s, contains('build: (_) async => pdfBytes'));
+      expect(s, contains('child: _InvoicePdfZoomView('));
+      expect(s, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
       expect(s, isNot(contains('child: _ExactInvoiceScreen(')));
       expect(s, contains('onLayout: (_) async => pdfBytes'));
       expect(s, contains('bytes: pdfBytes'));
       expect(s, contains('while (rows.length < 35)'));
       expect(s, contains('pageIndex * 35'));
-      expect(s, isNot(contains('Printing.raster(')));
+      expect(s, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
     },
   );
 }

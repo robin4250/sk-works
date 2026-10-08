@@ -1,3 +1,4 @@
+import '../../international/language_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -33,6 +34,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -42,6 +44,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
 
   @override
   void dispose() {
+    _loadGeneration++;
     for (final controller in [
       _tax,
       _welfare,
@@ -65,6 +68,8 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -81,6 +86,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
 
     try {
       final value = await repository.load();
+      if (!mounted || generation != _loadGeneration) return;
       _tax.text = value.taxRate.toString();
       _welfare.text = value.welfareRate.toString();
       _overtime.text = value.overtimeHourRateYen.toString();
@@ -96,10 +102,9 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _allowance3.text = value.allowance3Name;
       _allowance3Amount.text = value.allowance3AmountYen.toString();
       _allowance3Unit.text = value.allowance3Unit;
-      if (!mounted) return;
       setState(() => _loading = false);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -164,11 +169,11 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('会社単価・手当設定を保存しました')),
+        SnackBar(content: Text(SkoLanguageController.tr('会社単価・手当設定を保存しました'))),
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '保存できませんでした: $error');
+      setState(() => _error = SkoLanguageController.trParams('保存できませんでした: {error}', {'error': error}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -184,7 +189,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       child: TextField(
         controller: controller,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(labelText: SkoLanguageController.tr(label)),
       ),
     );
   }
@@ -202,9 +207,9 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
           children: [
             TextField(
               controller: name,
-              decoration: InputDecoration(labelText: '手当$number 名称'),
+              decoration: InputDecoration(labelText: SkoLanguageController.trParams('手当{number} 名称', {'number': number})),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -212,18 +217,18 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                   child: TextField(
                     controller: amount,
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: '手当$number 金額（円）'),
+                    decoration: InputDecoration(labelText: SkoLanguageController.trParams('手当{number} 金額（円）', {'number': number})),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: TextField(
                     controller: unit,
                     maxLength: 6,
                     decoration: InputDecoration(
-                      labelText: '手当$number 単位',
-                      hintText: '回・日・時間・件など',
-                      helperText: '週間表示・カレンダー表示・月集計に反映',
+                      labelText: SkoLanguageController.trParams('手当{number} 単位', {'number': number}),
+                      hintText: SkoLanguageController.tr('回・日・時間・件など'),
+                      helperText: SkoLanguageController.tr('週間表示・カレンダー表示・月集計に反映'),
                       counterText: '',
                     ),
                   ),
@@ -238,17 +243,18 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '会社単価・手当設定',
+        title: Text(
+          SkoLanguageController.tr('会社単価・手当設定'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(child: CircularProgressIndicator())
             : _error != null && _tax.text.isEmpty
                 ? Center(
                     child: Padding(
@@ -256,11 +262,11 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error!, textAlign: TextAlign.center),
-                          const SizedBox(height: 12),
+                          Text(SkoLanguageController.tr(_error!), textAlign: TextAlign.center),
+                          SizedBox(height: 12),
                           FilledButton(
                             onPressed: _load,
-                            child: const Text('再読み込み'),
+                            child: Text(SkoLanguageController.tr('再読み込み')),
                           ),
                         ],
                       ),
@@ -269,62 +275,61 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const Card(
+                      Card(
                         child: Padding(
                           padding: EdgeInsets.all(16),
                           child: Text(
-                            'ここは会社共通の初期値・手当設定です。'
-                            '社員ごとの給与は「個別給与設定」、現場ごとの請求単価は「管理者用現場データ」で設定します。'
-                            '同じ単価を複数画面へ入力する必要はありません。',
+                            SkoLanguageController.tr('会社共通の税率・福利厚生費率・手当をここで設定します。社員ごとの給与は「個別給与設定」、現場ごとの請求単価は「管理者用現場データ」で設定します。登録した値を各画面で使用するため、同じ内容の再入力は不要です。'),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16),
                       Text(
-                        '税率・福利厚生費率',
+                        SkoLanguageController.tr('税率・福利厚生費率'),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
                       ),
-                      const SizedBox(height: 10),
-                      _moneyField(_tax, '消費税率（%）', decimal: true),
-                      _moneyField(_welfare, '福利厚生費率（%）', decimal: true),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 10),
+                      _moneyField(_tax, SkoLanguageController.tr('消費税率（%）'), decimal: true),
+                      _moneyField(_welfare, SkoLanguageController.tr('福利厚生費率（%）'), decimal: true),
+                      SizedBox(height: 12),
+                      ExpansionTile(
+                        title: Text(SkoLanguageController.tr('旧単価（登録済み設定）')),
+                        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        children: [
+                          Text(
+                            SkoLanguageController.tr('以前に登録した単価です。変更する必要がある場合だけ開いて編集してください。社員ごとの給与は「個別給与設定」で設定します。'),
+                          ),
+                          SizedBox(height: 10),
+                          _moneyField(_overtime, SkoLanguageController.tr('残業単価（1時間・円）')),
+                          _moneyField(_early, SkoLanguageController.tr('早出単価（1時間・円）')),
+                          _moneyField(_night, SkoLanguageController.tr('夜勤単価（1時間・円）')),
+                          _moneyField(_holiday, SkoLanguageController.tr('休日出勤単価（1日・円）')),
+                        ],
+                      ),
+                      SizedBox(height: 12),
                       Text(
-                        '会社共通の初期勤務単価（旧互換）',
+                        SkoLanguageController.tr('任意手当（最大3つ）'),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
                       ),
-                      const SizedBox(height: 4),
-                      const Text('既存データとの互換用です。新しい社員の給与計算は個別給与設定を使用してください。'),
-                      const SizedBox(height: 10),
-                      _moneyField(_overtime, '残業単価（1時間・円）'),
-                      _moneyField(_early, '早出単価（1時間・円）'),
-                      _moneyField(_night, '夜勤単価（1時間・円）'),
-                      _moneyField(_holiday, '休日出勤単価（1日・円）'),
-                      const SizedBox(height: 12),
-                      Text(
-                        '任意手当（最大3つ）',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       _allowanceBlock(
                         1,
                         _allowance1,
                         _allowance1Amount,
                         _allowance1Unit,
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       _allowanceBlock(
                         2,
                         _allowance2,
                         _allowance2Amount,
                         _allowance2Unit,
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       _allowanceBlock(
                         3,
                         _allowance3,
@@ -332,15 +337,15 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                         _allowance3Unit,
                       ),
                       if (_error != null) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         Text(
-                          _error!,
+                          SkoLanguageController.tr(_error!),
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 20),
+                      SizedBox(height: 20),
                       FilledButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: _saving
@@ -348,8 +353,8 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                                 dimension: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Icon(Icons.save_outlined),
-                        label: Text(_saving ? '保存中...' : '設定を保存'),
+                            : Icon(Icons.save_outlined),
+                        label: Text(_saving ? SkoLanguageController.tr('保存中...') : SkoLanguageController.tr('設定を保存')),
                       ),
                     ],
                   ),

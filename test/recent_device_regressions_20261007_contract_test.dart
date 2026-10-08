@@ -59,10 +59,13 @@ void main() {
     );
     expect(payrollPdf, contains('...adjustmentDeductions.entries.map('));
 
-    // Invoice preview must rely on PdfPreview sizing instead of reintroducing
-    // the outer InteractiveViewer that made the A4 content effectively vanish.
-    expect(invoicePreview, contains('child: PdfPreview('));
-    expect(invoicePreview, contains('build: (_) async => pdfBytes'));
+    // Invoice zoom must use the same PDF raster in a bounded viewport.
+    // A missing viewport height previously made the A4 content vanish.
+    expect(invoicePreview, contains('child: _InvoicePdfZoomView('));
+    expect(
+      invoicePreview,
+      contains('Printing.raster(widget.pdfBytes, dpi: 120)'),
+    );
     expect(invoicePreview, contains('onLayout: (_) async => pdfBytes'));
     expect(invoicePreview, contains('bytes: pdfBytes'));
     expect(invoicePreview, contains('while (rows.length < 35)'));

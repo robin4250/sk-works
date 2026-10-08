@@ -220,6 +220,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             icon: const Icon(Icons.edit_outlined),
             label: const Text('会社情報を編集'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.source),
+            icon: const Icon(Icons.rule_outlined),
+            label: const Text('計算元を確認・変更'),
+          ),
           FilledButton.icon(
             onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.contract),
             icon: const Icon(Icons.payments_outlined),
@@ -236,6 +241,15 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         await _editContract(item);
       case _CompanyAction.delete:
         await _deleteCompany(item);
+      case _CompanyAction.source:
+        try {
+          await _resolveConflicts(item.id, revise: true);
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('計算元を変更できませんでした: $error')),
+          );
+        }
     }
   }
 
@@ -452,26 +466,40 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
   }
 
-  Future<void> _resolveConflicts(String tradeCompanyId) async {
+  Future<void> _resolveConflicts(String tradeCompanyId, {bool revise = false}) async {
     final repository = _repository;
     if (repository == null) return;
     final conflicts = await repository.calculationConflicts(tradeCompanyId);
 
-    for (final conflict in conflicts.where(
-      (item) => item.conflict && item.selectedSource == null,
-    )) {
+    final choices = conflicts.where(
+      (item) => item.outputType != 'payment_certificate' &&
+          (revise || (item.conflict && item.selectedSource == null)),
+    ).toList(growable: false);
+    if (revise && choices.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('変更できる現場の請求書・給与の計算元がありません。')),
+      );
+    }
+    for (final conflict in choices) {
       if (!mounted) return;
       final source = await showDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('計算設定が重複しています'),
+          title: Text(revise ? '計算元を確認・変更' : '計算設定が重複しています'),
           content: Text(
             '${conflict.siteName} の ${conflict.outputLabel} について、'
-            '管理現場と会社契約の両方に金額設定があります。\n\n'
+            '現在の選択：${conflict.selectedSource == 'trade_company' ? '会社契約' : conflict.selectedSource == 'site' ? '管理現場' : '未選択（管理現場）'}\n'
+            '管理現場：${conflict.siteSettingConfigured ? '設定済み' : '未設定'} / '
+            '会社契約：${conflict.tradeCompanySettingConfigured ? '設定済み' : '未設定'}\n\n'
             '計算に使う設定を選んでください。',
           ),
           actions: [
+            if (revise)
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('変更しない'),
+              ),
             OutlinedButton(
               onPressed: () => Navigator.of(dialogContext).pop('site'),
               child: const Text('管理現場の設定を使う'),
@@ -513,7 +541,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       };
 }
 
-enum _CompanyAction { edit, contract, delete }
+enum _CompanyAction { edit, contract, delete, source }
 
 class _CompanyDraft {
   const _CompanyDraft({

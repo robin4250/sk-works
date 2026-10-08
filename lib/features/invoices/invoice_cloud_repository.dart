@@ -50,6 +50,16 @@ class InvoiceCloudRepository {
     return rows.first['company_id'] as String;
   }
 
+  static Map<String, String> registeredCustomerContact(
+    Map<String, dynamic> registered, {
+    Map<String, dynamic> fallback = const {},
+  }) => {
+    for (final key in const ['name', 'postal_code', 'address', 'phone'])
+      key: (registered[key]?.toString().trim() ?? '').isNotEmpty
+          ? registered[key].toString().trim()
+          : fallback[key]?.toString().trim() ?? '',
+  };
+
   Future<List<InvoiceCalculationResult>> loadAll() async {
     final companyId = await _companyId();
     // Keep the primary invoice query independent from related tables. An
@@ -66,6 +76,30 @@ class InvoiceCloudRepository {
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
 
+    // Existing read-only RPC is company/admin scoped; never run directory sync
+    // while opening reports. Missing optional access leaves snapshots available.
+    final registeredContacts = <String, Map<String, dynamic>>{};
+    try {
+      final rawContacts = await _client.rpc('trade_company_workspace');
+      if (rawContacts is List) {
+        final ambiguous = <String>{};
+        for (final rawContact in rawContacts) {
+          if (rawContact is! Map) continue;
+          final contact = Map<String, dynamic>.from(rawContact);
+          final linkedCustomer = contact['customer_id']?.toString() ?? '';
+          if (linkedCustomer.isEmpty) continue;
+          if (registeredContacts.containsKey(linkedCustomer)) {
+            ambiguous.add(linkedCustomer);
+          }
+          registeredContacts[linkedCustomer] = contact;
+        }
+        for (final id in ambiguous) {
+          registeredContacts.remove(id);
+        }
+      }
+    } catch (_) {
+      // Retain snapshot/customer fallback for viewers without directory access.
+    }
     final results = <InvoiceCalculationResult>[];
     for (final invoice in invoices) {
       try {
@@ -77,15 +111,34 @@ class InvoiceCloudRepository {
             ? Map<String, dynamic>.from(snapshot)
             : const <String, dynamic>{};
 
-        // Snapshot data is the durable display fallback for historical and
-        // auto-generated invoices. Prefer it so relation/RLS changes cannot
-        // make the invoice list disappear.
+        // Snapshot data is the durable fallback when the current registered
+        // directory or related customer is unavailable. Optional lookup/RLS
+        // changes must never make the saved invoice list disappear.
         var customerName =
             snapshotMap['customer_name']?.toString().trim() ?? '';
-        final customerPostalCode =
+        var customerPostalCode =
             snapshotMap['customer_postal_code']?.toString().trim() ?? '';
         var customerAddress =
             snapshotMap['customer_address']?.toString().trim() ?? '';
+        var customerPhone =
+            snapshotMap['customer_phone']?.toString().trim() ?? '';
+        final registered =
+            registeredContacts[invoice['customer_id']?.toString() ?? ''];
+        if (registered != null) {
+          final contact = registeredCustomerContact(
+            registered,
+            fallback: {
+              'name': customerName,
+              'postal_code': customerPostalCode,
+              'address': customerAddress,
+              'phone': customerPhone,
+            },
+          );
+          customerName = contact['name']!;
+          customerPostalCode = contact['postal_code']!;
+          customerAddress = contact['address']!;
+          customerPhone = contact['phone']!;
+        }
         if (customerName.isEmpty || customerAddress.isEmpty) {
           final customerId = invoice['customer_id']?.toString() ?? '';
           if (customerId.isNotEmpty) {
@@ -142,30 +195,35 @@ class InvoiceCloudRepository {
                 final internalLabel = (workContent ?? '').trim().isNotEmpty
                     ? workContent!
                     : (sourceLabel ?? '').trim().isNotEmpty
-                        ? sourceLabel!
-                        : '通常作業';
+                    ? sourceLabel!
+                    : '通常作業';
                 displayLines.add(
                   InvoiceLine(
                     label: internalLabel,
+                    category: line['category']?.toString() ?? '',
                     quantity: _toDouble(line['quantity']),
                     unitPriceYen: _toInt(line['unit_price']),
                     siteLabel: line['site_label']?.toString() ?? '',
                     workContent: workContent,
                     unitPriceText: line['unit_price_text']?.toString(),
-                    amountYenOverride: _toInt(line['amount']),
+                    amountYenOverride: line['amount'] == null
+                        ? null
+                        : _toInt(line['amount']),
                   ),
                 );
               }
             }
 
             siteResults.add(
-              SiteInvoiceCalculation(
+              SiteInvoiceCalculation.fromSavedDetails(
                 siteId: siteId,
                 siteName: siteName,
                 lines: displayLines,
-                manualAdjustmentYen:
-                    _toInt(siteMap['manual_adjustment']),
+                manualAdjustmentYen: _toInt(siteMap['manual_adjustment']),
                 welfareRateBps: _toInt(siteMap['welfare_rate_bps']),
+                subtotalYen: siteMap['subtotal'] == null
+                    ? null
+                    : _toInt(siteMap['subtotal']),
               ),
             );
           }
@@ -180,7 +238,7 @@ class InvoiceCloudRepository {
                 .from('invoice_site_calculations')
                 .select(
                   'id, site_id, manual_adjustment_amount, '
-                  'welfare_rate_snapshot',
+                  'welfare_rate_snapshot, subtotal',
                 )
                 .eq('company_id', companyId)
                 .eq('invoice_id', invoiceId)
@@ -211,7 +269,9 @@ class InvoiceCloudRepository {
               try {
                 lines = await _client
                     .from('invoice_detail_lines')
-                    .select('description, quantity, unit_price')
+                    .select(
+                      'description, quantity, unit_price, amount, category',
+                    )
                     .eq('company_id', companyId)
                     .eq('invoice_site_calculation_id', calculationId)
                     .order('sort_order');
@@ -220,23 +280,31 @@ class InvoiceCloudRepository {
               }
 
               siteResults.add(
-                SiteInvoiceCalculation(
+                SiteInvoiceCalculation.fromSavedDetails(
                   siteId: siteId,
                   siteName: siteName,
                   lines: lines
                       .map<InvoiceLine>(
                         (line) => InvoiceLine(
                           label: line['description']?.toString() ?? '明細',
+                          category: line['category']?.toString() ?? '',
+                          amountYenOverride: line['amount'] == null
+                              ? null
+                              : _toInt(line['amount']),
                           quantity: _toDouble(line['quantity']),
                           unitPriceYen: _toInt(line['unit_price']),
                         ),
                       )
                       .toList(),
-                  manualAdjustmentYen:
-                      _toInt(calculation['manual_adjustment_amount']),
+                  manualAdjustmentYen: _toInt(
+                    calculation['manual_adjustment_amount'],
+                  ),
                   welfareRateBps:
                       (_toDouble(calculation['welfare_rate_snapshot']) * 100)
                           .round(),
+                  subtotalYen: calculation['subtotal'] == null
+                      ? null
+                      : _toInt(calculation['subtotal']),
                 ),
               );
             }
@@ -251,8 +319,9 @@ class InvoiceCloudRepository {
         final periodEnd = DateTime.tryParse(
           invoice['billing_period_end']?.toString() ?? '',
         );
-        final issueDate =
-            DateTime.tryParse(invoice['issue_date']?.toString() ?? '');
+        final issueDate = DateTime.tryParse(
+          invoice['issue_date']?.toString() ?? '',
+        );
         final billingPeriod = periodStart == null
             ? snapshotMap['billing_period']?.toString().trim() ?? ''
             : '${periodStart.year}年${periodStart.month}月';
@@ -263,13 +332,18 @@ class InvoiceCloudRepository {
             customerId: customerName,
             customerPostalCode: customerPostalCode,
             customerAddress: customerAddress,
+            customerPhone: customerPhone,
             billingPeriod: billingPeriod,
             detailMode: _fromDbDetailMode(invoice['detail_mode']?.toString()),
             sites: siteResults,
-            taxRateBps: _taxRateFromTotals(
-              subtotal: _toInt(invoice['subtotal']),
-              tax: _toInt(invoice['tax']),
-            ),
+            taxRateBps:
+                snapshotMap['tax_rate_bps'] != null &&
+                    _toInt(snapshotMap['tax_rate_bps']) >= 0
+                ? _toInt(snapshotMap['tax_rate_bps'])
+                : _taxRateFromTotals(
+                    subtotal: _toInt(invoice['subtotal']),
+                    tax: _toInt(invoice['tax']),
+                  ),
             invoiceId: invoiceId,
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',
             issueDate: issueDate,
@@ -347,8 +421,13 @@ class InvoiceCloudRepository {
 
     for (final site in invoice.siteCalculations) {
       final siteId = siteIds[site.siteName]!;
-      final quantity = site.lines.fold<double>(0, (sum, line) => sum + line.quantity);
-      final unitPrice = site.lines.length == 1 ? site.lines.first.unitPriceYen : 0;
+      final quantity = site.lines.fold<double>(
+        0,
+        (sum, line) => sum + line.quantity,
+      );
+      final unitPrice = site.lines.length == 1
+          ? site.lines.first.unitPriceYen
+          : 0;
       final insertedCalculation = await _client
           .from('invoice_site_calculations')
           .insert({
@@ -385,20 +464,27 @@ class InvoiceCloudRepository {
   }
 
   InvoiceDetailMode _fromDbDetailMode(String? value) => switch (value) {
-        'site_breakdown_on_invoice' => InvoiceDetailMode.siteBreakdownOnInvoice,
-        'site_breakdown_attachment' => InvoiceDetailMode.siteDetailAttachment,
-        _ => InvoiceDetailMode.consolidatedOnly,
-      };
+    'site_breakdown_on_invoice' => InvoiceDetailMode.siteBreakdownOnInvoice,
+    'site_breakdown_attachment' => InvoiceDetailMode.siteDetailAttachment,
+    _ => InvoiceDetailMode.consolidatedOnly,
+  };
 
   String _toDbDetailMode(InvoiceDetailMode mode) => switch (mode) {
-        InvoiceDetailMode.consolidatedOnly => 'consolidated_only',
-        InvoiceDetailMode.siteBreakdownOnInvoice => 'site_breakdown_on_invoice',
-        InvoiceDetailMode.siteDetailAttachment => 'site_breakdown_attachment',
-      };
+    InvoiceDetailMode.consolidatedOnly => 'consolidated_only',
+    InvoiceDetailMode.siteBreakdownOnInvoice => 'site_breakdown_on_invoice',
+    InvoiceDetailMode.siteDetailAttachment => 'site_breakdown_attachment',
+  };
 
   ({DateTime start, DateTime end}) _parseBillingPeriod(String value) {
-    final normalized = value.trim().replaceAll('年', '/').replaceAll('月', '').replaceAll('-', '/');
-    final parts = normalized.split('/').where((part) => part.isNotEmpty).toList();
+    final normalized = value
+        .trim()
+        .replaceAll('年', '/')
+        .replaceAll('月', '')
+        .replaceAll('-', '/');
+    final parts = normalized
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
     if (parts.length < 2) {
       throw StateError('対象期間は「2026年9月」または「2026/9」の形式で入力してください。');
     }
@@ -418,40 +504,41 @@ class InvoiceCloudRepository {
   }
 
   Map<String, dynamic> _snapshot(InvoiceCalculationResult invoice) => {
-        'customer_name': invoice.customerId,
-        'customer_postal_code': invoice.customerPostalCode,
-        'customer_address': invoice.customerAddress,
-        'billing_period': invoice.billingPeriod,
-        'detail_mode': _toDbDetailMode(invoice.detailMode),
-        'tax_rate_bps': invoice.taxRateBps,
-        'subtotal': invoice.subtotalYen,
-        'tax': invoice.taxYen,
-        'grand_total': invoice.grandTotalYen,
-        'sites': invoice.siteCalculations
-            .map(
-              (site) => {
-                'site_name': site.siteName,
-                'manual_adjustment': site.manualAdjustmentYen,
-                'welfare_rate_bps': site.welfareRateBps,
-                'subtotal': site.subtotalYen,
-                'lines': site.lines
-                    .map(
-                      (line) => {
-                        'label': line.label,
-                        'quantity': line.quantity,
-                        'unit_price': line.unitPriceYen,
-                        'amount': line.amountYen,
-                        'site_label': line.siteLabel,
-                        'work_content': line.workContent ?? line.label,
-                        'unit_price_text':
-                            line.unitPriceText ?? line.unitPriceYen.toString(),
-                      },
-                    )
-                    .toList(),
-              },
-            )
-            .toList(),
-      };
+    'customer_name': invoice.customerId,
+    'customer_postal_code': invoice.customerPostalCode,
+    'customer_address': invoice.customerAddress,
+    'customer_phone': invoice.customerPhone,
+    'billing_period': invoice.billingPeriod,
+    'detail_mode': _toDbDetailMode(invoice.detailMode),
+    'tax_rate_bps': invoice.taxRateBps,
+    'subtotal': invoice.subtotalYen,
+    'tax': invoice.taxYen,
+    'grand_total': invoice.grandTotalYen,
+    'sites': invoice.siteCalculations
+        .map(
+          (site) => {
+            'site_name': site.siteName,
+            'manual_adjustment': site.manualAdjustmentYen,
+            'welfare_rate_bps': site.welfareRateBps,
+            'subtotal': site.subtotalYen,
+            'lines': site.lines
+                .map(
+                  (line) => {
+                    'label': line.label,
+                    'quantity': line.quantity,
+                    'unit_price': line.unitPriceYen,
+                    'amount': line.amountYen,
+                    'site_label': line.siteLabel,
+                    'work_content': line.workContent ?? line.label,
+                    'unit_price_text':
+                        line.unitPriceText ?? line.unitPriceYen.toString(),
+                  },
+                )
+                .toList(),
+          },
+        )
+        .toList(),
+  };
 
   String _date(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';

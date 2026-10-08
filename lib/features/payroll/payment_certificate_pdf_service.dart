@@ -64,9 +64,8 @@ class PaymentCertificatePdfService {
           ]
         : record.lines;
 
-    final detailTotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
-    final gross = record.grossAmount != 0 ? record.grossAmount : detailTotal;
-    final balance = gross - record.deductions;
+    final gross = record.grossAmount;
+    final balance = record.netAmount;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -196,7 +195,7 @@ class PaymentCertificatePdfService {
                 children: [
                   _cell(line.siteName),
                   _cell(line.workContent),
-                  _cell(line.quantityLabel, right: true),
+                  _cell(_quantity(line.quantityLabel), right: true),
                   _cell(
                     line.unitPriceYen == 0
                         ? ''
@@ -232,7 +231,7 @@ class PaymentCertificatePdfService {
                 _cell(''),
                 _cell(''),
                 _cell(
-                  '¥${_number(balance)}',
+                  balance == 0 ? '' : '¥${_number(balance)}',
                   right: true,
                   bold: true,
                   fontSize: 10,
@@ -250,7 +249,9 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
             pw.Text(
-              record.status == 'draft'
+              record.isPreview
+                  ? 'プレビュー・出勤実績なし'
+                  : record.status == 'draft'
                   ? '下書き・第${record.revision}版'
                   : '確定・第${record.revision}版',
               style: const pw.TextStyle(fontSize: 7),
@@ -289,6 +290,7 @@ class PaymentCertificatePdfService {
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 
   static String _number(int value) {
+    if (value == 0) return '';
     final negative = value < 0;
     final digits = value.abs().toString();
     final out = StringBuffer();
@@ -299,5 +301,15 @@ class PaymentCertificatePdfService {
       out.write(digits[i]);
     }
     return '${negative ? '-' : ''}$out';
+  }
+
+  static String _quantity(String value) {
+    final trimmed = value.trim();
+    // Only an entirely zero numeric quantity (with an optional known unit) is
+    // blanked. Dates and descriptions containing a zero remain untouched.
+    if (RegExp(r'^[+-]?0+(?:\.0+)?\s*(?:日|時間|回|人|人工)?$').hasMatch(trimmed)) {
+      return '';
+    }
+    return value;
   }
 }

@@ -32,6 +32,73 @@ void main() {
     expect(text, contains('請求合計'));
   });
 
+  test('invoice text snapshot hides zero quantities and amounts while retaining nonzero values', () {
+    final zero = InvoiceEngine.calculate(
+      customerId: '会社',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+      sites: const [
+        SiteInvoiceCalculation(
+          siteId: 'zero',
+          siteName: '未設定現場',
+          lines: [InvoiceLine(label: '未設定作業', quantity: 0, unitPriceYen: 0)],
+        ),
+      ],
+    );
+    final zeroText = InvoicePdfService.buildTextSnapshot([zero]);
+    expect(zeroText, contains('未設定作業  ×  = '));
+    expect(zeroText, isNot(contains('¥0')));
+    final nonzero = InvoicePdfService.buildTextSnapshot([invoice]);
+    expect(nonzero, contains('人工 2 × ¥25,000 = ¥50,000'));
+  });
+
+  test('welfare labels use each saved site rate without adding duplicate snapshot welfare rows', () {
+    final rates = InvoiceEngine.calculate(
+      customerId: '会社',
+      billingPeriod: '2026年10月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+      sites: const [
+        SiteInvoiceCalculation(
+          siteId: 'a',
+          siteName: 'A現場',
+          welfareRateBps: 300,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 3000,
+          subtotalYenOverride: 103000,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+            InvoiceLine(
+              label: '（法定福利費）',
+              quantity: 0,
+              unitPriceYen: 0,
+              amountYenOverride: 3000,
+            ),
+          ],
+        ),
+        SiteInvoiceCalculation(
+          siteId: 'b',
+          siteName: 'B現場',
+          welfareRateBps: 150,
+          baseAmountYenOverride: 100000,
+          welfareAmountYenOverride: 1500,
+          subtotalYenOverride: 101500,
+          lines: [
+            InvoiceLine(label: '通常作業', quantity: 1, unitPriceYen: 100000),
+          ],
+        ),
+      ],
+    );
+    final text = InvoicePdfService.buildTextSnapshot([rates]);
+    expect('福利厚生費'.allMatches(text), hasLength(2));
+    expect(text, contains('福利厚生費（3%）'));
+    expect(text, contains('福利厚生費（1.5%）'));
+    expect(text, contains('¥3,000'));
+    expect(text, contains('¥1,500'));
+    expect(text, contains('計 ¥204,500'));
+    expect(text, contains('消費税 ¥20,450'));
+    expect(text, contains('請求合計 ¥224,950'));
+  });
+
   test('invoice file name is sanitized', () {
     final unsafe = InvoiceEngine.calculate(
       customerId: 'A/B株式会社',
@@ -72,8 +139,8 @@ void main() {
     expect(pdf, contains('const rowHeight ='));
     expect(pdf, contains('regularFont ??'));
     expect(pdf, contains('Future<_InvoicePreviewData> _buildPreviewData()'));
-    expect(pdf, contains('child: PdfPreview('));
-    expect(pdf, contains('build: (_) async => pdfBytes'));
+    expect(pdf, contains('child: _InvoicePdfZoomView('));
+    expect(pdf, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
     expect(pdf, contains('while (rows.length < 35)'));
     expect(pdf, isNot(contains('child: _ExactInvoiceScreen(')));
     expect(pdf, contains('請求書プレビューを生成できませんでした'));

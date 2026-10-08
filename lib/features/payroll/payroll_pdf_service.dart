@@ -46,18 +46,21 @@ class PayrollPdfService {
     // Legacy aggregate placeholders are intentionally not rendered. Every visible
     // earning/deduction must have an explicit item name.
 
-    final earningEntries = _mergeMoneyEntries([
+    final legacyEarnings = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
         '基本給',
         earnings['基本給'] ?? earnings['出勤に基づく支給額'],
       ),
       MapEntry<String, Object?>('残業手当', earnings['残業手当']),
       MapEntry<String, Object?>('交通費', earnings['交通費']),
-      ...configuredEarnings.entries,
       ...adjustmentEarnings.entries,
+    ];
+    final earningEntries = _mergeMoneyEntries([
+      ..._withoutConfiguredAliases(legacyEarnings, configuredEarnings),
+      ...configuredEarnings.entries,
     ]);
 
-    final deductionEntries = _mergeMoneyEntries([
+    final legacyDeductions = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
         '健康保険料',
         deductions['健康保険料'] ?? deductions['社会保険'],
@@ -65,10 +68,13 @@ class PayrollPdfService {
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
       MapEntry<String, Object?>('道具代', deductions['道具代']),
-      ...configuredDeductions.entries,
       ...adjustmentDeductions.entries.map(
         (entry) => MapEntry(entry.key, _asNumber(entry.value)?.abs() ?? 0),
       ),
+    ];
+    final deductionEntries = _mergeMoneyEntries([
+      ..._withoutConfiguredAliases(legacyDeductions, configuredDeductions),
+      ...configuredDeductions.entries,
     ]);
 
     final largestCount = earningEntries.length > deductionEntries.length
@@ -111,10 +117,10 @@ class PayrollPdfService {
 
   static String buildTextSnapshot(PayrollStatementRecord statement) =>
       '給与明細書\n${statement.companyName}\n${statement.workerName}\n'
-      '${statement.monthLabel}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
-      '総支給額 ${_yen(statement.grossPay)}\n'
-      '総控除額 ${_yen(statement.deductions)}\n'
-      '差引支給額 ${_yen(statement.netPay)}';
+      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
+      '総支給額 ${statement.grossPay == 0 ? '' : _yen(statement.grossPay)}\n'
+      '総控除額 ${statement.deductions == 0 ? '' : _yen(statement.deductions)}\n'
+      '差引支給額 ${statement.netPay == 0 ? '' : _yen(statement.netPay)}';
 
   static pw.Widget _sheet(
     PayrollStatementRecord statement, {
@@ -237,17 +243,53 @@ class PayrollPdfService {
             50,
             170,
             12,
-            text(
-              _first(detail, const ['company_tagline', '会社スローガン']).isEmpty
-                  ? '人と現場をつなぐ　未来をつくる'
-                  : _first(detail, const ['company_tagline', '会社スローガン']),
-              size: 5.5,
-              color: PdfColor.fromHex('#073A76'),
+            pw.LayoutBuilder(
+              builder: (context, constraints) {
+                final nameWidth =
+                    fallbackFont
+                        .getFont(context)
+                        .stringMetrics(statement.companyName)
+                        .width *
+                    10;
+                final availableWidth = (nameWidth - 4)
+                    .clamp(1.0, 144.0)
+                    .toDouble();
+                final registeredTagline = _first(detail, const [
+                  'company_tagline',
+                  '会社スローガン',
+                ]);
+                final tagline = registeredTagline.isEmpty
+                    ? '人と現場をつなぐ　未来をつくる'
+                    : registeredTagline;
+                final taglineWidth =
+                    fallbackFont.getFont(context).stringMetrics(tagline).width *
+                    5.5;
+                final belowSeal = taglineWidth > availableWidth;
+                return pw.Transform.translate(
+                  offset: PdfPoint(0, belowSeal ? -14 : 0),
+                  child: pw.Align(
+                    alignment: pw.Alignment.topLeft,
+                    child: pw.SizedBox(
+                      width: belowSeal ? 144 : availableWidth,
+                      height: 12,
+                      child: pw.FittedBox(
+                        fit: pw.BoxFit.scaleDown,
+                        alignment: pw.Alignment.topLeft,
+                        child: text(
+                          tagline,
+                          size: 5.5,
+                          color: PdfColor.fromHex('#073A76'),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           at(
             200,
-            41,
+            29,
             159,
             30,
             pw.Center(
@@ -258,10 +300,10 @@ class PayrollPdfService {
               ),
             ),
           ),
-          at(200, 66, 159, .7, pw.Container(color: blue)),
+          at(200, 54, 159, .7, pw.Container(color: blue)),
           at(
             200,
-            70,
+            58,
             159,
             13,
             pw.Center(
@@ -302,9 +344,9 @@ class PayrollPdfService {
           ),
           at(
             350,
-            80,
+            64,
             189.275590551,
-            16,
+            10,
             pw.Align(
               alignment: pw.Alignment.topRight,
               child: text(
@@ -316,6 +358,7 @@ class PayrollPdfService {
               ),
             ),
           ),
+          at(284, 76, 255.275590551, 32, _confirmationFrames(detail, blue)),
           at(
             20,
             79,
@@ -324,18 +367,38 @@ class PayrollPdfService {
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 12),
               decoration: box(blue, fill: blue),
-              child: pw.Row(
+              child: pw.Stack(
                 children: [
-                  text(
-                    payType.split('').join(' '),
-                    size: 16,
-                    color: PdfColors.white,
+                  pw.Positioned(
+                    left: 0,
+                    top: 2.8,
+                    child: pw.Text(
+                      payType.split('').join(' '),
+                      style: const pw.TextStyle(
+                        fontSize: 16,
+                        color: PdfColors.white,
+                      ),
+                    ),
                   ),
-                  pw.SizedBox(width: 52.416),
-                  text(
-                    payType == '月給' ? '（月固定給 ＋ 各種手当）' : '（勤務実績 × 登録単価 ＋ 各種手当）',
-                    size: 8.5,
-                    color: PdfColors.white,
+                  pw.Positioned(
+                    left: 88,
+                    right: 0,
+                    top: 8,
+                    child: pw.FittedBox(
+                      fit: pw.BoxFit.scaleDown,
+                      alignment: pw.Alignment.centerLeft,
+                      child: text(
+                        payType == '月給'
+                            ? '（月固定給 ＋ 各種手当）'
+                            : payType == '時給'
+                            ? '（勤務時間 × 登録単価 ＋ 各種手当）'
+                            : payType == '日給'
+                            ? '（勤務日数 × 登録単価 ＋ 各種手当）'
+                            : '',
+                        size: 8.5,
+                        color: PdfColors.white,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -584,12 +647,102 @@ class PayrollPdfService {
   );
 
   static String _payTypeLabel(Map<String, dynamic> detail) {
-    final raw = (detail['pay_type'] ?? detail['給与形態'] ?? '')
-        .toString()
-        .toLowerCase();
-    if (raw == 'monthly' || raw.contains('月給')) return '月給';
-    if (raw == 'hourly' || raw.contains('時給')) return '時給';
-    return '日給';
+    final nested = detail['payroll_settings'] is Map
+        ? Map<String, dynamic>.from(detail['payroll_settings'] as Map)
+        : const <String, dynamic>{};
+    final raw = _first(detail, const [
+      'pay_type',
+      '給与形態',
+      '給与方式',
+      'salary_type',
+      'payment_type',
+    ]);
+    final normalized =
+        (raw.isEmpty ? _first(nested, const ['pay_type', '給与形態', '給与方式']) : raw)
+            .trim()
+            .toLowerCase();
+    if (normalized == 'monthly' || normalized.contains('月給')) return '月給';
+    if (normalized == 'hourly' || normalized.contains('時給')) return '時給';
+    if (normalized == 'daily' || normalized.contains('日給')) return '日給';
+    return '未登録';
+  }
+
+  // The server supplies current-revision confirmation records in slot order.
+  // A pending reviewer never produces an impression or a fabricated date.
+  static pw.Widget _confirmationFrames(
+    Map<String, dynamic> detail,
+    PdfColor blue,
+  ) {
+    final raw = detail['payroll_confirmations'];
+    final entries = raw is List
+        ? raw
+              .whereType<Map>()
+              .map((value) => Map<String, dynamic>.from(value))
+              .toList()
+        : <Map<String, dynamic>>[];
+    final ink = PdfColor.fromHex('#D71920');
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.end,
+      children: [
+        pw.Text('確認印', style: pw.TextStyle(fontSize: 7, color: blue)),
+        pw.SizedBox(width: 8),
+        for (var index = 0; index < 3; index++) ...[
+          pw.Container(
+            width: 38,
+            height: 28,
+            alignment: pw.Alignment.center,
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: blue, width: .5),
+              borderRadius: pw.BorderRadius.circular(3),
+            ),
+            child: index < entries.length
+                ? _confirmationImpression(entries[index], ink)
+                : pw.SizedBox(),
+          ),
+          if (index < 2) pw.SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  static pw.Widget _confirmationImpression(
+    Map<String, dynamic> entry,
+    PdfColor ink,
+  ) {
+    final name = (entry['name'] ?? '').toString().trim();
+    final confirmed = DateTime.tryParse(
+      (entry['confirmed_at'] ?? '').toString(),
+    );
+    if (name.isEmpty || confirmed == null) return pw.SizedBox();
+    final japan = confirmed.isUtc
+        ? confirmed.add(const Duration(hours: 9))
+        : confirmed;
+    final surname = name.split(RegExp(r'[\s　]+')).first;
+    return pw.Container(
+      width: 25,
+      height: 25,
+      decoration: pw.BoxDecoration(
+        shape: pw.BoxShape.circle,
+        border: pw.Border.all(color: ink, width: .8),
+      ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        children: [
+          pw.FittedBox(
+            child: pw.Text(
+              surname,
+              style: pw.TextStyle(fontSize: 7, color: ink),
+            ),
+          ),
+          pw.SizedBox(height: 1),
+          pw.Text(
+            '${japan.year % 100}.${japan.month}.${japan.day}',
+            style: pw.TextStyle(fontSize: 4.2, color: ink),
+          ),
+        ],
+      ),
+    );
   }
 
   static pw.Widget _attendanceCards(
@@ -638,8 +791,8 @@ class PayrollPdfService {
                     ),
                     pw.SizedBox(height: 11),
                     pw.Text(
-                      items[index].value.isEmpty
-                          ? (index < 4 ? '0日' : '0.0時間')
+                      _isZeroDisplay(items[index].value)
+                          ? ''
                           : items[index].value,
                       style: pw.TextStyle(
                         fontSize: 8.2,
@@ -803,7 +956,7 @@ class PayrollPdfService {
                   ),
                 ),
                 pw.Text(
-                  _number(total),
+                  total == 0 ? '' : _number(total),
                   style: pw.TextStyle(fontSize: 14.5, color: accent),
                 ),
               ],
@@ -825,6 +978,7 @@ class PayrollPdfService {
         ? '休出日数'
         : '';
     if (key.isEmpty || detail[key] == null) return '－';
+    if ((_asNumber(detail[key]) ?? 0) == 0) return '';
     return '${detail[key]}${key.endsWith('日数') ? '日' : '時間'}';
   }
 
@@ -871,7 +1025,7 @@ class PayrollPdfService {
           right: 0,
           top: 20.08,
           child: pw.Text(
-            '${_number(amount)} 円',
+            amount == 0 ? '' : '${_number(amount)} 円',
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(fontSize: 12, color: color),
           ),
@@ -894,6 +1048,7 @@ class PayrollPdfService {
   }
 
   static const _nonMoneyDetailKeys = <String>{
+    'calculation_warnings',
     '出勤日数',
     '休出日数',
     '休日出勤',
@@ -911,9 +1066,41 @@ class PayrollPdfService {
     '減税前所得税',
     '定額減税額',
     '定額減税未済',
+    'required_count',
+    'confirmed_count',
+    'confirmation_count',
+    'revision',
+    'confirmed_revision',
+    'payment_month_offset',
+    'payment_day',
+    'closing_day',
+    'payroll_payment_month_offset',
+    'payroll_payment_day',
+    'payroll_closing_day',
+    'payment_date',
+    'payroll_confirmations',
+    'employee_number',
+    'department',
+    'role',
+    'hire_date',
+    '所属',
+    '職種',
+    '入社日',
     '社員番号',
     '社員No',
     '社員No.',
+    'pay_type',
+    '給与形態',
+    '給与方式',
+    'salary_type',
+    'payment_type',
+    'payroll_settings',
+    'monthly_salary_yen',
+    '月固定給',
+    '計算用1日基本ベース',
+    'calculation_daily_base_yen',
+    'base_rate_yen',
+    'hourly_rate_yen',
     'custom_earnings',
     'custom_earnings_total',
     'custom_deductions',
@@ -979,6 +1166,17 @@ class PayrollPdfService {
     return result;
   }
 
+  // The SQL attendance hook mirrors configured items as signed legacy keys.
+  // Remove only an exact label-and-amount mirror; separate amounts still add.
+  static Iterable<MapEntry<String, Object?>> _withoutConfiguredAliases(
+    Iterable<MapEntry<String, Object?>> legacy,
+    Map<String, Object?> configured,
+  ) => legacy.where((entry) {
+    final amount = _asNumber(entry.value)?.abs();
+    final registered = _asNumber(configured[entry.key.trim()])?.abs();
+    return amount == null || registered == null || amount != registered;
+  });
+
   static Map<String, Object?> _mergeMoneyEntries(
     Iterable<MapEntry<String, Object?>> entries,
   ) {
@@ -986,7 +1184,7 @@ class PayrollPdfService {
     for (final entry in entries) {
       final label = entry.key.trim();
       final amount = _asNumber(entry.value);
-      if (label.isEmpty || amount == null) {
+      if (label.isEmpty || amount == null || amount.abs() < 1) {
         continue;
       }
       result[label] = (result[label] as num? ?? 0) + amount.abs();

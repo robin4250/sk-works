@@ -68,7 +68,10 @@ void main() {
     ).readAsStringSync();
 
     expect(repository, contains("'signatures'"));
-    expect(settings, contains("'signatures' => 'サイン一覧'"));
+    expect(
+      settings.replaceAll(RegExp(r'\s+'), ' '),
+      contains("'signatures' => SkoLanguageController.tr('サイン一覧')"),
+    );
     expect(app, contains("key: 'signatures'"));
     expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
   });

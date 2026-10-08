@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/supabase_backend.dart';
@@ -18,7 +18,16 @@ class SkoLanguageController {
   static String get languageCode => pack.value.languageCode;
   static bool get isEnglish => languageCode == 'en';
 
+  /// Subscribe an already-open page to locale changes without replacing its
+  /// route or controllers. Call at the start of the page's build method.
+  static void watch(BuildContext context) {
+    Localizations.localeOf(context);
+  }
+
   static String tr(String source) => pack.value.translate(source);
+
+  static String trParams(String source, Map<String, Object?> parameters) =>
+      pack.value.format(source, parameters);
 
   static Future<void> loadLocal() async {
     final prefs = await SharedPreferences.getInstance();

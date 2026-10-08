@@ -1,3 +1,4 @@
+import 'payroll_condition_warning.dart';
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -79,13 +80,19 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
       );
       return;
     }
+    final warnings = [
+      for (final item in workspace.items)
+        for (final warning in payrollConditionWarnings(item.statement.detail))
+          '${item.statement.workerName}：$warning',
+    ];
+    if (!await confirmPayrollConditions(context, warnings) || !mounted) return;
     setState(() => _saving = true);
     try {
       await repository.confirmMonth(_month);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'All payslips are confirmed.' : '全員分を確認済みにしました')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Your review is registered.' : '自分の確認を登録しました。全確認者の確認後に完了します')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -117,6 +124,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final workspace = _workspace;
     final items = workspace?.items ?? const <PayrollReviewItem>[];
     return Scaffold(
@@ -144,6 +152,11 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                           children: [
+                            PayrollConditionWarning(warnings: [
+                              for (final item in items)
+                                for (final warning in payrollConditionWarnings(item.statement.detail))
+                                  '${item.statement.workerName}：$warning',
+                            ]),
                             Row(
                               children: [
                                 IconButton(
@@ -205,14 +218,17 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               for (final item in items)
                                 Card(
                                   child: ListTile(
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            PayrollStatementPreviewPage(
-                                          statement: item.statement,
+                                    onTap: () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              PayrollStatementPreviewPage(
+                                            statement: item.statement,
+                                          ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                      if (mounted) await _load();
+                                    },
                                     leading: workspace.canConfirm
                                         ? Checkbox(
                                             value: item.reviewChecked,
