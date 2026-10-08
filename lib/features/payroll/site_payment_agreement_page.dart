@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'site_payment_agreement_document.dart';
+import 'site_payment_terms_comparison.dart';
 import 'payment_certificates_page.dart';
 
 /// Only the deployed, enabled server workspace exposes editable agreements.
@@ -171,14 +172,40 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
     await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>PaymentCertificatePreviewPage(record:record)));
   }
 
+  Widget _comparison() {
+    final comparison = SitePaymentTermsComparison.fromWorkspace(_workspace!);
+    Widget companyValue(String name, Map<String, dynamic>? proposal, String field) =>
+        Expanded(child: Text('$name：${comparison.display(proposal, field)}'));
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('双方の共有提案の照合', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text('親会社 第${comparison.parent?['revision'] ?? '未共有'}版／下請け会社 第${comparison.child?['revision'] ?? '未共有'}版'),
+        const Text('各社が実際に共有した最新提案を比較します。未共有の元登録額は取得していません。提案の一致だけでは合意になりません。双方が同じ最新版を確認してください。'),
+        if (!comparison.bothShared) const Text('双方の提案が揃うまで差異は判定しません。'),
+        for (final field in SitePaymentTermsComparison.fields.entries) Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6), child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${field.value}${comparison.differs(field.key) ? '：不一致' : comparison.bothShared ? '：一致' : ''}',
+                style: TextStyle(fontWeight: FontWeight.bold,
+                  color: comparison.differs(field.key) ? Theme.of(context).colorScheme.error : null)),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                companyValue('親会社・支払提案', comparison.parent, field.key),
+                const SizedBox(width: 12),
+                companyValue('下請け会社・請求提案', comparison.child, field.key),
+              ]),
+            ])),
+      ])));
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
+    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。照合には各社が共有した最新提案を使い、未共有の元登録額は推測しません。内訳・追加項目・福利厚生費・税条件・最終額の不一致を表示します。相手の内容は上書きせず、新しい提案で調整してください。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
     body:_busy?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
       if(_error!=null) Text(_error!),
       if(_targets.isEmpty) const Text('利用可能な共有現場はありません。双方の会社で機能が有効な承認済み現場が対象です。'),
       for(final target in _targets) ListTile(title:Text('${target['site_name']}／${target['counterparty_name']}'),onTap:(){_item=target['shared_item_id'].toString();_load();}),
       if(_workspace!=null) ...[
+        _comparison(),
         FilledButton(onPressed:_edit,child:const Text('新しい金額を提案')),
         for(var i=0;i<_proposals.length;i++) Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Text('第${_proposals[i]['revision']}版　${(_proposals[i]['terms'] as Map)['final_amount_yen']}円'),
