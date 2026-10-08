@@ -1,6 +1,4 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../../data/supabase_backend.dart';
+import '../notifications/attention_center_repository.dart';
 
 class RequiredDocumentAttention {
   const RequiredDocumentAttention({
@@ -11,6 +9,7 @@ class RequiredDocumentAttention {
     this.paidLeaveApprovalCount = 0,
     this.generationIssueCount = 0,
     this.generationIssueMessages = const [],
+    this.unresolvedCountOverride,
   });
 
   final int missingCount;
@@ -21,84 +20,37 @@ class RequiredDocumentAttention {
   final int generationIssueCount;
   final List<String> generationIssueMessages;
 
-  int get unresolvedCount =>
-      missingCount + paidLeaveApprovalCount + generationIssueCount;
+  final int? unresolvedCountOverride;
+
+  int get unresolvedCount => unresolvedCountOverride ??
+      (missingCount + paidLeaveApprovalCount + generationIssueCount);
   bool get hasMissing => unresolvedCount > 0;
 }
 
 class HomeAttentionRepository {
-  HomeAttentionRepository._(this._client);
+  HomeAttentionRepository._(this._repository);
 
-  final SupabaseClient _client;
+  final AttentionCenterRepository _repository;
 
   static HomeAttentionRepository? maybeCreate() {
-    if (!SupabaseBackend.isInitialized) return null;
-    if (SupabaseBackend.client.auth.currentUser == null) return null;
-    return HomeAttentionRepository._(SupabaseBackend.client);
+    final repository = AttentionCenterRepository.maybeCreate();
+    return repository == null ? null : HomeAttentionRepository._(repository);
   }
 
   Future<RequiredDocumentAttention> loadRequiredDocumentAttention() async {
-    final value = await _client.rpc('current_user_required_document_attention');
-    var paidLeaveApprovalCount = 0;
-    var generationIssueCount = 0;
-    var generationIssueMessages = const <String>[];
-
-    try {
-      final pending = await _client.rpc('pending_paid_leave_request_batches');
-      if (pending is List) paidLeaveApprovalCount = pending.length;
-    } catch (_) {
-      // Non-management users do not have access to approval queues.
-    }
-
-    try {
-      final raw = await _client.rpc('current_generation_setting_attention');
-      if (raw is Map) {
-        final attention = Map<String, dynamic>.from(raw);
-        generationIssueCount = attention['count'] is int
-            ? attention['count'] as int
-            : int.tryParse(attention['count']?.toString() ?? '') ?? 0;
-        final issues = attention['issues'];
-        if (issues is List) {
-          generationIssueMessages = [
-            for (final issue in issues)
-              if (issue is Map &&
-                  (issue['message']?.toString().trim().isNotEmpty ?? false))
-                issue['message'].toString(),
-          ];
-        }
-      }
-    } catch (_) {
-      // Keep Home usable while a migration is still rolling out.
-    }
-
-    if (value is! Map) {
-      return RequiredDocumentAttention(
-        missingCount: 0,
-        missingNames: const [],
-        needsLicense: false,
-        needsQualification: false,
-        paidLeaveApprovalCount: paidLeaveApprovalCount,
-        generationIssueCount: generationIssueCount,
-        generationIssueMessages: generationIssueMessages,
-      );
-    }
-
-    final row = Map<String, dynamic>.from(value);
-    final names = <String>[
-      for (final item in (row['missing_names'] as List<dynamic>? ?? const []))
-        item.toString(),
-    ];
-
+    final data = await _repository.load();
+    final pending = data.snapshot.items.where((item) => item.needsAction);
+    final documents = pending.where((item) => item.source == 'required_document');
+    final generation = pending.where((item) => item.source == 'generation_setting');
     return RequiredDocumentAttention(
-      missingCount: row['missing_count'] is int
-          ? row['missing_count'] as int
-          : int.tryParse(row['missing_count']?.toString() ?? '') ?? 0,
-      missingNames: names,
-      needsLicense: row['needs_license'] == true,
-      needsQualification: row['needs_qualification'] == true,
-      paidLeaveApprovalCount: paidLeaveApprovalCount,
-      generationIssueCount: generationIssueCount,
-      generationIssueMessages: generationIssueMessages,
+      missingCount: documents.length,
+      missingNames: documents.map((item) => item.title).toList(),
+      needsLicense: false,
+      needsQualification: false,
+      paidLeaveApprovalCount: pending.where((item) => item.source == 'paid_leave').length,
+      generationIssueCount: generation.length,
+      generationIssueMessages: generation.map((item) => item.body).toList(),
+      unresolvedCountOverride: data.snapshot.unresolvedCount,
     );
   }
 }
