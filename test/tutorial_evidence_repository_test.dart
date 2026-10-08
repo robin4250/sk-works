@@ -72,6 +72,26 @@ void main() {
     expect(result.tasks.single.checkpoints.single.state, TutorialEvidenceState.unknown);
   });
 
+  test('enabled settings for existing targets are required; zero rates are valid', () async {
+    for (final action in ['payroll_settings', 'payment_certificate_settings']) {
+      final source = FixtureSource()..setup = [
+        {'id': 'target1', 'configured': false},
+      ];
+      final repo = TutorialEvidenceRepository(source);
+      var task = (await repo.load(availableActionKeys: {action})).tasks.single;
+      expect(task.requiredForCompletion, isTrue);
+      expect(task.checkpoints.single.state, TutorialEvidenceState.missing);
+      source.setup = [{'id': 'target1', 'configured': true, 'daily_rate_yen': 0}];
+      task = (await repo.load(availableActionKeys: {action})).tasks.single;
+      expect(task.requiredForCompletion, isTrue);
+      expect(task.checkpoints.single.state, TutorialEvidenceState.saved);
+      source.unavailable = true;
+      task = (await repo.load(availableActionKeys: {action})).tasks.single;
+      expect(task.requiredForCompletion, isTrue);
+      expect(task.checkpoints.single.state, TutorialEvidenceState.unknown);
+    }
+  });
+
   test('optional registration absence never forces company to use subcontractors', () {
     final rows = TutorialEvidenceRepository.setupCheckpoints('subcontractors', [], label: '下請け');
     expect(rows.single.state, TutorialEvidenceState.missing);

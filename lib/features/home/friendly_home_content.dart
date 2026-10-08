@@ -464,7 +464,6 @@ class _OrderedHomeContent extends StatelessWidget {
   const _OrderedHomeContent({
     required this.identity,
     required this.moduleEnabled,
-    this.tutorialCard,
     required this.gridColumns,
     required this.actionOrder,
     required this.visibleHomeKeys,

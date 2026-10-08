@@ -59,7 +59,14 @@ void main() {
 
     expect(repository, contains('generationIssueCount'));
     expect(repository, contains('generationIssueMessages'));
-    expect(repository, contains('current_generation_setting_attention'));
+    final center = read(
+      'lib/features/notifications/attention_center_repository.dart',
+    );
+    expect(repository, contains('AttentionCenterRepository'));
+    expect(repository, contains('await _repository.load()'));
+    expect(repository, contains('data.snapshot.unresolvedCount'));
+    expect(center, contains('current_generation_setting_attention'));
+    expect(center, contains('mapGenerationAttention'));
     expect(
       repository,
       contains('missingCount + paidLeaveApprovalCount + generationIssueCount'),

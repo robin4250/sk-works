@@ -174,7 +174,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   onTap: _opening ? null : () => _open(item),
                 )),
               ],
-            )),
+            ))),
       ])),
     );
   }

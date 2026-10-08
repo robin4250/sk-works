@@ -185,7 +185,8 @@ class TutorialEvidenceRepository {
       ));
     }
     // Registration counts do not prove that a company uses an optional feature.
-    // Keep these recommendations outside the mandatory completion denominator.
+    // Enabled payroll/payment settings become required for existing targets;
+    // an unavailable read must prevent an unsupported completion claim.
     if ((role == 'owner' || role == 'admin' || role == 'manager') &&
         companyId != null && companyId.isNotEmpty &&
         _source is TutorialSetupEvidenceSource) {
@@ -204,7 +205,10 @@ class TutorialEvidenceRepository {
         }
         tasks.add(TutorialEvidenceTask(
           key: 'setup_${entry.key}', actionKey: entry.key,
-          requiredForCompletion: false,
+          requiredForCompletion:
+              (entry.key == 'payroll_settings' ||
+                  entry.key == 'payment_certificate_settings') &&
+              (rows == null || rows.isNotEmpty),
           checkpoints: setupCheckpoints(entry.key, rows, label: entry.value),
         ));
       }
@@ -213,7 +217,7 @@ class TutorialEvidenceRepository {
   }
 
   static List<TutorialEvidenceCheckpoint> setupCheckpoints(
-    String actionKey, List<Map<String, dynamic>>? rows, {required String label},
+    String actionKey, List<Map<String, dynamic>>? rows, {required String label}
   ) {
     if (rows == null) return [TutorialEvidenceCheckpoint(
       '$actionKey:registration', TutorialEvidenceState.unknown, label: label)];
@@ -310,8 +314,21 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
       return [for (final row in rows) {...row, 'configured': true}];
     }
     final payroll = actionKey == 'payroll_settings';
-    final targets = await client.from(payroll ? 'workers' : 'partner_companies')
-        .select('id,name').eq('company_id', companyId).eq('status', 'active');
+    final List<Map<String, dynamic>> targets;
+    if (payroll) {
+      // Use the same eligible-worker workspace as the existing settings page;
+      // never infer payroll eligibility from all company workers.
+      final raw = await client.rpc('payroll_workspace');
+      if (raw is! Map || raw['permissions'] is! Map ||
+          (raw['permissions'] as Map)['edit'] != true || raw['workers'] is! List) {
+        return null;
+      }
+      targets = [for (final row in (raw['workers'] as List).whereType<Map>())
+        Map<String, dynamic>.from(row)];
+    } else {
+      targets = await client.from('partner_companies').select('id,name')
+          .eq('company_id', companyId).eq('status', 'active');
+    }
     final settings = await client.from(payroll ? 'worker_payroll_settings' : 'partner_payment_settings')
         .select(payroll ? 'worker_id' : 'partner_company_id').eq('company_id', companyId);
     final savedIds = settings.map((row) => row[payroll ? 'worker_id' : 'partner_company_id']?.toString()).toSet();
