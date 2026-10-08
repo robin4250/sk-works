@@ -34,6 +34,8 @@ void main() {
 
   test('unknown shutter time is not replaced by attendance registration time', () {
     final captions = DailyReportPdfEvidence(record: record(path: '')).captions.join('\n');
+    expect(DailyReportPdfEvidence(record: record()).captions,
+      contains('撮影住所: 東京都新宿区 合成テスト住所'));
     expect(captions, contains('撮影日時未取得'));
     expect(captions, contains('勤怠登録時刻: 2026-11-01T07:05:00.000'));
     expect(captions, contains('送信失敗'));
@@ -64,7 +66,11 @@ void main() {
     expect(actual['pages'], 4);
     expect(actual['images'], greaterThanOrEqualTo(1));
     final text = actual['text'] as String;
-    expect(text, contains('東京都新宿区 合成テスト住所'));
+    // PDF text extraction may omit a visual Japanese word-space. Keep the
+    // original address exact in the caption contract above; normalize only
+    // extracted whitespace, without weakening address or failure evidence.
+    expect(text.replaceAll(RegExp(r'\s+'), ''),
+      contains('東京都新宿区合成テスト住所'));
     expect(text, contains('2026-11-01T06:59:00.000'));
     expect(text, contains('撮影日時未取得'));
     expect(text, contains('送信失敗'));

@@ -94,7 +94,7 @@ void main() {
     expect(result.insertMetadata['photo_captured_at'], isNull);
     expect(result.insertMetadata['photo_observed_at'], at.toIso8601String());
     expect(result.insertMetadata['gps_captured_at'], at.toIso8601String());
-    expect(result.insertMetadata['photo_status'], 'uploaded');
+    expect(result.insertMetadata['photo_capture_status'], 'uploaded');
   });  test('missing-photo confirmation preserves statuses and null capture timestamps', () async {
     var prompts = 0;
     final result = await GpsPhotoCaptureController(camera: () async => null,
@@ -103,8 +103,8 @@ void main() {
       prompt: (_) async { prompts++; return CaptureDecision.confirm; },
       now: () => at).capture(context);
     expect(prompts, 1);
-    expect(result.insertMetadata['photo_status'], 'missing');
-    expect(result.insertMetadata['gps_status'], 'missing');
+    expect(result.insertMetadata['photo_capture_status'], 'missing');
+    expect(result.insertMetadata['gps_capture_status'], 'missing');
     expect(result.insertMetadata['photo_observed_at'], isNull);
     expect(result.insertMetadata['photo_captured_at'], isNull);
     expect(result.insertMetadata['gps_captured_at'], isNull);

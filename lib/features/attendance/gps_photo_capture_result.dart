@@ -54,12 +54,12 @@ class GpsPhotoCaptureResult {
     ? CaptureAddressSource.liveSample : CaptureAddressSource.unavailable;
   Map<String, Object?> get insertMetadata => {
     'capture_contract_version': 1,
-    'gps_status': switch (gpsState) {
+    'gps_capture_status': switch (gpsState) {
       CaptureGpsState.captured => 'acquired',
       CaptureGpsState.failed => 'failed',
       CaptureGpsState.notRegistered => 'missing',
     },
-    'photo_status': switch (photoState) {
+    'photo_capture_status': switch (photoState) {
       CapturePhotoState.uploaded => 'uploaded',
       CapturePhotoState.uploadFailed => 'upload_failed',
       CapturePhotoState.cameraFailed => 'failed',
