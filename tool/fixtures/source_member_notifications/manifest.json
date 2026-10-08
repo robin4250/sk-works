@@ -1,0 +1,17 @@
+{
+  "source_commit": "8ee1969",
+  "files": [
+    {
+      "path": "20260919213000_add_app_notifications.sql",
+      "source": "supabase/migrations/20260919213000_add_app_notifications.sql",
+      "sha256": "b83e2a6bd4adf5f288d5c8f305f8f71339aee84ad655b3a89ff41ae94d015b5d",
+      "bytes": 2617
+    },
+    {
+      "path": "20260920214500_restrict_notification_table_grants.sql",
+      "source": "supabase/migrations/20260920214500_restrict_notification_table_grants.sql",
+      "sha256": "434bd6066e68bf16a82663651db6d196825b5a61669ab8b8c6e883ae19651be8",
+      "bytes": 76
+    }
+  ]
+}
