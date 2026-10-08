@@ -55,4 +55,4 @@ v1 では取得失敗も location_photo のまま保存し、GPS取得時刻、�
 
 完了: metadata読取、CHECK前提一致、GPS履歴version差・新契約未適用・既存bucket保持制約の整理。本番変更なし。
 
-未完了: 本番全chainと実登録データ影響の検証、復旧snapshot/復旧演習、保持/削除archive/放置upload回収、両契約の本番適用/ON、実iPhoneの撮影GPS/offline/複数現場通し確認。今回のRelease上書き導入と起動成功は別証拠であり、これらの完了を意味しない。TestFlightは別途外部待ち/未公開。
+未完了: 本番全chainと実登録データ影響の検証、復旧snapshot/復旧演習、保持/削除archive/放置upload回収、両契約の本番適用/ON、実iPhoneの撮影GPS/offline/複数現場通し確認。以前ログ確認済みのRelease上書き導入・起動成功は別証拠であり、これらの完了を意味しない。今回追加変更のiPhone更新ログは未確認。TestFlightは別途外部待ち/未公開。
