@@ -80,7 +80,10 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
     };
     final extraCount=latest['adjustments'] is List && (latest['adjustments'] as List).length>3 ? (latest['adjustments'] as List).length : 3;
     final extras = [for (var i=0;i<extraCount;i++) <String, TextEditingController>{'name': TextEditingController(), 'amount_yen': TextEditingController(text:'0')}];
-    final directions = List.filled(extraCount, 'addition');
+    final directions = List<String>.filled(extraCount, 'addition', growable: true);
+    final allExtraControllers = [...extras];
+    final taxReason = TextEditingController(text: latest['tax_override_reason']?.toString() ?? '');
+    var manualTax = taxReason.text.trim().isNotEmpty;
     if (latest['adjustments'] is List) {
       final saved = latest['adjustments'] as List;
       for (var i=0;i<saved.length && i<extraCount;i++) {
@@ -97,36 +100,48 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       num rounded(num value) => rounding=='ceil'?value.ceil():rounding=='nearest'?value.round():value.floor();
       final price=num.tryParse(fields['unit_price_yen']!.text);
       final area=num.tryParse(fields['area']!.text);
-      if(mode=='square_meter' && price!=null && area!=null && price.isFinite && area.isFinite) fields['base_amount_yen']!.text=rounded(price*area).toString();
+      if(mode=='square_meter' && price!=null && area!=null && price.isFinite && area.isFinite && (price*area).isFinite) fields['base_amount_yen']!.text=rounded(price*area).toString();
+      final taxable=num.tryParse(fields['taxable_amount_yen']!.text);
+      final rate=num.tryParse(fields['tax_rate']!.text);
+      if(!manualTax && taxable!=null && rate!=null && taxable.isFinite && rate.isFinite && (taxable*rate/100).isFinite) fields['tax_amount_yen']!.text=rounded(taxable*rate/100).toString();
     }
     recalculate();
     final result = await showDialog<Map<String,dynamic>>(context:context,builder:(context)=>StatefulBuilder(builder:(context,update)=>AlertDialog(
       title: const Text('現場別の金額提案'),
       content: SizedBox(width:480,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        const Text('相手の登録額は変更しません。双方が同じ最新版を確認すると合意済みになります。残業等の割増は計算しません。税額は課税対象・税率・端数処理と一致する金額を入力してください。'),
+        const Text('相手の登録額は変更しません。双方が同じ最新版を確認すると合意済みになります。残業等の割増は計算しません。消費税は課税対象・税率・端数処理から計算します。手動変更には理由を入力し、相手にもその内容を確認してもらいます。'),
         DropdownButton<String>(value:mode,items:const[DropdownMenuItem(value:'square_meter',child:Text('平米計算')),DropdownMenuItem(value:'lump_sum',child:Text('請け負い'))],onChanged:(v)=>update(() { mode=v!; recalculate(); })),
         for(final entry in fields.entries)
           if(mode=='square_meter' || !['unit_price_yen','area'].contains(entry.key))
-            TextField(controller:entry.value,readOnly:mode=='square_meter' && entry.key=='base_amount_yen',onChanged: (_) => update(recalculate),decoration:InputDecoration(labelText:{'unit_price_yen':'平米単価（円）','area':'平米数','base_amount_yen':'基本総額（円）','tax_amount_yen':'消費税額（円）','tax_rate':'税率（%）','taxable_amount_yen':'課税対象額（円）','period_start':'対象期間 開始（YYYY-MM-DD）','period_end':'対象期間 終了（YYYY-MM-DD）'}[entry.key])),
+            TextField(controller:entry.value,readOnly:(mode=='square_meter' && entry.key=='base_amount_yen') || (entry.key=='tax_amount_yen' && !manualTax),onChanged: (_) => update(recalculate),decoration:InputDecoration(labelText:{'unit_price_yen':'平米単価（円）','area':'平米数','base_amount_yen':'基本総額（円）','tax_amount_yen':'消費税額（円）','tax_rate':'税率（%）','taxable_amount_yen':'課税対象額（円）','period_start':'対象期間 開始（YYYY-MM-DD）','period_end':'対象期間 終了（YYYY-MM-DD）'}[entry.key])),
         DropdownButton<String>(value:rounding,items:const[DropdownMenuItem(value:'floor',child:Text('端数切り捨て')),DropdownMenuItem(value:'nearest',child:Text('四捨五入')),DropdownMenuItem(value:'ceil',child:Text('端数切り上げ'))],onChanged:(v)=>update(() { rounding=v!; recalculate(); })),
+        CheckboxListTile(value:manualTax,title:const Text('消費税額を手動変更する'),onChanged:(v)=>update(() { manualTax=v!; recalculate(); })),
+        if(manualTax) TextField(controller:taxReason,decoration:const InputDecoration(labelText:'消費税額を変更する理由（必須）')),
         CheckboxListTile(value:included,title:const Text('基本額・追加額は税込（消費税を加算しない）'),onChanged:(v)=>update(()=>included=v!)),
-        for(var i=0;i<extraCount;i++) ...[
+        for(var i=0;i<extras.length;i++) ...[
           TextField(controller:extras[i]['name'],decoration:InputDecoration(labelText:'追加項目${i+1} 名称（福利厚生費等）')),
           TextField(controller:extras[i]['amount_yen'],decoration:const InputDecoration(labelText:'金額（円）')),
           DropdownButton<String>(value:directions[i],items:const[DropdownMenuItem(value:'addition',child:Text('加算')),DropdownMenuItem(value:'deduction',child:Text('控除'))],onChanged:(v)=>update(()=>directions[i]=v!)),
+          TextButton.icon(onPressed:()=>update(() { extras.removeAt(i); directions.removeAt(i); }),icon:const Icon(Icons.remove_circle_outline),label:Text('追加項目${i+1}を削除')),
         ],
+        OutlinedButton.icon(onPressed:()=>update(() {
+          final item=<String,TextEditingController>{'name':TextEditingController(),'amount_yen':TextEditingController(text:'0')};
+          extras.add(item); allExtraControllers.add(item); directions.add('addition');
+        }),icon:const Icon(Icons.add),label:const Text('追加項目を増やす')),
       ]))),
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('取消')),FilledButton(onPressed:(){
-        final adjustments = [for(var i=0;i<extraCount;i++) if(extras[i]['name']!.text.trim().isNotEmpty) {'name':extras[i]['name']!.text.trim(),'amount_yen':num.tryParse(extras[i]['amount_yen']!.text),'direction':directions[i]}];
+        if(manualTax && taxReason.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('消費税額を変更する理由を入力してください。'))); return; }
+        final adjustments = [for(var i=0;i<extras.length;i++) if(extras[i]['name']!.text.trim().isNotEmpty) {'name':extras[i]['name']!.text.trim(),'amount_yen':num.tryParse(extras[i]['amount_yen']!.text),'direction':directions[i]}];
         final base=num.tryParse(fields['base_amount_yen']!.text);
         final tax=num.tryParse(fields['tax_amount_yen']!.text);
-        if(base==null || tax==null || adjustments.any((a)=>a['amount_yen']==null)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('金額は数値で入力してください。'))); return; }
+        if(base==null || !base.isFinite || tax==null || !tax.isFinite || adjustments.any((a)=>a['amount_yen']==null || !(a['amount_yen'] as num).isFinite)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('金額は数値で入力してください。'))); return; }
         final total=base+adjustments.fold<num>(0,(s,a)=>s+(a['amount_yen'] as num)*(a['direction']=='deduction'?-1:1))+(included?0:tax);
-        Navigator.pop(context,<String,dynamic>{'mode':mode,'rounding_rule':rounding,'tax_included':included,for(final e in fields.entries) e.key:e.key.startsWith('period_')?e.value.text:num.tryParse(e.value.text),'adjustments':adjustments,'final_amount_yen':total});
+        Navigator.pop(context,<String,dynamic>{'mode':mode,'rounding_rule':rounding,'tax_included':included,if(manualTax) 'tax_override_reason':taxReason.text.trim(),for(final e in fields.entries) e.key:e.key.startsWith('period_')?e.value.text:num.tryParse(e.value.text),'adjustments':adjustments,'final_amount_yen':total});
       },child:const Text('提案を保存'))],
     )));
     for(final field in fields.values) { field.dispose(); }
-    for(final extra in extras) { for(final field in extra.values) { field.dispose(); } }
+    for(final extra in allExtraControllers) { for(final field in extra.values) { field.dispose(); } }
+    taxReason.dispose();
     if(result==null || !mounted) return;
     setState(()=>_busy=true);
     try {
@@ -153,7 +168,7 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。平米・請負では残業などを計算しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
+    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
     body:_busy?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
       if(_error!=null) Text(_error!),
       if(_targets.isEmpty) const Text('利用可能な共有現場はありません。双方の会社で機能が有効な承認済み現場が対象です。'),
@@ -166,6 +181,7 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
           Text('対象期間 ${(_proposals[i]['terms'] as Map)['period_start']}～${(_proposals[i]['terms'] as Map)['period_end']}'),
           Text('方式 ${(_proposals[i]['terms'] as Map)['mode']}／平米単価 ${(_proposals[i]['terms'] as Map)['unit_price_yen']}／平米数 ${(_proposals[i]['terms'] as Map)['area']}'),
           Text('税込 ${(_proposals[i]['terms'] as Map)['tax_included']}／消費税 ${(_proposals[i]['terms'] as Map)['tax_amount_yen']}円／税率 ${(_proposals[i]['terms'] as Map)['tax_rate']}%／課税対象 ${(_proposals[i]['terms'] as Map)['taxable_amount_yen']}円／端数 ${(_proposals[i]['terms'] as Map)['rounding_rule']}'),
+          if(((_proposals[i]['terms'] as Map)['tax_override_reason']?.toString().trim() ?? '').isNotEmpty) Text('消費税額の手動変更理由：${(_proposals[i]['terms'] as Map)['tax_override_reason']}'),
           for(final extra in (_proposals[i]['terms'] as Map)['adjustments'] as List) Text('${(extra as Map)['name']}：${extra['direction']=='deduction'?'控除':'加算'} ${extra['amount_yen']}円'),
           if(i==0) OutlinedButton(onPressed:()=>_confirm(_proposals[i]),child:const Text('この内訳を確認')),
           if(i==0 && (_proposals[i]['confirmations'] as List).length==2) OutlinedButton(onPressed:()=>_preview(_proposals[i]),child:const Text('合意額の支払証明書')),
