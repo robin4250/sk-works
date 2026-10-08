@@ -10,11 +10,11 @@ const ids=Array.from({length:14},(_,i)=>`00000000-0000-0000-0000-${String(i+1).p
 const [company,actor,worker,route,stop,source,report,capture,otherCapture,clockOut,thirdCapture,fourthCapture,objectId,fifthCapture]=ids;
 const payload={capture_contract_version:1,gps_capture_status:'failed',photo_capture_status:'failed',gps_captured_at:null,photo_captured_at:null,photo_observed_at:null,captured_address:null,latitude:null,longitude:null,accuracy_m:null,photo_storage_path:null,attempted_at:'2026-10-01T00:01:00Z'};
 const save=(c,id)=>c.query('select public.save_route_journey_capture($1,$2,$3,$4,$5) v',[id,source,stop,'company',payload]);
-let admin,a,b;
-async function blocked(names){const end=Date.now()+8000;while(Date.now()<end){await admin.query('select pg_stat_clear_snapshot()');const r=await admin.query("select count(*)::int n from pg_stat_activity where application_name=any($1) and wait_event_type='Lock'",[names]);if(r.rows[0].n===names.length)return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error(`No observed database Lock barrier: ${names}`);}
+let admin,a,b,observer;
+async function blocked(names){const end=Date.now()+8000;while(Date.now()<end){await observer.query('select pg_stat_clear_snapshot()');const r=await observer.query("select count(*)::int n from pg_stat_activity where application_name=any($1) and wait_event_type='Lock'",[names]);if(r.rows[0].n===names.length)return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error(`No observed database Lock barrier: ${names}`);}
 const settle=p=>{p.catch(()=>{});return p;};
 try{
- admin=await connect('route-admin');a=await connect('route-a');b=await connect('route-b');
+ admin=await connect('route-admin');a=await connect('route-a');b=await connect('route-b');observer=await connect('route-observer');
  const version=(await admin.query('show server_version')).rows[0].server_version;assert.match(version,/^16\./);console.log(`PostgreSQL ${version}: disposable route fixture`);
  await admin.query('drop schema if exists private cascade;drop schema if exists auth cascade;drop schema if exists storage cascade;drop schema public cascade;create schema public');
  await admin.query("do $$begin if not exists(select 1 from pg_roles where rolname='anon')then create role anon;end if;if not exists(select 1 from pg_roles where rolname='authenticated')then create role authenticated;end if;end$$");
