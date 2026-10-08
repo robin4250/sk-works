@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/operations/vehicle_notification_settings_repository.dart';
+import 'package:sk_works/features/operations/vehicle_notification_settings_repository.dart';
 
 void main() {
   VehicleNotificationSettings settings({bool enabled = false}) =>
