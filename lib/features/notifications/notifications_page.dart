@@ -12,6 +12,7 @@ import '../payroll/payment_certificates_page.dart';
 import '../settings/settings_page.dart';
 import '../sites/admin_site_financial_page.dart';
 import '../attendance/paid_leave_approvals_page.dart';
+import '../daily_reports/daily_report_approvals_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
@@ -262,11 +263,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
 Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMonth}) => switch (item.actionKey) {
   'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),
   'site_map' => const GeneralSiteMapPage(),
-  'site_share_approval' => const SiteShareApprovalPage(),
+  'site_share_approval' => SiteShareApprovalPage(initialRequestId: item.actionId),
   'site_information_request' || 'site_information_request_result' =>
     SiteInformationApprovalsPage(initialRequestId: item.actionId),
   'vehicle_documents' => const VehicleRoutePage(),
-  'paid_leave_request' => const PaidLeaveApprovalsPage(),
+  'daily_report_edit_request' =>
+    DailyReportApprovalsPage(initialRequestId: item.actionId),
+  'paid_leave_request' => PaidLeaveApprovalsPage(initialRequestId: item.actionId),
   'attendance_correction_request' =>
     AttendanceCorrectionApprovalsPage(initialRequestId: item.actionId),
   'worker_personnel_change' =>

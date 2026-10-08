@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:sk_works/features/attendance/attendance_correction_approvals_page.dart';
 import 'package:sk_works/features/attendance/paid_leave_approvals_page.dart';
 import 'package:sk_works/features/chat/chat_cloud_page.dart';
+import 'package:sk_works/features/daily_reports/daily_report_approvals_page.dart';
 import 'package:sk_works/features/operations/vehicle_route_page.dart';
 import 'package:sk_works/features/payroll/individual_payroll_settings_page.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
@@ -97,9 +98,14 @@ void main() {
     expect(notificationDestination(notice('chat_group_invite')),
       isA<ChatCloudPage>().having((page) => page.showGroupsInitially, 'group tab', true));
     expect(notificationDestination(notice('site_map')), isA<GeneralSiteMapPage>());
-    expect(notificationDestination(notice('site_share_approval')), isA<SiteShareApprovalPage>());
+    expect(notificationDestination(notice('site_share_approval')), isA<SiteShareApprovalPage>()
+      .having((page) => page.initialRequestId, 'target request', targetId));
     expect(notificationDestination(notice('vehicle_documents')), isA<VehicleRoutePage>());
-    expect(notificationDestination(notice('paid_leave_request')), isA<PaidLeaveApprovalsPage>());
+    expect(notificationDestination(notice('paid_leave_request')), isA<PaidLeaveApprovalsPage>()
+      .having((page) => page.initialRequestId, 'target request', targetId));
+    expect(notificationDestination(notice('daily_report_edit_request')),
+      isA<DailyReportApprovalsPage>()
+        .having((page) => page.initialRequestId, 'target request', targetId));
     expect(notificationDestination(notice('worker_personnel_change_completed')), isA<PeopleCloudPage>());
     expect(notificationDestination(notice('settings')), isA<SettingsPage>());
     for (final key in ['site_information_request', 'site_information_request_result']) {

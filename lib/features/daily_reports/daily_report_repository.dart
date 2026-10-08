@@ -445,14 +445,19 @@ class DailyReportRepository {
     return value?.toString() ?? '';
   }
 
-  Future<List<Map<String, dynamic>>> loadPendingApprovals() async {
-    final rows = await _client
+  /// A notification opens only its exact request, including resolved requests.
+  /// Ordinary approval lists remain pending-only; existing SELECT RLS applies.
+  Future<List<Map<String, dynamic>>> loadPendingApprovals({
+    String? requestId,
+  }) async {
+    final query = _client
         .from('daily_report_edit_requests')
         .select(
           'id, report_id, reason, status, created_at, requested_by, daily_reports(report_date, sites(name))',
-        )
-        .eq('status', 'pending')
-        .order('created_at', ascending: false);
+        );
+    final rows = await (requestId == null
+        ? query.eq('status', 'pending')
+        : query.eq('id', requestId)).order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
   }
 

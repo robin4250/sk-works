@@ -544,7 +544,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              SkoLanguageController.tr('確定済みの日報は直接変更できません。サブ管理者2名へ承認依頼を送ります。'),
+              SkoLanguageController.tr('確定済みの日報は直接変更できません。会社で設定した承認担当者（1〜3名）へ承認依頼を送ります。'),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -576,7 +576,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            SkoLanguageController.tr('承認依頼を送りました。2名の承認後、お知らせから編集できます。'),
+            SkoLanguageController.tr('承認依頼を送りました。設定された承認担当者の承認後、日報を開いて編集できます。'),
           ),
         ),
       );
