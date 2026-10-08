@@ -62,6 +62,10 @@ abstract interface class TutorialSetupEvidenceSource {
   Future<List<Map<String, dynamic>>?> setupRows(String actionKey, String companyId);
 }
 
+abstract interface class TutorialOperationalEvidenceSource {
+  Future<Map<String, dynamic>?> operationalEvidence(String key, String companyId);
+}
+
 class TutorialEvidenceRepository {
   TutorialEvidenceRepository(this._source, {DateTime? today})
     : _today = today ?? _japanToday();
@@ -215,7 +219,88 @@ class TutorialEvidenceRepository {
         ));
       }
     }
+    if (companyId != null && companyId.isNotEmpty &&
+        _source is TutorialOperationalEvidenceSource) {
+      final actions = <String, String>{
+        if ((role == 'owner' || role == 'admin') &&
+            availableActionKeys.contains('payroll_settings'))
+          'company_payroll_policy': 'company_documents',
+        if (role == 'owner' || role == 'admin' || role == 'manager')
+          'company_document_selection': 'documents',
+        'personal_qualifications': 'qualification_register',
+      };
+      for (final entry in actions.entries) {
+        if (!availableActionKeys.contains(entry.value)) {
+          continue;
+        }
+        Map<String, dynamic>? evidence;
+        try {
+          evidence = await (_source as TutorialOperationalEvidenceSource)
+              .operationalEvidence(entry.key, companyId);
+        } catch (_) {
+          // Missing grants or network data are unknown, never saved evidence.
+        }
+        tasks.add(TutorialEvidenceTask(
+          key: entry.key, actionKey: entry.value,
+          requiredForCompletion: entry.key == 'company_payroll_policy',
+          checkpoints: operationalCheckpoints(entry.key, evidence, companyId),
+        ));
+      }
+    }
     return TutorialEvidenceSnapshot(role: role, tasks: tasks);
+  }
+
+  static List<TutorialEvidenceCheckpoint> operationalCheckpoints(
+    String key, Map<String, dynamic>? evidence, String companyId,
+  ) {
+    TutorialEvidenceCheckpoint checkpoint(String field, String label, bool? valid,
+        {String? rowId}) => TutorialEvidenceCheckpoint(field,
+          valid == null ? TutorialEvidenceState.unknown
+              : valid ? TutorialEvidenceState.saved : TutorialEvidenceState.missing,
+          label: label, evidenceKey: valid == true
+              ? '$key:${rowId ?? companyId}:$field' : null);
+    if (key == 'company_payroll_policy') {
+      bool? number(String field, int min, int max) {
+        if (evidence == null) {
+          return null;
+        }
+        final value = evidence[field];
+        return value is int && value >= min && value <= max;
+      }
+      final reviewers = evidence?['reviewers'];
+      bool? validReviewers;
+      if (reviewers is List) {
+        final selected = reviewers.whereType<Map>()
+            .where((row) => row['selected_position'] != null).toList();
+        final ids = selected.map((row) => row['user_id']?.toString()).toSet();
+        validReviewers = selected.isNotEmpty && selected.length <= 3 &&
+            ids.length == selected.length && !ids.contains(null) && !ids.contains('');
+      }
+      final timingValid = evidence == null ? null
+          : number('payment_month_offset', 0, 2) == true &&
+              number('payment_day', 1, 31) == true &&
+              (evidence['payment_month_offset'] != 0 || evidence['payment_day'] == 31);
+      return [
+        checkpoint('payment_timing', '給与の支払日整合性', timingValid),
+        checkpoint('closing_day', '給与の締め日', number('closing_day', 31, 31)),
+        checkpoint('payment_day', '給料日', number('payment_day', 1, 31)),
+        checkpoint('payment_month_offset', '給与の支払月', number('payment_month_offset', 0, 2)),
+        checkpoint('reviewers', '給与確認者（1〜3名）', validReviewers),
+      ];
+    }
+    final rows = evidence?['rows'];
+    if (rows is! List || rows.isEmpty) {
+      // There is no stored "no required documents" decision in the current schema.
+      return [checkpoint('registration', key == 'company_document_selection'
+          ? '必要書類の指定（指定なしの保存証跡は未対応）' : '本人の資格登録',
+          key == 'company_document_selection' || rows is! List ? null : false)];
+    }
+    return [for (final row in rows.whereType<Map>())
+      checkpoint('record:${row['id']}', row['name']?.toString() ??
+          (key == 'company_document_selection' ? '必要書類' : '本人の資格'),
+          row['id']?.toString().isNotEmpty == true ? true : null,
+          rowId: row['id']?.toString()),
+    ];
   }
 
   static List<TutorialEvidenceCheckpoint> setupCheckpoints(
@@ -298,11 +383,40 @@ class TutorialEvidenceRepository {
   }
 }
 
-class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, TutorialSetupEvidenceSource {
+class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, TutorialSetupEvidenceSource, TutorialOperationalEvidenceSource {
   _SupabaseTutorialEvidenceSource(this.client, this.userId);
 
   final SupabaseClient client;
   final String userId;
+
+  @override
+  Future<Map<String, dynamic>?> operationalEvidence(String key, String companyId) async {
+    if (key == 'company_payroll_policy') {
+      final policy = await client.rpc('payroll_company_policy');
+      if (policy is! Map || policy['can_manage_settings'] != true) {
+        return null;
+      }
+      final reviewers = await client.rpc('payroll_confirmation_candidates');
+      return {...Map<String, dynamic>.from(policy), 'reviewers': reviewers};
+    }
+    if (key == 'company_document_selection') {
+      final permissions = await client.rpc('current_feature_permissions');
+      if (permissions is! Map || permissions['can_manage_people'] != true) {
+        return null;
+      }
+      final rows = await client.from('document_requirements')
+          .select('id,name,is_required').eq('company_id', companyId).eq('is_active', true);
+      return {'rows': rows};
+    }
+    final worker = await client.from('workers').select('id')
+        .eq('company_id', companyId).eq('user_id', userId).eq('status', 'active').maybeSingle();
+    if (worker == null) {
+      return null;
+    }
+    final rows = await client.from('worker_qualifications').select('id')
+        .eq('company_id', companyId).eq('worker_id', worker['id']);
+    return {'rows': rows};
+  }
 
   @override
   Future<List<Map<String, dynamic>>?> setupRows(String actionKey, String companyId) async {
