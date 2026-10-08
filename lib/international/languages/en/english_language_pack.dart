@@ -725,6 +725,7 @@ const englishLanguagePack = LanguagePack(
     '日報を登録しました': 'Daily report saved',
     '日報は登録済みです。メンバー通知の結果は未確認です。通知のみ再確認できます': 'The daily report is saved. The member notification result is unconfirmed. You can retry only the notification.',
     '登録済み日報の通知のみ再確認': 'Retry saved report notification only',
+    '日報は登録済みです。通知機能が利用できないため、通知結果は未確認のままです': 'The report is saved. Notifications are unavailable, so the earlier notification result remains unconfirmed.',
     '日報通知の結果を確認できません': 'The report notification result could not be confirmed',
 
     '報告者名': 'Reporter Name',

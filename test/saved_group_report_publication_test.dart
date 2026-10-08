@@ -3,6 +3,32 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/notifications/saved_group_report_publication.dart';
 
 void main() {
+  test('failed or partially attached save never publishes', () async {
+    final published = <String>[];
+    await expectLater(registerSavedGroupReport(notificationEligible: true,
+      save: () async => throw StateError('evidence attachment failed'),
+      publish: (id) async { published.add(id); }), throwsStateError);
+    expect(await registerSavedGroupReport(notificationEligible: true,
+      save: () async => null,
+      publish: (id) async { published.add(id); }), isNull);
+    expect(published, isEmpty);
+  });
+  test('explicit registration publishes fixed saved ID only when eligible', () async {
+    final published = <String>[];
+    expect(await registerSavedGroupReport(notificationEligible: false,
+      save: () async => 'draft-report',
+      publish: (id) async { published.add(id); }), 'draft-report');
+    expect(published, isEmpty);
+    var currentSelection = 'saved-report';
+    expect(await registerSavedGroupReport(notificationEligible: true,
+      save: () async => currentSelection,
+      publish: (id) async {
+        currentSelection = 'different-report';
+        published.add(id);
+      }), 'saved-report');
+    expect(published, ['saved-report']);
+    expect(currentSelection, 'different-report');
+  });
   test('only a complete actual site group roster is eligible', () {
     final clockOut = DateTime(2026, 10, 9, 17);
     bool eligible({String? anchor = 'source', String? site = 'site', String? route,

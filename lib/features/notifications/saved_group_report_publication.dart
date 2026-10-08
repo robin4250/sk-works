@@ -29,3 +29,15 @@ bool groupReportPublicationEligible({
   return anchorSourceId != null && siteId != null && routeAssignmentId == null &&
     roster.isNotEmpty && roster.every((row) => row.sourceId != null && row.clockOutAt != null);
 }
+
+/// Used only by explicit registration, never internal signature draft saves.
+/// A failed/partial save cannot reach publication; the returned saved ID is fixed.
+Future<String?> registerSavedGroupReport({
+  required bool notificationEligible,
+  required Future<String?> Function() save,
+  required Future<void> Function(String reportId) publish,
+}) async {
+  final id = await save();
+  if (id != null && notificationEligible) await publish(id);
+  return id;
+}

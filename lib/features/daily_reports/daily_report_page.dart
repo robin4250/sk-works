@@ -492,9 +492,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
         roster: _workers.map((worker) => (
           sourceId: worker.sourceClockInId, clockOutAt: worker.sourceClockOutAt)),
       );
-      final id = await _saveDraft(ownsBusyState: false);
-      if (id == null || !mounted || !completeGroup) return;
-      await _publishSavedReport(id);
+      await registerSavedGroupReport(
+        notificationEligible: completeGroup,
+        save: () => _saveDraft(ownsBusyState: false),
+        publish: (id) async {
+          if (mounted) await _publishSavedReport(id);
+        },
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -504,7 +508,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final repository = _repository;
     if (repository == null) return;
     try {
-      await repository.publishSavedGroupReportNotifications(reportId);
+      final available = await repository.publishSavedGroupReportNotifications(reportId);
+      if (!available) {
+        // Missing staged RPC cannot confirm an earlier unknown publication.
+        // Initial unavailable/OFF paths do not display a noisy failure warning.
+        if (mounted && _notificationRetryReportId == reportId) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            SkoLanguageController.tr('日報は登録済みです。通知機能が利用できないため、通知結果は未確認のままです'),
+          )));
+        }
+        return;
+      }
       if (mounted && _notificationRetryReportId == reportId) {
         setState(() => _notificationRetryReportId = null);
       }
