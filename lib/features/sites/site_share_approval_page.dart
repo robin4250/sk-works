@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
 import 'site_cloud_repository.dart';
 
 class SiteShareApprovalPage extends StatefulWidget {
-  const SiteShareApprovalPage({super.key});
+  const SiteShareApprovalPage({super.key, this.initialRequestId});
+
+  final String? initialRequestId;
 
   @override
   State<SiteShareApprovalPage> createState() => _SiteShareApprovalPageState();
@@ -32,7 +35,11 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
       return;
     }
     try {
-      final items = await repository.loadSiteShareInbox();
+      final inbox = await repository.loadSiteShareInbox();
+      final target = widget.initialRequestId;
+      final items = target == null ? inbox : inbox.where(
+        (item) => item['data_item_id']?.toString() == target,
+      ).toList(growable: false);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -53,7 +60,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
     bool accept,
   ) async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || item['status'] != 'pending') return;
     final id = item['data_item_id']?.toString() ?? '';
     if (id.isEmpty) return;
 
@@ -109,6 +116,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -137,7 +145,10 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
                     ),
                   )
                 : _items.isEmpty
-                    ? const Center(child: Text('承認待ちの現場データはありません'))
+                    ? Center(child: Text(SkoLanguageController.tr(
+                        widget.initialRequestId == null
+                          ? '承認待ちの現場データはありません'
+                          : '対象の現場共有は完了済み、または閲覧できません。')))
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.separated(
@@ -201,7 +212,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
                                         '最寄駅: ${payload['nearest_station']}',
                                       ),
                                     const SizedBox(height: 12),
-                                    Row(
+                                    if (item['status'] == 'pending') Row(
                                       children: [
                                         Expanded(
                                           child: OutlinedButton.icon(

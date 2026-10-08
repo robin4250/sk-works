@@ -32,6 +32,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.identity,
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
+    this.tutorialCard,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
     this.visibleHomeKeys = const <String>{},
@@ -48,6 +49,7 @@ class FriendlyHomeContent extends StatelessWidget {
 
   final HomeIdentity identity;
   final RequiredDocumentAttention requiredDocumentAttention;
+  final Widget? tutorialCard;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
@@ -83,6 +85,7 @@ class FriendlyHomeContent extends StatelessWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
+              if (tutorialCard != null) tutorialCard!,
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
@@ -168,13 +171,7 @@ class _RequiredDocumentAttentionCardState
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => widget.onOpen(
-            widget.attention.paidLeaveApprovalCount > 0
-                ? 'approvals'
-                : widget.attention.generationIssueCount > 0
-                    ? 'notifications'
-                    : 'documents',
-          ),
+          onTap: () => widget.onOpen('notifications'),
           child: IntrinsicHeight(
             child: Row(
               children: [

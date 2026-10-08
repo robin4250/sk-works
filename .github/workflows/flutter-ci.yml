@@ -107,7 +107,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: adopted-report-pdf-comparison
-          path: build/pdf-fixtures/*.pdf
+          path: |
+            build/pdf-fixtures/*.pdf
+            build/pdf-fixtures/daily_report_capture_evidence_*.png
           if-no-files-found: warn
 
       - name: Pre-device release gate

@@ -9,11 +9,18 @@ void main() {
     final content =
         File('lib/features/home/friendly_home_content.dart').readAsStringSync();
 
-    expect(repository, contains('pending_paid_leave_request_batches'));
+    final center = File(
+      'lib/features/notifications/attention_center_repository.dart',
+    ).readAsStringSync();
+    expect(repository, contains('AttentionCenterRepository'));
+    expect(repository, contains('await _repository.load()'));
+    expect(center, contains('pending_paid_leave_request_batches'));
+    expect(center, contains("readSource('paid_leave'"));
     expect(repository, contains('paidLeaveApprovalCount'));
     expect(repository, contains('unresolvedCount'));
-    expect(repository, contains('Non-management users'));
-    expect(content, contains("? 'approvals'"));
+    expect(repository, contains('data.snapshot.unresolvedCount'));
+    expect(content, contains("widget.onOpen('notifications')"));
+    expect(content, isNot(contains("? 'approvals'")));
     expect(content, contains('attention.unresolvedCount'));
   });
 }

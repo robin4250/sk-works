@@ -2,6 +2,10 @@
 
 import 'dart:typed_data';
 
+import 'gps_photo_capture_result.dart';
+import 'capture_verification_draft.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -424,6 +428,80 @@ class AttendanceVerificationRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  Future<String> _captureDraftKey() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) { throw StateError('ログインが必要です'); }
+    return 'sko.capture.pending.v1.$userId.${await _companyId()}';
+  }
+
+  Future<CaptureVerificationDraft?> loadPendingCaptureDraft() async {
+    final preferences = await SharedPreferences.getInstance();
+    final encoded = preferences.getString(await _captureDraftKey());
+    return encoded == null ? null : CaptureVerificationDraft.restore(encoded);
+  }
+
+  Future<Map<String, dynamic>?> _recoverCaptureDraft(CaptureVerificationDraft draft) async {
+    final row = await _client.from('attendance_verifications').select()
+      .eq('id', draft.id).eq('created_by', _client.auth.currentUser!.id).maybeSingle();
+    if (row == null) { return null; }
+    if (!draft.matchesRow(row)) { throw StateError('保留中の勤怠記録が一致しません'); }
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<Map<String, dynamic>> submitCaptureDraft(CaptureVerificationDraft draft) async {
+    if (draft.payload['created_by'] != _client.auth.currentUser?.id ||
+        draft.payload['company_id'] != await _companyId()) {
+      throw StateError('保留中の勤怠の本人・会社が一致しません');
+    }
+    final preferences = await SharedPreferences.getInstance();
+    final key = await _captureDraftKey();
+    final previous = preferences.getString(key);
+    if (previous != null && previous != draft.encoded) {
+      throw StateError('先に保留中の撮影記録を確認してください');
+    }
+    if (!await preferences.setString(key, draft.encoded)) {
+      throw StateError('再確認用の撮影記録を保存できません');
+    }
+    final saved = await recoverOrInsertCaptureDraft(draft,
+      readExact: () => _recoverCaptureDraft(draft),
+      insert: () async {
+        if (!draft.canInsertOn(DateTime.now())) {
+          throw StateError('勤務日が変わったため新規登録せず、保留中の登録結果だけ確認しています');
+        }
+        if (!await captureEnabled()) { throw StateError('撮影記録の登録設定を確認してください'); }
+        final row = await _client.from('attendance_verifications').insert(draft.payload).select().single();
+        return Map<String, dynamic>.from(row);
+      });
+    // A failed preference cleanup keeps the same identity for harmless exact recovery.
+    await preferences.remove(key);
+    return saved;
+  }
+
+  Future<String> captureCompanyId() => _companyId();
+
+  Future<bool> captureEnabled() async {
+    final companyId = await _companyId();
+    try {
+      final value = await _client.rpc('get_attendance_capture_capability',
+        params: {'p_company_id': companyId});
+      return value is Map && value['version'] == 1 &&
+        value['company_id'] == companyId && value['capture_enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> uploadCapturedPhoto(CapturedPhoto photo, CaptureShiftContext context,
+      String workerId) async {
+    if (context.companyId != await _companyId()) {
+      throw StateError('撮影中に会社が変更されました');
+    }
+    final path = '${context.companyId}/attendance/${context.siteId ?? context.routeId ?? 'route'}/$workerId/${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await _client.storage.from(_bucket).uploadBinary(path, photo.bytes,
+      fileOptions: const FileOptions(upsert: false));
+    return path;
+  }
+
   Future<Map<String, dynamic>> createVerification({
     required String workerId,
     String? siteId,
@@ -438,6 +516,8 @@ class AttendanceVerificationRepository {
     String? photoFilename,
     String? note,
     AttendanceShiftContext? shift,
+    GpsPhotoCaptureResult? capture,
+    void Function(CaptureVerificationDraft)? onCaptureDraftPrepared,
   }) async {
     final companyId = await _companyId();
     if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
@@ -474,9 +554,18 @@ class AttendanceVerificationRepository {
       throw StateError('現場またはルートを選択してください。');
     }
 
-    String? storagePath;
+    if (capture != null && (verificationMode != 'location_photo' ||
+        capture.context.companyId != companyId ||
+        capture.context.sourceClockInId != shift?.id ||
+        capture.context.siteId != siteId ||
+        capture.context.routeId != routeId ||
+        capture.context.vehicleId != selection?['vehicle_id']?.toString() ||
+        !await captureEnabled())) {
+      throw StateError('撮影対象の勤務を再確認してください');
+    }
+    String? storagePath = capture?.storagePath;
 
-    if (photoBytes != null) {
+    if (capture == null && photoBytes != null) {
       final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
       final objectName =
           '${DateTime.now().microsecondsSinceEpoch}$extension';
@@ -490,9 +579,7 @@ class AttendanceVerificationRepository {
     }
 
     try {
-      final row = await _client
-          .from('attendance_verifications')
-          .insert({
+      final payload = <String, Object?>{
             'company_id': companyId,
             'worker_id': workerId,
             'site_id': _nullable(siteId),
@@ -505,17 +592,28 @@ class AttendanceVerificationRepository {
             'distance_to_site_m': distanceToSiteM,
             'proximity_status': proximityStatus,
             'photo_storage_path': storagePath,
+            if (capture != null) ...capture.insertMetadata,
             'note': _nullable(note),
             'vehicle_id': selection?['vehicle_id'],
             'route_assignment_id': selection?['route_assignment_id'],
             'created_by': _client.auth.currentUser?.id,
-          })
+      };
+      if (capture != null) {
+        final draft = CaptureVerificationDraft(payload);
+        onCaptureDraftPrepared?.call(draft);
+        return await submitCaptureDraft(draft);
+      }
+      final row = await _client.from('attendance_verifications').insert(payload)
           .select('id, confirmed_at, work_date, source_clock_in_id')
           .single();
       return Map<String, dynamic>.from(row);
     } catch (_) {
-      if (storagePath != null) {
-        await _client.storage.from(_bucket).remove([storagePath]);
+      if (capture == null && storagePath != null) {
+        try {
+          await _client.storage.from(_bucket).remove([storagePath]);
+        } catch (_) {
+          // Preserve the original persistence failure.
+        }
       }
       rethrow;
     }

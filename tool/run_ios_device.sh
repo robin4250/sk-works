@@ -190,5 +190,3 @@ echo "2. USBケーブルを抜く"
 echo "3. iPhoneホーム画面のSKOをタップ"
 echo "4. 通常起動すれば修正確認完了"
 echo
-echo "Hot Reload/Debugが必要な時だけ:"
-echo "  bash tool/run_ios_device_debug.sh"

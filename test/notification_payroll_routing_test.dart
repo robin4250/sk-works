@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:sk_works/features/attendance/attendance_correction_approvals_page.dart';
 import 'package:sk_works/features/attendance/paid_leave_approvals_page.dart';
 import 'package:sk_works/features/chat/chat_cloud_page.dart';
+import 'package:sk_works/features/daily_reports/daily_report_approvals_page.dart';
 import 'package:sk_works/features/operations/vehicle_route_page.dart';
 import 'package:sk_works/features/payroll/individual_payroll_settings_page.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
@@ -97,9 +98,14 @@ void main() {
     expect(notificationDestination(notice('chat_group_invite')),
       isA<ChatCloudPage>().having((page) => page.showGroupsInitially, 'group tab', true));
     expect(notificationDestination(notice('site_map')), isA<GeneralSiteMapPage>());
-    expect(notificationDestination(notice('site_share_approval')), isA<SiteShareApprovalPage>());
+    expect(notificationDestination(notice('site_share_approval')), isA<SiteShareApprovalPage>()
+      .having((page) => page.initialRequestId, 'target request', targetId));
     expect(notificationDestination(notice('vehicle_documents')), isA<VehicleRoutePage>());
-    expect(notificationDestination(notice('paid_leave_request')), isA<PaidLeaveApprovalsPage>());
+    expect(notificationDestination(notice('paid_leave_request')), isA<PaidLeaveApprovalsPage>()
+      .having((page) => page.initialRequestId, 'target request', targetId));
+    expect(notificationDestination(notice('daily_report_edit_request')),
+      isA<DailyReportApprovalsPage>()
+        .having((page) => page.initialRequestId, 'target request', targetId));
     expect(notificationDestination(notice('worker_personnel_change_completed')), isA<PeopleCloudPage>());
     expect(notificationDestination(notice('settings')), isA<SettingsPage>());
     for (final key in ['site_information_request', 'site_information_request_result']) {
@@ -132,11 +138,17 @@ void main() {
     expect(repository.replaceAll(RegExp(r"\s+"), ""),
       contains(".select('period_start').eq('id',id).maybeSingle()"));
     final source = File('lib/features/notifications/notifications_page.dart').readAsStringSync();
-    expect(source.indexOf('await review.notificationMonth'),
-      lessThan(source.indexOf('await repository.markRead(item.id)')));
-    expect(source, contains('Failed resolution leaves the notification unread'));
-    expect(source, contains('if (_opening) return;'));
-    expect(source, contains('finally {\n      _opening = false;'));
+    final resolution = source.indexOf('await review.notificationMonth');
+    final readMutation = source.indexOf('await _notifications?.markRead(id)');
+    expect(resolution, greaterThanOrEqualTo(0));
+    expect(readMutation, greaterThan(resolution));
+    final opening = source.substring(source.indexOf('Future<void> _open('),
+      source.indexOf('Widget build(BuildContext context)'));
+    final failureHandler = opening.substring(opening.indexOf('catch (error)'));
+    expect(failureHandler, isNot(contains('markRead(')));
+    final compact = opening.replaceAll(RegExp(r'\s+'), '');
+    expect(compact, contains('if(_opening){return;}'));
+    expect(compact, contains('finally{if(mounted){setState(()=>_opening=false);}}'));
     expect(source, contains('onTap: _opening ? null : () => _open(item)'));
     expect(source, contains('Text(item.body)'));
     expect(source, contains('item.title,'));

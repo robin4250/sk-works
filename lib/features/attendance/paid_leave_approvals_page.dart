@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'paid_leave_repository.dart';
 
 class PaidLeaveApprovalsPage extends StatefulWidget {
-  const PaidLeaveApprovalsPage({super.key});
+  const PaidLeaveApprovalsPage({super.key, this.initialRequestId});
+
+  final String? initialRequestId;
 
   @override
   State<PaidLeaveApprovalsPage> createState() =>
@@ -34,7 +37,10 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
       return;
     }
     try {
-      final items = await repository.loadPendingApprovals();
+      final target = widget.initialRequestId;
+      final items = target == null
+          ? await repository.loadPendingApprovals()
+          : await repository.loadApprovalTarget(target);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -53,7 +59,9 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
   Future<void> _open(PaidLeaveApprovalBatch item) async {
     final repository = _repository;
     if (repository == null) return;
-    final dates = await repository.loadBatchDates(item.batchId);
+    // Notification targets already carry dates from their permitted RLS read.
+    final dates = item.leaveDates ??
+        await repository.loadBatchDates(item.batchId);
     if (!mounted) return;
 
     final note = TextEditingController();
@@ -78,7 +86,7 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
                   Text('理由：${item.reason}'),
                 ],
                 const SizedBox(height: 12),
-                TextField(
+                if (item.canDecide) TextField(
                   controller: note,
                   maxLines: 2,
                   decoration: const InputDecoration(
@@ -94,11 +102,11 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('閉じる'),
           ),
-          OutlinedButton(
+          if (item.canDecide) OutlinedButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('却下'),
           ),
-          FilledButton(
+          if (item.canDecide) FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('承認'),
           ),
@@ -107,7 +115,7 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
     );
     final noteText = note.text;
     note.dispose();
-    if (decision == null) return;
+    if (decision == null || !item.canDecide) return;
 
     setState(() => _busy = true);
     try {
@@ -124,6 +132,7 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -138,7 +147,10 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
             : _error != null
                 ? Center(child: Text(_error!, textAlign: TextAlign.center))
                 : _items.isEmpty
-                    ? const Center(child: Text('承認待ちの有給申請はありません'))
+                    ? Center(child: Text(SkoLanguageController.tr(
+                        widget.initialRequestId == null
+                          ? '承認待ちの有給申請はありません'
+                          : '対象の申請を表示できません。閲覧権限を確認してください。')))
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.separated(
@@ -162,7 +174,13 @@ class _PaidLeaveApprovalsPageState extends State<PaidLeaveApprovalsPage> {
                                 ),
                                 subtitle: Text(
                                   '${item.dateCount}日 / ${_date(item.firstDate)}'
-                                  '${item.firstDate == item.lastDate ? '' : '〜${_date(item.lastDate)}'}',
+                                  '${item.firstDate == item.lastDate ? '' : '〜${_date(item.lastDate)}'}'
+                                  ' / ${SkoLanguageController.tr(switch (item.status) {
+                                    'approved' => '承認済み',
+                                    'rejected' => '却下済み',
+                                    'pending' => '承認待ち',
+                                    _ => '申請状態を確認してください',
+                                  })}',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _open(item),
