@@ -179,6 +179,16 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Register the official CocoaPods CDN explicitly
+        run: |
+          set -euo pipefail
+          pod --version
+          # Automatic URL probing can misclassify the CDN as a Git repository
+          # after an HTTP failure. The official add-cdn command fixes its type;
+          # compatibility checks and subsequent network/build failures remain fatal.
+          pod repo add-cdn trunk https://cdn.cocoapods.org/
+          pod repo list
+
       - name: Build iOS debug without codesigning
         run: flutter build ios --debug --no-codesign
 
