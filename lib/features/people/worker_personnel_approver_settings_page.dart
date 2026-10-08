@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
+import '../../international/language_controller.dart';
 
 class WorkerPersonnelApproverSettingsPage extends StatefulWidget {
   const WorkerPersonnelApproverSettingsPage({super.key});
@@ -75,7 +76,7 @@ class _WorkerPersonnelApproverSettingsPageState
     if (repository == null || _saving) return;
     if (_selected.isEmpty || _selected.length > 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('承認者は1〜3名で選択してください')),
+        SnackBar(content: Text(SkoLanguageController.tr('承認者は1〜3名で選択してください'))),
       );
       return;
     }
@@ -84,13 +85,13 @@ class _WorkerPersonnelApproverSettingsPageState
       await repository.savePersonnelApprovers(_selected);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('社員個人情報の承認者を${_selected.length}名で保存しました')),
+        SnackBar(content: Text(SkoLanguageController.trParams('社員個人情報の承認者を{count}名で保存しました', {'count': _selected.length}))),
       );
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
+        SnackBar(content: Text(SkoLanguageController.trParams('保存できませんでした: {error}', {'error': error.toString()}))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -99,10 +100,11 @@ class _WorkerPersonnelApproverSettingsPageState
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '社員個人情報 承認者設定',
+        title: Text(
+          SkoLanguageController.tr('社員個人情報 承認者設定'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
@@ -129,14 +131,15 @@ class _WorkerPersonnelApproverSettingsPageState
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                     children: [
-                      const Card(
+                      Card(
                         child: Padding(
                           padding: EdgeInsets.all(14),
-                          child: Text(
-                            '社員個人情報の変更を承認する人を1〜3名登録します。'
+                          child: Text(SkoLanguageController.tr(
+                            '管理者・サブ管理者・閲覧者から、社員個人情報の変更を承認する人を1〜3名登録します。'
                             '登録人数がその申請に必要な承認人数になります。'
-                            '申請者本人は自分の申請を承認できません。',
-                          ),
+                            '申請者本人は自分の申請を承認できません。'
+                            '選択された閲覧者は対象の変更申請を確認・承認でき、管理権限は追加されません。',
+                          )),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -149,7 +152,7 @@ class _WorkerPersonnelApproverSettingsPageState
                             candidate['name']?.toString() ?? 'ユーザー',
                           ),
                           subtitle: Text(
-                            _roleLabel(candidate['role']?.toString() ?? ''),
+                            SkoLanguageController.tr(_roleLabel(candidate['role']?.toString() ?? '')),
                           ),
                           onChanged: _saving
                               ? null
@@ -159,8 +162,8 @@ class _WorkerPersonnelApproverSettingsPageState
                                   if (id.isEmpty) return;
                                   if (checked == true && _selected.length >= 3) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('承認者は最大3名です'),
+                                      SnackBar(
+                                        content: Text(SkoLanguageController.tr('承認者は最大3名です')),
                                       ),
                                     );
                                     return;
@@ -178,14 +181,14 @@ class _WorkerPersonnelApproverSettingsPageState
                         ),
                       const SizedBox(height: 12),
                       Text(
-                        '現在 ${_selected.length}/3 名選択',
+                        SkoLanguageController.trParams('現在 {count}/3 名選択', {'count': _selected.length}),
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: const Icon(Icons.save_outlined),
-                        label: Text(_saving ? '保存中…' : '承認者を保存'),
+                        label: Text(SkoLanguageController.tr(_saving ? '保存中…' : '承認者を保存')),
                       ),
                     ],
                   ),
@@ -197,6 +200,7 @@ class _WorkerPersonnelApproverSettingsPageState
         'owner' => 'オーナー',
         'admin' => '管理者',
         'manager' => 'サブ管理者',
+        'viewer' => '閲覧者',
         _ => role,
       };
 }

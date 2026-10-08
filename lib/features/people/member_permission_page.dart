@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'member_permission_repository.dart';
 
 class MemberPermissionPage extends StatefulWidget {
@@ -177,10 +178,11 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      '管理者が、サブ管理者以上から1〜3名を設定します。'
+                    Text(SkoLanguageController.tr(
+                      '管理者が、管理者・サブ管理者・閲覧者から1〜3名を設定します。'
                       '日報修正などの承認通知は設定された担当者へ届きます。'
-                      '1名設定にも対応するため、個人事業主・一人親方でも利用できます。',
+                      '1名設定にも対応するため、個人事業主・一人親方でも利用できます。'
+                      '担当者への選択だけで管理権限が追加されることはありません。'),
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 12),
@@ -193,7 +195,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(rows[index].displayName),
-                        subtitle: Text(_roleLabel(rows[index].role)),
+                        subtitle: Text(SkoLanguageController.tr(_roleLabel(rows[index].role))),
                         value: rows[index].isAssignee,
                         onChanged: (enabled) async {
                           final value = enabled ?? false;
@@ -217,9 +219,9 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
                               context: dialogContext,
                               builder: (context) => AlertDialog(
                                 title: const Text('承認担当者は1名以上必要です'),
-                                content: const Text(
-                                  '先に別の管理者またはサブ管理者を承認担当者へ追加してから、この担当者を外してください。',
-                                ),
+                                content: Text(SkoLanguageController.tr(
+                                  '先に別の管理者・サブ管理者・閲覧者を承認担当者へ追加してから、この担当者を外してください。',
+                                )),
                                 actions: [
                                   FilledButton(
                                     onPressed: () => Navigator.pop(context),
@@ -524,6 +526,7 @@ class _MemberPermissionPageState extends State<MemberPermissionPage> {
         'owner' => '管理者（初回登録）',
         'admin' => '管理者',
         'manager' => 'サブ管理者',
+        'viewer' => '閲覧者',
         _ => '一般ユーザー',
       };
 }
