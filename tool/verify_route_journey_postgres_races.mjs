@@ -2,10 +2,10 @@ import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const connectionString=process.env.SKO_ROUTE_RACE_DATABASE_URL;
 const url=new URL(connectionString??'postgres://invalid');
-if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.pathname!=='/sko_route_capture_race_fixture')throw new Error('Only local disposable sko_route_capture_race_fixture database is permitted');
+if(!['postgres:','postgresql:'].includes(url.protocol)||url.search!==''||url.hash!==''||!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.pathname!=='/sko_route_capture_race_fixture')throw new Error('Only local disposable sko_route_capture_race_fixture database is permitted');
 const pg=await import(process.argv[2]);const Client=pg.Client??pg.default?.Client;
 const clients=[];
-async function connect(name){const c=new Client({connectionString,application_name:name});await c.connect();clients.push(c);await c.query("set statement_timeout='20s';set lock_timeout='15s'");return c;}
+async function connect(name){const c=new Client({connectionString,application_name:name});const effective=c.connectionParameters;const expectedPort=Number(url.port||5432);if(!['127.0.0.1','localhost','::1'].includes(effective.host)||effective.database!=='sko_route_capture_race_fixture'||!Number.isInteger(expectedPort)||expectedPort<1||expectedPort>65535||Number(effective.port)!==expectedPort)throw new Error('Effective Postgres connection must remain local and disposable');await c.connect();clients.push(c);await c.query("set statement_timeout='20s';set lock_timeout='15s'");return c;}
 const ids=Array.from({length:14},(_,i)=>`00000000-0000-0000-0000-${String(i+1).padStart(12,'0')}`);
 const [company,actor,worker,route,stop,source,report,capture,otherCapture,clockOut,thirdCapture,fourthCapture,objectId,fifthCapture]=ids;
 const payload={capture_contract_version:1,gps_capture_status:'failed',photo_capture_status:'failed',gps_captured_at:null,photo_captured_at:null,photo_observed_at:null,captured_address:null,latitude:null,longitude:null,accuracy_m:null,photo_storage_path:null,attempted_at:'2026-10-01T00:01:00Z'};

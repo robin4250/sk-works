@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
       - 'tool/verify_route_journey_postgres_races.mjs'
+      - 'tool/verify_route_journey_postgres_url_guard.mjs'
       - 'tool/fixtures/route_journey_capture/**'
       - '.github/workflows/route-journey-postgres-races.yml'
   push:
@@ -11,6 +12,7 @@ on:
     paths:
       - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
       - 'tool/verify_route_journey_postgres_races.mjs'
+      - 'tool/verify_route_journey_postgres_url_guard.mjs'
       - 'tool/fixtures/route_journey_capture/**'
       - '.github/workflows/route-journey-postgres-races.yml'
   workflow_dispatch:
@@ -42,6 +44,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Reject URL parameters that could override the local database host
+        run: node tool/verify_route_journey_postgres_url_guard.mjs
       - name: Install pinned isolated Postgres client
         run: npm install --prefix "$RUNNER_TEMP/route-pg-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
       - name: Verify observed route capture lock races in disposable database
