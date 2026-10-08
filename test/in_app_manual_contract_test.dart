@@ -15,6 +15,7 @@ void main() {
     final adminText = ManualContent.admin
         .map((section) => [
               section.title,
+              section.buttonLabel,
               section.summary,
               section.support,
               ...section.steps,
@@ -23,8 +24,21 @@ void main() {
 
     expect(adminText, isNot(contains('請求書・現場単価は対象外')));
     expect(adminText, contains('会社単価・手当設定'));
-    expect(adminText, contains('管理者用現場データ'));
+    expect(adminText, contains('管理現場'));
+    expect(adminText, contains('初回設定の6項目'));
+    expect(adminText, contains('給与の締め日・給料日・確認者'));
+    expect(adminText, isNot(contains('サブ管理者には現場単価を表示しません')));
     expect(adminText, contains('個人事業主・一人親方'));
+  });
+
+  test('manual guidance uses current routes and granted permissions', () {
+    final generalText = ManualContent.general.map((section) => '${section.buttonLabel} ${section.support}').join(' ');
+    final subAdminText = ManualContent.subAdmin.map((section) => '${section.support} ${section.steps.join(' ')}').join(' ');
+    expect(generalText, contains('従業員登録QRでログイン'));
+    expect(generalText, contains('要対応'));
+    expect(generalText, isNot(contains('大事なお知らせ')));
+    expect(subAdminText, contains('会社から付与された権限'));
+    expect(subAdminText, isNot(contains('請求書・現場単価は対象外')));
   });
 
   test('membership roles map to the correct manual', () {

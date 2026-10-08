@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'manual_content.dart';
 import 'manual_pdf_service.dart';
+import 'manual_version.dart';
+import '../../international/language_controller.dart';
 
 class ManualLibraryPage extends StatelessWidget {
   const ManualLibraryPage({
@@ -13,14 +15,15 @@ class ManualLibraryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final sections = ManualContent.forRole(role);
-    final roleLabel = ManualContent.roleLabel(role);
+    final roleLabel = SkoLanguageController.tr(ManualContent.roleLabel(role));
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '使い方・説明書',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          SkoLanguageController.tr('使い方・説明書'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: SafeArea(
@@ -35,16 +38,22 @@ class ManualLibraryPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      '$roleLabel用説明書',
+                      SkoLanguageController.trParams('{role}用説明書', {'role': roleLabel}),
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w900,
                           ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      '${sections.length}ページ構成です。'
-                      '画面内でも読めて、A4 PDFとしてプレビュー・印刷・共有できます。',
-                    ),
+                    Text(SkoLanguageController.trParams(
+                      'SKO v{version} / ベータ版 / {date}',
+                      {'version': ManualVersion.appVersion, 'date': ManualVersion.revisionDate},
+                    )),
+                    const SizedBox(height: 8),
+                    Text(SkoLanguageController.trParams(
+                      '{count}ページ構成です。画面内でも読めて、A4 PDFとしてプレビュー・印刷・共有できます。',
+                      {'count': sections.length},
+                    )),
+                    Text(SkoLanguageController.tr('PDFは日本語版です。')),
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: () => Navigator.of(context).push(
@@ -53,7 +62,7 @@ class ManualLibraryPage extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.picture_as_pdf_outlined),
-                      label: Text('$roleLabel用説明書 PDFを開く'),
+                      label: Text(SkoLanguageController.trParams('{role}用説明書 PDFを開く', {'role': roleLabel})),
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
@@ -64,7 +73,7 @@ class ManualLibraryPage extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.menu_book_outlined),
-                      label: const Text('SKOパンフレット 20ページを開く'),
+                      label: Text(SkoLanguageController.tr('SKOパンフレット 20ページを開く')),
                     ),
                   ],
                 ),
@@ -72,7 +81,7 @@ class ManualLibraryPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '画面で読む',
+              SkoLanguageController.tr('画面で読む'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -103,6 +112,7 @@ class _ManualSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Card(
       child: ExpansionTile(
         leading: CircleAvatar(
@@ -112,10 +122,10 @@ class _ManualSectionCard extends StatelessWidget {
           ),
         ),
         title: Text(
-          section.title,
+          SkoLanguageController.tr(section.title),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        subtitle: Text(section.summary),
+        subtitle: Text(SkoLanguageController.tr(section.summary)),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           Container(
@@ -130,7 +140,7 @@ class _ManualSectionCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '⭕ ここを押す：${section.buttonLabel}',
+                    SkoLanguageController.trParams('⭕ ここを押す：{button}', {'button': SkoLanguageController.tr(section.buttonLabel)}),
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -145,17 +155,17 @@ class _ManualSectionCard extends StatelessWidget {
                 radius: 15,
                 child: Text('${i + 1}'),
               ),
-              title: Text(section.steps[i]),
+              title: Text(SkoLanguageController.tr(section.steps[i])),
             ),
           const Divider(),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.support_agent_outlined),
-            title: const Text(
-              'サポート・補足',
-              style: TextStyle(fontWeight: FontWeight.w900),
+            title: Text(
+              SkoLanguageController.tr('サポート・補足'),
+              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
-            subtitle: Text(section.support),
+            subtitle: Text(SkoLanguageController.tr(section.support)),
           ),
         ],
       ),

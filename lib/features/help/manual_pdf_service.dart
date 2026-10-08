@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../international/language_controller.dart';
+import '../shared/pdf_bytes_cache.dart';
 import 'manual_content.dart';
 import 'manual_version.dart';
 
@@ -14,21 +16,29 @@ class ManualPdfService {
   static Future<Uint8List> buildRoleManual(
     ManualRole role, {
     PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) {
     return _build(
       title: 'SKO ${ManualContent.roleLabel(role)}用説明書',
       sections: ManualContent.forRole(role),
       format: format,
+      regularFont: regularFont,
+      boldFont: boldFont,
     );
   }
 
   static Future<Uint8List> buildPamphlet({
     PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) {
     return _build(
       title: 'SKO ベータ版パンフレット',
       sections: ManualContent.pamphlet,
       format: format,
+      regularFont: regularFont,
+      boldFont: boldFont,
     );
   }
 
@@ -36,9 +46,11 @@ class ManualPdfService {
     required String title,
     required List<ManualSection> sections,
     required PdfPageFormat format,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -179,10 +191,13 @@ class ManualPdfService {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(
-              'ベータ版：アプリの大幅更新時は、説明書・パンフレットもセットで更新します。',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            pw.Expanded(
+              child: pw.Text(
+                'ベータ版：アプリの大幅更新時は、説明書・パンフレットもセットで更新します。',
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+              ),
             ),
+            pw.SizedBox(width: 8),
             pw.Text(
               ManualVersion.label,
               style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
@@ -331,7 +346,7 @@ class ManualPdfService {
   static const pamphletFileName = 'SKO_ベータ版パンフレット.pdf';
 }
 
-class ManualPdfPreviewPage extends StatelessWidget {
+class ManualPdfPreviewPage extends StatefulWidget {
   const ManualPdfPreviewPage.role({
     super.key,
     required ManualRole role,
@@ -346,26 +361,45 @@ class ManualPdfPreviewPage extends StatelessWidget {
   final bool _pamphlet;
 
   @override
+  State<ManualPdfPreviewPage> createState() => _ManualPdfPreviewPageState();
+}
+
+class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
+  final _pdfBytes = PdfBytesCache();
+
+  @override
+  void didUpdateWidget(covariant ManualPdfPreviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget._role != widget._role || oldWidget._pamphlet != widget._pamphlet) {
+      _pdfBytes.invalidate();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final role = _role;
-    final title = _pamphlet
+    SkoLanguageController.watch(context);
+    final role = widget._role;
+    final pamphlet = widget._pamphlet;
+    final title = pamphlet
         ? 'SKOパンフレット'
         : '${ManualContent.roleLabel(role!)}用説明書';
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(title: Text(SkoLanguageController.tr(title))),
       body: PdfPreview(
         initialPageFormat: PdfPageFormat.a4,
         canChangePageFormat: false,
         canChangeOrientation: false,
         allowPrinting: true,
         allowSharing: true,
-        pdfFileName: _pamphlet
+        pdfFileName: pamphlet
             ? ManualPdfService.pamphletFileName
             : ManualPdfService.fileNameForRole(role!),
-        build: (format) => _pamphlet
-            ? ManualPdfService.buildPamphlet(format: format)
-            : ManualPdfService.buildRoleManual(role!, format: format),
+        build: (format) => _pdfBytes.get(
+          () => pamphlet
+              ? ManualPdfService.buildPamphlet(format: format)
+              : ManualPdfService.buildRoleManual(role!, format: format),
+        ),
       ),
     );
   }

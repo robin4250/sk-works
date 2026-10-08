@@ -122,3 +122,10 @@ app.*.symbols
 
 # Flutter application lockfile must be committed for reproducible builds
 !/pubspec.lock
+
+# SKO generates the local iOS project with tool/prepare_ios.sh.
+# Keep Mac signing settings in place; these files are not committed source.
+/ios/
+/.idea/
+/.metadata
+/sk_works.iml

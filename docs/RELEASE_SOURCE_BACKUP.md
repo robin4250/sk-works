@@ -39,3 +39,28 @@ git clone /absolute/path/to/source.bundle ~/sko-source-recovery
 
 Never replace main with an older backup commit. Apply a forward fix to current
 main when recovery is needed.
+
+## Macで生成したiOSプロジェクトと署名設定
+
+このリポジトリの `ios/` は `tool/prepare_ios.sh` が生成・再利用するMacローカルの
+プロジェクトです。`.idea/`、`.metadata`、`sk_works.iml` と合わせてルートに限定して
+Gitの対象外にします。未保存の登録済みソースや、これら以外の未登録ソースは従来どおり
+インストール前ゲートが拒否します。ゲート自体を緩めていません。
+
+既存の `ios/` を削除したりstashへ移したりしないでください。既存のSigning Team設定を
+保持して再利用します。初回の設定再適用前に、MacローカルのiOSプロジェクトを別途
+非公開のバックアップへコピーしてください。Git bundleにはこのコピーが含まれません。
+このコピーもiPhone本体・Supabaseデータ・キーチェーン内の署名証明書のバックアップではありません。
+署名証明書の秘密鍵はこの手順でGitHubへ保存しません。
+
+Finderでの暗号化iPhoneバックアップが完了し、最新版mainのCI・実機導入条件が整った後に、
+既存のMacリポジトリ内で次の1行を実行します。iOSプロジェクトがある場合だけ、内容を変更せず
+権限を限定した `~/SKO-source-backups` の新規フォルダへコピーしてからRelease導入を開始します。
+
+```bash
+cd "$(git rev-parse --show-toplevel)" && git switch main && git pull --ff-only origin main && (umask 077; mkdir -p "$HOME/SKO-source-backups" && sko_ios_backup=$(mktemp -d "$HOME/SKO-source-backups/local-ios-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX") && if [ -d ios ]; then ditto ios "$sko_ios_backup/ios"; fi) && bash tool/device_day.sh
+```
+
+バックアップコピーをGitリポジトリ内へ置かないでください。端末が複数接続されている場合は
+`tool/device_day.sh` に対象の実機UDIDを指定します。上のコマンドの実行・署名コピー・
+iPhoneバックアップ完了は、実際のMacで確認して初めて完了と判断します。

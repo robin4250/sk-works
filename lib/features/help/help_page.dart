@@ -1,7 +1,9 @@
+import '../../international/language_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'manual_content.dart';
+import 'manual_version.dart';
 import 'menu_help_catalog.dart';
 import 'manual_library_page.dart';
 
@@ -17,6 +19,7 @@ class HelpPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final roleLabel = ManualContent.roleLabel(role);
     final helpItems = MenuHelpCatalog.visibleFor(
       role: role,
@@ -25,8 +28,8 @@ class HelpPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'ヘルプ',
+        title: Text(
+          SkoLanguageController.tr('ヘルプ'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
@@ -43,31 +46,32 @@ class HelpPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      '$roleLabel用の使い方',
+                      SkoLanguageController.trParams('{role}用の使い方', {'role': SkoLanguageController.tr(roleLabel)}),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w900,
                           ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'ボタンの場所、操作手順、サポートが出るタイミングまで説明します。'
-                      'A4 PDFで印刷・共有もできます。',
+                    Text('SKO v${ManualVersion.appVersion}'),
+                    Text(SkoLanguageController.tr(ManualVersion.revisionLabel)),
+                    SizedBox(height: 8),
+                    Text(
+                      SkoLanguageController.tr('ボタンの場所、操作手順、サポートが出るタイミングまで説明します。A4 PDFで印刷・共有もできます。'),
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ManualLibraryPage(role: role),
                         ),
                       ),
-                      icon: const Icon(Icons.menu_book_outlined),
-                      label: const Text('使い方・説明書を開く'),
+                      icon: Icon(Icons.menu_book_outlined),
+                      label: Text(SkoLanguageController.tr('使い方・説明書を開く')),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             for (final item in helpItems) ...[
               _HelpTile(
                 icon: _iconFor(item.key),
@@ -76,7 +80,7 @@ class HelpPage extends StatelessWidget {
                 destination: item.destination,
                 access: item.access,
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
             ],
           ],
         ),
@@ -125,6 +129,7 @@ class _HelpTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -132,30 +137,30 @@ class _HelpTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(child: Icon(icon)),
-            const SizedBox(width: 14),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
-                    style: const TextStyle(
+                    SkoLanguageController.tr(title),
+                    style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(body),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 5),
+                  Text(SkoLanguageController.tr(body)),
+                  SizedBox(height: 8),
                   Text(
-                    destination,
+                    SkoLanguageController.tr(destination),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  const SizedBox(height: 5),
+                  SizedBox(height: 5),
                   Text(
-                    '利用権限：$access',
+                    SkoLanguageController.trParams('利用権限：{access}', {'access': SkoLanguageController.tr(access)}),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
