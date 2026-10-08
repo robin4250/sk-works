@@ -57,7 +57,11 @@ void main() {
 
     expect(controller, contains("MenuHelpCatalog.visibleFor"));
     expect(controller, contains("currentFeatureKey"));
-    expect(overlay, contains("Search by page, feature, or action."));
+    expect(overlay, contains("SkoLanguageController.tr('ページ名・機能名・操作名から使い方を探せます。')"));
+    expect(overlay, contains('SkoLanguageController.watch(context)'));
+    expect(overlay, contains('SkoLanguageController.watch(dialogContext)'));
+    expect(overlay, contains('ManualVersion.revisionLabel'));
+    expect(overlay, contains('SkoLanguageController.tr(item.details)'));
     expect(app, contains("FloatingHelpController.setContext"));
   });
 }

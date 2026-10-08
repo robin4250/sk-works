@@ -30,6 +30,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Verify generated project exclusions preserve source checks
+        run: bash tool/test_generated_project_git_ignore.sh
+
       - name: Verify migration file integrity
         run: bash tool/check_migration_files.sh
 

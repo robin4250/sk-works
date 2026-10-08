@@ -19,10 +19,11 @@
 | 20261008043823_atomic_company_rate_and_allowance_units_save.sql | 20261008052056 |
 | 20261008044046_validate_registered_calculation_sources.sql | 20261008052058 |
 | 20261008045401_preserve_payroll_named_financial_details.sql | 20261008052138 |
+| 20261008044613_payroll_financial_condition_attention.sql | 20261008052341 |
 
 Supabase apply_migration が生成する本番versionとローカルCLIファイル時刻は別管理。古いmigrationをrename・再適用・ledger修正しない。
 
-給与条件警告 migration `20261008044613` は最初の本番適用で自動承認レビューに拒否され、未適用。理由は返されなかった。既存トリガーを削除せず、未登録時のみ追加する方式に変更し、再適用でトリガーOIDが維持される実SQL検証に成功。再適用結果は確認後に追記する。上記3件反映後も社員8件・給与明細2件・会社2件の件数は維持。
+給与条件警告 migration `20261008044613` は最初の本番適用で自動承認レビューに拒否された（理由は返されなかった）。既存トリガーを削除せず、未登録時のみ追加する方式に変更し、再適用でトリガーOIDが維持される実SQL検証に成功。修正版をGitHub commit `f27c326a97be85544689e5d5342d1291f95f66bc` に保存後、本番 version `20261008052341` として適用成功。読み取り確認で社員8件・給与明細2件・会社2件を維持し、条件警告トリガーは1件のみ。警告用の内部関数はanon・authenticatedから直接実行不可。
 
 反映後の読み取り検証: 登録会社・社員・給与明細・確認行の件数は反映前と同じ。新確認3表RLS有効、authenticated直接UPDATE不可。日次通知cron `payroll-confirmation-daily-jst` 有効、UTC15:00（JST00:00）。実際の確認日時と履歴を表示日付で書き換えない。
 

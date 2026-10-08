@@ -4,6 +4,7 @@ import '../../international/language_controller.dart';
 import '../../widgets/sko_scroll_chrome.dart';
 import 'floating_help_controller.dart';
 import 'menu_help_catalog.dart';
+import 'manual_version.dart';
 
 class FloatingHelpOverlay extends StatefulWidget {
   const FloatingHelpOverlay({super.key});
@@ -32,6 +33,7 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     if (!_loaded) return const SizedBox.shrink();
 
     return ValueListenableBuilder<bool>(
@@ -110,9 +112,7 @@ class _FloatingHelpOverlayState extends State<FloatingHelpOverlay> {
                             },
                             child: Semantics(
                               button: true,
-                              label: SkoLanguageController.isEnglish
-                                  ? 'Help'
-                                  : '何かお困りですか？',
+                              label: SkoLanguageController.tr('何かお困りですか？'),
                               child: Container(
                                 width: size,
                                 height: size,
@@ -183,7 +183,7 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final english = SkoLanguageController.isEnglish;
+    SkoLanguageController.watch(context);
     final needle = _query.trim().toLowerCase();
     final filtered = widget.items.where((item) {
       if (needle.isEmpty) return true;
@@ -193,7 +193,7 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
         item.destination,
         item.access,
         item.details,
-      ].join(' ').toLowerCase();
+      ].expand((value) => [value, SkoLanguageController.tr(value)]).join(' ').toLowerCase();
       return haystack.contains(needle);
     }).toList(growable: false);
 
@@ -206,16 +206,16 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                english ? 'How can I help?' : '何かお困りですか？',
+                SkoLanguageController.tr('何かお困りですか？'),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
               ),
+              Text('SKO v${ManualVersion.appVersion}'),
+              Text(SkoLanguageController.tr(ManualVersion.revisionLabel)),
               const SizedBox(height: 6),
               Text(
-                english
-                    ? 'Search by page, feature, or action.'
-                    : 'ページ名・機能名・操作名から使い方を探せます。',
+                SkoLanguageController.tr('ページ名・機能名・操作名から使い方を探せます。'),
               ),
               if (widget.current != null) ...[
                 const SizedBox(height: 14),
@@ -223,15 +223,11 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
                   child: ListTile(
                     leading: const Icon(Icons.auto_awesome_outlined),
                     title: Text(
-                      english
-                          ? 'About this screen'
-                          : 'いま開いている画面について',
+                      SkoLanguageController.tr('いま開いている画面について'),
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     subtitle: Text(
-                      english
-                          ? widget.current!.label
-                          : widget.current!.label,
+                      SkoLanguageController.tr(widget.current!.label),
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _showItem(widget.current!),
@@ -242,9 +238,7 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
               TextField(
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
-                  hintText: english
-                      ? 'Search help'
-                      : '例：給与明細、日報、現場、承認',
+                  hintText: SkoLanguageController.tr('例：給与明細、日報、現場、承認'),
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
@@ -253,9 +247,7 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
                 child: filtered.isEmpty
                     ? Center(
                         child: Text(
-                          english
-                              ? 'No matching help topics.'
-                              : '該当する説明がありません',
+                          SkoLanguageController.tr('該当する説明がありません'),
                         ),
                       )
                     : ListView.separated(
@@ -267,12 +259,12 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
                           return Card(
                             child: ListTile(
                               title: Text(
-                                item.label,
+                                SkoLanguageController.tr(item.label),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              subtitle: Text(item.purpose),
+                              subtitle: Text(SkoLanguageController.tr(item.purpose)),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => _showItem(item),
                             ),
@@ -288,54 +280,56 @@ class _FloatingHelpSheetState extends State<_FloatingHelpSheet> {
   }
 
   Future<void> _showItem(MenuHelpItem item) {
-    final english = SkoLanguageController.isEnglish;
     return showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(item.label),
+      builder: (dialogContext) {
+        SkoLanguageController.watch(dialogContext);
+        return AlertDialog(
+        title: Text(SkoLanguageController.tr(item.label)),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                english ? 'What it does' : '何ができる？',
+                SkoLanguageController.tr('何ができる？'),
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 4),
-              Text(item.purpose),
+              Text(SkoLanguageController.tr(item.purpose)),
               const SizedBox(height: 12),
               Text(
-                english ? 'Where it opens' : 'どこへ進む？',
+                SkoLanguageController.tr('どこへ進む？'),
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 4),
-              Text(item.destination),
+              Text(SkoLanguageController.tr(item.destination)),
               if (item.details.trim().isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
-                  english ? 'How to use it' : '使い方・ポイント',
+                  SkoLanguageController.tr('使い方・ポイント'),
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
-                Text(item.details),
+                Text(SkoLanguageController.tr(item.details)),
               ],
               const SizedBox(height: 12),
               Text(
-                english ? 'Who can use it' : '利用できる人',
+                SkoLanguageController.tr('利用できる人'),
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 4),
-              Text(item.access),
+              Text(SkoLanguageController.tr(item.access)),
             ],
           ),
         ),
         actions: [
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(english ? 'Close' : '閉じる'),
+            child: Text(SkoLanguageController.tr('閉じる')),
           ),
         ],
-      ),
+        );
+      },
     );
   }
 }
