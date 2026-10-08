@@ -45,16 +45,24 @@ class RouteJourneyCaptureDraft {
       payload.entries.every((entry) => _sameJson(raw[entry.key], entry.value));
   }
   static Object? _freeze(Object? value) {
-    if (value is Map) return Map<String, Object?>.unmodifiable({
-      for (final entry in value.entries) entry.key.toString(): _freeze(entry.value)});
-    if (value is List) return List<Object?>.unmodifiable(value.map(_freeze));
+    if (value is Map) {
+      return Map<String, Object?>.unmodifiable({
+        for (final entry in value.entries) entry.key.toString(): _freeze(entry.value)});
+    }
+    if (value is List) {
+      return List<Object?>.unmodifiable(value.map(_freeze));
+    }
     return value;
   }
   static bool _sameJson(Object? a, Object? b) {
-    if (a is Map && b is Map) return a.length == b.length &&
-      a.keys.every((key) => b.containsKey(key) && _sameJson(a[key], b[key]));
-    if (a is List && b is List) return a.length == b.length &&
-      List.generate(a.length, (index) => index).every((index) => _sameJson(a[index], b[index]));
+    if (a is Map && b is Map) {
+      return a.length == b.length &&
+        a.keys.every((key) => b.containsKey(key) && _sameJson(a[key], b[key]));
+    }
+    if (a is List && b is List) {
+      return a.length == b.length &&
+        List.generate(a.length, (index) => index).every((index) => _sameJson(a[index], b[index]));
+    }
     return a == b;
   }
   static String _uuid() {
