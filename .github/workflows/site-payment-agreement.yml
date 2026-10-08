@@ -1,0 +1,19 @@
+name: Site Payment Agreement SQL
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*site_payment_agreement*'
+      - 'tool/verify_site_payment_agreement.mjs'
+      - '.github/workflows/site-payment-agreement.yml'
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/site-payment-runtime @electric-sql/pglite@0.3.14
+      - run: node tool/verify_site_payment_agreement.mjs /tmp/site-payment-runtime/node_modules/@electric-sql/pglite/dist/index.js

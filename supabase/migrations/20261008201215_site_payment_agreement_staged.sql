@@ -74,6 +74,16 @@ begin
  return pair||jsonb_build_object('proposals',proposals);
 end $$;
 
+create function private.site_payment_finite_number(p_value jsonb)
+returns numeric language plpgsql immutable set search_path='' as $$
+declare result numeric;
+begin
+ result:=(p_value#>>'{}')::numeric;
+ if result::text in ('NaN','Infinity','-Infinity') then raise exception '有限の金額・数量が必要です。'; end if;
+ return result;
+end $$;
+revoke all on function private.site_payment_finite_number(jsonb) from public,anon,authenticated;
+
 create function private.propose_site_payment_terms(p_item uuid,p_company uuid,
  p_expected_revision integer,p_terms jsonb)
 returns uuid language plpgsql security definer set search_path='' as $$
@@ -100,36 +110,36 @@ begin
  mode:=p_terms->>'mode'; rounding:=p_terms->>'rounding_rule';
  if mode not in ('square_meter','lump_sum') or mode is null or rounding is null
  or rounding not in ('floor','nearest','ceil') then raise exception '計算方式・端数処理を選択してください。'; end if;
- base:=(p_terms->>'base_amount_yen')::numeric;
+ base:=private.site_payment_finite_number(p_terms->'base_amount_yen');
  if base is null or base<0 or base<>trunc(base) then raise exception '基本額が不正です。'; end if;
  if mode='square_meter' then
-  if coalesce((p_terms->>'unit_price_yen')::numeric,-1)<0 or
-   coalesce((p_terms->>'area')::numeric,-1)<0 then raise exception '平米単価と平米数が必要です。'; end if;
-  amount:=(p_terms->>'unit_price_yen')::numeric*(p_terms->>'area')::numeric;
+  if coalesce(private.site_payment_finite_number(p_terms->'unit_price_yen'),-1)<0 or
+   coalesce(private.site_payment_finite_number(p_terms->'area'),-1)<0 then raise exception '平米単価と平米数が必要です。'; end if;
+  amount:=private.site_payment_finite_number(p_terms->'unit_price_yen')*private.site_payment_finite_number(p_terms->'area');
   amount:=case rounding when 'floor' then floor(amount) when 'ceil' then ceil(amount) else round(amount) end;
   if base<>amount then raise exception '平米計算の総額が一致しません。'; end if;
  end if;
  if jsonb_typeof(p_terms->'adjustments') is distinct from 'array' then raise exception '追加項目が必要です。'; end if;
  for item in select value from jsonb_array_elements(p_terms->'adjustments') loop
   if nullif(trim(item->>'name'),'') is null or item->>'direction' is null or item->>'direction' not in ('addition','deduction')
-   or coalesce((item->>'amount_yen')::numeric,-1)<0
-   or (item->>'amount_yen')::numeric<>trunc((item->>'amount_yen')::numeric)
+   or coalesce(private.site_payment_finite_number(item->'amount_yen'),-1)<0
+   or private.site_payment_finite_number(item->'amount_yen')<>trunc(private.site_payment_finite_number(item->'amount_yen'))
   then raise exception '追加項目が不正です。'; end if;
-  adjustment:=adjustment+(item->>'amount_yen')::numeric*
+  adjustment:=adjustment+private.site_payment_finite_number(item->'amount_yen')*
    case item->>'direction' when 'deduction' then -1 else 1 end;
  end loop;
  if jsonb_typeof(p_terms->'tax_included') is distinct from 'boolean' or
-  coalesce((p_terms->>'tax_amount_yen')::numeric,-1)<0 or
-  (p_terms->>'tax_amount_yen')::numeric<>trunc((p_terms->>'tax_amount_yen')::numeric) or
-  coalesce((p_terms->>'tax_rate')::numeric,-1)<0 or
-  coalesce((p_terms->>'taxable_amount_yen')::numeric,-1)<0 then raise exception '税条件が必要です。'; end if;
- amount:=(p_terms->>'taxable_amount_yen')::numeric*(p_terms->>'tax_rate')::numeric/100;
+  coalesce(private.site_payment_finite_number(p_terms->'tax_amount_yen'),-1)<0 or
+  private.site_payment_finite_number(p_terms->'tax_amount_yen')<>trunc(private.site_payment_finite_number(p_terms->'tax_amount_yen')) or
+  coalesce(private.site_payment_finite_number(p_terms->'tax_rate'),-1)<0 or
+  coalesce(private.site_payment_finite_number(p_terms->'taxable_amount_yen'),-1)<0 then raise exception '税条件が必要です。'; end if;
+ amount:=private.site_payment_finite_number(p_terms->'taxable_amount_yen')*private.site_payment_finite_number(p_terms->'tax_rate')/100;
  amount:=case rounding when 'floor' then floor(amount) when 'ceil' then ceil(amount) else round(amount) end;
- if (p_terms->>'tax_amount_yen')::numeric<>amount and nullif(trim(p_terms->>'tax_override_reason'),'') is null
+ if private.site_payment_finite_number(p_terms->'tax_amount_yen')<>amount and nullif(trim(p_terms->>'tax_override_reason'),'') is null
  then raise exception '税額が税率・課税対象・端数処理と一致しません。手動変更理由が必要です。'; end if;
  amount:=base+adjustment+case when (p_terms->>'tax_included')::boolean then 0
-  else (p_terms->>'tax_amount_yen')::numeric end;
- if amount<0 or amount<>coalesce((p_terms->>'final_amount_yen')::numeric,-1)
+  else private.site_payment_finite_number(p_terms->'tax_amount_yen') end;
+ if amount<0 or amount<>coalesce(private.site_payment_finite_number(p_terms->'final_amount_yen'),-1)
  then raise exception '最終額が一致しません。'; end if;
  insert into private.site_payment_proposals(shared_item_id,revision,proposed_company_id,proposed_by,terms)
  values(p_item,current_revision+1,p_company,auth.uid(),p_terms) returning id into proposal;
@@ -202,3 +212,49 @@ create function public.site_payment_agreement_targets(p_company uuid)
 returns jsonb language sql set search_path='' as $$ select private.site_payment_agreement_targets(p_company) $$;
 revoke all on function private.site_payment_agreement_targets(uuid),public.site_payment_agreement_targets(uuid) from public,anon;
 grant execute on function private.site_payment_agreement_targets(uuid),public.site_payment_agreement_targets(uuid) to authenticated;
+
+create table private.site_payment_document_snapshots (
+ proposal_id uuid primary key references private.site_payment_proposals(id),
+ snapshot jsonb not null,
+ created_by uuid not null,
+ created_at timestamptz not null default now()
+);
+alter table private.site_payment_document_snapshots enable row level security;
+revoke all on private.site_payment_document_snapshots from public,anon,authenticated;
+create function private.saved_site_payment_document(p_proposal uuid,p_company uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare proposal private.site_payment_proposals; pair jsonb; result jsonb;
+begin
+ select * into proposal from private.site_payment_proposals where id=p_proposal;
+ if proposal.id is null then raise exception '提案が見つかりません。'; end if;
+ pair:=private.site_payment_pair(proposal.shared_item_id,p_company);
+ perform 1 from private.site_payment_agreement_rollout r where r.company_id in
+  ((pair->>'parent_company_id')::uuid,(pair->>'child_company_id')::uuid)
+  order by r.company_id for share;
+ perform 1 from private.company_connections c where c.parent_company_id=(pair->>'parent_company_id')::uuid
+  and c.child_company_id=(pair->>'child_company_id')::uuid for share;
+ perform 1 from private.site_share_inbox where data_item_id=proposal.shared_item_id for update;
+ pair:=private.site_payment_pair(proposal.shared_item_id,p_company);
+ if exists(select 1 from private.site_payment_proposals p where p.shared_item_id=proposal.shared_item_id
+  and p.revision>proposal.revision) then raise exception '最新版を確認してください。' using errcode='40001'; end if;
+ if not exists(select 1 from private.site_payment_confirmations c where c.proposal_id=p_proposal
+  and c.company_id=(pair->>'parent_company_id')::uuid) or not exists(
+  select 1 from private.site_payment_confirmations c where c.proposal_id=p_proposal
+  and c.company_id=(pair->>'child_company_id')::uuid) then raise exception '双方の確認が必要です。'; end if;
+ select snapshot into result from private.site_payment_document_snapshots where proposal_id=p_proposal;
+ if result is null then
+  select jsonb_build_object('proposal_id',proposal.id,'revision',proposal.revision,'terms',proposal.terms,
+   'parent_company_name',parent.name,'subcontractor_company_name',child.name,'site_name',s.name,
+   'parent_company_id',parent.id,'subcontractor_company_id',child.id)
+  into result from public.companies parent,public.companies child,public.sites s
+  where parent.id=(pair->>'parent_company_id')::uuid and child.id=(pair->>'child_company_id')::uuid
+  and s.id=(pair->>'source_site_id')::uuid;
+  insert into private.site_payment_document_snapshots(proposal_id,snapshot,created_by)
+  values(p_proposal,result,auth.uid());
+ end if;
+ return result;
+end $$;
+create function public.saved_site_payment_document(p_proposal uuid,p_company uuid)
+returns jsonb language sql set search_path='' as $$ select private.saved_site_payment_document(p_proposal,p_company) $$;
+revoke all on function private.saved_site_payment_document(uuid,uuid),public.saved_site_payment_document(uuid,uuid) from public,anon;
+grant execute on function private.saved_site_payment_document(uuid,uuid),public.saved_site_payment_document(uuid,uuid) to authenticated;
