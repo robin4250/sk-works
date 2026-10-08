@@ -1,17 +1,16 @@
-name: Attendance PostgreSQL Races
+name: Vehicle Activation Guard
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'tool/verify_attendance_postgres_races.mjs'
+      - 'tool/reproduce_vehicle_rollout_activation_race.mjs'
       - 'tool/fixtures/attendance_race/**'
       - 'supabase/migrations/20261008042058_fix_managed_attendance_overnight_chronology.sql'
       - 'supabase/migrations/20261008124940_gps_shift_work_date_evidence.sql'
-      - 'supabase/migrations/20261001232457_add_daily_report_vehicle_usage_rpc.sql'
-      - '.github/workflows/attendance-postgres-races.yml'
+      - '.github/workflows/known-vehicle-activation-blocker.yml'
   workflow_dispatch:
 jobs:
-  verify:
+  verify-activation-guard:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -31,10 +30,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify two independent PostgreSQL connections
+      - name: Verify safe OFF-start and activation orderings
         env:
           SKO_RACE_DATABASE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_race_fixture
         run: |
           sha256sum --check tool/fixtures/attendance_race/SHA256SUMS
           npm install --prefix "$RUNNER_TEMP/sko-race-runtime" --save-exact pg@8.16.3
-          node tool/verify_attendance_postgres_races.mjs "$RUNNER_TEMP/sko-race-runtime/node_modules/pg/lib/index.js"
+          node tool/reproduce_vehicle_rollout_activation_race.mjs "$RUNNER_TEMP/sko-race-runtime/node_modules/pg/lib/index.js"

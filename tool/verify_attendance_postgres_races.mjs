@@ -105,6 +105,35 @@ try {
 
   await a.query('reset role'); await b.query('reset role');
   await initialize();
+  // A rollout UPDATE takes its row lock before the guard runs. Meter reads
+  // must not request that row lock while holding the shared company lock.
+  await a.query(startSql, [id(71), id(1), id(12), id(4), id(5), id(2)]);
+  await a.query(`insert into attendance_verifications(company_id,worker_id,site_id,vehicle_id,event_type,verification_mode,confirmed_at,source_clock_in_id,created_by) values($1,$2,$3,$4,'clock_out','manual','2026-02-01 05:00+09',$5,$6)`,
+    [id(1), id(12), id(4), id(5), id(71), id(2)]);
+  await b.query('reset role');
+  await admin.query('begin');
+  await admin.query("select pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||$1::text,0))", [id(1)]);
+  const toggleMeterPromise = Promise.allSettled([
+    a.query('select public.record_vehicle_driver_meter($1,$2,1050,null) result', [id(71), id(72)]),
+    b.query('update private.vehicle_usage_rollout set enabled=false where company_id=$1 returning company_id', [id(1)]),
+  ]);
+  await waitBothBlocked();
+  await admin.query('commit');
+  const toggleMeter = await toggleMeterPromise;
+  assert.equal(toggleMeter[1].status, 'fulfilled');
+  assert.equal(toggleMeter[1].value.rowCount, 1);
+  if (toggleMeter[0].status === 'rejected') {
+    assert.equal(toggleMeter[0].reason.code, 'P0001');
+    assert.match(toggleMeter[0].reason.message, /車両連携はまだ有効ではありません/);
+  }
+  assert.equal((await admin.query('select count(*)::int n from vehicle_meter_events')).rows[0].n,
+    toggleMeter[0].status === 'fulfilled' ? 1 : 0);
+  assert.equal(Number((await admin.query('select odometer_km from vehicles')).rows[0].odometer_km),
+    toggleMeter[0].status === 'fulfilled' ? 1050 : 1000);
+  console.log('PASS rollout toggle versus meter: no advisory/gate-row lock cycle, atomic result');
+  await a.query('reset role');
+  await initialize();
+
   // Deletion cascades and driver meter writes must use a consistent lock order.
   await a.query(startSql, [id(61), id(1), id(12), id(4), id(5), id(2)]);
   await a.query(`insert into attendance_verifications(company_id,worker_id,site_id,vehicle_id,event_type,verification_mode,confirmed_at,source_clock_in_id,created_by) values($1,$2,$3,$4,'clock_out','manual','2026-02-01 05:00+09',$5,$6)`,
@@ -157,6 +186,43 @@ try {
   assert.equal((await admin.query("select count(*)::int n from attendance_verifications where event_type='clock_out' and evidence_origin='team_proxy' and latitude is null and photo_storage_path is null")).rows[0].n, 2);
   assert.equal((await admin.query('select count(*)::int n from private.group_checkout_requests')).rows[0].n, 2);
   console.log('PASS two participants: concurrent group checkout and retry create exactly one checkout per source');
+
+  await a.query('reset role'); await b.query('reset role');
+  await initialize();
+  // Driver and passenger share the site. The passenger may proxy checkout,
+  // but only the claimed driver may commit the final meter value.
+  await a.query(startSql, [id(81), id(1), id(12), id(4), id(5), id(2)]);
+  await b.query(startSql, [id(82), id(1), id(13), id(4), null, id(3)]);
+  await admin.query('begin');
+  await admin.query("select pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||$1::text,0))", [id(1)]);
+  const personalCheckout = a.query(`insert into attendance_verifications(company_id,worker_id,site_id,vehicle_id,event_type,verification_mode,confirmed_at,source_clock_in_id,created_by) values($1,$2,$3,$4,'clock_out','manual','2026-02-01 05:00+09',$5,$6) returning id`,
+    [id(1), id(12), id(4), id(5), id(81), id(2)]);
+  const groupedCheckout = b.query(callSql, [id(82), [id(81), id(82)], id(83)]);
+  const mixedPromise = Promise.allSettled([personalCheckout, groupedCheckout]);
+  await waitBothBlocked();
+  await admin.query('commit');
+  const mixed = await mixedPromise;
+  assert.equal(mixed[1].status, 'fulfilled');
+  if (mixed[0].status === 'rejected') {
+    assert.equal(mixed[0].reason.code, '23505');
+  }
+  assert.equal((await admin.query("select count(*)::int n from attendance_verifications where event_type='clock_out'")).rows[0].n, 2);
+  const closedClaim = (await admin.query('select * from vehicle_usage_claims')).rows[0];
+  assert.notEqual(closedClaim.ended_at, null);
+  const driverOut = (await admin.query('select id,confirmed_at from attendance_verifications where source_clock_in_id=$1', [id(81)])).rows[0];
+  assert.equal(closedClaim.source_clock_out_id, driverOut.id);
+  assert.equal(closedClaim.ended_at.toISOString(), driverOut.confirmed_at.toISOString());
+  assert.equal(closedClaim.work_date instanceof Date
+    ? closedClaim.work_date.toISOString().slice(0, 10)
+    : closedClaim.work_date, '2026-01-31');
+  await assert.rejects(b.query('select public.record_vehicle_driver_meter($1,$2,1050,null)', [id(81), id(84)]),
+    error => error.code === 'P0001' && /運転手本人だけ/.test(error.message));
+  const driverMeter = await a.query('select public.record_vehicle_driver_meter($1,$2,1050,null) result', [id(81), id(84)]);
+  assert.equal(Number(driverMeter.rows[0].result.distance_km), 50);
+  assert.equal((await admin.query('select count(*)::int n from vehicle_meter_events')).rows[0].n, 1);
+  assert.equal(Number((await admin.query('select odometer_km from vehicles')).rows[0].odometer_km), 1050);
+  console.log('PASS combined ON: personal versus member proxy checkout releases driver once; meter remains driver-only');
+
 } finally {
   await admin.query('rollback').catch(() => {});
   await Promise.all(connections.map(client => client.end()));
