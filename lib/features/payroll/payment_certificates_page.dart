@@ -1,3 +1,4 @@
+import 'site_payment_agreement_page.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -645,6 +646,7 @@ class _PartnerPaymentSettingsPageState
                           const SizedBox(height: 14),
                           Text(SkoLanguageController.tr('支払証明書の単価・税率・福利厚生費率は、選択した下請け会社のこの設定を使用します。社員の給与単価とは別に管理します。')),
                           const SizedBox(height: 10),
+                          OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SitePaymentAgreementPage())), icon: const Icon(Icons.handshake_outlined), label: const Text('現場別の支払金額調整')),
                           _sectionTitle('基準単価'),
                           SegmentedButton<bool>(
                             segments: [

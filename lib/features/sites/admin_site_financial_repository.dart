@@ -83,6 +83,9 @@ class AdminSiteFinancialRecord {
   }
 
   int billingRate(String key) {
+    // Fixed-price work is paid by area or the agreed contract amount, not
+    // attendance premiums. Keep the stored overrides for switching back.
+    if (hasSquareMeterBilling || hasContractBilling) return 0;
     final direct = billingRateOverrides[key] ?? 0;
     final daily = billingFormulas.hourlyBase && billingHourlyBaseYen > 0
         ? billingHourlyBaseYen

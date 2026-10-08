@@ -110,6 +110,7 @@ jobs:
           path: |
             build/pdf-fixtures/*.pdf
             build/pdf-fixtures/daily_report_capture_evidence_*.png
+            build/pdf-fixtures/payment_agreement_*.png
           if-no-files-found: warn
 
       - name: Pre-device release gate
