@@ -15,6 +15,7 @@ void main() {
     final adminText = ManualContent.admin
         .map((section) => [
               section.title,
+              section.buttonLabel,
               section.summary,
               section.support,
               ...section.steps,

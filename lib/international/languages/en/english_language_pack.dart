@@ -284,7 +284,7 @@ const englishLanguagePack = LanguagePack(
     "初期は管理者1名です。月末に通知し、未確認なら給料日の1週間前から当日まで毎日通知します。取消・再確認は履歴を残し、実際の確認日時を改変しません。": "Initially one administrator reviews. A notice is sent at month end, with daily reminders for unconfirmed reviewers from one week before payday through payday. Cancellation and renewed review retain history and actual timestamps.",
     "同じPDFで印刷・共有": "Print and Share the Same PDF",
     "同じPDFを印刷・共有します。登録した下請け会社は出勤なしでも支払証明書をプレビューできます。": "Print and share the same PDF. Registered subcontractors can preview payment certificates without attendance.",
-    "同じ会社で使用中の社員番号は登録できません。給与など金銭情報の設定・変更と、閲覧者の確認は別の権限です。会社の機能ONだけで権限は増えません。": "Employee numbers already used in the same company cannot be registered. Editing financial information and reviewer confirmation require separate permissions. Turning a company feature ON does not grant access.",
+    "役割・承認担当者の指定は管理者だけが行えます。同じ会社で使用中の社員番号は登録できません。給与など金銭情報の設定・変更と、閲覧者の確認は別の権限です。会社の機能ONだけで権限は増えません。": "Only administrators can assign roles and approvers. Employee numbers already used in the same company cannot be registered. Editing financial information and reviewer confirmation require separate permissions. Turning a company feature ON does not grant access.",
     "必要なら写真": "Photo if Required",
     "必要な人だけが必要な情報へアクセスします。": "Only authorized people can access the information they need.",
     "手動の打刻と日報の確定は別です。GPS自動出勤を本人が有効にした場合は、設定条件に応じて背景でも位置情報を使います。": "Manual clocking and daily report finalization are separate. If you enable automatic GPS attendance, location is also used in the background under the configured conditions.",
