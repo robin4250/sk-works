@@ -11,6 +11,49 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final fontPath = Platform.environment['SKO_PDF_FONT_PATH'];
 
+  test('certificate PDF uses the saved net amount after deduction clamping', () async {
+    final font = pw.Font.ttf(
+      ByteData.sublistView(await File(fontPath!).readAsBytes()),
+    );
+    final configured = Platform.environment['SKO_PDF_OUTPUT_DIR'];
+    final output = configured == null
+        ? Directory.systemTemp.createTempSync('sko-saved-net-')
+        : Directory(configured);
+    output.createSync(recursive: true);
+    try {
+      final record = PaymentCertificateRecord(
+        id: 'saved-net-zero',
+        partnerCompanyName: '取引先',
+        periodStart: DateTime(2026, 10, 1),
+        periodEnd: DateTime(2026, 10, 31),
+        grossAmount: 12000,
+        deductions: 13000,
+        netAmount: 0,
+        status: 'approved',
+        revision: 1,
+        payerCompanyName: '株式会社青空工業',
+      );
+      final bytes = await PaymentCertificatePdfService.buildPdf(
+        record, regularFont: font, boldFont: font,
+      );
+      final file = File('${output.path}/payment_certificate_saved_net.pdf')
+        ..writeAsBytesSync(bytes);
+      final result = await Process.run('python', [
+        '-c', 'import fitz,sys; print(fitz.open(sys.argv[1])[0].get_text())',
+        file.path,
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      final text = result.stdout.toString();
+      expect(text, contains('12,000'));
+      expect(text, contains('-13,000'));
+      expect(text, isNot(contains('¥-1,000')));
+      expect(text, isNot(contains('¥')));
+    } finally {
+      if (configured == null) output.deleteSync(recursive: true);
+    }
+  }, skip: fontPath == null
+      ? 'Set SKO_PDF_FONT_PATH to an embedded Japanese TTF.' : false);
+
   test(
     'zero certificate amounts remain blank without removing detail labels',
     () async {

@@ -24,6 +24,8 @@ try {
  await db.exec(read('supabase/migrations/20261007021000_worker_monthly_salary_mode.sql'));
  await db.exec(read('supabase/migrations/20261008001025_payroll_statement_pay_type_metadata.sql'));
  await db.exec(read('supabase/migrations/20261008035104_stabilize_automatic_payroll_totals.sql'));
+ await db.exec(`create table public.paid_leave_requests(company_id uuid,worker_id uuid,leave_date date,status text); alter table public.workers add column status text default 'active',add column affiliation text default 'employee',add column hire_date date;`);
+ await db.exec(read('supabase/migrations/20261008040428_generate_fixed_monthly_payroll_without_attendance.sql'));
  const refresh=()=>db.exec(`select private.refresh_automatic_payroll('${cid}','${wid}','2026-08-03');`);
  const row=async()=> (await db.query(`select gross_pay,deductions,net_pay,revision,updated_at,approved_ids,calculation_fingerprint,detail->>'支払日' as payment_day from public.payroll_statements where company_id='${cid}' and worker_id='${wid}' and period_start='2026-08-01'`)).rows[0];
  for(const scenario of [

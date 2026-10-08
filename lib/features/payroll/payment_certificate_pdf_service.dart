@@ -64,9 +64,8 @@ class PaymentCertificatePdfService {
           ]
         : record.lines;
 
-    final detailTotal = lines.fold<int>(0, (sum, line) => sum + line.amountYen);
-    final gross = record.grossAmount != 0 ? record.grossAmount : detailTotal;
-    final balance = gross - record.deductions;
+    final gross = record.grossAmount;
+    final balance = record.netAmount;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,

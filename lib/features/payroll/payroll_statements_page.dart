@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -216,6 +218,7 @@ class _PayrollStatementPreviewPageState
   bool _statementUnavailable = false;
   bool _confirmationBusy = false;
   String? _confirmationError;
+  Future<Uint8List>? _pdfBytes;
 
   @override
   void initState() {
@@ -242,7 +245,10 @@ class _PayrollStatementPreviewPageState
       }
       if (refreshed == null) {
         if (mounted) {
-          setState(() => _statementUnavailable = true);
+          setState(() {
+            _statementUnavailable = true;
+            _pdfBytes = null;
+          });
         }
         throw StateError('この給与明細を閲覧できません。');
       }
@@ -252,6 +258,7 @@ class _PayrollStatementPreviewPageState
           _refreshedStatement = refreshed;
           _statementUnavailable = false;
           _confirmationError = null;
+          _pdfBytes = null;
         });
       }
     } catch (error) {
@@ -259,11 +266,30 @@ class _PayrollStatementPreviewPageState
           (error.code == '42501' ||
               (error.code == 'P0001' &&
                   error.message == 'payroll review permission required'))) {
-        // Employee PDF metadata is already provided by the self-scoped RPC.
+        // Re-read the self-scoped source before falling back after a role change.
+        PayrollStatementRecord? ownStatement;
+        String? reloadError;
+        final selfRepository = PayrollStatementRepository.maybeCreate();
+        if (selfRepository != null) {
+          try {
+            final ownStatements = await selfRepository.loadMyStatements();
+            for (final item in ownStatements) {
+              if (item.id == widget.statement.id) {
+                ownStatement = item;
+                break;
+              }
+            }
+          } catch (error) {
+            reloadError = '給与明細を再取得できませんでした: $error';
+          }
+        }
         if (mounted) {
           setState(() {
             _confirmation = null;
-            _confirmationError = null;
+            _confirmationError = reloadError;
+            _refreshedStatement = ownStatement;
+            _statementUnavailable = ownStatement == null;
+            _pdfBytes = null;
           });
         }
         return;
@@ -441,7 +467,8 @@ class _PayrollStatementPreviewPageState
                       allowSharing: true,
                       pdfFileName:
                           '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-                      build: (_) => PayrollPdfService.buildPdf(statement),
+                      build: (_) => _pdfBytes ??=
+                          PayrollPdfService.buildPdf(statement),
                     ),
                   ),
           ),

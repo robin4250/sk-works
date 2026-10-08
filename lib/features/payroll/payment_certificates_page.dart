@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -167,7 +169,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   }
 }
 
-class PaymentCertificatePreviewPage extends StatelessWidget {
+class PaymentCertificatePreviewPage extends StatefulWidget {
   const PaymentCertificatePreviewPage({
     super.key,
     required this.record,
@@ -176,7 +178,25 @@ class PaymentCertificatePreviewPage extends StatelessWidget {
   final PaymentCertificateRecord record;
 
   @override
+  State<PaymentCertificatePreviewPage> createState() =>
+      _PaymentCertificatePreviewPageState();
+}
+
+class _PaymentCertificatePreviewPageState
+    extends State<PaymentCertificatePreviewPage> {
+  Future<Uint8List>? _pdfBytes;
+
+  @override
+  void didUpdateWidget(covariant PaymentCertificatePreviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.record, widget.record)) {
+      _pdfBytes = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final record = widget.record;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -195,7 +215,8 @@ class PaymentCertificatePreviewPage extends StatelessWidget {
         allowSharing: true,
         pdfFileName:
             '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
-        build: (_) => PaymentCertificatePdfService.buildPdf(record),
+        build: (_) => _pdfBytes ??=
+            PaymentCertificatePdfService.buildPdf(record),
       ),
     );
   }

@@ -38,6 +38,9 @@ try {
  await db.exec(read('supabase/tests/payroll_default_company_confirmer_assertions.sql'));
  await db.exec(read('supabase/migrations/20261008034850_payroll_default_company_confirmer.sql'));
  console.log('Future company default confirmer assertions passed');
+ await db.exec(read('supabase/migrations/20261008040303_payroll_confirmer_visibility_guard.sql'));
+ await db.exec(read('supabase/tests/payroll_confirmer_visibility_guard_assertions.sql'));
+ console.log('Assigned confirmer visibility assertions passed');
  const [employeeFixture,employeeAssertions]=read('supabase/tests/employee_registered_identity_assertions.sql').split('-- ASSERTIONS');
  const employeeDb=new PGlite();
  try {

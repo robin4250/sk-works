@@ -5,7 +5,7 @@ void main() {
     final s=File('lib/features/payroll/payroll_statements_page.dart').readAsStringSync();
     expect(s, contains('initialPageFormat: PdfPageFormat.a4,'));
     expect(s, isNot(contains('PdfPageFormat.a4.landscape')));
-    expect(s, contains('build: (_) => PayrollPdfService.buildPdf(statement)'));
+    expect(s, contains('build: (_) => _pdfBytes ??= PayrollPdfService.buildPdf(statement)'));
     expect(s, contains('allowPrinting: true'));
     expect(s, contains('allowSharing: true'));
   });
