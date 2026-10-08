@@ -36,10 +36,12 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   }
 
   Future<void> _load() async {
+    setState(() { _siteItems = const []; _siteError = null; _siteLoading = true; });
     final repository = _repository;
     if (repository == null) {
       setState(() {
         _loading = false;
+        _siteLoading = false;
         _error = SkoLanguageController.isEnglish ? 'Payment certificates are unavailable.' : '支払証明書を利用できません。';
       });
       return;
@@ -58,6 +60,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _siteLoading = false;
         _error = error.toString();
       });
     }
