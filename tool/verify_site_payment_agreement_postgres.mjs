@@ -53,7 +53,7 @@ try {
  await ctl.query(`do $$ begin if not exists(select from pg_roles where rolname='anon') then create role anon; end if; if not exists(select from pg_roles where rolname='authenticated') then create role authenticated; end if; end $$; create schema private; create schema auth;
 create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('test.uid',true),'')::uuid $$;
 create function private.account_access_allowed() returns boolean language sql as $$ select auth.uid() is not null $$;
-create table companies(id uuid primary key,name text); create table company_members(company_id uuid,user_id uuid,role text);
+create table companies(id uuid primary key,name text,postal_code text,address text,phone text,fax text,company_seal_enabled boolean not null default true); create table company_members(company_id uuid,user_id uuid,role text);
 create table sites(id uuid primary key,company_id uuid,name text); create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
 create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
 create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid,payload_kind text,payload jsonb);
@@ -62,7 +62,8 @@ create table private.site_share_inbox(data_item_id uuid primary key,recipient_co
 grant usage on schema private,auth to authenticated;
 `);
  await ctl.query(await fs.readFile(new URL('../supabase/migrations/20261008201215_site_payment_agreement_staged.sql',import.meta.url),'utf8'));
- await ctl.query(`insert into companies values('${parent}','親会社'),('${child}','下請会社'); insert into company_members values('${parent}','${admin1}','admin'),('${child}','${admin2}','admin'); insert into sites values('${site1}','${parent}','現場'),('${site2}','${child}','現場'); insert into private.company_connections values('${parent}','${child}','accepted'); insert into private.document_deliveries values('${delivery}','${parent}','${child}'); insert into private.company_data_delivery_items values('${item}','${delivery}','site_share','{"source_site_id":"${site1}"}'); insert into private.site_share_inbox values('${item}','${child}','accepted','${site2}'); `);
+ await ctl.query(await fs.readFile(new URL('../supabase/migrations/20261008212855_site_payment_company_snapshot.sql',import.meta.url),'utf8'));
+ await ctl.query(`insert into companies(id,name) values('${parent}','親会社'),('${child}','下請会社'); insert into company_members values('${parent}','${admin1}','admin'),('${child}','${admin2}','admin'); insert into sites values('${site1}','${parent}','現場'),('${site2}','${child}','現場'); insert into private.company_connections values('${parent}','${child}','accepted'); insert into private.document_deliveries values('${delivery}','${parent}','${child}'); insert into private.company_data_delivery_items values('${item}','${delivery}','site_share','{"source_site_id":"${site1}"}'); insert into private.site_share_inbox values('${item}','${child}','accepted','${site2}'); `);
  await ctl.query('insert into private.site_payment_agreement_rollout values($1,true),($2,true)',[parent,child]);
  for(const c of [a,b]) await c.query(`set test.uid='${admin1}'; set role authenticated`);
  const pidA=(await a.query('select pg_backend_pid() pid')).rows[0].pid;
