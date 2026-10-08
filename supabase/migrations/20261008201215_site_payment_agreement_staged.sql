@@ -26,8 +26,9 @@ alter table private.site_payment_confirmations enable row level security;
 revoke all on private.site_payment_agreement_rollout,private.site_payment_proposals,
  private.site_payment_confirmations from public,anon,authenticated;
 
+-- VOLATILE deliberately obtains fresh snapshots when called after lock waits.
 create function private.site_payment_pair(p_item uuid,p_company uuid)
-returns jsonb language plpgsql stable security definer set search_path='' as $$
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
 declare x record; parent_id uuid; child_id uuid;
 begin
  if auth.uid() is null or not private.account_access_allowed() or not exists(

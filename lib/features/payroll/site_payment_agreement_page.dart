@@ -78,11 +78,12 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       for (final key in ['unit_price_yen','area','base_amount_yen','tax_amount_yen','tax_rate','taxable_amount_yen','period_start','period_end'])
         key: TextEditingController(text: latest[key]?.toString() ?? (key == 'period_start' ? date(DateTime(now.year,now.month)) : key == 'period_end' ? date(DateTime(now.year,now.month+1,0)) : '0')),
     };
-    final extras = [for (var i=0;i<3;i++) <String, TextEditingController>{'name': TextEditingController(), 'amount_yen': TextEditingController(text:'0')}];
-    final directions = List.filled(3, 'addition');
+    final extraCount=latest['adjustments'] is List && (latest['adjustments'] as List).length>3 ? (latest['adjustments'] as List).length : 3;
+    final extras = [for (var i=0;i<extraCount;i++) <String, TextEditingController>{'name': TextEditingController(), 'amount_yen': TextEditingController(text:'0')}];
+    final directions = List.filled(extraCount, 'addition');
     if (latest['adjustments'] is List) {
       final saved = latest['adjustments'] as List;
-      for (var i=0;i<saved.length && i<3;i++) {
+      for (var i=0;i<saved.length && i<extraCount;i++) {
         final item = saved[i] as Map;
         extras[i]['name']!.text = item['name']?.toString() ?? '';
         extras[i]['amount_yen']!.text = item['amount_yen']?.toString() ?? '0';
@@ -92,24 +93,31 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
     var mode = latest['mode']?.toString() ?? 'square_meter';
     var rounding = latest['rounding_rule']?.toString() ?? 'floor';
     var included = latest['tax_included'] == true;
+    void recalculate() {
+      num rounded(num value) => rounding=='ceil'?value.ceil():rounding=='nearest'?value.round():value.floor();
+      final price=num.tryParse(fields['unit_price_yen']!.text);
+      final area=num.tryParse(fields['area']!.text);
+      if(mode=='square_meter' && price!=null && area!=null && price.isFinite && area.isFinite) fields['base_amount_yen']!.text=rounded(price*area).toString();
+    }
+    recalculate();
     final result = await showDialog<Map<String,dynamic>>(context:context,builder:(context)=>StatefulBuilder(builder:(context,update)=>AlertDialog(
       title: const Text('現場別の金額提案'),
       content: SizedBox(width:480,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        const Text('相手の登録額は変更しません。双方が同じ最新版を確認すると合意済みになります。残業等の割増は計算しません。税額は手動入力です。'),
-        DropdownButton<String>(value:mode,items:const[DropdownMenuItem(value:'square_meter',child:Text('平米計算')),DropdownMenuItem(value:'lump_sum',child:Text('請け負い'))],onChanged:(v)=>update(()=>mode=v!)),
+        const Text('相手の登録額は変更しません。双方が同じ最新版を確認すると合意済みになります。残業等の割増は計算しません。税額は課税対象・税率・端数処理と一致する金額を入力してください。'),
+        DropdownButton<String>(value:mode,items:const[DropdownMenuItem(value:'square_meter',child:Text('平米計算')),DropdownMenuItem(value:'lump_sum',child:Text('請け負い'))],onChanged:(v)=>update(() { mode=v!; recalculate(); })),
         for(final entry in fields.entries)
           if(mode=='square_meter' || !['unit_price_yen','area'].contains(entry.key))
-            TextField(controller:entry.value,decoration:InputDecoration(labelText:{'unit_price_yen':'平米単価（円）','area':'平米数','base_amount_yen':'基本総額（円）','tax_amount_yen':'消費税額（円）','tax_rate':'税率（%）','taxable_amount_yen':'課税対象額（円）','period_start':'対象期間 開始（YYYY-MM-DD）','period_end':'対象期間 終了（YYYY-MM-DD）'}[entry.key])),
-        DropdownButton<String>(value:rounding,items:const[DropdownMenuItem(value:'floor',child:Text('端数切り捨て')),DropdownMenuItem(value:'nearest',child:Text('四捨五入')),DropdownMenuItem(value:'ceil',child:Text('端数切り上げ'))],onChanged:(v)=>update(()=>rounding=v!)),
+            TextField(controller:entry.value,readOnly:mode=='square_meter' && entry.key=='base_amount_yen',onChanged: (_) => update(recalculate),decoration:InputDecoration(labelText:{'unit_price_yen':'平米単価（円）','area':'平米数','base_amount_yen':'基本総額（円）','tax_amount_yen':'消費税額（円）','tax_rate':'税率（%）','taxable_amount_yen':'課税対象額（円）','period_start':'対象期間 開始（YYYY-MM-DD）','period_end':'対象期間 終了（YYYY-MM-DD）'}[entry.key])),
+        DropdownButton<String>(value:rounding,items:const[DropdownMenuItem(value:'floor',child:Text('端数切り捨て')),DropdownMenuItem(value:'nearest',child:Text('四捨五入')),DropdownMenuItem(value:'ceil',child:Text('端数切り上げ'))],onChanged:(v)=>update(() { rounding=v!; recalculate(); })),
         CheckboxListTile(value:included,title:const Text('基本額・追加額は税込（消費税を加算しない）'),onChanged:(v)=>update(()=>included=v!)),
-        for(var i=0;i<3;i++) ...[
+        for(var i=0;i<extraCount;i++) ...[
           TextField(controller:extras[i]['name'],decoration:InputDecoration(labelText:'追加項目${i+1} 名称（福利厚生費等）')),
           TextField(controller:extras[i]['amount_yen'],decoration:const InputDecoration(labelText:'金額（円）')),
           DropdownButton<String>(value:directions[i],items:const[DropdownMenuItem(value:'addition',child:Text('加算')),DropdownMenuItem(value:'deduction',child:Text('控除'))],onChanged:(v)=>update(()=>directions[i]=v!)),
         ],
       ]))),
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('取消')),FilledButton(onPressed:(){
-        final adjustments = [for(var i=0;i<3;i++) if(extras[i]['name']!.text.trim().isNotEmpty) {'name':extras[i]['name']!.text.trim(),'amount_yen':num.tryParse(extras[i]['amount_yen']!.text),'direction':directions[i]}];
+        final adjustments = [for(var i=0;i<extraCount;i++) if(extras[i]['name']!.text.trim().isNotEmpty) {'name':extras[i]['name']!.text.trim(),'amount_yen':num.tryParse(extras[i]['amount_yen']!.text),'direction':directions[i]}];
         final base=num.tryParse(fields['base_amount_yen']!.text);
         final tax=num.tryParse(fields['tax_amount_yen']!.text);
         if(base==null || tax==null || adjustments.any((a)=>a['amount_yen']==null)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('金額は数値で入力してください。'))); return; }
@@ -128,6 +136,14 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
   }
 
   Future<void> _preview(Map<String,dynamic> proposal) async {
+    setState(()=>_busy=true);
+    try {
+      await _openPreview(proposal);
+    } catch(e) { if(mounted) setState(()=>_error=e.toString()); }
+    finally { if(mounted) setState(()=>_busy=false); }
+  }
+
+  Future<void> _openPreview(Map<String,dynamic> proposal) async {
     final rawSnapshot=await _client.rpc('saved_site_payment_document',params:{'p_proposal':proposal['id'],'p_company':_company});
     final snapshot=Map<String,dynamic>.from(rawSnapshot as Map);
     final terms=Map<String,dynamic>.from(snapshot['terms'] as Map);

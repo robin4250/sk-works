@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/payroll/payment_certificate_site_terms.dart';
+import 'package:sk_works/features/payroll/payment_certificate_site_terms.dart';
 
 SitePaymentTerms terms({
   int unitPrice = 1200,
