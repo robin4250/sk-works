@@ -1,0 +1,52 @@
+name: Account deletion archive check
+
+on:
+  push:
+    branches: [main, 'docs/account-deletion-source-checkpoint-*']
+    paths:
+      - 'docs/recovery/account_deletion_source_20261008/**'
+      - '.github/workflows/account-deletion-archive-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/recovery/account_deletion_source_20261008/**'
+      - '.github/workflows/account-deletion-archive-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deletion-archive-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify archived source manifests
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('docs/recovery/account_deletion_source_20261008').resolve()
+          count = 0
+          for name in ['account-deletion_manifest.json', 'account-deletion-worker_manifest.json']:
+              manifest = json.loads((root / name).read_text())
+              for item in manifest['files']:
+                  path = (root / item['path']).resolve()
+                  assert path.is_relative_to(root), 'Manifest path escapes archive'
+                  content = path.read_bytes()
+                  assert len(content) == item['bytes'], item['path']
+                  assert hashlib.sha256(content).hexdigest() == item['sha256'], item['path']
+                  count += 1
+          assert count == 32, count
+          print('Verified 32 archived source files')
+          PY
+      - name: Verify isolated handler guards without live services
+        run: node --test docs/recovery/account_deletion_source_20261008/verification/guard_tests.mjs
