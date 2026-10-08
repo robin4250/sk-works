@@ -53,10 +53,24 @@ concurrency:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    # Explicit Intel pool avoids the arm64 hosted-runner capacity failure.
+    # CI Xcode 26.6 is distinct from the user's Xcode 27 device environment.
+    runs-on: macos-26-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify and record iOS build environment
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          test "$(uname -m)" = x86_64
+          test "$(xcodebuild -version | head -n 1)" = 'Xcode 26.6'
 
       - name: Validate iOS helper scripts
         run: |
