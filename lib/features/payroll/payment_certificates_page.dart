@@ -1,3 +1,4 @@
+import 'site_payment_certificates_repository.dart';
 import 'site_payment_agreement_page.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -21,6 +22,10 @@ class PaymentCertificatesPage extends StatefulWidget {
 class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   final _repository = PaymentCertificateRepository.maybeCreate();
   List<PaymentCertificateRecord> _items = const [];
+  final _siteRepository = SitePaymentCertificatesRepository.maybeCreate();
+  List<ConfirmedSitePayment> _siteItems = const [];
+  String? _siteError;
+  bool _siteLoading = true;
   bool _loading = true;
   String? _error;
 
@@ -42,6 +47,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
 
     try {
       final items = await repository.loadCertificates(includeRegisteredPreviews: true);
+      _loadSites();
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -56,6 +62,51 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
       });
     }
   }
+
+  Future<void> _loadSites() async {
+    try {
+      final company = _repository?.loadedCompanyId;
+      final items = company == null ? const <ConfirmedSitePayment>[]
+          : await _siteRepository?.load(company) ?? const <ConfirmedSitePayment>[];
+      if (!mounted) return;
+      setState(() { _siteItems = items; _siteError = null; _siteLoading = false; });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() { _siteError = error.toString(); _siteLoading = false; });
+    }
+  }
+
+  Future<void> _openSite(ConfirmedSitePayment item) async {
+    try {
+      final record = await _siteRepository!.open(item);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PaymentCertificatePreviewPage(record: record)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Widget _siteSection() => Card(child: Column(children: [
+    ListTile(title: Text(SkoLanguageController.isEnglish
+        ? 'Site payments · Confirmed by both companies' : '現場別・双方確認済み'),
+      trailing: IconButton(icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
+        context: context, builder: (dialogContext) => AlertDialog(
+          title: Text(SkoLanguageController.isEnglish ? 'Site payment documents' : '現場別の合意帳票'),
+          content: Text(SkoLanguageController.isEnglish
+            ? 'Only the latest proposal confirmed by both companies appears here. Opening it creates the immutable document if it has not been created yet. Saved documents retain their original amounts and company details. These items are separate from monthly certificates and are never added to their totals. Preview, printing and sharing use the same PDF.'
+            : '双方が最新版を確認した現場別の提案のみ表示します。開くと未作成の合意帳票を初めて確定保存します。保存済み帳票は元の金額・会社情報を保持します。月次証明書とは別項目で、月次の金額へ加算しません。プレビュー・印刷・共有は同じPDFを使用します。'),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+            child: Text(SkoLanguageController.isEnglish ? 'Close' : '閉じる'))])))),
+    if (_siteLoading) const LinearProgressIndicator(),
+    if (_siteError != null) ListTile(title: Text(SkoLanguageController.isEnglish
+        ? 'Could not load site payments' : '現場別合意を取得できませんでした'),
+      subtitle: Text(_siteError!), trailing: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadSites)),
+    for (final item in _siteItems) ListTile(onTap: () => _openSite(item),
+      title: Text(item.siteName), subtitle: Text('${item.counterpartyName} · revision ${item.revision}'),
+      trailing: const Icon(Icons.chevron_right)),
+  ]));
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +136,10 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
         ],
       ),
       body: SafeArea(
-        child: _loading
+        child: Column(children: [
+          if (_siteItems.isNotEmpty || _siteError != null || _siteLoading)
+            Flexible(child: SingleChildScrollView(child: _siteSection())),
+          Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(
@@ -102,7 +156,7 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _load,
+                        onRefresh: () async { await _load(); },
                         child: ListView.separated(
                           padding: const EdgeInsets.all(12),
                           itemCount: _items.length,
@@ -155,6 +209,8 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
                           },
                         ),
                       ),
+          ),
+        ]),
       ),
     );
   }

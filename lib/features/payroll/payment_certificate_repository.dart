@@ -142,6 +142,8 @@ class PaymentCertificateRepository {
   PaymentCertificateRepository._(this._client);
 
   final SupabaseClient _client;
+  String? _loadedCompanyId;
+  String? get loadedCompanyId => _loadedCompanyId;
 
   static PaymentCertificateRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -165,6 +167,7 @@ class PaymentCertificateRepository {
   Future<List<PaymentCertificateRecord>> loadCertificates({
     bool includeRegisteredPreviews = false,
   }) async {
+    _loadedCompanyId = null;
     final companyId = await _companyId();
     final rows = await _client
         .from('payment_certificates')
@@ -235,7 +238,10 @@ class PaymentCertificateRepository {
         ),
       );
     }
-    if (!includeRegisteredPreviews) return result;
+    if (!includeRegisteredPreviews) {
+      _loadedCompanyId = companyId;
+      return result;
+    }
     // The existing admin-scoped settings RPC includes registered companies even
     // without attendance. Previews are in-memory only; no certificate is saved.
     final List<PartnerPaymentSetting> settings;
@@ -245,8 +251,10 @@ class PaymentCertificateRepository {
       if (!isPreviewPermissionDenied(error)) rethrow;
       // Certificate read access is independent of settings administration.
       // Keep the records already authorized by RLS; do not grant previews.
+      _loadedCompanyId = companyId;
       return result;
     }
+    _loadedCompanyId = companyId;
     return withRegisteredCompanyPreviews(
       result,
       settings,
