@@ -7,11 +7,13 @@ class PaidLeavePay {
   final bool addToWages;
 
   factory PaidLeavePay.fromSettings(Map<String, dynamic> settings) {
-    int money(Object? value) {
+    num registeredAmount(Object? value) {
       final number = value is num ? value : num.tryParse('$value');
       if (number == null || !number.isFinite || number < 0) return 0;
-      return number.round();
+      return number;
     }
+
+    int money(Object? value) => registeredAmount(value).round();
 
     final type = settings['pay_type']?.toString() ?? 'daily';
     if (type == 'monthly') {
@@ -23,11 +25,14 @@ class PaidLeavePay {
     if (type == 'hourly') {
       final formula = settings['rate_formula'];
       final override = formula is Map ? formula['paid_leave_daily_yen'] : null;
+      final formulaHourly = registeredAmount(
+        formula is Map ? formula['hourly_rate_yen'] : null,
+      );
+      final hourly = formulaHourly > 0
+          ? formulaHourly : registeredAmount(settings['hourly_rate_yen']);
       return PaidLeavePay(
         dailyAmountYen: override == null
-            ? money((settings['hourly_rate_yen'] is num
-                ? settings['hourly_rate_yen'] as num
-                : num.tryParse('${settings['hourly_rate_yen']}') ?? 0) * 8)
+            ? money(hourly * 8)
             : money(override),
         addToWages: true,
       );

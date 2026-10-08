@@ -4,7 +4,9 @@ returns numeric language sql immutable set search_path='' as $$
  select greatest(case coalesce(settings->>'pay_type','daily')
  when 'monthly' then round(coalesce((settings->>'calculation_daily_base_yen')::numeric,0))
  when 'hourly' then round(coalesce((settings->'rate_formula'->>'paid_leave_daily_yen')::numeric,
-   coalesce((settings->>'hourly_rate_yen')::numeric,0)*8))
+   (case when coalesce((settings->'rate_formula'->>'hourly_rate_yen')::numeric,0)>0
+     then (settings->'rate_formula'->>'hourly_rate_yen')::numeric
+     else coalesce((settings->>'hourly_rate_yen')::numeric,0) end)*8))
  else round(coalesce((settings->>'day_daily')::numeric,0)) end,0)
 $$;
 revoke all on function private.paid_leave_daily_amount(jsonb) from public,anon,authenticated;

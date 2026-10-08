@@ -613,6 +613,8 @@ class _IndividualPayrollSettingsPageState
     values['rate_formula'] = {
       if (values['rate_formula'] is Map)
         ...Map<String, dynamic>.from(values['rate_formula'] as Map),
+      if (draft != null && draft.payType == 'hourly')
+        'hourly_rate_yen': draft.baseRateYen,
       'paid_leave_daily_yen': text.isEmpty ? null : int.tryParse(text),
     };
     return PaidLeavePay.fromSettings(values);

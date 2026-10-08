@@ -13,6 +13,22 @@ void main() {
     });
     expect(pay.dailyAmountYen, 12000);
   });
+  test('registered formula hourly rate takes precedence without deriving daily wages', () {
+    for (final column in [0, 1500]) {
+      final pay = PaidLeavePay.fromSettings({
+        'pay_type': 'hourly', 'hourly_rate_yen': column,
+        'rate_formula': {'hourly_rate_yen': 1300},
+      });
+      expect(pay.dailyAmountYen, 10400);
+    }
+    expect(PaidLeavePay.fromSettings({
+      'pay_type': 'hourly', 'hourly_rate_yen': 1500,
+      'rate_formula': {'hourly_rate_yen': 0},
+    }).dailyAmountYen, 12000);
+    expect(PaidLeavePay.fromSettings({
+      'pay_type': 'hourly', 'day_daily': 12000,
+    }).dailyAmountYen, 0);
+  });
   test('hourly explicit override including zero remains authoritative', () {
     for (final amount in [0, 9000]) {
       final pay = PaidLeavePay.fromSettings({

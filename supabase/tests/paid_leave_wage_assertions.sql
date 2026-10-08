@@ -18,6 +18,18 @@ begin
  update public.worker_payroll_settings set pay_type='hourly',hourly_rate_yen=1500;
  perform private.refresh_automatic_payroll_internal(c,w,d);
  if (select gross_pay from public.payroll_statements where worker_id=w)<>12000 then raise exception 'hourly default'; end if;
+ update public.worker_payroll_settings set hourly_rate_yen=0,rate_formula='{"hourly_rate_yen":1300}';
+ perform private.refresh_automatic_payroll_internal(c,w,d);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>10400 then raise exception 'legacy explicit formula rate'; end if;
+ update public.worker_payroll_settings set hourly_rate_yen=1500;
+ perform private.refresh_automatic_payroll_internal(c,w,d);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>10400 then raise exception 'formula precedence'; end if;
+ update public.worker_payroll_settings set rate_formula='{"hourly_rate_yen":0}';
+ perform private.refresh_automatic_payroll_internal(c,w,d);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>12000 then raise exception 'zero formula falls back to column'; end if;
+ update public.worker_payroll_settings set rate_formula='{"paid_leave_daily_yen":0}';
+ perform private.refresh_automatic_payroll_internal(c,w,d);
+ if (select gross_pay from public.payroll_statements where worker_id=w)<>0 then raise exception 'explicit zero leave override'; end if;
  update public.worker_payroll_settings set rate_formula='{"paid_leave_daily_yen":9000}';
  perform private.refresh_automatic_payroll_internal(c,w,d);
  if (select gross_pay from public.payroll_statements where worker_id=w)<>9000 then raise exception 'hourly override'; end if;
