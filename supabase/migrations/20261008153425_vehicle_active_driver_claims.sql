@@ -41,16 +41,50 @@ create policy account_deletion_access_guard on public.vehicle_usage_claims
   using (private.account_access_allowed())
   with check (private.account_access_allowed());
 
+-- Acquire the company serialization lock BEFORE attendance's vehicle/source
+-- foreign keys. Even an OFF start must hold this through transaction commit so
+-- activation cannot miss a previously uncommitted legacy start.
+create function private.serialize_vehicle_verification()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare v_actor uuid:=auth.uid();
+begin
+  if NEW.vehicle_id is null then return NEW; end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'vehicle attendance requires read committed isolation';
+  end if;
+  if not exists(select 1 from public.workers w where w.id=NEW.worker_id
+      and w.company_id=NEW.company_id)
+    or not exists(select 1 from public.vehicles v where v.id=NEW.vehicle_id
+      and v.company_id=NEW.company_id) then
+    raise exception 'vehicle attendance company is inconsistent';
+  end if;
+  -- Preserve trusted OFF migration/maintenance inserts with NULL auth.uid().
+  -- Client NULL-auth writes still face existing RLS; ON's driver guard rejects
+  -- NULL-auth inserts. No new bypass or grants are introduced here.
+  if v_actor is not null and (not private.account_access_allowed() or not exists(
+    select 1 from public.company_members m
+      where m.company_id=NEW.company_id and m.user_id=v_actor
+  )) then raise exception 'vehicle usage requires current company membership'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||NEW.company_id::text,0));
+  return NEW;
+end $$;
+revoke all on function private.serialize_vehicle_verification() from public,anon,authenticated;
+create trigger vehicle_usage_serialize_before_verification before insert
+  on public.attendance_verifications for each row
+  execute function private.serialize_vehicle_verification();
+
 create function private.enforce_vehicle_usage_claim()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare
   v_actor uuid := auth.uid();
   v_claim public.vehicle_usage_claims%rowtype;
+  v_proxy boolean:=false;
+  v_origin jsonb;
 begin
   if NEW.vehicle_id is null then return NEW; end if;
   -- Existing companies keep their present behavior until explicit activation.
   perform 1 from private.vehicle_usage_rollout r
-    where r.company_id=NEW.company_id and r.enabled for share;
+    where r.company_id=NEW.company_id and r.enabled;
   if not found then return NEW; end if;
 
   if v_actor is null or not private.account_access_allowed() or not exists (
@@ -94,7 +128,33 @@ begin
     if not exists(select 1 from public.workers w
       where w.id=NEW.worker_id and w.company_id=NEW.company_id and w.user_id=v_actor
     ) and not private.has_company_feature(NEW.company_id,'can_manage_attendance') then
-      raise exception 'vehicle checkout requires driver or existing attendance manager';
+      -- #765's private scoped proxy writer is the only participant exception.
+      -- Inspect optional staged columns as JSON so claims-only installations
+      -- retain their exact schema. Direct client proxy origin is still rejected
+      -- by #765's invoker BEFORE trigger, and never gains driver/meter authority.
+      v_origin:=to_jsonb(NEW);
+      if v_origin->>'evidence_origin'='team_proxy'
+         and v_origin->>'proxy_actor_user_id'=v_actor::text
+         and NEW.created_by=v_actor and NEW.verification_mode='manual'
+         and NEW.site_id is not null and NEW.route_assignment_id is null
+         and NEW.latitude is null and NEW.longitude is null and NEW.accuracy_m is null
+         and NEW.distance_to_site_m is null and NEW.photo_storage_path is null
+         and to_regclass('private.group_checkout_rollout') is not null
+         and exists(select 1 from pg_catalog.pg_trigger t
+           where t.tgrelid='public.attendance_verifications'::regclass
+             and t.tgfoid=to_regprocedure('private.guard_group_checkout_origin()')
+             and not t.tgisinternal and t.tgenabled in ('O','A'))
+         and exists(select 1 from public.attendance_verifications own
+           join public.workers w on w.id=own.worker_id and w.company_id=own.company_id
+           where own.company_id=NEW.company_id and own.site_id=NEW.site_id
+             and own.route_assignment_id is null and own.work_date=NEW.work_date
+             and own.event_type='clock_in' and w.user_id=v_actor and w.status='active') then
+        execute 'select exists(select 1 from private.group_checkout_rollout where company_id=$1 and enabled)'
+          into v_proxy using NEW.company_id;
+      end if;
+      if not coalesce(v_proxy,false) then
+        raise exception 'vehicle checkout requires driver, attendance manager or scoped actual participant';
+      end if;
     end if;
     if v_claim.ended_at is not null then raise exception 'vehicle usage is already closed'; end if;
     update public.vehicle_usage_claims set ended_at=NEW.confirmed_at,source_clock_out_id=NEW.id
@@ -111,6 +171,16 @@ create trigger vehicle_usage_claim_after_verification after insert
 create function private.guard_vehicle_usage_rollout()
 returns trigger language plpgsql security definer set search_path='' as $$
 begin
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'vehicle rollout changes require read committed isolation';
+  end if;
+  if TG_OP='UPDATE' and NEW.company_id is distinct from OLD.company_id then
+    raise exception 'vehicle rollout company is immutable';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||
+    (case when TG_OP='DELETE' then OLD.company_id else NEW.company_id end)::text,0));
+  -- VOLATILE trigger queries obtain a fresh READ COMMITTED snapshot after the
+  -- lock wait, observing any committed OFF start before activation checks.
   if TG_OP='INSERT' or (not OLD.enabled and NEW.enabled) then
     if NEW.enabled and exists (
       select 1 from public.attendance_verifications a
