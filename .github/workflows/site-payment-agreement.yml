@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/*site_payment_agreement*'
       - 'tool/verify_site_payment_agreement.mjs'
+      - 'tool/verify_site_payment_agreement_postgres.mjs'
       - '.github/workflows/site-payment-agreement.yml'
 permissions:
   contents: read
@@ -17,3 +18,27 @@ jobs:
           node-version: '22'
       - run: npm install --prefix /tmp/site-payment-runtime @electric-sql/pglite@0.3.14
       - run: node tool/verify_site_payment_agreement.mjs /tmp/site-payment-runtime/node_modules/@electric-sql/pglite/dist/index.js
+  real-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sko_site_payment_fixture
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/site-payment-postgres-runtime pg@8.16.3
+      - run: node tool/verify_site_payment_agreement_postgres.mjs /tmp/site-payment-postgres-runtime/node_modules/pg/lib/index.js
+        env:
+          SKO_SITE_PAYMENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sko_site_payment_fixture
