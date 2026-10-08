@@ -53,7 +53,9 @@ class TutorialWorkspace {
           source.TutorialEvidenceState.notApplicable => const model.TutorialEvidence.notApplicable(),
         };
       }
-      if (checkpointIds.isEmpty) checkpointIds.add('${task.key}:unloaded');
+      if (checkpointIds.isEmpty) {
+        checkpointIds.add('${task.key}:unloaded');
+      }
       definitions.add(model.TutorialTask(
         id: task.key, title: titles[task.key] ?? '準備項目',
         roles: model.TutorialRole.values,
@@ -82,10 +84,14 @@ class TutorialWorkspace {
   String? get nextTaskId {
     for (final task in progress.tasks) {
       if (task.task.requirement == model.TutorialRequirement.required &&
-          !task.counts.isComplete && task.counts.total > 0) return task.task.id;
+          !task.counts.isComplete && task.counts.total > 0) {
+        return task.task.id;
+      }
     }
     for (final task in progress.tasks) {
-      if (!task.counts.isComplete && task.counts.total > 0) return task.task.id;
+      if (!task.counts.isComplete && task.counts.total > 0) {
+        return task.task.id;
+      }
     }
     return progress.tasks.isEmpty ? null : progress.tasks.first.task.id;
   }

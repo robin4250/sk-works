@@ -138,11 +138,17 @@ void main() {
     expect(repository.replaceAll(RegExp(r"\s+"), ""),
       contains(".select('period_start').eq('id',id).maybeSingle()"));
     final source = File('lib/features/notifications/notifications_page.dart').readAsStringSync();
-    expect(source.indexOf('await review.notificationMonth'),
-      lessThan(source.indexOf('await repository.markRead(item.id)')));
-    expect(source, contains('Failed resolution leaves the notification unread'));
-    expect(source, contains('if (_opening) return;'));
-    expect(source, contains('finally {\n      _opening = false;'));
+    final resolution = source.indexOf('await review.notificationMonth');
+    final readMutation = source.indexOf('await _notifications?.markRead(id)');
+    expect(resolution, greaterThanOrEqualTo(0));
+    expect(readMutation, greaterThan(resolution));
+    final opening = source.substring(source.indexOf('Future<void> _open('),
+      source.indexOf('Widget build(BuildContext context)'));
+    final failureHandler = opening.substring(opening.indexOf('catch (error)'));
+    expect(failureHandler, isNot(contains('markRead(')));
+    final compact = opening.replaceAll(RegExp(r'\s+'), '');
+    expect(compact, contains('if(_opening){return;}'));
+    expect(compact, contains('finally{if(mounted){setState(()=>_opening=false);}}'));
     expect(source, contains('onTap: _opening ? null : () => _open(item)'));
     expect(source, contains('Text(item.body)'));
     expect(source, contains('item.title,'));

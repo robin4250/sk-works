@@ -271,7 +271,9 @@ class _HomePageState extends State<HomePage> {
         try {
           final rows = await SupabaseBackend.client.from('company_members')
               .select('company_id').eq('user_id', userId).limit(1);
-          if (rows.isNotEmpty) companyId = rows.first['company_id']?.toString();
+          if (rows.isNotEmpty) {
+            companyId = rows.first['company_id']?.toString();
+          }
         } catch (_) {
           // Optional guide scope must never prevent authoritative identity loading.
         }

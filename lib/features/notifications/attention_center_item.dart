@@ -82,24 +82,36 @@ List<AttentionCenterItem> _normalize(Iterable<AttentionCenterItem> raw, DateTime
   }
   int category(AttentionCenterItem item) {
     if (item.needsAction) {
-      if (item.deadline?.isBefore(now) ?? false) return 0;
+      if (item.deadline?.isBefore(now) ?? false) {
+        return 0;
+      }
       return item.deadline == null ? 2 : 1;
     }
-    if (item.state == AttentionCenterState.unknown) return 3;
-    if (item.state == AttentionCenterState.information) return 5;
+    if (item.state == AttentionCenterState.unknown) {
+      return 3;
+    }
+    if (item.state == AttentionCenterState.information) {
+      return 5;
+    }
     return 4;
   }
   final result = byKey.values.toList();
   result.sort((a, b) {
     final group = category(a).compareTo(category(b));
-    if (group != 0) return group;
+    if (group != 0) {
+      return group;
+    }
     if (a.needsAction && b.needsAction && a.deadline != null && b.deadline != null) {
       final due = a.deadline!.compareTo(b.deadline!);
-      if (due != 0) return due;
+      if (due != 0) {
+        return due;
+      }
     }
     final epoch = DateTime.fromMillisecondsSinceEpoch(0);
     final created = (b.createdAt ?? epoch).compareTo(a.createdAt ?? epoch);
-    if (created != 0) return created;
+    if (created != 0) {
+      return created;
+    }
     return a.deduplicationKey.compareTo(b.deduplicationKey);
   });
   return List.unmodifiable(result);

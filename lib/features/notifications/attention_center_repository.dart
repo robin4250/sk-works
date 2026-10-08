@@ -26,7 +26,9 @@ class AttentionCenterRepository {
 
   static AttentionCenterRepository? maybeCreate() {
     final notifications = AppNotificationRepository.maybeCreate();
-    if (notifications == null) return null;
+    if (notifications == null) {
+      return null;
+    }
     return AttentionCenterRepository._(SupabaseBackend.client, notifications);
   }
 
@@ -110,7 +112,9 @@ AttentionCenterItem mapAttentionNotification(AppNotificationRecord item,
 
 List<AttentionCenterItem> mapRequiredDocumentAttention(Object? raw,
     {Set<String>? availableActionKeys}) {
-  if (raw is! Map || raw['missing_names'] is! List) return const [];
+  if (raw is! Map || raw['missing_names'] is! List) {
+    return const [];
+  }
   return [for (final name in raw['missing_names'] as List)
     if (name is String && name.trim().isNotEmpty)
       AttentionCenterItem(
@@ -124,7 +128,9 @@ List<AttentionCenterItem> mapRequiredDocumentAttention(Object? raw,
 
 List<AttentionCenterItem> mapPaidLeaveAttention(Object? raw,
     {Set<String>? availableActionKeys}) {
-  if (raw is! List) return const [];
+  if (raw is! List) {
+    return const [];
+  }
   return [for (final row in raw)
     if (row is Map && (_text(row['batch_id'])?.isNotEmpty ?? false))
       AttentionCenterItem(
@@ -142,7 +148,9 @@ List<AttentionCenterItem> mapPaidLeaveAttention(Object? raw,
 
 List<AttentionCenterItem> mapGenerationAttention(Object? raw,
     {Set<String>? availableActionKeys}) {
-  if (raw is! Map || raw['issues'] is! List) return const [];
+  if (raw is! Map || raw['issues'] is! List) {
+    return const [];
+  }
   return [for (final row in raw['issues'] as List)
     if (row is Map && (_text(row['type'])?.isNotEmpty ?? false) &&
         (_text(row['key'])?.isNotEmpty ?? false))

@@ -57,49 +57,65 @@ class _TutorialPageState extends State<TutorialPage> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_opening) _refresh();
+    if (state == AppLifecycleState.resumed && !_opening) {
+      _refresh();
+    }
   }
 
   Future<void> _refresh() async {
     final request = ++_request;
     final userId = widget.userId;
     final companyId = widget.companyId;
-    if (mounted) setState(() { _loading = true; _error = null; });
+    if (mounted) {
+      setState(() { _loading = true; _error = null; });
+    }
     try {
       final loader = widget.loadSnapshot;
       final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate();
-      if (loader == null && repository == null) throw StateError('Tutorial evidence unavailable');
+      if (loader == null && repository == null) {
+        throw StateError('Tutorial evidence unavailable');
+      }
       final snapshot = loader != null
           ? await loader(Set.unmodifiable(widget.availableActionKeys))
           : await repository!.load(availableActionKeys: widget.availableActionKeys);
       final workspace = TutorialWorkspace.fromSnapshot(snapshot);
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       if (workspace.canCompleteInitial) {
         await (widget.preferences ?? TutorialPreferences()).markInitialCompleted(
           userId: userId, companyId: companyId);
       }
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       setState(() {
         _workspace = workspace;
         _guidedTaskId ??= workspace.nextTaskId;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       setState(() { _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
     }
   }
 
   Future<void> _open(String taskId) async {
     final task = _workspace?.tasksById[taskId];
-    if (_opening || task == null || !widget.availableActionKeys.contains(task.actionKey)) return;
+    if (_opening || task == null || !widget.availableActionKeys.contains(task.actionKey)) {
+      return;
+    }
     setState(() { _opening = true; _guidedTaskId = taskId; });
     try {
       // The caller uses the same existing protected route as a normal button.
       await widget.onOpenAction(task.actionKey);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('この項目を開けません。利用権限を確認してください。'))));
+      }
     } finally {
       if (mounted) { setState(() => _opening = false); await _refresh(); }
     }
@@ -107,7 +123,9 @@ class _TutorialPageState extends State<TutorialPage> with WidgetsBindingObserver
 
   void _restartGuide() {
     final tasks = _workspace?.progress.tasks;
-    if (tasks == null || tasks.isEmpty) return;
+    if (tasks == null || tasks.isEmpty) {
+      return;
+    }
     // Explanation cursor only: never clear evidence, records or completion flag.
     setState(() => _guidedTaskId = tasks.first.task.id);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(

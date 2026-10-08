@@ -48,16 +48,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) {
-      if (mounted) setState(() { _loading = false; _error = '通知センターを利用できません。'; });
+      if (mounted) {
+        setState(() { _loading = false; _error = '通知センターを利用できません。'; });
+      }
       return;
     }
     setState(() { _loading = true; _error = null; });
     try {
       final data = await repository.load();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() { _data = data; _loading = false; });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() { _loading = false; _error = error.toString(); });
     }
   }
@@ -72,14 +78,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   void _showError(Object error) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
       SkoLanguageController.trParams('通知を開けませんでした: {error}', {'error': error}),
     )));
   }
 
   Future<void> _open(AttentionCenterItem item) async {
-    if (_opening) return;
+    if (_opening) {
+      return;
+    }
     setState(() => _opening = true);
     try {
       final data = _data;
@@ -93,11 +103,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
       DateTime? payrollMonth;
       if (target.actionKey == 'payroll_review') {
         final review = PayrollReviewRepository.maybeCreate();
-        if (review == null) throw StateError('Payroll review is unavailable');
+        if (review == null) {
+          throw StateError('Payroll review is unavailable');
+        }
         payrollMonth = await review.notificationMonth(target.actionId ?? '');
       }
       final destination = notificationDestination(target, payrollMonth: payrollMonth);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       if (destination == null && target.actionKey != null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
           SkoLanguageController.tr('関連画面への案内を準備しています'),
@@ -106,9 +120,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
       // System tasks have no notification id and never write a synthetic read state.
       for (final id in ids) {
-        if (data?.notificationsById[id]?.read == false) await _notifications?.markRead(id);
+        if (data?.notificationsById[id]?.read == false) {
+          await _notifications?.markRead(id);
+        }
       }
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       if (destination != null) {
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => destination));
       } else {
@@ -116,11 +134,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
           SkoLanguageController.tr('お知らせを確認しました'),
         )));
       }
-      if (mounted) await _load();
+      if (mounted) {
+        await _load();
+      }
     } catch (error) {
       _showError(error);
     } finally {
-      if (mounted) setState(() => _opening = false);
+      if (mounted) {
+        setState(() => _opening = false);
+      }
     }
   }
 

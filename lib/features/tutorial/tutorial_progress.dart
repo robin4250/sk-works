@@ -106,10 +106,18 @@ class TutorialCounts {
   bool get isComplete => isKnown && total > 0 && completed == total;
 
   TutorialProgressState get state {
-    if (!isKnown) return TutorialProgressState.unknown;
-    if (total == 0) return TutorialProgressState.empty;
-    if (isComplete) return TutorialProgressState.completed;
-    if (missing == 0 && externalWaiting > 0) return TutorialProgressState.externalWaiting;
+    if (!isKnown) {
+      return TutorialProgressState.unknown;
+    }
+    if (total == 0) {
+      return TutorialProgressState.empty;
+    }
+    if (isComplete) {
+      return TutorialProgressState.completed;
+    }
+    if (missing == 0 && externalWaiting > 0) {
+      return TutorialProgressState.externalWaiting;
+    }
     return completed > 0 ? TutorialProgressState.inProgress : TutorialProgressState.pending;
   }
 }
@@ -202,16 +210,24 @@ class TutorialProgress {
     }
     results.sort((a, b) {
       final completion = (a.counts.isComplete ? 1 : 0).compareTo(b.counts.isComplete ? 1 : 0);
-      if (completion != 0) return completion;
+      if (completion != 0) {
+        return completion;
+      }
       final overdue = (b.isOverdue(now) ? 1 : 0).compareTo(a.isOverdue(now) ? 1 : 0);
-      if (overdue != 0) return overdue;
+      if (overdue != 0) {
+        return overdue;
+      }
       final priority = a.task.priority.index.compareTo(b.task.priority.index);
-      if (priority != 0) return priority;
+      if (priority != 0) {
+        return priority;
+      }
       final aDue = a.task.dueAt;
       final bDue = b.task.dueAt;
       if (aDue != null && bDue != null) {
         final due = aDue.compareTo(bDue);
-        if (due != 0) return due;
+        if (due != 0) {
+          return due;
+        }
       } else if (aDue != null || bDue != null) {
         return aDue != null ? -1 : 1;
       }
@@ -256,7 +272,9 @@ class TutorialGuideSession {
   TutorialGuideSession restart() => TutorialGuideSession(taskIds: taskIds);
   TutorialGuideSession open(String taskId) {
     final index = taskIds.indexOf(taskId);
-    if (index < 0) throw ArgumentError.value(taskId, 'taskId');
+    if (index < 0) {
+      throw ArgumentError.value(taskId, 'taskId');
+    }
     return TutorialGuideSession(taskIds: taskIds, position: index);
   }
 }

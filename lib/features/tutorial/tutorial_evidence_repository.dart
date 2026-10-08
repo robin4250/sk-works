@@ -70,10 +70,10 @@ class TutorialEvidenceRepository {
   final DateTime _today;
 
   static TutorialEvidenceRepository? maybeCreate() {
-    if (!SupabaseBackend.isInitialized) return null;
+    if (!SupabaseBackend.isInitialized) { return null; }
     final client = SupabaseBackend.client;
     final user = client.auth.currentUser;
-    if (user == null) return null;
+    if (user == null) { return null; }
     return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, user.id));
   }
 
@@ -195,7 +195,9 @@ class TutorialEvidenceRepository {
         'site_register': '現場', 'payroll_settings': '個別給与設定',
         'payment_certificate_settings': '支払証明書設定',
       }.entries) {
-        if (!availableActionKeys.contains(entry.key)) continue;
+        if (!availableActionKeys.contains(entry.key)) {
+          continue;
+        }
         List<Map<String, dynamic>>? rows;
         try {
           rows = await (_source as TutorialSetupEvidenceSource)
@@ -219,14 +221,18 @@ class TutorialEvidenceRepository {
   static List<TutorialEvidenceCheckpoint> setupCheckpoints(
     String actionKey, List<Map<String, dynamic>>? rows, {required String label}
   ) {
-    if (rows == null) return [TutorialEvidenceCheckpoint(
-      '$actionKey:registration', TutorialEvidenceState.unknown, label: label)];
+    if (rows == null) {
+      return [TutorialEvidenceCheckpoint(
+        '$actionKey:registration', TutorialEvidenceState.unknown, label: label)];
+    }
     // No partners/payroll workers means no dependent settings to configure.
-    if (rows.isEmpty) return [TutorialEvidenceCheckpoint(
+    if (rows.isEmpty) {
+      return [TutorialEvidenceCheckpoint(
       '$actionKey:registration',
       actionKey == 'payroll_settings' || actionKey == 'payment_certificate_settings'
           ? TutorialEvidenceState.notApplicable : TutorialEvidenceState.missing,
       label: label)];
+    }
     return [for (final row in rows) TutorialEvidenceCheckpoint(
       '$actionKey:${row['id']}',
       row['id'] == null ? TutorialEvidenceState.unknown
@@ -245,14 +251,14 @@ class TutorialEvidenceRepository {
     const unknown = [TutorialEvidenceCheckpoint('documents', TutorialEvidenceState.unknown, label: '必須書類')];
     if (docs == null || docs['worker_id'] == null ||
         docs['worker_id'].toString().isEmpty ||
-        docs['requirements'] is! List || docs['statuses'] is! List) return unknown;
+        docs['requirements'] is! List || docs['statuses'] is! List) { return unknown; }
     final requirements = (docs['requirements'] as List).whereType<Map>();
     final statuses = (docs['statuses'] as List).whereType<Map>();
     final result = <TutorialEvidenceCheckpoint>[];
     for (final requirement in requirements) {
-      if (requirement['is_active'] != true || requirement['is_required'] != true) continue;
+      if (requirement['is_active'] != true || requirement['is_required'] != true) { continue; }
       final id = requirement['id']?.toString();
-      if (id == null || id.isEmpty) return unknown;
+      if (id == null || id.isEmpty) { return unknown; }
       final matches = statuses.where((row) =>
         row['requirement_id']?.toString() == id &&
         row['worker_id']?.toString() == docs['worker_id'].toString()).toList();
@@ -302,7 +308,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
   Future<List<Map<String, dynamic>>?> setupRows(String actionKey, String companyId) async {
     if (actionKey == 'trade_companies' || actionKey == 'subcontractors') {
       final raw = await client.rpc('trade_company_workspace');
-      if (raw is! List) return null;
+      if (raw is! List) { return null; }
       final roles = actionKey == 'trade_companies'
           ? {'customer', 'both'} : {'subcontractor', 'both'};
       return [for (final row in raw.whereType<Map>())
@@ -365,7 +371,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
     final worker = await client.from('workers').select('id')
         .eq('user_id', userId).eq('company_id', companyId)
         .eq('status', 'active').maybeSingle();
-    if (worker == null) return null;
+    if (worker == null) { return null; }
     final workerId = worker['id'];
     final requirements = await client.from('document_requirements')
         .select('id,name,is_active,is_required,expiry_required')

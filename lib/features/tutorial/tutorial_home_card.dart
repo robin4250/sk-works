@@ -57,51 +57,71 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
     final scopeChanged = widget.userId != oldWidget.userId || widget.companyId != oldWidget.companyId;
     if (scopeChanged) { _completed = false; _workspace = null; }
     if (scopeChanged || widget.refreshToken != oldWidget.refreshToken ||
-        !_sameKeys(widget.availableActionKeys, oldWidget.availableActionKeys)) _refresh();
+        !_sameKeys(widget.availableActionKeys, oldWidget.availableActionKeys)) {
+      _refresh();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_opening) _refresh();
+    if (state == AppLifecycleState.resumed && !_opening) {
+      _refresh();
+    }
   }
 
   Future<void> _refresh() async {
-    if (_completed) return; // Terminal flag survives registry additions and refreshes.
+    if (_completed) {
+      return;
+    } // Terminal flag survives registry additions and refreshes.
     final request = ++_request;
     final userId = widget.userId;
     final companyId = widget.companyId;
-    if (mounted) setState(() { _loading = true; _error = null; });
+    if (mounted) {
+      setState(() { _loading = true; _error = null; });
+    }
     try {
       final preferences = widget.preferences ?? TutorialPreferences();
       if (await preferences.initialCompleted(userId: userId, companyId: companyId)) {
-        if (mounted && request == _request) setState(() { _completed = true; _loading = false; });
+        if (mounted && request == _request) {
+          setState(() { _completed = true; _loading = false; });
+        }
         return;
       }
       final loader = widget.loadSnapshot;
       final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate();
-      if (loader == null && repository == null) throw StateError('Tutorial evidence unavailable');
+      if (loader == null && repository == null) {
+        throw StateError('Tutorial evidence unavailable');
+      }
       final keys = Set<String>.unmodifiable(widget.availableActionKeys);
       final snapshot = loader != null ? await loader(keys)
           : await repository!.load(availableActionKeys: keys);
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       final workspace = TutorialWorkspace.fromSnapshot(snapshot);
       if (workspace.canCompleteInitial) {
         await preferences.markInitialCompleted(userId: userId, companyId: companyId);
       }
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       setState(() {
         _workspace = workspace;
         _completed = workspace.canCompleteInitial;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _request) return;
+      if (!mounted || request != _request) {
+        return;
+      }
       setState(() { _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
     }
   }
 
   Future<void> _openGuide() async {
-    if (_opening) return;
+    if (_opening) {
+      return;
+    }
     setState(() => _opening = true);
     try {
       await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => TutorialPage(
@@ -117,7 +137,9 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
-    if (_completed) return const SizedBox.shrink();
+    if (_completed) {
+      return const SizedBox.shrink();
+    }
     final workspace = _workspace;
     return Card(margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14),

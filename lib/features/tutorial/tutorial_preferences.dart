@@ -24,6 +24,8 @@ class TutorialPreferences {
   /// There is deliberately no reset API: restarting the guide is separate.
   Future<void> markInitialCompleted({required String userId, required String companyId}) async {
     final saved = await (await _loader()).setBool(_key(userId, companyId), true);
-    if (!saved) throw StateError('Could not persist tutorial completion.');
+    if (!saved) {
+      throw StateError('Could not persist tutorial completion.');
+    }
   }
 }

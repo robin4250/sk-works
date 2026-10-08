@@ -13,7 +13,9 @@ class NotificationBusinessStatus {
   final DateTime? targetDate;
 
   static NotificationBusinessStatus fromRows(List<Map<String, dynamic>> rows) {
-    if (rows.isEmpty) return const NotificationBusinessStatus();
+    if (rows.isEmpty) {
+      return const NotificationBusinessStatus();
+    }
     final states = rows.map((row) => stateFromValue(row['status'])).toList();
     final state = states.contains(NotificationBusinessState.unknown)
         ? NotificationBusinessState.unknown
@@ -57,7 +59,9 @@ NotificationBusinessState payrollNotificationState({
     return NotificationBusinessState.unknown;
   }
   final reviewers = value['reviewers'];
-  if (reviewers is! List) return NotificationBusinessState.unknown;
+  if (reviewers is! List) {
+    return NotificationBusinessState.unknown;
+  }
   final assigned = reviewers.any((reviewer) =>
       reviewer is Map && reviewer['user_id'] == currentUserId);
   if (assigned) {
