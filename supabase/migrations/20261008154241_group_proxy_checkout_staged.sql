@@ -112,6 +112,8 @@ begin
   end if;
   -- Before site/source locks or attendance FK acquisition, use the exact same
   -- company protocol as vehicle starts, gate toggles and meter writes.
+  perform 1 from public.companies c where c.id=a.company_id for key share;
+  if not found then raise exception 'group checkout company is unavailable'; end if;
   perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||a.company_id::text,0));
   if p_request_token is null or cardinality(p_sources) is null or cardinality(p_sources) not between 1 and 100
      or array_position(p_sources,null) is not null then raise exception 'invalid checkout selection'; end if;
