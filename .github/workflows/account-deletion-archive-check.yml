@@ -48,5 +48,5 @@ jobs:
           assert count == 32, count
           print('Verified 32 archived source files')
           PY
-      - name: Verify isolated handler guards without live services
-        run: node --test docs/recovery/account_deletion_source_20261008/verification/guard_tests.mjs
+      - name: Verify isolated guards and processor without live services
+        run: node --test docs/recovery/account_deletion_source_20261008/verification/*_tests.mjs
