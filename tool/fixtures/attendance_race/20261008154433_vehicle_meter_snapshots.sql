@@ -99,6 +99,8 @@ begin
    raise exception '車両の運転手本人だけがメーターを登録できます';
  end if;
  v_identity:=v_claim;
+ perform 1 from public.companies c where c.id=v_identity.company_id for key share;
+ if not found then raise exception '車両の会社を確認できません'; end if;
  perform pg_advisory_xact_lock(hashtextextended('vehicle-rollout:'||v_identity.company_id::text,0));
  perform 1 from public.vehicles v
    where v.id=v_claim.vehicle_id and v.company_id=v_claim.company_id for no key update;
