@@ -21,8 +21,12 @@ test('ordinary registration stays viewer and malformed role is not coerced', () 
   assert.equal(employeeInvitePolicy({ replaceApprovalAssigneeUserId: 'existing' }, 'admin').status, 400);
 });
 test('replacement keeps exact selected role and selected duty', () => {
-  const result = employeeInvitePolicy({ requestedRole: 'manager', requestedApprovalAssignee: true,
-    replaceApprovalAssigneeUserId: ' existing ' }, 'admin');
-  assert.equal(result.requestedRole, 'manager');
-  assert.equal(result.replaceApprovalAssigneeUserId, 'existing');
+  for (const requestedRole of ['viewer', 'manager']) {
+    for (const caller of ['owner', 'admin']) {
+      const result = employeeInvitePolicy({ requestedRole, requestedApprovalAssignee: true,
+        replaceApprovalAssigneeUserId: ' existing ' }, caller);
+      assert.deepEqual(result, { requestedRole, requestedApprovalAssignee: true,
+        replaceApprovalAssigneeUserId: 'existing' });
+    }
+  }
 });
