@@ -136,9 +136,11 @@ class AttendanceJourney {
 
   List<AttendanceJourneyChoice> get nextChoices {
     if (!isWorking) return const [];
-    if (openVisit != null) return const [
-      AttendanceJourneyChoice(AttendanceJourneyAction.endVisit, 'この現場の訪問を終了'),
-    ];
+    if (openVisit != null) {
+      return const [
+        AttendanceJourneyChoice(AttendanceJourneyAction.endVisit, 'この現場の訪問を終了'),
+      ];
+    }
     return [
       if (start.path == AttendanceJourneyPath.multiSitePhoto)
         const AttendanceJourneyChoice(AttendanceJourneyAction.startVisit, '次の現場へ訪問開始'),
