@@ -1,3 +1,4 @@
+import '../payroll/site_payment_agreement_page.dart';
 import 'package:flutter/material.dart';
 
 import '../../domain/rate_formula_settings.dart';
@@ -77,7 +78,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
           '管理者用現場データ',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [if (_canManage) IconButton(tooltip: '親会社との金額調整', onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SitePaymentAgreementPage())), icon: const Icon(Icons.handshake_outlined)), const SkoNotificationBell()],
       ),
       body: SafeArea(
         child: Column(
@@ -255,7 +256,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '1日単価・月単価・平米・請負のどれか1方式を設定します。日給/時給どちらでも同じ倍率体系で残業・早出・夜勤・休日系を自動計算し、式の数字も変更保存できます。平米は単価と平米数の両方が必要です。',
+                    '1日単価・月単価・平米・請負のどれか1方式を設定します。日給/時給は残業・早出・夜勤・休日系を自動計算し、式の数字も変更保存できます。平米は単価×平米数、請負は入力金額で計算します。平米・請負では残業などの割増は計算せず、追加項目は下の手当枠に入力できます。',
                   ),
                 ),
                 const SizedBox(height: 10),
