@@ -12,6 +12,7 @@ void main() {
       'lib/features/settings/company_module_settings_page.dart',
       'lib/features/settings/company_rate_settings_page.dart',
       'lib/features/payroll/individual_payroll_settings_page.dart',
+      'lib/features/payroll/payroll_confirmation_settings_page.dart',
       'lib/features/payroll/payment_certificates_page.dart',
       'lib/features/daily_reports/daily_report_page.dart',
       'lib/features/daily_reports/daily_report_pending_notice.dart',

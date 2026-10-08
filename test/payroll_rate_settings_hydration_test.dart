@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/domain/payroll_rate_settings_hydration.dart';
+import 'package:sk_works/domain/payroll_rate_settings_hydration.dart';
 
 void main() {
   test('legacy daily rates preserve manual differences without mutating source', () {

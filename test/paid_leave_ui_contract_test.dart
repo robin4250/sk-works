@@ -2,6 +2,14 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+// Formatting may split translated widget arguments across lines.
+Matcher containsUi(String expected) => predicate<String>(
+  (source) => source.replaceAll(RegExp(r'\s+'), '').contains(
+    expected.replaceAll(RegExp(r'\s+'), ''),
+  ),
+  'contains translated UI contract: $expected',
+);
+
 void main() {
   test('paid leave request UI supports multiple future dates', () {
     final source =
@@ -19,7 +27,7 @@ void main() {
     ).readAsStringSync();
     expect(source, contains('paid_leave_granted_days'));
     expect(source, contains('有給付与日数'));
-    expect(source, contains("suffixText: '日'"));
+    expect(source, containsUi("suffixText: SkoLanguageController.tr('日')"));
   });
 
   test('paid leave approvals reuse management approval flow', () {

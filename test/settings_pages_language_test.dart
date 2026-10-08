@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:sk_works/features/payroll/individual_payroll_settings_page.dart';
+import 'package:sk_works/features/payroll/payroll_confirmation_settings_page.dart';
 import 'package:sk_works/features/settings/company_module_settings_page.dart';
 import 'package:sk_works/features/settings/company_rate_settings_page.dart';
 import 'package:sk_works/international/language_controller.dart';
@@ -15,6 +16,7 @@ void main() {
 
   for (final entry in <(Widget, String)>[
     (const IndividualPayrollSettingsPage(), '個別給与設定'),
+    (const PayrollConfirmationSettingsPage(), '会社の給与設定'),
     (const CompanyRateSettingsPage(), '会社単価・手当設定'),
     (const CompanyModuleSettingsPage(), '利用機能のON／OFF'),
   ]) {

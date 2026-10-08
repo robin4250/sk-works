@@ -14,7 +14,12 @@ void main() {
     expect(localizedPayrollConditionWarning(warning), startsWith('山田太郎：2 paid-leave days:'));
     expect(localizedPayrollConditionWarning('山田太郎：独自の会社条件'), '山田太郎：独自の会社条件');
     const monthly = '月給の休日勤務・夜勤実績に未登録の単価があります。会社の追加支給条件と給与設定を確認してください。';
-    expect(localizedPayrollConditionWarning(monthly), contains('Holiday work / Night work'));
+    final translatedMonthly = localizedPayrollConditionWarning(monthly);
+    expect(translatedMonthly, contains('${SkoLanguageController.tr('休日勤務')} / ${SkoLanguageController.tr('夜勤')}'));
+    expect(translatedMonthly, startsWith('Monthly-pay records for '));
+    expect(translatedMonthly, contains('have missing rates.'));
+    expect(translatedMonthly, isNot(contains('休日勤務')));
+    expect(translatedMonthly, isNot(contains('夜勤')));
   });
   test('warnings accept only distinct nonempty strings', () {
     expect(payrollConditionWarnings({'calculation_warnings': [' 条件確認 ', null, 10, '', '条件確認']}), ['条件確認']);

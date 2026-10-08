@@ -19,7 +19,14 @@ void main() {
     expect(repo, contains("'p_route_assignment_id': routeAssignmentId"));
     expect(repo, contains("'route_assignment_id'"));
     expect(page, contains("'現場／ルート'"));
-    expect(page, contains("'ルート：\${group.siteName}'"));
+    expect(
+      RegExp(
+        r"group\.routeAssignmentId\s*==\s*null\s*\?\s*group\.siteName\s*:\s*SkoLanguageController\.trParams\(\s*'ルート：\{name\}',\s*\{\s*'name':\s*group\.siteName\s*,?\s*\}\s*,?\s*\)",
+      ).hasMatch(page),
+      isTrue,
+      reason: 'Only route destinations receive the translated route prefix; the registered destination name is passed unchanged.',
+    );
+    expect(page, contains('_routeAssignmentId = group.routeAssignmentId'));
     expect(page, contains('initialRouteAssignmentId'));
 
     expect(

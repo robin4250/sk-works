@@ -4,6 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 String read(String path) => File(path).readAsStringSync();
 
+// Formatting may split translated widget arguments across lines.
+Matcher containsUi(String expected) => predicate<String>(
+  (source) => source.replaceAll(RegExp(r'\s+'), '').contains(
+    expected.replaceAll(RegExp(r'\s+'), ''),
+  ),
+  'contains translated UI contract: $expected',
+);
+
 void main() {
   test('individual payroll settings support unlimited named earnings and deductions', () {
     final page = read(
@@ -13,8 +21,8 @@ void main() {
       'supabase/migrations/20261006142713_payroll_custom_deductions.sql',
     );
 
-    expect(page, contains("label: const Text('支給項目を追加')"));
-    expect(page, contains("label: const Text('控除項目を追加')"));
+    expect(page, containsUi("label: Text(SkoLanguageController.tr('支給項目を追加'))"));
+    expect(page, containsUi("label: Text(SkoLanguageController.tr('控除項目を追加'))"));
     expect(page, contains("values['custom_earnings'] = customEarnings"));
     expect(page, contains("values['custom_deductions'] = customDeductions"));
     expect(page, contains("sectionName: '支給'"));

@@ -308,7 +308,9 @@ class _PayrollStatementPreviewPageState
     if (cancel ? !status.canCancel : !status.canConfirm) return;
     if (!cancel && !await confirmPayrollConditions(
       context, payrollConditionWarnings(_pdfStatement.detail),
-    )) return;
+    )) {
+      return;
+    }
     if (!mounted) return;
     setState(() => _confirmationBusy = true);
     try {
