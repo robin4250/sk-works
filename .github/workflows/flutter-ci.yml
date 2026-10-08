@@ -50,7 +50,14 @@ jobs:
         run: flutter --version
 
       - name: Create Android project files
-        run: flutter create . --no-pub --platforms=android --project-name sk_works --org com.skworks
+        run: |
+          set -euo pipefail
+          lock_backup=$(mktemp)
+          cp pubspec.lock "$lock_backup"
+          trap 'cp "$lock_backup" pubspec.lock; rm -f "$lock_backup"' EXIT
+          flutter create . --no-pub --platforms=android --project-name sk_works --org com.skworks
+          cp "$lock_backup" pubspec.lock
+          git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Scan tracked files for production secrets
         run: bash tool/check_no_client_secrets.sh
