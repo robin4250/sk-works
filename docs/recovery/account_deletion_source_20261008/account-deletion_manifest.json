@@ -1,0 +1,46 @@
+{
+  "captured_date": "2026-10-08",
+  "function": {
+    "slug": "account-deletion",
+    "name": "account-deletion",
+    "status": "ACTIVE",
+    "version": 3,
+    "created_at": 1790436474734,
+    "updated_at": 1790437817144,
+    "verify_jwt": true,
+    "import_map": false,
+    "ezbr_sha256": "ebdf1c11056a72278d8eb47395af41ce4afe94393a63bfc2ad0018e2c9f28c2c"
+  },
+  "files": [
+    {
+      "path": "account-deletion/index.ts",
+      "bytes": 2819,
+      "sha256": "b04b275851e802d126032a0d264ece56a16333a7182cfbc94179cea6ab4be69c"
+    },
+    {
+      "path": "account-deletion/handler.mjs",
+      "bytes": 3304,
+      "sha256": "3940ab15ea1af1c729b6560b414ae974a898deaec46df43fe89ba0b3145876ac"
+    },
+    {
+      "path": "account-deletion/intake_configuration.mjs",
+      "bytes": 455,
+      "sha256": "8a2a1f0ac25f7e640ce9b63fd41a867c940e7869e846a51493f3f083261f1899"
+    },
+    {
+      "path": "account-deletion/policy.mjs",
+      "bytes": 933,
+      "sha256": "93030860af3b10719deb4b2adf153be2e1ec3e3307efa2b25b8257ecb9131fdb"
+    },
+    {
+      "path": "account-deletion/google_credential_store.mjs",
+      "bytes": 3203,
+      "sha256": "83b8fbc96b6dfbe43975996a0185b79b086fd647ff059cf9f2307a8cbf415399"
+    },
+    {
+      "path": "account-deletion/google_revocation.mjs",
+      "bytes": 3747,
+      "sha256": "38d6fb7107e1fbb005bf4b694921d4bdca36ddb60951c5e24046dde459f697a0"
+    }
+  ]
+}
