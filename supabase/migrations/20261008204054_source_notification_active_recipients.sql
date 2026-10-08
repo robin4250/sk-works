@@ -15,7 +15,7 @@ declare c uuid;
 begin
  if auth.uid() is null or not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501'; end if;
  select company_id into c from public.vehicles where id=p_vehicle_id for no key update;
- if c is null or not exists(select 1 from public.company_members where company_id=c and user_id=auth.uid() and role::text in ('owner','admin')) then raise exception 'vehicle administrator required' using errcode='42501'; end if;
+ if c is null or not private.source_notification_recipient_eligible(c,auth.uid()) or not exists(select 1 from public.company_members where company_id=c and user_id=auth.uid() and role::text in ('owner','admin')) then raise exception 'vehicle administrator required' using errcode='42501'; end if;
  if cardinality(p_user_ids) is null or cardinality(p_user_ids) not between 1 and 3 or array_position(p_user_ids,null) is not null or (select count(distinct x) from unnest(p_user_ids)x)<>cardinality(p_user_ids) then raise exception 'select 1 to 3 distinct vehicle assignees'; end if;
  if exists(select 1 from unnest(p_user_ids)x where not private.source_notification_recipient_eligible(c,x)) then raise exception 'assignee must be an active vehicle company recipient' using errcode='42501'; end if;
  insert into private.vehicle_notification_assignees values(p_vehicle_id,c,p_user_ids) on conflict(vehicle_id) do update set user_ids=excluded.user_ids;

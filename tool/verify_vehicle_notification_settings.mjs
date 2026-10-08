@@ -30,6 +30,7 @@ await assert.rejects(db.query(`select public.set_vehicle_notification_assignees(
 await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${inactiveOwner}']::uuid[])`), /active vehicle/);
 await db.exec(`set test.uid='${inactiveOwner}'`);
 await assert.rejects(load(), /administrator/);
+await assert.rejects(db.query(`select public.set_vehicle_notification_assignees('${car}',array['${viewer}']::uuid[])`), /administrator/);
 await db.exec(`set test.uid='${admin}'`);
 assert.equal((await db.query('select count(*)::int n from private.vehicle_notification_assignees').catch(() => ({rows: [{n: -1}]}))).rows[0].n, -1);
 await assert.rejects(db.query(`select public.get_vehicle_notification_settings('${foreignCar}')`), /administrator/);
