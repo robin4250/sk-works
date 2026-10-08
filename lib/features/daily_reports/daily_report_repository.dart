@@ -97,6 +97,7 @@ class DailyReportRecord {
     this.responsibleSignerName,
     this.responsibleSignatureJson,
     this.signedAt,
+    this.notificationRetryScope,
   });
 
   final String id;
@@ -114,6 +115,7 @@ class DailyReportRecord {
   final String? responsibleSignerName;
   final Object? responsibleSignatureJson;
   final DateTime? signedAt;
+  final SavedReportNotificationRetry? notificationRetryScope;
 
   bool get signed => status == 'signed';
 }
@@ -401,6 +403,7 @@ class DailyReportRepository {
 
     return DailyReportRecord(
       id: row['id']?.toString() ?? '',
+      notificationRetryScope: savedReportNotificationScopeFromRow(row, notificationRetryUserId),
       siteId: row['site_id']?.toString(),
       routeAssignmentId: row['route_assignment_id']?.toString(),
       siteName: site is Map
@@ -545,25 +548,15 @@ class DailyReportRepository {
 
   String? get notificationRetryUserId => _client.auth.currentUser?.id;
 
-  Future<SavedReportNotificationRetry> savedNotificationScope(String reportId) async {
-    final userId = notificationRetryUserId;
-    if (userId == null) throw StateError('日報通知の利用者を確認できません');
-    final row = await _client.from('daily_reports').select('id,company_id,updated_by')
-      .eq('id', reportId).eq('updated_by', userId).maybeSingle();
-    if (row == null || row['id'] != reportId || row['company_id'] is! String) {
-      throw StateError('登録済み日報を確認できません');
-    }
-    return SavedReportNotificationRetry(userId: userId,
-      companyId: row['company_id'] as String, reportId: reportId);
-  }
-
   Future<void> verifySavedNotificationScope(SavedReportNotificationRetry retry) async {
     if (notificationRetryUserId != retry.userId) throw StateError('日報通知の利用者が変更されています');
     final row = await _client.from('daily_reports').select('id,company_id,updated_by')
       .eq('id', retry.reportId).eq('company_id', retry.companyId)
       .eq('updated_by', retry.userId).maybeSingle();
     if (row == null || row['id'] != retry.reportId || row['company_id'] != retry.companyId ||
-        row['updated_by'] != retry.userId) throw StateError('登録済み日報を確認できません');
+        row['updated_by'] != retry.userId) {
+      throw StateError('登録済み日報を確認できません');
+    }
   }
 
   /// The server owns rollout gating, recipient selection and durable deduplication.

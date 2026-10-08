@@ -74,3 +74,19 @@ Future<bool> retryPersistedSavedReportNotification(SavedReportNotificationRetry 
   if (sent) await confirmed(retry);
   return sent;
 }
+
+/// Derive scope only from the actual saved report row, never the selected site
+/// or first company membership. Publication still rechecks server access.
+SavedReportNotificationRetry? savedReportNotificationScopeFromRow(
+  Map<String, dynamic> row, String? userId,
+) {
+  final id = row['id'];
+  final companyId = row['company_id'];
+  if (userId == null || row['updated_by'] != userId ||
+      id is! String || id.isEmpty || companyId is! String || companyId.isEmpty) {
+    return null;
+  }
+  return SavedReportNotificationRetry(
+    userId: userId, companyId: companyId, reportId: id,
+  );
+}

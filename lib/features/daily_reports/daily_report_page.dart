@@ -500,7 +500,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         notificationEligible: completeGroup,
         save: () => _saveDraft(ownsBusyState: false),
         publish: (id) async {
-          if (mounted) await _publishSavedReport(id);
+          final retry = _report?.notificationRetryScope;
+          if (retry == null || retry.reportId != id) {
+            throw StateError('登録済み日報を確認できません');
+          }
+          await _publishSavedReport(retry);
         },
       );
     } finally {
@@ -520,17 +524,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
       });
     } catch (_) {
       // Corrupt or unreadable storage is retained, never reset to an empty list.
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
-      )));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
+        )));
+      }
     }
   }
 
-  Future<void> _publishSavedReport(String reportId, {SavedReportNotificationRetry? fixedRetry}) async {
+  Future<void> _publishSavedReport(SavedReportNotificationRetry retry) async {
     final repository = _repository;
     if (repository == null) return;
     try {
-      final retry = fixedRetry ?? await repository.savedNotificationScope(reportId);
       final sent = await retryPersistedSavedReportNotification(retry,
         remember: _notificationRetries.remember,
         verifySaved: repository.verifySavedNotificationScope,
@@ -543,9 +548,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         confirmed: _notificationRetries.confirmed,
       );
       await _restoreNotificationRetry();
-      if (!sent && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        SkoLanguageController.tr('日報は登録済みです。通知結果は未確認です。同じ日報の通知のみ再確認できます'),
-      )));
+      if (!sent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          SkoLanguageController.tr('日報は登録済みです。通知結果は未確認です。同じ日報の通知のみ再確認できます'),
+        )));
+      }
     } catch (_) {
       await _restoreNotificationRetry();
       if (!mounted) return;
@@ -566,12 +573,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final pending = await _notificationRetries.load(userId);
       for (final retry in pending) {
         if (!mounted || repository.notificationRetryUserId != userId) break;
-        await _publishSavedReport(retry.reportId, fixedRetry: retry);
+        await _publishSavedReport(retry);
       }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
-      )));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
+        )));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

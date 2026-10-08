@@ -3,6 +3,35 @@ import 'package:sk_works/features/notifications/saved_report_notification_retry_
 
 void main() {
   const original = SavedReportNotificationRetry(userId: 'user-a', companyId: 'company-a', reportId: 'saved-id');
+  test('loaded saved row provides exact scope without a second lookup', () async {
+    final retry = savedReportNotificationScopeFromRow({
+      'id': 'saved-id', 'company_id': 'company-a', 'updated_by': 'user-a',
+    }, 'user-a');
+    expect(retry?.companyId, 'company-a');
+    final disk = <String, String>{};
+    final store = SavedReportNotificationRetryStore(
+      read: (key) async => disk[key],
+      write: (key, value) async { disk[key] = value; },
+    );
+    var published = false;
+    await expectLater(retryPersistedSavedReportNotification(retry!,
+      remember: store.remember,
+      verifySaved: (_) async => throw StateError('post-save lookup failed'),
+      publish: (_) async { published = true; return true; },
+      confirmed: store.confirmed,
+    ), throwsStateError);
+    final restored = await store.load('user-a');
+    expect(restored.single.reportId, 'saved-id');
+    expect(restored.single.companyId, 'company-a');
+    expect(published, isFalse);
+    for (final row in <Map<String, dynamic>>[
+      {'id': 'saved-id', 'company_id': 'company-a', 'updated_by': 'other-user'},
+      {'id': 'saved-id', 'updated_by': 'user-a'},
+      {'id': '', 'company_id': 'company-a', 'updated_by': 'user-a'},
+    ]) {
+      expect(savedReportNotificationScopeFromRow(row, 'user-a'), isNull);
+    }
+  });
   test('actual store survives a new instance and separates user/company IDs', () async {
     final disk = <String, String>{};
     SavedReportNotificationRetryStore store() => SavedReportNotificationRetryStore(

@@ -1,6 +1,7 @@
 # Saved group report notification retry persistence
 
 - Stores only the original saved report ID and company ID, in a user-specific device key; report bodies, recipient lists and credentials are never stored here.
+- The successful save/attachment/reload supplies the exact saved report row scope. No additional network scope lookup occurs before persisting that identity; a later lookup failure retains it.
 - Persists before publication. Restarting the app or changing today's site/date never creates or saves a new daily report.
 - Rechecks the exact report ID, company and `updated_by` using current authenticated access before invoking the existing source-bound publisher. The server remains authoritative for membership, original roster, rollout and durable deduplication.
 - Lookup failures, access changes, missing RPC and a zero result preserve pending identity. Zero is ambiguous between OFF and a deduplicated prior publication, so it never clears a pending retry or displays “sent”. A positive confirmed count removes only that user's exact company/report pair.
