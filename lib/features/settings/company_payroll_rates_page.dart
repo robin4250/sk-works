@@ -323,7 +323,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
@@ -491,7 +491,19 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
         if (widget.initialValue == null && payrollManualStartingRates.containsKey(widget.kind))
           const Text('初期入力値は利用者指定です。適用月と情報元を確認して保存してください。保存するまで現在設定値は変わりません。'),
         if (widget.kind == 'child_support' && widget.initialValue == null)
-          const Text('支援金の従業員・会社負担は未確認です。資料を確認して入力してください。'),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('被用者保険の2026年度は全体0.23%、基本は労使折半です。加入条件を確認してから入力してください。'),
+            const _PayrollRateSourceLink(url: 'https://www.cfa.go.jp/policies/kodomokosodateshienkinseido'),
+            TextButton(
+              key: const ValueKey('child-support-standard-shares'),
+              onPressed: () {
+                _fields['total']!.text = '0.23';
+                _fields['employee']!.text = '0.115';
+                _fields['employer']!.text = '0.115';
+              },
+              child: const Text('標準の折半値を入力'),
+            ),
+          ]),
         _field('label', '項目名'), _field('total', '全体料率（%）', rate: true),
         _field('employee', '従業員負担率（%）', rate: true), _field('employer', '会社負担率（%）', rate: true),
         _field('insurance_month', '保険適用年月（YYYY-MM）', month: true),
