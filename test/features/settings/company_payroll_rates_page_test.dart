@@ -29,10 +29,10 @@ class MemoryPendingStore implements PayrollRatePendingStore {
     pending = value;
   }
   @override
-  Future<void> clear(String companyId) async {
+  Future<void> clear(PayrollRatePendingWrite expected) async {
     final gate = clearGate;
     if (gate != null) await gate.future;
-    if (pending?.companyId == companyId) pending = null;
+    if (pending?.companyId == expected.companyId) pending = null;
   }
 }
 
@@ -571,11 +571,11 @@ void main() {
     expect((await restarted.read('company'))!.itemId, 'original-uuid');
     expect(await restarted.read('other-company'), isNull);
     actor = 'actor-b';
-    await expectLater(initial.clear('company'), throwsStateError);
+    await expectLater(initial.clear(operation), throwsStateError);
     expect(await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'), isNull);
     actor = 'actor-a';
     expect((await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'))!.itemId, 'original-uuid');
-    await restarted.clear('company');
+    await restarted.clear(operation);
     expect(await restarted.read('company'), isNull);
   });
 
@@ -637,6 +637,33 @@ void main() {
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '会社の適用条件を編集')).onPressed, isNull);
     expect(newRepository.pendingStore.pending!.itemId, 'pending-new');
     expect(newRepository.scopes, isEmpty);
+  });
+
+  test('two store instances serialize writes and cleanup rejects a different operation', () async {
+    SharedPreferences.setMockInitialValues({});
+    final a = SharedPreferencesPayrollRatePendingStore(actorId: () => 'actor');
+    final b = SharedPreferencesPayrollRatePendingStore(actorId: () => 'actor');
+    final first = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
+      itemId: 'first-id', origin: 'manual', value: value('custom'));
+    final second = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
+      itemId: 'second-id', origin: 'manual', value: value('custom'));
+    var successfulWrites = 0;
+    Future<void> attempt(SharedPreferencesPayrollRatePendingStore store, PayrollRatePendingWrite record) async {
+      try {
+        await store.write(record);
+        successfulWrites++;
+      } on StateError {
+        // Caller must not send its RPC if durable preparation is rejected.
+      }
+    }
+    await Future.wait([attempt(a, first), attempt(b, second)]);
+    expect(successfulWrites, 1);
+    final stored = (await a.read('company'))!;
+    expect(stored.itemId, 'first-id');
+    await expectLater(b.clear(second), throwsStateError);
+    expect((await b.read('company'))!.itemId, 'first-id');
+    await a.clear(stored);
+    expect(await b.read('company'), isNull);
   });
 
 }

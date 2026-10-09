@@ -82,7 +82,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       final pending = _pendingWrite;
       if (pending != null && pending.companyId == widget.companyId && pending.matches(data)) {
-        await _pendingStore.clear(widget.companyId);
+        await _pendingStore.clear(pending);
         if (!mounted || generation != _generation) return;
         _pendingWrite = null;
         _recoveryNotice = '保存済みの設定を確認しました';
@@ -112,8 +112,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   Future<void> _completeWrite(int generation) async {
     final store = _pendingStore;
-    final companyId = widget.companyId;
-    await store.clear(companyId);
+    final pending = _pendingWrite;
+    if (pending == null) throw StateError('確認対象の保存結果がありません');
+    await store.clear(pending);
     if (!mounted || generation != _generation) return;
     _pendingWrite = null;
   }
