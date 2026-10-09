@@ -94,7 +94,9 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   }
 
   Future<void> _register() async {
-    if (_busy || _unknown != null) return;
+    if (_busy || _unknown != null || _data?.canEdit != true) {
+      return;
+    }
     final generation = _generation;
     setState(() => _busy = true);
     try {
@@ -166,7 +168,7 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
     subtitle: Text(table.rulesVerified ? '資料・計算ルール確認済み' : table.officialVerified ? '資料確認済み・計算ルール未確認' : '未検証'),
     children: [Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _registrationDetails(table.value),
-      Text('登録者 ${table.registeredBy}'), Text('登録日時 ${table.registeredAt}'),
+      if (table.registeredBy != null) Text('登録者 ${table.registeredBy}'), Text('登録日時 ${table.registeredAt}'),
       OutlinedButton.icon(onPressed: _busy ? null : () => _openPdf(table), icon: const Icon(Icons.picture_as_pdf), label: const Text('PDFを開く')),
     ]))],
   ));
@@ -175,14 +177,14 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
-        content: const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。'),
+        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。給与連携は準備中です。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
     )),
   ]), body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
     const Text('会社内のPDF資料を管理します。給与連携は準備中です。'),
     if (_unknown != null) const Card(child: Padding(padding: EdgeInsets.all(12), child: Text('登録結果の確認が必要です。再読み込みで確認してください。重複登録を防ぐため追加登録は停止しています。'))),
-    if (_retryUpload != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+    if (_data?.canEdit == true && _retryUpload != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       const Text('アップロード結果を確認できません。再試行または別のPDFを選択できます。'),
       TextButton(onPressed: _busy ? null : () { setState(() => _retryUpload = null); _register(); }, child: const Text('ファイルを選び直す')),
     ]))),
@@ -197,12 +199,13 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
         onChanged: _busy ? null : (value) => setState(() { _kind = value ?? 'monthly'; _data = null; })))]),
     OutlinedButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), label: const Text('再読み込み')),
     if (_data != null) ...[
+      if (!_data!.canEdit) const Text('閲覧のみ：年度・適用期間・情報元とPDFを確認できます。'),
       Text(_data!.selected == null ? '確認日の適用候補はありません' :
         '確認日の適用候補：${_data!.selected!.value['calendar_year']}年 ${incomeTaxKinds[_data!.selected!.value['kind']]}'),
-      FilledButton.icon(onPressed: _busy || _unknown != null ? null : _register, icon: const Icon(Icons.add), label: Text(_retryUpload == null ? 'PDFを登録' : 'アップロードを再試行')),
+      if (_data!.canEdit) FilledButton.icon(onPressed: _busy || _unknown != null ? null : _register, icon: const Icon(Icons.add), label: Text(_retryUpload == null ? 'PDFを登録' : 'アップロードを再試行')),
       if (_data!.tables.isEmpty) const Text('登録済み資料はありません'),
       for (final table in _data!.tables) _tableCard(table),
-      Card(child: ExpansionTile(title: const Text('変更履歴'), children: [
+      if (_data!.canEdit) Card(child: ExpansionTile(title: const Text('変更履歴'), children: [
         for (final row in _data!.history) ListTile(
           title: Text(row['event_type'] == 'verification' ? '検証記録' : '登録記録'),
           subtitle: Text('変更者 ${row['actor_id']}\n変更日時 ${row['changed_at']}'),

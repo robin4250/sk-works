@@ -14,8 +14,9 @@ Map<String, dynamic> row(IncomeTaxUploadRequest request) => {
 };
 
 class FakeIncomeTaxRepository implements CompanyIncomeTaxRepository {
-  CompanyIncomeTaxTablesData data = const CompanyIncomeTaxTablesData(tables: [], selected: null, history: []);
+  CompanyIncomeTaxTablesData data = const CompanyIncomeTaxTablesData(canEdit: true, tables: [], selected: null, history: []);
   final List<IncomeTaxUploadRequest> uploaded = [];
+  final List<String> pdfReads = [];
   bool loseReply = false;
   bool failUpload = false;
   bool failRead = false;
@@ -29,12 +30,15 @@ class FakeIncomeTaxRepository implements CompanyIncomeTaxRepository {
     uploaded.add(request);
     if (failUpload) throw const IncomeTaxUploadIncomplete();
     final saved = CompanyIncomeTaxTable.fromJson(row(request), request.companyId);
-    data = CompanyIncomeTaxTablesData(tables: [saved], selected: null, history: []);
+    data = CompanyIncomeTaxTablesData(canEdit: true, tables: [saved], selected: null, history: []);
     if (loseReply) throw StateError('reply lost');
     return saved;
   }
   @override
-  Future<String> pdfUrl(String storagePath) async => 'https://example.org/signed.pdf';
+  Future<String> pdfUrl(String storagePath) async {
+    pdfReads.add(storagePath);
+    return 'https://example.org/signed.pdf';
+  }
 }
 
 Future<void> open(WidgetTester tester, FakeIncomeTaxRepository repository) async {
@@ -53,6 +57,34 @@ Future<void> fillRegistration(WidgetTester tester) async {
 }
 
 void main() {
+  test('missing edit permission and redacted registration actor parse as read-only', () {
+    final saved = row(request())..remove('registered_by');
+    final data = CompanyIncomeTaxTablesData.fromJson(
+      {'tables': [saved], 'selected': null, 'history': []}, company, '2030-05-01', 'monthly');
+    expect(data.canEdit, isFalse);
+    expect(data.tables.single.registeredBy, isNull);
+  });
+  testWidgets('viewer can request saved PDF but cannot register or see actor history', (tester) async {
+    final repository = FakeIncomeTaxRepository();
+    final saved = request();
+    repository.data = CompanyIncomeTaxTablesData(tables: [
+      CompanyIncomeTaxTable.fromJson(row(saved)..remove('registered_by'), company),
+    ], selected: null, history: []);
+    await open(tester, repository);
+    expect(find.text('PDFを登録'), findsNothing);
+    expect(find.text('変更履歴'), findsNothing);
+    expect(find.text('閲覧のみ：年度・適用期間・情報元とPDFを確認できます。'), findsOneWidget);
+    await tester.tap(find.text('2030年 ${incomeTaxKinds['monthly']}'));
+    await tester.pumpAndSettle();
+    final button = find.text('PDFを開く');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(repository.pdfReads, [saved.value['storage_path']]);
+    expect(repository.uploaded, isEmpty);
+    expect(find.text('登録者 null'), findsNothing);
+  });
+
   test('rejects missing PDF magic, non-PDF name and oversize bytes before upload', () {
     expect(() => IncomeTaxPdfFile(name: 'file.pdf', bytes: 'not a PDF'.codeUnits), throwsFormatException);
     expect(() => IncomeTaxPdfFile(name: 'file.png', bytes: '%PDF-fixture'.codeUnits), throwsFormatException);

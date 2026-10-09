@@ -313,7 +313,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: const Text('会社の適用条件と資料を確認して料率を設定します。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
@@ -335,13 +335,13 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
             _itemCard('custom', item.value['label'] as String, item, item.id),
           if (_canEdit) OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
             icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
-          if (_canEdit) Card(child: ExpansionTile(title: const Text('所得税'), subtitle: const Text('年度・PDF資料管理'),
+          Card(child: ExpansionTile(title: const Text('所得税'), subtitle: const Text('年度・PDF資料管理'),
             children: [Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('源泉徴収税額表の資料を登録します。税額計算・公式資料検証は準備中です。'),
               OutlinedButton.icon(
                 onPressed: _busy ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => CompanyIncomeTaxPage(companyId: widget.companyId))),
-                icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('年度・PDF資料を管理')),
+                icon: const Icon(Icons.picture_as_pdf_outlined), label: Text(_canEdit ? '年度・PDF資料を管理' : '年度・PDF資料を閲覧')),
             ]))])),
           if (_canEdit) Card(child: ExpansionTile(key: const PageStorageKey('payroll-rate-history'), title: const Text('変更履歴'),
             subtitle: Text('料率 ${_data!.history.length}件・会社条件 ${_data!.scopeHistory.length}件'),

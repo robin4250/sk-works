@@ -133,13 +133,13 @@ class CompanyIncomeTaxTable {
   final Map<String, dynamic> value;
   final bool officialVerified;
   final bool rulesVerified;
-  final String registeredBy;
+  final String? registeredBy;
   final String registeredAt;
   factory CompanyIncomeTaxTable.fromJson(dynamic raw, String companyId) {
     final json = _object(raw);
     if (json['table_id'] is! String || json['version'] is! int || (json['version'] as int) < 1 ||
         json['official_document_verified'] is! bool || json['calculation_rules_verified'] is! bool ||
-        json['common_data_approved'] != false || json['registered_by'] is! String || json['registered_at'] is! String ||
+        json['common_data_approved'] != false || (json['registered_by'] != null && json['registered_by'] is! String) || json['registered_at'] is! String ||
         (json['calculation_rules_verified'] == true && json['official_document_verified'] != true)) {
       throw const FormatException('税額表の登録状態を確認できません');
     }
@@ -147,12 +147,13 @@ class CompanyIncomeTaxTable {
     final version = json['version'] as int;
     return CompanyIncomeTaxTable(id: id, version: version, value: validateIncomeTaxValue(json['value'], companyId, id, version),
       officialVerified: json['official_document_verified'] as bool, rulesVerified: json['calculation_rules_verified'] as bool,
-      registeredBy: json['registered_by'] as String, registeredAt: json['registered_at'] as String);
+      registeredBy: json['registered_by'] as String?, registeredAt: json['registered_at'] as String);
   }
 }
 
 class CompanyIncomeTaxTablesData {
-  const CompanyIncomeTaxTablesData({required this.tables, required this.selected, required this.history});
+  const CompanyIncomeTaxTablesData({required this.tables, required this.selected, required this.history, this.canEdit = false});
+  final bool canEdit;
   final List<CompanyIncomeTaxTable> tables;
   final CompanyIncomeTaxTable? selected;
   final List<Map<String, dynamic>> history;
@@ -183,7 +184,7 @@ class CompanyIncomeTaxTablesData {
           table.officialVerified == selected.officialVerified && table.rulesVerified == selected.rulesVerified))) {
       throw const FormatException('適用候補の年度・検証状態を確認できません');
     }
-    return CompanyIncomeTaxTablesData(tables: List.unmodifiable(tables), selected: selected,
+    return CompanyIncomeTaxTablesData(canEdit: json['can_edit'] == true, tables: List.unmodifiable(tables), selected: selected,
       history: List.unmodifiable((json['history'] as List).map(_object)));
   }
 }
