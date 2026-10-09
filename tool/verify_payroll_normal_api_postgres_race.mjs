@@ -18,7 +18,7 @@ try{
  const ps=(await o.query("select * from public.payroll_statements where company_id=$1 and worker_id=$2 and period_start='2020-02-01'",[cid,w1])).rows[0];assert.ok(ps);const type='c0000000-0000-0000-0000-000000000001';
  await o.query("insert into public.payroll_adjustment_types values($1,$2,'Race addition','addition',true)",[type,cid]);
  await o.query('insert into public.payroll_confirmers(company_id,user_id,position) values($1,$2,1)',[cid,owner]);await o.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[ps.id,owner,ps.revision]);
- await begin(a);await a.query('select public.create_payroll_adjustment($1,$2,100,$3,null)',[w1,type,'2020-02-01']);await begin(b);const final=caught(b.query('select public.finalize_payroll_statement($1,$2,true)',[ps.id,ps.revision]));await wait(pid);await a.query('commit');assert.equal((await final).error?.code,'40001');await b.query('rollback');
+ await begin(a);await a.query('select public.create_payroll_adjustment($1,$2,100,$3,null)',[w1,type,'2020-02-01']);await begin(b);const final=caught(b.query('select public.finalize_payroll_statement($1,$2,true)',[ps.id,ps.revision]));await wait(pid);await a.query('commit');const finalRejected=await final;assert.equal(finalRejected.error?.code,'P0001');assert.equal(finalRejected.error?.message,'payroll revision conflict');await b.query('rollback');
  assert.equal((await o.query('select count(*)::int as n from payroll_final_private.documents where statement_id=$1',[ps.id])).rows[0].n,0);
  // Current review company UPDATE precedes a normal raw single-row settings save.
  await begin(a);await a.query("select public.cancel_payroll_review_month('2020-02-01')");await begin(b);const settings=caught(b.query('update public.worker_payroll_settings set day_daily=day_daily+1 where company_id=$1 and worker_id=$2',[cid,w1]));await wait(pid);await a.query('commit');assert.equal((await settings).error,undefined);await b.query('commit');
@@ -38,5 +38,19 @@ try{
  await begin(b,professional);const inserted=caught(b.query("select private.professional_portal('save_payroll',$1::jsonb)",[JSON.stringify({worker_id:w3,values:{day_daily:222}})]));await wait(pid);await a.query('commit');assert.equal((await inserted).error?.code,'40001');await b.query('rollback');
  await begin(b,professional);await b.query("select private.professional_portal('save_payroll',$1::jsonb)",[JSON.stringify({worker_id:w3,values:{day_daily:222}})]);await b.query('commit');
  assert.equal(Number((await o.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w3])).rows[0].day_daily),222);
+ // Captured live ACL allows trusted postgres/service DELETE, but no authenticated DELETE.
+ // Use the existing fixture owner; no client/business grant is changed.
+ assert.equal((await o.query("select has_table_privilege('authenticated','public.worker_payroll_settings','delete') as allowed")).rows[0].allowed,false);
+ assert.equal((await o.query("select has_table_privilege('postgres','public.worker_payroll_settings','delete') as allowed")).rows[0].allowed,true);
+ await a.query('begin');await a.query("select set_config('request.jwt.claim.sub','',true)");
+ assert.equal((await a.query('delete from public.worker_payroll_settings where worker_id=$1 returning worker_id',[w3])).rows.length,1);
+ await begin(b,professional);const deleted=caught(b.query("select private.professional_portal('save_payroll',$1::jsonb)",[JSON.stringify({worker_id:w3,values:{day_daily:333}})]));await wait(pid);await a.query('commit');assert.equal((await deleted).error,undefined);await b.query('commit');
+ assert.equal(Number((await o.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w3])).rows[0].day_daily),333);
+ // A real attendance writer creates a previously uncaptured payroll month while settings waits.
+ await begin(a);await a.query("select public.force_manage_attendance('upsert',$1::jsonb)",[JSON.stringify([{worker_id:w2,date:'2020-05-01',site_id:site,mode:'work'}])]);
+ const beforeSettings=Number((await o.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w2])).rows[0].day_daily);
+ await begin(b);const monthDrift=caught(b.query('update public.worker_payroll_settings set day_daily=day_daily+1 where worker_id=$1',[w2]));await wait(pid);await a.query('commit');const refused=await monthDrift;assert.equal(refused.error?.code,'40001');assert.equal(refused.error?.message,'payroll settings scope changed');await b.query('rollback');
+ assert.equal(Number((await o.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w2])).rows[0].day_daily),beforeSettings);
+ await begin(b);await b.query('update public.worker_payroll_settings set day_daily=day_daily+1 where worker_id=$1',[w2]);await b.query('commit');assert.equal(Number((await o.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w2])).rows[0].day_daily),beforeSettings+1);
  console.log('PASS native normal APIs: reverse tuple force requests/stale retry; cancellation/signature; adjustment/finalize revision refusal; review/single-row settings serialization');
 }finally{for(const c of[a,b])try{await c.query('rollback');}catch{}await Promise.all([a.end(),b.end(),o.end()]);}

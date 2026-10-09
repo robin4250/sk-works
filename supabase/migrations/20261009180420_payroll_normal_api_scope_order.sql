@@ -1240,6 +1240,19 @@ $function$
 
 -- Single-row settings adoption retains existing RLS and DML grants.
 
+create function payroll_scope_private.settings_scopes(p_new jsonb,p_old jsonb) returns jsonb
+language sql stable security definer set search_path='' as $$
+ select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',scope_day) order by cid,wid,scope_day),'[]') from (
+  select (p_new->>'company_id')::uuid cid,(p_new->>'worker_id')::uuid wid,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date as scope_day
+  union select (p_old->>'company_id')::uuid,(p_old->>'worker_id')::uuid,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date where p_old is not null
+  union select (p_new->>'company_id')::uuid,(p_new->>'worker_id')::uuid,date_trunc('month',a.work_date)::date from public.attendance_entries a where a.company_id=(p_new->>'company_id')::uuid and a.worker_id=(p_new->>'worker_id')::uuid
+  union select (p_new->>'company_id')::uuid,(p_new->>'worker_id')::uuid,p.period_start from public.payroll_statements p where p.company_id=(p_new->>'company_id')::uuid and p.worker_id=(p_new->>'worker_id')::uuid
+  union select (p_new->>'company_id')::uuid,(p_new->>'worker_id')::uuid,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date where (p_new->>'pay_type')='monthly' and coalesce((p_new->>'monthly_salary_yen')::numeric,0)>0 and exists(select 1 from public.workers w where w.id=(p_new->>'worker_id')::uuid and w.company_id=(p_new->>'company_id')::uuid and w.status::text='active' and w.affiliation::text='employee')
+  union select (p_old->>'company_id')::uuid,(p_old->>'worker_id')::uuid,date_trunc('month',a.work_date)::date from public.attendance_entries a where p_old is not null and a.company_id=(p_old->>'company_id')::uuid and a.worker_id=(p_old->>'worker_id')::uuid
+  union select (p_old->>'company_id')::uuid,(p_old->>'worker_id')::uuid,p.period_start from public.payroll_statements p where p_old is not null and p.company_id=(p_old->>'company_id')::uuid and p.worker_id=(p_old->>'worker_id')::uuid
+ ) t;
+$$;
+revoke all on function payroll_scope_private.settings_scopes(jsonb,jsonb) from public,anon,authenticated;
 create function payroll_scope_private.settings_before_scope() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare scopes jsonb; existing_setting boolean:=true;
@@ -1250,16 +1263,9 @@ begin
   perform 1 from public.worker_payroll_settings where worker_id=new.worker_id for update;
   existing_setting:=found;
  end if;
- select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',scope_day) order by cid,wid,scope_day),'[]') into scopes from (
-  select new.company_id cid,new.worker_id wid,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date as scope_day
-  union select old.company_id,old.worker_id,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date where tg_op='UPDATE'
-  union select new.company_id,new.worker_id,date_trunc('month',a.work_date)::date from public.attendance_entries a where a.company_id=new.company_id and a.worker_id=new.worker_id
-  union select new.company_id,new.worker_id,p.period_start from public.payroll_statements p where p.company_id=new.company_id and p.worker_id=new.worker_id
-  union select new.company_id,new.worker_id,date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date where new.pay_type='monthly' and coalesce(new.monthly_salary_yen,0)>0 and exists(select 1 from public.workers w where w.id=new.worker_id and w.company_id=new.company_id and w.status::text='active' and w.affiliation::text='employee')
-  union select old.company_id,old.worker_id,date_trunc('month',a.work_date)::date from public.attendance_entries a where tg_op='UPDATE' and a.company_id=old.company_id and a.worker_id=old.worker_id
-  union select old.company_id,old.worker_id,p.period_start from public.payroll_statements p where tg_op='UPDATE' and p.company_id=old.company_id and p.worker_id=old.worker_id
- ) t;
+ scopes:=payroll_scope_private.settings_scopes(to_jsonb(new),case when tg_op='UPDATE' then to_jsonb(old) else null end);
  perform payroll_scope_private.lock_scopes(scopes);
+ if payroll_scope_private.settings_scopes(to_jsonb(new),case when tg_op='UPDATE' then to_jsonb(old) else null end) is distinct from scopes then raise exception 'payroll settings scope changed' using errcode='40001';end if;
  if tg_op='INSERT' and not existing_setting and exists(select 1 from public.worker_payroll_settings where worker_id=new.worker_id) then raise exception 'payroll settings target changed' using errcode='40001';end if;
  return new;
 end$$;
