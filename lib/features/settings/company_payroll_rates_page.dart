@@ -18,6 +18,16 @@ const payrollRateKinds = <String, String>{
   'child_support': '子ども・子育て支援金率',
 };
 
+// User-requested starting inputs, not verified official candidates or saved rates.
+// Unspecified child-support shares remain blank until explicitly confirmed.
+const payrollManualStartingRates = <String, Map<String, String>>{
+  'health_insurance': {'total': '9.9', 'employee': '4.95', 'employer': '4.95'},
+  'nursing_insurance': {'total': '1.62', 'employee': '0.81', 'employer': '0.81'},
+  'pension_insurance': {'total': '18.3', 'employee': '9.15', 'employer': '9.15'},
+  'employment_insurance': {'total': '1.65', 'employee': '0.6', 'employer': '1.05'},
+  'child_support': {'total': '0.23'},
+};
+
 class CompanyPayrollRatesPage extends StatefulWidget {
   const CompanyPayrollRatesPage({super.key, required this.companyId, this.repository});
   final String companyId;
@@ -313,7 +323,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
@@ -410,7 +420,7 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
     _fields = {
       'label': TextEditingController(text: value?['label'] as String? ?? payrollRateKinds[widget.kind] ?? ''),
       for (final key in ['total', 'employee', 'employer'])
-        key: TextEditingController(text: value == null ? '' : formatPayrollRatePercent(value[key] as int)),
+        key: TextEditingController(text: value == null ? payrollManualStartingRates[widget.kind]?[key] ?? '' : formatPayrollRatePercent(value[key] as int)),
       for (final key in ['insurance_month', 'payroll_month', 'payment_month'])
         key: TextEditingController(text: value == null ? '' : (value[key] as String).substring(0, 7)),
       'publisher': TextEditingController(text: source['publisher'] as String? ?? ''),
@@ -478,6 +488,10 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
     content: SizedBox(width: 520, child: SingleChildScrollView(child: Form(key: _form,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('数値は公式資料と照合して入力してください。手動設定は正式資料の検証済みデータとして扱いません。'),
+        if (widget.initialValue == null && payrollManualStartingRates.containsKey(widget.kind))
+          const Text('初期入力値は利用者指定です。適用月と情報元を確認して保存してください。保存するまで現在設定値は変わりません。'),
+        if (widget.kind == 'child_support' && widget.initialValue == null)
+          const Text('支援金の従業員・会社負担は未確認です。資料を確認して入力してください。'),
         _field('label', '項目名'), _field('total', '全体料率（%）', rate: true),
         _field('employee', '従業員負担率（%）', rate: true), _field('employer', '会社負担率（%）', rate: true),
         _field('insurance_month', '保険適用年月（YYYY-MM）', month: true),
