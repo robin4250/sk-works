@@ -1,0 +1,28 @@
+name: Employee Registration Status SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*employee_initial_registration_status_history.sql'
+      - 'tool/verify_employee_initial_registration_status.mjs'
+      - '.github/workflows/employee-registration-status-sql.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*employee_initial_registration_status_history.sql'
+      - 'tool/verify_employee_initial_registration_status.mjs'
+      - '.github/workflows/employee-registration-status-sql.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated initial registration state contract
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_employee_initial_registration_status.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
