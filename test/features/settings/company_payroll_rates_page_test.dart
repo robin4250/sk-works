@@ -51,7 +51,7 @@ Future<void> openPage(WidgetTester tester, FakeRatesRepository repository) async
 
 Future<void> reveal(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(finder, 300, scrollable: find.byType(Scrollable).last, maxScrolls: 50);
+    await tester.scrollUntilVisible(finder, 300, scrollable: find.byType(Scrollable).first, maxScrolls: 50);
   }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
