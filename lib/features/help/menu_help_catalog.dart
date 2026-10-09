@@ -170,15 +170,6 @@ class MenuHelpCatalog {
       access: '本人・管理者・サブ管理者・書類閲覧権限',
     ),
     MenuHelpItem(
-      key: 'company_modules',
-      label: '利用機能のON／OFF',
-      purpose: '会社で使う機能を選び、メニューとボタンの表示をそろえます。',
-      destination: '会社共通の利用機能設定へ移動します。',
-      access: '管理者',
-      details: 'OFFでも登録データは残り、ONに戻して再利用できます。表示設定と担当者の操作権限は別に保護します。設定は会社共通です。管理者が変更し、サブ管理者向け表示も個別に選べます。OFFの機能へ進もうとすると利用停止の案内が表示されます。',
-      roles: {ManualRole.admin},
-    ),
-    MenuHelpItem(
       key: 'company_documents',
       label: '会社データ',
       purpose: '会社情報・振込先・給与の締め日と給料日と確認者・会社提出書類を管理します。',

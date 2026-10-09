@@ -10,7 +10,6 @@ import 'package:image_picker/image_picker.dart';
 import '../common/data_date_labels.dart';
 import '../../international/language_controller.dart';
 import '../payroll/payroll_confirmation_settings_page.dart';
-import '../settings/company_module_settings_page.dart';
 import '../settings/company_seal_settings_page.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
@@ -179,17 +178,6 @@ class _CompanySubmittedDocumentsPageState
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _busy ? null : () => Navigator.of(context).push<void>(
                         MaterialPageRoute(builder: (_) => const CompanySealSettingsPage()),
-                      ),
-                    ),
-                  ),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.toggle_on_outlined),
-                      title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
-                      subtitle: Text(SkoLanguageController.tr('会社共通。OFFでも登録データは残ります。')),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _busy ? null : () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(builder: (_) => const CompanyModuleSettingsPage()),
                       ),
                     ),
                   ),

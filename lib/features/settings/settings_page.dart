@@ -412,20 +412,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.widgets_outlined),
-                            title: const Text('利用機能の設定'),
-                            subtitle: const Text('会社で使う機能をON / OFF'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const CompanyModuleSettingsPage(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
                         if (_canManageCompany) ...[
                           Card(
                             child: ListTile(
@@ -443,6 +429,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.widgets_outlined),
+                              title: const Text('利用機能のON／OFF（保管中）'),
+                              subtitle: const Text('用途は検討中。既存設定の確認のみ'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: '利用機能のON／OFF（保管中）',
+                                    child: CompanyModuleSettingsPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.dashboard_outlined),
