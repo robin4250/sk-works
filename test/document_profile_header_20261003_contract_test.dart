@@ -22,8 +22,9 @@ void main() {
     expect(app, contains("key: 'documents'"));
     expect(app, contains("SkoLanguageController.tr('必要書類')"));
     expect(ownDocs, contains("'ログイン中の本人の書類だけを表示します'"));
-    expect(ownDocs, contains('updateOwnStatus'));
-    expect(ownDocs, contains('uploadOwnAttachment'));
+    expect(ownDocs, contains('saveOwnDocument'));
+    expect(ownDocs, contains('repository.loadOwnDocuments()'));
+    expect(repo, contains('Future<void> saveOwnDocument'));
     expect(repo, contains('Future<void> updateOwnStatus'));
     expect(repo, contains('Future<Map<String, dynamic>> uploadOwnAttachment'));
     expect(profile, contains('OwnQualificationRegistrationPage'));
