@@ -76,8 +76,8 @@ void main() {
     );
     expect(pdf, contains('確 認 印'));
     expect(pdf, contains('approvals[i].approved'));
-    expect(pdf, isNot(contains("record.stampRole == 'approval' ? '承認' : '確認'")));
-    expect(pdf, isNot(contains('record.stampDisplayDate')));
+    expect(pdf, contains("record.stampRole == 'approval' ? '承認' : '確認'"));
+    expect(pdf, contains('record.stampDisplayDate'));
     final model = read('lib/features/invoices/invoice_approval_repository.dart');
     expect(model, contains('DateTime? get stampDisplayDate'));
     expect(model, contains('final String stampRole;'));

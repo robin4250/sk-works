@@ -30,6 +30,9 @@ class InvoiceApprovalRecord {
     this.stampRole = 'confirmation',
     this.canCurrentUserCancel = false,
     this.canCurrentUserEditDisplayDate = false,
+    this.stampSurname,
+    this.draftStampSurname,
+    this.canCurrentUserSetStampSurname = false,
   });
 
   final String userId;
@@ -44,6 +47,9 @@ class InvoiceApprovalRecord {
   final String stampRole;
   final bool canCurrentUserCancel;
   final bool canCurrentUserEditDisplayDate;
+  final String? stampSurname;
+  final String? draftStampSurname;
+  final bool canCurrentUserSetStampSurname;
 
   // Display dates never modify or substitute the actual approval timestamp.
   DateTime? get stampDisplayDate {
@@ -107,11 +113,25 @@ class InvoiceApprovalRepository {
       );
     }
     if (raw is! List) return const [];
+    final surnameContract = await _loadSurnameContract(invoiceId);
+    final names = <String, Map<String, dynamic>>{};
+    final nameRows = surnameContract?['names'];
+    if (nameRows is List) {
+      for (final value in nameRows) {
+        if (value is Map && value['user_id'] is String) {
+          names[value['user_id'] as String] = Map<String, dynamic>.from(value);
+        }
+      }
+    }
     return raw.map((value) {
       final row = Map<String, dynamic>.from(value as Map);
+      final surname = names[row['approver_user_id']];
       return InvoiceApprovalRecord(
         userId: row['approver_user_id']?.toString() ?? '',
         name: row['approver_name']?.toString() ?? 'SKOユーザー',
+        stampSurname: _explicitSurname(surname?['snapshot_surname']),
+        draftStampSurname: _explicitSurname(surname?['draft_surname']),
+        canCurrentUserSetStampSurname: surname?['can_set_surname'] == true,
         position: (row['position'] as num?)?.toInt() ?? 1,
         status: row['status']?.toString() ?? 'pending',
         approvedAt: DateTime.tryParse(row['approved_at']?.toString() ?? ''),
@@ -132,11 +152,43 @@ class InvoiceApprovalRepository {
   }
 
   Future<bool> approve(String invoiceId) async {
+    final surnameContract = await _loadSurnameContract(invoiceId);
     final raw = await _client.rpc(
-      'approve_invoice',
+      surnameContract?['enabled'] == true
+          ? 'approve_invoice_with_stamp_surname'
+          : 'approve_invoice',
       params: {'p_invoice_id': invoiceId},
     );
     return raw == true;
+  }
+
+  static String? _explicitSurname(dynamic value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return value;
+  }
+
+  Future<Map<String, dynamic>?> _loadSurnameContract(String invoiceId) async {
+    try {
+      final raw = await _client.rpc(
+        'invoice_stamp_surname_rows',
+        params: {'p_invoice_id': invoiceId},
+      );
+      return raw is Map ? Map<String, dynamic>.from(raw) : null;
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202' || error.code == '42883') return null;
+      rethrow;
+    }
+  }
+
+  Future<void> setStampSurname(String invoiceId, String surname) async {
+    final value = surname.trim();
+    if (value.isEmpty || value.length > 30 || value.contains(RegExp(r'[\r\n]'))) {
+      throw ArgumentError('承認印に表示する名字を1〜30文字で入力してください。');
+    }
+    await _client.rpc('set_invoice_stamp_surname', params: {
+      'p_invoice_id': invoiceId,
+      'p_surname': value,
+    });
   }
 
   static DateTime? _japanDate(dynamic value) {

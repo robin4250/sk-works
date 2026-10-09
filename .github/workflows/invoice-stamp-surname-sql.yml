@@ -1,0 +1,28 @@
+name: Invoice Explicit Stamp Surname SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*invoice_explicit_stamp_surname_snapshot.sql'
+      - 'tool/verify_invoice_stamp_surname.mjs'
+      - '.github/workflows/invoice-stamp-surname-sql.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*invoice_explicit_stamp_surname_snapshot.sql'
+      - 'tool/verify_invoice_stamp_surname.mjs'
+      - '.github/workflows/invoice-stamp-surname-sql.yml'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify explicit surname and immutable approval snapshots
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_invoice_stamp_surname.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"

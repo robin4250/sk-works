@@ -67,6 +67,7 @@ void main() {
     String mode = 'actual',
     DateTime? actual,
     DateTime? override,
+    String? surname,
   }) => InvoiceApprovalRecord(
     userId: 'user-$position',
     name: name,
@@ -77,6 +78,7 @@ void main() {
     displayDateOverride: override,
     displayDateMode: mode,
     stampRole: role,
+    stampSurname: surname,
   );
 
   Future<Map<String, dynamic>> inspect(
@@ -117,11 +119,12 @@ print(json.dumps({'pages':len(pdf),'width':p.rect.width,'height':p.rect.height,'
         1,
         '斉藤　隆一',
         role: 'confirmation',
+        surname: '斉藤',
         actual: actual,
         override: DateTime(2026, 9, 30),
       ),
-      approval(2, '山田 太郎', mode: 'none', actual: actual),
-      approval(3, '鈴木　一郎', actual: actual),
+      approval(2, '山田 太郎', mode: 'none', actual: actual, surname: '山田'),
+      approval(3, '鈴木　一郎', actual: actual, surname: '鈴木'),
     ];
     final report = await inspect('invoice_approved_stamps.pdf', records);
     expect(report['pages'], 1);
@@ -155,14 +158,24 @@ print(json.dumps({'pages':len(pdf),'width':p.rect.width,'height':p.rect.height,'
     }
   }, skip: skipReason);
 
-  test('joined full names are not guessed or printed in surname-only stamps', () async {
-    final record = approval(1, '斉藤隆一', actual: DateTime.utc(2026, 10, 8));
-    final report = await inspect('invoice_unseparated_name_stamp.pdf', [record]);
-    expect((report['cells'] as List).first['text'], isEmpty);
+  test('explicit surname supports joined names without changing approval identity', () async {
+    final record = approval(1, '斉藤隆一', actual: DateTime.utc(2026, 10, 8), surname: '斉藤');
+    final report = await inspect('invoice_explicit_joined_name_stamp.pdf', [record]);
+    expect((report['cells'] as List).first['text'], '斉藤');
     expect(report['text'], isNot(contains('斉藤隆一')));
     expect(record.name, '斉藤隆一');
     expect(record.approved, isTrue);
     expect(record.approvedAt, DateTime.utc(2026, 10, 8));
+  }, skip: skipReason);
+
+  test('legacy joined names keep the existing stamp instead of an empty seal', () async {
+    final record = approval(1, '斉藤隆一', actual: DateTime.utc(2026, 10, 8));
+    final report = await inspect('invoice_legacy_joined_name_stamp.pdf', [record]);
+    final text = (report['cells'] as List).first['text'] as String;
+    expect(text, contains('斉藤隆一'));
+    expect(text, contains('承認'));
+    expect(text, contains('2026.10.08'));
+    expect(record.stampSurname, isNull);
   }, skip: skipReason);
 
   test('pending approvals leave all adopted stamp cells empty', () async {
