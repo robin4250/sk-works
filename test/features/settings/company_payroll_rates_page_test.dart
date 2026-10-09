@@ -95,6 +95,10 @@ Future<void> openPage(WidgetTester tester, FakeRatesRepository repository) async
 
 Future<void> reveal(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
+    // Lazy ListView children above the current offset need a search from the top.
+    final scrollable = find.byType(Scrollable).first;
+    tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(finder, 300, scrollable: find.byType(Scrollable).first, maxScrolls: 50);
   }
   await tester.ensureVisible(finder);
