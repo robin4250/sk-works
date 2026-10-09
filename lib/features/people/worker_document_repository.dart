@@ -138,6 +138,26 @@ class WorkerDocumentRepository {
     };
   }
 
+  Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() async {
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final requirements = await _client.from('document_requirements')
+        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at')
+        .eq('company_id', companyId).eq('is_active', true)
+        .order('sort_order').order('name');
+    final workers = await _client.from('workers')
+        .select('id, name, affiliation, status')
+        .eq('company_id', companyId).eq('id', worker.workerId);
+    final statuses = await _client.from('worker_document_statuses')
+        .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at')
+        .eq('company_id', companyId).eq('worker_id', worker.workerId);
+    return {
+      'workers': List<Map<String, dynamic>>.from(workers),
+      'requirements': List<Map<String, dynamic>>.from(requirements),
+      'statuses': List<Map<String, dynamic>>.from(statuses),
+    };
+  }
+
   Future<void> addDefaultRequirements() async {
     final companyId = await _companyId();
     final existingRows = await _client
@@ -326,6 +346,67 @@ class WorkerDocumentRepository {
           .from('worker_document_statuses')
           .update(payload)
           .eq('id', existing.first['id']);
+    }
+  }
+
+  /// Upload first: rejected/cancelled uploads must not mark a document submitted.
+  /// Keep old and uncertain uploads because Storage and status writes are separate.
+  Future<void> saveOwnDocument({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    Uint8List? attachmentBytes,
+    String? originalFilename,
+  }) async {
+    if ((attachmentBytes == null) != (originalFilename == null)) {
+      throw ArgumentError('写真データとファイル名を確認してください。');
+    }
+    if (attachmentBytes == null) {
+      await updateOwnStatus(
+        requirementId: requirementId,
+        expiresAt: expiresAt,
+        notes: notes,
+      );
+      return;
+    }
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final existing = await _client
+        .from('worker_document_statuses')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('worker_id', worker.workerId)
+        .eq('requirement_id', requirementId)
+        .limit(1);
+    final slot = existing.isEmpty ? 'own-upload' : existing.first['id'].toString();
+    final objectName =
+        '${DateTime.now().microsecondsSinceEpoch}${_extensionOf(originalFilename!)}';
+    final path = '$companyId/${worker.workerId}/$requirementId/$slot/$objectName';
+    await _client.storage.from(_bucket).uploadBinary(
+          path,
+          attachmentBytes,
+          fileOptions: const FileOptions(upsert: false),
+        );
+    final payload = {
+      'company_id': companyId,
+      'worker_id': worker.workerId,
+      'requirement_id': requirementId,
+      'status': 'submitted',
+      'attachment_path': path,
+      'expires_at': expiresAt?.toIso8601String().split('T').first,
+      'original_verified': false,
+      'notes': notes.trim().isEmpty ? null : notes.trim(),
+      'updated_by': _client.auth.currentUser?.id,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (existing.isEmpty) {
+      await _client.from('worker_document_statuses').insert(payload).select('id').single();
+    } else {
+      await _client.from('worker_document_statuses').update(payload)
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId)
+          .eq('requirement_id', requirementId)
+          .eq('id', existing.first['id']).select('id').single();
     }
   }
 
