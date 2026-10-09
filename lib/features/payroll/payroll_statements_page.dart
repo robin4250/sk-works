@@ -146,7 +146,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                           : '確認済み')
                                     : (SkoLanguageController.isEnglish
                                           ? 'Unconfirmed'
-                                          : '未確定'),
+                                          : '未確認'),
                                 style: TextStyle(
                                   color: item.reviewConfirmed
                                       ? Colors.green
