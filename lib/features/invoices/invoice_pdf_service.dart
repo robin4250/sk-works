@@ -714,62 +714,36 @@ class InvoicePdfService {
 
   static pw.Widget _datedApprovalStamp(InvoiceApprovalRecord record) {
     final red = PdfColor.fromHex('#D9272E');
-    final date = record.stampDisplayDate;
     final surname = _surname(record.name);
     return pw.Container(
       width: 36,
       height: 36,
+      padding: const pw.EdgeInsets.all(4),
       decoration: pw.BoxDecoration(
         shape: pw.BoxShape.circle,
         border: pw.Border.all(color: red, width: 1.5),
       ),
-      child: pw.Column(
-        children: [
-          pw.Expanded(
-            child: pw.Center(
-              child: pw.Text(
-                record.stampRole == 'approval' ? '承認' : '確認',
-                style: pw.TextStyle(
-                  color: red,
-                  fontSize: 5.6,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
+      child: pw.Center(
+        child: pw.FittedBox(
+          fit: pw.BoxFit.scaleDown,
+          child: pw.Text(
+            surname,
+            style: pw.TextStyle(
+              color: red,
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
             ),
           ),
-          pw.Container(height: .55, color: red),
-          pw.Expanded(
-            child: pw.Center(
-              child: pw.Text(
-                date == null
-                    ? ''
-                    : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
-                style: pw.TextStyle(color: red, fontSize: 4.1),
-              ),
-            ),
-          ),
-          pw.Container(height: .55, color: red),
-          pw.Expanded(
-            child: pw.Center(
-              child: pw.Text(
-                surname,
-                style: pw.TextStyle(
-                  color: red,
-                  fontSize: 6.1,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   static String _surname(String name) {
-    final value = name.trim();
-    if (value.isEmpty) return '';
-    return value.split(RegExp(r'[\s　]+')).first;
+    final parts = name.trim().split(RegExp(r'[\s　]+'));
+    // A joined full name has no reliable surname boundary. Never guess one,
+    // and never fall back to printing a full name inside a surname-only seal.
+    return parts.length > 1 ? parts.first : '';
   }
 
   static DateTime _monthEnd(InvoiceCalculationResult invoice) {

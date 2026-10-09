@@ -76,7 +76,7 @@ void main() {
     );
     expect(pdf, contains('確 認 印'));
     expect(pdf, contains('approvals[i].approved'));
-    expect(pdf, contains("record.stampRole == 'approval' ? '承認' : '確認'"));
+    expect(pdf, isNot(contains("record.stampRole == 'approval' ? '承認' : '確認'")));
     expect(pdf, contains('record.stampDisplayDate'));
     expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, isNot(contains('companySealImage')));

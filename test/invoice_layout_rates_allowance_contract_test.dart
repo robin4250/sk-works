@@ -18,7 +18,7 @@ void main() {
   test('invoice uses final generated company and dated approval seals', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
     expect(pdf, contains('_datedApprovalStamp'));
-    expect(pdf, contains("record.stampRole == 'approval' ? '承認' : '確認'"));
+    expect(pdf, isNot(contains("record.stampRole == 'approval' ? '承認' : '確認'")));
     expect(pdf, contains('_surname(record.name)'));
     expect(pdf, contains('CompanySealPdf.build('));
     expect(
