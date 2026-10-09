@@ -58,7 +58,7 @@ void main() {
     expect(migration, contains('w.user_id = (select auth.uid())'));
   });
 
-  test('signature list remains a sub-admin configurable feature', () {
+  test('signature feature data remains while its home shortcut is retired', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
     final repository = File(
       'lib/features/settings/company_module_settings_repository.dart',
@@ -72,7 +72,8 @@ void main() {
       settings.replaceAll(RegExp(r'\s+'), ' '),
       contains("'signatures' => SkoLanguageController.tr('サイン一覧')"),
     );
-    expect(app, contains("key: 'signatures'"));
+    expect(app, isNot(contains("key: 'signatures'")));
+    expect(app, contains("if (key == 'signatures') return;"));
     expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
   });
 }

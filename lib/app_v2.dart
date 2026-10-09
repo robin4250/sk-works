@@ -60,7 +60,6 @@ import 'features/people/employee_registration_page.dart';
 import 'features/people/employee_initial_registration_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
-import 'features/people/signature_list_page.dart';
 import 'features/people/worker_document_page.dart';
 import 'features/people/own_document_registration_page.dart';
 import 'features/profile/profile_page.dart';
@@ -639,6 +638,9 @@ class _HomePageState extends State<HomePage> {
     unawaited(_recordUsage(key));
     if (!mounted) return;
 
+    // Ignore retired shortcut keys retained in older home preferences.
+    if (key == 'signatures') return;
+
     final requiredModule = switch (key) {
       'attendance' ||
       'attendance_list' ||
@@ -889,9 +891,6 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'company_documents':
         page = const CompanySubmittedDocumentsPage();
-        break;
-      case 'signatures':
-        page = const SignatureListPage();
         break;
       case 'attendance_management':
         page = const AttendanceManagementPage();
@@ -1214,13 +1213,6 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'signatures',
-          label: SkoLanguageController.tr('サイン一覧'),
-          icon: Icons.draw_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
       _MenuAction(
         key: 'appearance',
         label: SkoLanguageController.tr('背景'),
@@ -1420,7 +1412,6 @@ class _HomePageState extends State<HomePage> {
       'approvals',
       'documents',
       'employee_qualifications',
-      'signatures',
       'attendance_management',
       'payment_certificates',
       'trade_companies',
