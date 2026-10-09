@@ -152,27 +152,8 @@ class PayrollReviewRepository {
   }
 
   PayrollReviewItem _item(Map<String, dynamic> row) {
-    final periodStart =
-        DateTime.tryParse(row['period_start']?.toString() ?? '') ??
-            DateTime.now();
-    final periodEnd =
-        DateTime.tryParse(row['period_end']?.toString() ?? '') ??
-            DateTime.now();
-
     return PayrollReviewItem(
-      statement: PayrollStatementRecord(
-        id: row['id']?.toString() ?? '',
-        companyName: '',
-        workerName: row['worker_name']?.toString() ?? '',
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
-        deductions: (row['deductions'] as num?)?.toInt() ?? 0,
-        netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
-        detail: row['detail'] is Map
-            ? Map<String, dynamic>.from(row['detail'] as Map)
-            : const {},
-      ),
+      statement: payrollStatementFromRow(row, null),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
       reviewChecked: row['review_checked'] == true,
       reviewConfirmed: row['review_confirmed'] == true,

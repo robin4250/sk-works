@@ -253,9 +253,10 @@ class _PayrollStatementPreviewPageState
         }
         throw StateError(SkoLanguageController.tr('この給与明細を閲覧できません。'));
       }
+      final refreshedStatement = refreshed;
       if (mounted) {
         setState(() {
-          _confirmation = status;
+          _confirmation = refreshedStatement.isDraft ? status : null;
           _refreshedStatement = refreshed;
           _statementUnavailable = false;
           _confirmationError = null;
@@ -337,23 +338,9 @@ class _PayrollStatementPreviewPageState
   PayrollStatementRecord get _pdfStatement {
     final original = _refreshedStatement ?? widget.statement;
     final status = _confirmation;
-    if (status == null) return original;
-    return PayrollStatementRecord(
-      id: original.id,
-      companyName: original.companyName.isEmpty
-          ? widget.statement.companyName
-          : original.companyName,
-      workerName: original.workerName,
-      periodStart: original.periodStart,
-      periodEnd: original.periodEnd,
-      grossPay: original.grossPay,
-      deductions: original.deductions,
-      netPay: original.netPay,
-      // Only the statement-scoped workspace supplies stamps and their real times.
-      detail: original.detail,
-      issuedAt: original.issuedAt,
-      reviewConfirmed: status.confirmed,
-      reviewedAt: original.reviewedAt,
+    return payrollStatementWithDraftReview(
+      original, confirmed: status?.confirmed,
+      draftCompanyName: widget.statement.companyName,
     );
   }
 
