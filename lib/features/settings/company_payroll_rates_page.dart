@@ -210,8 +210,17 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       SelectableText('${source['url'] ?? '未記載'}'),
       _PayrollRateSourceLink(url: source['url']?.toString() ?? ''),
       if (applicability is Map) for (final entry in applicability.entries)
-        Text('${entry.key}: ${entry.value}'),
+        Text(_applicabilityText(entry.key.toString(), entry.value)),
     ]);
+  }
+
+  static String _applicabilityText(String key, dynamic value) {
+    const labels = {'prefecture': '都道府県', 'insurer': '保険者', 'employment_business': '事業区分',
+      'business_category': '事業区分', 'company_scope_version': '会社条件の版',
+      'admin_confirmed_conditions': '適用条件の確認'};
+    final display = key == 'insurer' ? payrollScopeInsurers[value] ?? value :
+      key == 'employment_business' ? payrollScopeBusinesses[value] ?? value : value;
+    return '${labels[key] ?? key}: $display';
   }
 
   static String _month(dynamic value) => value is String && value.length >= 7 ? value.substring(0, 7) : '未確認';
@@ -309,13 +318,6 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
           _scopeCard(),
-          for (final entry in payrollRateKinds.entries)
-            _itemCard(entry.key, entry.value, _findKind(entry.key), _findKind(entry.key)?.id ?? entry.key),
-          for (final item in _data!.items.where((item) => item.value['kind'] == 'custom'))
-            _itemCard('custom', item.value['label'] as String, item, item.id),
-          OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
-            icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
-     _scopeCard(),
           for (final entry in payrollRateKinds.entries)
             _itemCard(entry.key, entry.value, _findKind(entry.key), _findKind(entry.key)?.id ?? entry.key),
           for (final item in _data!.items.where((item) => item.value['kind'] == 'custom'))
