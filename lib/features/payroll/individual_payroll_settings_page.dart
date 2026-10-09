@@ -11,6 +11,8 @@ import 'payroll_confirmation_repository.dart';
 import 'payroll_confirmation_settings_page.dart';
 import 'paid_leave_pay.dart';
 import 'payroll_draft_keep_alive.dart';
+import 'resident_tax_section.dart';
+import 'resident_tax_capability.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
   const IndividualPayrollSettingsPage({super.key});
@@ -57,6 +59,7 @@ class _IndividualPayrollSettingsPageState
   bool _loading = true;
   bool _saving = false;
   bool _paidLeaveWagesAvailable = false;
+  ResidentTaxCapability _residentTaxCapability = ResidentTaxCapability.unknown;
   String? _error;
   DateTime? _updatedAt;
   Map<String, dynamic> _settingValues = const {};
@@ -103,6 +106,7 @@ class _IndividualPayrollSettingsPageState
     try {
       final workspace = await repository.loadWorkspace();
       final paidLeaveWagesAvailable = await repository.supportsPaidLeaveWages();
+      final residentTaxCapability = await repository.residentTaxCapability();
       if (!mounted || generation != _loadGeneration) return;
       PayrollConfirmationSettings? companyPolicy;
       try {
@@ -128,6 +132,7 @@ class _IndividualPayrollSettingsPageState
         _workspace = workspace;
         _companyPolicy = companyPolicy;
         _paidLeaveWagesAvailable = paidLeaveWagesAvailable;
+        _residentTaxCapability = residentTaxCapability;
         _workerId = firstWorker;
         _loading = false;
       });
@@ -139,6 +144,16 @@ class _IndividualPayrollSettingsPageState
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _retryResidentTaxCapability() async {
+    final generation = _loadGeneration;
+    final workerId = _workerId;
+    final capability = await _repository?.residentTaxCapability();
+    if (!mounted || generation != _loadGeneration || workerId != _workerId) {
+      return;
+    }
+    setState(() { _residentTaxCapability = capability ?? ResidentTaxCapability.unknown; });
   }
 
   String _rateSignature(RateFormulaDraft draft) => jsonEncode({
@@ -227,7 +242,13 @@ class _IndividualPayrollSettingsPageState
       context: context,
       builder: (context) => AlertDialog(
         title: Text(SkoLanguageController.tr('個別給与設定を保存しますか？')),
-        content: Text(SkoLanguageController.tr('この社員の給与計算に使用する設定を更新します。')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(SkoLanguageController.tr('この社員の給与計算に使用する設定を更新します。')),
+          if (_residentTaxCapability == ResidentTaxCapability.timeline)
+            const Text('住民税は「住民税だけ保存」で保存してください。'),
+          if (_residentTaxCapability == ResidentTaxCapability.unknown)
+            const Text('住民税は確認できないため、この保存では変更しません。'),
+        ]),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -314,6 +335,11 @@ class _IndividualPayrollSettingsPageState
     );
 
     for (final field in _amountFields.skip(12)) {
+      // Preserve the legacy fixed value; schedules save through their own RPC.
+      if (field.$1 == 'resident_tax_monthly' &&
+          !residentTaxUsesGeneralSave(_residentTaxCapability)) {
+        continue;
+      }
       final parsed = num.tryParse(_controllers[field.$1]!.text.trim());
       if (parsed == null || parsed < 0) {
         ScaffoldMessenger.of(
@@ -592,7 +618,18 @@ class _IndividualPayrollSettingsPageState
                       _amountField('social_insurance_monthly', SkoLanguageController.tr('社会保険・月額')),
                       SizedBox(height: 12),
                       _sectionTitle(SkoLanguageController.tr('住民税')),
-                      _amountField('resident_tax_monthly', SkoLanguageController.tr('住民税・月額')),
+                      if (_residentTaxCapability == ResidentTaxCapability.legacy)
+                        _amountField('resident_tax_monthly', SkoLanguageController.tr('住民税・月額'))
+                      else if (_residentTaxCapability == ResidentTaxCapability.unknown) ...[
+                        const Text('住民税の設定方式を確認できません。住民税は変更せず、他の給与設定を保存できます。'),
+                        TextButton(onPressed: _saving ? null : _retryResidentTaxCapability, child: const Text('再確認')),
+                      ] else if (_workerId != null) ResidentTaxSection(
+                        key: ValueKey('resident-tax-$_workerId'),
+                        workerId: _workerId!,
+                        companyId: _settingValues['company_id'] is String ? _settingValues['company_id'] as String : workspace.companyId,
+                        canEdit: workspace.canEdit && !_saving,
+                        legacyAmount: num.tryParse(_controllers['resident_tax_monthly']!.text) ?? 0,
+                      ),
                       SizedBox(height: 12),
                       _sectionTitle(SkoLanguageController.tr('その他の控除')),
                       for (var i = 0; i < _customDeductions.length; i++)
