@@ -10,7 +10,7 @@ async function signature(c,id){return c.query("select public.save_daily_report_s
 try{
  await Promise.all([a.connect(),b.connect(),observer.connect()]);assert.equal(Math.floor(Number((await observer.query('show server_version_num')).rows[0].server_version_num)/10000),17);
  for(const c of[a,b])await c.query("set statement_timeout='15s';set lock_timeout='10s'");
- const day=(await observer.query("select (now() at time zone 'Asia/Tokyo')::date::text day")).rows[0].day;
+ const day=(await observer.query("select (now() at time zone 'Asia/Tokyo')::date::text as fixture_day")).rows[0].fixture_day;
  const r1='a0000000-0000-0000-0000-000000000011',r2='a0000000-0000-0000-0000-000000000012';
  await observer.query('insert into public.daily_reports(id,company_id,site_id,report_date) values($1,$3,$4,$5),($2,$3,$4,$5)',[r1,r2,cid,site,day]);
  await observer.query('insert into public.daily_report_workers(report_id,worker_id) values($1,$3),($1,$4),($2,$4),($2,$3)',[r1,r2,w1,w2]);
