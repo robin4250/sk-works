@@ -1,0 +1,51 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import{setupNormalPayrollFixture}from'./payroll_normal_api_fixture_setup.mjs';
+const{PGlite}=await import(process.argv[2]);const db=new PGlite();const read=p=>fs.readFileSync(p,'utf8');
+const cid='10000000-0000-0000-0000-000000000001',owner='00000000-0000-0000-0000-000000000001',workerUser='00000000-0000-0000-0000-000000000002',w1='40000000-0000-0000-0000-000000000001',w2='40000000-0000-0000-0000-000000000002',site='70000000-0000-0000-0000-000000000001';
+async function actor(id,role='authenticated'){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec(`set role ${role}`);}
+try{
+ await setupNormalPayrollFixture(db);
+ const baseline=(await db.query("select pg_get_functiondef('public.submit_paid_leave_request(date[],text)'::regprocedure) definition")).rows[0].definition;
+ await db.exec("create or replace function public.submit_paid_leave_request(p_dates date[],p_reason text default null) returns uuid language plpgsql security definer set search_path=public,private,pg_temp as $$begin return null;end$$");
+ await assert.rejects(db.exec(read('supabase/migrations/20261009180420_payroll_normal_api_scope_order.sql')),/prerequisite differs/);
+ assert.equal((await db.query("select to_regprocedure('payroll_scope_private.pending_leave_capture(uuid)') function")).rows[0].function,null);
+ await db.exec(baseline);await db.exec(read('supabase/migrations/20261009180420_payroll_normal_api_scope_order.sql'));
+ await db.exec("delete from public.attendance_entries;delete from public.payroll_statements;update public.worker_payroll_settings set pay_type='daily',day_daily=10000,monthly_salary_yen=0,paid_leave_granted_days=31;");
+ const dates=(await db.query("select (now() at time zone 'Asia/Tokyo')::date::text as today,((now() at time zone 'Asia/Tokyo')::date+1)::text as future1,((now() at time zone 'Asia/Tokyo')::date+35)::text as future2,((now() at time zone 'Asia/Tokyo')::date-1)::text as past1,((now() at time zone 'Asia/Tokyo')::date-35)::text as past2")).rows[0];
+ await db.query("insert into public.sites(id,company_id,name) values($1,$2,'Normal Site')",[site,cid]);
+ await actor(workerUser);await assert.rejects(db.query('select payroll_scope_private.pending_leave_capture(gen_random_uuid())'),/permission denied/);
+ const batch=(await db.query('select public.submit_paid_leave_request($1::date[],$2) batch',[[dates.future2,dates.future1],'Future leave'])).rows[0].batch;
+ await actor(owner);assert.equal((await db.query("select public.decide_paid_leave_request($1,'approve',null) status",[batch])).rows[0].status,'approved');
+ await db.exec('reset role');assert.equal((await db.query("select count(*)::int n from public.paid_leave_requests where batch_id=$1 and status='approved'",[batch])).rows[0].n,2);
+ await actor(workerUser);const retro=(await db.query('select public.submit_retrospective_paid_leave_request($1::date[],$2) batch',[[dates.past1,dates.past2],'Past leave'])).rows[0].batch;
+ await actor(owner);assert.equal((await db.query("select public.decide_paid_leave_request($1,'reject',null) status",[retro])).rows[0].status,'rejected');
+ const items=[{worker_id:w2,date:dates.past2,site_id:site,mode:'work'},{worker_id:w1,date:dates.past1,site_id:site,mode:'work'}];
+ assert.equal((await db.query("select public.force_manage_attendance('upsert',$1::jsonb) n",[JSON.stringify(items)])).rows[0].n,2);
+ await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from public.attendance_entries where work_date=any($1::date[])',[[dates.past1,dates.past2]])).rows[0].n,2);
+ const req='b0000000-0000-0000-0000-000000000001';
+ await db.query('insert into public.company_approval_assignees values($1,$2)',[cid,owner]);
+ await db.query("insert into public.attendance_correction_requests(id,company_id,status,requested_by,request_kind) values($1,$2,'submitted',$3,'past_attendance')",[req,cid,workerUser]);
+ await db.query("insert into public.attendance_correction_items(request_id,company_id,proposed_snapshot) values($1,$2,$3::jsonb)",[req,cid,JSON.stringify({workerId:w1,siteId:site,date:dates.past2,manDays:0.5})]);
+ await actor(owner);assert.equal((await db.query("select public.decide_attendance_correction_request($1,'approve',null) status",[req])).rows[0].status,'approved');
+ const workers=JSON.stringify([{worker_id:w2},{worker_id:w1}]);
+ const report=(await db.query('select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) id',[site,dates.today,'Work',workers])).rows[0].id;
+ await db.query("select public.save_daily_report_signature($1,'representative','Rep','{\"strokes\":[[1,2]]}')",[report]);await db.query("select public.save_daily_report_signature($1,'supervisor','Supervisor','{\"strokes\":[[1,2]]}')",[report]);
+ await db.exec('reset role');await db.query("insert into public.daily_report_edit_requests(report_id,requested_by,status) values($1,$2,'approved')",[report,owner]);
+ await actor(owner);assert.equal((await db.query('select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) id',[report,site,dates.past1,'Revised',JSON.stringify([{worker_id:w1}])])).rows[0].id,report);
+ await db.exec('reset role');assert.equal((await db.query("select status from public.daily_reports where id=$1",[report])).rows[0].status,'draft');assert.equal((await db.query("select status from public.daily_report_edit_requests where report_id=$1",[report])).rows[0].status,'used');
+ await actor(owner);const preview=(await db.query('select public.cancel_daily_report($1::jsonb) result',[JSON.stringify({report_id:report,action:'preview'})])).rows[0].result;
+ assert.ok(preview.fingerprint); // Existing mismatched-attendance blocking remains authoritative.
+ const clean=(await db.query('select public.save_daily_report_destination_draft(null,$1,null,$2,null,$3::jsonb) id',[site,'2020-01-01',JSON.stringify([{worker_id:w2}])])).rows[0].id;
+ const ready=(await db.query('select public.cancel_daily_report($1::jsonb) result',[JSON.stringify({report_id:clean,action:'preview'})])).rows[0].result;
+ assert.equal(ready.blocked,null);
+ assert.equal((await db.query('select public.cancel_daily_report($1::jsonb) result',[JSON.stringify({report_id:clean,action:'cancel',fingerprint:ready.fingerprint,reason:'Fixture cancellation'})])).rows[0].result.cancelled,true);
+ await db.query('update public.worker_payroll_settings set day_daily=day_daily+1 where company_id=$1 and worker_id=$2',[cid,w2]);
+ await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from private.daily_report_cancellations where report_id=$1',[clean])).rows[0].n,1);
+ const professional='00000000-0000-0000-0000-000000000009';
+ await db.query("insert into private.professional_invites(id,company_id,claimed_by,status,payroll_access) values(gen_random_uuid(),$1,$2,'approved','edit')",[cid,professional]);
+ await actor(professional);assert.equal((await db.query('update public.worker_payroll_settings set day_daily=777 where worker_id=$1 returning worker_id',[w2])).rows.length,0);
+ await db.query("select private.professional_portal('save_payroll',$1::jsonb)",[JSON.stringify({worker_id:w2,values:{day_daily:12345}})]);
+ await db.exec('reset role');assert.equal(Number((await db.query('select day_daily from public.worker_payroll_settings where worker_id=$1',[w2])).rows[0].day_daily),12345);
+ await actor('', 'anon');await assert.rejects(db.query("select public.force_manage_attendance('delete','[]')"),/permission denied/);
+ await db.exec('reset role');assert.ok((await db.query('select count(*)::int n from private.normal_fixture_notifications')).rows[0].n>=4);
+ console.log('PASS normal API source guards, leave submit/retro/decision, reverse-input forced attendance, correction approval, signed destination replacement, cancellation preview/audit, settings raw RLS and professional delegation, private access and notifications');
+}catch(e){console.error(e.message,e.where||'',e.position||'');process.exitCode=1;}finally{await db.close();}
