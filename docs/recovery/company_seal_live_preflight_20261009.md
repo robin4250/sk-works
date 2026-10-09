@@ -195,6 +195,9 @@ The operator reported these post-DDL comparisons and authorization checks:
 - Three new document snapshot triggers exist. Agreement rollout gates remain
   OFF (zero enabled). Existing ACLs, RLS and trigger definitions for the six
   monitored pre-existing tables are unchanged.
+- Owner, ACL, search path and security-definer attributes of the ten monitored
+  old functions are preserved. Definition hashes are unchanged except for the
+  two intentionally patched refresh functions and payroll document metadata.
 - The style getter/setter deny `anon` EXECUTE and allow `authenticated` EXECUTE.
   Both RPC calls with an empty JWT reject with SQLSTATE `42501`; an EXECUTE grant
   alone does not grant a company authorization.
