@@ -159,7 +159,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
       final result = change == null ? await _repository.adopt(data.companyId, data.slots) : await _repository.save(data.companyId, data.version, change);
       _store.actorId();
       if (!_current(generation)) { return; }
-      if (!result.adopted || result.version != pending.expectedVersion + 1 || !result.history.any(pending.matches)) {
+      if (!result.adopted || result.version != pending.expectedVersion + 1 || !result.history.any(pending.matches) || !allowanceIdentityEqual(result.slots.map((slot) => slot.toJson()).toList(), target.map((slot) => slot.toJson()).toList())) {
         throw const FormatException('保存応答を確認できません');
       }
       await _store.clear(pending);

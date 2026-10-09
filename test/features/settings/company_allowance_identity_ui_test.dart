@@ -86,6 +86,16 @@ Future<void> showPage(WidgetTester tester, FakeRepository repository, MemoryStor
 }
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('history cursors reject nonprogress and unordered pages', () {
+    final first = allowanceHistoryEntry(slots(), 2);
+    final second = allowanceHistoryEntry(slots(), 1);
+    expect(() => validateAllowanceHistoryWindow([first, second], 2), throwsFormatException);
+    expect(() => validateAllowanceHistoryWindow([first, first], 2), throwsFormatException);
+    expect(() => validateAllowanceHistoryWindow([second, first], 1), throwsFormatException);
+    expect(() => validateAllowanceHistoryWindow([], 1), throwsFormatException);
+    expect(() => validateAllowanceHistoryWindow([first, second], 0), throwsFormatException);
+    validateAllowanceHistoryWindow([first, second], 1);
+  });
   test('strict state rejects missing version, wrong company and collapsed IDs', () {
     final raw = {'contract_version': 1, 'company_id': company, 'version': 0, 'adopted': false,
       'observed_slots': slots().map((s) => s.toJson()).toList(), 'items': [], 'history': []};

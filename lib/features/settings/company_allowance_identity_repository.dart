@@ -92,9 +92,25 @@ class CompanyAllowanceIdentityData {
     for (final entry in history) {
       validateAllowanceHistory(entry, companyId);
     }
+    validateAllowanceHistoryWindow(history, value['history_before_version'], ascending: true);
     return CompanyAllowanceIdentityData(companyId: companyId, version: value['version'] as int,
       adopted: adopted, slots: slots, items: items, history: history,
       historyBeforeVersion: value['history_before_version'] as int?);
+  }
+}
+
+void validateAllowanceHistoryWindow(List<Map<String, dynamic>> entries, Object? cursor, {bool ascending = false}) {
+  int? previous;
+  for (final entry in entries) {
+    final version = entry['version'] as int;
+    if (previous != null && (ascending ? version <= previous : version >= previous)) {
+      throw const FormatException('手当履歴の順序を確認できません');
+    }
+    previous = version;
+  }
+  if (cursor != null && (cursor is! int || cursor <= 0 || entries.isEmpty ||
+      cursor != entries.map((e) => e['version'] as int).reduce((a, b) => a < b ? a : b))) {
+    throw const FormatException('手当履歴の次ページを確認できません');
   }
 }
 
@@ -177,6 +193,7 @@ class SupabaseCompanyAllowanceIdentityRepository implements CompanyAllowanceIden
         throw const FormatException('手当履歴の版が違います');
       }
     }
+    validateAllowanceHistoryWindow(entries, value['before_version']);
     return CompanyAllowanceHistoryPage(entries, value['before_version'] as int?);
   }
 }
