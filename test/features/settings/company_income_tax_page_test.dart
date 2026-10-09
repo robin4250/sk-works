@@ -87,11 +87,11 @@ void main() {
       {'url': 'https://example.org/table.pdf', 'publisher': 'source', 'filename': 'folder/file.pdf'},
       {'url': 'https://example.org/table.pdf', 'publisher': 'source', 'filename': r'folder\file.pdf'},
     ]) {
-      final attempt = () async {
+      Future<void> attempt() async {
         final upload = IncomeTaxUploadRequest.create(companyId: company, year: 2030, kind: 'monthly', startsOn: '2030-01-01', endsOn: '2030-12-31',
           sourceUrl: invalid['url']!, publisher: invalid['publisher']!, file: IncomeTaxPdfFile(name: invalid['filename']!, bytes: '%PDF-fixture'.codeUnits));
         await repository.registerPdf(upload);
-      };
+      }
       await expectLater(attempt(), throwsFormatException);
     }
     expect(uploads, 0);

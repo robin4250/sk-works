@@ -68,7 +68,9 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
           incomeTaxValuesEqual(table.value, unknown.value)).toList();
         if (matched.length == 1) {
           setState(() => _unknown = null);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDFの登録を確認しました')));
+          ScaffoldMessenger.of(context)
+            ..removeCurrentSnackBar()
+            ..showSnackBar(const SnackBar(content: Text('PDFの登録を確認しました')));
         }
       }
     } catch (_) {
