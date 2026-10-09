@@ -1,0 +1,34 @@
+name: Finalized payroll document snapshot SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*finalized_payroll_document_snapshot.sql'
+      - 'supabase/tests/finalized_payroll_document_access_fixture.sql'
+      - 'supabase/tests/finalized_payroll_live_source_fixture.sql'
+      - 'tool/verify_finalized_payroll_document_snapshot.mjs'
+      - '.github/workflows/finalized-payroll-document-snapshot-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*finalized_payroll_document_snapshot.sql'
+      - 'supabase/tests/finalized_payroll_document_access_fixture.sql'
+      - 'supabase/tests/finalized_payroll_live_source_fixture.sql'
+      - 'tool/verify_finalized_payroll_document_snapshot.mjs'
+      - '.github/workflows/finalized-payroll-document-snapshot-check.yml'
+permissions:
+  contents: read
+jobs:
+  actual-payroll-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-final-payroll" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Check harness syntax
+        run: node --check tool/verify_finalized_payroll_document_snapshot.mjs
+      - name: Exercise exact calculator and financial normalization
+        run: node tool/verify_finalized_payroll_document_snapshot.mjs "$RUNNER_TEMP/sko-final-payroll/node_modules/@electric-sql/pglite/dist/index.js"
