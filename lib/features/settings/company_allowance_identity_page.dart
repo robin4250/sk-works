@@ -18,6 +18,9 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
   late final CompanyAllowanceIdentityPendingStore _store;
   CompanyAllowanceIdentityData? _data;
   CompanyAllowanceIdentityPending? _pending;
+  int _generation = 0;
+  bool _scopeInvalid = false;
+  bool _current(int generation) => mounted && !_scopeInvalid && generation == _generation;
   bool _busy = true;
   bool _unavailable = false;
   String? _error;
@@ -33,21 +36,27 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
   @override
   void didUpdateWidget(covariant CompanyAllowanceIdentityPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.companyId != widget.companyId) {
+    if (oldWidget.companyId != widget.companyId || !identical(oldWidget.repository, widget.repository) || !identical(oldWidget.pendingStore, widget.pendingStore)) {
+      _generation++;
+      _scopeInvalid = true;
+      _busy = false;
       _data = null;
       _error = '会社が変わりました。この画面を開き直してください。';
     }
   }
   Future<void> _load() async {
-    if (mounted) {
+    if (_scopeInvalid) { return; }
+    final generation = ++_generation;
+    if (_current(generation)) {
       setState(() { _busy = true; _data = null; _error = null; _unavailable = false; });
     }
     try {
       final companyId = widget.companyId;
       final pending = await _store.read(companyId);
+      if (!_current(generation)) { return; }
       var data = await _repository.read(companyId);
       _store.actorId();
-      if (!mounted || widget.companyId != companyId) {
+      if (!_current(generation) || widget.companyId != companyId) {
         return;
       }
       if (pending != null) {
@@ -60,6 +69,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
         if (committed == null) {
           final page = await _repository.history(companyId, beforeVersion: pending.expectedVersion + 2, limit: 1);
           _store.actorId();
+          if (!_current(generation)) { return; }
           for (final entry in page.entries) {
             if (pending.matches(entry)) {
               committed = entry;
@@ -69,19 +79,20 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
         if (committed != null) {
           data = await _repository.read(companyId);
           _store.actorId();
+          if (!_current(generation)) { return; }
           if (!data.adopted || data.version < pending.expectedVersion + 1) {
             throw const FormatException('最新の保存状態を確認できません');
           }
           await _store.clear(pending);
         }
-        if (!mounted || widget.companyId != companyId) {
+        if (!_current(generation) || widget.companyId != companyId) {
           return;
         }
         setState(() { _pending = committed == null ? pending : null; });
       } else {
         _pending = null;
       }
-      if (!mounted) {
+      if (!_current(generation)) {
         return;
       }
       setState(() {
@@ -90,15 +101,15 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
         _error = _pending == null ? null : '先の保存結果が確認できません。再送せず保存状態を再確認してください。';
       });
     } on CompanyAllowanceIdentityUnavailable {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() { _unavailable = true; _data = null; });
       }
     } catch (_) {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() { _data = null; _error = '会社手当を読み込めません。権限・接続を確認して再読み込みしてください。'; });
       }
     } finally {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() => _busy = false);
       }
     }
@@ -111,8 +122,9 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
     '${slot.slot}：${slot.active ? slot.name : '未登録'}／${slot.unit}／¥${slot.amountYen}').join('\n');
 
   Future<void> _write(List<CompanyAllowanceSlot> target, {CompanyAllowanceSlot? change}) async {
+    final generation = _generation;
     final data = _data;
-    if (_busy || _pending != null || data == null || data.companyId != widget.companyId) {
+    if (_scopeInvalid || _busy || _pending != null || data == null || data.companyId != widget.companyId) {
       return;
     }
     final adopted = change == null;
@@ -121,7 +133,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
       content: SingleChildScrollView(child: Text('${_summary(target)}\n\n${adopted ? '現在の3枠をそのまま採用します。既存金額・過去給与は変更しません。' : 'この内容で会社の手当設定を保存します。別手当への置換は廃止後に再登録してください。'}')),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
         FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存'))])) ?? false;
-    if (!accepted || !mounted || _busy || _pending != null || !identical(data, _data) || data.companyId != widget.companyId) {
+    if (!accepted || !_current(generation) || _busy || _pending != null || !identical(data, _data) || data.companyId != widget.companyId) {
       return;
     }
     setState(() { _busy = true; _error = null; });
@@ -139,18 +151,19 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
       journal = pending;
       await _store.write(pending);
       _store.actorId();
-      if (!mounted || widget.companyId != data.companyId) {
+      if (!_current(generation) || widget.companyId != data.companyId) {
         return;
       }
       setState(() => _pending = pending);
       sent = true;
       final result = change == null ? await _repository.adopt(data.companyId, data.slots) : await _repository.save(data.companyId, data.version, change);
       _store.actorId();
+      if (!_current(generation)) { return; }
       if (!result.adopted || result.version != pending.expectedVersion + 1 || !result.history.any(pending.matches)) {
         throw const FormatException('保存応答を確認できません');
       }
       await _store.clear(pending);
-      if (!mounted || widget.companyId != data.companyId) {
+      if (!_current(generation) || widget.companyId != data.companyId) {
         return;
       }
       setState(() {
@@ -160,7 +173,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社手当を保存しました')));
     } catch (error) {
       bool rejected = false;
-      if (sent && journal != null && error is PostgrestException && ['40001', '22023', '42501'].contains(error.code)) {
+      if (_current(generation) && sent && journal != null && error is PostgrestException && ['40001', '22023', '42501'].contains(error.code)) {
         try {
           _store.actorId();
           await _store.clear(journal);
@@ -169,29 +182,32 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
           // Keep the persisted journal if its exact record/actor cannot be cleared.
         }
       }
-      if (mounted) {
+      if (_current(generation)) {
         setState(() { _data = null; _error = rejected ? '保存は受け付けられませんでした。最新の設定を再確認してください。' : '保存結果を確認できません。再送せず保存状態を再確認してください。'; });
       }
     } finally {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() => _busy = false);
       }
     }
   }
 
   Future<void> _edit(CompanyAllowanceSlot slot) async {
-    if (_busy || _pending != null || _data == null) {
+    final generation = _generation;
+    final data = _data;
+    if (_scopeInvalid || _busy || _pending != null || _data == null) {
       return;
     }
     final change = await showDialog<CompanyAllowanceSlot>(context: context,
       builder: (_) => _CompanyAllowanceSlotEditor(slot: slot));
-    if (change != null && mounted && _data != null) {
+    if (change != null && _current(generation) && identical(data, _data) && data?.companyId == widget.companyId) {
       await _write(_target(change), change: change);
     }
   }
 
   Future<void> _moreHistory() async {
-    if (_busy || _historyCursor == null) {
+    final generation = _generation;
+    if (_scopeInvalid || _busy || _historyCursor == null) {
       return;
     }
     setState(() => _busy = true);
@@ -199,15 +215,15 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
       final companyId = widget.companyId;
       final page = await _repository.history(companyId, beforeVersion: _historyCursor);
       _store.actorId();
-      if (mounted && widget.companyId == companyId) {
+      if (_current(generation) && widget.companyId == companyId) {
         setState(() { _history.addAll(page.entries); _historyCursor = page.beforeVersion; });
       }
     } catch (_) {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() => _error = '履歴を読み込めません。再読み込みしてください。');
       }
     } finally {
-      if (mounted) {
+      if (_current(generation)) {
         setState(() => _busy = false);
       }
     }
@@ -223,7 +239,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
     ]), body: _busy ? const Center(child: CircularProgressIndicator()) : ListView(padding: const EdgeInsets.all(16), children: [
       if (_unavailable) const Text('会社共通手当は準備中です。既存の会社設定をご利用ください。'),
       if (_error != null) Text(_error!),
-      OutlinedButton(onPressed: _load, child: const Text('保存状態を再確認')),
+      OutlinedButton(onPressed: _scopeInvalid ? null : _load, child: const Text('保存状態を再確認')),
       if (data != null && _pending == null && _error == null) ...[
         if (!data.adopted) ...[
           const Text('登録済みの3枠を確認してから利用を開始します。'),

@@ -188,4 +188,20 @@ void main() {
     expect(repo.requested![0].active, false);expect(repo.requested![0].amountYen, 700);expect(repo.requested![0].unit, '回');
     expect(repo.requested![1].amountYen, 50);expect(store.pending, isNull);expect(repo.writes, 1);
   });
+  testWidgets('scope ABA during an edit dialog permanently disables stale input', (tester) async {
+    final repo = FakeRepository()..value = data(adopted: true, version: 1, events: [allowanceHistoryEntry(slots(), 1, adoption: true)]);
+    final store = MemoryStore();
+    await showPage(tester, repo, store);
+    await tester.tap(find.text('編集')); await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home: CompanyAllowanceIdentityPage(companyId: 'other-company', repository: repo, pendingStore: store)));
+    await tester.pump();
+    await tester.pumpWidget(MaterialApp(home: CompanyAllowanceIdentityPage(companyId: company, repository: repo, pendingStore: store)));
+    await tester.pump();
+    await tester.tap(find.text('内容を確認')); await tester.pumpAndSettle();
+    expect(repo.writes, 0); expect(store.pending, isNull);
+    expect(find.text('確認して保存'), findsNothing);
+    expect(find.textContaining('開き直してください'), findsOneWidget);
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '保存状態を再確認')).onPressed, isNull);
+  });
+
 }
