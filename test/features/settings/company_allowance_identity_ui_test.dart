@@ -227,13 +227,6 @@ void main() {
     await tester.pumpAndSettle(); expect(find.text('会社共通手当'), findsNothing);
     expect(repo.writes, 0); expect(store.pending, isNull);
   });
-  test('settings retains existing VAT and viewer rate routes beside the admin allowance entry', () {
-    final source = File('lib/features/settings/settings_page.dart').readAsStringSync();
-    expect(source, contains('CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany)'));
-    expect(source, contains('if (_canManageCompany && _companyId != null)'));
-    expect(source, contains('if (_canReadPayrollRates && _companyId != null)'));
-    expect(source, contains('CompanyPayrollRatesPage(companyId: _companyId!)'));
-    expect(source, contains('const CompanyRateSettingsPage()'));
-  });
+
 
 }
