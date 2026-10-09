@@ -221,9 +221,9 @@ void main() {
     await tester.tap(find.text('会社共通手当')); await tester.pumpAndSettle();
     expect(tester.widget<CompanyAllowanceIdentityPage>(find.byType(CompanyAllowanceIdentityPage)).companyId, company);
     expect(find.text('登録済み手当を確認'), findsOneWidget);
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: CompanyAllowanceIdentityEntry(companyId: company, canManageCompany: false))));
+    await tester.pumpWidget(const MaterialApp(key: ValueKey('viewer-entry'), home: Scaffold(body: CompanyAllowanceIdentityEntry(companyId: company, canManageCompany: false))));
     await tester.pumpAndSettle(); expect(find.text('会社共通手当'), findsNothing);
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: CompanyAllowanceIdentityEntry(companyId: '', canManageCompany: true))));
+    await tester.pumpWidget(const MaterialApp(key: ValueKey('empty-company-entry'), home: Scaffold(body: CompanyAllowanceIdentityEntry(companyId: '', canManageCompany: true))));
     await tester.pumpAndSettle(); expect(find.text('会社共通手当'), findsNothing);
     expect(repo.writes, 0); expect(store.pending, isNull);
   });
