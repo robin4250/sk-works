@@ -58,6 +58,32 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('child support standard shares need explicit selection and never save automatically', (tester) async {
+    final repository = FakeRatesRepository();
+    await openPage(tester, repository);
+    final label = find.text(payrollRateKinds['child_support']!);
+    await reveal(tester, label);
+    final card = find.ancestor(of: label, matching: find.byType(Card));
+    await tester.tap(find.descendant(of: card, matching: find.text('編集')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(
+      find.byKey(const ValueKey('rate-field-employee'))).controller!.text, isEmpty);
+    final standard = find.byKey(const ValueKey('child-support-standard-shares'));
+    await reveal(tester, standard);
+    await tester.tap(standard);
+    await tester.pumpAndSettle();
+    for (final key in ['employee', 'employer']) {
+      expect(tester.widget<TextFormField>(
+        find.byKey(ValueKey('rate-field-$key'))).controller!.text, '0.115');
+    }
+    expect(tester.widget<TextFormField>(
+      find.byKey(const ValueKey('rate-field-insurance_month'))).controller!.text, isEmpty);
+    expect(repository.saved, isEmpty);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(repository.saved, isEmpty);
+  });
+
   for (final entry in <String, Map<String, String>>{
     'health_insurance': {'total': '9.9', 'employee': '4.95', 'employer': '4.95'},
     'nursing_insurance': {'total': '1.62', 'employee': '0.81', 'employer': '0.81'},
