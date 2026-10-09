@@ -170,6 +170,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
         _pending = null; _data = result; _history = result.history.reversed.toList();
         _historyCursor = result.historyBeforeVersion;
       });
+      if (!mounted) { return; }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社手当を保存しました')));
     } catch (error) {
       bool rejected = false;
