@@ -68,7 +68,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final Map<String, TextEditingController> _overtime = {};
   final Map<String, TextEditingController> _early = {};
   final Map<String, TextEditingController> _night = {};
-  final Map<String, TextEditingController> _allowance = {};
   final Map<String, TextEditingController> _allowanceLabel = {};
   final Map<String, TextEditingController> _odometer = {};
 
@@ -117,7 +116,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
       ..._overtime.values,
       ..._early.values,
       ..._night.values,
-      ..._allowance.values,
       ..._allowanceLabel.values,
       ..._odometer.values,
     ]) {
@@ -126,7 +124,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _overtime.clear();
     _early.clear();
     _night.clear();
-    _allowance.clear();
     _allowanceLabel.clear();
     _odometer.clear();
   }
@@ -272,8 +269,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
           TextEditingController(text: _number(worker.earlyHours));
       _night[worker.workerId] =
           TextEditingController(text: _number(worker.nightHours));
-      _allowance[worker.workerId] =
-          TextEditingController(text: worker.allowanceAmount.toString());
       _allowanceLabel[worker.workerId] =
           TextEditingController(text: worker.allowanceLabel);
       _odometer[worker.workerId] = TextEditingController(
@@ -326,8 +321,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           double.tryParse(_early[worker.workerId]?.text ?? '') ?? 0;
       worker.nightHours =
           double.tryParse(_night[worker.workerId]?.text ?? '') ?? 0;
-      worker.allowanceAmount =
-          int.tryParse(_allowance[worker.workerId]?.text ?? '') ?? 0;
+      // Preserve the saved monetary value; employee reports do not edit money.
       worker.allowanceLabel =
           _allowanceLabel[worker.workerId]?.text.trim() ?? '';
       if (worker.vehicleId != null && !worker.meterManaged) {
@@ -950,7 +944,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               overtime: _overtime[worker.workerId]!,
                               early: _early[worker.workerId]!,
                               night: _night[worker.workerId]!,
-                              allowance: _allowance[worker.workerId]!,
                               allowanceLabel:
                                   _allowanceLabel[worker.workerId]!,
                               odometer: _odometer[worker.workerId]!,
@@ -1073,7 +1066,6 @@ class _WorkerDetailCard extends StatelessWidget {
     required this.overtime,
     required this.early,
     required this.night,
-    required this.allowance,
     required this.allowanceLabel,
     required this.odometer,
     required this.onCaptureOdometer,
@@ -1084,7 +1076,6 @@ class _WorkerDetailCard extends StatelessWidget {
   final TextEditingController overtime;
   final TextEditingController early;
   final TextEditingController night;
-  final TextEditingController allowance;
   final TextEditingController allowanceLabel;
   final TextEditingController odometer;
   final VoidCallback onCaptureOdometer;
@@ -1200,13 +1191,6 @@ class _WorkerDetailCard extends StatelessWidget {
                   ? 'e.g. Steel, PC'
                   : SkoLanguageController.tr('例：鉄骨、PC'),
             ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: allowance,
-            enabled: editable,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: SkoLanguageController.tr('手当金額（円）')),
           ),
         ],
       ),
