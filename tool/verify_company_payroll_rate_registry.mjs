@@ -167,9 +167,33 @@ try {
  await actor(admin);
  await assert.rejects(saveScope(2,{insurer:'unconfigured',prefecture:null,employment_business:null}),/synthetic audit unavailable/);
  assert.deepEqual(await read(),beforeFailure,'scope audit failure must roll back scope and separate history');
- // Record the staged FK limitation; this is not company-delete compatibility proof.
+ // Preserve the original company's evidence while deleting only active state.
+ // The fixture deliberately leaves stale memberships to prove live-company guard.
  await db.exec('reset role');
- await assert.rejects(db.query('delete from public.companies where id=$1',[company]),/foreign key constraint/);
- assert.equal((await db.query('select count(*)::int as n from public.companies')).rows[0].n,2);
- console.log('PASS exact staged rate migration: owner/admin, worker/anon/account/company denial, explicit manual/candidate apply, fixed shares, version, selected item, scope/version invalidation, separate audit and rollback');
+ await db.exec('drop trigger fixture_audit_fail on payroll_rate_private.history; drop trigger fixture_scope_audit_fail on payroll_rate_private.scope_history');
+ await actor(otherAdmin);
+ await save(0,value,true,otherCompany,item);
+ await saveScope(0,scope,true,otherCompany);
+ const otherState=await read(otherCompany);
+ await db.exec('reset role');
+ const retainedRateHistory=(await db.query('select * from payroll_rate_private.history where company_id=$1 order by item_id,version',[company])).rows;
+ const retainedScopeHistory=(await db.query('select * from payroll_rate_private.scope_history where company_id=$1 order by version',[company])).rows;
+ await db.query('delete from public.companies where id=$1',[company]);
+ for(const table of ['settings','candidates','company_scope']) {
+  assert.equal((await db.query(`select count(*)::int as n from payroll_rate_private.${table} where company_id=$1`,[company])).rows[0].n,0);
+ }
+ assert.deepEqual((await db.query('select * from payroll_rate_private.history where company_id=$1 order by item_id,version',[company])).rows,retainedRateHistory);
+ assert.deepEqual((await db.query('select * from payroll_rate_private.scope_history where company_id=$1 order by version',[company])).rows,retainedScopeHistory);
+ assert.equal((await db.query('select count(*)::int as n from public.companies')).rows[0].n,1);
+ for(const id of [owner,admin]) {
+  await actor(id);
+  await assert.rejects(read(),/admin access denied/);
+  await assert.rejects(save(0),/admin access denied/);
+  await assert.rejects(saveScope(0),/admin access denied/);
+  await assert.rejects(apply(0),/admin access denied/);
+  await assert.rejects(db.query('select * from payroll_rate_private.history'),/permission denied/);
+ }
+ await actor(otherAdmin);
+ assert.deepEqual(await read(otherCompany),otherState,'other company state and histories must remain unchanged');
+ console.log('PASS exact staged rate migration: owner/admin, worker/anon/account/company denial, explicit manual/candidate apply, fixed shares, version, selected item, scope/version invalidation, separate audit and rollback, deletion cascade/retained history/live-company denial');
 } finally {await db.close();}

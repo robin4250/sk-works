@@ -5,7 +5,7 @@ revoke all on schema payroll_rate_private from public, anon, authenticated;
 grant usage on schema payroll_rate_private to authenticated;
 
 create table payroll_rate_private.settings (
- company_id uuid not null references public.companies(id),
+ company_id uuid not null references public.companies(id) on delete cascade,
  item_id text not null,
  version bigint not null check(version > 0),
  value jsonb not null,
@@ -20,7 +20,7 @@ create unique index payroll_rate_standard_kind on payroll_rate_private.settings(
  where value->>'kind' <> 'custom';
 create unique index payroll_rate_label on payroll_rate_private.settings(company_id,lower(trim(value->>'label')));
 create table payroll_rate_private.candidates (
- company_id uuid not null references public.companies(id),
+ company_id uuid not null references public.companies(id) on delete cascade,
  candidate_id uuid not null,
  item_id text not null,
  value jsonb not null,
@@ -32,8 +32,10 @@ create table payroll_rate_private.candidates (
  primary key(company_id,candidate_id)
 );
 create index payroll_rate_candidates_item on payroll_rate_private.candidates(company_id,item_id);
+-- Logical company attribution preserves change evidence when the active company is deleted.
+-- No company profile copies and no TTL are introduced. Client reads still require a live company.
 create table payroll_rate_private.history (
- company_id uuid not null references public.companies(id),
+ company_id uuid not null,
  item_id text not null,
  version bigint not null,
  before_value jsonb,
@@ -47,14 +49,14 @@ create table payroll_rate_private.history (
 );
 -- Single source for payroll-only company applicability. No address/name copies.
 create table payroll_rate_private.company_scope (
- company_id uuid primary key references public.companies(id),
+ company_id uuid primary key references public.companies(id) on delete cascade,
  version bigint not null check(version > 0),
  value jsonb not null,
  updated_by uuid not null,
  updated_at timestamptz not null
 );
 create table payroll_rate_private.scope_history (
- company_id uuid not null references public.companies(id),
+ company_id uuid not null,
  version bigint not null,
  before_value jsonb,
  after_value jsonb not null,
@@ -76,6 +78,10 @@ begin
   select 1 from public.company_members cm where cm.company_id=p_company_id
    and cm.user_id=auth.uid() and cm.role::text in ('owner','admin')
  ) then raise exception 'payroll rate admin access denied' using errcode='42501'; end if;
+ -- Require and lock the live company before any company advisory lock. This
+ -- denies stale memberships after deletion and orders writes against cascades.
+ perform 1 from public.companies c where c.id=p_company_id for key share;
+ if not found then raise exception 'payroll rate admin access denied' using errcode='42501'; end if;
 end $$;
 
 create function payroll_rate_private.validate_value(p_value jsonb)

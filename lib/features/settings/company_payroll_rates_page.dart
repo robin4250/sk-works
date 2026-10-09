@@ -30,6 +30,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   CompanyPayrollRatesData? _data;
   String? _error;
   bool _busy = false;
+  bool _loading = false;
   int _generation = 0;
 
   @override
@@ -51,7 +52,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   Future<void> _load() async {
     final generation = ++_generation;
-    setState(() { _busy = true; _error = null; });
+    setState(() { _busy = true; _loading = true; _error = null; });
     try {
       final data = await _repository.read(widget.companyId);
       if (!mounted || generation != _generation) return;
@@ -60,7 +61,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       setState(() { _data = null; _error = '料率設定を取得できませんでした。接続・利用権限・設定機能の導入状況を確認してください。'; });
     } finally {
-      if (mounted && generation == _generation) setState(() => _busy = false);
+      if (mounted && generation == _generation) {
+        setState(() { _busy = false; _loading = false; });
+      }
     }
   }
 
@@ -270,7 +273,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         OutlinedButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh),
           label: const Text('最新料率を確認（登録済み確認値の再読み込み）')),
         const Text('公式資料の自動取得は未接続です。表示は登録時の確認値であり、最新であることを保証するものではありません。'),
-        if (_busy) const LinearProgressIndicator(),
+        if (_loading) const LinearProgressIndicator(),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
           _scopeCard(),

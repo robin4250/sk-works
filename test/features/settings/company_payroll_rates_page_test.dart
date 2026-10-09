@@ -172,6 +172,10 @@ void main() {
     await reveal(tester, find.text('会社の適用条件を編集'));
     await tester.tap(find.text('会社の適用条件を編集'));
     await tester.pumpAndSettle();
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    final refresh = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton,
+      '最新料率を確認（登録済み確認値の再読み込み）', skipOffstage: false));
+    expect(refresh.onPressed, isNull);
     await tester.tap(find.text('会社条件を確認'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('キャンセル'));
