@@ -81,7 +81,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       )) ?? false;
 
   Future<void> _apply(CompanyPayrollRateCandidate candidate, CompanyPayrollRateItem? item) async {
-    if (_busy || !_scopeMatches(candidate)) return;
+    if (_busy || !_canEdit || !_scopeMatches(candidate)) {
+      return;
+    }
     final generation = _generation;
     setState(() => _busy = true);
     try {
@@ -102,7 +104,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   }
 
   Future<void> _edit(String kind, CompanyPayrollRateItem? item) async {
-    if (_busy) return;
+    if (_busy || !_canEdit) {
+      return;
+    }
     final generation = _generation;
     setState(() => _busy = true);
     try {
@@ -125,6 +129,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     }
   }
 
+  bool get _canEdit => _data?.canEdit == true;
+
   bool _scopeMatches(CompanyPayrollRateCandidate candidate) =>
       _data?.companyScope != null && candidate.scopeVersion == _data!.companyScope!.version;
 
@@ -138,7 +144,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   }
 
   Future<void> _editScope() async {
-    if (_busy) return;
+    if (_busy || !_canEdit) {
+      return;
+    }
     final generation = _generation;
     final previous = _data?.companyScope;
     setState(() => _busy = true);
@@ -174,13 +182,13 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text('会社の適用条件', style: Theme.of(context).textTheme.titleMedium)),
-          TextButton(onPressed: _busy ? null : _editScope, child: const Text('会社の適用条件を編集'))]),
+          if (_canEdit) TextButton(onPressed: _busy ? null : _editScope, child: const Text('会社の適用条件を編集'))]),
         if (scope == null) const Text('会社条件は未登録です') else ...[
           Text('${payrollScopeInsurers[scope.value['insurer']] ?? '未設定'} · ${scope.value['prefecture'] ?? '都道府県未設定'} · ${payrollScopeBusinesses[scope.value['employment_business']] ?? '事業区分未設定'}'),
           ExpansionTile(title: const Text('条件の詳細'), tilePadding: EdgeInsets.zero,
             children: [Align(alignment: Alignment.centerLeft, child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _scopeDetails(scope.value), Text('変更者 ${scope.updatedBy}'), Text('変更日時 ${scope.updatedAt}'),
+                _scopeDetails(scope.value), if (scope.updatedBy != null) Text('変更者 ${scope.updatedBy}'), Text('変更日時 ${scope.updatedAt}'),
               ]))]),
         ],
       ],
@@ -268,7 +276,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
-          TextButton(onPressed: _busy ? null : () => _edit(kind, item), child: const Text('編集'))]),
+          if (_canEdit) TextButton(onPressed: _busy ? null : () => _edit(kind, item), child: const Text('編集'))]),
         const SizedBox(height: 8),
         LayoutBuilder(builder: (context, constraints) {
           final current = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -285,7 +293,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
               _valueSummary(candidate.value, candidate.id), Text('確認日時 ${candidate.checkedAt}'),
               if (_changed(item?.value, candidate.value)) const Text('変更あり', style: TextStyle(fontWeight: FontWeight.bold)),
               if (!_scopeMatches(candidate)) const Text('会社条件が変更されています。再確認が必要'),
-              FilledButton(key: ValueKey('apply-${candidate.id}'), onPressed: _busy || !_scopeMatches(candidate) ? null : () => _apply(candidate, item), child: const Text('適用')),
+              if (_canEdit) FilledButton(key: ValueKey('apply-${candidate.id}'), onPressed: _busy || !_scopeMatches(candidate) ? null : () => _apply(candidate, item), child: const Text('適用')),
               const SizedBox(height: 12),
             ],
           ]);
@@ -302,7 +310,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: const Text('会社共通の税率設定'), actions: [
+    return Scaffold(appBar: AppBar(title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
           content: const Text('会社の適用条件と資料を確認して料率を設定します。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。'),
@@ -319,14 +327,15 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         if (_loading) const LinearProgressIndicator(),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
+          if (!_canEdit) const Text('閲覧のみ：料率・適用月・情報元を確認できます。'),
           _scopeCard(),
           for (final entry in payrollRateKinds.entries)
             _itemCard(entry.key, entry.value, _findKind(entry.key), _findKind(entry.key)?.id ?? entry.key),
           for (final item in _data!.items.where((item) => item.value['kind'] == 'custom'))
             _itemCard('custom', item.value['label'] as String, item, item.id),
-          OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
+          if (_canEdit) OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
             icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
-          Card(child: ExpansionTile(title: const Text('所得税'), subtitle: const Text('年度・PDF資料管理'),
+          if (_canEdit) Card(child: ExpansionTile(title: const Text('所得税'), subtitle: const Text('年度・PDF資料管理'),
             children: [Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('源泉徴収税額表の資料を登録します。税額計算・公式資料検証は準備中です。'),
               OutlinedButton.icon(
@@ -334,7 +343,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
                   builder: (_) => CompanyIncomeTaxPage(companyId: widget.companyId))),
                 icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('年度・PDF資料を管理')),
             ]))])),
-          Card(child: ExpansionTile(key: const PageStorageKey('payroll-rate-history'), title: const Text('変更履歴'),
+          if (_canEdit) Card(child: ExpansionTile(key: const PageStorageKey('payroll-rate-history'), title: const Text('変更履歴'),
             subtitle: Text('料率 ${_data!.history.length}件・会社条件 ${_data!.scopeHistory.length}件'),
             children: [
               for (final history in _data!.scopeHistory) Padding(

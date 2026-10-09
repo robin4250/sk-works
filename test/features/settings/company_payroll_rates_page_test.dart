@@ -12,7 +12,7 @@ Map<String, dynamic> value(String kind, {int employee = 500000, int employer = 8
 };
 
 class FakeRatesRepository implements CompanyPayrollRatesRepository {
-  CompanyPayrollRatesData data = const CompanyPayrollRatesData(items: [], candidates: [], history: []);
+  CompanyPayrollRatesData data = const CompanyPayrollRatesData(canEdit: true, items: [], candidates: [], history: []);
   final List<Map<String, dynamic>> scopes = [];
   final List<String> applied = [];
   final List<Map<String, dynamic>> saved = [];
@@ -27,7 +27,7 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
   Future<void> saveScope({required String companyId, required int expectedVersion, required Map<String, dynamic> value}) async {
     if (failSave) throw StateError('conflict');
     scopes.add(value);
-    data = CompanyPayrollRatesData(items: data.items, candidates: data.candidates, history: data.history,
+    data = CompanyPayrollRatesData(canEdit: true, items: data.items, candidates: data.candidates, history: data.history,
       companyScope: CompanyPayrollRateScope(version: expectedVersion + 1, value: value, updatedBy: 'admin', updatedAt: '2026-10-09'));
   }
   @override
@@ -58,6 +58,48 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  test('read-only response accepts redacted actor and missing permission denies editing', () {
+    final raw = <String, dynamic>{
+      'items': [], 'candidates': [], 'history': [], 'scope_history': [],
+      'company_scope': {'version': 1, 'value': {'insurer': 'kyokai',
+        'prefecture': '東京都', 'employment_business': 'general'}, 'updated_at': '2026-10-09'},
+    };
+    final data = CompanyPayrollRatesData.fromJson(raw);
+    expect(data.canEdit, isFalse);
+    expect(data.companyScope!.updatedBy, isNull);
+    expect(CompanyPayrollRatesData.fromJson({...raw, 'can_edit': true}).canEdit, isTrue);
+  });
+
+  testWidgets('viewer reads rates and candidates without any editing or PDF registration', (tester) async {
+    final repository = FakeRatesRepository();
+    repository.data = CompanyPayrollRatesData(items: [
+      CompanyPayrollRateItem(id: 'health_insurance', version: 1,
+        value: value('health_insurance'), origin: 'manual'),
+    ], candidates: [CompanyPayrollRateCandidate(id: 'viewer-candidate',
+      itemId: 'health_insurance', value: value('health_insurance', employee: 600000),
+      checkedAt: '2026-10-09', scopeVersion: 1)], history: [],
+      companyScope: const CompanyPayrollRateScope(version: 1,
+        value: {'insurer': 'kyokai', 'prefecture': '東京都', 'employment_business': 'general'},
+        updatedBy: null, updatedAt: '2026-10-09'));
+    await openPage(tester, repository);
+    expect(find.text('閲覧のみ：料率・適用月・情報元を確認できます。'), findsOneWidget);
+    expect(find.text('会社の適用条件を編集'), findsNothing);
+    expect(find.text('編集'), findsNothing);
+    await tester.scrollUntilVisible(find.text('変更あり'), 150,
+      scrollable: find.byType(Scrollable).first);
+    expect(find.text('変更あり'), findsOneWidget);
+    expect(find.byKey(const ValueKey('apply-viewer-candidate')), findsNothing);
+    expect(find.text('適用 2026-10'), findsWidgets);
+    expect(find.text('情報元 登録資料'), findsWidgets);
+    await tester.scrollUntilVisible(find.text('子ども・子育て支援金率'), 250,
+      scrollable: find.byType(Scrollable).first);
+    expect(find.text('料率項目を追加'), findsNothing);
+    expect(find.text('年度・PDF資料を管理'), findsNothing);
+    expect(repository.saved, isEmpty);
+    expect(repository.applied, isEmpty);
+    expect(repository.scopes, isEmpty);
+  });
+
   test('percentages preserve all six decimal digits and reject invalid input', () {
     expect(parsePayrollRatePercent('0.000001'), 1);
     expect(parsePayrollRatePercent('1.234567'), 1234567);
@@ -104,7 +146,7 @@ void main() {
 
   testWidgets('cancel confirmation writes nothing; confirm applies selected candidate only', (tester) async {
     final repository = FakeRatesRepository();
-    repository.data = CompanyPayrollRatesData(items: [], candidates: [
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [], candidates: [
       CompanyPayrollRateCandidate(id: 'first', itemId: 'health_insurance', value: value('health_insurance'), checkedAt: '2026-10-09', scopeVersion: 1),
       CompanyPayrollRateCandidate(id: 'second', itemId: 'employment_insurance', value: value('employment_insurance'), checkedAt: '2026-10-09', scopeVersion: 1),
     ], history: [], companyScope: const CompanyPayrollRateScope(version: 1, value: {'insurer': 'kyokai', 'prefecture': '東京都', 'employment_business': 'general'}, updatedBy: 'admin', updatedAt: '2026-10-09'));
@@ -126,7 +168,7 @@ void main() {
 
   testWidgets('failed candidate save does not announce success', (tester) async {
     final repository = FakeRatesRepository()..failSave = true;
-    repository.data = CompanyPayrollRatesData(items: [], candidates: [
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [], candidates: [
       CompanyPayrollRateCandidate(id: 'one', itemId: 'health_insurance', value: value('health_insurance'), checkedAt: '2026-10-09', scopeVersion: 1),
     ], history: [], companyScope: const CompanyPayrollRateScope(version: 1, value: {'insurer': 'kyokai', 'prefecture': '東京都', 'employment_business': 'general'}, updatedBy: 'admin', updatedAt: '2026-10-09'));
     await openPage(tester, repository);
@@ -154,7 +196,7 @@ void main() {
 
   testWidgets('stale company scope disables candidate application without changing rates', (tester) async {
     final repository = FakeRatesRepository();
-    repository.data = CompanyPayrollRatesData(items: [], candidates: [
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [], candidates: [
       CompanyPayrollRateCandidate(id: 'stale', itemId: 'health_insurance', value: value('health_insurance'), checkedAt: '2026-10-09', scopeVersion: 1),
     ], history: [], companyScope: const CompanyPayrollRateScope(version: 2,
       value: {'insurer': 'kyokai', 'prefecture': '大阪府', 'employment_business': 'construction'}, updatedBy: 'admin', updatedAt: '2026-10-09'));
@@ -168,7 +210,7 @@ void main() {
   testWidgets('compact rates keep key values visible and reveal source months and audit on request', (tester) async {
     final repository = FakeRatesRepository();
     final current = value('health_insurance');
-    repository.data = CompanyPayrollRatesData(items: [
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [
       CompanyPayrollRateItem(id: 'health_insurance', version: 1, value: current, origin: 'manual'),
     ], candidates: [], history: [{
       'item_id': 'health_insurance', 'before_value': null, 'after_value': current,

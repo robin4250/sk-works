@@ -99,24 +99,25 @@ class CompanyPayrollRateScope {
   const CompanyPayrollRateScope({required this.version, required this.value, required this.updatedBy, required this.updatedAt});
   final int version;
   final Map<String, dynamic> value;
-  final String updatedBy;
+  final String? updatedBy;
   final String updatedAt;
   factory CompanyPayrollRateScope.fromJson(dynamic raw) {
     final json = payrollRateObject(raw);
     final value = payrollRateObject(json['value']);
-    if (json['version'] is! int || (json['version'] as int) < 1 || json['updated_by'] is! String || json['updated_at'] is! String ||
+    if (json['version'] is! int || (json['version'] as int) < 1 || (json['updated_by'] != null && json['updated_by'] is! String) || json['updated_at'] is! String ||
         !['kyokai', 'union', 'other', 'unconfigured'].contains(value['insurer']) ||
         (value['prefecture'] != null && !companyPayrollScopePrefectures.contains(value['prefecture'])) ||
         (value['employment_business'] != null && !['general', 'agriculture_forestry_fisheries_sake', 'construction'].contains(value['employment_business']))) {
       throw const FormatException('会社の適用条件を確認できません');
     }
     return CompanyPayrollRateScope(version: json['version'] as int, value: value,
-      updatedBy: json['updated_by'] as String, updatedAt: json['updated_at'] as String);
+      updatedBy: json['updated_by'] as String?, updatedAt: json['updated_at'] as String);
   }
 }
 
 class CompanyPayrollRatesData {
-  const CompanyPayrollRatesData({required this.items, required this.candidates, required this.history, this.companyScope, this.scopeHistory = const []});
+  const CompanyPayrollRatesData({required this.items, required this.candidates, required this.history, this.companyScope, this.scopeHistory = const [], this.canEdit = false});
+  final bool canEdit;
   final List<CompanyPayrollRateItem> items;
   final List<CompanyPayrollRateCandidate> candidates;
   final List<Map<String, dynamic>> history;
@@ -128,6 +129,7 @@ class CompanyPayrollRatesData {
       throw const FormatException('料率設定を取得できませんでした');
     }
     return CompanyPayrollRatesData(
+      canEdit: json['can_edit'] == true,
       items: (json['items'] as List).map(CompanyPayrollRateItem.fromJson).toList(),
       candidates: (json['candidates'] as List).map(CompanyPayrollRateCandidate.fromJson).toList(),
       history: (json['history'] as List).map(payrollRateObject).toList(),

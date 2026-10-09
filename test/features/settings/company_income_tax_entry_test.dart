@@ -8,7 +8,7 @@ class EntryRatesRepository implements CompanyPayrollRatesRepository {
   int writes = 0;
   @override
   Future<CompanyPayrollRatesData> read(String companyId) async =>
-      const CompanyPayrollRatesData(items: [], candidates: [], history: []);
+      const CompanyPayrollRatesData(canEdit: true, items: [], candidates: [], history: []);
   @override
   Future<void> saveScope({required String companyId, required int expectedVersion, required Map<String, dynamic> value}) async { writes++; }
   @override
