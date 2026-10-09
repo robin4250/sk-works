@@ -50,8 +50,8 @@ whose trimmed case-insensitive name equals any other legacy/extra item,
 including retired extras. Retirement preserves identity and audit history.
 
 The existing company row must exist. A row lock plus expected version prevents
-lost writes. A proposal trigger advances the version on **every** company rate
-row UPDATE, including legacy RPCs and unrelated rate changes; conservative
+lost writes. A proposal trigger validates newly assigned names on INSERT/UPDATE and advances
+the version on **every** company rate row UPDATE, including legacy RPCs and unrelated rate changes; conservative
 conflicts require the caller to reload. The extra writer does not separately
 increment the version. Each successful extra write logs actor, time, version,
 and API-append-only before/after extra catalogs in an unexposed RLS-enabled schema.
@@ -150,12 +150,15 @@ compatibility or full database replay was tested by this documentation review.
 2. Preserve fixed legacy state/save shapes for older clients. Add a separate,
    explicitly scoped admin catalog price read for new clients; do not append
    amounts to a worker RPC. Bind new editors to explicit company ID and version.
-3. Enforce catalog name uniqueness in **both write directions**. The proposal
-   rejects extra names matching existing slots, but an unchanged legacy saver
-   can later rename a slot to an extra name. Version advance detects staleness,
-   not that uniqueness violation. Adoption requires a separately reviewed
-   shared validation boundary covering initial/rate/unit writes and direct
-   privileged writes as appropriate; do not enable extras until it exists.
+3. The proposal now checks newly assigned names in **both write directions**
+   through a shared table trigger. Legacy savers need no body edits: their row
+   UPDATE enters this boundary, as do extra mutations. Trimmed case-insensitive
+   names conflict with other legacy slots and extras, including retired extras.
+   A slot whose normalized name is unchanged is exempt, so pre-existing legacy
+   duplicates do not prevent unrelated unit/rate/amount changes. INSERT validates
+   all assigned names; no pre-existing data is deleted or merged. Production
+   adoption still needs reviewed migration/replay and actual saver integration
+   tests; this table boundary is only an isolated tested proposal.
 4. Treat combined legacy save as two row updates: the conservative trigger
    advances version twice. New callers must reload the final version after
    save, never infer that every operation increments by exactly one. A fully
@@ -244,5 +247,31 @@ membership predicates were read, not re-proven for all live memberships.
 Service-role and database-owner privileges intentionally remain outside the
 worker RPC boundary. Future schema/grant changes must recheck this metadata and
 run user-context tests. The proposal stays undeployed and disabled, and the
-reverse-direction legacy name collision, slot repurposing semantics, extra UI
+deployment of the proposal collision guard, slot repurposing semantics, extra UI
 and immutable finalized-payroll integration remain unresolved stop conditions.
+
+
+## Proposal follow-up: shared name boundary (not deployed)
+
+The original reverse-direction collision stop condition is addressed **inside
+the proposal**, not in the deployed application. The same existing-company-row
+trigger now checks normalized names newly assigned by legacy or extra writers.
+It allows unchanged normalized names, retaining historical duplicate data and
+legacy unit/amount updates. An empty name does not reserve a name. It detects
+extra-to-legacy, legacy-to-extra and legacy-to-legacy newly introduced collisions
+without automatically identifying or merging records. Retirement continues to
+reserve extra names. Existing RPC-level extra checks remain early error handling;
+the table boundary independently covers reverse-direction legacy writes.
+
+Expanded isolated tests prove: legacy rename to an extra (even retired) rolls
+back without version/catalog/audit changes; case-insensitive trimmed legacy
+collisions fail; direct extra-name assignment hits the same guard; a two-UPDATE
+legacy-style transaction advances version by two; failure on its second UPDATE
+rolls back the first; pre-existing legacy duplicates survive unrelated updates.
+The tests model the old combined saver's two UPDATE shape, not a full replay
+of its production RPCs. A full production-schema saver regression remains
+required before adoption. This guard does not validate arbitrary raw JSON item
+shape or grant append-only audit to raw table updates; direct privileged table
+access remains outside the RPC verification boundary. Slot replacement/retirement
+semantics, actual deployment review, extra UI and finalized payroll snapshots
+are still unresolved. No product migration, live data or authorization changed.

@@ -14,13 +14,40 @@ create table payroll_allowance_private.change_log (
 alter table payroll_allowance_private.change_log enable row level security;
 revoke all on payroll_allowance_private.change_log from public, anon, authenticated;
 
--- Any legacy writer also advances the optimistic lock. No old RPC is altered.
+-- Shared proposal-only table boundary: legacy RPC bodies stay unchanged.
+-- Check newly assigned normalized names; preserve pre-existing duplicates on
+-- unrelated rate/unit/amount updates. Retired extras still reserve names.
 create function payroll_allowance_private.advance_version() returns trigger
-language plpgsql set search_path = '' as $$ begin
- new.allowance_catalog_version:=old.allowance_catalog_version+1; return new;
+language plpgsql set search_path = '' as $$
+declare v_old jsonb; v_new jsonb; v_candidate jsonb;
+begin
+ v_new:=new.allowance_extra_catalog||jsonb_build_array(
+  jsonb_build_object('id','legacy:1','name',new.allowance_1_name),
+  jsonb_build_object('id','legacy:2','name',new.allowance_2_name),
+  jsonb_build_object('id','legacy:3','name',new.allowance_3_name));
+ if tg_op='UPDATE' then
+  v_old:=old.allowance_extra_catalog||jsonb_build_array(
+   jsonb_build_object('id','legacy:1','name',old.allowance_1_name),
+   jsonb_build_object('id','legacy:2','name',old.allowance_2_name),
+   jsonb_build_object('id','legacy:3','name',old.allowance_3_name));
+ else v_old:='[]'::jsonb; end if;
+ for v_candidate in select e from jsonb_array_elements(v_new) e
+  where nullif(btrim(e->>'name'),'') is not null
+ loop
+  if not exists(select 1 from jsonb_array_elements(v_old) e
+   where e->>'id'=v_candidate->>'id'
+    and lower(btrim(e->>'name'))=lower(btrim(v_candidate->>'name')))
+  and exists(select 1 from jsonb_array_elements(v_new) e
+   where e->>'id'<>v_candidate->>'id'
+    and lower(btrim(e->>'name'))=lower(btrim(v_candidate->>'name'))) then
+   raise exception 'duplicate allowance name' using errcode='23505';
+  end if;
+ end loop;
+ if tg_op='UPDATE' then new.allowance_catalog_version:=old.allowance_catalog_version+1; end if;
+ return new;
 end $$;
 revoke all on function payroll_allowance_private.advance_version() from public,anon,authenticated;
-create trigger proposal_allowance_catalog_version before update on public.company_rate_settings
+create trigger proposal_allowance_catalog_version before insert or update on public.company_rate_settings
  for each row execute function payroll_allowance_private.advance_version();
 
 -- Legacy slot IDs are deterministic company+slot identities, never name matching.

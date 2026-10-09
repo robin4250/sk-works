@@ -17,6 +17,7 @@ try {
  create table public.company_members(company_id uuid,user_id uuid,role text);
  create table public.company_rate_settings(company_id uuid primary key,allowance_1_amount_yen bigint,allowance_1_name text,allowance_1_unit text,allowance_2_name text,allowance_2_unit text,allowance_3_name text,allowance_3_unit text);
  insert into company_rate_settings (company_id,allowance_1_amount_yen,allowance_1_name) values('${c}',777,'既存手当'),('${other}',888,'他社手当');
+ update company_rate_settings set allowance_2_name=' 他社手当 ' where company_id='${other}';
  insert into company_members values('${c}','${admin}','admin'),('${c}','${worker}','member');`);
  await db.exec(fs.readFileSync(path.join(root,'docs/payroll/proposals/company_allowance_catalog.sql'),'utf8'));
  await actor(admin); await db.exec('set role authenticated');
@@ -60,6 +61,30 @@ try {
  const afterLegacyUpdate=await state();
  await assert.rejects(save(c,id,2),/catalog version conflict/);
  assert.equal(await state(),afterLegacyUpdate);
+ // Reverse-direction legacy writes hit the same table boundary and roll back.
+ const priorReverse=await state();
+ await assert.rejects(db.query("update company_rate_settings set allowance_1_name=' 通勤手当 ' where company_id=$1",[c]),/duplicate allowance name/);
+ assert.equal(await state(),priorReverse);
+ await db.query("update company_rate_settings set allowance_2_name='CaseName' where company_id=$1",[c]);
+ const priorCaseCollision=await state();
+ await assert.rejects(db.query("update company_rate_settings set allowance_3_name=' casename ' where company_id=$1",[c]),/duplicate allowance name/);
+ assert.equal(await state(),priorCaseCollision);
+ // Direct extra-name assignment also hits the trigger (not an audit claim).
+ await assert.rejects(db.query("update company_rate_settings set allowance_extra_catalog=allowance_extra_catalog || jsonb_build_array(jsonb_build_object('id',$2::text,'name','casename')) where company_id=$1",[c,id2]),/duplicate allowance name/);
+ assert.equal(await state(),priorCaseCollision);
+ // Old combined saver behavior is two updates in one transaction: version +2.
+ const beforeCombined=(await db.query('select allowance_catalog_version v from company_rate_settings where company_id=$1',[c])).rows[0].v;
+ await db.exec(`begin; update company_rate_settings set allowance_1_amount_yen=778 where company_id='${c}'; update company_rate_settings set allowance_1_unit='回' where company_id='${c}'; commit;`);
+ assert.equal((await db.query('select allowance_catalog_version v from company_rate_settings where company_id=$1',[c])).rows[0].v,beforeCombined+2);
+ // Historical same-name legacy rows are preserved on unrelated changes.
+ await db.query("update company_rate_settings set allowance_1_unit='有無', allowance_1_amount_yen=889 where company_id=$1",[other]);
+ const existingDuplicate=(await db.query('select allowance_1_name,allowance_2_name,allowance_1_amount_yen from company_rate_settings where company_id=$1',[other])).rows[0];
+ assert.deepEqual(existingDuplicate,{allowance_1_name:'他社手当',allowance_2_name:' 他社手当 ',allowance_1_amount_yen:889});
+ const beforeFailedCombined=await state();
+ await db.exec('begin');
+ await db.query("update company_rate_settings set allowance_1_amount_yen=999 where company_id=$1",[c]);
+ await assert.rejects(db.query("update company_rate_settings set allowance_1_name='CaseName' where company_id=$1",[c]),/duplicate allowance name/);
+ await db.exec('rollback'); assert.equal(await state(),beforeFailedCombined);
  await actor(''); await assert.rejects(db.query('select public.proposal_read_company_allowance_labels($1)',[c]),/membership required/);
  await db.exec('set role anon'); await assert.rejects(db.query('select public.proposal_read_company_allowance_labels($1)',[c]),/permission denied/);
  console.log('Company allowance catalog proposal: scope, projection, permissions, conflict, history and legacy preservation passed');
