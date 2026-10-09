@@ -76,7 +76,7 @@ class EmployeeInviteRepository {
     ].where((item) => item.userId.isNotEmpty).toList(growable: false);
   }
 
-  Future<void> registerEmployee({
+  Future<String> registerEmployee({
     required String name,
     required String phone,
   }) async {
@@ -87,13 +87,17 @@ class EmployeeInviteRepository {
     }
 
     try {
-      await _client.rpc(
+      final value = await _client.rpc(
         'register_employee_preregistration',
         params: {
           'p_name': trimmedName,
           'p_phone': trimmedPhone,
         },
       );
+      if (value is! String || value.isEmpty) {
+        throw StateError('登録結果を確認できません。重複登録せず一覧を確認してください。');
+      }
+      return value;
     } on PostgrestException catch (error) {
       if (error.message.contains('employee phone already registered')) {
         throw StateError('この電話番号の従業員はすでに登録されています。');

@@ -5,21 +5,21 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('top exposes separate employee registration and initial registration', () {
+  test('top exposes one employee registration entry and keeps old route compatibility', () {
     final app = read('lib/app_v2.dart');
 
     expect(app, contains("key: 'employee_register'"));
     expect(app, contains("SkoLanguageController.tr('従業員登録')"));
     expect(app, contains('EmployeeRegistrationPage'));
-    expect(app, contains("key: 'initial_registration'"));
-    expect(app, contains("SkoLanguageController.tr('初回登録')"));
+    expect(app, isNot(contains("key: 'initial_registration'")));
+    expect(app, contains("case 'initial_registration':"));
     expect(app, contains('EmployeeInitialRegistrationPage'));
     expect(app, contains("accessLabel: SkoLanguageController.tr('管理者')"));
   });
 
   test('employee preregistration stores only name and phone before invite', () {
     final page = read(
-      'lib/features/people/employee_registration_page.dart',
+      'lib/features/people/employee_initial_registration_page.dart',
     );
     final repository = read(
       'lib/features/people/employee_invite_repository.dart',
@@ -53,7 +53,8 @@ void main() {
 
     expect(page, contains('TestFlight'));
     expect(page, contains('初回ログインQR'));
-    expect(page, contains('未送信'));
+    expect(page, contains('案内未作成'));
+    expect(page, contains('deliverSms: false'));
     expect(repository, contains('createInviteForWorker'));
     expect(repository, contains("rpc('initial_registration_employee_rows')"));
     expect(repository, contains("'register_employee_preregistration'"));

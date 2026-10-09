@@ -7,7 +7,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInitialRegistrationPage extends StatefulWidget {
-  const EmployeeInitialRegistrationPage({super.key});
+  const EmployeeInitialRegistrationPage({super.key, this.allowInvitations = true});
+
+  final bool allowInvitations;
 
   @override
   State<EmployeeInitialRegistrationPage> createState() =>
@@ -18,17 +20,26 @@ class _EmployeeInitialRegistrationPageState
     extends State<EmployeeInitialRegistrationPage> {
   final _repository = EmployeeInviteRepository.maybeCreate();
   final _testFlightUrl = TextEditingController();
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  bool _registering = false;
+  String? _registrationMessage;
   List<InitialRegistrationEmployee> _employees = const [];
   bool _loading = true;
   String? _busyWorkerId;
   String? _error;
   EmployeeInviteResult? _result;
   bool _savingUrl = false;
+  bool _onlyUnprepared = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.allowInvitations) {
+      _load();
+    } else {
+      _loading = false;
+    }
   }
 
   Future<void> _load() async {
@@ -83,6 +94,8 @@ class _EmployeeInitialRegistrationPageState
   @override
   void dispose() {
     _testFlightUrl.dispose();
+    _name.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -94,7 +107,7 @@ class _EmployeeInitialRegistrationPageState
       _error = null;
     });
     try {
-      final result = await repository.createInviteForWorker(employee.id);
+      final result = await repository.createInviteForWorker(employee.id, deliverSms: false);
       if (!mounted) return;
       setState(() => _result = result);
       await _load();
@@ -104,6 +117,57 @@ class _EmployeeInitialRegistrationPageState
     } finally {
       if (mounted) setState(() => _busyWorkerId = null);
     }
+  }
+
+  Future<void> _register({required bool continueToInvite}) async {
+    final repository = _repository;
+    if (repository == null || _registering || _busyWorkerId != null) return;
+    setState(() {
+      _registering = true;
+      _registrationMessage = null;
+      _error = null;
+    });
+    try {
+      final name = _name.text.trim();
+      final phone = _phone.text.trim();
+      final workerId = await repository.registerEmployee(name: name, phone: phone);
+      if (!mounted) return;
+      setState(() {
+        _name.clear();
+        _phone.clear();
+        _registrationMessage = '従業員を登録しました。';
+      });
+      if (continueToInvite && widget.allowInvitations) {
+        await _send(InitialRegistrationEmployee(
+          id: workerId, name: name, phone: phone, invited: false,
+        ));
+      } else if (widget.allowInvitations) {
+        await _load();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+    } finally {
+      if (mounted) setState(() => _registering = false);
+    }
+  }
+
+  void _showHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('従業員登録・初回案内'),
+        content: const Text(
+          '「登録だけ」は名前と携帯電話番号を保存します。'
+          '「登録して続けて案内作成」は保存された本人のIDで初回案内を作成します。'
+          '登録後に案内作成が失敗しても従業員は登録済みなので、再登録せず送信対象から選んでください。'
+          'TestFlight URLは同じ画面で保存できます。QR・SMS作成・共有は従来と同じです。'
+          'SMS作成画面や共有画面を開いたことは、実際の送信完了を意味しません。'
+          '初回案内の機能は従来の管理者権限で利用します。',
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('確認'))],
+      ),
+    );
   }
 
   String _shareText(EmployeeInviteResult result) {
@@ -132,14 +196,45 @@ class _EmployeeInitialRegistrationPageState
     }
   }
 
+  Widget _registrationCard() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('名前と携帯電話番号だけを先に登録します。', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          TextField(controller: _name, enabled: !_registering, decoration: const InputDecoration(labelText: '名前 *')),
+          const SizedBox(height: 12),
+          TextField(controller: _phone, enabled: !_registering, keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: '携帯電話番号 *', hintText: '09012345678')),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _registering || _busyWorkerId != null ? null : () => _register(continueToInvite: false),
+            icon: const Icon(Icons.person_add_alt_1), label: const Text('登録だけ'),
+          ),
+          if (widget.allowInvitations) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _registering || _busyWorkerId != null ? null : () => _register(continueToInvite: true),
+              icon: const Icon(Icons.sms_outlined), label: const Text('登録して続けて案内作成'),
+            ),
+          ],
+          if (!widget.allowInvitations && _error != null) Text(_error!),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final unsent = _employees.where((item) => !item.invited).length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('初回登録', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('従業員登録', style: TextStyle(fontWeight: FontWeight.w900)),
         actions: [
-          IconButton(
+          IconButton(onPressed: _showHelp, tooltip: '従業員登録の使い方', icon: const Icon(Icons.help_outline)),
+          if (widget.allowInvitations) IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -152,12 +247,16 @@ class _EmployeeInitialRegistrationPageState
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
+                  _registrationCard(),
+                  if (_registrationMessage != null) Text(_registrationMessage!),
+                  if (widget.allowInvitations) ...[
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        '従業員登録済みの人へ、TestFlightと本人専用の初回ログイン情報を順番に送ります。'
-                        '未送信 $unsent人 / 登録済み ${_employees.length}人',
+                        '同じ画面で登録と初回案内を行います。'
+                        '案内未作成 $unsent人 / 一覧 ${_employees.length}人。'
+                        'アカウント作成と実送信・初回登録完了は別です。',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -214,10 +313,15 @@ class _EmployeeInitialRegistrationPageState
                     const Card(
                       child: Padding(
                         padding: EdgeInsets.all(18),
-                        child: Text('先に「従業員登録」で名前と電話番号を登録してください。'),
+                        child: Text('上の登録欄から名前と電話番号を登録してください。'),
                       ),
                     ),
-                  for (final employee in _employees)
+                  SwitchListTile(
+                    title: const Text('案内未作成の人だけ表示'),
+                    value: _onlyUnprepared,
+                    onChanged: (value) => setState(() => _onlyUnprepared = value),
+                  ),
+                  for (final employee in _employees.where((item) => !_onlyUnprepared || !item.invited))
                     Card(
                       child: ListTile(
                         leading: CircleAvatar(
@@ -231,13 +335,13 @@ class _EmployeeInitialRegistrationPageState
                         ),
                         subtitle: Text(
                           '${employee.phone}\n'
-                          '${employee.invited ? '初回登録作成済み' : '未送信'}',
+                          '${employee.invited ? 'アカウント作成済み（送信・初回登録完了は未確認）' : '案内未作成'}',
                         ),
                         isThreeLine: true,
                         trailing: employee.invited
                             ? const Icon(Icons.check_circle_outline)
                             : FilledButton(
-                                onPressed: _busyWorkerId == null
+                                onPressed: _busyWorkerId == null && !_registering
                                     ? () => _send(employee)
                                     : null,
                                 child: _busyWorkerId == employee.id
@@ -245,10 +349,11 @@ class _EmployeeInitialRegistrationPageState
                                         dimension: 16,
                                         child: CircularProgressIndicator(strokeWidth: 2),
                                       )
-                                    : const Text('送信'),
+                                    : const Text('案内作成'),
                               ),
                       ),
                     ),
+                  ],
                   if (_result != null) ...[
                     const SizedBox(height: 14),
                     _ResultCard(
