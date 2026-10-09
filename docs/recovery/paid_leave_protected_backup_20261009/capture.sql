@@ -145,8 +145,8 @@ SELECT jsonb_build_object(
  'contracts',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY company_id,trade_company_id),'[]') FROM contracts c),
  'trade_companies',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY company_id,id),'[]') FROM trade_inputs t),
  'confirmers',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY company_id,position),'[]') FROM public.payroll_confirmers p WHERE p.company_id IN(SELECT company_id FROM scope)),
- 'reviews',(SELECT coalesce(jsonb_agg(to_jsonb(r)),'[]') FROM public.payroll_statement_reviews r WHERE r.statement_id IN(SELECT id FROM statements)),
- 'adjustments',(SELECT coalesce(jsonb_agg(to_jsonb(a)),'[]') FROM public.payroll_adjustments a JOIN scope s USING(company_id,worker_id)),
- 'audit',(SELECT coalesce(jsonb_agg(to_jsonb(a)),'[]') FROM public.payroll_audit a WHERE a.statement_id IN(SELECT id FROM statements))
+ 'reviews',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]') FROM public.payroll_statement_reviews r WHERE r.statement_id IN(SELECT id FROM statements)),
+ 'adjustments',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY to_jsonb(a)::text),'[]') FROM public.payroll_adjustments a JOIN scope s USING(company_id,worker_id)),
+ 'audit',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY to_jsonb(a)::text),'[]') FROM public.payroll_audit a WHERE a.statement_id IN(SELECT id FROM statements))
 );
 COMMIT;
