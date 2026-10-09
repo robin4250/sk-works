@@ -209,3 +209,40 @@ where n.nspname = 'public' and p.proname in (
  'my_attendance_allowance_units', 'save_company_rate_settings_with_units'
 );
 ```
+
+## Read-only deployed metadata verification — 2026-10-10 JST session
+
+Root agent inspected the `SK WORKS` project using read-only catalog queries and
+installed function definitions during this working session. The date records
+this session's metadata check, not a continuing guarantee or a deployment of
+the proposal. No privilege, policy, function or production data was changed.
+
+| Inspected surface | Observed deployed metadata |
+| --- | --- |
+| Rate table ACL | `{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}` |
+| Rate table RLS | Enabled; FORCE RLS disabled |
+| Effective anon/authenticated table privileges | SELECT false; UPDATE false for both roles |
+| PUBLIC/anon/authenticated column privileges | Zero matching grants |
+| Rate table policy | Only `account_deletion_access_guard`: restrictive, all commands, authenticated; USING and WITH CHECK both `private.account_access_allowed()` |
+| Six existing RPCs listed above | anon EXECUTE false; authenticated EXECUTE true; no PUBLIC EXECUTE grant |
+| Existing state/units read and initial/rate/unit save | SECURITY DEFINER; installed definitions retain their membership/owner-admin checks as listed above |
+| Existing combined save | SECURITY INVOKER, empty search_path; installed body calls rate save then unit save |
+
+The restrictive account-deletion policy does not by itself confer table access
+or supply a permissive policy. Combined with the observed ACLs, this metadata
+supports the current RPC-only rate-table intention: it found no ordinary
+anon/authenticated raw SELECT/UPDATE route. The earlier inherited-table-grant
+warning is a **future adoption stop condition**, not an observed live exposure
+in this check. The repository-only inventory remains useful for migration
+provenance; its absence of a source table policy did not describe the entire
+deployed catalog, which includes the restrictive account-deletion guard.
+
+Limits: no real employee/admin JWT HTTP Data API request, role-switch user
+transaction, client UI exercise, full future proposal migration replay, or
+finalized payroll computation was performed by this metadata check. Ordinary
+membership predicates were read, not re-proven for all live memberships.
+Service-role and database-owner privileges intentionally remain outside the
+worker RPC boundary. Future schema/grant changes must recheck this metadata and
+run user-context tests. The proposal stays undeployed and disabled, and the
+reverse-direction legacy name collision, slot repurposing semantics, extra UI
+and immutable finalized-payroll integration remain unresolved stop conditions.
