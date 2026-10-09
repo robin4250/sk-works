@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:17
+        image: public.ecr.aws/docker/library/postgres:17
         env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only-password, POSTGRES_DB: sko_allowance_identity_fixture}
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10

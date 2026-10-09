@@ -33,7 +33,7 @@ migration実行時は既存企業からIDを作らず、金額/名称をコピ�
 - 将来quantity/給与連携のlock順はcompany→worker→対象月scope→settingsで統一し、settingsを保持してからcompany/worker/月を取りに行かない。このstageはworker/月のmutationをしないためcompany→settingsだけ。旧units saver全面改変は行わず、新給与triggerを結合する前に旧settings-only経路との順序互換を独立検証する。
 - 採用後の旧writerも会社scope/admin/account guardを満たさなければ拒否。service role/認証無しowner更新は新identity/historyを暗黙改変しない（adopt前の既存writerは不変更）。本番導入前に管理処理互換を確認する。
 - history保存失敗は会社値・更新actor/time・version・ID生成/廃止も全rollback。
-- admin history/identitiesは現在全件返却。次のUI接続前にversion cursor＋limitのページングと価格を含まない通常selector readを分離する（長期運用で全履歴を主画面に流さない）。
+- admin history/identitiesは最新100件に上限。history_before_versionと別admin history RPCで1〜100件のversion cursorページングを提供する。古い履歴は削除しない。価格を含まない通常selector readは別RPCのまま。
 
 ## 後続quantity/給与接続契約
 

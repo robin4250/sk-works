@@ -75,6 +75,17 @@ try {
  await actor(admin);await db.exec('begin');const beforeTransaction=await state();await edit(beforeTransaction.version,'',1,0);await assert.rejects(edit(beforeTransaction.version,'競合'),/version conflict/);await db.exec('rollback');assert.deepEqual(await state(),beforeTransaction);
  await db.exec('reset role');await assert.rejects(db.query('delete from company_rate_settings where company_id=$1',[cid]),/explicit retirement/);
  assert.equal(JSON.stringify((await db.query('select * from public.payroll_statements')).rows),pays,'all existing payroll remains exact');
+ await actor(admin);let bounded=await state();const prePageVersion=bounded.version;
+ for(let n=0;n<105;n++)await edit(prePageVersion+n,`履歴${n}`,1,1100);
+ bounded=await state();assert.equal(bounded.history.length,100);assert.ok(bounded.history_before_version>1);
+ const page=(await db.query('select public.read_company_allowance_identity_history($1,$2,100) v',[cid,bounded.history_before_version])).rows[0].v;
+ assert.ok(page.entries.length>0);assert.equal(page.entries.at(-1).version,1);
+ const targeted=(await db.query('select public.read_company_allowance_identity_history($1,2,1) v',[cid])).rows[0].v;
+ assert.equal(targeted.entries[0].version,1);assert.equal(targeted.entries[0].actor_id,admin);
+ await assert.rejects(db.query('select public.read_company_allowance_identity_history($1,null,101)',[cid]),/invalid history page/);
+ await actor(worker);await assert.rejects(db.query('select public.read_company_allowance_identity_history($1,null,1)',[cid]),/access denied/);
+ await actor(admin);await assert.rejects(db.query('select public.read_company_allowance_identity_history($1,null,1)',[other]),/access denied/);
+ await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from company_allowance_identity_private.history where company_id=$1',[cid])).rows[0].n,bounded.version,'bounded read never deletes old history');
  // Parent deletion is allowed through the old cascade while history survives.
  const historyCount=(await db.query('select count(*)::int n from company_allowance_identity_private.history')).rows[0].n;
  await db.query('delete from companies where id=$1',[cid]);assert.equal((await db.query('select count(*)::int n from company_allowance_identity_private.history')).rows[0].n,historyCount);
