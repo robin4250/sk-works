@@ -12,6 +12,7 @@ const otherAdmin='20000000-0000-0000-0000-000000000012';
 const item='employment_insurance';
 const untouched='30000000-0000-0000-0000-000000000002';
 const candidate='40000000-0000-0000-0000-000000000001';
+const olderCandidate='40000000-0000-0000-0000-000000000000';
 const value={kind:'employment_insurance',label:'Fixture employment',total:777777,
  employee:123456,employer:654321,insurance_month:'2030-04-01',
  payroll_month:'2030-05-01',payment_month:'2030-06-01',
@@ -129,10 +130,26 @@ try {
  (company_id,candidate_id,item_id,value,scope_version,checked_at,verified_at,verified_by,verification_evidence)
  values($1,$2,$3,$4::jsonb,1,now(),now(),$5,'isolated fixture verification')`,
  [company,candidate,item,JSON.stringify(value),owner]);
+ await db.query(`insert into payroll_rate_private.candidates
+ (company_id,candidate_id,item_id,value,scope_version,checked_at,verified_at,verified_by,verification_evidence)
+ values($1,$2,$3,$4::jsonb,1,now()-interval '1 day',now(),$5,'isolated older fixture')`,
+ [company,olderCandidate,item,JSON.stringify(nextValue),owner]);
  await actor(admin);
  state=await read();
+ assert.equal(state.candidates.length,1,'read must return one latest candidate per item');
+ assert.equal(state.candidates[0].candidate_id,candidate);
+ assert.deepEqual(state.candidates[0].value,value);
  assert.equal(state.items.find(x=>x.item_id===item).version,2,'candidate registration never applies');
  assert.equal(state.candidates.length,1);
+ await db.exec('reset role');
+ const retainedCandidateCount=(await db.query('select count(*)::int as n from payroll_rate_private.candidates where company_id=$1 and item_id=$2',[company,item])).rows[0].n;
+ assert.equal(retainedCandidateCount,2,'filtering latest must not remove old candidates');
+ // Equal confirmation timestamps choose deterministic highest UUID.
+ await db.query('update payroll_rate_private.candidates old set checked_at=latest.checked_at from payroll_rate_private.candidates latest where old.company_id=$1 and old.candidate_id=$2 and latest.company_id=$1 and latest.candidate_id=$3',[company,olderCandidate,candidate]);
+ await actor(admin);
+ assert.equal((await read()).candidates[0].candidate_id,candidate,'tie uses deterministic descending candidate ID');
+ assert.equal((await read()).items.find(x=>x.item_id===item).version,2,'candidate reads must not apply or change version');
+ assert.equal((await read()).history.length,state.history.length,'candidate reads must not append rate history');
  await assert.rejects(apply(2,false),/confirmation required/);
  await assert.rejects(apply(1,true,candidate,company,untouched),/candidate not found/);
  await assert.rejects(apply(2,true,null),/candidate ID required/);

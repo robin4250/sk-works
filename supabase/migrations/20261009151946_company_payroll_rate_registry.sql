@@ -143,7 +143,11 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object('item_id',s.item_id,'version',s.version,'value',s.value,'origin',s.origin) order by s.item_id),'[]'::jsonb)
  into v_items from payroll_rate_private.settings s where s.company_id=p_company_id;
  select coalesce(jsonb_agg(jsonb_build_object('candidate_id',c.candidate_id,'item_id',c.item_id,'value',c.value,'checked_at',c.checked_at,'scope_version',c.scope_version) order by c.checked_at desc),'[]'::jsonb)
- into v_candidates from payroll_rate_private.candidates c where c.company_id=p_company_id;
+ into v_candidates from (
+  select distinct on (candidate.item_id) candidate.* from payroll_rate_private.candidates candidate
+  where candidate.company_id=p_company_id
+  order by candidate.item_id,candidate.checked_at desc,candidate.candidate_id desc
+ ) c;
  select coalesce(jsonb_agg(to_jsonb(h) - 'company_id' order by h.changed_at desc,h.version desc),'[]'::jsonb)
  into v_history from payroll_rate_private.history h where h.company_id=p_company_id;
  select to_jsonb(s) - 'company_id' into v_scope from payroll_rate_private.company_scope s where s.company_id=p_company_id;

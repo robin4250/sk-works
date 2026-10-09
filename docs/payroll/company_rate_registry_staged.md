@@ -26,7 +26,7 @@ kindはhealth_insurance/nursing_insurance/pension_insurance/employment_insurance
 payloadは32KiB以下、label80文字以下。source URL2048・発行元200・資料識別256文字以下。applicabilityは最大20項目、key80・value512文字以下の空でないstringに限定する。
 3monthはYYYY-MM-01。sourceはHTTPS URL、発行元、資料識別文字列、空でない対象条件object。
 manualのdocument_hashに管理者入力識別文字列を使うことは可能だが、正式資料hashとして検証済みとは扱わない。
-候補取得・表示だけで現在設定は変更されない。適用項目の保存と旧新履歴は同一transaction。
+候補取得・表示だけで現在設定は変更されない。readはitemごとにchecked_atが最も新しい候補1件だけを返す。同時刻はcandidate_id降順で決定し、旧候補自体や履歴はDBに保持する。適用項目の保存と旧新履歴は同一transaction。
 確認popupは画面で表示し、率・各適用月・情報元を本人確認した後だけp_confirmed=trueを送る。DBフラグだけで本人確認を代替できない。
 
 ## 検証候補の境界
