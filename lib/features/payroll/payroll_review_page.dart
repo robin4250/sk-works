@@ -230,6 +230,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                           builder: (_) =>
                                               PayrollStatementPreviewPage(
                                             statement: item.statement,
+                                            allowFinalization: true,
                                           ),
                                         ),
                                       );

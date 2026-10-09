@@ -1,0 +1,38 @@
+name: Normal payroll mutation scope order SQL
+on:
+  pull_request:
+    branches: [main]
+    paths: ['supabase/migrations/*payroll_normal_api_scope_order.sql', 'supabase/tests/payroll_normal_api*', 'tool/payroll_normal_api*', 'tool/verify_payroll_normal_api_scope_order.mjs', 'tool/verify_payroll_normal_api_postgres_race.mjs', '.github/workflows/payroll-normal-api-scope-order-check.yml']
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/*payroll_normal_api_scope_order.sql', 'supabase/tests/payroll_normal_api*', 'tool/payroll_normal_api*', 'tool/verify_payroll_normal_api_scope_order.mjs', 'tool/verify_payroll_normal_api_postgres_race.mjs', '.github/workflows/payroll-normal-api-scope-order-check.yml']
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/sko-scope" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node --test tool/payroll_normal_api_pg17_database_guard.test.mjs
+      - run: node tool/verify_payroll_normal_api_scope_order.mjs "$RUNNER_TEMP/sko-scope/node_modules/@electric-sql/pglite/dist/index.js"
+  native-pg17:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only-password, POSTGRES_DB: sko_payroll_normal_api_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PAYROLL_NORMAL_API_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_normal_api_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/sko-scope" --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/verify_payroll_normal_api_scope_order.mjs "file://$PWD/tool/payroll_normal_api_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-scope/node_modules/pg/lib/index.js"
+      - run: node tool/verify_payroll_normal_api_postgres_race.mjs "$RUNNER_TEMP/sko-scope/node_modules/pg/lib/index.js"

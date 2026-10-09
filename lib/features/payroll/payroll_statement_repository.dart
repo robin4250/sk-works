@@ -16,7 +16,13 @@ class PayrollStatementRecord {
     this.issuedAt,
     this.reviewConfirmed = false,
     this.reviewedAt,
+    this.workflowState,
+    this.revision,
   });
+
+  final int? revision;
+  final String? workflowState;
+  bool get isDraft => workflowState == 'draft';
 
   final String id;
   final String companyName;
@@ -69,35 +75,84 @@ class PayrollStatementRepository {
     return [
       for (final raw in (rows as List<dynamic>))
         if (raw is Map)
-          _fromRow(
+          payrollStatementFromRow(
             Map<String, dynamic>.from(raw),
             statusById[raw['id']?.toString() ?? ''],
           ),
     ];
   }
 
-  PayrollStatementRecord _fromRow(
-    Map<String, dynamic> row,
-    Map<String, dynamic>? review,
-  ) {
-    return PayrollStatementRecord(
-      id: row['id']?.toString() ?? '',
-      companyName: row['company_name']?.toString() ?? '',
-      workerName: row['worker_name']?.toString() ?? '',
-      periodStart:
-          DateTime.tryParse(row['period_start']?.toString() ?? '') ??
-              DateTime.now(),
-      periodEnd: DateTime.tryParse(row['period_end']?.toString() ?? '') ??
-          DateTime.now(),
-      grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
-      deductions: (row['deductions'] as num?)?.toInt() ?? 0,
-      netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
-      detail: row['detail'] is Map
-          ? Map<String, dynamic>.from(row['detail'] as Map)
-          : const {},
-      issuedAt:
-          DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
-      reviewConfirmed: review?['review_confirmed'] == true,
-    );
-  }
 }
+
+String savedPayrollCompanyName(Map<String, dynamic> row,
+    Map<String, dynamic> detail) {
+  final name = row['company_name']?.toString() ?? '';
+  return name.trim().isNotEmpty
+      ? name
+      : detail['company_name']?.toString() ?? '';
+}
+
+PayrollStatementRecord payrollStatementFromRow(
+  Map<String, dynamic> row,
+  Map<String, dynamic>? review,
+) {
+  final detail = row['detail'] is Map
+      ? Map<String, dynamic>.from(row['detail'] as Map)
+      : const <String, dynamic>{};
+  final workflowState = row['workflow_state']?.toString() ??
+      detail['workflow_state']?.toString();
+  final currentReview = review ?? row;
+  final draftReviewConfirmed = currentReview['review_confirmed'] == true;
+  return PayrollStatementRecord(
+    revision: strictPayrollRevision(row['revision'] ?? detail['revision']),
+    workflowState: workflowState,
+    id: row['id']?.toString() ?? '',
+    companyName: savedPayrollCompanyName(row, detail),
+    workerName: row['worker_name']?.toString() ?? '',
+    periodStart: DateTime.tryParse(row['period_start']?.toString() ?? '') ??
+        DateTime.now(),
+    periodEnd: DateTime.tryParse(row['period_end']?.toString() ?? '') ??
+        DateTime.now(),
+    grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
+    deductions: (row['deductions'] as num?)?.toInt() ?? 0,
+    netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
+    detail: detail,
+    issuedAt: DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
+    reviewedAt: DateTime.tryParse(row['reviewed_at']?.toString() ??
+        detail['reviewed_at']?.toString() ?? ''),
+    reviewConfirmed: workflowState == 'draft'
+        ? draftReviewConfirmed
+        : row['review_confirmed'] == true || detail['review_confirmed'] == true,
+  );
+}
+
+/// Current month confirmation can describe drafts, never replace saved history.
+PayrollStatementRecord payrollStatementWithDraftReview(
+  PayrollStatementRecord original, {
+  bool? confirmed,
+  String draftCompanyName = '',
+}) {
+  if (!original.isDraft || confirmed == null) {
+    return original;
+  }
+  return PayrollStatementRecord(
+    id: original.id,
+    companyName: original.companyName.isEmpty
+        ? draftCompanyName
+        : original.companyName,
+    workerName: original.workerName,
+    periodStart: original.periodStart,
+    periodEnd: original.periodEnd,
+    grossPay: original.grossPay,
+    deductions: original.deductions,
+    netPay: original.netPay,
+    detail: original.detail,
+    issuedAt: original.issuedAt,
+    reviewConfirmed: confirmed,
+    reviewedAt: original.reviewedAt,
+    revision: original.revision,
+    workflowState: original.workflowState,
+  );
+}
+
+int? strictPayrollRevision(dynamic raw) => raw is int && raw > 0 ? raw : null;
