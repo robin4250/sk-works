@@ -11,6 +11,15 @@ Map<String, dynamic> row({String? state}) => {
 };
 
 void main() {
+  test('manager draft keeps row confirmation and separate status takes priority', () {
+    final managerRow = row(state: 'draft');
+    expect(payrollStatementFromRow(managerRow, null).reviewConfirmed, isTrue);
+    expect(
+      payrollStatementFromRow(managerRow, {'review_confirmed': false})
+          .reviewConfirmed,
+      isFalse,
+    );
+  });
   test('self and manager parser prefer saved row name then saved detail name', () {
     for (final name in [null, '', '   ']) {
       final saved = row(state: 'finalized')..['company_name'] = name;

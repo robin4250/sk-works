@@ -99,7 +99,8 @@ PayrollStatementRecord payrollStatementFromRow(
       : const <String, dynamic>{};
   final workflowState = row['workflow_state']?.toString() ??
       detail['workflow_state']?.toString();
-  final draftReviewConfirmed = review?['review_confirmed'] == true;
+  final currentReview = review ?? row;
+  final draftReviewConfirmed = currentReview['review_confirmed'] == true;
   return PayrollStatementRecord(
     workflowState: workflowState,
     id: row['id']?.toString() ?? '',
