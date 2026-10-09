@@ -1,0 +1,85 @@
+// Disposable fixture only; the runtime is pinned by the workflow.
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import assert from 'node:assert/strict';
+const {PGlite}=await import(pathToFileURL(path.resolve(process.argv[2])).href);
+const db=new PGlite();
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const cid='10000000-0000-0000-0000-000000000001',other='10000000-0000-0000-0000-000000000002';
+const admin='20000000-0000-0000-0000-000000000001',worker='20000000-0000-0000-0000-000000000002',viewer='20000000-0000-0000-0000-000000000003';
+const actor=async(id,role='authenticated',blocked=false)=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('fixture.account_blocked',$2,false)",[id,blocked?'true':'']);await db.exec(`set role ${role}`);};
+const state=async company=>(await db.query('select public.read_company_allowance_identity_admin($1) v',[company??cid])).rows[0].v;
+const labels=async company=>(await db.query('select public.read_company_allowance_identity_labels($1) v',[company??cid])).rows[0].v;
+const edit=(version,name,slot=1,amount=700,unit='回')=>db.query('select public.save_company_allowance_identity_slot($1,$2,$3,$4,$5,$6,true) v',[cid,slot,version,name,unit,amount]);
+const oldSave=(name,amount=700)=>db.query('select public.save_company_rate_settings_with_units(10,0,0,0,0,0,$1,$2,$3,800,null,0,$4,$4,$4)',[name,amount,'既存手当','回']);
+try {
+ await db.exec(read('supabase/tests/company_allowance_identity_access_fixture.sql'));
+ for(const file of ['20260922020000_add_company_rate_settings_management.sql','20261003002700_add_attendance_allowance_display_units.sql','20261008043823_atomic_company_rate_and_allowance_units_save.sql']) await db.exec(read(`supabase/migrations/${file}`));
+ const migration=fs.readdirSync(path.join(root,'supabase/migrations')).find(p=>p.endsWith('_company_allowance_identity_lifecycle.sql'));
+ await db.exec(read(`supabase/migrations/${migration}`));
+ await db.exec('reset role');
+ const rows=async()=>JSON.stringify((await db.query('select * from public.company_rate_settings order by company_id')).rows);
+ const pays=JSON.stringify((await db.query('select * from public.payroll_statements')).rows);
+ const original=await rows();
+ assert.equal((await db.query('select count(*)::int n from company_allowance_identity_private.identities')).rows[0].n,0,'migration never allocates IDs/backfills old data');
+ await actor(admin);
+ const before=await state();assert.equal(before.adopted,false);assert.equal(before.version,0);
+ await assert.rejects(labels(),/not adopted/);
+ await assert.rejects(db.query('select public.adopt_company_allowance_identity($1,$2::jsonb,false)',[cid,JSON.stringify(before.observed_slots)]),/confirmation/);
+ await assert.rejects(db.query('select public.adopt_company_allowance_identity($1,$2::jsonb,true)',[cid,'[]']),/source version conflict/);
+ for(const id of [worker,viewer,'20000000-0000-0000-0000-000000000099','']) {
+  await actor(id);await assert.rejects(state(),/access denied/);
+  await assert.rejects(db.query('select public.adopt_company_allowance_identity($1,$2::jsonb,true)',[cid,JSON.stringify(before.observed_slots)]),/access denied/);
+ }
+ await actor(admin,'authenticated',true);await assert.rejects(state(),/access denied/);
+ await actor(admin,'anon');await assert.rejects(state(),/permission denied/);
+ await actor(admin);await assert.rejects(state(other),/access denied/);
+ const adopted=(await db.query('select public.adopt_company_allowance_identity($1,$2::jsonb,true) v',[cid,JSON.stringify(before.observed_slots)])).rows[0].v;
+ assert.equal(adopted.version,1);assert.equal(adopted.items.length,2);assert.notEqual(adopted.items[0].id,adopted.items[1].id,'same names are distinct IDs');
+ const oldId=adopted.items[0].id;
+ await db.exec('reset role');assert.equal(await rows(),original,'adoption does not copy/alter current money/name/unit');
+ await actor(worker);const safe=await labels();assert.equal(safe.items.length,2);assert.ok(!JSON.stringify(safe).includes('amount'));assert.ok(!JSON.stringify(safe).includes('700'));
+ await assert.rejects(db.query('select * from company_allowance_identity_private.history'),/permission denied/);
+ await assert.rejects(db.query('select * from public.company_rate_settings'),/permission denied/);
+ await assert.rejects(edit(1,'変更'),/access denied/);await assert.rejects(labels(other),/access denied/);
+ await actor(viewer);assert.equal((await labels()).items.length,2);await assert.rejects(edit(1,'変更'),/access denied/);
+ await actor(admin);await oldSave('名称変更',750);
+ let current=await state();assert.equal(current.version,3);assert.equal(current.items[0].id,oldId);assert.equal(current.items[0].amount_yen,750);
+ const history=JSON.stringify(current);
+ await assert.rejects(edit(1,'stale'),/version conflict/);assert.equal(JSON.stringify(await state()),history);
+ await db.exec('reset role');const beforeEdit=(await db.query('select updated_by,extract(epoch from updated_at)::double precision stamp,allowance_2_name,allowance_2_amount_yen,allowance_2_unit from company_rate_settings where company_id=$1',[cid])).rows[0];
+ await actor(admin);
+ await edit(3,'',1,0);current=await state();assert.equal(current.version,4);assert.equal(current.identities.find(i=>i.id===oldId).retired_by,admin);
+ await db.exec('reset role');const afterEdit=(await db.query('select updated_by,extract(epoch from updated_at)::double precision stamp,allowance_2_name,allowance_2_amount_yen,allowance_2_unit from company_rate_settings where company_id=$1',[cid])).rows[0];
+ assert.equal(afterEdit.updated_by,admin);assert.ok(afterEdit.stamp>beforeEdit.stamp,'new saver records actual update time');
+ for(const field of ['allowance_2_name','allowance_2_amount_yen','allowance_2_unit'])assert.equal(afterEdit[field],beforeEdit[field],'unselected slot name/price/unit preserved');
+ await actor(admin);
+ assert.equal(current.items.length,1);const retired=JSON.stringify(current.history[0]);
+ await edit(4,'別手当',1,900);current=await state();const newId=current.items.find(i=>i.slot===1).id;
+ assert.notEqual(newId,oldId);assert.equal(current.items.find(i=>i.slot===1).generation,2);
+ assert.equal(JSON.stringify(current.history[0]),retired,'adoption history remains original');
+ assert.equal(current.history[2].before_value.find(i=>i.slot===1).id,oldId);
+ await oldSave('新名称',950);current=await state();assert.equal(current.items.find(i=>i.slot===1).id,newId);
+ // Legacy blank -> refill also creates a fresh ID, even without the new writer.
+ await oldSave('',0);const empty=await state();await oldSave('旧クライアント再利用',1000);
+ current=await state();assert.notEqual(current.items.find(i=>i.slot===1).id,newId);assert.equal(current.items.find(i=>i.slot===1).generation,3);
+ await db.exec('begin');const preReplace=await state();const replaceOld=preReplace.items.find(i=>i.slot===1).id;
+ await edit(preReplace.version,'',1,0);await edit(preReplace.version+1,'原子的置換',1,1100);await db.exec('commit');
+ current=await state();assert.equal(current.version,preReplace.version+2);assert.notEqual(current.items.find(i=>i.slot===1).id,replaceOld);assert.equal(current.items.find(i=>i.slot===1).generation,4);
+ // A single transaction that clears then refills creates two audited states.
+ await db.exec('reset role');await db.exec(`create function company_allowance_identity_private.fixture_fail() returns trigger language plpgsql as $$begin raise exception 'audit unavailable';end$$;create trigger fixture_fail before insert on company_allowance_identity_private.history for each row execute function company_allowance_identity_private.fixture_fail()`);
+ await actor(admin);const preFail=await state();await assert.rejects(edit(preFail.version,'失敗'),/audit unavailable/);assert.deepEqual(await state(),preFail);
+ await db.exec('reset role');await db.exec('drop trigger fixture_fail on company_allowance_identity_private.history');
+ await actor(admin);await db.exec('begin');const beforeTransaction=await state();await edit(beforeTransaction.version,'',1,0);await assert.rejects(edit(beforeTransaction.version,'競合'),/version conflict/);await db.exec('rollback');assert.deepEqual(await state(),beforeTransaction);
+ await db.exec('reset role');await assert.rejects(db.query('delete from company_rate_settings where company_id=$1',[cid]),/explicit retirement/);
+ assert.equal(JSON.stringify((await db.query('select * from public.payroll_statements')).rows),pays,'all existing payroll remains exact');
+ // Parent deletion is allowed through the old cascade while history survives.
+ const historyCount=(await db.query('select count(*)::int n from company_allowance_identity_private.history')).rows[0].n;
+ await db.query('delete from companies where id=$1',[cid]);assert.equal((await db.query('select count(*)::int n from company_allowance_identity_private.history')).rows[0].n,historyCount);
+ await actor(admin);await assert.rejects(labels(),/access denied/);await assert.rejects(state(),/access denied/);
+ await db.exec('reset role');await db.query('insert into companies(id,name) values($1,$2)',[cid,'Recreated']);
+ await assert.rejects(db.query('insert into company_rate_settings(company_id,allowance_1_name) values($1,$2)',[cid,'Wrong historical identity']),/cannot be recreated/);
+ console.log('PASS allowance identity: explicit adoption/no backfill, legacy real savers +2, rename stability, retirement/new generations, scope/price projection, audit rollback, old payroll and cascade preservation');
+} catch(error) {console.error(error.message);process.exitCode=1;} finally {await db.close();}
