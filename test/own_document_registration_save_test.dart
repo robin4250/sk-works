@@ -1,10 +1,30 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
+
+class _MemoryPhoto extends XFile {
+  _MemoryPhoto(this.bytes) : super('license.jpg');
+  final List<int> bytes;
+
+  @override
+  String get name => 'license.jpg';
+
+  @override
+  Future<Uint8List> readAsBytes() async => Uint8List.fromList(bytes);
+}
+
+class _UnreadablePhoto extends XFile {
+  _UnreadablePhoto() : super('license.jpg');
+
+  @override
+  Future<Uint8List> readAsBytes() async =>
+      throw const FileSystemException('synthetic read failure');
+}
 
 class _Gateway implements OwnDocumentRegistrationGateway {
   final calls = <({String requirement, Uint8List? bytes, String? filename})>[];
@@ -80,7 +100,7 @@ void main() {
     await tester.tap(find.text('写真から選ぶ'));
     await tester.pump();
     expect(gateway.calls, isEmpty);
-    photo.complete(XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'license.jpg'));
+    photo.complete(_MemoryPhoto([1, 2, 3]));
     await tester.pumpAndSettle();
     expect(gateway.calls, hasLength(1));
     expect(gateway.calls.single.requirement, 'license');
@@ -102,7 +122,7 @@ void main() {
 
   testWidgets('photo byte read failure never reaches save', (tester) async {
     final gateway = _Gateway();
-    await _open(tester, gateway, (_) async => XFile('/nonexistent-sko-test/license.jpg'));
+    await _open(tester, gateway, (_) async => _UnreadablePhoto());
     await _selectPhoto(tester);
     await tester.tap(find.text('写真から選ぶ'));
     await tester.pumpAndSettle();
@@ -114,7 +134,7 @@ void main() {
   testWidgets('upload failure or unknown save result never reports success', (tester) async {
     for (final error in [StateError('Storage 403'), StateError('response unknown')]) {
       final gateway = _Gateway()..onSave = () async => throw error;
-      await _open(tester, gateway, (_) async => XFile.fromData(Uint8List.fromList([1]), name: 'license.jpg'));
+      await _open(tester, gateway, (_) async => _MemoryPhoto([1]));
       await _selectPhoto(tester);
       await tester.tap(find.text('写真から選ぶ'));
       await tester.pumpAndSettle();
@@ -148,7 +168,7 @@ void main() {
     await tester.tap(find.text('写真から選ぶ'));
     await tester.pump();
     await tester.pumpWidget(const SizedBox());
-    photo.complete(XFile.fromData(Uint8List.fromList([1]), name: 'license.jpg'));
+    photo.complete(_MemoryPhoto([1]));
     await tester.pump();
     expect(gateway.calls, isEmpty);
     expect(tester.takeException(), isNull);
