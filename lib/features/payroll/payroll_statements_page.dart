@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/pdf_bytes_cache.dart';
 import '../../international/language_controller.dart';
+import '../../data/supabase_backend.dart';
 import 'payroll_pdf_service.dart';
 import 'payroll_statement_repository.dart';
 import 'payroll_confirmation_repository.dart';
@@ -234,7 +235,12 @@ class _PayrollStatementPreviewPageState
 
   Future<PayrollStatementRecord?> _loadConfirmation() async {
     final repository = widget.sourceRepository ?? PayrollStatementSourceRepository.maybeCreate();
-    if (repository == null) return null;
+    if (repository == null) {
+      if (SupabaseBackend.isInitialized) {
+        setState(() => _statementUnavailable = true);
+      }
+      return null;
+    }
     setState(() { _sourceLoading = true; _confirmationError = null; });
     try {
       final source = await repository.load(widget.statement);

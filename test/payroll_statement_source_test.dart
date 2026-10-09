@@ -46,6 +46,27 @@ void main() {
     await expectLater(repository.load(record(state: 'draft')), throwsStateError);
     expect(selfReads, 0);
   });
+  test('named missing workspace rereads only own saved source', () async {
+    final saved = record();
+    final repository = PayrollStatementSourceRepository(
+      readManagement: (_) async => throw const PostgrestException(message: 'payroll_review_workspace not found', code: 'PGRST202'),
+      readSelf: () async => [saved],
+      readConfirmation: (_) async => throw StateError('not expected'));
+    final source = await repository.load(record(state: 'draft'));
+    expect(identical(source.statement, saved), isTrue);
+    expect(source.confirmation, isNull);
+  });
+  test('named missing confirmation keeps fresh draft; unrelated missing RPC fails', () async {
+    final fresh = record(state: 'draft', net: 456);
+    PayrollStatementSourceRepository repository(String message) => PayrollStatementSourceRepository(
+      readManagement: (_) async => [fresh],
+      readSelf: () async => throw StateError('not expected'),
+      readConfirmation: (_) async => throw PostgrestException(message: message, code: '42883'));
+    final source = await repository('payroll_confirmation_status not found').load(record());
+    expect(identical(source.statement, fresh), isTrue);
+    expect(source.confirmation, isNull);
+    await expectLater(repository('unrelated_function not found').load(record()), throwsA(isA<PostgrestException>()));
+  });
   testWidgets('pending read and failed retry never create sharing or printing preview from old draft', (tester) async {
     final pending = Completer<List<PayrollStatementRecord>>();
     var reads = 0;
