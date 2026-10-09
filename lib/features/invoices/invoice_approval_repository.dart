@@ -153,7 +153,14 @@ class InvoiceApprovalRepository {
       );
     }
     if (raw is! List) return const [];
-    final surnameContract = await _loadSurnameContract(invoiceId);
+    Map<String, dynamic>? surnameContract;
+    try {
+      surnameContract = await _loadSurnameContract(invoiceId);
+    } catch (_) {
+      // Optional read metadata must not erase already-authorized approval rows.
+      // Writes use the strict loader below and never fall through on errors.
+      surnameContract = null;
+    }
     final names = <String, Map<String, dynamic>>{};
     final nameRows = surnameContract?['names'];
     if (nameRows is List) {

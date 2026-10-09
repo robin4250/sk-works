@@ -1067,8 +1067,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       child: Text(SkoLanguageController.isEnglish
-                          ? 'Approval-seal surname not set: existing seals are retained. Set your surname before a new approval when available.'
-                          : '承認印の名字未設定：既存の印影を保持しています。設定が利用可能な場合は、新しい承認前に本人の名字を入力してください。'),
+                          ? 'Approval-seal surname unconfigured or unconfirmed: existing seals are retained. Set your surname before a new approval when available.'
+                          : '承認印の名字未設定・未確認：既存の印影を保持しています。設定が利用可能な場合は、新しい承認前に本人の名字を入力してください。'),
                     ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
