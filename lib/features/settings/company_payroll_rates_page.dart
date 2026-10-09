@@ -207,7 +207,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       Text('給与対象年月 ${_month(value['payroll_month'])}'),
       Text('支払年月 ${_month(value['payment_month'])}'),
       Text('情報元 ${source['publisher'] ?? '未記載'}'),
-      SelectableText('${source['url'] ?? '未記載'}'),
+      SelectableText('${source['url'] ?? '未記載'}',
+        key: PageStorageKey('payroll-rate-source-url-${source['url']}')),
       _PayrollRateSourceLink(url: source['url']?.toString() ?? ''),
       if (applicability is Map) for (final entry in applicability.entries)
         Text(_applicabilityText(entry.key.toString(), entry.value)),
