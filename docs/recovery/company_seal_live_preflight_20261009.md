@@ -7,6 +7,26 @@ Only catalog SELECTs, aggregate counts and definition hashes were read. No compa
 names, person IDs, payroll amounts, document contents or credentials were returned.
 No DDL, DML, financial refresh, RPC mutation, role grant or production backup ran.
 
+**Correction from a fresh read-only follow-up around 13:40 JST on 2026-10-09:** the earlier
+claim that certificate canonical math was not deployed was incorrect. It relied
+on the repository migration number instead of reconciling the deployed ledger
+and full function definitions. The deployed ledger contains
+`20261008041946_certificate_canonical_snapshot_math`; its three current function
+bodies match the repository `20261008035432_certificate_canonical_snapshot_math.sql`
+byte for byte. Do not apply that repository migration again to align numbers.
+This correction does not apply any migration or establish production operation
+of the new company-seal or agreement features.
+
+An independent repository-side comparison of the protected function-only export
+also verified all three bodies. No real document rows or the exported definitions
+are included here. Body SHA256 values (not whole-function presentation hashes):
+
+| Function | Matching body SHA256 |
+| --- | --- |
+| `public.payment_certificate_detail_rows` | `4e389cdfd63f56b57e13d71be207d866596ffa965f6421847665fcb16154c8f2` |
+| `private.certificate_calculation_rows` | `ff36d45c5600e8ede1414080941c773fce3f62e7645f03f7b283866bf26f1a66` |
+| `private.refresh_automatic_payment_certificate` | `60b075423158c170c84ae8e510a2ac084f22125cc893f5943420a33378683b0e` |
+
 ## Observed state
 
 - `companies.name`: text NOT NULL; `company_seal_enabled`: boolean NOT NULL,
@@ -43,12 +63,18 @@ the numbers match. Reconcile using definitions and the deployed ledger.
    dependencies. Their migration guards and business dependencies need their own
    deployment review. Keep rollout gates OFF; do not enable them to satisfy a seal
    migration. Applying #816 directly now would fail at the missing function.
-3. The production payment-certificate ledger reaches
-   `20261006174658_fix_payment_certificate_detail_formula_fallbacks`.
-   `20261008035432_certificate_canonical_snapshot_math.sql` is not deployed.
-   A matching seal patch anchor does not prove that the newer hourly/decimal-row/
-   frozen-snapshot calculation fix is deployed. Review and resolve that independent
-   dependency before claiming completed payment-certificate behavior.
+3. Certificate canonical math is already deployed under ledger identity
+   `20261008041946_certificate_canonical_snapshot_math`, corresponding to repository
+   `20261008035432_certificate_canonical_snapshot_math.sql`. Fresh full-definition
+   comparison found byte-identical bodies for `payment_certificate_detail_rows`,
+   `certificate_calculation_rows` and `refresh_automatic_payment_certificate`.
+   Signatures, arguments, return types, STABLE/VOLATILE attributes, security-definer
+   flags and search paths also match. `pg_get_functiondef` presentation differences
+   are formatting, the trailing semicolon and explicit default SECURITY INVOKER;
+   they do not establish a different calculation. Keep the already deployed
+   canonical functions and verify fresh ACLs/owners and final seal patch anchors.
+   Do not reapply the math migration or rewrite history. A matching definition
+   still does not prove every live financial or device case is complete.
 
 No dependency above was applied by this preflight. #809 personal surname seals are
 also separate from company seal storage and require their own deployment checks.
@@ -61,18 +87,21 @@ by the operator, and no protected backup has been acquired.
 
 | Stage | Prerequisites / stop condition | DDL and later-operation effects |
 | --- | --- | --- |
-| Certificate math, `20261008035432` | Existing partner settings, attendance/worker/site tables and `resolve_rate_formula(numeric,jsonb,jsonb,text)`; verify full definitions/ACLs before replacement. | Replaces calculation, automatic certificate refresh and detail-read functions. No top-level refresh, row UPDATE, trigger or cron creation. Later normal refresh may change automatic draft amounts/details/revision or delete an attendance-empty automatic draft. Manual/finalized rows are excluded from refresh. Historical detail reads without frozen rows return the recorded gross amount rather than current-rate reconstruction; this changes presentation without changing stored rows. |
+| Certificate math, repository `20261008035432`, deployed ledger `20261008041946` | Already deployed and full definitions reconciled. Recheck owners/ACLs and exact refresh anchor before the final seal patch; stop if they differ. Do not repeat the migration. | No replacement or recalculation is required by this preparation. Existing normal refresh can change automatic draft amounts/details/revision or delete an attendance-empty automatic draft; manual/finalized rows are excluded. Historical detail reads without frozen rows return recorded gross amounts. Those existing behaviors are separate from applying the new seal DDL. |
 | Agreement base, `20261008201215` | Accepted-share and company-connection schema, company/membership/site data model and account helper. Stop on existing new-object names or mismatched referenced columns/FKs. | Adds private rollout/proposal/confirmation/document tables, RLS and narrowly authorized RPCs. No existing financial-row writes, refresh invocation, trigger or cron installation. Gates default OFF and no rows are enabled. A later saved-document RPC can INSERT a snapshot after both confirmations; do not call it as a production installation check. |
 | Agreement company snapshot, `20261008212855` | Base agreement objects, company postal/address/phone/fax/ON/OFF fields. | Replaces only the saved-document function's new-snapshot branch with v2 contact/ON/OFF fields. No top-level snapshot creation/backfill; existing saved JSON returns unchanged. |
 | Style settings, `20261009011357` | Existing ON/OFF/account helper and exact-company admin model; new style column/functions must be absent. | Adds legacy-default style storage and restricted RPCs; no style-selection DML or cron installation. A later save changes only style/updated_at. Existing data and ON/OFF remain. |
-| Document snapshots, `20261009012730` | Previous agreement v2 and style objects; reviewed generator anchors exactly once; certificate math must be resolved first to avoid replacing the seal-patched refresh later. | Adds three BEFORE INSERT/UPDATE snapshot triggers and patches five existing functions. No top-level financial-row UPDATE or refresh. Later new documents receive saved metadata; existing rows retain the original key or original absence. Replacing the certificate refresh with its unpatched math migration afterwards would remove the comparison-before-seal protection, so stop rather than reorder that replacement. |
+| Document snapshots, `20261009012730` | Previous agreement v2 and style objects; reviewed generator anchors exactly once in the already deployed canonical math functions. | Adds three BEFORE INSERT/UPDATE snapshot triggers and patches five existing functions. No top-level financial-row UPDATE or refresh. Later new documents receive saved metadata; existing rows retain the original key or original absence. Reapplying the unpatched math migration afterwards would remove the comparison-before-seal protection, so stop instead. |
 
 The required chains are agreement base → agreement v2 → document snapshots and
-style settings → document snapshots. Certificate math is independent of the
-agreement/style chain but must precede the final document patch. A conservative
-preparation order is certificate math → agreement base → agreement v2 → style →
-document snapshots, with gates OFF throughout. Never apply an unreviewed broad
-migration batch just because numeric filenames sort before these files.
+style settings → document snapshots. The independent certificate math prerequisite
+is already deployed; preserve it rather than reinstalling it. Preparation is now
+fresh canonical-function/ACL/anchor verification → agreement base → agreement v2
+→ style → document snapshots, with agreement rollout gates OFF throughout. Never
+apply an unreviewed broad migration batch just because numeric filenames sort
+before these files. Style alone permits trial selection/save but its getter lacks
+`document_snapshot_version`; the UI therefore keeps document integration false.
+Do not present that partial deployment as completed three-document support.
 
 Additional catalog-only checks found all 30 named dependency columns present
 across the existing company/share/delivery/connection/site/financial-setting
