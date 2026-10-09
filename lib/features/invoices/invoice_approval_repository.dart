@@ -82,18 +82,23 @@ class InvoiceStampSurnameMetadata {
     Map<String, dynamic> approval,
     Map<String, dynamic>? name,
   ) {
-    if (name == null || name['invoice_id'] != invoiceId ||
+    if (name == null) return const InvoiceStampSurnameMetadata();
+    if (name['invoice_id'] != invoiceId ||
         name['user_id'] != approval['approver_user_id'] ||
         name['status'] != approval['status']) {
-      return const InvoiceStampSurnameMetadata();
+      throw const InvoiceStampSurnameReadException();
     }
     if (approval['status'] == 'approved') {
       final actual = DateTime.tryParse(approval['approved_at']?.toString() ?? '');
       final captured = DateTime.tryParse(name['approved_at']?.toString() ?? '');
       if (actual == null || captured == null || !actual.isAtSameMomentAs(captured)) {
-        return const InvoiceStampSurnameMetadata();
+        throw const InvoiceStampSurnameReadException();
       }
-      return InvoiceStampSurnameMetadata(snapshotSurname: _surname(name['snapshot_surname']));
+      final snapshot = _surname(name['snapshot_surname']);
+      if (name['snapshot_surname'] != null && snapshot == null) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      return InvoiceStampSurnameMetadata(snapshotSurname: snapshot);
     }
     if (approval['status'] == 'pending' && approval['approved_at'] == null &&
         name['approved_at'] == null && name['can_set_surname'] == true) {
@@ -177,6 +182,9 @@ class InvoiceApprovalRepository {
     }
     return raw.map((value) {
       final row = Map<String, dynamic>.from(value as Map);
+      if (surnameContract != null && !names.containsKey(row['approver_user_id'])) {
+        throw const InvoiceStampSurnameReadException();
+      }
       final surname = InvoiceStampSurnameMetadata.match(invoiceId, row, names[row['approver_user_id']]);
       return InvoiceApprovalRecord(
         userId: row['approver_user_id']?.toString() ?? '',
