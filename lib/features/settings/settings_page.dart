@@ -10,6 +10,7 @@ import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'company_payroll_rates_page.dart';
+import 'company_allowance_identity_entry.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -428,6 +429,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_canManageCompany && _companyId != null) ...[
+                          CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany),
                           const SizedBox(height: 16),
                         ],
                         if (_canReadPayrollRates && _companyId != null) ...[

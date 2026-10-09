@@ -46,8 +46,10 @@ try {
  await db.exec(`update public.daily_report_workers set odometer_km=110 where report_id='70000000-0000-0000-0000-000000000071';
  select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
  select public.link_daily_report_attendance_evidence('70000000-0000-0000-0000-000000000071');`);
- await db.exec("select public.attach_vehicle_meter_to_report('70000000-0000-0000-0000-000000000071','80000000-0000-0000-0000-000000000071')");
+ assert.equal((await db.query("select public.attach_vehicle_meter_to_report('70000000-0000-0000-0000-000000000071','80000000-0000-0000-0000-000000000071') as result")).rows[0].result.attached,true);
+ assert.equal((await db.query("select vehicle_meter_event_id from public.daily_report_workers where report_id='70000000-0000-0000-0000-000000000071'")).rows[0].vehicle_meter_event_id,'90000000-0000-0000-0000-000000000072');
  await db.exec("select public.attach_group_report_sources('70000000-0000-0000-0000-000000000071','80000000-0000-0000-0000-000000000071',array['80000000-0000-0000-0000-000000000071'::uuid])");
+ assert.equal((await db.query("select daily_report_id from public.attendance_verifications where id='80000000-0000-0000-0000-000000000072'")).rows[0].daily_report_id,'70000000-0000-0000-0000-000000000071');
  assert.equal(await snapshot(),before,'registered roster/signature/evidence UPDATE graph preserves all payroll and frozen source rows');
  assert.equal((await db.query("select odometer_km from public.daily_report_workers where report_id='70000000-0000-0000-0000-000000000071'")).rows[0].odometer_km,'110');
  assert.equal((await db.query("select daily_report_id from public.attendance_verifications where id='80000000-0000-0000-0000-000000000071'")).rows[0].daily_report_id,'70000000-0000-0000-0000-000000000071');
@@ -59,6 +61,7 @@ try {
  insert into private.route_journey_rollouts values('10000000-0000-0000-0000-000000000001',true);
  insert into private.route_journey_captures(id,company_id,source_clock_in_id,worker_id,route_assignment_id,route_stop_id,stop_order,stop_label,work_date,origin_kind,created_by,payload) values('90000000-0000-0000-0000-000000000074','10000000-0000-0000-0000-000000000001','80000000-0000-0000-0000-000000000073','40000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000073','90000000-0000-0000-0000-000000000075',1,'Fixture stop','2024-01-10','company','00000000-0000-0000-0000-000000000001','{"photo_storage_path":"fixture/journey.jpg"}');`);
  assert.equal((await db.query("select public.link_route_journey_report('70000000-0000-0000-0000-000000000072') as n")).rows[0].n,1);
+ assert.equal((await db.query("select daily_report_id from private.route_journey_captures where id='90000000-0000-0000-0000-000000000074'")).rows[0].daily_report_id,'70000000-0000-0000-0000-000000000072');
  assert.equal(await snapshot(),before,'actual staged journey link with registered trigger boundary preserves payroll');
  await assert.rejects(db.exec("update private.route_journey_captures set payload='{}' where id='90000000-0000-0000-0000-000000000074'"),/raw evidence immutable/);
  await db.exec(`alter table public.workers add column if not exists partner_company_id uuid;
@@ -75,6 +78,16 @@ try {
  assert.equal((await db.query("select resolved_at is not null as resolved from public.generation_setting_issues where issue_key='probe:notification'")).rows[0].resolved,true);
  await db.exec("select private.upsert_generation_setting_issue('10000000-0000-0000-0000-000000000001','probe:notification','payroll','Fixture title','Fixture body','payroll_settings','40000000-0000-0000-0000-000000000001')");
  assert.ok((await db.query("select count(*)::int as count from public.app_notifications")).rows[0].count>0,'reopened issue reaches the actual INSERT sink');
+ if(process.env.SKO_PAYROLL_ATTACHMENT_FIXTURE_URL){
+  const raceWorker='40000000-0000-0000-0000-000000000071';
+  await db.exec(`insert into public.workers(id,company_id,user_id,name,status,affiliation) values('${raceWorker}','10000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Notification race worker','active','employee');
+  insert into public.worker_payroll_settings select (jsonb_populate_record(null::public.worker_payroll_settings,to_jsonb(s)||jsonb_build_object('worker_id','${raceWorker}'))).* from public.worker_payroll_settings s where worker_id='40000000-0000-0000-0000-000000000001';
+  insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours,night_hours) values('80000000-0000-0000-0000-000000000074','10000000-0000-0000-0000-000000000001','${raceWorker}','20000000-0000-0000-0000-000000000001',(now() at time zone 'Asia/Tokyo')::date,'day',1,0,0,0);`);
+  await db.exec(fs.readFileSync('supabase/tests/payroll_notification_finalization_sink_fixture.sql','utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261009205616_generation_setting_issue_first_notification.sql','utf8'));
+  const {verifyNotificationFinalizationRace}=await import('./payroll_notification_finalization_pg17_race.mjs');
+  await verifyNotificationFinalizationRace(db,raceWorker);
+ }
  await db.exec(fs.readFileSync('supabase/tests/payroll_parent_cascade_dependency_fixture.sql','utf8'));
  const retained=(await db.query('select to_jsonb(t) as value from payroll_final_private.documents t')).rows;
  const retainedHistory=(await db.query('select to_jsonb(t) as value from payroll_final_private.history t order by changed_at')).rows;

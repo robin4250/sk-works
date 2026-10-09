@@ -5,8 +5,10 @@ on:
       - 'supabase/tests/payroll_*attachment*fixture.sql'
       - 'supabase/tests/payroll_registered_notification_sink_fixture.sql'
       - 'supabase/tests/payroll_parent_cascade_dependency_fixture.sql'
+      - 'supabase/tests/payroll_notification_finalization_sink_fixture.sql'
       - 'tool/verify_payroll_attachment_trigger_boundary.mjs'
       - 'tool/payroll_attachment_native_pg17_runtime.mjs'
+      - 'tool/payroll_notification_finalization_pg17_race.mjs'
       - '.github/workflows/payroll-attachment-trigger-boundary.yml'
   workflow_dispatch:
 permissions:

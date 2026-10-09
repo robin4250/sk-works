@@ -16,6 +16,7 @@ create table company_allowance_identity_private.identities (
  check((retired_by is null)=(retired_at is null))
 );
 create unique index company_allowance_one_active_slot on company_allowance_identity_private.identities(company_id,slot) where retired_at is null;
+create index company_allowance_identity_recent on company_allowance_identity_private.identities(company_id,created_at desc,id);
 create table company_allowance_identity_private.history (
  company_id uuid not null,version bigint not null,actor_id uuid not null,
  changed_at timestamptz not null default clock_timestamp(),
@@ -134,8 +135,20 @@ begin
  select * into s from company_allowance_identity_private.state where company_id=cid;
  return jsonb_build_object('contract_version',1,'company_id',cid,'adopted',s.company_id is not null,'version',coalesce(s.version,0),
  'observed_slots',company_allowance_identity_private.slots(r),'items',company_allowance_identity_private.current_value(r),
- 'identities',coalesce((select jsonb_agg(to_jsonb(i) order by slot,generation) from company_allowance_identity_private.identities i where company_id=cid),'[]'),
- 'history',coalesce((select jsonb_agg(to_jsonb(h) order by version) from company_allowance_identity_private.history h where company_id=cid),'[]'));
+ 'identities',coalesce((select jsonb_agg(to_jsonb(i) order by slot,generation) from (select * from company_allowance_identity_private.identities where company_id=cid order by created_at desc,id limit 100) i),'[]'),
+ 'history',coalesce((select jsonb_agg(to_jsonb(h) order by version) from (select * from company_allowance_identity_private.history where company_id=cid order by version desc limit 100) h),'[]'),
+ 'history_before_version',case when exists(select 1 from company_allowance_identity_private.history where company_id=cid order by version desc offset 100 limit 1)
+ then (select min(version) from (select version from company_allowance_identity_private.history where company_id=cid order by version desc limit 100) h) end);
+end$$;
+create function company_allowance_identity_private.history_page(cid uuid,p_before_version bigint,p_limit integer) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare entries jsonb;oldest bigint;
+begin
+ perform company_allowance_identity_private.authorize(cid,true);
+ if p_limit is null or p_limit not between 1 and 100 or (p_before_version is not null and p_before_version<1) then raise exception 'invalid history page' using errcode='22023';end if;
+ select coalesce(jsonb_agg(to_jsonb(h) order by version desc),'[]'),min(version) into entries,oldest
+ from (select * from company_allowance_identity_private.history where company_id=cid and (p_before_version is null or version<p_before_version) order by version desc limit p_limit) h;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'entries',entries,'before_version',case when exists(select 1 from company_allowance_identity_private.history where company_id=cid and version<oldest) then oldest end);
 end$$;
 create function company_allowance_identity_private.adopt(cid uuid,observed_slots jsonb,confirmed boolean)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -200,7 +213,11 @@ end$$;
 
 revoke all on all functions in schema company_allowance_identity_private from public,anon,authenticated;
 grant usage on schema company_allowance_identity_private to authenticated;
-grant execute on function company_allowance_identity_private.admin_state(uuid),company_allowance_identity_private.adopt(uuid,jsonb,boolean),company_allowance_identity_private.labels(uuid),company_allowance_identity_private.edit_slot(uuid,integer,bigint,text,text,integer,boolean) to authenticated;
+grant execute on function company_allowance_identity_private.admin_state(uuid),company_allowance_identity_private.adopt(uuid,jsonb,boolean),company_allowance_identity_private.labels(uuid),company_allowance_identity_private.edit_slot(uuid,integer,bigint,text,text,integer,boolean),company_allowance_identity_private.history_page(uuid,bigint,integer) to authenticated;
+create function public.read_company_allowance_identity_history(p_company_id uuid,p_before_version bigint default null,p_limit integer default 50) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_allowance_identity_private.history_page(p_company_id,p_before_version,p_limit)$$;
+revoke all on function public.read_company_allowance_identity_history(uuid,bigint,integer) from public,anon;
+grant execute on function public.read_company_allowance_identity_history(uuid,bigint,integer) to authenticated;
 create function public.read_company_allowance_identity_admin(p_company_id uuid) returns jsonb
 language sql stable security invoker set search_path='' as $$select company_allowance_identity_private.admin_state(p_company_id)$$;
 create function public.adopt_company_allowance_identity(p_company_id uuid,p_observed_slots jsonb,p_confirmed boolean) returns jsonb
