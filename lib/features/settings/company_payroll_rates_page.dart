@@ -168,16 +168,23 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     }
   }
 
-  Widget _scopeCard() => Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('会社の適用条件', style: Theme.of(context).textTheme.titleMedium),
-      _scopeDetails(_data!.companyScope?.value),
-      if (_data!.companyScope != null) ...[
-        Text('変更者 ${_data!.companyScope!.updatedBy}'), Text('変更日時 ${_data!.companyScope!.updatedAt}'),
+  Widget _scopeCard() {
+    final scope = _data!.companyScope;
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text('会社の適用条件', style: Theme.of(context).textTheme.titleMedium)),
+          TextButton(onPressed: _busy ? null : _editScope, child: const Text('会社の適用条件を編集'))]),
+        if (scope == null) const Text('会社条件は未登録です') else ...[
+          Text('${payrollScopeInsurers[scope.value['insurer']] ?? '未設定'} · ${scope.value['prefecture'] ?? '都道府県未設定'} · ${payrollScopeBusinesses[scope.value['employment_business']] ?? '事業区分未設定'}'),
+          ExpansionTile(title: const Text('条件の詳細'), tilePadding: EdgeInsets.zero,
+            children: [Align(alignment: Alignment.centerLeft, child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _scopeDetails(scope.value), Text('変更者 ${scope.updatedBy}'), Text('変更日時 ${scope.updatedAt}'),
+              ]))]),
+        ],
       ],
-      TextButton(onPressed: _busy ? null : _editScope, child: const Text('会社の適用条件を編集')),
-    ],
-  )));
+    )));
+  }
 
   static String _newCustomId() {
     final random = Random.secure();
@@ -209,6 +216,22 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   static String _month(dynamic value) => value is String && value.length >= 7 ? value.substring(0, 7) : '未確認';
 
+  Widget _valueSummary(Map<String, dynamic> value, String detailsId) {
+    final source = payrollRateObject(value['source']);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('全体 ${formatPayrollRatePercent(value['total'] as int)}%',
+        style: Theme.of(context).textTheme.titleMedium),
+      Text('従業員負担 ${formatPayrollRatePercent(value['employee'] as int)}%'),
+      Text('会社負担 ${formatPayrollRatePercent(value['employer'] as int)}%'),
+      const SizedBox(height: 4),
+      Text('適用 ${_month(value['insurance_month'])}'),
+      Text('情報元 ${source['publisher']}'),
+      ExpansionTile(key: PageStorageKey('rate-details-$detailsId'), title: const Text('適用月・資料の詳細'),
+        tilePadding: EdgeInsets.zero,
+        children: [Align(alignment: Alignment.centerLeft, child: _valueDetails(value))]),
+    ]);
+  }
+
   bool _changed(Map<String, dynamic>? current, Map<String, dynamic> candidate) {
     if (current == null) return true;
     return ['total', 'employee', 'employer', 'insurance_month', 'payroll_month', 'payment_month'].any((key) => current[key] != candidate[key]) ||
@@ -233,29 +256,32 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     final candidates = _data!.candidates.where((candidate) => candidate.itemId == itemId).toList();
     return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 8),
+        Row(children: [Expanded(child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
+          TextButton(onPressed: _busy ? null : () => _edit(kind, item), child: const Text('編集'))]),
+        const SizedBox(height: 8),
         LayoutBuilder(builder: (context, constraints) {
           final current = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('現在設定値', style: TextStyle(fontWeight: FontWeight.bold)),
             if (item == null) const Text('未設定') else ...[
-              _valueDetails(item.value),
+              _valueSummary(item.value, '$itemId-current'),
               Text(item.origin == 'manual' ? '利用者による手動設定' : '確認値を利用者が適用した設定'),
             ],
-            TextButton(onPressed: _busy ? null : () => _edit(kind, item), child: const Text('手動で設定・編集')),
           ]);
           final checked = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('登録済みの確認値', style: TextStyle(fontWeight: FontWeight.bold)),
             if (candidates.isEmpty) const Text('確認値はまだ登録されていません'),
             for (final candidate in candidates) ...[
-              _valueDetails(candidate.value), Text('確認日時 ${candidate.checkedAt}'),
+              _valueSummary(candidate.value, candidate.id), Text('確認日時 ${candidate.checkedAt}'),
               if (_changed(item?.value, candidate.value)) const Text('変更あり', style: TextStyle(fontWeight: FontWeight.bold)),
               if (!_scopeMatches(candidate)) const Text('会社条件が変更されています。再確認が必要'),
               FilledButton(key: ValueKey('apply-${candidate.id}'), onPressed: _busy || !_scopeMatches(candidate) ? null : () => _apply(candidate, item), child: const Text('適用')),
               const SizedBox(height: 12),
             ],
           ]);
-          if (constraints.maxWidth < 600) return Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [current, const Divider(), checked]);
+          if (constraints.maxWidth < 340) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [current, const Divider(), checked]);
+          }
           return Row(crossAxisAlignment: CrossAxisAlignment.start,
             children: [Expanded(child: current), const SizedBox(width: 24), Expanded(child: checked)]);
         }),
@@ -265,14 +291,20 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: const Text('会社共通の税率設定')),
+    return Scaffold(appBar: AppBar(title: const Text('会社共通の税率設定'), actions: [
+      IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
+        context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
+          content: const Text('会社の適用条件と資料を確認して料率を設定します。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
+        ),
+      )),
+    ]),
       body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('会社共通の社会保険・料率を管理します。給与への自動反映はまだ接続されていません。'),
-        const Text('会社の適用条件をここで一元管理し、情報元と照合してください。住所から都道府県は推測しません。'),
+        const Text('会社共通の料率を管理します。給与連携は準備中です。'),
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh),
-          label: const Text('最新料率を確認（登録済み確認値の再読み込み）')),
-        const Text('公式資料の自動取得は未接続です。表示は登録時の確認値であり、最新であることを保証するものではありません。'),
+          label: const Text('確認値を再読み込み')),
+        const Text('登録済みの確認値を表示します。公式資料の自動取得は準備中です。'),
         if (_loading) const LinearProgressIndicator(),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
@@ -283,21 +315,32 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
             _itemCard('custom', item.value['label'] as String, item, item.id),
           OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
             icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
-          const Card(child: Padding(padding: EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('所得税'), Text('固定税率ではなく、年度・適用期間ごとの国税庁の源泉徴収税額表を参照します。税額表のPDF登録・年度切替画面は準備中です。'),
-            Text('住民税は従業員ごとの月額設定で管理します。'),
-            Text('介護保険の対象年齢は給与計算時に生年月日と保険適用年月から判定する機能を接続する予定です。'),
-          ]))),
-          for (final history in _data!.scopeHistory) Card(child: Padding(
-            padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('会社条件の変更履歴'),
-              const Text('変更前'), _scopeDetails(history['before_value'] == null ? null : payrollRateObject(history['before_value'])),
-              const Text('変更後'), _scopeDetails(payrollRateObject(history['after_value'])),
-              Text('変更者 ${history['actor_id']}'), Text('変更日時 ${history['changed_at']}'),
-            ]))),
-          Text('変更履歴', style: Theme.of(context).textTheme.titleMedium),
-          if (_data!.history.isEmpty) const Text('変更履歴はありません'),
-          for (final history in _data!.history) _historyCard(history),
+     _scopeCard(),
+          for (final entry in payrollRateKinds.entries)
+            _itemCard(entry.key, entry.value, _findKind(entry.key), _findKind(entry.key)?.id ?? entry.key),
+          for (final item in _data!.items.where((item) => item.value['kind'] == 'custom'))
+            _itemCard('custom', item.value['label'] as String, item, item.id),
+          OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
+            icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
+          const Card(child: ExpansionTile(title: Text('所得税・住民税'), subtitle: Text('所得税は税額表、住民税は個人の月額'),
+            children: [Padding(padding: EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('所得税は年度・適用期間ごとの源泉徴収税額表を使用します。PDF登録・年度切替画面は準備中です。'),
+              Text('住民税は従業員ごとの月額設定で管理します。'),
+            ]))])),
+          Card(child: ExpansionTile(key: const PageStorageKey('payroll-rate-history'), title: const Text('変更履歴'),
+            subtitle: Text('料率 ${_data!.history.length}件・会社条件 ${_data!.scopeHistory.length}件'),
+            children: [
+              for (final history in _data!.scopeHistory) Padding(
+                padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('会社条件の変更履歴'),
+                  const Text('変更前'), _scopeDetails(history['before_value'] == null ? null : payrollRateObject(history['before_value'])),
+                  const Text('変更後'), _scopeDetails(payrollRateObject(history['after_value'])),
+                  Text('変更者 ${history['actor_id']}'), Text('変更日時 ${history['changed_at']}'),
+                ])),
+              if (_data!.history.isEmpty && _data!.scopeHistory.isEmpty) const Padding(
+                padding: EdgeInsets.all(12), child: Text('変更履歴はありません')),
+              for (final history in _data!.history) _historyCard(history),
+            ])),
         ],
       ])),
     );

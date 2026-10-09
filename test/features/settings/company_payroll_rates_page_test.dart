@@ -145,7 +145,7 @@ void main() {
     await openPage(tester, repository);
     expect(find.text('再試行'), findsOneWidget);
     expect(find.text('未設定'), findsNothing);
-    expect(find.text('手動で設定・編集'), findsNothing);
+    expect(find.text('編集'), findsNothing);
     repository.failRead = false;
     await tester.tap(find.text('再試行'));
     await tester.pumpAndSettle();
@@ -165,6 +165,39 @@ void main() {
     expect(repository.applied, isEmpty);
   });
 
+  testWidgets('compact rates keep key values visible and reveal source months and audit on request', (tester) async {
+    final repository = FakeRatesRepository();
+    final current = value('health_insurance');
+    repository.data = CompanyPayrollRatesData(items: [
+      CompanyPayrollRateItem(id: 'health_insurance', version: 1, value: current, origin: 'manual'),
+    ], candidates: [], history: [{
+      'item_id': 'health_insurance', 'before_value': null, 'after_value': current,
+      'actor_id': 'audit-admin', 'changed_at': '2026-10-09T12:00:00Z',
+    }]);
+    await openPage(tester, repository);
+    expect(find.text('全体 1.3%'), findsOneWidget);
+    expect(find.text('従業員負担 0.5%'), findsOneWidget);
+    expect(find.text('会社負担 0.8%'), findsOneWidget);
+    expect(find.text('適用 2026-10'), findsOneWidget);
+    expect(find.text('情報元 登録資料'), findsOneWidget);
+    expect(find.text('給与対象年月 2026-11'), findsNothing);
+    final details = find.byKey(const PageStorageKey('rate-details-health_insurance-current'));
+    await reveal(tester, details);
+    await tester.tap(details);
+    await tester.pumpAndSettle();
+    expect(find.text('保険適用年月 2026-10'), findsOneWidget);
+    expect(find.text('給与対象年月 2026-11'), findsOneWidget);
+    expect(find.text('支払年月 2026-11'), findsOneWidget);
+    expect(find.text('情報元を開く'), findsOneWidget);
+    expect(find.text('変更者 audit-admin'), findsNothing);
+    final history = find.byKey(const PageStorageKey('payroll-rate-history'));
+    await reveal(tester, history);
+    await tester.tap(history);
+    await tester.pumpAndSettle();
+    expect(find.text('変更者 audit-admin'), findsOneWidget);
+    expect(find.text('変更日時 2026-10-09T12:00:00Z'), findsOneWidget);
+  });
+
   testWidgets('scope remains unregistered after cancel; confirmed save preserves null selections', (tester) async {
     final repository = FakeRatesRepository();
     await openPage(tester, repository);
@@ -174,7 +207,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LinearProgressIndicator), findsNothing);
     final refresh = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton,
-      '最新料率を確認（登録済み確認値の再読み込み）', skipOffstage: false));
+      '確認値を再読み込み', skipOffstage: false));
     expect(refresh.onPressed, isNull);
     await tester.tap(find.text('会社条件を確認'));
     await tester.pumpAndSettle();

@@ -26,3 +26,7 @@ save_manual_company_payroll_rate、apply_company_payroll_rate_candidateを呼ぶ
 tests：会社条件の未登録・cancel・null保存、古い会社条件の候補apply禁止、返却item/version/origin/valueの不一致拒否、確認cancel書き込み無し、選択候補のみ適用、候補無し、保存失敗、取得失敗再試行、自由項目追加、6桁料率精度。ローカルFlutter SDKが無いためCI実行が必要。
 
 Supabase Dart RPC公式docsを確認。changelog.mdは取得時unsupported content-typeで読めなかった。新しい依存追加、DB/Auth/RLS変更はこのlaneで行っていない。
+
+## コンパクト表示
+
+通常表示は現在率・従業員／会社負担・保険適用月・情報元名称を中心に、確認値と比較できる構成。給与対象月／支払月、正式URL・条件証跡は項目ごとの「適用月・資料の詳細」、監査情報は「変更履歴」で開く。確認popupは折り畳まず全率・3年月・情報元・必須確認文を表示する。未接続の説明は短い表示とヘルプに集約し、自動取得や給与反映済みとは表示しない。折り畳み前の重要値と展開後の資料・月区分・履歴をwidgettestで検証する。
