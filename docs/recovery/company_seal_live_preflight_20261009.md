@@ -27,7 +27,7 @@ are included here. Body SHA256 values (not whole-function presentation hashes):
 | `private.certificate_calculation_rows` | `ff36d45c5600e8ede1414080941c773fce3f62e7645f03f7b283866bf26f1a66` |
 | `private.refresh_automatic_payment_certificate` | `60b075423158c170c84ae8e510a2ac084f22125cc893f5943420a33378683b0e` |
 
-## Observed state
+## Original observed state (before the later application)
 
 - `companies.name`: text NOT NULL; `company_seal_enabled`: boolean NOT NULL,
   default true; `updated_at`: timestamptz NOT NULL. The new
@@ -43,7 +43,7 @@ are included here. Body SHA256 values (not whole-function presentation hashes):
 - Company invoice refresh is `AFTER UPDATE OF tax_rate`; a style-only update
   does not invoke that specific trigger. This is not a claim about every trigger.
 
-## Migration identities and required order
+## Original dependency review and corrected identities
 
 The existing ON/OFF migration is deployed as
 `20261008082754_company_seal_visibility`, while the repository file is
@@ -175,3 +175,48 @@ to read it. Company ON/OFF, saved history and financial records must be retained
 One genuine Reisho is staged for free internal trials; the other four typefaces
 and paid-distribution licensing are unfinished. CI/PGlite/PDF proofs are not
 production application, backup recovery, iPhone operation or TestFlight evidence.
+
+## Subsequent production application report
+
+On 2026-10-09 the production operator applied ledger migration
+`20261009044454_company_seal_reisho_dependency_and_document_contract`, comprising
+the reviewed agreement base `20261008201215`, agreement company snapshot
+`20261008212855`, style `20261009011357` and document snapshot `20261009012730`
+contracts. Already deployed certificate canonical math was **not reapplied**.
+This report supersedes the earlier absence observations for those four contracts;
+the original observations above remain historical evidence, not current status.
+The repository source checkpoint remains
+`a086828bb46819d74ca1bf9bd245e8f94a90dbdf` while this report is saved in a Draft PR.
+
+The operator reported these post-DDL comparisons and authorization checks:
+
+- Company hashes projected over the original columns are unchanged; both
+  companies retain `legacy` style. Comparing the original projection avoids
+  mistaking the added legacy-default column for a change to original data.
+- Full-row hashes are unchanged for the two existing invoices, two payroll
+  statements and zero payment certificates. No financial refresh or old-row
+  snapshot backfill is claimed by these checks.
+- Three new document snapshot triggers exist. Agreement rollout gates remain
+  OFF (zero enabled). Existing ACLs, RLS and trigger definitions for the six
+  monitored pre-existing tables are unchanged.
+- The style getter/setter deny `anon` EXECUTE and allow `authenticated` EXECUTE.
+  Both RPC calls with an empty JWT reject with SQLSTATE `42501`; an EXECUTE grant
+  alone does not grant a company authorization.
+
+A protected, target-limited recovery JSON was saved with SHA256
+`79ffa77d37616e1ef7ee41e873ed32db31936f1e325b4262fe99cc68d1689110`.
+Its contents, storage path, company identifiers and real rows are not included
+here or in CI. This is **not a full-database backup or a completed restore
+exercise**. The earlier statement that no backup had been acquired describes
+the earlier preflight; the later limited recovery capture does not satisfy or
+demonstrate every full recovery requirement above. DDL restoration still does
+not reverse legitimate data saved after deployment.
+
+Production DDL and these comparisons are now reported complete. Latest iPhone
+Release installation, operation of the new style setting and end-to-end new
+document rendering on the actual iPhone remain unconfirmed. No new style
+selection, agreement gate activation or production document creation is claimed.
+One genuine Reisho is available for the reviewed internal trial; the other four
+typefaces and paid-distribution licensing remain unfinished. Source CI, this
+DDL report, actual-device operation and TestFlight publication remain separate
+outcomes.
