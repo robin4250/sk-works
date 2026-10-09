@@ -1,7 +1,7 @@
 # 所得税資料registry（会社private・未適用）
 
 Issue #273の年度別税額表資料の永続化基礎。CLI 2.120.0 migration newで生成した`20261009155006_company_income_tax_table_registry.sql`。
-本番DB未適用。新しいBucket・Storage policy・upload・PDF解析・税額計算・給与反映を実装していない。これは資料metadataの登録と状態参照であり、PDFの保存完了を意味しない。
+本番DB未適用。このmetadata migration単独ではBucket・Storage policy・upload・PDF解析・税額計算・給与反映を実装しない。別のprivate PDF Storage stageがobject行存在を登録前に要求する。これは資料metadataの登録と状態参照であり、PDFの保存完了を意味しない。
 既存company_required_documentsの差替uploadは旧PDF削除を行うため流用しない。会社必須書類と年度別税額表の保存を混同しない。
 
 ## 会社private API
