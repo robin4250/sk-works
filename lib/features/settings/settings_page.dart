@@ -101,7 +101,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final companies = await SupabaseBackend.client
         .from('companies')
         .select(
-          'id, name, tax_rate, default_unit_price, default_invoice_detail_mode',
+          'id, name, default_unit_price, default_invoice_detail_mode',
         )
         .eq('id', companyId)
         .limit(1);
@@ -112,7 +112,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final company = companies.first;
     _companyId = companyId;
     _companyName.text = company['name'] as String? ?? ProductBrand.displayName;
-    _taxRate.text = (company['tax_rate'] ?? 10).toString();
     _defaultUnitPrice.text = (company['default_unit_price'] ?? 25000).toString();
     _detailMode = _fromDatabaseDetailMode(
       company['default_invoice_detail_mode'] as String?,
@@ -141,7 +140,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final taxRate = double.tryParse(_taxRate.text.trim());
     final unitPrice = int.tryParse(_defaultUnitPrice.text.trim());
-    if (_companyName.text.trim().isEmpty || taxRate == null || unitPrice == null) {
+    if (_companyName.text.trim().isEmpty ||
+        (!_usesCloud && taxRate == null) || unitPrice == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('入力内容を確認してください')),
       );
@@ -157,14 +157,13 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         await SupabaseBackend.client.from('companies').update({
           'name': _companyName.text.trim(),
-          'tax_rate': taxRate,
           'default_unit_price': unitPrice,
           'default_invoice_detail_mode': _toDatabaseDetailMode(_detailMode),
         }).eq('id', companyId);
       } else {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('settings_company_name', _companyName.text.trim());
-        await prefs.setDouble('settings_tax_rate', taxRate);
+        await prefs.setDouble('settings_tax_rate', taxRate!);
         await prefs.setInt('settings_default_unit_price', unitPrice);
         await prefs.setString('settings_invoice_detail_mode', _detailMode);
       }
@@ -417,7 +416,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             child: ListTile(
                               leading: const Icon(Icons.currency_yen_outlined),
                               title: const Text('会社単価・手当設定'),
-                              subtitle: const Text('福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
+                              subtitle: const Text('消費税率・福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -536,14 +535,15 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                       ),
                       const SizedBox(height: 10),
-                      TextField(
-                        controller: _taxRate,
-                        enabled: !_usesCloud || _canManageCompany,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: '消費税率（%）'),
-                      ),
-                      const SizedBox(height: 14),
+                      if (!_usesCloud) ...[
+                        TextField(
+                          controller: _taxRate,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(labelText: '消費税率（%）'),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       TextField(
                         controller: _defaultUnitPrice,
                         enabled: !_usesCloud || _canManageCompany,
