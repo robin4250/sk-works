@@ -3,7 +3,6 @@ import 'payroll_finalization_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../notifications/notification_bell.dart';
 import '../shared/pdf_bytes_cache.dart';
@@ -11,7 +10,7 @@ import '../../international/language_controller.dart';
 import 'payroll_pdf_service.dart';
 import 'payroll_statement_repository.dart';
 import 'payroll_confirmation_repository.dart';
-import 'payroll_review_repository.dart';
+import 'payroll_statement_source_repository.dart';
 
 class PayrollStatementsPage extends StatefulWidget {
   const PayrollStatementsPage({super.key});
@@ -203,10 +202,11 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 }
 
 class PayrollStatementPreviewPage extends StatefulWidget {
-  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false});
+  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository});
 
   final PayrollStatementRecord statement;
   final bool allowFinalization;
+  final PayrollStatementSourceRepository? sourceRepository;
 
   @override
   State<PayrollStatementPreviewPage> createState() =>
@@ -220,6 +220,7 @@ class _PayrollStatementPreviewPageState
   PayrollStatementRecord? _refreshedStatement;
   bool _statementUnavailable = false;
   bool _confirmationBusy = false;
+  bool _sourceLoading = false;
   bool _finalizationBusy = false;
   bool _finalizationUncertain = false;
   String? _confirmationError;
@@ -232,80 +233,32 @@ class _PayrollStatementPreviewPageState
   }
 
   Future<PayrollStatementRecord?> _loadConfirmation() async {
-    final repository = _confirmationRepository;
+    final repository = widget.sourceRepository ?? PayrollStatementSourceRepository.maybeCreate();
     if (repository == null) return null;
+    setState(() { _sourceLoading = true; _confirmationError = null; });
     try {
-      final status = await repository.loadStatus(widget.statement.periodStart);
-      final reviewRepository = PayrollReviewRepository.maybeCreate();
-      if (reviewRepository == null) throw StateError(SkoLanguageController.tr('給与明細を再取得できません。'));
-      final workspace = await reviewRepository.loadWorkspace(
-        widget.statement.periodStart,
-      );
-      PayrollStatementRecord? refreshed;
-      for (final item in workspace.items) {
-        if (item.statement.id == widget.statement.id) {
-          refreshed = item.statement;
-          break;
-        }
-      }
-      if (refreshed == null) {
-        if (mounted) {
-          setState(() {
-            _statementUnavailable = true;
-            _pdfBytes.invalidate();
-          });
-        }
-        throw StateError(SkoLanguageController.tr('この給与明細を閲覧できません。'));
-      }
-      final refreshedStatement = refreshed;
+      final source = await repository.load(widget.statement);
+      if (!mounted) return null;
+      setState(() {
+        _confirmation = source.confirmation;
+        _refreshedStatement = source.statement;
+        _statementUnavailable = false;
+        _pdfBytes.invalidate();
+      });
+      return source.statement;
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _confirmation = refreshedStatement.isDraft ? status : null;
-          _refreshedStatement = refreshed;
-          _statementUnavailable = false;
-          _confirmationError = null;
+          _confirmation = null;
+          _confirmationError = SkoLanguageController.trParams(
+            '給与明細を再取得できませんでした: {error}', {'error': error});
           _pdfBytes.invalidate();
         });
       }
-      return refreshedStatement;
-    } catch (error) {
-      if (error is PostgrestException &&
-          (error.code == '42501' ||
-              (error.code == 'P0001' &&
-                  error.message == 'payroll review permission required'))) {
-        // Re-read the self-scoped source before falling back after a role change.
-        PayrollStatementRecord? ownStatement;
-        String? reloadError;
-        final selfRepository = PayrollStatementRepository.maybeCreate();
-        if (selfRepository != null) {
-          try {
-            final ownStatements = await selfRepository.loadMyStatements();
-            for (final item in ownStatements) {
-              if (item.id == widget.statement.id) {
-                ownStatement = item;
-                break;
-              }
-            }
-          } catch (error) {
-            reloadError = SkoLanguageController.trParams('給与明細を再取得できませんでした: {error}', {'error': error});
-          }
-        }
-        if (mounted) {
-          setState(() {
-            _confirmation = null;
-            _confirmationError = reloadError;
-            _refreshedStatement = ownStatement;
-            _statementUnavailable = ownStatement == null;
-            _pdfBytes.invalidate();
-          });
-        }
-        return ownStatement;
-      }
-      if (mounted) {
-        setState(() => _confirmationError = SkoLanguageController.trParams('確認状態を読み込めませんでした: {error}', {'error': error}));
-      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _sourceLoading = false);
     }
-    return null;
   }
 
   Future<void> _confirm(bool cancel) async {
@@ -383,7 +336,7 @@ class _PayrollStatementPreviewPageState
         children: [
           if (widget.allowFinalization)
             PayrollFinalizationPanel(statement: _pdfStatement,
-              statementAvailable: !_statementUnavailable && _confirmationError == null,
+              statementAvailable: !_sourceLoading && !_statementUnavailable && _confirmationError == null,
               reloadStatement: _loadConfirmation,
               onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
               onVerificationRequired: (needsVerification) { if (mounted) setState(() => _finalizationUncertain = needsVerification); },
@@ -412,7 +365,7 @@ class _PayrollStatementPreviewPageState
                     ),
                   ),
                   IconButton(
-                    onPressed: _finalizationBusy ? null : _loadConfirmation,
+                    onPressed: _finalizationBusy || _sourceLoading ? null : _loadConfirmation,
                     icon: const Icon(Icons.refresh),
                   ),
                 ],
@@ -464,9 +417,9 @@ class _PayrollStatementPreviewPageState
             ),
           ),
           Expanded(
-            child: _confirmationBusy || _finalizationBusy
+            child: _sourceLoading || _confirmationBusy || _finalizationBusy
                 ? const Center(child: CircularProgressIndicator())
-                : _statementUnavailable || _finalizationUncertain
+                : _statementUnavailable || _finalizationUncertain || _confirmationError != null
                 ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
                 : InteractiveViewer(
                     transformationController: _zoomController,
