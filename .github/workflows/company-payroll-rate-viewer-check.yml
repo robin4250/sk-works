@@ -1,0 +1,38 @@
+name: Company payroll rate viewer reader SQL
+on:
+  pull_request:
+    branches: [main]
+    paths: ['supabase/migrations/*company_payroll_rate_registry.sql', 'supabase/migrations/*company_payroll_rate_viewer_read.sql', 'supabase/tests/company_payroll_rate*', 'tool/company_rate_viewer*', 'tool/verify_company_payroll_rate_viewer_read.mjs', '.github/workflows/company-payroll-rate-viewer-check.yml']
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/*company_payroll_rate_registry.sql', 'supabase/migrations/*company_payroll_rate_viewer_read.sql', 'supabase/tests/company_payroll_rate*', 'tool/company_rate_viewer*', 'tool/verify_company_payroll_rate_viewer_read.mjs', '.github/workflows/company-payroll-rate-viewer-check.yml']
+permissions:
+  contents: read
+jobs:
+  pglite:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/sko-rate-viewer" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node --test tool/company_rate_viewer_pg17_database_guard.test.mjs
+      - run: node tool/verify_company_payroll_rate_viewer_read.mjs "$RUNNER_TEMP/sko-rate-viewer/node_modules/@electric-sql/pglite/dist/index.js"
+  native-pg17:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only-password, POSTGRES_DB: sko_company_rate_viewer_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_COMPANY_RATE_VIEWER_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_company_rate_viewer_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/sko-rate-viewer" --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/verify_company_payroll_rate_viewer_read.mjs "file://$PWD/tool/company_rate_viewer_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-rate-viewer/node_modules/pg/lib/index.js"

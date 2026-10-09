@@ -9,6 +9,7 @@ import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
+import 'company_payroll_rates_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -32,6 +33,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _canManageCompany = false;
   bool _isMasterAdmin = false;
   String? _companyId;
+  bool _canReadPayrollRates = false;
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
   String _languageCode = SkoLanguageController.languageCode;
@@ -89,6 +91,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final companyId = memberships.first['company_id'] as String;
     final role = memberships.first['role']?.toString() ?? 'viewer';
     _canManageCompany = role == 'owner' || role == 'admin';
+    _canReadPayrollRates = _canManageCompany || role == 'viewer';
 
     final masterRepository = MasterDeviceRepository.maybeCreate();
     if (masterRepository != null) {
@@ -415,12 +418,30 @@ class _SettingsPageState extends State<SettingsPage> {
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.currency_yen_outlined),
-                              title: const Text('会社単価・手当設定'),
+                              title: const Text('消費税・会社手当設定'),
                               subtitle: const Text('消費税率・福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const CompanyRateSettingsPage(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_canReadPayrollRates && _companyId != null) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.percent_outlined),
+                              title: const Text('会社共通の税率・保険料率'),
+                              subtitle: Text(_canManageCompany
+                                  ? '社会保険・雇用保険・所得税資料'
+                                  : '料率・適用月・情報元の閲覧'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CompanyPayrollRatesPage(companyId: _companyId!),
                                 ),
                               ),
                             ),
