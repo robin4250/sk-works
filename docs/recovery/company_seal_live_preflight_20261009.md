@@ -172,10 +172,6 @@ renderable with their original saved style/name. Prefer a reviewed forward fix
 when stored metadata exists; preserve the font asset and document parser needed
 to read it. Company ON/OFF, saved history and financial records must be retained.
 
-One genuine Reisho is staged for free internal trials; the other four typefaces
-and paid-distribution licensing are unfinished. CI/PGlite/PDF proofs are not
-production application, backup recovery, iPhone operation or TestFlight evidence.
-
 ## Subsequent production application report
 
 On 2026-10-09 the production operator applied ledger migration
@@ -220,3 +216,7 @@ One genuine Reisho is available for the reviewed internal trial; the other four
 typefaces and paid-distribution licensing remain unfinished. Source CI, this
 DDL report, actual-device operation and TestFlight publication remain separate
 outcomes.
+
+One genuine Reisho is staged for free internal trials; the other four typefaces
+and paid-distribution licensing are unfinished. CI/PGlite/PDF proofs are not
+production application, backup recovery, iPhone operation or TestFlight evidence.
