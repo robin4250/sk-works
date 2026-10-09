@@ -119,7 +119,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         value: candidate.value, origin: 'official_candidate');
       _recoveryNotice = null;
       await _repository.applyCandidate(companyId: widget.companyId, itemId: candidate.itemId,
-        candidateId: candidate.id, expectedVersion: item?.version ?? 0);
+        candidateId: candidate.id, expectedVersion: item?.version ?? 0, expectedValue: candidate.value);
       if (!mounted || generation != _generation) return;
       _pendingWrite = null;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('選択した項目を適用しました')));
@@ -134,7 +134,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   }
 
   Future<void> _edit(String kind, CompanyPayrollRateItem? item) async {
-    if (_busy || !_canEdit) {
+    if (_writeBlocked || !_canEdit) {
       return;
     }
     final generation = _generation;
@@ -180,7 +180,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   }
 
   Future<void> _editScope() async {
-    if (_busy || !_canEdit) {
+    if (_writeBlocked || !_canEdit) {
       return;
     }
     final generation = _generation;

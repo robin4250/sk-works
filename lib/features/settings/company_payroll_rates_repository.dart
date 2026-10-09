@@ -147,7 +147,7 @@ abstract class CompanyPayrollRatesRepository {
   Future<void> saveManual({required String companyId, required String itemId,
     required int expectedVersion, required Map<String, dynamic> value});
   Future<void> applyCandidate({required String companyId, required String itemId,
-    required String candidateId, required int expectedVersion});
+    required String candidateId, required int expectedVersion, Map<String, dynamic>? expectedValue});
 }
 
 bool payrollRateValuesEqual(dynamic left, dynamic right) {
@@ -249,11 +249,11 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
 
   @override
   Future<void> applyCandidate({required String companyId, required String itemId,
-    required String candidateId, required int expectedVersion}) async {
+    required String candidateId, required int expectedVersion, Map<String, dynamic>? expectedValue}) async {
     final raw = await _call('apply_company_payroll_rate_candidate', {
       'p_company_id': companyId, 'p_item_id': itemId, 'p_candidate_id': candidateId,
       'p_expected_version': expectedVersion, 'p_confirmed': true,
     });
-    _verifySaved(raw, itemId, expectedVersion, 'official_candidate');
+    _verifySaved(raw, itemId, expectedVersion, 'official_candidate', requestedValue: expectedValue);
   }
 }

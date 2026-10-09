@@ -46,7 +46,7 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
   }
   @override
   Future<void> applyCandidate({required String companyId, required String itemId,
-    required String candidateId, required int expectedVersion}) async {
+    required String candidateId, required int expectedVersion, Map<String, dynamic>? expectedValue}) async {
     if (failSave) throw StateError('conflict');
     applied.add(candidateId);
   }
@@ -74,6 +74,16 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  test('candidate returned value must match the confirmed displayed value', () async {
+    final repository = SupabaseCompanyPayrollRatesRepository(invoke: (_, _) async => {
+      'item_id': 'health_insurance', 'version': 1, 'origin': 'official_candidate',
+      'value': value('health_insurance', employee: 600000),
+    });
+    await expectLater(repository.applyCandidate(companyId: 'company', itemId: 'health_insurance',
+      candidateId: 'selected', expectedVersion: 0, expectedValue: value('health_insurance')),
+      throwsFormatException);
+  });
+
   testWidgets('child support standard shares need explicit selection and never save automatically', (tester) async {
     final repository = FakeRatesRepository();
     await openPage(tester, repository);
