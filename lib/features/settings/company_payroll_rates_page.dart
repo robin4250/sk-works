@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'company_payroll_rates_repository.dart';
+import 'company_payroll_rate_pending_store.dart';
 import 'company_income_tax_page.dart';
 
 const payrollRateConfirmation = '表示された料率・適用年月・情報元をご自身で確認したうえで適用してください';
@@ -29,15 +30,17 @@ const payrollManualStartingRates = <String, Map<String, String>>{
 };
 
 class CompanyPayrollRatesPage extends StatefulWidget {
-  const CompanyPayrollRatesPage({super.key, required this.companyId, this.repository});
+  const CompanyPayrollRatesPage({super.key, required this.companyId, this.repository, this.pendingStore});
   final String companyId;
   final CompanyPayrollRatesRepository? repository;
+  final PayrollRatePendingStore? pendingStore;
   @override
   State<CompanyPayrollRatesPage> createState() => _CompanyPayrollRatesPageState();
 }
 
 class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   late CompanyPayrollRatesRepository _repository;
+  late PayrollRatePendingStore _pendingStore;
   CompanyPayrollRatesData? _data;
   String? _error;
   bool _busy = false;
@@ -51,14 +54,16 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   void initState() {
     super.initState();
     _repository = widget.repository ?? SupabaseCompanyPayrollRatesRepository();
+    _pendingStore = widget.pendingStore ?? SharedPreferencesPayrollRatePendingStore();
     _load();
   }
 
   @override
   void didUpdateWidget(covariant CompanyPayrollRatesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.companyId != widget.companyId || oldWidget.repository != widget.repository) {
+    if (oldWidget.companyId != widget.companyId || oldWidget.repository != widget.repository || oldWidget.pendingStore != widget.pendingStore) {
       _repository = widget.repository ?? SupabaseCompanyPayrollRatesRepository();
+      _pendingStore = widget.pendingStore ?? SharedPreferencesPayrollRatePendingStore();
       _data = null;
       _pendingWrite = null;
       _recoveryNotice = null;
@@ -70,16 +75,19 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     final generation = ++_generation;
     setState(() { _busy = true; _loading = true; _error = null; _unavailable = false; });
     try {
+      final storedPending = await _pendingStore.read(widget.companyId);
+      if (!mounted || generation != _generation) return;
+      _pendingWrite = storedPending;
       final data = await _repository.read(widget.companyId);
       if (!mounted || generation != _generation) return;
-      setState(() {
-        _data = data;
-        final pending = _pendingWrite;
-        if (pending != null && pending.companyId == widget.companyId && pending.matches(data)) {
-          _pendingWrite = null;
-          _recoveryNotice = '保存済みの設定を確認しました';
-        }
-      });
+      final pending = _pendingWrite;
+      if (pending != null && pending.companyId == widget.companyId && pending.matches(data)) {
+        await _pendingStore.clear(widget.companyId);
+        if (!mounted || generation != _generation) return;
+        _pendingWrite = null;
+        _recoveryNotice = '保存済みの設定を確認しました';
+      }
+      setState(() => _data = data);
     } on PayrollRatesUnavailable {
       if (!mounted || generation != _generation) return;
       setState(() { _data = null; _unavailable = true; });
@@ -91,6 +99,20 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         setState(() { _busy = false; _loading = false; });
       }
     }
+  }
+
+
+  Future<bool> _prepareWrite(PayrollRatePendingWrite pending, int generation) async {
+    await _pendingStore.write(pending);
+    if (!mounted || generation != _generation) return false;
+    _pendingWrite = pending;
+    _recoveryNotice = null;
+    return true;
+  }
+
+  Future<void> _completeWrite() async {
+    await _pendingStore.clear(widget.companyId);
+    _pendingWrite = null;
   }
 
   Future<bool> _confirm(String title, Map<String, dynamic> value) async =>
@@ -114,14 +136,14 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     try {
       final confirmed = await _confirm('確認値を適用', candidate.value);
       if (!mounted || generation != _generation || !confirmed) return;
-      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
+      if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
         itemId: candidate.itemId, expectedVersion: item?.version ?? 0,
-        value: candidate.value, origin: 'official_candidate');
-      _recoveryNotice = null;
+        value: candidate.value, origin: 'official_candidate'), generation)) return;
       await _repository.applyCandidate(companyId: widget.companyId, itemId: candidate.itemId,
         candidateId: candidate.id, expectedVersion: item?.version ?? 0, expectedValue: candidate.value);
       if (!mounted || generation != _generation) return;
-      _pendingWrite = null;
+      await _completeWrite();
+      if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('選択した項目を適用しました')));
       await _load();
     } catch (_) {
@@ -146,13 +168,13 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!await _confirm('手動設定を保存', value)) return;
       if (!mounted || generation != _generation) return;
       final itemId = item?.id ?? (kind == 'custom' ? _newCustomId() : kind);
-      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
-        itemId: itemId, expectedVersion: item?.version ?? 0, value: value, origin: 'manual');
-      _recoveryNotice = null;
+      if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
+        itemId: itemId, expectedVersion: item?.version ?? 0, value: value, origin: 'manual'), generation)) return;
       await _repository.saveManual(companyId: widget.companyId,
         itemId: itemId, expectedVersion: item?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
-      _pendingWrite = null;
+      await _completeWrite();
+      if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('手動設定を保存しました')));
       await _load();
     } catch (_) {
@@ -200,12 +222,12 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存'))],
       )) ?? false;
       if (!mounted || generation != _generation || !confirmed) return;
-      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
-        expectedVersion: previous?.version ?? 0, value: value);
-      _recoveryNotice = null;
+      if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
+        expectedVersion: previous?.version ?? 0, value: value), generation)) return;
       await _repository.saveScope(companyId: widget.companyId, expectedVersion: previous?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
-      _pendingWrite = null;
+      await _completeWrite();
+      if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社の適用条件を保存しました')));
       await _load();
     } catch (_) {
@@ -376,7 +398,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
             _itemCard(entry.key, entry.value, _findKind(entry.key), _findKind(entry.key)?.id ?? entry.key),
           for (final item in _data!.items.where((item) => item.value['kind'] == 'custom'))
             _itemCard('custom', item.value['label'] as String, item, item.id),
-          if (_canEdit) OutlinedButton.icon(onPressed: _busy ? null : () => _edit('custom', null),
+          if (_canEdit) OutlinedButton.icon(onPressed: _writeBlocked ? null : () => _edit('custom', null),
             icon: const Icon(Icons.add), label: const Text('料率項目を追加')),
           Card(child: ExpansionTile(title: const Text('所得税'), subtitle: const Text('年度・PDF資料管理'),
             children: [Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

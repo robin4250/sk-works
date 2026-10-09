@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sk_works/features/settings/company_payroll_rate_pending_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter/material.dart';
@@ -13,11 +15,28 @@ Map<String, dynamic> value(String kind, {int employee = 500000, int employer = 8
     'document_hash': 'test-doc', 'applicability': {'business_category': '一般'}},
 };
 
+class MemoryPendingStore implements PayrollRatePendingStore {
+  PayrollRatePendingWrite? pending;
+  bool failWrite = false;
+  @override
+  Future<PayrollRatePendingWrite?> read(String companyId) async => pending?.companyId == companyId ? pending : null;
+  @override
+  Future<void> write(PayrollRatePendingWrite value) async {
+    if (failWrite) throw StateError('disk full');
+    pending = value;
+  }
+  @override
+  Future<void> clear(String companyId) async {
+    if (pending?.companyId == companyId) pending = null;
+  }
+}
+
 class FakeRatesRepository implements CompanyPayrollRatesRepository {
   CompanyPayrollRatesData data = const CompanyPayrollRatesData(canEdit: true, items: [], candidates: [], history: []);
   final List<Map<String, dynamic>> scopes = [];
   final List<String> applied = [];
   final List<Map<String, dynamic>> saved = [];
+  final pendingStore = MemoryPendingStore();
   bool failRead = false;
   bool failSave = false;
   bool failAfterSend = false;
@@ -61,7 +80,7 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
 }
 
 Future<void> openPage(WidgetTester tester, FakeRatesRepository repository) async {
-  await tester.pumpWidget(MaterialApp(home: CompanyPayrollRatesPage(companyId: 'company', repository: repository)));
+  await tester.pumpWidget(MaterialApp(home: CompanyPayrollRatesPage(companyId: 'company', repository: repository, pendingStore: repository.pendingStore)));
   await tester.pumpAndSettle();
 }
 
@@ -534,6 +553,60 @@ void main() {
     expect(find.text('会社の適用条件を編集'), findsNothing);
     expect(find.text('編集'), findsNothing);
     expect(repository.scopes, hasLength(1));
+  });
+
+  test('restarted durable store keeps ID and isolates actor/company; old actor cannot clear', () async {
+    SharedPreferences.setMockInitialValues({});
+    var actor = 'actor-a';
+    final initial = SharedPreferencesPayrollRatePendingStore(actorId: () => actor);
+    final operation = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
+      itemId: 'original-uuid', origin: 'manual', value: value('custom'));
+    await initial.write(operation);
+    final restarted = SharedPreferencesPayrollRatePendingStore(actorId: () => actor);
+    expect((await restarted.read('company'))!.itemId, 'original-uuid');
+    expect(await restarted.read('other-company'), isNull);
+    actor = 'actor-b';
+    await expectLater(initial.clear('company'), throwsStateError);
+    expect(await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'), isNull);
+    actor = 'actor-a';
+    expect((await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'))!.itemId, 'original-uuid');
+    await restarted.clear('company');
+    expect(await restarted.read('company'), isNull);
+  });
+
+  testWidgets('restored unknown custom stays blocked on reopening and old read', (tester) async {
+    final repository = FakeRatesRepository();
+    repository.pendingStore.pending = PayrollRatePendingWrite(companyId: 'company',
+      expectedVersion: 0, itemId: 'original-uuid', origin: 'manual', value: value('custom'));
+    await openPage(tester, repository);
+    await reveal(tester, find.text('料率項目を追加'));
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '料率項目を追加')).onPressed, isNull);
+    await tester.pumpWidget(const SizedBox());
+    await openPage(tester, repository);
+    await reveal(tester, find.text('料率項目を追加'));
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '料率項目を追加')).onPressed, isNull);
+    expect(repository.saved, isEmpty);
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [
+      CompanyPayrollRateItem(id: 'original-uuid', version: 1, origin: 'manual', value: value('custom')),
+    ], candidates: [], history: []);
+    await reveal(tester, find.text('確認値を再読み込み'));
+    await tester.tap(find.text('確認値を再読み込み'));
+    await tester.pumpAndSettle();
+    expect(repository.pendingStore.pending, isNull);
+  });
+
+  testWidgets('failed durable record prevents scope RPC transmission', (tester) async {
+    final repository = FakeRatesRepository();
+    repository.pendingStore.failWrite = true;
+    await openPage(tester, repository);
+    await tester.tap(find.text('会社の適用条件を編集'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('会社条件を確認'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して保存'));
+    await tester.pumpAndSettle();
+    expect(repository.scopes, isEmpty);
+    expect(repository.saved, isEmpty);
   });
 
 }
