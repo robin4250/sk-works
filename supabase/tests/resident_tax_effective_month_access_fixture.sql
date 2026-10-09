@@ -12,3 +12,6 @@ $$;
 create function private.payroll_settings_allowed(cid uuid,wid uuid,cap text) returns boolean language sql stable security definer set search_path='' as $$
  select auth.uid() is not null and private.payroll_allowed(cid,cap) and exists(select 1 from public.workers w where w.id=wid and w.company_id=cid)
 $$;
+
+-- Match the live payroll workflow vocabulary; no synthetic approved state.
+alter table public.payroll_statements add constraint fixture_payroll_workflow_state check(workflow_state in ('legacy','draft','finalized'));

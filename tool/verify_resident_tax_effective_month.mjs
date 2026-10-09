@@ -135,7 +135,7 @@ try {
  const manual=await statement(months.current);
  await actor(editor);await save(5,'timeline',months.current,[{effective_month:months.current,amount_yen:8000}]);
  assert.deepEqual(await statement(months.current),manual);
- await db.query("update public.payroll_statements set automatic_calculation=true,workflow_state='approved' where id=$1",[manual.id]);
+ await db.query("update public.payroll_statements set automatic_calculation=true,workflow_state='finalized' where id=$1",[manual.id]);
  const finalized=await statement(months.current);
  await actor(editor);await save(6,'timeline',months.current,[{effective_month:months.current,amount_yen:9000}]);
  assert.deepEqual(await statement(months.current),finalized);
