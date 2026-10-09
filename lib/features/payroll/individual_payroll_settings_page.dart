@@ -489,40 +489,46 @@ class _IndividualPayrollSettingsPageState
                     ),
                   ),
                   SizedBox(height: 12),
-                  _sectionTitle(SkoLanguageController.tr('手当')),
-                  for (var i = 1; i <= 3; i++) ...[
-                    TextFormField(
-                      controller: _controllers['allowance_name_$i'],
-                      enabled: workspace.canEdit,
-                      maxLength: 100,
-                      decoration: InputDecoration(
-                        labelText: SkoLanguageController.trParams('手当{number} 名称', {'number': i}),
-                        border: OutlineInputBorder(),
+                  _moneySection(
+                    title: '支給',
+                    icon: Icons.add_circle_outline,
+                    children: [
+                      _sectionTitle(SkoLanguageController.tr('手当')),
+                      for (var i = 1; i <= 3; i++) ...[
+                        TextFormField(
+                          controller: _controllers['allowance_name_$i'],
+                          enabled: workspace.canEdit,
+                          maxLength: 100,
+                          decoration: InputDecoration(
+                            labelText: SkoLanguageController.trParams('手当{number} 名称', {'number': i}),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        _amountField('allowance_$i', SkoLanguageController.trParams('手当{number} 金額', {'number': i})),
+                      ],
+                      _amountField('family_monthly', SkoLanguageController.tr('家族手当・月額（既存設定）')),
+                      Text(SkoLanguageController.tr('この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。')),
+                      _amountField('transport_monthly', SkoLanguageController.tr('交通費・月額')),
+                      SizedBox(height: 12),
+                      _sectionTitle(SkoLanguageController.tr('追加支給')),
+                      for (var i = 0; i < _customEarnings.length; i++)
+                        _customMoneyField(
+                          _customEarnings,
+                          i,
+                          workspace.canEdit,
+                          sectionName: '支給',
+                        ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: workspace.canEdit
+                              ? () => _addCustomMoney(_customEarnings)
+                              : null,
+                          icon: Icon(Icons.add),
+                          label: Text(SkoLanguageController.tr('支給項目を追加')),
+                        ),
                       ),
-                    ),
-                    _amountField('allowance_$i', SkoLanguageController.trParams('手当{number} 金額', {'number': i})),
-                  ],
-                  _amountField('family_monthly', SkoLanguageController.tr('家族手当・月額（既存設定）')),
-                  Text(SkoLanguageController.tr('この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。')),
-                  _amountField('transport_monthly', SkoLanguageController.tr('交通費・月額')),
-                  SizedBox(height: 12),
-                  _sectionTitle(SkoLanguageController.tr('追加支給')),
-                  for (var i = 0; i < _customEarnings.length; i++)
-                    _customMoneyField(
-                      _customEarnings,
-                      i,
-                      workspace.canEdit,
-                      sectionName: '支給',
-                    ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: workspace.canEdit
-                          ? () => _addCustomMoney(_customEarnings)
-                          : null,
-                      icon: Icon(Icons.add),
-                      label: Text(SkoLanguageController.tr('支給項目を追加')),
-                    ),
+                    ],
                   ),
                   SizedBox(height: 12),
                   _sectionTitle(SkoLanguageController.tr('会社共通の給料日')),
@@ -577,27 +583,36 @@ class _IndividualPayrollSettingsPageState
                     Text(SkoLanguageController.tr('日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。')),
                   ],
                   SizedBox(height: 12),
-                  _sectionTitle(SkoLanguageController.tr('控除')),
-                  _amountField('income_tax_monthly', SkoLanguageController.tr('所得税・月額')),
-                  _amountField('resident_tax_monthly', SkoLanguageController.tr('住民税・月額')),
-                  _amountField('social_insurance_monthly', SkoLanguageController.tr('社会保険・月額')),
-                  SizedBox(height: 4),
-                  for (var i = 0; i < _customDeductions.length; i++)
-                    _customMoneyField(
-                      _customDeductions,
-                      i,
-                      workspace.canEdit,
-                      sectionName: '控除',
-                    ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: workspace.canEdit
-                          ? () => _addCustomMoney(_customDeductions)
-                          : null,
-                      icon: Icon(Icons.add),
-                      label: Text(SkoLanguageController.tr('控除項目を追加')),
-                    ),
+                  _moneySection(
+                    title: '控除',
+                    icon: Icons.remove_circle_outline,
+                    children: [
+                      _sectionTitle(SkoLanguageController.tr('税・社会保険の月額設定')),
+                      _amountField('income_tax_monthly', SkoLanguageController.tr('所得税・月額')),
+                      _amountField('social_insurance_monthly', SkoLanguageController.tr('社会保険・月額')),
+                      SizedBox(height: 12),
+                      _sectionTitle(SkoLanguageController.tr('住民税')),
+                      _amountField('resident_tax_monthly', SkoLanguageController.tr('住民税・月額')),
+                      SizedBox(height: 12),
+                      _sectionTitle(SkoLanguageController.tr('その他の控除')),
+                      for (var i = 0; i < _customDeductions.length; i++)
+                        _customMoneyField(
+                          _customDeductions,
+                          i,
+                          workspace.canEdit,
+                          sectionName: '控除',
+                        ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: workspace.canEdit
+                              ? () => _addCustomMoney(_customDeductions)
+                              : null,
+                          icon: Icon(Icons.add),
+                          label: Text(SkoLanguageController.tr('控除項目を追加')),
+                        ),
+                      ),
+                    ],
                   ),
                   SizedBox(height: 16),
                   FilledButton.icon(
@@ -751,6 +766,34 @@ class _IndividualPayrollSettingsPageState
       ),
     );
   }
+
+  Widget _moneySection({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
+      borderRadius: BorderRadius.circular(12),
+      color: Theme.of(context).colorScheme.surface,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(SkoLanguageController.tr(title),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const Divider(height: 24),
+        ...children,
+      ],
+    ),
+  );
 
   Widget _sectionTitle(String value) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
