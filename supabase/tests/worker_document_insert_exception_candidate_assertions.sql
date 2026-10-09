@@ -5,6 +5,7 @@ create function auth.uid() returns uuid language sql stable as $$select nullif(c
 create function private.try_uuid(v text) returns uuid language plpgsql immutable as $$begin return v::uuid;exception when invalid_text_representation then return null;end$$;
 create table public.company_members(company_id uuid,user_id uuid);
 create table public.workers(id uuid primary key,company_id uuid,user_id uuid,status text);
+alter table public.workers add column name text,add column fixture_ungranted text;
 create table public.document_requirements(id uuid primary key,company_id uuid,is_active boolean);
 create table public.worker_document_statuses(id uuid primary key,company_id uuid,worker_id uuid,requirement_id uuid,attachment_path text);
 create table private.feature_grants(company_id uuid,user_id uuid,feature text);
@@ -29,11 +30,12 @@ create function private.fixture_worker_document_insert_match(p_name text) return
  and (w.user_id=auth.uid() or private.has_company_feature(s.company_id,'can_manage_people')))$$;
 -- Synthetic equivalents of existing scoped readable business rows; no candidate
 -- helper is SECURITY DEFINER and no new production table grants are proposed.
-grant select on public.company_members,public.workers,public.document_requirements,public.worker_document_statuses to authenticated;
+grant select on public.company_members,public.document_requirements,public.worker_document_statuses to authenticated;
+grant select(id,company_id,name,status,user_id) on public.workers to authenticated;
 alter table public.company_members enable row level security;
 create policy fixture_member_read on public.company_members for select to authenticated using(user_id=auth.uid());
 alter table public.workers enable row level security;
-create policy fixture_worker_read on public.workers for select to authenticated using(user_id=auth.uid() or private.has_company_feature(company_id,'can_manage_people'));
+create policy fixture_worker_read on public.workers for select to authenticated using(exists(select 1 from public.company_members cm where cm.company_id=workers.company_id and cm.user_id=auth.uid()));
 alter table public.document_requirements enable row level security;
 create policy fixture_requirement_read on public.document_requirements for select to authenticated using(exists(select 1 from public.company_members cm where cm.company_id=document_requirements.company_id and cm.user_id=auth.uid()));
 alter table public.worker_document_statuses enable row level security;
@@ -65,7 +67,7 @@ insert into company_members values
  ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000002'),
  ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000003'),
  ('10000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000004');
-insert into workers values
+insert into workers(id,company_id,user_id,status) values
  ('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','active'),
  ('30000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000003','active');
 insert into document_requirements values
@@ -78,6 +80,11 @@ insert into worker_document_statuses values
  ('50000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',null),
  ('50000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000003',null);
 insert into private.feature_grants values('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000002','can_manage_people');
+-- Metadata-only reproduction of the observed account guard on readable rows.
+create policy account_deletion_access_guard on public.workers as restrictive for all to authenticated using((select private.account_access_allowed())) with check((select private.account_access_allowed()));
+create policy account_deletion_access_guard on public.company_members as restrictive for all to authenticated using((select private.account_access_allowed())) with check((select private.account_access_allowed()));
+create policy account_deletion_access_guard on public.document_requirements as restrictive for all to authenticated using((select private.account_access_allowed())) with check((select private.account_access_allowed()));
+create policy account_deletion_access_guard on public.worker_document_statuses as restrictive for all to authenticated using((select private.account_access_allowed())) with check((select private.account_access_allowed()));
 create table fixture_checks(label text primary key);
 create function public.fixture_try_insert(p_label text,p_bucket text,p_path text,p_allowed boolean) returns void language plpgsql security invoker as $$
 declare ok boolean:=true;msg text;begin
@@ -224,3 +231,95 @@ do $$begin
  and pg_get_expr(p.polwithcheck,p.polrelid) is not distinct from h.chk)) then raise exception 'Retention policies changed';end if;
  if exists(select 1 from storage.objects o join private.retained_objects r on r.name=o.name where o.payload<>'synthetic') then raise exception 'Retained payload changed';end if;
 end $$;
+-- Column ACL is deliberately narrower than table SELECT, as observed in live metadata.
+select set_config('fixture.uid','20000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$declare n integer;begin
+ select count(*) into n from (select id,company_id,name,status,user_id from public.workers) scoped;
+ if n<>2 then raise exception 'Observed company-scoped worker columns unreadable';end if;
+ insert into fixture_checks values('worker_narrow_columns_readable');
+ begin perform * from public.workers;raise exception 'Whole worker row exposed';
+ exception when insufficient_privilege then insert into fixture_checks values('worker_select_star_denied');end;
+ begin perform fixture_ungranted from public.workers;raise exception 'Extra worker field exposed';
+ exception when insufficient_privilege then insert into fixture_checks values('worker_extra_column_denied');end;
+end $$;
+reset role;
+-- D is a separate bounded ordinary-document candidate, not a name-based release.
+-- Empty/default-OFF private allowlist; no setter/UI or automatic company enable.
+create table private.fixture_worker_document_direct_allowlist(
+ company_id uuid not null,requirement_id uuid not null,enabled boolean not null default false,
+ fixture_ungranted text,primary key(company_id,requirement_id));
+alter table private.fixture_worker_document_direct_allowlist enable row level security;
+revoke all on private.fixture_worker_document_direct_allowlist from public,anon,authenticated;
+grant select(company_id,requirement_id,enabled) on private.fixture_worker_document_direct_allowlist to authenticated;
+create policy own_company_gate_read on private.fixture_worker_document_direct_allowlist for select to authenticated using(
+ private.account_access_allowed() and exists(select 1 from public.company_members cm
+ where cm.company_id=fixture_worker_document_direct_allowlist.company_id and cm.user_id=auth.uid()));
+create policy fixture_explicit_license_allowlist on storage.objects as restrictive for insert to authenticated with check(
+ bucket_id<>'worker-documents' or exists(select 1 from private.fixture_worker_document_direct_allowlist a
+ where a.company_id=private.try_uuid(split_part(storage.objects.name,'/',1))
+ and a.requirement_id=private.try_uuid(split_part(storage.objects.name,'/',3)) and a.enabled));
+set role authenticated;
+select fixture_try_insert('D_empty_allowlist_self_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/empty-d.jpg',false);
+select set_config('fixture.uid','20000000-0000-0000-0000-000000000002',false);
+select fixture_try_insert('D_empty_allowlist_manager_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/empty-manager-d.jpg',false);
+reset role;
+insert into private.fixture_worker_document_direct_allowlist(company_id,requirement_id) values
+ ('10000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001');
+select set_config('fixture.uid','20000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+select fixture_try_insert('D_default_off_self_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/off-d.jpg',false);
+reset role;
+-- Trusted test fixture author enables only the synthetic license tuple, never real IDs.
+update private.fixture_worker_document_direct_allowlist set enabled=true;
+alter table public.document_requirements add column name text,add column scope text default 'internal';
+update public.document_requirements set name='Synthetic license' where id='40000000-0000-0000-0000-000000000001';
+insert into public.document_requirements(id,company_id,is_active,name,scope) values
+ ('40000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000001',true,'Synthetic bank','internal');
+set role authenticated;
+select fixture_try_insert('D_explicit_license_self_allowed','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/selected-d.jpg',true);
+select fixture_try_insert('D_other_internal_requirement_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000004/own-upload/bank-d.jpg',false);
+select set_config('fixture.uid','20000000-0000-0000-0000-000000000002',false);
+select fixture_try_insert('D_explicit_license_manager_allowed','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000002/40000000-0000-0000-0000-000000000001/own-upload/selected-manager-d.jpg',true);
+select fixture_try_insert('D_manager_other_requirement_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000002/40000000-0000-0000-0000-000000000004/own-upload/other-manager-d.jpg',false);
+reset role;
+update public.document_requirements set name='Synthetic license' where id='40000000-0000-0000-0000-000000000004';
+update public.document_requirements set name='Renamed approved slot' where id='40000000-0000-0000-0000-000000000001';
+select set_config('fixture.uid','20000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+select fixture_try_insert('D_same_name_other_id_stays_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000004/own-upload/same-name-d.jpg',false);
+select fixture_try_insert('D_renamed_approved_slot_same_id_allowed','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/renamed-d.jpg',true);
+do $$begin
+ begin insert into private.fixture_worker_document_direct_allowlist(company_id,requirement_id,enabled)
+ values('10000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000004',true);
+ raise exception 'Client can enable another requirement';exception when insufficient_privilege then insert into fixture_checks values('D_client_allowlist_insert_denied');end;
+ begin update private.fixture_worker_document_direct_allowlist set enabled=false;
+ raise exception 'Client can toggle internal allowlist';exception when insufficient_privilege then insert into fixture_checks values('D_client_allowlist_update_denied');end;
+ begin delete from private.fixture_worker_document_direct_allowlist;
+ raise exception 'Client can delete internal allowlist';exception when insufficient_privilege then insert into fixture_checks values('D_client_allowlist_delete_denied');end;
+ begin perform * from private.fixture_worker_document_direct_allowlist;
+ raise exception 'Internal extra metadata exposed';exception when insufficient_privilege then insert into fixture_checks values('D_allowlist_extra_column_denied');end;
+end $$;
+reset role;
+insert into private.fixture_worker_document_direct_allowlist(company_id,requirement_id,enabled) values
+ ('10000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',true);
+set role authenticated;
+do $$begin
+ if (select count(*) from private.fixture_worker_document_direct_allowlist where company_id='10000000-0000-0000-0000-000000000002')<>0 then raise exception 'Other company gates readable';end if;
+ insert into fixture_checks values('D_other_company_allowlist_read_denied');
+end $$;
+reset role;
+set role anon;
+do $$begin
+ begin perform company_id,requirement_id,enabled from private.fixture_worker_document_direct_allowlist;
+ raise exception 'Anonymous internal gate read allowed';exception when insufficient_privilege then insert into fixture_checks values('D_anonymous_allowlist_read_denied');end;
+end $$;
+reset role;
+insert into private.restricted_users values('20000000-0000-0000-0000-000000000001');
+set role authenticated;
+select fixture_try_insert('D_restricted_user_selected_license_denied','worker-documents','10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/40000000-0000-0000-0000-000000000001/own-upload/restricted-d.jpg',false);
+do $$begin
+ if exists(select 1 from private.fixture_worker_document_direct_allowlist) then raise exception 'Restricted user can read internal gates';end if;
+ insert into fixture_checks values('D_restricted_allowlist_read_denied');
+end $$;
+reset role;
