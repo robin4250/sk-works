@@ -11,19 +11,30 @@ try{
  assert.equal((await setup.query("select to_regclass('public.generation_setting_issues') as existing")).rows[0].existing,null);
  await setup.query(fs.readFileSync('supabase/tests/generation_setting_issue_notification_fixture.sql','utf8'));
  await setup.query(fs.readFileSync('supabase/migrations/20261009205616_generation_setting_issue_first_notification.sql','utf8'));
- await barrier.query('begin;lock table public.generation_setting_issues in share mode');
- const sql="select private.upsert_generation_setting_issue('10000000-0000-0000-0000-000000000001','race','payroll','Fixture title','Fixture body','payroll_settings',null)";
- const operations=[first.query(sql),second.query(sql)];
- const deadline=Date.now()+15000;
- while(true){
-  const n=Number((await setup.query("select count(*) as n from pg_stat_activity where application_name in ('first','second') and wait_event_type='Lock' and wait_event='relation'")).rows[0].n);
-  if(n===2)break;
-  if(Date.now()>deadline)throw new Error('both actual calls must reach blocked INSERT after absent-row SELECT');
-  await new Promise(resolve=>setTimeout(resolve,25));
+ async function race(key,expected){
+  await barrier.query('begin;lock table public.generation_setting_issues in share mode');
+  const sql="select private.upsert_generation_setting_issue('10000000-0000-0000-0000-000000000001',$1,'payroll','Fixture title','Fixture body','payroll_settings',null)";
+  const before=Number((await setup.query('select count(*) as n from public.app_notifications')).rows[0].n);
+  const operations=[first.query(sql,[key]),second.query(sql,[key])];
+  const deadline=Date.now()+15000;
+  while(true){
+   const n=Number((await setup.query("select count(*) as n from pg_stat_activity where application_name in ('first','second') and wait_event_type='Lock' and wait_event='relation'")).rows[0].n);
+   if(n===2)break;
+   if(Date.now()>deadline)throw new Error('both actual calls must reach blocked INSERT');
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  await barrier.query('commit');await Promise.all(operations);
+  assert.equal(Number((await setup.query('select count(*) as n from public.generation_setting_issues where issue_key=$1',[key])).rows[0].n),1);
+  const notifications=Number((await setup.query('select count(*) as n from public.app_notifications')).rows[0].n)-before;
+  assert.equal(notifications,expected);
+  return notifications;
  }
- await barrier.query('commit');await Promise.all(operations);
- assert.equal(Number((await setup.query("select count(*) as n from public.generation_setting_issues where issue_key='race'")).rows[0].n),1);
- const notifications=Number((await setup.query('select count(*) as n from public.app_notifications')).rows[0].n);
- assert.equal(notifications,2,'known defect: simple NULL fix permits both absent-row calls to notify');
- console.log(JSON.stringify({postgresMajor:17,issueRows:1,initialNotifications:notifications,status:'KNOWN_DUPLICATE: minimal fix is not complete concurrent adoption'}));
+ const minimal=await race('minimal',2);
+ console.log(JSON.stringify({postgresMajor:17,issueRows:1,initialNotifications:minimal,status:'KNOWN_DUPLICATE: minimal fix is not complete concurrent adoption'}));
+ await setup.query(fs.readFileSync('supabase/tests/generation_setting_issue_atomic_candidate.sql','utf8'));
+ const atomic=await race('atomic',1);
+ await setup.query("update public.generation_setting_issues set resolved_at=now() where issue_key='atomic'");
+ const reopen=await race('atomic',1);
+ const active=await race('atomic',0);
+ console.log(JSON.stringify({postgresMajor:17,candidate:'atomic issue-row winner',initialNotifications:atomic,reopenNotifications:reopen,activeNotifications:active,status:'SOURCE_CANDIDATE_ONLY: payroll refresh transaction ordering remains separate'}));
 }finally{await barrier.query('rollback').catch(()=>{});await Promise.all(clients.map(c=>c.end()));}
