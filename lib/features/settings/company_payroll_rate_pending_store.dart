@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/supabase_backend.dart';
 import 'company_payroll_rates_repository.dart';
@@ -12,11 +14,14 @@ abstract class PayrollRatePendingStore {
   Future<void> clear(PayrollRatePendingWrite expected);
 }
 
-/// Recovery records belong to the current actor and company, including after restart.
-class SharedPreferencesPayrollRatePendingStore implements PayrollRatePendingStore {
-  SharedPreferencesPayrollRatePendingStore({String? Function()? actorId})
-      : _actorId = actorId ?? (() => SupabaseBackend.client.auth.currentUser?.id);
+/// Flushes recovery records before the RPC is sent; one actor/company owns each file.
+class FilePayrollRatePendingStore implements PayrollRatePendingStore {
+  FilePayrollRatePendingStore({String? Function()? actorId,
+    Future<Directory> Function()? directory})
+      : _actorId = actorId ?? (() => SupabaseBackend.client.auth.currentUser?.id),
+        _directory = directory ?? getApplicationSupportDirectory;
   final String? Function() _actorId;
+  final Future<Directory> Function() _directory;
   String? _boundActor;
   static final Map<String, Future<void>> _locks = {};
 
@@ -44,30 +49,35 @@ class SharedPreferencesPayrollRatePendingStore implements PayrollRatePendingStor
     if (actor == null || actor.isEmpty) throw StateError('料率設定の利用者を確認できません');
     _boundActor ??= actor;
     if (_boundActor != actor) throw StateError('料率設定の利用者が変わりました');
-    return 'payroll-rate-pending-v1:${jsonEncode([actor, companyId])}';
+    return jsonEncode([actor, companyId]);
+  }
+
+  Future<File> _file(String key) async {
+    final root = await _directory();
+    final folder = Directory('${root.path}/payroll-rate-pending-v1');
+    await folder.create(recursive: true);
+    return File('${folder.path}/${sha256.convert(utf8.encode(key))}.json');
   }
 
   @override
   Future<PayrollRatePendingWrite?> read(String companyId) async {
     final key = _key(companyId);
     return _locked(key, () async {
-    final preferences = await SharedPreferences.getInstance();
-    if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
-    await preferences.reload();
-    if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
-    final raw = preferences.getString(key);
-    if (raw == null) return null;
-    final value = payrollRateObject(jsonDecode(raw));
-    if (value['company_id'] != companyId || value['expected_version'] is! int ||
-        (value['expected_version'] as int) < 0 ||
-        (value['item_id'] != null && value['item_id'] is! String) ||
-        (value['origin'] != null && value['origin'] is! String)) {
-      throw const FormatException('保存結果の確認情報を読み込めません');
-    }
-    return PayrollRatePendingWrite(companyId: companyId,
-      expectedVersion: value['expected_version'] as int,
-      value: payrollRateObject(value['value']), itemId: value['item_id'] as String?,
-      origin: value['origin'] as String?);
+      final file = await _file(key);
+      if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
+      if (!await file.exists()) return null;
+      final value = payrollRateObject(jsonDecode(await file.readAsString()));
+      if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
+      if (value['company_id'] != companyId || value['expected_version'] is! int ||
+          (value['expected_version'] as int) < 0 ||
+          (value['item_id'] != null && value['item_id'] is! String) ||
+          (value['origin'] != null && value['origin'] is! String)) {
+        throw const FormatException('保存結果の確認情報を読み込めません');
+      }
+      return PayrollRatePendingWrite(companyId: companyId,
+        expectedVersion: value['expected_version'] as int,
+        value: payrollRateObject(value['value']), itemId: value['item_id'] as String?,
+        origin: value['origin'] as String?);
     });
   }
 
@@ -75,12 +85,11 @@ class SharedPreferencesPayrollRatePendingStore implements PayrollRatePendingStor
   Future<void> write(PayrollRatePendingWrite pending) async {
     final key = _key(pending.companyId);
     return _locked(key, () async {
-    final preferences = await SharedPreferences.getInstance();
-    if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
-    await preferences.reload();
-    if (preferences.getString(key) != null) throw StateError('先の保存結果を確認してください');
-    final saved = await preferences.setString(key, jsonEncode(_value(pending)));
-    if (!saved || key != _key(pending.companyId)) throw StateError('保存結果の確認情報を保持できません');
+      final file = await _file(key);
+      if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
+      if (await file.exists()) throw StateError('先の保存結果を確認してください');
+      await file.writeAsString(jsonEncode(_value(pending)), flush: true);
+      if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
     });
   }
 
@@ -89,14 +98,13 @@ class SharedPreferencesPayrollRatePendingStore implements PayrollRatePendingStor
     final companyId = expected.companyId;
     final key = _key(companyId);
     return _locked(key, () async {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.reload();
-      final raw = preferences.getString(key);
-      if (key != _key(companyId) || raw == null ||
-          !payrollRateValuesEqual(jsonDecode(raw), _value(expected))) {
+      final file = await _file(key);
+      if (!await file.exists()) throw StateError('確認対象の保存結果がありません');
+      final raw = jsonDecode(await file.readAsString());
+      if (key != _key(companyId) || !payrollRateValuesEqual(raw, _value(expected))) {
         throw StateError('確認対象の保存結果が変わりました');
       }
-      if (!await preferences.remove(key)) throw StateError('保存結果の確認情報を更新できません');
+      await file.delete();
     });
   }
 }

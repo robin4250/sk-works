@@ -54,7 +54,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   void initState() {
     super.initState();
     _repository = widget.repository ?? SupabaseCompanyPayrollRatesRepository();
-    _pendingStore = widget.pendingStore ?? SharedPreferencesPayrollRatePendingStore();
+    _pendingStore = widget.pendingStore ?? FilePayrollRatePendingStore();
     _load();
   }
 
@@ -63,7 +63,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.companyId != widget.companyId || oldWidget.repository != widget.repository || oldWidget.pendingStore != widget.pendingStore) {
       _repository = widget.repository ?? SupabaseCompanyPayrollRatesRepository();
-      _pendingStore = widget.pendingStore ?? SharedPreferencesPayrollRatePendingStore();
+      _pendingStore = widget.pendingStore ?? FilePayrollRatePendingStore();
       _data = null;
       _pendingWrite = null;
       _recoveryNotice = null;

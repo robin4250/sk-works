@@ -33,7 +33,7 @@ Supabase Dart RPC公式docsを確認。changelog.mdは取得時unsupported conte
 
 ## 通信断後の変更停止
 
-送信前に会社・項目ID（自由項目UUIDを含む）・取得版・値・保存originを保持する。保存／候補適用／会社条件保存の応答不明時は全変更操作を停止し、自動再送しない。明示再読込で同じIDの期待版+1、originと全値（会社条件は版と全値）が一致した場合だけ回復する。未存在・旧版・競合版・取得失敗は未保存の証明ではなく停止を保持する。自由項目は結果不明のまま別UUIDで作り直せない。送信前に既存SharedPreferencesへ利用者ID＋会社IDで永続記録し、記録失敗時はRPCを送信しない。画面再入場とアプリ再起動でgateを復元する。ログアウト/利用者変更/他社は別キーとなり、前利用者の記録を表示・削除しない。API取得権限の確認前に記録だけで保存成功へ昇格しない。確認済み応答又は実API照合後だけ削除し、削除失敗もgateを保持する。
+送信前に会社・項目ID（自由項目UUIDを含む）・取得版・値・保存originを保持する。保存／候補適用／会社条件保存の応答不明時は全変更操作を停止し、自動再送しない。明示再読込で同じIDの期待版+1、originと全値（会社条件は版と全値）が一致した場合だけ回復する。未存在・旧版・競合版・取得失敗は未保存の証明ではなく停止を保持する。自由項目は結果不明のまま別UUIDで作り直せない。送信前に既存path_providerのApplication Support下でflush済みファイルへ利用者ID＋会社IDで永続記録し、記録失敗時はRPCを送信しない。画面再入場とアプリ再起動でgateを復元する。ログアウト/利用者変更/他社は別キーとなり、前利用者の記録を表示・削除しない。API取得権限の確認前に記録だけで保存成功へ昇格しない。確認済み応答又は実API照合後だけ削除し、削除失敗もgateを保持する。
 
 read RPCのPGRST202/42883かつ対象関数名一致だけを「準備中：この会社では料率設定をまだ利用できません」と表示する。権限・通信エラーを未導入へ読み替えず、取得済み設定も隠す。再取得で閲覧者となった場合は保存成立を確認しても変更操作を出さない。閲覧者は同社の料率・適用月・情報元・年度PDFを読み取り、保存・適用・条件編集・新規登録を行わない。
 
@@ -44,3 +44,5 @@ read RPCのPGRST202/42883かつ対象関数名一致だけを「準備中：こ�
 完全受信したPostgrestExceptionのSQLSTATE `22023`（原典validate_value/scope等の入力拒否）、`40001`（原典設定/会社条件版競合）、`23505`（原典payroll_rate_label/standard_kindのunique制約）、`42501`（原典assert_adminの権限拒否）だけをtransaction拒否として分類する。原典は20261009151946_company_payroll_rate_registry.sql、HTTP error mapping根拠はhttps://docs.postgrest.org/en/stable/references/errors.html と https://supabase.com/docs/guides/api/rest/postgrest-error-codes。これらは同一scope・世代・期待操作が維持された場合にpendingをCAS削除し、古い表示とcan_editを破棄してfresh readする。新しいcan_edit取得前に変更操作を復活させない。重複名称拒否→再取得→名称修正保存fixtureを含む。
 
 network/TimeoutException/FormatException、PGRST003等の汎用APIエラー、未知SQL/500は不明応答のまま保持する。旧read・未存在ではtimeout操作を解除しない。確定拒否のローカル記録削除に失敗した場合も変更停止を維持する。
+
+SharedPreferences公式READMEは戻り後のdisk永続化を保証しないため採用せず、既存path_provider2.1.6＋crypto3.0.7＋dart:ioでactor/companyのSHA256キーを用いた専用JSONをApplication Supportに保存する。File.writeAsString(flush:true)完了後にだけRPCを送信する（https://api.dart.dev/dart-io/File/writeAsString.html）。途中で書込に失敗したfileは成功扱いせず、読込不正は変更操作を閉じる。電源断・複数process・別端末のDB idempotencyまで保証するものではない。

@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/settings/company_payroll_rate_pending_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -565,20 +565,21 @@ void main() {
   });
 
   test('restarted durable store keeps ID and isolates actor/company; old actor cannot clear', () async {
-    SharedPreferences.setMockInitialValues({});
+    final directory = await Directory.systemTemp.createTemp('sko-rate-pending-');
+    addTearDown(() => directory.delete(recursive: true));
     var actor = 'actor-a';
-    final initial = SharedPreferencesPayrollRatePendingStore(actorId: () => actor);
+    final initial = FilePayrollRatePendingStore(actorId: () => actor, directory: () async => directory);
     final operation = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
       itemId: 'original-uuid', origin: 'manual', value: value('custom'));
     await initial.write(operation);
-    final restarted = SharedPreferencesPayrollRatePendingStore(actorId: () => actor);
+    final restarted = FilePayrollRatePendingStore(actorId: () => actor, directory: () async => directory);
     expect((await restarted.read('company'))!.itemId, 'original-uuid');
     expect(await restarted.read('other-company'), isNull);
     actor = 'actor-b';
     await expectLater(initial.clear(operation), throwsStateError);
-    expect(await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'), isNull);
+    expect(await FilePayrollRatePendingStore(actorId: () => actor, directory: () async => directory).read('company'), isNull);
     actor = 'actor-a';
-    expect((await SharedPreferencesPayrollRatePendingStore(actorId: () => actor).read('company'))!.itemId, 'original-uuid');
+    expect((await FilePayrollRatePendingStore(actorId: () => actor, directory: () async => directory).read('company'))!.itemId, 'original-uuid');
     await restarted.clear(operation);
     expect(await restarted.read('company'), isNull);
   });
@@ -644,15 +645,16 @@ void main() {
   });
 
   test('two store instances serialize writes and cleanup rejects a different operation', () async {
-    SharedPreferences.setMockInitialValues({});
-    final a = SharedPreferencesPayrollRatePendingStore(actorId: () => 'actor');
-    final b = SharedPreferencesPayrollRatePendingStore(actorId: () => 'actor');
+    final directory = await Directory.systemTemp.createTemp('sko-rate-pending-');
+    addTearDown(() => directory.delete(recursive: true));
+    final a = FilePayrollRatePendingStore(actorId: () => 'actor', directory: () async => directory);
+    final b = FilePayrollRatePendingStore(actorId: () => 'actor', directory: () async => directory);
     final first = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
       itemId: 'first-id', origin: 'manual', value: value('custom'));
     final second = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
       itemId: 'second-id', origin: 'manual', value: value('custom'));
     var successfulWrites = 0;
-    Future<void> attempt(SharedPreferencesPayrollRatePendingStore store, PayrollRatePendingWrite record) async {
+    Future<void> attempt(FilePayrollRatePendingStore store, PayrollRatePendingWrite record) async {
       try {
         await store.write(record);
         successfulWrites++;
