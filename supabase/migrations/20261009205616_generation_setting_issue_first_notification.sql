@@ -13,27 +13,33 @@ CREATE OR REPLACE FUNCTION private.upsert_generation_setting_issue(cid uuid, p_i
 AS $function$
 declare
   existing_resolved timestamptz;
-  existed boolean:=false;
+  inserted boolean:=false;
+  should_notify boolean:=false;
   member record;
 begin
-  select true,resolved_at into existed,existing_resolved
-  from public.generation_setting_issues
-  where company_id=cid and issue_key=p_issue_key;
-
   insert into public.generation_setting_issues(
     company_id,issue_key,issue_type,title,body,action_key,action_id,resolved_at,updated_at
   )
   values(cid,p_issue_key,p_issue_type,p_title,p_body,p_action_key,p_action_id,null,now())
-  on conflict(company_id,issue_key) do update
-    set issue_type=excluded.issue_type,
-        title=excluded.title,
-        body=excluded.body,
-        action_key=excluded.action_key,
-        action_id=excluded.action_id,
-        resolved_at=null,
-        updated_at=now();
+  on conflict(company_id,issue_key) do nothing
+  returning true into inserted;
 
-  if not coalesce(existed,false) or existing_resolved is not null then
+  if coalesce(inserted,false) then
+    should_notify:=true;
+  else
+    select resolved_at into existing_resolved
+    from public.generation_setting_issues
+    where company_id=cid and issue_key=p_issue_key
+    for update;
+    if not found then raise exception 'generation setting issue disappeared' using errcode='40001'; end if;
+    should_notify:=existing_resolved is not null;
+    update public.generation_setting_issues
+    set issue_type=p_issue_type,title=p_title,body=p_body,
+        action_key=p_action_key,action_id=p_action_id,resolved_at=null,updated_at=now()
+    where company_id=cid and issue_key=p_issue_key;
+  end if;
+
+  if should_notify then
     for member in
       select cm.user_id
       from public.company_members cm

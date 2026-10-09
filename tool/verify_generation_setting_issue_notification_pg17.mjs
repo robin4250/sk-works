@@ -29,12 +29,23 @@ try{
   assert.equal(notifications,expected);
   return notifications;
  }
+ await setup.query(fs.readFileSync('supabase/tests/generation_setting_issue_minimal_comparison.sql','utf8'));
  const minimal=await race('minimal',2);
  console.log(JSON.stringify({postgresMajor:17,issueRows:1,initialNotifications:minimal,status:'KNOWN_DUPLICATE: minimal fix is not complete concurrent adoption'}));
- await setup.query(fs.readFileSync('supabase/tests/generation_setting_issue_atomic_candidate.sql','utf8'));
+ const candidate=fs.readFileSync('supabase/tests/generation_setting_issue_atomic_candidate.sql','utf8');
+ const migration=fs.readFileSync('supabase/migrations/20261009205616_generation_setting_issue_first_notification.sql','utf8');
+ assert.equal(candidate.slice(candidate.indexOf('CREATE OR REPLACE FUNCTION')),migration.slice(migration.indexOf('CREATE OR REPLACE FUNCTION')),'native atomic function is exact staged migration function');
+ await setup.query(candidate);
  const atomic=await race('atomic',1);
  await setup.query("update public.generation_setting_issues set resolved_at=now() where issue_key='atomic'");
  const reopen=await race('atomic',1);
  const active=await race('atomic',0);
+ await setup.query("create function private.fixture_reject_notification() returns trigger language plpgsql as $$begin raise exception 'fixture notification insert failure';end$$;create trigger fixture_reject_notification before insert on public.app_notifications for each row execute function private.fixture_reject_notification()");
+ const failSql="select private.upsert_generation_setting_issue('10000000-0000-0000-0000-000000000001',$1,'payroll','Fixture title','Fixture body','payroll_settings',null)";
+ await assert.rejects(first.query(failSql,['rollback']),/fixture notification insert failure/);
+ assert.equal(Number((await setup.query("select count(*) as n from public.generation_setting_issues where issue_key='rollback'")).rows[0].n),0);
+ await setup.query("update public.generation_setting_issues set resolved_at=now() where issue_key='atomic'");
+ await assert.rejects(first.query(failSql,['atomic']),/fixture notification insert failure/);
+ assert.equal((await setup.query("select resolved_at is not null as resolved from public.generation_setting_issues where issue_key='atomic'")).rows[0].resolved,true);
  console.log(JSON.stringify({postgresMajor:17,candidate:'atomic issue-row winner',initialNotifications:atomic,reopenNotifications:reopen,activeNotifications:active,status:'SOURCE_CANDIDATE_ONLY: payroll refresh transaction ordering remains separate'}));
 }finally{await barrier.query('rollback').catch(()=>{});await Promise.all(clients.map(c=>c.end()));}
