@@ -73,7 +73,6 @@ try {
  await db.exec(`alter table public.companies add column if not exists name text,
  add column company_seal_enabled boolean default true,add column updated_at timestamptz;
  update public.companies set name='株式会社テスト建設';
- create function private.account_access_allowed() returns boolean language sql as $$select true$$;
  create table public.payment_certificates(id uuid primary key,company_id uuid,snapshot jsonb);
  create function private.refresh_automatic_invoice(cid uuid,partner uuid,day date) returns void language plpgsql as $$
  declare existing public.invoices; snapshot_value jsonb;
