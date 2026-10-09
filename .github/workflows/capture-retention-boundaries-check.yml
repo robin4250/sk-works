@@ -4,6 +4,10 @@ on:
     paths:
       - 'supabase/tests/capture_retention_boundaries.sql'
       - 'tool/verify_capture_retention_boundaries.mjs'
+      - 'tool/verify_capture_storage_retention.mjs'
+      - 'supabase/tests/capture_storage_retention_bootstrap.sql'
+      - 'supabase/migrations/20260920211200_allow_orphan_attendance_evidence_cleanup.sql'
+      - 'supabase/migrations/20260920210500_restrict_attendance_evidence_privacy.sql'
       - '.github/workflows/capture-retention-boundaries-check.yml'
   workflow_dispatch:
 permissions:
@@ -31,3 +35,6 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/retention-boundary-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
       - name: Verify additional archive boundaries
         run: node tool/verify_capture_retention_boundaries.mjs "$RUNNER_TEMP/retention-boundary-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify isolated Storage row retention candidate
+        run: node tool/verify_capture_storage_retention.mjs "$RUNNER_TEMP/retention-boundary-runtime/node_modules/@electric-sql/pglite/dist/index.js"
