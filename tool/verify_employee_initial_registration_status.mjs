@@ -40,6 +40,11 @@ try{
  await assert.rejects(read,/management permission/);
  await db.exec(`select set_config('request.jwt.claim.sub','${id(3)}',false)`);
  await assert.rejects(db.query(`select * from employee_initial_registration_status_rows('${id(2)}')`),/management permission/);
+ await db.exec(`create or replace function private.source_notification_recipient_eligible(uuid,uuid) returns boolean language sql as $$select false$$;`);
+ await assert.rejects(read,/management permission/);
+ assert.equal((await db.query("select has_function_privilege('anon','public.employee_initial_registration_status_rows(uuid)','EXECUTE') allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select has_function_privilege('authenticated','private.require_employee_initial_registration_access(uuid)','EXECUTE') allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select status from employee_registration_invites")).rows[0].status,'approved');
  for(const role of ['anon','authenticated']){
   assert.equal((await db.query(`select has_table_privilege('${role}','private.employee_initial_registration_delivery_history','SELECT') allowed`)).rows[0].allowed,false);
  }
