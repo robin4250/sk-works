@@ -126,9 +126,6 @@ class InvoicePdfService {
     final buffer = StringBuffer();
     if (title != null && title.trim().isNotEmpty) buffer.writeln(title.trim());
     for (final invoice in invoices) {
-      final sealFont = effectiveSettings?.companySealEnabled == false
-          ? regular
-          : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);
       buffer
         ..writeln('御請求書')
         ..writeln(invoice.billingPeriod)
