@@ -17,7 +17,9 @@ class CompanySealStyleRepository {
 
   static CompanySealStyleRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized ||
-        SupabaseBackend.client.auth.currentUser == null) return null;
+        SupabaseBackend.client.auth.currentUser == null) {
+      return null;
+    }
     return CompanySealStyleRepository._(SupabaseBackend.client);
   }
 

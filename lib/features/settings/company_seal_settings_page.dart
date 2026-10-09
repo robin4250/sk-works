@@ -54,10 +54,10 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
         _styleSettings = null;
       });
       try {
-        final styleSettings = await _styleRepository!.load(companyContext);
+        final styleSettings = await _styleRepository.load(companyContext);
         final missing = await CompanySealPdf.unsupportedReishoCharacters(
             styleSettings.name);
-        final currentContext = await _styleRepository!.loadContext();
+        final currentContext = await _styleRepository.loadContext();
         if (currentContext.companyId != companyContext.companyId) {
           if (!mounted) return;
           setState(() { _enabled = null; _companyContext = null;
@@ -171,7 +171,9 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
     if (_busy || settings == null || !settings.available ||
         _previewedStyle != _selectedStyle ||
         (_selectedStyle == CompanySealPdf.reishoStyle &&
-            (_missingCharacters.isNotEmpty || _smallReisho))) return;
+            (_missingCharacters.isNotEmpty || _smallReisho))) {
+      return;
+    }
     setState(() { _busy = true; _error = null; });
     try {
       await _styleRepository!.save(settings, _selectedStyle);
@@ -261,9 +263,11 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                     child: Text(SkoLanguageController.tr('隷書（無償社内試験）'))),
               ],
               onChanged: _busy ? null : (value) {
-                if (value != null) setState(() {
-                  _selectedStyle = value; _previewedStyle = null;
-                });
+                if (value != null) {
+                  setState(() {
+                    _selectedStyle = value; _previewedStyle = null;
+                  });
+                }
               },
             ),
             Text(SkoLanguageController.tr('篆書体・印相体・古印体・古印体別配置は未完成です。')),
