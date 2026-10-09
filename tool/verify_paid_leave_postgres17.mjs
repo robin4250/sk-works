@@ -70,7 +70,7 @@ try {
  const before=await snapshots();
  const triggerBefore=await triggers();
  const oldDefs=(await db.query(`select p.oid::regprocedure::text signature,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname=any($1::text[]) order by p.proname`,[meta.map(x=>x.proname)])).rows;
- const oldWarnings=(await db.query(`select private.payroll_condition_warnings($1,$2,date_trunc('month',now())::date,(date_trunc('month',now())+interval '1 month - 1 day')::date) warnings`,[cid,wid])).rows[0].warnings;
+ const oldWarnings=(await db.query(`select private.payroll_condition_warnings($1,$2,date_trunc('month',now() at time zone 'Asia/Tokyo')::date,(date_trunc('month',now() at time zone 'Asia/Tokyo')+interval '1 month - 1 day')::date) warnings`,[cid,wid])).rows[0].warnings;
  assert.ok(oldWarnings.some(x=>x.includes('現在の自動計算に含まれていません')));
  await db.exec(read('supabase/migrations/20261008200018_paid_leave_wage_contract.sql'));
  assert.deepEqual(await snapshots(),before,'DDL alone changed saved statements');
@@ -101,7 +101,7 @@ try {
  await db.query("update public.paid_leave_requests set status='approved' where company_id=$1 and worker_id=$2",[cid,wid]);
  assert.equal((await snapshots()).find(x=>x.worker_id===wid&&x.detail.probe!=='past').gross_pay,12000);
  await assertProtected();
- const newWarnings=(await db.query(`select private.payroll_condition_warnings($1,$2,date_trunc('month',now())::date,(date_trunc('month',now())+interval '1 month - 1 day')::date) warnings`,[cid,wid])).rows[0].warnings;
+ const newWarnings=(await db.query(`select private.payroll_condition_warnings($1,$2,date_trunc('month',now() at time zone 'Asia/Tokyo')::date,(date_trunc('month',now() at time zone 'Asia/Tokyo')+interval '1 month - 1 day')::date) warnings`,[cid,wid])).rows[0].warnings;
  assert.ok(!newWarnings.some(x=>x.includes('現在の自動計算に含まれていません')));
  console.log('PASS normal triggers/scheduler update current automatic draft; manual/finalized/past full rows unchanged; old leave warning resolved');
  const beforeRestore=await snapshots();
