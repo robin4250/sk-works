@@ -49,7 +49,13 @@ try {
  let current=await state();assert.equal(current.version,3);assert.equal(current.items[0].id,oldId);assert.equal(current.items[0].amount_yen,750);
  const history=JSON.stringify(current);
  await assert.rejects(edit(1,'stale'),/version conflict/);assert.equal(JSON.stringify(await state()),history);
+ await db.exec('reset role');const beforeEdit=(await db.query('select updated_by,extract(epoch from updated_at)::double precision stamp,allowance_2_name,allowance_2_amount_yen,allowance_2_unit from company_rate_settings where company_id=$1',[cid])).rows[0];
+ await actor(admin);
  await edit(3,'',1,0);current=await state();assert.equal(current.version,4);assert.equal(current.identities.find(i=>i.id===oldId).retired_by,admin);
+ await db.exec('reset role');const afterEdit=(await db.query('select updated_by,extract(epoch from updated_at)::double precision stamp,allowance_2_name,allowance_2_amount_yen,allowance_2_unit from company_rate_settings where company_id=$1',[cid])).rows[0];
+ assert.equal(afterEdit.updated_by,admin);assert.ok(afterEdit.stamp>beforeEdit.stamp,'new saver records actual update time');
+ for(const field of ['allowance_2_name','allowance_2_amount_yen','allowance_2_unit'])assert.equal(afterEdit[field],beforeEdit[field],'unselected slot name/price/unit preserved');
+ await actor(admin);
  assert.equal(current.items.length,1);const retired=JSON.stringify(current.history[0]);
  await edit(4,'別手当',1,900);current=await state();const newId=current.items.find(i=>i.slot===1).id;
  assert.notEqual(newId,oldId);assert.equal(current.items.find(i=>i.slot===1).generation,2);

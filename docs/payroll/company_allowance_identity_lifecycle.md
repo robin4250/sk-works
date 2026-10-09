@@ -28,9 +28,12 @@ migration実行時は既存企業からIDを作らず、金額/名称をコピ�
 - 同社member/viewerのlabelsはID/名称/単位/generation/versionだけ。価格/履歴/raw tableは返さない。
 - private tablesはRLS有効でanon/authenticated/PUBLIC直接grant無し。public RPCはinvoker wrapper、checked definerはprivate schema。anon/PUBLIC executeをrevoke。
 - 未adoptのlabelsは明示未導入エラー。黙って名前から仮想IDを作らない。
-- existing rate rowを先にlock、新editorはexpected versionを照合。既存writer本体は変更せず共通table triggerを通す。旧combined saverの2 UPDATEはversion+2になるため、成功後は最終versionをreloadする。
+- 新adopt/editorはcompany行→rate settings行の順にlock、新editorはexpected versionを照合。原典 `20260922020000_add_company_rate_settings_management.sql` の旧rate saverは会社UPDATE→settings upsert、旧units saverはsettingsだけを更新する。既存writer本体は変更せず共通table triggerを通す。旧combined saverの2 UPDATEはversion+2になるため、成功後は最終versionをreloadする。
+- new slot editorは実既存列updated_by=auth.uid()/updated_at=clock_timestamp()を更新し、未選択slotの名称/単価/単位を保持する。adoptはmetadataも含め会社rate行を更新しない。
+- 将来quantity/給与連携のlock順はcompany→worker→対象月scope→settingsで統一し、settingsを保持してからcompany/worker/月を取りに行かない。このstageはworker/月のmutationをしないためcompany→settingsだけ。旧units saver全面改変は行わず、新給与triggerを結合する前に旧settings-only経路との順序互換を独立検証する。
 - 採用後の旧writerも会社scope/admin/account guardを満たさなければ拒否。service role/認証無しowner更新は新identity/historyを暗黙改変しない（adopt前の既存writerは不変更）。本番導入前に管理処理互換を確認する。
-- history保存失敗は会社値・version・ID生成/廃止も全rollback。
+- history保存失敗は会社値・更新actor/time・version・ID生成/廃止も全rollback。
+- admin history/identitiesは現在全件返却。次のUI接続前にversion cursor＋limitのページングと価格を含まない通常selector readを分離する（長期運用で全履歴を主画面に流さない）。
 
 ## 後続quantity/給与接続契約
 

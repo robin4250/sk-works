@@ -143,6 +143,10 @@ declare r public.company_rate_settings%rowtype;
 begin
  perform company_allowance_identity_private.authorize(cid,true);
  if confirmed is not true then raise exception 'explicit allowance adoption confirmation required' using errcode='22023';end if;
+ -- Match the existing rate saver: company first, then settings. Future quantity
+ -- integration must add worker/month locks between these, never reverse order.
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company allowance access denied' using errcode='42501';end if;
  select * into r from public.company_rate_settings where company_id=cid for update;
  if not found then raise exception 'company allowance settings missing' using errcode='22023';end if;
  if exists(select 1 from company_allowance_identity_private.state where company_id=cid) then raise exception 'allowance identity already adopted' using errcode='40001';end if;
@@ -173,6 +177,8 @@ begin
  if p_confirmed is not true or p_slot is null or p_slot not between 1 and 3 or p_name is null or length(btrim(p_name))>80
  or p_unit is null or nullif(btrim(p_unit),'') is null or length(btrim(p_unit))>12 or p_amount_yen is null or p_amount_yen<0 then
  raise exception 'invalid allowance fields or confirmation' using errcode='22023';end if;
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company allowance access denied' using errcode='42501';end if;
  select * into r from public.company_rate_settings where company_id=cid for update;
  select version into v from company_allowance_identity_private.state where company_id=cid;
  if r.company_id is null or v is null then raise exception 'allowance identity not adopted' using errcode='55000';end if;
@@ -186,7 +192,8 @@ begin
  allowance_2_amount_yen=case when p_slot=2 then p_amount_yen else allowance_2_amount_yen end,
  allowance_3_name=case when p_slot=3 then p_name else allowance_3_name end,
  allowance_3_unit=case when p_slot=3 then p_unit else allowance_3_unit end,
- allowance_3_amount_yen=case when p_slot=3 then p_amount_yen else allowance_3_amount_yen end
+ allowance_3_amount_yen=case when p_slot=3 then p_amount_yen else allowance_3_amount_yen end,
+ updated_by=auth.uid(),updated_at=clock_timestamp()
  where company_id=cid;
  return company_allowance_identity_private.admin_state(cid);
 end$$;
