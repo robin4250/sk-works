@@ -143,6 +143,7 @@ if(process.argv.includes('--seal-snapshots')) {
   assert.deepEqual((await db.query(`select public.saved_site_payment_document('${next}','${child}') v`)).rows[0].v,captured);
   sealSnapshots.push(captured);
  }
+ if(process.env.SKO_SITE_PAYMENT_ALL_VERSIONS_OUTPUT_JSON) await fs.writeFile(process.env.SKO_SITE_PAYMENT_ALL_VERSIONS_OUTPUT_JSON,JSON.stringify([legacy,original,...sealSnapshots]));
  if(process.env.SKO_SITE_PAYMENT_SEAL_OUTPUT_JSON) await fs.writeFile(process.env.SKO_SITE_PAYMENT_SEAL_OUTPUT_JSON,JSON.stringify(sealSnapshots));
  console.log('PASS: actual mutually confirmed v3 snapshots freeze genuine style/name; legacy unchanged; two short/long PDF fixtures exported');
 }

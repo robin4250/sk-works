@@ -36,6 +36,8 @@ void main() {
         final snapshot = Map<String, dynamic>.from(snapshots[i] as Map);
         final terms = Map<String, dynamic>.from(snapshot['terms'] as Map);
         final record = SitePaymentAgreementDocument.fromSnapshot(snapshot);
+        expect(record.isAgreementSnapshot, true);
+        expect(record.status, 'draft'); // Display origin never changes workflow state.
         expect(record.payerPostalCode, snapshot['parent_postal_code']);
         expect(record.payerAddress, snapshot['parent_address']);
         expect(record.payerPhone, snapshot['parent_phone']);
@@ -64,6 +66,9 @@ void main() {
         expect(text, contains(snapshot['parent_company_name'].toString()));
         expect(text, contains(snapshot['subcontractor_company_name'].toString()));
         expect(text, contains(snapshot['site_name'].toString()));
+        expect(text, contains('双方確認済み・第${record.revision}版'));
+        expect(text, isNot(contains('下書き・')));
+        expect(text, isNot(contains('確定・')));
         for(final key in ['parent_postal_code','parent_address','parent_phone','parent_fax']) {
           expect(text, contains(snapshot[key].toString().replaceAll(RegExp(r'\s+'), '')));
         }

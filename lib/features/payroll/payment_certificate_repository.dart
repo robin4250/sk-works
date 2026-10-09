@@ -32,6 +32,7 @@ class PaymentCertificateRecord {
     required this.status,
     required this.revision,
     this.payerCompanyName = '',
+    this.isAgreementSnapshot = false,
     this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.payerCompanySealEnabled = true,
     this.payerPostalCode = '',
@@ -52,6 +53,8 @@ class PaymentCertificateRecord {
   final String status;
   final int revision;
   final String payerCompanyName;
+  /// Document origin only; does not finalize a monthly certificate.
+  final bool isAgreementSnapshot;
   final CompanySealSnapshot companySealSnapshot;
   final bool payerCompanySealEnabled;
   final String payerPostalCode;

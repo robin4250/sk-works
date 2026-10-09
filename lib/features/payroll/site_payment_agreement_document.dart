@@ -70,6 +70,7 @@ class SitePaymentAgreementDocument {
     }
     return PaymentCertificateRecord(
       id: 'agreement:${snapshot['proposal_id']}',
+      isAgreementSnapshot: true,
       companySealSnapshot: CompanySealSnapshot.fromJson(
           snapshot['company_seal_snapshot']),
       partnerCompanyName: snapshot['subcontractor_company_name'].toString(),

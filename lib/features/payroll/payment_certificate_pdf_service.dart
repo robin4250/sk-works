@@ -258,7 +258,9 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
             pw.Text(
-              record.isPreview
+              record.isAgreementSnapshot
+                  ? '双方確認済み・第${record.revision}版'
+                  : record.isPreview
                   ? 'プレビュー・出勤実績なし'
                   : record.status == 'draft'
                   ? '下書き・第${record.revision}版'

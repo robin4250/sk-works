@@ -44,6 +44,9 @@ void main() {
       ]);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       final text = result.stdout.toString();
+      expect(record.isAgreementSnapshot, false);
+      expect(text, contains('確定・第1版'));
+      expect(text, isNot(contains('双方確認済み')));
       expect(text, contains('12,000'));
       expect(text, contains('-13,000'));
       expect(text, isNot(contains('¥-1,000')));
