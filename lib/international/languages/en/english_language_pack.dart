@@ -1021,7 +1021,6 @@ const englishLanguagePack = LanguagePack(
     '給料一覧': 'Payroll List',
     '確認済み': 'Confirmed',
     '未確定': 'Unconfirmed',
-    '未確認': 'Unconfirmed',
     '支払証明書': 'Payment Certificate',
     '下書き': 'Draft',
     '確定': 'Finalized',
