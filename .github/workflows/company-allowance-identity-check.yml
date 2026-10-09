@@ -1,0 +1,39 @@
+name: Company allowance identity lifecycle SQL
+on:
+  pull_request:
+    branches: [main]
+    paths: ['supabase/migrations/*company_allowance_identity_lifecycle.sql', 'supabase/tests/company_allowance_identity*', 'tool/*company_allowance_identity*', 'docs/payroll/company_allowance_identity_lifecycle.md', '.github/workflows/company-allowance-identity-check.yml']
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/*company_allowance_identity_lifecycle.sql', 'supabase/tests/company_allowance_identity*', 'tool/*company_allowance_identity*', 'docs/payroll/company_allowance_identity_lifecycle.md', '.github/workflows/company-allowance-identity-check.yml']
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/allowance-identity" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node --check tool/verify_company_allowance_identity_lifecycle.mjs
+      - run: node tool/verify_company_allowance_identity_lifecycle.mjs "$RUNNER_TEMP/allowance-identity/node_modules/@electric-sql/pglite/dist/index.js"
+  native-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only-password, POSTGRES_DB: sko_allowance_identity_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_ALLOWANCE_IDENTITY_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_allowance_identity_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/allowance-identity-pg" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/verify_company_allowance_identity_lifecycle.mjs "$GITHUB_WORKSPACE/tool/company_allowance_identity_native_pg17_runtime.mjs" "$RUNNER_TEMP/allowance-identity-pg/node_modules/pg/lib/index.js"
+      - run: node tool/verify_company_allowance_identity_postgres_race.mjs "$GITHUB_WORKSPACE/tool/company_allowance_identity_native_pg17_runtime.mjs" "$RUNNER_TEMP/allowance-identity-pg/node_modules/pg/lib/index.js"
