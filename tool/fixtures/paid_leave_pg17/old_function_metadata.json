@@ -1,0 +1,68 @@
+[
+  {
+    "proname": "apply_monthly_salary_detail",
+    "arguments": "",
+    "acl": null,
+    "definition_md5": "0be3a37ecbe7639034a144b18e38b3e5"
+  },
+  {
+    "proname": "apply_monthly_salary_to_statement",
+    "arguments": "",
+    "acl": null,
+    "definition_md5": "dadad2b52fab8cf632ec718efd6e7770"
+  },
+  {
+    "proname": "apply_payroll_custom_money",
+    "arguments": "",
+    "acl": null,
+    "definition_md5": "5b78a561b764c3a8a568960322235bab"
+  },
+  {
+    "proname": "attendance_refresh_payroll",
+    "arguments": "",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "d080c6145cd920a4d8cb3dda1320cccd"
+  },
+  {
+    "proname": "attendance_sync_payroll_detail",
+    "arguments": "",
+    "acl": null,
+    "definition_md5": "9effaf2ad850cf43eb556669da627939"
+  },
+  {
+    "proname": "ensure_monthly_payroll_drafts",
+    "arguments": "p_day date",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "83f0d7dc91162dbe0f780abe6f483fe8"
+  },
+  {
+    "proname": "paid_leave_sync_payroll_detail",
+    "arguments": "",
+    "acl": null,
+    "definition_md5": "dc1da31becc7bf6c5a04a824d47cac24"
+  },
+  {
+    "proname": "payroll_condition_warnings",
+    "arguments": "cid uuid, wid uuid, p_start date, p_end date",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "d99616274ac0c5357a3f34196bca4818"
+  },
+  {
+    "proname": "refresh_automatic_payroll_internal",
+    "arguments": "cid uuid, wid uuid, day date",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "5f92398603ef2533c6111874794f6bcf"
+  },
+  {
+    "proname": "settings_refresh_payroll",
+    "arguments": "",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "503c5aaabe7124f1be113aabbcce8b3a"
+  },
+  {
+    "proname": "sync_payroll_attendance_detail",
+    "arguments": "cid uuid, wid uuid, day date",
+    "acl": "{postgres=X/postgres}",
+    "definition_md5": "1077ebd0e744bf559b140867e59b3773"
+  }
+]
