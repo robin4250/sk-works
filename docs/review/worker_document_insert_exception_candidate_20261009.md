@@ -16,7 +16,11 @@
 
 39チェックでbaseline拒否、権限A/B/Cの差、別会社/別worker/status/requirement不整合、不正UUID/過剰segment/空filename/危険拡張子、anon/nulluid/削除制限、他2bucket拒否、保存旧物へのUPDATE/UPSERT/DELETE拒否、upsert:false重複拒否を確認。3既存guard（account_deletion_access_guard ALL、official_document_history_no_overwrite UPDATE、official_document_history_no_delete DELETE）のpolicy本文は比較前後で不変。retained object payloadも保持する。
 
-ローカルPGlite0.3.14成功。実Storage HTTPアップロード、本番403解消、status更新との原子性、実iPhone操作、歴史audit triggerの完全schema共存は未確認。新しいINSERTオブジェクトに対応するstatusの更新失敗や後続cleanup失敗を、保存成功として報告しない。別担当repository/UI修正とrootの本番判断が必要。
+repo defaultRequirementsでは運転免許証・マイナンバーカード・銀行口座情報がすべてscope=internalで、任意名称も追加できる。scopeや曖昧な名称判定だけではordinary限定を証明できない。Cを全active requirementへ適用すると専用提出/銀行口座経路との境界を越える可能性があり、既存業務分類・明示的対象範囲との照合が終わるまで本番適用不可として比較候補に留める。
+
+fixtureのworker/status/requirements/member SELECT ACL/RLSは合成した読み取り契約。repoに本人status INSERT/UPDATEと本人又はpeople manager status SELECTの契約は存在するが、本番の全table ACL/RLS・追加guard・enum/domainと一致した証拠ではない。SECURITY INVOKER候補はこれらSELECTに依存するため、実定義metadataをrootが別照合し、アクセス失敗を解消するために一般読取権限を追加しない。
+
+ローカルPGlite0.3.14成功。専用CIで同じ39チェックをPGliteと空の実PostgreSQL17へ実行する。PG17は既存固定ローカルfixture URL guardとempty-schema guardで本番接続を拒否する。実Storage HTTPアップロード、本番403解消、status更新との原子性、実iPhone操作、歴史audit triggerの完全schema共存は未確認。新しいINSERTオブジェクトに対応するstatusの更新失敗や後続cleanup失敗を、保存成功として報告しない。別担当repository/UI修正とrootの本番判断が必要。
 
 実行: `node tool/verify_worker_document_insert_exception_candidate.mjs <pglite-dist/index.js>`。
 本番接続・DDL/DML・Auth/RLS変更なし。参照Issue #273。
