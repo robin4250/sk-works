@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('invoice uses final generated company and dated approval seals', () {
+  test('invoice uses generated company and surname-only approval seals', () {
     final s = File('lib/features/invoices/invoice_pdf_service.dart')
         .readAsStringSync();
     expect(s, contains('CompanySealPdf.build('));
