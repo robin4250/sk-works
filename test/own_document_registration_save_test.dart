@@ -27,6 +27,8 @@ class _UnreadablePhoto extends XFile {
 }
 
 class _Gateway implements OwnDocumentRegistrationGateway {
+  _Gateway({this.statuses = const []});
+  final List<Map<String, dynamic>> statuses;
   final calls = <({String requirement, Uint8List? bytes, String? filename})>[];
   Future<void> Function()? onSave;
 
@@ -34,7 +36,7 @@ class _Gateway implements OwnDocumentRegistrationGateway {
   Future<Map<String, List<Map<String, dynamic>>>> loadAll() async => {
     'workers': [{'id': 'worker', 'name': '本人'}],
     'requirements': [{'id': 'license', 'name': '運転免許証', 'scope': 'internal'}],
-    'statuses': <Map<String, dynamic>>[],
+    'statuses': statuses,
   };
 
   @override
@@ -69,6 +71,18 @@ Future<void> _selectPhoto(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('submitted metadata without attachment stays submitted and shows no photo', (tester) async {
+    final gateway = _Gateway(statuses: [{
+      'id': 'status', 'requirement_id': 'license',
+      'status': 'submitted', 'attachment_path': null,
+    }]);
+    await tester.pumpWidget(MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)));
+    await tester.pumpAndSettle();
+    expect(find.text('提出済み / 写真未添付'), findsOneWidget);
+    expect(find.text('未登録'), findsNothing);
+    expect(gateway.calls, isEmpty);
+  });
+
   testWidgets('source selection cancellation performs no save or success message', (tester) async {
     final gateway = _Gateway();
     var picked = false;

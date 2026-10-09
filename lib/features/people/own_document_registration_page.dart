@@ -397,6 +397,8 @@ class _OwnDocumentRegistrationPageState
                             final requirement = requirements[index];
                             final id = requirement['id']?.toString() ?? '';
                             final status = _statusFor(id);
+                            final attachmentPath =
+                                status?['attachment_path']?.toString().trim() ?? '';
                             final label = status?['status']?.toString() ==
                                         'verified'
                                     ? '確認済み'
@@ -421,10 +423,10 @@ class _OwnDocumentRegistrationPageState
                                     if ((status?['expires_at']?.toString() ?? '')
                                         .isNotEmpty)
                                       '期限 ${status!['expires_at']}',
-                                    if ((status?['attachment_path']?.toString() ??
-                                            '')
-                                        .isNotEmpty)
-                                      '画像あり',
+                                    if (attachmentPath.isNotEmpty)
+                                      '画像あり'
+                                    else if (status?['status'] == 'submitted')
+                                      '写真未添付',
                                   ].join(' / '),
                                 ),
                               ),
