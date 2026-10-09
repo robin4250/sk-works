@@ -1,4 +1,6 @@
 import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
@@ -10,6 +12,100 @@ class CompanySealPdf {
   const CompanySealPdf._();
 
   static Future<ByteData>? _fontData;
+  static Future<ByteData>? _reishoFontData;
+  static Future<Set<int>>? _reishoCoverage;
+  static Set<int>? _loadedReishoCoverage;
+  static const legacyStyle = 'legacy';
+  static const reishoStyle = 'aoyagi_reisho';
+  static const _reishoAssets = 'assets/fonts/company-seal/aoyagi-reisho';
+
+  static Future<pw.Font> loadStyleFont(String style) async {
+    if (style == legacyStyle) return loadFont();
+    if (style != reishoStyle) throw StateError('Unknown company seal style.');
+    try {
+      await unsupportedReishoCharacters('');
+      return pw.Font.ttf(await (_reishoFontData ??=
+          rootBundle.load('$_reishoAssets/AoyagiReisho.ttf')));
+    } catch (_) {
+      _reishoFontData = null;
+      rethrow;
+    }
+  }
+
+  static Future<String> unsupportedReishoCharacters(String name) async {
+    try {
+      final coverage = await (_reishoCoverage ??= rootBundle
+          .loadString('$_reishoAssets/coverage.json')
+          .then((value) => (jsonDecode(value) as List).cast<int>().toSet()));
+      _loadedReishoCoverage = coverage;
+      return String.fromCharCodes(name.runes
+          .where((rune) => !coverage.contains(rune)).toSet());
+    } catch (_) {
+      _reishoCoverage = null;
+      rethrow;
+    }
+  }
+
+  /// Preserve every rune; choose near-square cells instead of squeezing glyphs.
+  static List<String> balancedColumns(String name) {
+    final chars = name.trim().runes.toList();
+    if (chars.isEmpty) return const [];
+    var bestColumns = 1;
+    var bestScore = double.infinity;
+    for (var columns = 1; columns <= math.min(chars.length, 8); columns++) {
+      final rows = (chars.length / columns).ceil();
+      final score = math.max(columns, rows).toDouble() +
+          (columns * rows - chars.length) * 0.001;
+      if (score < bestScore) {
+        bestScore = score;
+        bestColumns = columns;
+      }
+    }
+    final rows = (chars.length / bestColumns).ceil();
+    return [for (var offset = 0; offset < chars.length; offset += rows)
+      String.fromCharCodes(chars.sublist(offset,
+          math.min(offset + rows, chars.length)))];
+  }
+
+  static double reishoGlyphSize(String name, double size) {
+    final columns = balancedColumns(name);
+    if (columns.isEmpty) return 0;
+    final rows = columns.map((column) => column.runes.length)
+        .reduce(math.max);
+    return size * 0.85 * 0.82 / math.max(columns.length, rows);
+  }
+
+  static pw.Widget _buildReisho(String name, double size, pw.Font font) {
+    final coverage = _loadedReishoCoverage;
+    if (coverage == null || name.runes.any((rune) => !coverage.contains(rune))) {
+      throw StateError('The registered company name is unsupported by Reisho.');
+    }
+    final columns = balancedColumns(name);
+    if (columns.isEmpty) return pw.SizedBox(width: size, height: size);
+    final rows = columns.map((column) => column.runes.length).reduce(math.max);
+    final cellSize = size * 0.85 / math.max(columns.length, rows);
+    return pw.Container(
+      width: size,
+      height: size,
+      padding: pw.EdgeInsets.all(size * 0.04),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.red, width: size * 0.04),
+      ),
+      child: pw.Center(child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [for (final column in columns.reversed) pw.Column(
+          children: [for (final rune in column.runes) pw.SizedBox(
+            width: cellSize,
+            height: cellSize,
+            child: pw.Center(child: pw.Text(String.fromCharCode(rune),
+              style: pw.TextStyle(font: font, fontSize: cellSize * 0.82,
+                  color: PdfColors.red))),
+          )],
+        )],
+      )),
+    );
+  }
 
   /// Cache immutable asset data, not a font's document-bound mutable state.
   /// Every PDF document receives its own font wrapper, including concurrent
@@ -56,7 +152,13 @@ class CompanySealPdf {
     double size = 42,
     pw.Font? font,
     pw.Font? fallbackFont,
+    String style = legacyStyle,
   }) {
+    if (style == reishoStyle) {
+      if (font == null) throw StateError('Reisho font must be loaded explicitly.');
+      return _buildReisho(companyName, size, font);
+    }
+    if (style != legacyStyle) throw StateError('Unknown company seal style.');
     final columns = verticalColumns(companyName);
     if (columns.isEmpty) return pw.SizedBox(width: size, height: size);
     final red = PdfColor.fromHex('#FF0000');
