@@ -67,6 +67,33 @@ try {
    assert.equal(row.hash,m.definition_md5,`Code-only baseline definition differs: ${m.proname}`);
  }
  await db.exec(read(fixture+'rollout_seed.sql'));
+ // Compose the exact seal migrations with the payroll rollout in this isolated DB.
+ // Non-payroll generator/reader stubs only satisfy patch anchors; their full
+ // production behavior remains covered by the separate document suites.
+ await db.exec(`alter table public.companies add column if not exists name text,
+ add column company_seal_enabled boolean default true,add column updated_at timestamptz;
+ update public.companies set name='株式会社テスト建設';
+ create function private.account_access_allowed() returns boolean language sql as $$select true$$;
+ create table public.payment_certificates(id uuid primary key,company_id uuid,snapshot jsonb);
+ create function private.refresh_automatic_invoice(cid uuid,partner uuid,day date) returns void language plpgsql as $$
+ declare existing public.invoices; snapshot_value jsonb;
+ begin snapshot_value:='{}';if existing.id is null then return;end if;end $$;
+ create function private.refresh_automatic_payment_certificate(cid uuid,partner uuid,day date) returns void language plpgsql as $$
+ declare existing public.payment_certificates; snapshot_value jsonb;
+ begin snapshot_value:='{}';if existing.id is null then return;end if;end $$;
+ create function private.payroll_document_metadata(p_statement_id uuid) returns jsonb language sql as $$
+ select jsonb_build_object('company_seal_enabled',c.company_seal_enabled,'synthetic_metadata_stub',true)
+ from public.payroll_statements ps join public.companies c on c.id=ps.company_id where ps.id=p_statement_id $$;
+ create function private.saved_site_payment_document(p_proposal uuid,p_company uuid) returns jsonb language plpgsql as $$
+ declare result jsonb;
+ begin select jsonb_build_object('snapshot_version',2,'parent_company_seal_enabled',parent.company_seal_enabled)
+ into result from public.companies parent where parent.id=p_company; return result; end $$;`);
+ await db.exec(read('supabase/migrations/20261009011357_company_seal_aoyagi_style.sql'));
+ await db.exec(read('supabase/migrations/20261009012730_company_seal_document_snapshots.sql'));
+ // Existing synthetic statements were inserted before these triggers: legacy absence.
+ await db.query("update public.companies set company_seal_style='aoyagi_reisho' where id=$1",[cid]);
+ const sealFunctionsBefore=(await db.query("select p.oid::regprocedure::text signature,md5(pg_get_functiondef(p.oid)) hash,proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('document_company_seal_snapshot','preserve_document_company_seal_snapshot','payroll_document_metadata')) order by p.proname")).rows;
+ const readSealFunctions=async()=> (await db.query("select p.oid::regprocedure::text signature,md5(pg_get_functiondef(p.oid)) hash,proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('document_company_seal_snapshot','preserve_document_company_seal_snapshot','payroll_document_metadata')) order by p.proname")).rows;
  const before=await snapshots();
  const triggerBefore=await triggers();
  const oldDefs=(await db.query(`select p.oid::regprocedure::text signature,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname=any($1::text[]) order by p.proname`,[meta.map(x=>x.proname)])).rows;
@@ -93,6 +120,8 @@ try {
  assert.equal(draft.gross_pay,12000);
  assert.equal(draft.detail['有給支給額'],12000);
  assert.equal(draft.detail.paid_leave_wage_contract,1);
+ assert.equal(Object.hasOwn(draft.detail,'company_seal_snapshot'),false,'Legacy draft gained a seal during payroll refresh');
+ assert.deepEqual(await readSealFunctions(),sealFunctionsBefore,'Paid-leave DDL replaced seal helper/reader');
  await assertProtected();
  // Approval transition through the real existing paid-leave trigger.
  await db.query("update public.paid_leave_requests set status='pending' where company_id=$1 and worker_id=$2",[cid,wid]);
@@ -100,6 +129,15 @@ try {
  await assertProtected();
  await db.query("update public.paid_leave_requests set status='approved' where company_id=$1 and worker_id=$2",[cid,wid]);
  assert.equal((await snapshots()).find(x=>x.worker_id===wid&&x.detail.probe!=='past').gross_pay,12000);
+ const recreated=(await snapshots()).find(x=>x.worker_id===wid&&x.detail.probe!=='past');
+ const storedSeal={version:1,style:'aoyagi_reisho',name:'株式会社テスト建設'};
+ assert.deepEqual(recreated.detail.company_seal_snapshot,storedSeal,'New leave-only statement lacks frozen company seal');
+ await db.query("update public.companies set name='株式会社改名',company_seal_style='legacy' where id=$1",[cid]);
+ await db.query("select private.sync_payroll_attendance_detail($1,$2,(now() at time zone 'Asia/Tokyo')::date)",[cid,wid]);
+ await db.query("select private.ensure_monthly_payroll_drafts((now() at time zone 'Asia/Tokyo')::date)");
+ assert.deepEqual((await snapshots()).find(x=>x.id===recreated.id).detail.company_seal_snapshot,storedSeal,'Payroll sync/scheduler changed saved seal after company rename');
+ assert.deepEqual((await db.query('select private.payroll_document_metadata($1) value',[recreated.id])).rows[0].value.company_seal_snapshot,storedSeal,'Patched metadata stopped exposing stored seal');
+
  await assertProtected();
  const newWarnings=(await db.query(`select private.payroll_condition_warnings($1,$2,date_trunc('month',now() at time zone 'Asia/Tokyo')::date,(date_trunc('month',now() at time zone 'Asia/Tokyo')+interval '1 month - 1 day')::date) warnings`,[cid,wid])).rows[0].warnings;
  assert.ok(!newWarnings.some(x=>x.includes('現在の自動計算に含まれていません')));
@@ -117,6 +155,8 @@ try {
  } catch(e){await db.query('rollback');throw e;}
  assert.deepEqual(await snapshots(),beforeRestore,'Restoring DDL modified saved statements');
  assert.deepEqual(await triggers(),triggerBefore);
+ assert.deepEqual(await readSealFunctions(),sealFunctionsBefore,'Paid-leave DDL recovery rolled back post-seal helper/reader');
+ assert.deepEqual((await snapshots()).find(x=>x.worker_id===wid&&x.detail.probe!=='past').detail.company_seal_snapshot,storedSeal,'Paid-leave recovery changed saved seal');
  assert.equal((await db.query("select to_regprocedure('public.paid_leave_wage_contract_version()') is null absent")).rows[0].absent,true);
  for(const m of meta){
    const row=(await db.query('select md5(pg_get_functiondef($1::regprocedure)) hash,proacl::text acl from pg_proc where oid=$1::regprocedure',[signatureFor(m)])).rows[0];
