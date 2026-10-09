@@ -82,6 +82,7 @@ try {
   const raceWorker='40000000-0000-0000-0000-000000000071',raceCompany='10000000-0000-0000-0000-000000000071';
   await db.exec(`insert into public.companies select (jsonb_populate_record(null::public.companies,to_jsonb(c)||jsonb_build_object('id','${raceCompany}','name','Notification race company'))).* from public.companies c where id='10000000-0000-0000-0000-000000000001';
   insert into public.company_members(company_id,user_id,role) values('${raceCompany}','00000000-0000-0000-0000-000000000001','owner');
+  insert into public.payroll_confirmers(company_id,user_id,position) values('${raceCompany}','00000000-0000-0000-0000-000000000001',1);
   insert into public.sites(id,company_id,name) values('20000000-0000-0000-0000-000000000071','${raceCompany}','Notification race site');
   insert into public.workers(id,company_id,user_id,name,status,affiliation) values('${raceWorker}','${raceCompany}','00000000-0000-0000-0000-000000000001','Notification race worker','active','employee');
   insert into public.worker_payroll_settings select (jsonb_populate_record(null::public.worker_payroll_settings,to_jsonb(s)||jsonb_build_object('worker_id','${raceWorker}','company_id','${raceCompany}'))).* from public.worker_payroll_settings s where worker_id='40000000-0000-0000-0000-000000000001';
