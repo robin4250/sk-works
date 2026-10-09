@@ -69,7 +69,7 @@ void main() {
     expect(pdf, contains('const gridBottom = 669.8898'));
   });
 
-  test('invoice stamps use explicit roles and immutable audit dates', () {
+  test('invoice surname-only stamps retain roles and immutable audit dates in records', () {
     final pdf = read('lib/features/invoices/invoice_pdf_service.dart');
     final migration = read(
       'supabase/migrations/20261007221757_invoice_stamp_policy_and_approval_history.sql',
@@ -78,6 +78,11 @@ void main() {
     expect(pdf, contains('approvals[i].approved'));
     expect(pdf, contains("record.stampRole == 'approval' ? '承認' : '確認'"));
     expect(pdf, contains('record.stampDisplayDate'));
+    final model = read('lib/features/invoices/invoice_approval_repository.dart');
+    expect(model, contains('DateTime? get stampDisplayDate'));
+    expect(model, contains('final String stampRole;'));
+    expect(model, contains('final DateTime? approvedAt;'));
+    expect(model, contains('final String name;'));
     expect(pdf, contains('CompanySealPdf.build('));
     expect(pdf, isNot(contains('companySealImage')));
     expect(pdf, isNot(contains('record.approvedAt ?? DateTime.now()')));

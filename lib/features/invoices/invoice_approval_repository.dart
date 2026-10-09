@@ -30,6 +30,9 @@ class InvoiceApprovalRecord {
     this.stampRole = 'confirmation',
     this.canCurrentUserCancel = false,
     this.canCurrentUserEditDisplayDate = false,
+    this.stampSurname,
+    this.draftStampSurname,
+    this.canCurrentUserSetStampSurname = false,
   });
 
   final String userId;
@@ -44,6 +47,9 @@ class InvoiceApprovalRecord {
   final String stampRole;
   final bool canCurrentUserCancel;
   final bool canCurrentUserEditDisplayDate;
+  final String? stampSurname;
+  final String? draftStampSurname;
+  final bool canCurrentUserSetStampSurname;
 
   // Display dates never modify or substitute the actual approval timestamp.
   DateTime? get stampDisplayDate {
@@ -57,6 +63,64 @@ class InvoiceApprovalRecord {
   }
 
   bool get approved => status == 'approved';
+}
+
+class InvoiceStampSurnameReadException implements Exception {
+  const InvoiceStampSurnameReadException();
+  @override
+  String toString() => '承認印の名字を確認できません。再確認してから帳票を開いてください。';
+}
+
+class InvoiceStampSurnameMetadata {
+  const InvoiceStampSurnameMetadata({this.snapshotSurname, this.draftSurname, this.canSet = false});
+  final String? snapshotSurname;
+  final String? draftSurname;
+  final bool canSet;
+
+  static InvoiceStampSurnameMetadata match(
+    String invoiceId,
+    Map<String, dynamic> approval,
+    Map<String, dynamic>? name,
+  ) {
+    if (name == null) return const InvoiceStampSurnameMetadata();
+    if (name['invoice_id'] != invoiceId ||
+        name['user_id'] != approval['approver_user_id'] ||
+        name['status'] != approval['status']) {
+      throw const InvoiceStampSurnameReadException();
+    }
+    if (approval['status'] == 'approved') {
+      final actual = DateTime.tryParse(approval['approved_at']?.toString() ?? '');
+      final captured = DateTime.tryParse(name['approved_at']?.toString() ?? '');
+      if (approval['approved_at'] == null && name['approved_at'] == null &&
+          name['snapshot_surname'] == null) {
+        return const InvoiceStampSurnameMetadata();
+      }
+      if (actual == null || captured == null || !actual.isAtSameMomentAs(captured)) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      final snapshot = _surname(name['snapshot_surname']);
+      if (name['snapshot_surname'] != null && snapshot == null) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      return InvoiceStampSurnameMetadata(snapshotSurname: snapshot);
+    }
+    if (approval['status'] == 'pending' && name['snapshot_surname'] != null) {
+      throw const InvoiceStampSurnameReadException();
+    }
+    if (approval['status'] == 'pending' && approval['approved_at'] == null &&
+        name['approved_at'] == null && name['can_set_surname'] == true) {
+      return InvoiceStampSurnameMetadata(draftSurname: _surname(name['draft_surname']), canSet: true);
+    }
+    return const InvoiceStampSurnameMetadata();
+  }
+
+  static String? _surname(dynamic value) {
+    if (value is! String || value.trim().isEmpty || value.length > 30 ||
+        value.contains(RegExp(r'[\r\n]'))) {
+      return null;
+    }
+    return value;
+  }
 }
 
 class InvoiceApprovalRepository {
@@ -107,11 +171,34 @@ class InvoiceApprovalRepository {
       );
     }
     if (raw is! List) return const [];
+    Map<String, dynamic>? surnameContract;
+    try {
+      surnameContract = await _loadSurnameContract(invoiceId);
+    } catch (_) {
+      // An unknown snapshot must never become a different legacy approval seal.
+      throw const InvoiceStampSurnameReadException();
+    }
+    final names = <String, Map<String, dynamic>>{};
+    final nameRows = surnameContract?['names'];
+    if (nameRows is List) {
+      for (final value in nameRows) {
+        if (value is Map && value['user_id'] is String) {
+          names[value['user_id'] as String] = Map<String, dynamic>.from(value);
+        }
+      }
+    }
     return raw.map((value) {
       final row = Map<String, dynamic>.from(value as Map);
+      if (surnameContract != null && !names.containsKey(row['approver_user_id'])) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      final surname = InvoiceStampSurnameMetadata.match(invoiceId, row, names[row['approver_user_id']]);
       return InvoiceApprovalRecord(
         userId: row['approver_user_id']?.toString() ?? '',
         name: row['approver_name']?.toString() ?? 'SKOユーザー',
+        stampSurname: surname.snapshotSurname,
+        draftStampSurname: surname.draftSurname,
+        canCurrentUserSetStampSurname: surname.canSet,
         position: (row['position'] as num?)?.toInt() ?? 1,
         status: row['status']?.toString() ?? 'pending',
         approvedAt: DateTime.tryParse(row['approved_at']?.toString() ?? ''),
@@ -132,11 +219,41 @@ class InvoiceApprovalRepository {
   }
 
   Future<bool> approve(String invoiceId) async {
+    final surnameContract = await _loadSurnameContract(invoiceId);
     final raw = await _client.rpc(
-      'approve_invoice',
+      surnameContract?['enabled'] == true
+          ? 'approve_invoice_with_stamp_surname'
+          : 'approve_invoice',
       params: {'p_invoice_id': invoiceId},
     );
     return raw == true;
+  }
+
+  Future<Map<String, dynamic>?> _loadSurnameContract(String invoiceId) async {
+    try {
+      final raw = await _client.rpc(
+        'invoice_stamp_surname_rows',
+        params: {'p_invoice_id': invoiceId},
+      );
+      if (raw is! Map || raw['enabled'] is! bool || raw['names'] is! List) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      return Map<String, dynamic>.from(raw);
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202' || error.code == '42883') return null;
+      rethrow;
+    }
+  }
+
+  Future<void> setStampSurname(String invoiceId, String surname) async {
+    final value = surname.trim();
+    if (value.isEmpty || value.length > 30 || value.contains(RegExp(r'[\r\n]'))) {
+      throw ArgumentError('承認印に表示する名字を1〜30文字で入力してください。');
+    }
+    await _client.rpc('set_invoice_stamp_surname', params: {
+      'p_invoice_id': invoiceId,
+      'p_surname': value,
+    });
   }
 
   static DateTime? _japanDate(dynamic value) {
