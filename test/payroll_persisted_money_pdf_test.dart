@@ -18,6 +18,19 @@ void main() {
     await Directory(directory).create(recursive: true);
     for (final name in ['actual_monthly', 'actual_deduction', 'actual_daily_categories', 'actual_hourly_categories', 'actual_monthly_categories']) {
       final row = jsonDecode(await File('test/fixtures/payroll_persisted_money/$name.json').readAsString()) as Map<String, dynamic>;
+      // Numeric-looking snapshot names and versions must not become legacy pay.
+      final metadata = <String, dynamic>{
+        'company_name': '987654',
+        'worker_name': '876543',
+        'workflow_state': '765432',
+        'review_confirmed': '654321',
+        'reviewed_at': '543210',
+        'finalized_by': '432109',
+        'finalized_at': '321098',
+        'schema_version': 1,
+        'snapshot_version': 2,
+      };
+      (row['detail'] as Map).addAll(metadata);
       final original = jsonEncode(row);
       final record = PayrollStatementRecord(
         id: name,
@@ -54,6 +67,10 @@ print(json.dumps({'earnings':money(240,293),'deductions':money(490,558),'labels'
       expect(labels.where((value) => value == '基本給'), hasLength(1));
       expect(labels.where((value) => value == '残業手当'), hasLength(1));
       expect(labels, isNot(contains('月固定給')));
+      for (final key in metadata.keys) {
+        expect(labels, isNot(contains(key)),
+            reason: '$key is saved metadata, never a pay or deduction item.');
+      }
       if (name == 'actual_deduction' || name.endsWith('_categories')) {
         expect(labels.where((value) => value == '道具代'), hasLength(1));
       }
