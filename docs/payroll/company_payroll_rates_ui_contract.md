@@ -21,7 +21,7 @@
 read_company_payroll_rates(p_company_id)がitems/candidates/history/company_scope/scope_historyを返す。company_scopeは未登録null、登録済みversion/value/updated_by/updated_at。save_company_payroll_rate_scopeはexpected_versionと本人確認付きで保存し、返却version＋1とvalue一致を検証。
 save_manual_company_payroll_rate、apply_company_payroll_rate_candidateを呼ぶ。DB導入前は取得エラーとなり、ローカル初期値で代替しない。RPC側の会社管理権限・検証候補・version検査は別laneで検証。
 
-所得税のPDF/年度管理、介護保険生年月日判定、個別給与の適用フラグ、給与自動計算・確定snapshotは未接続。画面にも接続準備中と明示。住民税の固定率入力欄は設けない。
+所得税の年度/PDF管理は別page・registry・private Storageのsourceへ接続済み。本番導入・正式資料検証・税額計算は未完了。介護保険生年月日判定、個別給与の適用フラグ、会社料率の給与自動計算・確定snapshotへの連携は未接続。画面にも給与連携準備中と明示。住民税の固定率入力欄は設けない。
 
 tests：会社条件の未登録・cancel・null保存、古い会社条件の候補apply禁止、返却item/version/origin/valueの不一致拒否、確認cancel書き込み無し、選択候補のみ適用、候補無し、保存失敗、取得失敗再試行、自由項目追加、6桁料率精度。ローカルFlutter SDKが無いためCI実行が必要。
 
