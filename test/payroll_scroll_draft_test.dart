@@ -24,6 +24,7 @@ void main() {
       if (type == 'monthly') {
         await tester.enterText(find.widgetWithText(TextField, '月固定給'), '350000');
       }
+      FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
       final editorState = tester.state(find.byType(RateFormulaEditorCard));
       scroll.jumpTo(scroll.position.maxScrollExtent);
