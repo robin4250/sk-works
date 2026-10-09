@@ -80,8 +80,11 @@ class ResidentTaxSchedule {
     if (entries.isEmpty) return const ResidentTaxSelection._(ResidentTaxSelectionStatus.unregistered, null);
     ResidentTaxEntry? chosen;
     for (final entry in entries) {
-      if (entry.startMonth.compareTo(payrollMonth) <= 0) chosen = entry;
-      else break;
+      if (entry.startMonth.compareTo(payrollMonth) <= 0) {
+        chosen = entry;
+      } else {
+        break;
+      }
     }
     return ResidentTaxSelection._(chosen == null ? ResidentTaxSelectionStatus.beforeFirstStart : ResidentTaxSelectionStatus.active, chosen);
   }
@@ -119,8 +122,11 @@ class ResidentTaxSchedule {
     if (amend && index < 0) throw StateError('No resident tax start month to amend');
     final before = index < 0 ? null : entries[index];
     final updated = [...entries];
-    if (index < 0) updated.add(entry);
-    else updated[index] = entry;
+    if (index < 0) {
+      updated.add(entry);
+    } else {
+      updated[index] = entry;
+    }
     updated.sort((a, b) => a.startMonth.compareTo(b.startMonth));
     return ResidentTaxSchedule._(
       companyId: this.companyId, workerId: this.workerId, version: version + 1, entries: updated,
