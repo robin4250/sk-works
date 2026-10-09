@@ -3,12 +3,15 @@ on:
   pull_request:
     paths:
       - 'supabase/migrations/*generation_setting_issue_first_notification.sql'
-      - 'supabase/tests/generation_setting_issue_notification_fixture.sql'
+      - 'supabase/tests/generation_setting_issue*.sql'
       - 'tool/verify_generation_setting_issue_notification*.mjs'
       - '.github/workflows/generation-setting-issue-notification-source.yml'
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   notification-source:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     services:
       postgres:
