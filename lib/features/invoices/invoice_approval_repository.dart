@@ -91,6 +91,10 @@ class InvoiceStampSurnameMetadata {
     if (approval['status'] == 'approved') {
       final actual = DateTime.tryParse(approval['approved_at']?.toString() ?? '');
       final captured = DateTime.tryParse(name['approved_at']?.toString() ?? '');
+      if (approval['approved_at'] == null && name['approved_at'] == null &&
+          name['snapshot_surname'] == null) {
+        return const InvoiceStampSurnameMetadata();
+      }
       if (actual == null || captured == null || !actual.isAtSameMomentAs(captured)) {
         throw const InvoiceStampSurnameReadException();
       }
@@ -99,6 +103,9 @@ class InvoiceStampSurnameMetadata {
         throw const InvoiceStampSurnameReadException();
       }
       return InvoiceStampSurnameMetadata(snapshotSurname: snapshot);
+    }
+    if (approval['status'] == 'pending' && name['snapshot_surname'] != null) {
+      throw const InvoiceStampSurnameReadException();
     }
     if (approval['status'] == 'pending' && approval['approved_at'] == null &&
         name['approved_at'] == null && name['can_set_surname'] == true) {
@@ -228,7 +235,10 @@ class InvoiceApprovalRepository {
         'invoice_stamp_surname_rows',
         params: {'p_invoice_id': invoiceId},
       );
-      return raw is Map ? Map<String, dynamic>.from(raw) : null;
+      if (raw is! Map || raw['enabled'] is! bool || raw['names'] is! List) {
+        throw const InvoiceStampSurnameReadException();
+      }
+      return Map<String, dynamic>.from(raw);
     } on PostgrestException catch (error) {
       if (error.code == 'PGRST202' || error.code == '42883') return null;
       rethrow;

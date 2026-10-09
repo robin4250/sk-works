@@ -35,6 +35,7 @@ void main() {
     expect(result.snapshotSurname, isNull);
     expect(result.canSet, isFalse);
     expect(InvoiceStampSurnameMetadata.match('invoice', approval, null).snapshotSurname, isNull);
+    expect(InvoiceStampSurnameMetadata.match('invoice', {...approval, 'approved_at': null}, {...name, 'approved_at': null, 'snapshot_surname': null}).snapshotSurname, isNull);
   });
   test('draft editing requires pending rows on both RPCs with no approval time', () {
     final pending = {...approval, 'status': 'pending', 'approved_at': null};
