@@ -9,6 +9,7 @@ on:
       - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
       - 'tool/verify_resident_tax_effective_month.mjs'
       - 'tool/resident_tax_*pg17*'
+      - 'tool/verify_resident_tax_postgres_race.mjs'
       - '.github/workflows/resident-tax-postgres17-check.yml'
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'supabase/migrations/*resident_tax_effective_month.sql'
       - 'tool/verify_resident_tax_effective_month.mjs'
       - 'tool/resident_tax_*pg17*'
+      - 'tool/verify_resident_tax_postgres_race.mjs'
       - '.github/workflows/resident-tax-postgres17-check.yml'
 permissions:
   contents: read
@@ -47,3 +49,7 @@ jobs:
         env:
           SKO_RESIDENT_TAX_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
         run: node tool/verify_resident_tax_effective_month.mjs "file://$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-resident-pg17/node_modules/pg/lib/index.js"
+      - name: Exercise simultaneous resident-tax edits
+        env:
+          SKO_RESIDENT_TAX_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
+        run: node tool/verify_resident_tax_postgres_race.mjs "$RUNNER_TEMP/sko-resident-pg17/node_modules/pg/lib/index.js"

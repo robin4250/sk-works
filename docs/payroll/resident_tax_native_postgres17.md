@@ -9,3 +9,5 @@
 ローカルではURL拒否テストとsyntax checkに成功。postgres/initdb/psql/Docker/Podmanがないためnative SQLの実行はCIで確認する。本番へ切り替えて試験しない。
 
 このjobは実PostgreSQLの型・PL/pgSQL・RLS・transactionで、開始前/将来月/0円・実給与結合・履歴と給与auditのrollback・manual/finalized保持を確認する。単一connectionによる隔離fixtureであり、並列session競合や全production schema/JWT/Storageを検証したものではない。
+
+追加の2接続試験は、同じversionを読んだ編集者の同時保存を実行する。先行transactionを未commitで保持し、後行接続がadvisory lock待ちに入ったことをpg_locksで確認してからcommitする。後行はversion conflictで拒否され、勝者の未来月額だけが保存され、履歴は1件だけ増え、既存給与全rowが変わらないことをassertする。コード追加時点でsyntax確認済み、実行結果はCIで確認する。この試験は出勤/調整/給与確定など他入口とのロック順競合や全本番結合を網羅しない。
