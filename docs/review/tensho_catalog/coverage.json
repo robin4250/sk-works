@@ -1,0 +1,403 @@
+{
+  "license_source_html_sha256": "8bfd175006ec2c8745acbe7f6a43d0a1cdf158b7718c7c92e820266388dfedaf",
+  "credit": "篆書字体データセット（国文学研究資料館収集／CODH・DHII加工） doi:10.20676/00000390",
+  "research_only": true,
+  "unicode_normalization": false,
+  "style_classification": "not supplied by frequency catalog",
+  "works": [
+    {
+      "work": "印篆貫珠",
+      "license": "CC BY-SA 4.0",
+      "license_source": "https://codh.rois.ac.jp/tensho/",
+      "books": [
+        {
+          "id": "TE00027",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00027/",
+          "html_sha256": "b3904bb56720b9b722e88b9a2881c5ab5a0ed6b18ceda26a5863be3b9fc7e47b",
+          "character_count": 382,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00028",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00028/",
+          "html_sha256": "f3b797f9cf9c5e3121b7fad4f808a4fe4e39ff456a499610a1df1eb7fe37a38b",
+          "character_count": 438,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 5,
+            "U+6728": 0,
+            "U+20BB7": 2,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00029",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00029/",
+          "html_sha256": "56cef1b67563ccfcc03fdb798a499671d4c0f30fe953ee3f198d8033f23c6076",
+          "character_count": 326,
+          "target_counts": {
+            "U+5C71": 94,
+            "U+5DDD": 14,
+            "U+5EFA": 25,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 3,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00030",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00030/",
+          "html_sha256": "be78818d40cf734f1981ec0a46b51f35fdd5896e63907c12658446711b74f739",
+          "character_count": 425,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00031",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00031/",
+          "html_sha256": "8ad924ae4b15af9c8007b9cb2d06d21f92f5c50ac504a3400f4e59fc8920b653",
+          "character_count": 464,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 6,
+            "U+20BB7": 0,
+            "U+6703": 5
+          }
+        },
+        {
+          "id": "TE00032",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00032/",
+          "html_sha256": "4af27e6abd68d33154d90229ce721bd7aad97cf925417a46b24d92481198bbac",
+          "character_count": 325,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00033",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00033/",
+          "html_sha256": "854f7e5526c527ac1393880a01a6159aeb713b0b20d47a8c88a9b1b4788ee106",
+          "character_count": 385,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00034",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00034/",
+          "html_sha256": "0b022e7d430f43e5383f4d3518daa8ad4694307ed85937740890d6964fac6445",
+          "character_count": 381,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00035",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00035/",
+          "html_sha256": "0a8f55213da6143e50c7493ef32ed61f25f13d2f3bdcec4e4df3bfe5f9cb0fbd",
+          "character_count": 394,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 1,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00036",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00036/",
+          "html_sha256": "90c6171a50df5564856465411868795fd1cc3f520f54935f73d207445f184dbb",
+          "character_count": 390,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00037",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00037/",
+          "html_sha256": "63e204b09ea57be8bcd43618dc86754801751f402c24a9938d280641b4fcd145",
+          "character_count": 263,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 36,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        },
+        {
+          "id": "TE00038",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00038/",
+          "html_sha256": "907df902d0102ca55e4a74edc781e072c5704e5800e30d325228cbb1a1da604e",
+          "character_count": 84,
+          "target_counts": {
+            "U+5C71": 0,
+            "U+5DDD": 0,
+            "U+5EFA": 0,
+            "U+8A2D": 0,
+            "U+682A": 0,
+            "U+5F0F": 0,
+            "U+4F1A": 0,
+            "U+793E": 0,
+            "U+9752": 0,
+            "U+571F": 0,
+            "U+6728": 0,
+            "U+20BB7": 0,
+            "U+6703": 0
+          }
+        }
+      ],
+      "names": [
+        {
+          "name": "山川建設株式会社",
+          "missing": [
+            "U+682A",
+            "U+4F1A",
+            "U+793E"
+          ],
+          "candidate_counts": {
+            "U+5C71": 94,
+            "U+5DDD": 14,
+            "U+5EFA": 25,
+            "U+8A2D": 1,
+            "U+682A": 0,
+            "U+5F0F": 3,
+            "U+4F1A": 0,
+            "U+793E": 0
+          }
+        },
+        {
+          "name": "青山土木株式会社",
+          "missing": [
+            "U+682A",
+            "U+4F1A",
+            "U+793E"
+          ],
+          "candidate_counts": {
+            "U+9752": 36,
+            "U+5C71": 94,
+            "U+571F": 5,
+            "U+6728": 6,
+            "U+682A": 0,
+            "U+5F0F": 3,
+            "U+4F1A": 0,
+            "U+793E": 0
+          }
+        },
+        {
+          "name": "山川",
+          "missing": [],
+          "candidate_counts": {
+            "U+5C71": 94,
+            "U+5DDD": 14
+          }
+        },
+        {
+          "name": "𠮷山",
+          "missing": [],
+          "candidate_counts": {
+            "U+20BB7": 2,
+            "U+5C71": 94
+          }
+        }
+      ]
+    },
+    {
+      "work": "説文解字",
+      "license": "CC BY-SA 4.0",
+      "license_source": "https://codh.rois.ac.jp/tensho/",
+      "books": [
+        {
+          "id": "TE00039",
+          "url": "https://codh.rois.ac.jp/tensho/book/TE00039/",
+          "html_sha256": "6857ea245aa36d42671ae401ec791657bb07e60ec9b5217aa3681ef71e0bb3c5",
+          "character_count": 10356,
+          "target_counts": {
+            "U+5C71": 1,
+            "U+5DDD": 1,
+            "U+5EFA": 1,
+            "U+8A2D": 1,
+            "U+682A": 1,
+            "U+5F0F": 1,
+            "U+4F1A": 0,
+            "U+793E": 1,
+            "U+9752": 0,
+            "U+571F": 1,
+            "U+6728": 1,
+            "U+20BB7": 0,
+            "U+6703": 1
+          }
+        }
+      ],
+      "names": [
+        {
+          "name": "山川建設株式会社",
+          "missing": [
+            "U+4F1A"
+          ],
+          "candidate_counts": {
+            "U+5C71": 1,
+            "U+5DDD": 1,
+            "U+5EFA": 1,
+            "U+8A2D": 1,
+            "U+682A": 1,
+            "U+5F0F": 1,
+            "U+4F1A": 0,
+            "U+793E": 1
+          }
+        },
+        {
+          "name": "青山土木株式会社",
+          "missing": [
+            "U+9752",
+            "U+4F1A"
+          ],
+          "candidate_counts": {
+            "U+9752": 0,
+            "U+5C71": 1,
+            "U+571F": 1,
+            "U+6728": 1,
+            "U+682A": 1,
+            "U+5F0F": 1,
+            "U+4F1A": 0,
+            "U+793E": 1
+          }
+        },
+        {
+          "name": "山川",
+          "missing": [],
+          "candidate_counts": {
+            "U+5C71": 1,
+            "U+5DDD": 1
+          }
+        },
+        {
+          "name": "𠮷山",
+          "missing": [
+            "U+20BB7"
+          ],
+          "candidate_counts": {
+            "U+20BB7": 0,
+            "U+5C71": 1
+          }
+        }
+      ]
+    }
+  ]
+}
