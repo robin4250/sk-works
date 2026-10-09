@@ -122,7 +122,7 @@ class PayrollPdfService {
 
   static String buildTextSnapshot(PayrollStatementRecord statement) =>
       '給与明細書\n${statement.companyName}\n${statement.workerName}\n'
-      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
+      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確認'}\n'
       '総支給額 ${statement.grossPay == 0 ? '' : _yen(statement.grossPay)}\n'
       '総控除額 ${statement.deductions == 0 ? '' : _yen(statement.deductions)}\n'
       '差引支給額 ${statement.netPay == 0 ? '' : _yen(statement.netPay)}';
@@ -1084,6 +1084,18 @@ class PayrollPdfService {
   }
 
   static const _nonMoneyDetailKeys = <String>{
+    // Snapshot metadata keys are reserved at detail's top level. A named
+    // allowance belongs in custom_earnings/custom_deductions, even if its label
+    // matches one of these keys; metadata is never a legacy money entry.
+    'company_name',
+    'worker_name',
+    'workflow_state',
+    'review_confirmed',
+    'reviewed_at',
+    'finalized_by',
+    'finalized_at',
+    'schema_version',
+    'snapshot_version',
     'calculation_warnings',
     '出勤日数',
     '休出日数',
