@@ -45,6 +45,8 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
   bool failRead = false;
   bool failSave = false;
   bool failAfterSend = false;
+  bool rejectManual = false;
+  int manualAttempts = 0;
   bool unavailable = false;
   int sentVersion = 0;
   void commitSentCustom() {
@@ -66,7 +68,7 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
     scopes.add(value);
     data = CompanyPayrollRatesData(canEdit: true, items: data.items, candidates: data.candidates, history: data.history,
       companyScope: CompanyPayrollRateScope(version: expectedVersion + 1, value: value, updatedBy: 'admin', updatedAt: '2026-10-09'));
-    if (failAfterSend) throw StateError('response lost');
+    if (failAfterSend) throw TimeoutException('response lost');
   }
   @override
   Future<void> applyCandidate({required String companyId, required String itemId,
@@ -77,6 +79,8 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
   @override
   Future<void> saveManual({required String companyId, required String itemId,
     required int expectedVersion, required Map<String, dynamic> value}) async {
+    manualAttempts++;
+    if (rejectManual) throw const PayrollRateWriteRejected('23505');
     if (failSave) throw StateError('conflict');
     saved.add({'item_id': itemId, 'value': value});
     sentVersion = expectedVersion;
@@ -664,6 +668,62 @@ void main() {
     expect((await b.read('company'))!.itemId, 'first-id');
     await a.clear(stored);
     expect(await b.read('company'), isNull);
+  });
+
+  test('only fully received explicit SQL rejection codes release a pending write', () async {
+    for (final code in ['22023', '40001', '23505', '42501']) {
+      final repository = SupabaseCompanyPayrollRatesRepository(invoke: (_, _) async =>
+        throw PostgrestException(message: 'transaction rejected', code: code));
+      await expectLater(repository.saveManual(companyId: 'company', itemId: 'health_insurance',
+        expectedVersion: 0, value: value('health_insurance')),
+        throwsA(isA<PayrollRateWriteRejected>().having((e) => e.code, 'code', code)));
+    }
+    for (final error in [
+      const PostgrestException(message: 'unknown error', code: 'XX000'),
+      const PostgrestException(message: 'API timeout', code: 'PGRST003'),
+      TimeoutException('offline'), const FormatException('unreadable response'),
+    ]) {
+      final repository = SupabaseCompanyPayrollRatesRepository(invoke: (_, _) async => throw error);
+      await expectLater(repository.saveManual(companyId: 'company', itemId: 'health_insurance',
+        expectedVersion: 0, value: value('health_insurance')), throwsA(same(error)));
+    }
+  });
+
+  testWidgets('duplicate label SQL rejection reloads and permits a corrected new label', (tester) async {
+    final repository = FakeRatesRepository()..rejectManual = true;
+    await openPage(tester, repository);
+    Future<void> submit(String label) async {
+      await reveal(tester, find.text('料率項目を追加'));
+      await tester.tap(find.text('料率項目を追加'));
+      await tester.pumpAndSettle();
+      for (final entry in {
+        'label': label, 'total': '1.3', 'employee': '0.5', 'employer': '0.8',
+        'insurance_month': '2026-10', 'payroll_month': '2026-11', 'payment_month': '2026-11',
+        'publisher': '管理者設定', 'url': 'https://example.org/rates',
+      }.entries) {
+        final field = find.byKey(ValueKey('rate-field-${entry.key}'));
+        await reveal(tester, field);
+        await tester.enterText(field, entry.value);
+      }
+      await reveal(tester, find.byType(CheckboxListTile));
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('入力内容を確認'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確認して適用'));
+      await tester.pumpAndSettle();
+    }
+    await submit('重複名称');
+    expect(repository.manualAttempts, 1);
+    expect(repository.saved, isEmpty);
+    expect(repository.pendingStore.pending, isNull);
+    await reveal(tester, find.text('料率項目を追加'));
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '料率項目を追加')).onPressed, isNotNull);
+    repository.rejectManual = false;
+    await submit('修正した名称');
+    expect(repository.manualAttempts, 2);
+    expect(repository.saved.single['value']['label'], '修正した名称');
+    expect(repository.pendingStore.pending, isNull);
   });
 
 }

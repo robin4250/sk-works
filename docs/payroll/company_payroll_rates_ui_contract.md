@@ -38,3 +38,9 @@ Supabase Dart RPC公式docsを確認。changelog.mdは取得時unsupported conte
 read RPCのPGRST202/42883かつ対象関数名一致だけを「準備中：この会社では料率設定をまだ利用できません」と表示する。権限・通信エラーを未導入へ読み替えず、取得済み設定も隠す。再取得で閲覧者となった場合は保存成立を確認しても変更操作を出さない。閲覧者は同社の料率・適用月・情報元・年度PDFを読み取り、保存・適用・条件編集・新規登録を行わない。
 
 同一actor/companyの複数store instanceは同じキーのmutexで既存記録確認・保存・読込・削除を直列化する。後発の別操作でpendingを上書きせず、確認済み操作のpayload一致を削除前にも照合する。同時2instance保存fixtureで1操作だけ記録成功し、違うUUIDのcleanupで削除できないことを確認する。複数端末間のDB idempotencyを追加するものではない。
+
+## 確定拒否と不明応答の区別
+
+完全受信したPostgrestExceptionのSQLSTATE `22023`（原典validate_value/scope等の入力拒否）、`40001`（原典設定/会社条件版競合）、`23505`（原典payroll_rate_label/standard_kindのunique制約）、`42501`（原典assert_adminの権限拒否）だけをtransaction拒否として分類する。原典は20261009151946_company_payroll_rate_registry.sql、HTTP error mapping根拠はhttps://docs.postgrest.org/en/stable/references/errors.html と https://supabase.com/docs/guides/api/rest/postgrest-error-codes。これらは同一scope・世代・期待操作が維持された場合にpendingをCAS削除し、古い表示とcan_editを破棄してfresh readする。新しいcan_edit取得前に変更操作を復活させない。重複名称拒否→再取得→名称修正保存fixtureを含む。
+
+network/TimeoutException/FormatException、PGRST003等の汎用APIエラー、未知SQL/500は不明応答のまま保持する。旧read・未存在ではtimeout操作を解除しない。確定拒否のローカル記録削除に失敗した場合も変更停止を維持する。

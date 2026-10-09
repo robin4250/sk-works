@@ -166,6 +166,11 @@ bool payrollRateValuesEqual(dynamic left, dynamic right) {
 
 typedef CompanyPayrollRateRpc = Future<dynamic> Function(String name, Map<String, dynamic> parameters);
 
+class PayrollRateWriteRejected implements Exception {
+  const PayrollRateWriteRejected(this.code);
+  final String code;
+}
+
 class PayrollRatesUnavailable implements Exception {
   const PayrollRatesUnavailable();
 }
@@ -203,6 +208,19 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
     return SupabaseBackend.client.rpc(name, params: parameters);
   }
 
+  Future<dynamic> _writeCall(String name, Map<String, dynamic> parameters) async {
+    try {
+      return await _call(name, parameters);
+    } on PostgrestException catch (error) {
+      // These PostgreSQL errors are fully received transaction rejections.
+      // Transport errors, malformed replies and unknown server errors remain uncertain.
+      if (const {'22023', '40001', '23505', '42501'}.contains(error.code)) {
+        throw PayrollRateWriteRejected(error.code!);
+      }
+      rethrow;
+    }
+  }
+
   void _verifySaved(dynamic raw, String itemId, int expectedVersion, String origin,
       {Map<String, dynamic>? requestedValue}) {
     final item = CompanyPayrollRateItem.fromJson(raw);
@@ -228,7 +246,7 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
 
   @override
   Future<void> saveScope({required String companyId, required int expectedVersion, required Map<String, dynamic> value}) async {
-    final raw = await _call('save_company_payroll_rate_scope', {
+    final raw = await _writeCall('save_company_payroll_rate_scope', {
       'p_company_id': companyId, 'p_expected_version': expectedVersion, 'p_value': value, 'p_confirmed': true,
     });
     final scope = CompanyPayrollRateScope.fromJson(raw);
@@ -240,7 +258,7 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
   @override
   Future<void> saveManual({required String companyId, required String itemId,
     required int expectedVersion, required Map<String, dynamic> value}) async {
-    final raw = await _call('save_manual_company_payroll_rate', {
+    final raw = await _writeCall('save_manual_company_payroll_rate', {
       'p_company_id': companyId, 'p_item_id': itemId, 'p_expected_version': expectedVersion,
       'p_value': value, 'p_confirmed': true,
     });
@@ -250,7 +268,7 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
   @override
   Future<void> applyCandidate({required String companyId, required String itemId,
     required String candidateId, required int expectedVersion, Map<String, dynamic>? expectedValue}) async {
-    final raw = await _call('apply_company_payroll_rate_candidate', {
+    final raw = await _writeCall('apply_company_payroll_rate_candidate', {
       'p_company_id': companyId, 'p_item_id': itemId, 'p_candidate_id': candidateId,
       'p_expected_version': expectedVersion, 'p_confirmed': true,
     });

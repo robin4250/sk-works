@@ -119,6 +119,23 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     _pendingWrite = null;
   }
 
+  Future<void> _recoverRejected(int generation) async {
+    if (!mounted || generation != _generation) return;
+    try {
+      await _completeWrite(generation);
+      if (!mounted || generation != _generation) return;
+      _data = null;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('保存は拒否されました。最新設定を読み込み、入力内容を確認してください。')));
+      await _load();
+    } catch (_) {
+      if (mounted && generation == _generation) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('保存結果の確認情報を更新できません。再読み込みして確認してください。')));
+      }
+    }
+  }
+
   Future<bool> _confirm(String title, Map<String, dynamic> value) async =>
       await showDialog<bool>(context: context, builder: (context) => AlertDialog(
         title: Text(title),
@@ -150,6 +167,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('選択した項目を適用しました')));
       await _load();
+    } on PayrollRateWriteRejected {
+      await _recoverRejected(generation);
     } catch (_) {
       if (mounted && generation == _generation) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('適用結果を確認できません。再読み込みして設定を確認してください。')));
@@ -181,6 +200,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('手動設定を保存しました')));
       await _load();
+    } on PayrollRateWriteRejected {
+      await _recoverRejected(generation);
     } catch (_) {
       if (mounted && generation == _generation) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保存結果を確認できません。再読み込みして設定を確認してください。')));
@@ -234,6 +255,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社の適用条件を保存しました')));
       await _load();
+    } on PayrollRateWriteRejected {
+      await _recoverRejected(generation);
     } catch (_) {
       if (mounted && generation == _generation) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社条件の保存結果を確認できません。再読み込みしてください。')));
