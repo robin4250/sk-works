@@ -10,6 +10,7 @@ import 'individual_payroll_settings_repository.dart';
 import 'payroll_confirmation_repository.dart';
 import 'payroll_confirmation_settings_page.dart';
 import 'paid_leave_pay.dart';
+import 'payroll_draft_keep_alive.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
   const IndividualPayrollSettingsPage({super.key});
@@ -453,29 +454,39 @@ class _IndividualPayrollSettingsPageState
                   SizedBox(height: 16),
                   Text(SkoLanguageController.tr('給与単価：選択した社員の個別設定／給料日・締め日：会社設定')),
                   SizedBox(height: 8),
-                  RateFormulaEditorCard(
+                  PayrollDraftKeepAlive(
                     key: ValueKey('payroll-rate-${_workerId ?? ''}'),
-                    title: SkoLanguageController.tr('勤務単価 自動計算'),
-                    initialBaseRateYen:
-                        (_settingValues['pay_type']?.toString() == 'monthly'
-                            ? (_settingValues['calculation_daily_base_yen']
-                                      as num?)
-                                  ?.toInt()
-                            : (_settingValues['day_daily'] as num?)?.toInt()) ??
-                        0,
-                    initialFormula: _settingValues['rate_formula'],
-                    initialPayType:
-                        _settingValues['pay_type']?.toString() ?? 'daily',
-                    initialMonthlySalaryYen:
-                        (_settingValues['monthly_salary_yen'] as num?)
-                            ?.toInt() ??
-                        0,
-                    initialOverrides: _settingValues['rate_overrides'],
-                    enabled: workspace.canEdit,
-                    onChanged: (value) {
-                      _initialRateSignature ??= _rateSignature(value);
-                      setState(() => _rateDraft = value);
-                    },
+                    child: RateFormulaEditorCard(
+                      title: SkoLanguageController.tr('勤務単価 自動計算'),
+                      initialBaseRateYen:
+                          _rateDraft?.baseRateYen ??
+                          (_settingValues['pay_type']?.toString() == 'monthly'
+                              ? (_settingValues['calculation_daily_base_yen']
+                                        as num?)
+                                    ?.toInt()
+                              : (_settingValues['day_daily'] as num?)?.toInt()) ??
+                          0,
+                      initialFormula: _rateDraft?.formula.toMap(
+                        hourlyRateYen: _rateDraft!.formula.hourlyBase
+                            ? _rateDraft!.baseRateYen
+                            : 0,
+                      ) ?? _settingValues['rate_formula'],
+                      initialPayType:
+                          _rateDraft?.payType ??
+                          _settingValues['pay_type']?.toString() ?? 'daily',
+                      initialMonthlySalaryYen:
+                          _rateDraft?.monthlySalaryYen ??
+                          (_settingValues['monthly_salary_yen'] as num?)
+                              ?.toInt() ??
+                          0,
+                      initialOverrides: _rateDraft?.overrides ??
+                          _settingValues['rate_overrides'],
+                      enabled: workspace.canEdit,
+                      onChanged: (value) {
+                        _initialRateSignature ??= _rateSignature(value);
+                        setState(() => _rateDraft = value);
+                      },
+                    ),
                   ),
                   SizedBox(height: 12),
                   _sectionTitle(SkoLanguageController.tr('手当')),
