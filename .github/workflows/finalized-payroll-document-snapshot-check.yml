@@ -32,3 +32,30 @@ jobs:
         run: node --check tool/verify_finalized_payroll_document_snapshot.mjs
       - name: Exercise exact calculator and financial normalization
         run: node tool/verify_finalized_payroll_document_snapshot.mjs "$RUNNER_TEMP/sko-final-payroll/node_modules/@electric-sql/pglite/dist/index.js"
+  native-postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_resident_tax_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_resident_tax_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_RESIDENT_TAX_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned native SQL client
+        run: npm install --prefix "$RUNNER_TEMP/sko-final-payroll-pg17" --no-save --ignore-scripts pg@8.16.3
+      - name: Check disposable database guard
+        run: node --test tool/resident_tax_pg17_database_guard_test.mjs
+      - name: Exercise exact final snapshot on native PostgreSQL 17
+        run: node tool/verify_finalized_payroll_document_snapshot.mjs "$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-final-payroll-pg17/node_modules/pg/lib/index.js"
