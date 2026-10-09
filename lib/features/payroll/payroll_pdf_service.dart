@@ -1,3 +1,4 @@
+import '../../domain/company_seal_snapshot.dart';
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -18,9 +19,11 @@ class PayrollPdfService {
   }) async {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final seal = CompanySealSnapshot.fromJson(
+        statement.detail['company_seal_snapshot']);
     final sealFont = statement.detail['company_seal_enabled'] == false
         ? regular
-        : await CompanySealPdf.loadFont();
+        : await CompanySealPdf.loadStyleFont(seal.style);
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
@@ -134,6 +137,7 @@ class PayrollPdfService {
     required int pageIndex,
     required int pageCount,
   }) {
+    final seal = CompanySealSnapshot.fromJson(detail['company_seal_snapshot']);
     final blue = PdfColor.fromHex('#178DE3');
     final paleBlue = PdfColor.fromHex('#EFF8FD');
     final red = PdfColor.fromHex('#EC4F79');
@@ -172,7 +176,7 @@ class PayrollPdfService {
       borderRadius: pw.BorderRadius.circular(radius),
     );
     final light = PdfColor.fromHex('#83CBEA');
-    final companyText = text(statement.companyName, size: 10, bold: true);
+    final companyText = text(seal.registeredName(statement.companyName), size: 10, bold: true);
     final bank = detail['bank_account'] is Map
         ? Map<String, dynamic>.from(detail['bank_account'] as Map)
         : detail;
@@ -234,7 +238,8 @@ class PayrollPdfService {
                   child: detail['company_seal_enabled'] == false
                       ? pw.SizedBox(width: 32, height: 32)
                       : CompanySealPdf.build(
-                          statement.companyName,
+                          seal.registeredName(statement.companyName),
+                          style: seal.style,
                           size: 32,
                           font: sealFont,
                           fallbackFont: fallbackFont,
@@ -253,7 +258,7 @@ class PayrollPdfService {
                 final nameWidth =
                     fallbackFont
                         .getFont(context)
-                        .stringMetrics(statement.companyName)
+                        .stringMetrics(seal.registeredName(statement.companyName))
                         .width *
                     10;
                 final availableWidth = (nameWidth - 4)

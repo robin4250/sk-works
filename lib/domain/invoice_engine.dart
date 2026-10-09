@@ -1,3 +1,5 @@
+import 'company_seal_snapshot.dart';
+
 enum InvoiceDetailMode {
   consolidatedOnly,
   siteBreakdownOnInvoice,
@@ -117,6 +119,7 @@ class InvoiceCalculationResult {
     this.customerAddress = '',
     this.customerPhone = '',
     this.invoiceId = '',
+    this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.invoiceNumber = '',
     this.issueDate,
     this.periodStart,
@@ -137,6 +140,7 @@ class InvoiceCalculationResult {
   /// Basis points. Example: 1000 = 10%.
   final int taxRateBps;
   final String invoiceId;
+  final CompanySealSnapshot companySealSnapshot;
   final String invoiceNumber;
   final DateTime? issueDate;
   final DateTime? periodStart;
@@ -168,6 +172,7 @@ class InvoiceEngine {
     String customerAddress = '',
     String customerPhone = '',
     String invoiceId = '',
+    CompanySealSnapshot companySealSnapshot = CompanySealSnapshot.legacy,
     String invoiceNumber = '',
     DateTime? issueDate,
     DateTime? periodStart,
@@ -227,6 +232,7 @@ class InvoiceEngine {
       siteCalculations: List.unmodifiable(sites),
       taxRateBps: taxRateBps,
       invoiceId: invoiceId,
+      companySealSnapshot: companySealSnapshot,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,
       periodStart: periodStart,

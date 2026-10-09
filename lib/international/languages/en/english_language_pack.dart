@@ -9,7 +9,7 @@ const englishLanguagePack = LanguagePack(
     '隷書の説明を読み込めませんでした。': 'Could not load the Reisho explanation.',
     '書体の解説（作者原文）': 'Typeface explanation (original author document)',
 
-    "締め日は末日、給料日は支払月と日付を会社共通で設定します。確認者を1〜3名選びます。個別の給与単価は個別給与設定で管理します。会社角印のON／OFFは会社共通で、請求書・給与明細・支払証明書に反映します。OFFでも確認印・承認印と承認履歴は残ります。会社角印の書体選択は試験用です。会社設定でPDFを確認して保存します。現在の帳票の印影は変更しません。未対応文字や小さすぎる隷書は保存できません。5種類の完成版ではありません。": "Closing is at month end. Set payday and one to three reviewers company-wide. Individual wages are managed in individual payroll settings. Seal visibility applies to all three reports and preserves approvals when OFF. Typeface selection is a trial: review and save in company settings. Existing report seals remain unchanged. Unsupported characters and excessively small Reisho seals cannot be saved. The five choices are not complete.",
+    "締め日は末日、給料日は支払月と日付を会社共通で設定します。確認者を1〜3名選びます。個別の給与単価は個別給与設定で管理します。会社角印のON／OFFは会社共通で、請求書・給与明細・支払証明書に反映します。OFFでも確認印・承認印と承認履歴は残ります。会社角印の書体選択は試験用です。会社設定でPDFを確認して保存します。帳票保存の連携が利用可能になった後、新しく保存する帳票に書体を固定します。過去の帳票は変更しません。未対応文字や小さすぎる隷書は保存できません。5種類の完成版ではありません。": "Closing is at month end. Set payday and one to three reviewers company-wide. Individual wages are managed in individual payroll settings. Seal visibility applies to all three reports and preserves approvals when OFF. Typeface selection is a trial: review and save in company settings. Once document snapshot integration is available, newly saved reports retain the selected typeface. Historical report seals remain unchanged. Unsupported characters and excessively small Reisho seals cannot be saved. The five choices are not complete.",
     "角印プレビュー": "Seal preview",
     "角印プレビューを生成できませんでした。": "Could not generate the seal preview.",
     "会社角印の書体を保存しました": "Company seal typeface saved.",
@@ -25,6 +25,7 @@ const englishLanguagePack = LanguagePack(
     "未対応文字": "Unsupported characters",
     "登録会社名が長く、小さい帳票の印影を読み取れません。隷書はまだ保存できません。": "The registered name is too long for the small report seal. Reisho cannot be saved yet.",
     "書体を保存": "Save typeface",
+    "試験用書体は新しく保存する帳票に反映します。過去の帳票は変更しません。": "The trial typeface applies to newly saved reports. Historical reports remain unchanged.",
     "書体選択は試験用です。現在の帳票の印影は変更しません。": "Typeface selection is for trials. Existing report seals remain unchanged.",
 
     "Master側に保管中です。用途は今後検討します。既存の会社設定は読み取り専用で、個人別の業務権限ではありません。設定・登録データは変更しません。": "Held in Master settings for future review. Existing company settings are read-only and do not assign individual permissions. Settings and registered data remain unchanged.",

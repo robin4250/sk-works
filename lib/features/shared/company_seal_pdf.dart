@@ -76,6 +76,10 @@ class CompanySealPdf {
   }
 
   static pw.Widget _buildReisho(String name, double size, pw.Font font) {
+    if (name.trim().runes.length > 16 ||
+        reishoGlyphSize(name, size) < 4.5) {
+      throw StateError('The registered company name is too small for this Reisho seal.');
+    }
     final coverage = _loadedReishoCoverage;
     if (coverage == null || name.runes.any((rune) => !coverage.contains(rune))) {
       throw StateError('The registered company name is unsupported by Reisho.');

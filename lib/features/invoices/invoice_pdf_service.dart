@@ -31,14 +31,14 @@ class InvoicePdfService {
 
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
-    final sealFont = effectiveSettings?.companySealEnabled == false
-        ? regular
-        : await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      final sealFont = effectiveSettings?.companySealEnabled == false
+          ? regular
+          : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);
       List<InvoiceApprovalRecord> approvals = const [];
       if (approvalsByInvoice?.containsKey(invoice.invoiceId) == true) {
         approvals = List<InvoiceApprovalRecord>.unmodifiable(
@@ -594,7 +594,7 @@ class InvoicePdfService {
     box(28, 744.8898, right - 28, 70);
     line(377.2756, 749.8898, 0, 60);
     text(
-      settings?.companyName ?? '',
+      invoice.companySealSnapshot.registeredName(settings?.companyName ?? ''),
       50,
       756,
       285,
@@ -635,7 +635,8 @@ class InvoicePdfService {
     final companyNameWidth =
         (companyFont
                     .getFont(context)
-                    .stringMetrics(settings?.companyName ?? '')
+                    .stringMetrics(invoice.companySealSnapshot.registeredName(
+                        settings?.companyName ?? ''))
                     .advanceWidth *
                 11)
             .clamp(0.0, 285.0)
@@ -652,7 +653,9 @@ class InvoicePdfService {
             child: pw.FittedBox(
               fit: pw.BoxFit.fill,
               child: CompanySealPdf.build(
-                settings?.companyName ?? '',
+                invoice.companySealSnapshot.registeredName(
+                    settings?.companyName ?? ''),
+                style: invoice.companySealSnapshot.style,
                 font: sealFont,
                 fallbackFont: fallbackFont,
               ),

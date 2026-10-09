@@ -1,3 +1,4 @@
+import '../../domain/company_seal_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -345,6 +346,8 @@ class InvoiceCloudRepository {
                     tax: _toInt(invoice['tax']),
                   ),
             invoiceId: invoiceId,
+            companySealSnapshot: CompanySealSnapshot.fromJson(
+                snapshotMap['company_seal_snapshot']),
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',
             issueDate: issueDate,
             periodStart: periodStart,

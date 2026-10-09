@@ -66,5 +66,47 @@ await check("billing_rate_formula='{}'",0.5,0,0,6000);
 await db.exec("update invoices set status='approved';update attendance_entries set base_man_days=20");
 await db.exec(refresh);
 assert.equal((await db.query('select subtotal from invoices')).rows[0].subtotal,6000);
+if(process.argv.includes('--seal-snapshots')) {
+ await db.exec(`create role anon;create role authenticated;
+ alter table companies add column name text default '株式会社テスト建設',add column company_seal_enabled boolean default true,add column updated_at timestamptz;
+ create table company_members(company_id uuid,user_id uuid,role text);
+ create function private.account_access_allowed() returns boolean language sql as $$select true$$;
+ create table payment_certificates(id uuid primary key,company_id uuid,snapshot jsonb);
+ create table payroll_statements(id uuid primary key,company_id uuid,detail jsonb);
+ create function private.refresh_automatic_payment_certificate(cid uuid,partner uuid,day date) returns void language plpgsql as $$
+ declare existing public.payment_certificates; snapshot_value jsonb;
+ begin snapshot_value:='{}';if existing.id is null then return;end if;end $$;
+ create function private.payroll_document_metadata(p_statement_id uuid) returns jsonb language sql as $$
+ select jsonb_build_object('company_seal_enabled',c.company_seal_enabled,'old',true)
+ from payroll_statements ps join companies c on c.id=ps.company_id where ps.id=p_statement_id $$;
+ create function private.saved_site_payment_document(p_proposal uuid,p_company uuid) returns jsonb language plpgsql as $$
+ declare result jsonb;
+ begin select jsonb_build_object('snapshot_version',2,'parent_company_seal_enabled',parent.company_seal_enabled)
+ into result from companies parent where parent.id=p_company;return result;end $$;`);
+ await db.exec(fs.readFileSync(repo+'/supabase/migrations/20261009011357_company_seal_aoyagi_style.sql','utf8'));
+ await db.exec(fs.readFileSync(repo+'/supabase/migrations/20261009012730_company_seal_document_snapshots.sql','utf8'));
+ await db.exec("update companies set company_seal_style='aoyagi_reisho'");
+ const legacyBefore=(await db.query('select snapshot from invoices')).rows[0].snapshot;
+ await db.exec(refresh); // Existing approved invoice remains byte-for-byte unchanged.
+ assert.deepEqual((await db.query('select snapshot from invoices')).rows[0].snapshot,legacyBefore);
+ await db.exec("update invoices set status='draft';update attendance_entries set base_man_days=1");
+ await db.exec(refresh); // An old draft is recalculated without style backfill.
+ assert.equal((await db.query("select snapshot ? 'company_seal_snapshot' present from invoices")).rows[0].present,false);
+ await db.exec('delete from invoices');
+ await db.exec(refresh);
+ const initial=(await db.query('select snapshot,updated_at from invoices')).rows[0];
+ assert.equal(initial.snapshot.company_seal_snapshot.style,'aoyagi_reisho');
+ await db.exec("update companies set name='株式会社別名',company_seal_style='legacy'");
+ await db.exec(refresh);
+ const repeated=(await db.query('select snapshot,updated_at from invoices')).rows[0];
+ assert.deepEqual(repeated.snapshot,initial.snapshot);
+ assert.equal(String(repeated.updated_at),String(initial.updated_at)); // No redundant cron write.
+ await db.exec('update attendance_entries set overtime_hours=3');
+ await db.exec(refresh);
+ const changed=(await db.query('select snapshot from invoices')).rows[0].snapshot;
+ assert.deepEqual(changed.company_seal_snapshot,initial.snapshot.company_seal_snapshot);
+ assert.notDeepEqual(changed,initial.snapshot); // Real financial change still recalculates.
+ console.log('PASS: real invoice cron stable, old approved/draft not backfilled, financial changes retain original seal');
+}
 console.log('Invoice monthly/area/contract, legacy and JSON overrides, half-day, decimal labels, finalized preservation passed');
 } finally {await db.close();}

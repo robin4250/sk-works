@@ -19,7 +19,7 @@ class PaymentCertificatePdfService {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
-        ? await CompanySealPdf.loadFont()
+        ? await CompanySealPdf.loadStyleFont(record.companySealSnapshot.style)
         : regular;
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
@@ -76,7 +76,7 @@ class PaymentCertificatePdfService {
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Expanded(child: pw.Text(
-              'From:${record.payerCompanyName}',
+              'From:${record.companySealSnapshot.registeredName(record.payerCompanyName)}',
               style: const pw.TextStyle(fontSize: 7),
             )),
             pw.SizedBox(width: 8),
@@ -139,7 +139,8 @@ class PaymentCertificatePdfService {
                     children: [
                       pw.Expanded(
                         child: pw.Text(
-                          record.payerCompanyName,
+                          record.companySealSnapshot.registeredName(
+                              record.payerCompanyName),
                           style: pw.TextStyle(
                             fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
@@ -152,7 +153,9 @@ class PaymentCertificatePdfService {
                       !record.payerCompanySealEnabled
                           ? pw.SizedBox(width: 55, height: 55)
                           : CompanySealPdf.build(
-                              record.payerCompanyName,
+                              record.companySealSnapshot.registeredName(
+                                  record.payerCompanyName),
+                              style: record.companySealSnapshot.style,
                               size: 55,
                               font: sealFont,
                               fallbackFont: fallbackFont,
@@ -255,7 +258,9 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
             pw.Text(
-              record.isPreview
+              record.isAgreementSnapshot
+                  ? '双方確認済み・第${record.revision}版'
+                  : record.isPreview
                   ? 'プレビュー・出勤実績なし'
                   : record.status == 'draft'
                   ? '下書き・第${record.revision}版'

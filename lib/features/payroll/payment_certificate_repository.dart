@@ -1,3 +1,4 @@
+import '../../domain/company_seal_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -31,6 +32,8 @@ class PaymentCertificateRecord {
     required this.status,
     required this.revision,
     this.payerCompanyName = '',
+    this.isAgreementSnapshot = false,
+    this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.payerCompanySealEnabled = true,
     this.payerPostalCode = '',
     this.payerAddress = '',
@@ -50,6 +53,9 @@ class PaymentCertificateRecord {
   final String status;
   final int revision;
   final String payerCompanyName;
+  /// Document origin only; does not finalize a monthly certificate.
+  final bool isAgreementSnapshot;
+  final CompanySealSnapshot companySealSnapshot;
   final bool payerCompanySealEnabled;
   final String payerPostalCode;
   final String payerAddress;
@@ -172,7 +178,7 @@ class PaymentCertificateRepository {
     final rows = await _client
         .from('payment_certificates')
         .select(
-          'id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,partner_companies(name)',
+          'id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,snapshot,partner_companies(name)',
         )
         .eq('company_id', companyId)
         .order('period_start', ascending: false);
@@ -213,6 +219,9 @@ class PaymentCertificateRepository {
       result.add(
         PaymentCertificateRecord(
           id: id,
+          companySealSnapshot: CompanySealSnapshot.fromJson(
+              raw['snapshot'] is Map
+                  ? raw['snapshot']['company_seal_snapshot'] : null),
           partnerCompanyId: raw['partner_company_id']?.toString() ?? '',
           partnerCompanyName: raw['partner_companies'] is Map
               ? (raw['partner_companies']['name']?.toString() ?? '')
