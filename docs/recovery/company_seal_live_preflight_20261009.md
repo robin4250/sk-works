@@ -53,6 +53,45 @@ the numbers match. Reconcile using definitions and the deployed ledger.
 No dependency above was applied by this preflight. #809 personal surname seals are
 also separate from company seal storage and require their own deployment checks.
 
+## Reviewable preparation sequence and side effects
+
+This sequence describes a future reviewed deployment; it is **not an instruction
+to apply migrations now**. The protected backup location has not been selected
+by the operator, and no protected backup has been acquired.
+
+| Stage | Prerequisites / stop condition | DDL and later-operation effects |
+| --- | --- | --- |
+| Certificate math, `20261008035432` | Existing partner settings, attendance/worker/site tables and `resolve_rate_formula(numeric,jsonb,jsonb,text)`; verify full definitions/ACLs before replacement. | Replaces calculation, automatic certificate refresh and detail-read functions. No top-level refresh, row UPDATE, trigger or cron creation. Later normal refresh may change automatic draft amounts/details/revision or delete an attendance-empty automatic draft. Manual/finalized rows are excluded from refresh. Historical detail reads without frozen rows return the recorded gross amount rather than current-rate reconstruction; this changes presentation without changing stored rows. |
+| Agreement base, `20261008201215` | Accepted-share and company-connection schema, company/membership/site data model and account helper. Stop on existing new-object names or mismatched referenced columns/FKs. | Adds private rollout/proposal/confirmation/document tables, RLS and narrowly authorized RPCs. No existing financial-row writes, refresh invocation, trigger or cron installation. Gates default OFF and no rows are enabled. A later saved-document RPC can INSERT a snapshot after both confirmations; do not call it as a production installation check. |
+| Agreement company snapshot, `20261008212855` | Base agreement objects, company postal/address/phone/fax/ON/OFF fields. | Replaces only the saved-document function's new-snapshot branch with v2 contact/ON/OFF fields. No top-level snapshot creation/backfill; existing saved JSON returns unchanged. |
+| Style settings, `20261009011357` | Existing ON/OFF/account helper and exact-company admin model; new style column/functions must be absent. | Adds legacy-default style storage and restricted RPCs; no style-selection DML or cron installation. A later save changes only style/updated_at. Existing data and ON/OFF remain. |
+| Document snapshots, `20261009012730` | Previous agreement v2 and style objects; reviewed generator anchors exactly once; certificate math must be resolved first to avoid replacing the seal-patched refresh later. | Adds three BEFORE INSERT/UPDATE snapshot triggers and patches five existing functions. No top-level financial-row UPDATE or refresh. Later new documents receive saved metadata; existing rows retain the original key or original absence. Replacing the certificate refresh with its unpatched math migration afterwards would remove the comparison-before-seal protection, so stop rather than reorder that replacement. |
+
+The required chains are agreement base → agreement v2 → document snapshots and
+style settings → document snapshots. Certificate math is independent of the
+agreement/style chain but must precede the final document patch. A conservative
+preparation order is certificate math → agreement base → agreement v2 → style →
+document snapshots, with gates OFF throughout. Never apply an unreviewed broad
+migration batch just because numeric filenames sort before these files.
+
+Additional catalog-only checks found all 30 named dependency columns present
+across the existing company/share/delivery/connection/site/financial-setting
+tables. This verifies column presence, not every business constraint or live
+shared-record validity. Existing rate resolver MD5:
+`96f262dd4978509d5e40b43a585832f1`; certificate calculation MD5:
+`705d9478aacc06a3204538357404817c`; detail reader MD5:
+`933a4dc04faeeb98452c5290f9374054`.
+
+Isolation proofs already exercised the real agreement propose/confirm/save
+functions, v2 preservation, new v3 snapshots, and invoice/certificate generators
+before/after the final seal patch. They verify no repeated snapshot write/revision
+on identical recalculation and retention of the original seal during financial
+changes. The certificate audit intentionally reproduces old defects before
+applying the forward fix in the disposable database; those logs are not production
+recalculations. These proofs do not cover every production constraint, scheduler
+session, deletion/retention path or concurrent financial update. A protected
+post-DDL comparison and separately reviewed runtime verification remain required.
+
 ## Function patch checks
 
 Existing patch anchors each occur once, as required by #816. Whole-function
