@@ -65,6 +65,12 @@ class InvoiceApprovalRecord {
   bool get approved => status == 'approved';
 }
 
+class InvoiceStampSurnameReadException implements Exception {
+  const InvoiceStampSurnameReadException();
+  @override
+  String toString() => '承認印の名字を確認できません。再確認してから帳票を開いてください。';
+}
+
 class InvoiceStampSurnameMetadata {
   const InvoiceStampSurnameMetadata({this.snapshotSurname, this.draftSurname, this.canSet = false});
   final String? snapshotSurname;
@@ -157,9 +163,8 @@ class InvoiceApprovalRepository {
     try {
       surnameContract = await _loadSurnameContract(invoiceId);
     } catch (_) {
-      // Optional read metadata must not erase already-authorized approval rows.
-      // Writes use the strict loader below and never fall through on errors.
-      surnameContract = null;
+      // An unknown snapshot must never become a different legacy approval seal.
+      throw const InvoiceStampSurnameReadException();
     }
     final names = <String, Map<String, dynamic>>{};
     final nameRows = surnameContract?['names'];

@@ -49,6 +49,8 @@ class InvoicePdfService {
           approvals = await approvalRepository.loadForInvoice(
             invoice.invoiceId,
           );
+        } on InvoiceStampSurnameReadException {
+          rethrow;
         } catch (_) {
           approvals = const [];
         }
@@ -952,6 +954,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
     try {
       return await repository.loadForInvoice(invoice.invoiceId);
+    } on InvoiceStampSurnameReadException {
+      rethrow;
     } catch (_) {
       return const [];
     }
