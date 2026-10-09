@@ -155,4 +155,17 @@ void main() {
     expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
     expect(unavailable, true);expect(reads, 2);expect(writes, 1);
   });
+
+  testWidgets('lost statement access disables cached ready capability while preserving reread', (tester) async {
+    final repository = PayrollFinalizationRepository(invoke: (_, __) async => status());
+    Future<void> show(bool available) async {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
+        key: const ValueKey('same-panel'), statement: statement(), statementAvailable: available,
+        repository: repository, onSaved: (_) => fail('unexpected save'), reloadStatement: () async => null))));
+      await tester.pumpAndSettle();
+    }
+    await show(true);expect(find.widgetWithText(FilledButton, '給与を確定'), findsOneWidget);
+    await show(false);expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
+    expect(find.text('保存状態を再読み込み'), findsOneWidget);
+  });
 }

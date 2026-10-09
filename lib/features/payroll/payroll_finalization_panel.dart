@@ -5,8 +5,9 @@ import 'payroll_condition_warning.dart';
 
 class PayrollFinalizationPanel extends StatefulWidget {
   const PayrollFinalizationPanel({super.key, required this.statement, required this.onSaved,
-    required this.reloadStatement, this.repository, this.onBusyChanged, this.onVerificationRequired});
+    required this.reloadStatement, this.repository, this.onBusyChanged, this.onVerificationRequired, this.statementAvailable = true});
   final PayrollStatementRecord statement;
+  final bool statementAvailable;
   final ValueChanged<PayrollStatementRecord> onSaved;
   final Future<PayrollStatementRecord?> Function() reloadStatement;
   final PayrollFinalizationRepository? repository;
@@ -73,7 +74,7 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
       widget.onBusyChanged?.call(false);
     }
   }
-  bool get _ready => !_uncertain && _status?.canFinalize == true && widget.statement.isDraft &&
+  bool get _ready => widget.statementAvailable && !_uncertain && _status?.canFinalize == true && widget.statement.isDraft &&
     widget.statement.revision != null && widget.statement.revision == _status?.revision;
   Future<void> _finalize() async {
     final repository = _repository;
@@ -121,7 +122,7 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
     return Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [
       if (_error != null) Text(_error!),
       if (_status?.canFinalize == true && !_ready && _error == null)
-        const Text('給与の版が変わっています。再読み込みして内容を確認してください。'),
+        Text(widget.statementAvailable ? '給与の版が変わっています。再読み込みして内容を確認してください。' : 'この給与明細の閲覧状態を確認できません。再読み込みしてください。'),
       if (_ready) FilledButton(onPressed: _busy ? null : _finalize, child: const Text('給与を確定')),
       if (_error != null || (_status?.canFinalize == true && !_ready))
         TextButton(onPressed: _busy ? null : _reload, child: const Text('保存状態を再読み込み')),

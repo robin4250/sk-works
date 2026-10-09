@@ -383,6 +383,7 @@ class _PayrollStatementPreviewPageState
         children: [
           if (widget.allowFinalization)
             PayrollFinalizationPanel(statement: _pdfStatement,
+              statementAvailable: !_statementUnavailable && _confirmationError == null,
               reloadStatement: _loadConfirmation,
               onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
               onVerificationRequired: (needsVerification) { if (mounted) setState(() => _finalizationUncertain = needsVerification); },
