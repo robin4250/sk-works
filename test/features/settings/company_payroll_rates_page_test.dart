@@ -58,6 +58,63 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  for (final entry in <String, Map<String, String>>{
+    'health_insurance': {'total': '9.9', 'employee': '4.95', 'employer': '4.95'},
+    'nursing_insurance': {'total': '1.62', 'employee': '0.81', 'employer': '0.81'},
+    'pension_insurance': {'total': '18.3', 'employee': '9.15', 'employer': '9.15'},
+    'employment_insurance': {'total': '1.65', 'employee': '0.6', 'employer': '1.05'},
+    'child_support': {'total': '0.23', 'employee': '', 'employer': ''},
+  }.entries) {
+    testWidgets('new ${entry.key} starts with requested inputs without saving', (tester) async {
+      final repository = FakeRatesRepository();
+      await openPage(tester, repository);
+      final label = find.text(payrollRateKinds[entry.key]!);
+      await reveal(tester, label);
+      final card = find.ancestor(of: label, matching: find.byType(Card));
+      final edit = find.descendant(of: card, matching: find.text('編集'));
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      for (final field in entry.value.entries) {
+        expect(tester.widget<TextFormField>(
+          find.byKey(ValueKey('rate-field-${field.key}'))).controller!.text, field.value);
+      }
+      for (final key in ['insurance_month', 'payroll_month', 'payment_month', 'publisher', 'url']) {
+        expect(tester.widget<TextFormField>(
+          find.byKey(ValueKey('rate-field-$key'))).controller!.text, isEmpty);
+      }
+      expect(repository.saved, isEmpty);
+      expect(repository.applied, isEmpty);
+      await tester.tap(find.text('キャンセル'));
+      await tester.pumpAndSettle();
+      expect(repository.saved, isEmpty);
+      expect(repository.data.items, isEmpty);
+    });
+  }
+
+  testWidgets('editing saved zero rates preserves them instead of requested inputs', (tester) async {
+    final repository = FakeRatesRepository();
+    final current = value('health_insurance', employee: 0, employer: 0);
+    repository.data = CompanyPayrollRatesData(canEdit: true, items: [
+      CompanyPayrollRateItem(id: 'health_insurance', version: 3,
+        value: current, origin: 'manual'),
+    ], candidates: [], history: []);
+    await openPage(tester, repository);
+    final card = find.ancestor(of: find.text(payrollRateKinds['health_insurance']!),
+      matching: find.byType(Card));
+    final edit = find.descendant(of: card, matching: find.text('編集'));
+    await reveal(tester, edit);
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    for (final key in ['total', 'employee', 'employer']) {
+      expect(tester.widget<TextFormField>(
+        find.byKey(ValueKey('rate-field-$key'))).controller!.text, '0');
+    }
+    expect(tester.widget<TextFormField>(
+      find.byKey(const ValueKey('rate-field-publisher'))).controller!.text, '登録資料');
+    expect(repository.saved, isEmpty);
+    expect(current, value('health_insurance', employee: 0, employer: 0));
+  });
+
   test('read-only response accepts redacted actor and missing permission denies editing', () {
     final raw = <String, dynamic>{
       'items': [], 'candidates': [], 'history': [], 'scope_history': [],
