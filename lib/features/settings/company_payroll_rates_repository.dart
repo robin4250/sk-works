@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../data/supabase_backend.dart';
 
 const companyPayrollScopePrefectures = <String>['北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県', '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県', '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県', '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県', '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'];
@@ -164,6 +166,34 @@ bool payrollRateValuesEqual(dynamic left, dynamic right) {
 
 typedef CompanyPayrollRateRpc = Future<dynamic> Function(String name, Map<String, dynamic> parameters);
 
+class PayrollRatesUnavailable implements Exception {
+  const PayrollRatesUnavailable();
+}
+
+/// A sent mutation remains unresolved until its exact committed value is read.
+class PayrollRatePendingWrite {
+  const PayrollRatePendingWrite({required this.companyId, required this.expectedVersion,
+    required this.value, this.itemId, this.origin});
+  final String companyId;
+  final int expectedVersion;
+  final Map<String, dynamic> value;
+  final String? itemId;
+  final String? origin;
+
+  bool matches(CompanyPayrollRatesData data) {
+    if (itemId == null) {
+      final scope = data.companyScope;
+      return scope != null && scope.version == expectedVersion + 1 &&
+          payrollRateValuesEqual(scope.value, value);
+    }
+    for (final item in data.items) {
+      if (item.id == itemId && item.version == expectedVersion + 1 && item.origin == origin &&
+          payrollRateValuesEqual(item.value, value)) return true;
+    }
+    return false;
+  }
+}
+
 class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesRepository {
   SupabaseCompanyPayrollRatesRepository({CompanyPayrollRateRpc? invoke}) : _invoke = invoke;
   final CompanyPayrollRateRpc? _invoke;
@@ -184,8 +214,16 @@ class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesReposi
 
   @override
   Future<CompanyPayrollRatesData> read(String companyId) async {
-    final raw = await _call('read_company_payroll_rates', {'p_company_id': companyId});
-    return CompanyPayrollRatesData.fromJson(raw);
+    try {
+      final raw = await _call('read_company_payroll_rates', {'p_company_id': companyId});
+      return CompanyPayrollRatesData.fromJson(raw);
+    } on PostgrestException catch (error) {
+      if ((error.code == 'PGRST202' || error.code == '42883') &&
+          error.message.contains('read_company_payroll_rates')) {
+        throw const PayrollRatesUnavailable();
+      }
+      rethrow;
+    }
   }
 
   @override

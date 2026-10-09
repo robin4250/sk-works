@@ -42,6 +42,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   String? _error;
   bool _busy = false;
   bool _loading = false;
+  PayrollRatePendingWrite? _pendingWrite;
+  bool _unavailable = false;
+  String? _recoveryNotice;
   int _generation = 0;
 
   @override
@@ -57,17 +60,29 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     if (oldWidget.companyId != widget.companyId || oldWidget.repository != widget.repository) {
       _repository = widget.repository ?? SupabaseCompanyPayrollRatesRepository();
       _data = null;
+      _pendingWrite = null;
+      _recoveryNotice = null;
       _load();
     }
   }
 
   Future<void> _load() async {
     final generation = ++_generation;
-    setState(() { _busy = true; _loading = true; _error = null; });
+    setState(() { _busy = true; _loading = true; _error = null; _unavailable = false; });
     try {
       final data = await _repository.read(widget.companyId);
       if (!mounted || generation != _generation) return;
-      setState(() => _data = data);
+      setState(() {
+        _data = data;
+        final pending = _pendingWrite;
+        if (pending != null && pending.companyId == widget.companyId && pending.matches(data)) {
+          _pendingWrite = null;
+          _recoveryNotice = '保存済みの設定を確認しました';
+        }
+      });
+    } on PayrollRatesUnavailable {
+      if (!mounted || generation != _generation) return;
+      setState(() { _data = null; _unavailable = true; });
     } catch (_) {
       if (!mounted || generation != _generation) return;
       setState(() { _data = null; _error = '料率設定を取得できませんでした。接続・利用権限・設定機能の導入状況を確認してください。'; });
@@ -91,7 +106,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       )) ?? false;
 
   Future<void> _apply(CompanyPayrollRateCandidate candidate, CompanyPayrollRateItem? item) async {
-    if (_busy || !_canEdit || !_scopeMatches(candidate)) {
+    if (_writeBlocked || !_canEdit || !_scopeMatches(candidate)) {
       return;
     }
     final generation = _generation;
@@ -99,9 +114,14 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     try {
       final confirmed = await _confirm('確認値を適用', candidate.value);
       if (!mounted || generation != _generation || !confirmed) return;
+      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
+        itemId: candidate.itemId, expectedVersion: item?.version ?? 0,
+        value: candidate.value, origin: 'official_candidate');
+      _recoveryNotice = null;
       await _repository.applyCandidate(companyId: widget.companyId, itemId: candidate.itemId,
         candidateId: candidate.id, expectedVersion: item?.version ?? 0);
       if (!mounted || generation != _generation) return;
+      _pendingWrite = null;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('選択した項目を適用しました')));
       await _load();
     } catch (_) {
@@ -125,9 +145,14 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation || value == null) return;
       if (!await _confirm('手動設定を保存', value)) return;
       if (!mounted || generation != _generation) return;
+      final itemId = item?.id ?? (kind == 'custom' ? _newCustomId() : kind);
+      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
+        itemId: itemId, expectedVersion: item?.version ?? 0, value: value, origin: 'manual');
+      _recoveryNotice = null;
       await _repository.saveManual(companyId: widget.companyId,
-        itemId: item?.id ?? (kind == 'custom' ? _newCustomId() : kind), expectedVersion: item?.version ?? 0, value: value);
+        itemId: itemId, expectedVersion: item?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
+      _pendingWrite = null;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('手動設定を保存しました')));
       await _load();
     } catch (_) {
@@ -140,6 +165,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   }
 
   bool get _canEdit => _data?.canEdit == true;
+  bool get _writeBlocked => _busy || _pendingWrite != null;
 
   bool _scopeMatches(CompanyPayrollRateCandidate candidate) =>
       _data?.companyScope != null && candidate.scopeVersion == _data!.companyScope!.version;
@@ -174,8 +200,12 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存'))],
       )) ?? false;
       if (!mounted || generation != _generation || !confirmed) return;
+      _pendingWrite = PayrollRatePendingWrite(companyId: widget.companyId,
+        expectedVersion: previous?.version ?? 0, value: value);
+      _recoveryNotice = null;
       await _repository.saveScope(companyId: widget.companyId, expectedVersion: previous?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
+      _pendingWrite = null;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社の適用条件を保存しました')));
       await _load();
     } catch (_) {
@@ -192,7 +222,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text('会社の適用条件', style: Theme.of(context).textTheme.titleMedium)),
-          if (_canEdit) TextButton(onPressed: _busy ? null : _editScope, child: const Text('会社の適用条件を編集'))]),
+          if (_canEdit) TextButton(onPressed: _writeBlocked ? null : _editScope, child: const Text('会社の適用条件を編集'))]),
         if (scope == null) const Text('会社条件は未登録です') else ...[
           Text('${payrollScopeInsurers[scope.value['insurer']] ?? '未設定'} · ${scope.value['prefecture'] ?? '都道府県未設定'} · ${payrollScopeBusinesses[scope.value['employment_business']] ?? '事業区分未設定'}'),
           ExpansionTile(title: const Text('条件の詳細'), tilePadding: EdgeInsets.zero,
@@ -286,7 +316,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
-          if (_canEdit) TextButton(onPressed: _busy ? null : () => _edit(kind, item), child: const Text('編集'))]),
+          if (_canEdit) TextButton(onPressed: _writeBlocked ? null : () => _edit(kind, item), child: const Text('編集'))]),
         const SizedBox(height: 8),
         LayoutBuilder(builder: (context, constraints) {
           final current = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -303,7 +333,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
               _valueSummary(candidate.value, candidate.id), Text('確認日時 ${candidate.checkedAt}'),
               if (_changed(item?.value, candidate.value)) const Text('変更あり', style: TextStyle(fontWeight: FontWeight.bold)),
               if (!_scopeMatches(candidate)) const Text('会社条件が変更されています。再確認が必要'),
-              if (_canEdit) FilledButton(key: ValueKey('apply-${candidate.id}'), onPressed: _busy || !_scopeMatches(candidate) ? null : () => _apply(candidate, item), child: const Text('適用')),
+              if (_canEdit) FilledButton(key: ValueKey('apply-${candidate.id}'), onPressed: _writeBlocked || !_scopeMatches(candidate) ? null : () => _apply(candidate, item), child: const Text('適用')),
               const SizedBox(height: 12),
             ],
           ]);
@@ -323,7 +353,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n保存結果が不明な場合は再送せず、再読み込みで保存値を確認してください。確認できるまで変更操作を停止します。\n\n給与連携と介護保険の生年月日判定は準備中です。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得と給与連携は準備中です。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
@@ -335,6 +365,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
           label: const Text('確認値を再読み込み')),
         const Text('登録済みの確認値を表示します。公式資料の自動取得は準備中です。'),
         if (_loading) const LinearProgressIndicator(),
+        if (_unavailable) const Text('準備中：この会社では料率設定をまだ利用できません。'),
+        if (_pendingWrite != null) const Text('保存結果が不明です。設定を再読み込みして確認するまで、変更操作を停止しています。'),
+        if (_recoveryNotice != null) Text(_recoveryNotice!),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
           if (!_canEdit) const Text('閲覧のみ：料率・適用月・情報元を確認できます。'),

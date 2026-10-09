@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/settings/company_payroll_rates_page.dart';
@@ -18,8 +20,19 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
   final List<Map<String, dynamic>> saved = [];
   bool failRead = false;
   bool failSave = false;
+  bool failAfterSend = false;
+  bool unavailable = false;
+  int sentVersion = 0;
+  void commitSentCustom() {
+    final sent = saved.single;
+    data = CompanyPayrollRatesData(canEdit: data.canEdit, items: [
+      ...data.items, CompanyPayrollRateItem(id: sent['item_id'] as String,
+        version: sentVersion + 1, value: sent['value'] as Map<String, dynamic>, origin: 'manual'),
+    ], candidates: data.candidates, history: data.history, companyScope: data.companyScope);
+  }
   @override
   Future<CompanyPayrollRatesData> read(String companyId) async {
+    if (unavailable) throw const PayrollRatesUnavailable();
     if (failRead) throw StateError('offline');
     return data;
   }
@@ -29,6 +42,7 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
     scopes.add(value);
     data = CompanyPayrollRatesData(canEdit: true, items: data.items, candidates: data.candidates, history: data.history,
       companyScope: CompanyPayrollRateScope(version: expectedVersion + 1, value: value, updatedBy: 'admin', updatedAt: '2026-10-09'));
+    if (failAfterSend) throw StateError('response lost');
   }
   @override
   Future<void> applyCandidate({required String companyId, required String itemId,
@@ -41,6 +55,8 @@ class FakeRatesRepository implements CompanyPayrollRatesRepository {
     required int expectedVersion, required Map<String, dynamic> value}) async {
     if (failSave) throw StateError('conflict');
     saved.add({'item_id': itemId, 'value': value});
+    sentVersion = expectedVersion;
+    if (failAfterSend) throw StateError('response lost');
   }
 }
 
@@ -383,4 +399,131 @@ void main() {
     expect(saved['value']['total'], 1300000);
     expect(saved['value']['source']['document_hash'], 'admin-manual-entry');
   });
+  testWidgets('custom uncertain write stays blocked through old reads until exact committed ID is found', (tester) async {
+    final repository = FakeRatesRepository()..failAfterSend = true;
+    await openPage(tester, repository);
+    await reveal(tester, find.text('料率項目を追加'));
+    await tester.tap(find.text('料率項目を追加'));
+    await tester.pumpAndSettle();
+    for (final entry in {
+      'label': '会社独自料率', 'total': '1.3', 'employee': '0.5', 'employer': '0.8',
+      'insurance_month': '2026-10', 'payroll_month': '2026-11', 'payment_month': '2026-11',
+      'publisher': '管理者設定', 'url': 'https://example.org/rates',
+    }.entries) {
+      final field = find.byKey(ValueKey('rate-field-${entry.key}'));
+      await reveal(tester, field);
+      await tester.enterText(field, entry.value);
+    }
+    await reveal(tester, find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('入力内容を確認'));
+    await tester.pumpAndSettle();
+    expect(repository.saved, isEmpty);
+    expect(find.text(payrollRateConfirmation), findsOneWidget);
+    await tester.tap(find.text('確認して適用'));
+    await tester.pumpAndSettle();
+    expect(repository.saved, hasLength(1));
+    final saved = repository.saved.single;
+    expect(saved['item_id'], matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')));
+    expect(saved['value']['employee'], 500000);
+    expect(saved['value']['employer'], 800000);
+    expect(saved['value']['total'], 1300000);
+    expect(saved['value']['source']['document_hash'], 'admin-manual-entry');
+    Future<void> refresh() async {
+      await reveal(tester, find.text('確認値を再読み込み'));
+      await tester.tap(find.text('確認値を再読み込み'));
+      await tester.pumpAndSettle();
+    }
+    Future<void> expectBlocked() async {
+      await reveal(tester, find.text('料率項目を追加'));
+      expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '料率項目を追加')).onPressed, isNull);
+      expect(repository.saved, hasLength(1));
+    }
+    await expectBlocked();
+    await refresh(); // The first mutation has not committed: absence is not rejection.
+    await expectBlocked();
+    repository.failRead = true;
+    await refresh();
+    expect(find.text('編集'), findsNothing);
+    repository.failRead = false;
+    repository.commitSentCustom();
+    await refresh();
+    expect(find.text('保存済みの設定を確認しました'), findsOneWidget);
+    await reveal(tester, find.text('料率項目を追加'));
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '料率項目を追加')).onPressed, isNotNull);
+    expect(repository.saved, hasLength(1));
+  });
+
+  test('only exact missing read RPC becomes unavailable; permission and network remain errors', () async {
+    for (final error in [
+      const PostgrestException(message: 'Could not find public.read_company_payroll_rates', code: 'PGRST202'),
+      const PostgrestException(message: 'function read_company_payroll_rates does not exist', code: '42883'),
+    ]) {
+      final repository = SupabaseCompanyPayrollRatesRepository(invoke: (_, _) async => throw error);
+      await expectLater(repository.read('company'), throwsA(isA<PayrollRatesUnavailable>()));
+    }
+    for (final error in [
+      const PostgrestException(message: 'read_company_payroll_rates denied', code: '42501'),
+      const PostgrestException(message: 'other_function missing', code: 'PGRST202'),
+      StateError('offline'),
+    ]) {
+      final repository = SupabaseCompanyPayrollRatesRepository(invoke: (_, _) async => throw error);
+      await expectLater(repository.read('company'), throwsA(same(error)));
+    }
+  });
+
+  test('pending writes require exact ID version origin and values, including zero', () {
+    final requested = value('health_insurance', employee: 0, employer: 0);
+    final pending = PayrollRatePendingWrite(companyId: 'company', itemId: 'health_insurance',
+      expectedVersion: 2, value: requested, origin: 'manual');
+    CompanyPayrollRatesData data(String id, int version, String origin, Map<String, dynamic> v) =>
+      CompanyPayrollRatesData(items: [CompanyPayrollRateItem(id: id, version: version,
+        origin: origin, value: v)], candidates: [], history: []);
+    expect(pending.matches(data('health_insurance', 2, 'manual', requested)), isFalse);
+    expect(pending.matches(data('health_insurance', 4, 'manual', requested)), isFalse);
+    expect(pending.matches(data('other', 3, 'manual', requested)), isFalse);
+    expect(pending.matches(data('health_insurance', 3, 'official_candidate', requested)), isFalse);
+    expect(pending.matches(data('health_insurance', 3, 'manual', value('health_insurance'))), isFalse);
+    expect(pending.matches(data('health_insurance', 3, 'manual', requested)), isTrue);
+    final scope = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 1,
+      value: {'insurer': 'unconfigured', 'prefecture': null, 'employment_business': null});
+    expect(scope.matches(const CompanyPayrollRatesData(items: [], candidates: [], history: [])), isFalse);
+    expect(scope.matches(CompanyPayrollRatesData(items: [], candidates: [], history: [],
+      companyScope: CompanyPayrollRateScope(version: 2, value: scope.value,
+        updatedBy: null, updatedAt: 'now'))), isTrue);
+  });
+
+  testWidgets('missing RPC explains unavailable without displaying unset editable inputs', (tester) async {
+    final repository = FakeRatesRepository()..unavailable = true;
+    await openPage(tester, repository);
+    expect(find.text('準備中：この会社では料率設定をまだ利用できません。'), findsOneWidget);
+    expect(find.text('編集'), findsNothing);
+    expect(find.text('未設定'), findsNothing);
+    repository.unavailable = false;
+    await tester.tap(find.text('確認値を再読み込み'));
+    await tester.pumpAndSettle();
+    expect(find.text('未設定'), findsWidgets);
+  });
+
+  testWidgets('scope response loss gates all writes and exact read restores viewer only', (tester) async {
+    final repository = FakeRatesRepository()..failAfterSend = true;
+    await openPage(tester, repository);
+    await tester.tap(find.text('会社の適用条件を編集'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('会社条件を確認'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して保存'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '会社の適用条件を編集')).onPressed, isNull);
+    repository.data = CompanyPayrollRatesData(canEdit: false, items: [],
+      candidates: [], history: [], companyScope: repository.data.companyScope);
+    await tester.tap(find.text('確認値を再読み込み'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存済みの設定を確認しました'), findsOneWidget);
+    expect(find.text('会社の適用条件を編集'), findsNothing);
+    expect(find.text('編集'), findsNothing);
+    expect(repository.scopes, hasLength(1));
+  });
+
 }
