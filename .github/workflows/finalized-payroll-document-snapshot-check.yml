@@ -37,7 +37,8 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:17
+        # Docker Official Images public distribution; no registry secret required.
+        image: public.ecr.aws/docker/library/postgres:17
         env:
           POSTGRES_DB: sko_resident_tax_fixture
           POSTGRES_USER: postgres
