@@ -9,6 +9,7 @@ import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
+import 'company_payroll_rates_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -422,6 +423,22 @@ class _SettingsPageState extends State<SettingsPage> {
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const CompanyRateSettingsPage(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_canManageCompany && _companyId != null) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.percent_outlined),
+                              title: const Text('会社共通の税率設定'),
+                              subtitle: const Text('社会保険・料率の確認と手動適用'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CompanyPayrollRatesPage(companyId: _companyId!),
                                 ),
                               ),
                             ),
