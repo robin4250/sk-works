@@ -17,8 +17,10 @@ class PayrollStatementRecord {
     this.reviewConfirmed = false,
     this.reviewedAt,
     this.workflowState,
+    this.revision,
   });
 
+  final int? revision;
   final String? workflowState;
   bool get isDraft => workflowState == 'draft';
 
@@ -102,6 +104,7 @@ PayrollStatementRecord payrollStatementFromRow(
   final currentReview = review ?? row;
   final draftReviewConfirmed = currentReview['review_confirmed'] == true;
   return PayrollStatementRecord(
+    revision: strictPayrollRevision(row['revision'] ?? detail['revision']),
     workflowState: workflowState,
     id: row['id']?.toString() ?? '',
     companyName: savedPayrollCompanyName(row, detail),
@@ -147,6 +150,9 @@ PayrollStatementRecord payrollStatementWithDraftReview(
     issuedAt: original.issuedAt,
     reviewConfirmed: confirmed,
     reviewedAt: original.reviewedAt,
+    revision: original.revision,
     workflowState: original.workflowState,
   );
 }
+
+int? strictPayrollRevision(dynamic raw) => raw is int && raw > 0 ? raw : null;

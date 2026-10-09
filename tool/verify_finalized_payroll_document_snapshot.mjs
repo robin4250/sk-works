@@ -96,6 +96,11 @@ try {
  await assert.rejects(finalize(ps.revision,false),/explicit/);
  await assert.rejects(finalize(ps.revision-1),/revision conflict/);
  await assert.rejects(finalize(),/reviews required/);
+ const readStatus=async()=> (await db.query('select public.read_payroll_finalization_status($1) as result',[ps.id])).rows[0].result;
+ assert.equal((await readStatus()).can_finalize,false);
+ await actor('00000000-0000-0000-0000-000000000003');assert.equal((await readStatus()).can_finalize,false);
+ await actor('00000000-0000-0000-0000-000000000099');await assert.rejects(readStatus(),/access denied/);
+ await actor(editor);
  await actor(owner);
  const aid=(await db.query('select public.create_payroll_adjustment($1,$2,5000,$3,null) as id',[wid,'90000000-0000-0000-0000-000000000001',ps.period_start])).rows[0].id;
  await db.exec('reset role');
@@ -106,12 +111,14 @@ try {
  await db.exec('reset role');assert.equal((await db.query('select revision from public.payroll_statements where id=$1',[ps.id])).rows[0].revision,ps.revision,'note-only update must retain revision');
  await db.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[ps.id,owner,ps.revision]);
  await actor(editor);
+ const statusBefore=await readStatus();assert.equal(statusBefore.can_finalize,true);assert.equal(statusBefore.contract_version,1);assert.equal(statusBefore.revision,ps.revision);
  await db.exec('reset role');
  await db.exec("create function payroll_final_private.fixture_fail() returns trigger language plpgsql as $$begin raise exception 'snapshot audit unavailable';end$$; create trigger fixture_fail before insert on payroll_final_private.history for each row execute function payroll_final_private.fixture_fail()");
  await actor(editor);await assert.rejects(finalize(),/snapshot audit unavailable/);
  await db.exec('reset role');assert.equal((await db.query('select workflow_state from public.payroll_statements where id=$1',[ps.id])).rows[0].workflow_state,'draft');assert.equal((await db.query('select count(*)::integer n from payroll_final_private.documents')).rows[0].n,0);
  await db.exec('drop trigger fixture_fail on payroll_final_private.history');await actor(editor);
  const result=await finalize();assert.equal(result.finalized,true);assert.equal(result.snapshot.result.net_pay,293000);assert.equal(result.snapshot.adjustments[0].id,aid);assert.deepEqual(result.snapshot.detail.bank_account,{});
+ assert.equal((await readStatus()).snapshot_saved,true);assert.equal((await readStatus()).can_finalize,false);
  assert.deepEqual(await finalize(),result,'same revision retry must return saved result');
  await actor(owner);await assert.rejects(db.query('select public.cancel_payroll_adjustment($1,null)',[aid]),/explicit correction/);
  await assert.rejects(db.query('select public.create_payroll_adjustment($1,$2,1000,$3,null)',[wid,'90000000-0000-0000-0000-000000000001',ps.period_start]),/explicit correction/);

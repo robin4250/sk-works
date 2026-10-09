@@ -750,3 +750,30 @@ end $$;
 create trigger payroll_final_adjustment_revision after insert or update or delete on public.payroll_adjustments for each row execute function payroll_final_private.adjustment_revision_changed();
 revoke all on function payroll_final_private.adjustment_scope_guard() from public,anon,authenticated;
 revoke all on function payroll_final_private.adjustment_revision_changed() from public,anon,authenticated;
+
+-- Read-only UI capability; never recalculates or registers a review.
+create function payroll_final_private.read_status(p_statement_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare ps public.payroll_statements%rowtype; allowed boolean; ready boolean; saved boolean;
+begin
+ if auth.uid() is null or private.account_access_allowed() is distinct from true then raise exception 'payroll access denied' using errcode='42501';end if;
+ select * into ps from public.payroll_statements where id=p_statement_id;
+ if not found or not exists(select 1 from public.companies c join public.workers w on w.company_id=c.id where c.id=ps.company_id and w.id=ps.worker_id)
+ or not coalesce(private.payroll_settings_allowed(ps.company_id,ps.worker_id,'view'),false) then raise exception 'payroll access denied' using errcode='42501';end if;
+ allowed:=coalesce(private.payroll_settings_allowed(ps.company_id,ps.worker_id,'edit'),false);
+ saved:=exists(select 1 from payroll_final_private.documents d where d.statement_id=ps.id);
+ ready:=coalesce(private.payroll_confirmed_all(ps.id),false) and not exists(
+ select 1 from public.payroll_confirmers c left join public.payroll_statement_reviews r on r.statement_id=ps.id and r.reviewer_id=c.user_id
+ where c.company_id=ps.company_id and (r.checked_revision is distinct from ps.revision or r.confirmed_revision is distinct from ps.revision or r.confirmed_at is null));
+ return jsonb_build_object('contract_version',1,'statement_id',ps.id,'revision',ps.revision,
+ 'period_start',ps.period_start,'period_end',ps.period_end,'workflow_state',ps.workflow_state,
+ 'snapshot_saved',saved,'can_finalize',allowed and ps.automatic_calculation and ps.workflow_state='draft'
+ and ps.period_start=date_trunc('month',ps.period_start)::date and ps.period_end=(ps.period_start+interval '1 month - 1 day')::date
+ and not coalesce(ps.calculation_blocked,true) and ready);
+end$$;
+revoke all on function payroll_final_private.read_status(uuid) from public,anon;
+grant execute on function payroll_final_private.read_status(uuid) to authenticated;
+create function public.read_payroll_finalization_status(p_statement_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select payroll_final_private.read_status(p_statement_id)$$;
+revoke all on function public.read_payroll_finalization_status(uuid) from public,anon;
+grant execute on function public.read_payroll_finalization_status(uuid) to authenticated;

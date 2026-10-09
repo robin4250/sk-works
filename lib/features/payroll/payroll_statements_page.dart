@@ -1,4 +1,5 @@
 import 'payroll_condition_warning.dart';
+import 'payroll_finalization_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -202,9 +203,10 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 }
 
 class PayrollStatementPreviewPage extends StatefulWidget {
-  const PayrollStatementPreviewPage({super.key, required this.statement});
+  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false});
 
   final PayrollStatementRecord statement;
+  final bool allowFinalization;
 
   @override
   State<PayrollStatementPreviewPage> createState() =>
@@ -218,6 +220,7 @@ class _PayrollStatementPreviewPageState
   PayrollStatementRecord? _refreshedStatement;
   bool _statementUnavailable = false;
   bool _confirmationBusy = false;
+  bool _finalizationBusy = false;
   String? _confirmationError;
   final _pdfBytes = PdfBytesCache();
 
@@ -305,7 +308,7 @@ class _PayrollStatementPreviewPageState
   Future<void> _confirm(bool cancel) async {
     final repository = _confirmationRepository;
     final status = _confirmation;
-    if (repository == null || status == null || _confirmationBusy) return;
+    if (repository == null || status == null || _confirmationBusy || _finalizationBusy) return;
     if (cancel ? !status.canCancel : !status.canConfirm) return;
     if (!cancel && !await confirmPayrollConditions(
       context, payrollConditionWarnings(_pdfStatement.detail),
@@ -375,6 +378,14 @@ class _PayrollStatementPreviewPageState
       ),
       body: Column(
         children: [
+          if (widget.allowFinalization && !_statementUnavailable)
+            PayrollFinalizationPanel(statement: _pdfStatement,
+              reloadStatement: _loadConfirmation,
+              onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
+              onSaved: (saved) { if (mounted) setState(() {
+                _refreshedStatement = saved; _confirmation = null;
+                _statementUnavailable = false; _pdfBytes.invalidate();
+              }); }),
           if (!_statementUnavailable)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -396,7 +407,7 @@ class _PayrollStatementPreviewPageState
                     ),
                   ),
                   IconButton(
-                    onPressed: _loadConfirmation,
+                    onPressed: _finalizationBusy ? null : _loadConfirmation,
                     icon: const Icon(Icons.refresh),
                   ),
                 ],
@@ -423,7 +434,7 @@ class _PayrollStatementPreviewPageState
                     ),
                   if (_confirmation!.canConfirm)
                     FilledButton(
-                      onPressed: _confirmationBusy
+                      onPressed: _confirmationBusy || _finalizationBusy
                           ? null
                           : () => _confirm(false),
                       child: Text(SkoLanguageController.tr('月の給与を確認')),
@@ -448,7 +459,7 @@ class _PayrollStatementPreviewPageState
             ),
           ),
           Expanded(
-            child: _confirmationBusy
+            child: _confirmationBusy || _finalizationBusy
                 ? const Center(child: CircularProgressIndicator())
                 : _statementUnavailable
                 ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
