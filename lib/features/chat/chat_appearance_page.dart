@@ -5,6 +5,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../international/language_controller.dart';
+import 'chat_appearance_strings.dart';
+
 class ChatAppearance {
   const ChatAppearance({
     this.wallpaperPath,
@@ -139,20 +142,21 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'チャット背景・透明度',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          ChatAppearanceStrings.tr('チャット背景・透明度'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'このチャットだけの個人設定です。他のユーザーには反映されません。',
-              style: TextStyle(fontWeight: FontWeight.w700),
+            Text(
+              ChatAppearanceStrings.tr('このチャットだけの個人設定です。他のユーザーには反映されません。'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             AspectRatio(
@@ -160,15 +164,16 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
               child: Card(
                 clipBehavior: Clip.antiAlias,
                 child: _wallpaperPath == null
-                    ? const Center(child: Text('壁紙なし'))
+                    ? Center(child: Text(ChatAppearanceStrings.tr('壁紙なし')))
                     : Image.file(
                         File(_wallpaperPath!),
                         fit: BoxFit.cover,
                         opacity: AlwaysStoppedAnimation(
                           _backgroundOpacity / 100,
                         ),
-                        errorBuilder: (_, __, ___) =>
-                            const Center(child: Text('壁紙を読み込めません')),
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Text(ChatAppearanceStrings.tr('壁紙を読み込めません')),
+                        ),
                       ),
               ),
             ),
@@ -176,33 +181,33 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
             FilledButton.icon(
               onPressed: _busy ? null : _pickWallpaper,
               icon: const Icon(Icons.wallpaper_outlined),
-              label: const Text('壁紙を選ぶ'),
+              label: Text(ChatAppearanceStrings.tr('壁紙を選ぶ')),
             ),
             OutlinedButton.icon(
               onPressed: _busy
                   ? null
                   : () => setState(() => _wallpaperPath = null),
               icon: const Icon(Icons.hide_image_outlined),
-              label: const Text('壁紙を解除'),
+              label: Text(ChatAppearanceStrings.tr('壁紙を解除')),
             ),
             const Divider(height: 28),
             _slider(
-              '壁紙の透明度',
+              ChatAppearanceStrings.tr('壁紙の透明度'),
               _backgroundOpacity,
               (value) => setState(() => _backgroundOpacity = value),
             ),
             _slider(
-              'ヘッダー・タブの透明度',
+              ChatAppearanceStrings.tr('ヘッダー・タブの透明度'),
               _headerOpacity,
               (value) => setState(() => _headerOpacity = value),
             ),
             _slider(
-              'フッターの透明度',
+              ChatAppearanceStrings.tr('フッターの透明度'),
               _footerOpacity,
               (value) => setState(() => _footerOpacity = value),
             ),
             _slider(
-              'メッセージ背景の透明度',
+              ChatAppearanceStrings.tr('メッセージ背景の透明度'),
               _bubbleOpacity,
               (value) => setState(() => _bubbleOpacity = value),
             ),
@@ -210,7 +215,7 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
             FilledButton.icon(
               onPressed: _busy ? null : _save,
               icon: const Icon(Icons.check),
-              label: const Text('このチャットに保存'),
+              label: Text(ChatAppearanceStrings.tr('このチャットに保存')),
             ),
           ],
         ),
@@ -218,11 +223,7 @@ class _ChatAppearancePageState extends State<ChatAppearancePage> {
     );
   }
 
-  Widget _slider(
-    String label,
-    int value,
-    ValueChanged<int> onChanged,
-  ) {
+  Widget _slider(String label, int value, ValueChanged<int> onChanged) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
