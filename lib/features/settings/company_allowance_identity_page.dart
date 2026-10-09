@@ -177,6 +177,7 @@ class _CompanyAllowanceIdentityPageState extends State<CompanyAllowanceIdentityP
         try {
           _store.actorId();
           await _store.clear(journal);
+          if (!_current(generation)) { return; }
           _pending = null; rejected = true;
         } catch (_) {
           // Keep the persisted journal if its exact record/actor cannot be cleared.
