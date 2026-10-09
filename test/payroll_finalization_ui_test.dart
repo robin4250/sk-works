@@ -144,7 +144,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
       statement: statement(), repository: repository, onSaved: (_) => fail('unexpected direct save'),
       onVerificationRequired: (value) => unavailable = value,
-      reloadStatement: () async => null))));
+      reloadStatement: () async => statement()))));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
     await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
@@ -153,6 +153,6 @@ void main() {
     expect(find.text('保存結果を確認できません。再読み込みしてください。'), findsOneWidget);
     expect(find.text('保存状態を再読み込み'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
-    expect(unavailable, true);expect(reads, 1);expect(writes, 1);
+    expect(unavailable, true);expect(reads, 2);expect(writes, 1);
   });
 }

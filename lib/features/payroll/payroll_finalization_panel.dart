@@ -34,7 +34,7 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
     if (oldWidget.statement.id != widget.statement.id || oldWidget.statement.revision != widget.statement.revision ||
       oldWidget.statement.workflowState != widget.statement.workflowState) {
       _status = null;
-      _read();
+      if (!_busy || oldWidget.statement.id != widget.statement.id) _read();
     }
   }
   Future<PayrollFinalizationStatus?> _read([PayrollStatementRecord? statement]) async {
