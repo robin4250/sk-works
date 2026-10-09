@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:sk_works/features/shared/company_seal_pdf.dart';
 
 void main() {
   test('research: real Aoyagi Reisho PDF rejects missing glyphs', () async {
@@ -67,6 +68,46 @@ void main() {
       File('build/aoyagi-seal-fixture/aoyagi_reisho_$index.pdf')
           .writeAsBytesSync(bytes);
     }
+    final actualSizes = pw.Document();
+    for (final sample in [samples[0], samples[2]]) {
+      final name = (sample as Map)['name'] as String;
+      expect(name.runes.every(codepoints.contains), isTrue);
+      actualSizes.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (_) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('Aoyagi Reisho research / actual stamp dimensions'),
+            pw.SizedBox(height: 12),
+            pw.Text(name, style: pw.TextStyle(font: font, fontSize: 14)),
+            pw.SizedBox(height: 24),
+            pw.Text('Invoice: 42 x 40.4394 pt (actual outer fitted box)'),
+            pw.SizedBox(height: 8),
+            pw.SizedBox(
+              width: 42,
+              height: 40.4394,
+              child: pw.FittedBox(
+                fit: pw.BoxFit.fill,
+                child: CompanySealPdf.build(name, font: font),
+              ),
+            ),
+            pw.SizedBox(height: 24),
+            pw.Text('Payroll: 32 x 32 pt'),
+            pw.SizedBox(height: 8),
+            CompanySealPdf.build(name, size: 32, font: font),
+            pw.SizedBox(height: 24),
+            pw.Text('Payment certificate: 55 x 55 pt'),
+            pw.SizedBox(height: 8),
+            CompanySealPdf.build(name, size: 55, font: font),
+            pw.SizedBox(height: 24),
+            pw.Text('Original shared stamp layout, research font only.'),
+            pw.Text('No product adoption, ordinary-font fallback or missing-glyph substitution.'),
+          ],
+        ),
+      ));
+    }
+    File('build/aoyagi-seal-fixture/aoyagi_reisho_actual_sizes.pdf')
+        .writeAsBytesSync(await actualSizes.save());
     expect(File('build/aoyagi-seal-fixture/aoyagi_reisho_3.pdf').existsSync(),
         isFalse);
   }, skip: !File('build/aoyagi-seal-fixture/coverage.json').existsSync()

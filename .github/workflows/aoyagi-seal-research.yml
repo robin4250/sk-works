@@ -28,7 +28,8 @@ jobs:
           from pathlib import Path
           for path in Path('build/aoyagi-seal-fixture').glob('*.pdf'):
               with fitz.open(path) as doc:
-                  doc[0].get_pixmap(matrix=fitz.Matrix(2, 2)).save(path.with_suffix('.png'))
+                  for number, page in enumerate(doc):
+                      page.get_pixmap(matrix=fitz.Matrix(2, 2)).save(path.with_name(f'{path.stem}_{number}.png'))
           PYRENDER
       - uses: actions/upload-artifact@v4
         with:
