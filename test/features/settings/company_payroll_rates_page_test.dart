@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/settings/company_payroll_rate_pending_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +20,7 @@ Map<String, dynamic> value(String kind, {int employee = 500000, int employer = 8
 class MemoryPendingStore implements PayrollRatePendingStore {
   PayrollRatePendingWrite? pending;
   bool failWrite = false;
+  Completer<void>? clearGate;
   @override
   Future<PayrollRatePendingWrite?> read(String companyId) async => pending?.companyId == companyId ? pending : null;
   @override
@@ -27,6 +30,8 @@ class MemoryPendingStore implements PayrollRatePendingStore {
   }
   @override
   Future<void> clear(String companyId) async {
+    final gate = clearGate;
+    if (gate != null) await gate.future;
     if (pending?.companyId == companyId) pending = null;
   }
 }
@@ -607,6 +612,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.scopes, isEmpty);
     expect(repository.saved, isEmpty);
+  });
+
+  testWidgets('old-company delayed cleanup cannot unlock new-company pending write', (tester) async {
+    final oldRepository = FakeRatesRepository();
+    final gate = Completer<void>();
+    oldRepository.pendingStore.clearGate = gate;
+    await openPage(tester, oldRepository);
+    await tester.tap(find.text('会社の適用条件を編集'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('会社条件を確認'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して保存'));
+    await tester.pumpAndSettle();
+    final newRepository = FakeRatesRepository();
+    newRepository.pendingStore.pending = PayrollRatePendingWrite(companyId: 'new-company',
+      expectedVersion: 0, itemId: 'pending-new', origin: 'manual', value: value('custom'));
+    await tester.pumpWidget(MaterialApp(home: CompanyPayrollRatesPage(companyId: 'new-company',
+      repository: newRepository, pendingStore: newRepository.pendingStore)));
+    await tester.pumpAndSettle();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('保存結果が不明です。設定を再読み込みして確認するまで、変更操作を停止しています。'), findsOneWidget);
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '会社の適用条件を編集')).onPressed, isNull);
+    expect(newRepository.pendingStore.pending!.itemId, 'pending-new');
+    expect(newRepository.scopes, isEmpty);
   });
 
 }
