@@ -110,8 +110,11 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return true;
   }
 
-  Future<void> _completeWrite() async {
-    await _pendingStore.clear(widget.companyId);
+  Future<void> _completeWrite(int generation) async {
+    final store = _pendingStore;
+    final companyId = widget.companyId;
+    await store.clear(companyId);
+    if (!mounted || generation != _generation) return;
     _pendingWrite = null;
   }
 
@@ -142,7 +145,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       await _repository.applyCandidate(companyId: widget.companyId, itemId: candidate.itemId,
         candidateId: candidate.id, expectedVersion: item?.version ?? 0, expectedValue: candidate.value);
       if (!mounted || generation != _generation) return;
-      await _completeWrite();
+      await _completeWrite(generation);
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('選択した項目を適用しました')));
       await _load();
@@ -173,7 +176,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       await _repository.saveManual(companyId: widget.companyId,
         itemId: itemId, expectedVersion: item?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
-      await _completeWrite();
+      await _completeWrite(generation);
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('手動設定を保存しました')));
       await _load();
@@ -226,7 +229,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         expectedVersion: previous?.version ?? 0, value: value), generation)) return;
       await _repository.saveScope(companyId: widget.companyId, expectedVersion: previous?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
-      await _completeWrite();
+      await _completeWrite(generation);
       if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会社の適用条件を保存しました')));
       await _load();
