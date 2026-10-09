@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/payroll/payroll_statement_repository.dart';
+import 'package:sk_works/features/payroll/payroll_confirmation_repository.dart';
 import 'package:sk_works/features/payroll/payroll_statement_source_repository.dart';
 import 'package:sk_works/features/payroll/payroll_statements_page.dart';
 
@@ -45,6 +46,18 @@ void main() {
       readConfirmation: (_) async => throw StateError('not expected'));
     await expectLater(repository.load(record(state: 'draft')), throwsStateError);
     expect(selfReads, 0);
+  });
+  test('fresh draft keeps current confirmation without altering source amounts', () async {
+    final fresh = record(state: 'draft', net: 456);
+    final confirmation = PayrollConfirmationStatus.fromJson({'confirmed': true});
+    final repository = PayrollStatementSourceRepository(
+      readManagement: (_) async => [fresh],
+      readSelf: () async => throw StateError('not expected'),
+      readConfirmation: (_) async => confirmation);
+    final source = await repository.load(record(net: 123));
+    expect(identical(source.statement, fresh), isTrue);
+    expect(identical(source.confirmation, confirmation), isTrue);
+    expect(source.statement.netPay, 456);
   });
   test('named missing workspace rereads only own saved source', () async {
     final saved = record();
