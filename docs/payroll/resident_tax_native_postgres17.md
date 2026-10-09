@@ -1,0 +1,11 @@
+# 住民税の実PostgreSQL 17検証
+
+既存 `verify_resident_tax_effective_month.mjs` の同じSQLとassertionを、CIの使い捨てPostgreSQL 17でも実行する。本番・Supabaseへ接続しない。
+
+`resident_tax_native_pg17_runtime.mjs` は既存harnessのconstructor interfaceに合わせたnative pg adapter。export名のPGliteはinterface互換のためで、内部SQLはPostgreSQL 17へ送る。既存PGlite検証を置換せず、別jobで両方を検証する。
+
+接続URLは固定のlocal host・port・database・fixture専用認証だけを許可する。接続後もPG major 17および対象schemaの空table状態を確認し、statement/lock timeoutを設定してからfixtureを作成する。
+
+ローカルではURL拒否テストとsyntax checkに成功。postgres/initdb/psql/Docker/Podmanがないためnative SQLの実行はCIで確認する。本番へ切り替えて試験しない。
+
+このjobは実PostgreSQLの型・PL/pgSQL・RLS・transactionで、開始前/将来月/0円・実給与結合・履歴と給与auditのrollback・manual/finalized保持を確認する。単一connectionによる隔離fixtureであり、並列session競合や全production schema/JWT/Storageを検証したものではない。

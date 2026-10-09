@@ -1,0 +1,49 @@
+name: Resident tax PostgreSQL 17
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*resident_tax_effective_month.sql'
+      - 'supabase/tests/resident_tax_effective_month_access_fixture.sql'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
+      - 'tool/verify_resident_tax_effective_month.mjs'
+      - 'tool/resident_tax_*pg17*'
+      - '.github/workflows/resident-tax-postgres17-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*resident_tax_effective_month.sql'
+      - 'tool/verify_resident_tax_effective_month.mjs'
+      - 'tool/resident_tax_*pg17*'
+      - '.github/workflows/resident-tax-postgres17-check.yml'
+permissions:
+  contents: read
+jobs:
+  native-postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_resident_tax_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_resident_tax_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Reject nonfixture connection URLs
+        run: node --test tool/resident_tax_pg17_database_guard.test.mjs
+      - name: Install pinned native PostgreSQL client
+        run: npm install --prefix "$RUNNER_TEMP/sko-resident-pg17" --save-exact --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify resident-tax calculation on PostgreSQL 17
+        env:
+          SKO_RESIDENT_TAX_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
+        run: node tool/verify_resident_tax_effective_month.mjs "file://$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-resident-pg17/node_modules/pg/lib/index.js"
