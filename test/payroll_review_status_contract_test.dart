@@ -23,7 +23,7 @@ void main() {
     );
     expect(
       normalized,
-      contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'"),
+      contains("SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確認'"),
     );
     expect(
       normalized,
@@ -36,6 +36,6 @@ void main() {
 
   test('printed payroll statement keeps review status in the margin', () {
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
-    expect(pdf, contains("statement.reviewConfirmed ? '確認済み' : '未確定'"));
+    expect(pdf, contains("statement.reviewConfirmed ? '確認済み' : '未確認'"));
   });
 }

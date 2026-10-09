@@ -122,7 +122,7 @@ class PayrollPdfService {
 
   static String buildTextSnapshot(PayrollStatementRecord statement) =>
       '給与明細書\n${statement.companyName}\n${statement.workerName}\n'
-      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確定'}\n'
+      '${statement.monthLabel}\n給与形態 ${_payTypeLabel(statement.detail)}\n${statement.reviewConfirmed ? '確認済み' : '未確認'}\n'
       '総支給額 ${statement.grossPay == 0 ? '' : _yen(statement.grossPay)}\n'
       '総控除額 ${statement.deductions == 0 ? '' : _yen(statement.deductions)}\n'
       '差引支給額 ${statement.netPay == 0 ? '' : _yen(statement.netPay)}';

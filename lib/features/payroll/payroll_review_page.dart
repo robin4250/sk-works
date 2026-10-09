@@ -82,7 +82,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     if (workspace.items.isEmpty) return;
     if (workspace.items.any((item) => !item.reviewChecked)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Review every employee payslip before confirming.' : '全従業員の給与明細を確認してから確定してください')),
+        SnackBar(content: Text(SkoLanguageController.isEnglish ? 'Review every employee payslip before confirming.' : '全従業員の給与明細を確認してから登録してください')),
       );
       return;
     }
@@ -103,7 +103,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not confirm' : '確定できませんでした'}: $error')),
+        SnackBar(content: Text('${SkoLanguageController.isEnglish ? 'Could not confirm' : '確認を登録できませんでした'}: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -251,7 +251,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                       ),
                                     ),
                                     subtitle: Text(
-                                      item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確定'),
+                                      item.reviewConfirmed ? (SkoLanguageController.isEnglish ? 'Confirmed' : '確認済み') : (SkoLanguageController.isEnglish ? 'Unconfirmed' : '未確認'),
                                       style: TextStyle(
                                         color: item.reviewConfirmed
                                             ? Colors.green
@@ -274,7 +274,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                               FilledButton.icon(
                                 onPressed: _saving ? null : _confirm,
                                 icon: const Icon(Icons.verified_outlined),
-                                label: Text(_saving ? (SkoLanguageController.isEnglish ? 'Confirming…' : '確定中…') : (SkoLanguageController.isEnglish ? 'Confirm after reviewing all' : '全員確認後に確定')),
+                                label: Text(_saving ? (SkoLanguageController.isEnglish ? 'Confirming…' : '登録中…') : (SkoLanguageController.isEnglish ? 'Confirm after reviewing all' : '確認を登録')),
                               ),
                             ],
                           ],
