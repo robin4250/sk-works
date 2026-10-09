@@ -1,0 +1,53 @@
+# 所得税資料registry（会社private・未適用）
+
+Issue #273の年度別税額表資料の永続化基礎。CLI 2.120.0 migration newで生成した`20261009155006_company_income_tax_table_registry.sql`。
+本番DB未適用。このmetadata migration単独ではBucket・Storage policy・upload・PDF解析・税額計算・給与反映を実装しない。別のprivate PDF Storage stageがobject行存在を登録前に要求する。これは資料metadataの登録と状態参照であり、PDFの保存完了を意味しない。
+既存company_required_documentsの差替uploadは旧PDF削除を行うため流用しない。会社必須書類と年度別税額表の保存を混同しない。
+
+## 会社private API
+
+- `register_company_income_tax_table(p_company_id,p_table_id,p_expected_version,p_value,p_confirmed)` → tableRow。
+- `read_company_income_tax_tables(p_company_id,p_payroll_date,p_kind)` → `{tables:[tableRow],selected:nullまたはtableRow,history:[historyRow]}`。
+
+table_idはUUID。初回expected_version=0、保存後version=1。会社ごとのmetadata版を履歴と同じtransactionで保存する。
+valueは`{calendar_year,kind,starts_on,ends_before,document_hash,storage_path,source_url,publisher,file_name}`。
+calendar_yearは1000..9998の整数。kindはmonthly/daily/bonus/computer_calculation。日付は厳密YYYY-MM-DDのcivil date、対象期間は開始以上・終了未満で当該暦年内。日時やtimezone変換から暦日を推測しない。
+document_hashは64文字lowercase hex。storage_pathは`会社UUID/tableUUID/新version/hash.pdf`に完全一致する。会社外path、上書きversionpath、../経路を認めない。
+source_urlはHTTPS 2048文字以下、publisherは空でない200文字以下、file_nameはパスを含まない200文字以下のPDF名。value全体は8KiB以下。
+既存table_idのcalendar_year/kindは変更できない。新年度または別種類は新table_idで事前登録し、旧年度・旧種類を現在registryから上書き消失させない。異なるIDで同kindの期間が重複する登録を拒否し、隣接期間と種類の異なる表を許容する。
+同一年度・種類の資料訂正（期間、hash/path/source等）は新versionとなり、旧metadataとPDFpath/hashを履歴に保存する。旧metadata版は履歴に保持され、現registry selectorは現在versionだけを参照する。これは旧PDFbytesの保存完了を意味しない。本stageは物理PDFを保存・消去・置換する処理を持たない。
+
+## 未検証の登録と計算可能資料の分離
+
+tableRowは`{table_id,version,value,registered_by,registered_at,official_document_verified,calculation_rules_verified,common_data_approved}`。
+登録・変更直後は検証済みとはならず、最新versionに一致しない旧検証資料を流用しない。
+正式資料の検証は別private verificationsに会社ID・tableID・metadata_version・hash・path・検証者・日時・根拠を記録する。
+計算利用の検証はさらに別に計算artifact hash/version・検証者・日時を要求する。PDFを見たことだけで税額表行や計算規則を検証済みとしない。
+一般管理者に検証登録/承認RPCはなく、raw table書込権限もない。client valueのverified/common等の余分なフラグも拒否する。
+trusted検証flow・artifact解析・共通資料公開は未実装。fixtureでDB ownerとして合成検証証跡を入れることは、本番の公式性の証明ではない。
+共通資料は本stageで配布せず、common_data_approvedは常にfalse。他社の資料登録や照会は会社membership検証で拒否する。
+
+selectedは指定給与暦日・種類・年度・期間に一致し、現metadata version/hash/pathが正式資料と計算artifactの両方の検証証跡に一致する資料だけを返す。
+新年度が未検証ならselected=null、旧年度期限切れへのfallbackをしない。将来資料の事前登録だけで現在期間を変更しない。
+このselectedはDBの検証状態の参照であり、物理bytes・税額表の計算エンジンが接続された実給与の計算可能保証ではない。現在のUI接続はread-only previewまでとし、PDF保存完了や税額計算完了を表示しない。
+source_urlは登録資料の入口情報で、signed URLや実体PDFの不変性の代わりに使わない。
+
+## 権限と履歴
+
+専用非公開schema income_tax_private、全table RLS、PUBLIC/anon/authenticatedにraw table/sequence権限無し。
+public SECURITY INVOKER wrapperはprivate empty search_path SECURITY DEFINERを呼び、auth.uid・既存account_access_allowed・会社scoped owner/admin・現存companies行を毎回照合する。
+会社row FOR KEY SHAREから会社advisory lockの順序でmetadata保存を直列化する。既存Auth、role、companies、company_membersを変更しない。
+historyは最新100件を参照APIで返し、保存した全履歴を削除しない。historyRowはevent_id/table_id/version/event_type/before_value/after_value/actor_id/changed_at。
+event_type=registrationはmetadata旧新値、verificationはtrusted検証証跡の旧新値。後者をmetadata型として解釈しない。
+trusted検証のINSERT/UPDATE/DELETEもtriggerで証跡を追加する。DB ownerが送信する検証者UUIDの真正性は今後trustedflowで確立する必要があり、ownerの任意DMLまで不変にする仕組みではない。
+
+現在metadata/verificationsの会社FKは既存company_rate_settingsと同じcascade。historyの会社UUIDはlogical attribution、FK無しで保持する。会社削除時の検証消去にも追加auditを保存し、古い会社membershipで保持履歴を一般APIから読めない。
+新しいTTLや会社プロフィールcopyは追加していない。正式帳票の保持期間やaccount deletion公開判断は変更しない。
+
+## 実行確認と残り
+
+exact migrationをPGlite 0.3.14に適用し非owner authenticated/anonで実RPCを実行した。
+会社/権限/アカウント停止、raw権限、clientの検証自称拒否、hash/path/version、日付/期間/重複/隣接、PDF登録だけの選択拒否、別計算検証、年切替、期限切れfallback拒否、旧年度保持、metadata更新で旧検証失効、履歴とaudit failure rollbackを確認。
+会社DELETE後のcurrent消去・履歴保持・stale membership拒否・他会社不変も確認した。CIはpinしたPGliteをignore-scriptsで導入して同fixtureを再実行する。
+fixture Auth/会社prerequisiteは合成であり、物理Storage/PDFbytes、PostgREST、本番JWT、全既存schema、並列Postgresセッションの検証ではない。
+CLIのlocal DB/advisorsはDocker/Podmanと稼働local DBがないため未実行。本番へ切り替えて試験していない。公式functions docsとchangelogの確認は会社料率laneで行った同じ版を基礎とする。
