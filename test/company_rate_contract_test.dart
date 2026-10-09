@@ -83,8 +83,9 @@ void main() {
   });
 
   test('PDF registration is independent from verified income tax calculation', () {
-    final table = IncomeTaxTableReference(tableId: 'fixture-table', calendarYear: 2030,
-      startsOn: DateTime.utc(2030), endsBefore: DateTime.utc(2031),
+    final table = IncomeTaxTableReference(tableId: 'fixture-table', ownerCompanyId: 'company', calendarYear: 2030,
+      kind: IncomeTaxTableKind.monthly,
+      startsOn: PayrollDate(2030, 1, 1), endsBefore: PayrollDate(2031, 1, 1),
       pdf: Uri.parse('https://example.test/table.pdf'), documentHash: 'fixture-hash',
       calculationRulesVerified: false);
     expect(table.calculationRulesVerified, isFalse);

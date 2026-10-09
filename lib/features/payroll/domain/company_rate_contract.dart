@@ -161,23 +161,123 @@ class CompanyRateState {
   }
 }
 
-/// Income tax is a separately verified table reference, never a percentage item.
-/// PDF registration alone does not make a table calculation-ready.
+/// A civil date in the Japanese calendar; no timezone conversion is performed.
+class PayrollDate implements Comparable<PayrollDate> {
+  final int year;
+  final int month;
+  final int day;
+  PayrollDate(this.year, this.month, this.day) {
+    final checked = DateTime.utc(year, month, day);
+    if (year < 1 || checked.year != year || checked.month != month || checked.day != day) {
+      throw ArgumentError('Invalid payroll date');
+    }
+  }
+  @override
+  int compareTo(PayrollDate other) =>
+      (year * 10000 + month * 100 + day).compareTo(
+        other.year * 10000 + other.month * 100 + other.day);
+}
+
+enum IncomeTaxTableKind { monthly, daily, bonus, computerCalculation }
+
+/// Registration, official verification, calculation readiness and permission
+/// to publish shared data are separate states. No tax amounts are inferred.
 class IncomeTaxTableReference {
   final String tableId;
+  final String ownerCompanyId;
   final int calendarYear;
-  final DateTime startsOn;
-  final DateTime endsBefore;
+  final IncomeTaxTableKind kind;
+  final PayrollDate startsOn;
+  final PayrollDate endsBefore;
   final Uri pdf;
   final String documentHash;
+  final bool officialDocumentVerified;
   final bool calculationRulesVerified;
-  IncomeTaxTableReference({required this.tableId, required this.calendarYear,
+  final bool commonDataApproved;
+  IncomeTaxTableReference({required this.tableId, required this.ownerCompanyId,
+    required this.calendarYear, required this.kind,
     required this.startsOn, required this.endsBefore, required this.pdf,
-    required this.documentHash, required this.calculationRulesVerified}) {
-    if (tableId.trim().isEmpty || calendarYear < 1 ||
-        !endsBefore.isAfter(startsOn) || pdf.scheme != 'https' ||
-        pdf.host.isEmpty || documentHash.trim().isEmpty) {
-      throw ArgumentError('Invalid income tax table reference');
+    required this.documentHash, this.officialDocumentVerified = false,
+    this.calculationRulesVerified = false, this.commonDataApproved = false}) {
+    if (tableId.trim().isEmpty || ownerCompanyId.trim().isEmpty || calendarYear < 1 ||
+        endsBefore.compareTo(startsOn) <= 0 || startsOn.year != calendarYear ||
+        endsBefore.compareTo(PayrollDate(calendarYear + 1, 1, 1)) > 0 ||
+        pdf.scheme != 'https' || pdf.host.isEmpty || documentHash.trim().isEmpty ||
+        (calculationRulesVerified && !officialDocumentVerified) ||
+        (commonDataApproved && !officialDocumentVerified)) {
+      throw ArgumentError('Invalid income tax table reference or verification state');
     }
+  }
+
+  bool contains(PayrollDate date) =>
+      startsOn.compareTo(date) <= 0 && date.compareTo(endsBefore) < 0;
+}
+
+/// A company's explicitly registered schedule. Advancing the supplied civil
+/// date selects the next ready table without discarding historical versions.
+/// Approval flags must be provided by trusted verification/publication flows;
+/// this model neither verifies PDFs nor authorizes their approval.
+class IncomeTaxTableRegistry {
+  final String companyId;
+  final List<IncomeTaxTableReference> registered;
+  final List<IncomeTaxTableReference> priorVerificationStates;
+  IncomeTaxTableRegistry({required this.companyId,
+    List<IncomeTaxTableReference> registered = const [],
+    List<IncomeTaxTableReference> priorVerificationStates = const []})
+      : registered = List.unmodifiable(registered),
+        priorVerificationStates = List.unmodifiable(priorVerificationStates) {
+    if (companyId.trim().isEmpty) throw ArgumentError('Company ID required');
+    for (var i = 0; i < registered.length; i++) {
+      final table = registered[i];
+      if (table.ownerCompanyId != companyId && !table.commonDataApproved) {
+        throw ArgumentError('Another company private upload cannot be registered');
+      }
+      for (var j = 0; j < i; j++) {
+        final previous = registered[j];
+        if (table.tableId == previous.tableId ||
+            (table.kind == previous.kind &&
+             table.startsOn.compareTo(previous.endsBefore) < 0 &&
+             previous.startsOn.compareTo(table.endsBefore) < 0)) {
+          throw ArgumentError('Duplicate table ID or overlapping table period');
+        }
+      }
+    }
+  }
+
+  IncomeTaxTableRegistry register(IncomeTaxTableReference table) =>
+      IncomeTaxTableRegistry(companyId: companyId, registered: [...registered, table],
+        priorVerificationStates: priorVerificationStates);
+
+  /// Changes verification state only for the exact registered document/period.
+  /// Corrected documents require a new schedule instead of silent replacement.
+  IncomeTaxTableRegistry recordVerification(IncomeTaxTableReference verified) {
+    final index = registered.indexWhere((table) => table.tableId == verified.tableId);
+    if (index < 0) throw StateError('Table is not registered');
+    final old = registered[index];
+    if (old.ownerCompanyId != verified.ownerCompanyId || old.kind != verified.kind ||
+        old.calendarYear != verified.calendarYear || old.pdf != verified.pdf ||
+        old.documentHash != verified.documentHash ||
+        old.startsOn.compareTo(verified.startsOn) != 0 ||
+        old.endsBefore.compareTo(verified.endsBefore) != 0) {
+      throw StateError('Verification cannot replace document identity or period');
+    }
+    final revised = [...registered];
+    revised[index] = verified;
+    return IncomeTaxTableRegistry(companyId: companyId, registered: revised,
+      priorVerificationStates: [...priorVerificationStates, old]);
+  }
+
+  /// No fallback to an expired table or a merely uploaded PDF.
+  IncomeTaxTableReference? select({required PayrollDate date,
+    required IncomeTaxTableKind kind}) {
+    for (final table in registered) {
+      if (table.kind == kind && table.calendarYear == date.year &&
+          table.contains(date) && table.officialDocumentVerified &&
+          table.calculationRulesVerified &&
+          (table.ownerCompanyId == companyId || table.commonDataApproved)) {
+        return table;
+      }
+    }
+    return null;
   }
 }
