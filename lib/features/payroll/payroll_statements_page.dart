@@ -221,6 +221,7 @@ class _PayrollStatementPreviewPageState
   bool _statementUnavailable = false;
   bool _confirmationBusy = false;
   bool _finalizationBusy = false;
+  bool _finalizationUncertain = false;
   String? _confirmationError;
   final _pdfBytes = PdfBytesCache();
 
@@ -230,9 +231,9 @@ class _PayrollStatementPreviewPageState
     _loadConfirmation();
   }
 
-  Future<void> _loadConfirmation() async {
+  Future<PayrollStatementRecord?> _loadConfirmation() async {
     final repository = _confirmationRepository;
-    if (repository == null) return;
+    if (repository == null) return null;
     try {
       final status = await repository.loadStatus(widget.statement.periodStart);
       final reviewRepository = PayrollReviewRepository.maybeCreate();
@@ -266,6 +267,7 @@ class _PayrollStatementPreviewPageState
           _pdfBytes.invalidate();
         });
       }
+      return refreshedStatement;
     } catch (error) {
       if (error is PostgrestException &&
           (error.code == '42501' ||
@@ -297,12 +299,13 @@ class _PayrollStatementPreviewPageState
             _pdfBytes.invalidate();
           });
         }
-        return;
+        return ownStatement;
       }
       if (mounted) {
         setState(() => _confirmationError = SkoLanguageController.trParams('確認状態を読み込めませんでした: {error}', {'error': error}));
       }
     }
+    return null;
   }
 
   Future<void> _confirm(bool cancel) async {
@@ -378,12 +381,13 @@ class _PayrollStatementPreviewPageState
       ),
       body: Column(
         children: [
-          if (widget.allowFinalization && !_statementUnavailable)
+          if (widget.allowFinalization)
             PayrollFinalizationPanel(statement: _pdfStatement,
               reloadStatement: _loadConfirmation,
               onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
+              onVerificationRequired: (needsVerification) { if (mounted) setState(() => _finalizationUncertain = needsVerification); },
               onSaved: (saved) { if (mounted) setState(() {
-                _refreshedStatement = saved; _confirmation = null;
+                _refreshedStatement = saved; _confirmation = null; _finalizationUncertain = false;
                 _statementUnavailable = false; _pdfBytes.invalidate();
               }); }),
           if (!_statementUnavailable)
@@ -461,7 +465,7 @@ class _PayrollStatementPreviewPageState
           Expanded(
             child: _confirmationBusy || _finalizationBusy
                 ? const Center(child: CircularProgressIndicator())
-                : _statementUnavailable
+                : _statementUnavailable || _finalizationUncertain
                 ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
                 : InteractiveViewer(
                     transformationController: _zoomController,

@@ -70,7 +70,7 @@ void main() {
         status(ready: current.revision == null));
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
         key: UniqueKey(), statement: current, repository: repository,
-        onSaved: (_) => fail('unexpected save'), reloadStatement: () async {}))));
+        onSaved: (_) => fail('unexpected save'), reloadStatement: () async => statement()))));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
     }
@@ -85,7 +85,7 @@ void main() {
     });
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
       statement: statement(), repository: repository, onSaved: (_) => fail('unexpected save'),
-      reloadStatement: () async {}))));
+      reloadStatement: () async => statement()))));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
     await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();expect(writes, 0);
@@ -108,7 +108,7 @@ void main() {
     });
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
       statement: statement(), repository: repository, onSaved: (_) => fail('unexpected save'),
-      reloadStatement: () async {}))));
+      reloadStatement: () async => statement()))));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
     await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
@@ -122,12 +122,37 @@ void main() {
       name == 'read_payroll_finalization_status' ? status() : response());
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
       statement: statement(), repository: repository, onSaved: (value) => saved = value,
-      reloadStatement: () async {}))));
+      reloadStatement: () async => statement()))));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
     await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
     expect(saved!.companyName, 'Saved company');expect(saved!.isDraft, false);
     expect(saved!.detail['bank_account'], isEmpty);
     expect(find.text('給与明細を確定して保存しました'), findsOneWidget);
+  });
+
+  testWidgets('unknown result retains warning when capability says saved but saved source reload fails', (tester) async {
+    var saved = false; var reads = 0; var writes = 0;
+    final repository = PayrollFinalizationRepository(invoke: (name, params) async {
+      if (name == 'read_payroll_finalization_status') {
+        reads++;
+        return saved ? {...status(ready: false), 'workflow_state': 'finalized', 'snapshot_saved': true} : status();
+      }
+      writes++;saved = true;throw StateError('lost reply after commit');
+    });
+    var unavailable = false;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
+      statement: statement(), repository: repository, onSaved: (_) => fail('unexpected direct save'),
+      onVerificationRequired: (value) => unavailable = value,
+      reloadStatement: () async => null))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
+    expect(unavailable, true);
+    await tester.tap(find.text('保存状態を再読み込み'));await tester.pumpAndSettle();
+    expect(find.text('保存結果を確認できません。再読み込みしてください。'), findsOneWidget);
+    expect(find.text('保存状態を再読み込み'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
+    expect(unavailable, true);expect(reads, 1);expect(writes, 1);
   });
 }

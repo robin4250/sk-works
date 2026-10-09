@@ -95,7 +95,8 @@ class PayrollFinalizationRepository {
       final raw = await _invoke('read_payroll_finalization_status', {'p_statement_id': statement.id});
       return PayrollFinalizationStatus.parse(raw, statement);
     } on PostgrestException catch (error) {
-      if (error.code == 'PGRST202' || (error.code == '42883' && error.message.contains('read_payroll_finalization_status'))) return null;
+      if ((error.code == 'PGRST202' || error.code == '42883') &&
+          error.message.contains('read_payroll_finalization_status')) return null;
       rethrow;
     }
   }

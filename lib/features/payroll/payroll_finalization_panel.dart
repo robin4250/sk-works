@@ -5,12 +5,13 @@ import 'payroll_condition_warning.dart';
 
 class PayrollFinalizationPanel extends StatefulWidget {
   const PayrollFinalizationPanel({super.key, required this.statement, required this.onSaved,
-    required this.reloadStatement, this.repository, this.onBusyChanged});
+    required this.reloadStatement, this.repository, this.onBusyChanged, this.onVerificationRequired});
   final PayrollStatementRecord statement;
   final ValueChanged<PayrollStatementRecord> onSaved;
-  final Future<void> Function() reloadStatement;
+  final Future<PayrollStatementRecord?> Function() reloadStatement;
   final PayrollFinalizationRepository? repository;
   final ValueChanged<bool>? onBusyChanged;
+  final ValueChanged<bool>? onVerificationRequired;
   @override
   State<PayrollFinalizationPanel> createState() => _PayrollFinalizationPanelState();
 }
@@ -36,27 +37,35 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
       _read();
     }
   }
-  Future<void> _read() async {
+  Future<PayrollFinalizationStatus?> _read([PayrollStatementRecord? statement]) async {
     final generation = ++_generation;
-    if (_repository == null) return;
+    final repository = _repository;
+    if (repository == null) return null;
     try {
-      final status = await _repository!.read(widget.statement);
-      if (!mounted || generation != _generation) return;
-      setState(() { _status = status; _error = null; });
+      final status = await repository.read(statement ?? widget.statement);
+      if (!mounted || generation != _generation) return null;
+      setState(() { _status = status; if (!_uncertain) _error = null; });
+      return status;
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() { _status = null; _error = '給与確定の状態を取得できません。権限・接続を確認して再読み込みしてください。'; });
       }
     }
+    return null;
   }
   Future<void> _reload() async {
     if (_busy) return;
     setState(() => _busy = true);
     widget.onBusyChanged?.call(true);
     try {
-      await widget.reloadStatement();
-      await _read();
-      if (mounted) setState(() => _uncertain = false);
+      final fresh = await widget.reloadStatement();
+      if (fresh == null) throw StateError('saved statement unavailable');
+      final status = await _read(fresh);
+      if (status == null || fresh.revision != status.revision ||
+        (status.snapshotSaved && fresh.workflowState != 'finalized')) {
+        throw StateError('saved statement not verified');
+      }
+      if (mounted) { setState(() { _uncertain = false; _error = null; }); widget.onVerificationRequired?.call(false); }
     } catch (_) {
       if (mounted) setState(() => _error = '保存結果を確認できません。再読み込みしてください。');
     } finally {
@@ -67,7 +76,8 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
   bool get _ready => !_uncertain && _status?.canFinalize == true && widget.statement.isDraft &&
     widget.statement.revision != null && widget.statement.revision == _status?.revision;
   Future<void> _finalize() async {
-    if (_busy || !_ready || _repository == null) return;
+    final repository = _repository;
+    if (_busy || !_ready || repository == null) return;
     final statement = widget.statement;
     final revision = _status!.revision;
     final generation = _generation;
@@ -84,17 +94,19 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して確定'))])) ?? false;
       if (!confirmed || !mounted || generation != _generation) return;
       sent = true;
-      final result = await _repository!.finalize(statement, revision);
+      final result = await repository.finalize(statement, revision);
       if (!mounted || generation != _generation) return;
       if (result.finalized) {
         widget.onSaved(result.statement!);
         setState(() { _status = null; _error = null; _uncertain = false; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('給与明細を確定して保存しました')));
       } else {
+        widget.onVerificationRequired?.call(true);
         setState(() { _status = null; _uncertain = true; _error = '再計算で給与が変わりました。再読み込みし、内容と確認をやり直してください。'; });
       }
     } catch (_) {
       if (mounted && generation == _generation) {
+        if (sent) widget.onVerificationRequired?.call(true);
         setState(() { _status = null; _uncertain = sent;
           _error = sent ? '確定結果を確認できません。再送せず、再読み込みして保存状態を確認してください。' : '確認操作を完了できませんでした。'; });
       }
