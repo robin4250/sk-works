@@ -41,6 +41,31 @@ void main() {
     expect(ambiguous.needsSending, isTrue);
     expect(employee({'invitation_id': 'other-invite'}).hasInvitation, isTrue);
   });
+  test('authoritative current marker wins over historical approved invitation', () {
+    final rows = [
+      {'worker_id': 'worker', 'invitation_id': 'old', 'current_invitation': false,
+       'invitation_status': 'approved', 'approved_at': '2026-10-01',
+       'initial_registration_completed': true, 'delivery_state': 'manual_sent'},
+      {'worker_id': 'worker', 'invitation_id': 'current', 'current_invitation': true,
+       'invitation_status': 'approval_pending', 'initial_registration_completed': false},
+    ];
+    for (final ordered in [rows, rows.reversed.toList()]) {
+      final status = resolveEmployeeRegistrationStatuses('company', ordered)['worker']!;
+      expect(status.invitationId, 'current');
+      expect(status.completed, isFalse);
+      expect(status.deliveryState, 'unknown');
+    }
+    final absent = resolveEmployeeRegistrationStatuses('company', [rows.first])['worker']!;
+    expect(absent.completed, isFalse);
+    expect(absent.invitationId, isNull);
+    expect(absent.ambiguous, isTrue);
+    final multiple = resolveEmployeeRegistrationStatuses('company', [
+      {...rows.last, 'invitation_id': 'one'},
+      {...rows.last, 'invitation_id': 'two'},
+    ])['worker']!;
+    expect(multiple.invitationId, isNull);
+    expect(multiple.ambiguous, isTrue);
+  });
   test('manual sending is separate from completion and unknown remains eligible', () {
     final sent = employee({'invitation_status': 'invited', 'invitation_id': 'invite', 'delivery_state': 'manual_sent'});
     expect(sent.completed, isFalse);

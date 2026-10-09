@@ -93,6 +93,34 @@ class EmployeeRegistrationStatus {
       );
 }
 
+Map<String, EmployeeRegistrationStatus> resolveEmployeeRegistrationStatuses(
+  String companyId, List<dynamic> rows,
+) {
+  final grouped = <String, List<Map>>{};
+  for (final raw in rows) {
+    if (raw is! Map) {
+      continue;
+    }
+    final workerId = raw['worker_id']?.toString() ?? '';
+    if (workerId.isNotEmpty) {
+      grouped.putIfAbsent(workerId, () => []).add(raw);
+    }
+  }
+  return grouped.map((workerId, invitations) {
+    final current = invitations.where((row) =>
+      row['current_invitation'] == true && row['invitation_id'] != null,
+    ).toList(growable: false);
+    if (current.length == 1) {
+      return MapEntry(workerId, EmployeeRegistrationStatus.fromRow(companyId, current.single));
+    }
+    return MapEntry(workerId, EmployeeRegistrationStatus(
+      companyId: companyId, invitationId: null, completed: false,
+      deliveryState: 'unknown',
+      ambiguous: invitations.any((row) => row['invitation_id'] != null),
+    ));
+  });
+}
+
 class EmployeeInviteRepository {
   EmployeeInviteRepository._(this._client);
 
@@ -196,21 +224,15 @@ class EmployeeInviteRepository {
         continue;
       }
       try {
-        final value = await _client.rpc('employee_initial_registration_status_rows', params: {'p_company_id': companyId});
+        final value = await _client.rpc('employee_initial_registration_status_rows_v2', params: {'p_company_id': companyId});
         if (value is! List) {
           throw StateError('初回登録の状態を確認できません。');
         }
-        for (final row in value) {
-          if (row is! Map) {
-            continue;
-          }
-          final workerId = row['worker_id']?.toString() ?? '';
-          if (workerId.isNotEmpty) {
-            if (states.containsKey(workerId)) {
-              states[workerId] = states[workerId]!.withAnotherInvitation();
-              continue;
-            }
-            states[workerId] = EmployeeRegistrationStatus.fromRow(companyId, row);
+        for (final entry in resolveEmployeeRegistrationStatuses(companyId, value).entries) {
+          if (states.containsKey(entry.key)) {
+            states[entry.key] = states[entry.key]!.withAnotherInvitation();
+          } else {
+            states[entry.key] = entry.value;
           }
         }
       } on PostgrestException catch (error) {
