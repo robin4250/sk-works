@@ -4,6 +4,10 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "Master側に保管中です。用途は今後検討します。既存の会社設定は読み取り専用で、個人別の業務権限ではありません。設定・登録データは変更しません。": "Held in Master settings for future review. Existing company settings are read-only and do not assign individual permissions. Settings and registered data remain unchanged.",
+    "既存のサブ管理者共通表示設定（保管中）": "Existing shared assistant administrator display settings (held for review)",
+    "保存済みの共通表示設定です。Aさん・Bさんなど個人別の業務権限を設定するものではありません。": "These are previously saved shared display settings. They do not assign individual permissions to specific people.",
+
     "有給{count}日：有給単価が0円です。個別給与設定の有給額を確認してください。": "{count} paid-leave days: the daily paid-leave amount is zero. Review the individual payroll paid-leave setting.",
     "日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。": "Daily pay uses the registered daily wage. Hourly pay defaults to eight hours and may be edited. Monthly pay uses the configured daily allocation without adding extra wages or reducing monthly pay for leave.",
     "有給1日分：{amount}円": "Pay per paid-leave day: ¥{amount}",
