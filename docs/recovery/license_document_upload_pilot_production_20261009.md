@@ -32,4 +32,6 @@ advisorsは観測時刻を除外した意味的finding集合（58/2/155/1）が�
 
 完了：限定schema適用、対象1組だけON、保持・権限境界の本番read-only確認、exact sourceのPGlite/PG17回帰。Secret37925157944、attendance union37925157812、代理退勤SQL37925157785もSUCCESS。
 
-Flutter37925157901もテスト・PDF artifact・pre-device gate・Android APKまでSUCCESS。\n\n未確認：統合後main push CI、実Storage HTTP/upload、実iPhoneでの免許証添付操作と最新Release導入、署名・TestFlight。DB policy判定trueをHTTP403解消済みや実機操作成功として扱わない。外部メールも実送信済みではない。
+Flutter37925157901もテスト・PDF artifact・pre-device gate・Android APKまでSUCCESS。
+
+未確認：統合後main push CI、実Storage HTTP/upload、実iPhoneでの免許証添付操作と最新Release導入、署名・TestFlight。DB policy判定trueをHTTP403解消済みや実機操作成功として扱わない。外部メールも実送信済みではない。
