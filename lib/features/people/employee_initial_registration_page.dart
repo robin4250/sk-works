@@ -200,7 +200,7 @@ class _EmployeeInitialRegistrationPageState
           'SMS作成画面や共有画面を開いたことは、実際の送信完了を意味しません。'
           '初回案内の機能は従来の管理者権限で利用します。'
           '状態確認が利用可能な場合、承認済みの初回登録完了者は一覧に出しません。未送信の絞り込みは手動送信の記録がない人を表示します。状態未確認を送信済みや登録完了と推測しません。'
-          '既存案内の安全な再発行は未対応のため、新しいアカウントを再作成しません。手動送信の記録は実配信・受信の確認とは別です。',
+          '既存案内の安全な再発行は未対応のため、新しいアカウントを再作成しません。複数の案内がある人は状態を確定せず、再作成・送信申告を止めます。他の人の操作は続けられます。手動送信の記録は実配信・受信の確認とは別です。',
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('確認'))],
       ),
@@ -372,7 +372,7 @@ class _EmployeeInitialRegistrationPageState
                         ),
                         subtitle: Text(
                           '${employee.phone}\n'
-                          '${!employee.hasInvitation ? '案内未作成' : employee.manuallySent ? '手動送信を記録済み（配信・受信は未確認）' : '案内作成済み・送信状態未確認'}'
+                          '${employee.registrationStatus?.ambiguous == true ? '複数の案内があるため状態を確定できません（再登録不要）' : !employee.hasInvitation ? '案内未作成' : employee.manuallySent ? '手動送信を記録済み（配信・受信は未確認）' : '案内作成済み・送信状態未確認'}'
                           '${employee.registrationStatus == null ? '\n状態確認はOFFまたは未導入です' : ''}'
                           '${employee.hasInvitation ? '\n作成済み案内の安全な再開は未対応です（再登録不要）' : ''}',
                         ),

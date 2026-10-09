@@ -51,7 +51,8 @@ class InitialRegistrationEmployee {
   final bool invited;
   final EmployeeRegistrationStatus? registrationStatus;
 
-  bool get hasInvitation => invited || registrationStatus?.invitationId != null;
+  bool get hasInvitation => invited || registrationStatus?.invitationId != null ||
+      registrationStatus?.ambiguous == true;
   bool get completed => registrationStatus?.completed == true;
   bool get manuallySent => registrationStatus?.deliveryState == 'manual_sent';
   bool get needsSending => !completed && !manuallySent;
@@ -63,12 +64,23 @@ class EmployeeRegistrationStatus {
     required this.invitationId,
     required this.completed,
     required this.deliveryState,
+    this.ambiguous = false,
   });
 
   final String companyId;
   final String? invitationId;
   final bool completed;
   final String deliveryState;
+  final bool ambiguous;
+
+  EmployeeRegistrationStatus withAnotherInvitation() =>
+      EmployeeRegistrationStatus(
+        companyId: companyId,
+        invitationId: null,
+        completed: false,
+        deliveryState: 'unknown',
+        ambiguous: true,
+      );
 
   factory EmployeeRegistrationStatus.fromRow(String companyId, Map row) =>
       EmployeeRegistrationStatus(
@@ -195,7 +207,8 @@ class EmployeeInviteRepository {
           final workerId = row['worker_id']?.toString() ?? '';
           if (workerId.isNotEmpty) {
             if (states.containsKey(workerId)) {
-              throw StateError('対象の会社と従業員の状態が重複しています。');
+              states[workerId] = states[workerId]!.withAnotherInvitation();
+              continue;
             }
             states[workerId] = EmployeeRegistrationStatus.fromRow(companyId, row);
           }
