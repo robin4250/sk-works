@@ -420,7 +420,7 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
     _fields = {
       'label': TextEditingController(text: value?['label'] as String? ?? payrollRateKinds[widget.kind] ?? ''),
       for (final key in ['total', 'employee', 'employer'])
-        key: TextEditingController(text: value == null ? payrollManualStartingRates[widget.kind]?[key] ?? '' : formatPayrollRatePercent(value[key] as int)),
+        key: TextEditingController(text: value == null ? (payrollManualStartingRates[widget.kind]?[key] ?? '') : formatPayrollRatePercent(value[key] as int)),
       for (final key in ['insurance_month', 'payroll_month', 'payment_month'])
         key: TextEditingController(text: value == null ? '' : (value[key] as String).substring(0, 7)),
       'publisher': TextEditingController(text: source['publisher'] as String? ?? ''),
