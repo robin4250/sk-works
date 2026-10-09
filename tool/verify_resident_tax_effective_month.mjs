@@ -69,6 +69,12 @@ try {
  assert.equal((await db.query("select to_regnamespace('resident_tax_private') as namespace")).rows[0].namespace,null,'unknown source guard must stop before new schema writes');
  await db.exec(baseline);
  await db.exec(read('supabase/migrations/20261009161427_resident_tax_effective_month.sql'));
+ await actor(editor);
+ assert.equal((await db.query('select public.resident_tax_schedule_contract_version() as version')).rows[0].version,1);
+ await actor(owner,'anon');
+ await assert.rejects(db.query('select public.resident_tax_schedule_contract_version()'),/permission denied/);
+ await db.exec('reset role');
+ assert.equal((await db.query("select has_function_privilege('anon','public.resident_tax_schedule_contract_version()','execute') as allowed")).rows[0].allowed,false);
  // Exact live function hashes are prerequisites; the harness verifies them through
  // the migration guard after applying the same original migrations and triggers.
  await db.exec(`delete from public.attendance_entries; delete from public.paid_leave_requests; delete from public.payroll_statements;

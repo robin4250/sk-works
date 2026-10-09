@@ -785,3 +785,9 @@ begin
 end
 $function$
 ;
+
+-- Read-only adoption gate: does not imply any configured timeline exists.
+create function public.resident_tax_schedule_contract_version() returns integer
+language sql stable security invoker set search_path='' as $$ select 1 $$;
+revoke all on function public.resident_tax_schedule_contract_version() from public,anon;
+grant execute on function public.resident_tax_schedule_contract_version() to authenticated;

@@ -60,3 +60,7 @@ synthetic access fixtureは既存会社membership・feature/payroll_access・wor
 CIはpin/ignore-scriptsのruntimeで同fixtureを再実行する。
 実Postgres並列セッション、全本番schema/permissions/JWT、既存会社/従業員削除全経路、バックアップ、UI保存・適用popup・最終明細接続は未検証。本番migrationは未適用。
 CLI local DB/advisorsはDocker/Podmanと稼働local DBがないため利用できず、本番へ切り替えて試験していない。
+
+## UI採用の確認
+
+`public.resident_tax_schedule_contract_version()` はauthenticatedだけが実行できる読み取り専用RPCで整数`1`を返す。これに成功した場合だけ新しい住民税schedule UIを採用する。RPC未導入と確認できた場合は既存固定住民税入力・一般保存を維持する。ネットワーク障害・権限等の別エラーは未導入とみなさず、確認不能として扱う。このgateはtimeline設定済み・公式検証済み・本番適用済みという意味ではない。
