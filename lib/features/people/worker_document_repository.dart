@@ -325,6 +325,7 @@ class WorkerDocumentRepository {
     final existing = await _client
         .from('worker_document_statuses')
         .select('id')
+        .eq('company_id', companyId)
         .eq('worker_id', worker.workerId)
         .eq('requirement_id', requirementId)
         .limit(1);
@@ -340,12 +341,15 @@ class WorkerDocumentRepository {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (existing.isEmpty) {
-      await _client.from('worker_document_statuses').insert(payload);
+      await _client.from('worker_document_statuses').insert(payload).select('id').single();
     } else {
       await _client
           .from('worker_document_statuses')
           .update(payload)
-          .eq('id', existing.first['id']);
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId)
+          .eq('requirement_id', requirementId)
+          .eq('id', existing.first['id']).select('id').single();
     }
   }
 
