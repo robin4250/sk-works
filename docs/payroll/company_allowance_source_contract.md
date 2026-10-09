@@ -104,3 +104,108 @@ identity, append-only API audit, and unchanged original legacy yen.
 Official reference: https://supabase.com/docs/guides/database/functions
 The changelog markdown endpoint was queried but the search transport rejected
 its content type; no production API/version-dependent feature is introduced.
+
+## Repository-only privilege and compatibility inventory
+
+Reviewed source at `c6b51faa` (proposal base), not the deployed database.
+Searching all committed migrations found the following relevant definitions;
+no later direct table/column grant or table policy for `company_rate_settings`
+was found. That is source evidence, not proof of effective production ACLs.
+
+| Source | Surface | Repository behavior |
+| --- | --- | --- |
+| `20260922013000_add_admin_initial_setup_wizard.sql` | Rate table | RLS enabled; `REVOKE ALL ... FROM anon, authenticated`; no SELECT/UPDATE policy defined for this table. The statement does not itself revoke any separately granted PUBLIC privilege. |
+| Same migration | `save_initial_company_rates` | SECURITY DEFINER; owner/admin membership; explicit legacy-column upsert; authenticated EXECUTE, PUBLIC/anon revoked. Does not write extra JSON. |
+| `20260922020000_add_company_rate_settings_management.sql` | `company_rate_settings_state` | Admin/owner-only money-bearing fixed-field JSON read; authenticated EXECUTE, PUBLIC/anon revoked. |
+| Same migration | `save_company_rate_settings` | SECURITY DEFINER; owner/admin membership; fixed legacy-column upsert; authenticated EXECUTE, PUBLIC/anon revoked. Does not overwrite unspecified extra JSON on conflict. |
+| `20261003002700_add_attendance_allowance_display_units.sql` | State read replacement | Preserves admin/owner check and fixed price/name keys; adds three unit fields, not generic `to_jsonb(rate_row)`. Added columns are not automatically emitted. |
+| Same migration | `my_attendance_allowance_units` | SECURITY DEFINER; signed-in membership; name-to-unit object only, no yen; authenticated EXECUTE, PUBLIC revoked. |
+| Same migration | `save_company_allowance_units` | SECURITY DEFINER; owner/admin membership; only unit columns plus updater/time are written; authenticated EXECUTE, PUBLIC revoked. |
+| `20261003006000_harden_device_review_rpcs.sql` | Units read/save EXECUTE | Explicit anon revocation and authenticated grants; no rate-table grant. |
+| `20261008043823_atomic_company_rate_and_allowance_units_save.sql` | Combined saver | SECURITY INVOKER wrapper around the two checked savers; authenticated EXECUTE, PUBLIC/anon revoked; one transaction. |
+
+Under the repository's explicit rate-table ACL/RLS setup, a general worker has
+no intended direct table price read or JSON UPDATE route. The worker units RPC
+returns no prices. The administrative state RPC intentionally returns prices
+only after its role check. These are **expected source-level outcomes**; PUBLIC
+ACLs, role inheritance, deployed policies/default grants, service-role use,
+manual changes and exact installed function bodies remain unverified.
+
+The current Flutter company settings repository loads the state RPC and saves
+through the combined saver. `CompanyRateSettings.fromMap` recognizes only the
+three explicit name/amount/unit slots. It does not deserialize the complete
+rate row or directly update the table. Therefore added columns alone should
+preserve that data shape and leave extras untouched, but the existing screen
+will neither show nor administer extra items. The attendance-sheet repository
+continues using `my_attendance_allowance_units`; it will not discover extras
+until deliberately migrated to the ID-based labels contract. No runtime UI
+compatibility or full database replay was tested by this documentation review.
+
+### Minimum compatible adoption conditions
+
+1. Keep existing rate table and its RPC-only access intention. Inspect effective
+   anon/authenticated/PUBLIC and inherited privileges before deciding whether
+   any separately reviewed privilege change is needed. Never grant workers table
+   access merely to read labels. Keep the price-free dedicated read boundary.
+2. Preserve fixed legacy state/save shapes for older clients. Add a separate,
+   explicitly scoped admin catalog price read for new clients; do not append
+   amounts to a worker RPC. Bind new editors to explicit company ID and version.
+3. Enforce catalog name uniqueness in **both write directions**. The proposal
+   rejects extra names matching existing slots, but an unchanged legacy saver
+   can later rename a slot to an extra name. Version advance detects staleness,
+   not that uniqueness violation. Adoption requires a separately reviewed
+   shared validation boundary covering initial/rate/unit writes and direct
+   privileged writes as appropriate; do not enable extras until it exists.
+4. Treat combined legacy save as two row updates: the conservative trigger
+   advances version twice. New callers must reload the final version after
+   save, never infer that every operation increments by exactly one. A fully
+   unified future saver must retain old-client transaction behavior.
+5. Keep legacy company+slot IDs derived and extras' UUIDs stable. A renamed
+   legacy slot keeps identity; clearing then repurposing a slot also reuses that
+   slot identity. Before usage records reference those IDs, define an explicit
+   replacement/retirement policy so old usage is not reinterpreted. Never bind
+   historical attendance solely by its former display name.
+6. Preserve independent site billing agreements and employee-specific extras.
+   Introduce references only where the company common allowance is intended;
+   do not silently copy prices or resolve identical strings across domains.
+7. Integrate finalized payroll snapshots and quantity storage before production
+   use. The isolated proposal currently proves neither payroll computation nor
+   adoption of additional entries by existing screens.
+
+### Read-only production verification needed before a migration
+
+The following inspection is illustrative and has **not** been executed against
+production. It changes no ACL, RLS or data. Effective role privileges, individual
+column grants, role membership and function definitions must be evaluated
+alongside configured Data API exposure and actual user-context reads/writes.
+
+```sql
+select relrowsecurity, relforcerowsecurity, relacl
+from pg_catalog.pg_class
+where oid = 'public.company_rate_settings'::regclass;
+select role_name,
+       has_table_privilege(role_name, 'public.company_rate_settings', 'SELECT') as can_select,
+       has_table_privilege(role_name, 'public.company_rate_settings', 'UPDATE') as can_update
+from (values ('anon'), ('authenticated')) as roles(role_name);
+select grantee, privilege_type, column_name
+from information_schema.column_privileges
+where table_schema = 'public' and table_name = 'company_rate_settings';
+select polname, polcmd, polroles,
+       pg_get_expr(polqual, polrelid) as using_expression,
+       pg_get_expr(polwithcheck, polrelid) as check_expression
+from pg_catalog.pg_policy
+where polrelid = 'public.company_rate_settings'::regclass;
+select r.rolname as granted_role, m.rolname as member_role
+from pg_catalog.pg_auth_members am
+join pg_catalog.pg_roles r on r.oid = am.roleid
+join pg_catalog.pg_roles m on m.oid = am.member;
+select n.nspname, p.proname, p.prosecdef, p.proacl, p.proconfig,
+       pg_get_functiondef(p.oid) as installed_definition
+from pg_catalog.pg_proc p
+join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname in (
+ 'company_rate_settings_state', 'save_initial_company_rates',
+ 'save_company_rate_settings', 'save_company_allowance_units',
+ 'my_attendance_allowance_units', 'save_company_rate_settings_with_units'
+);
+```
