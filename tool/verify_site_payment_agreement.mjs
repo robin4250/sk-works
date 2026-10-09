@@ -110,4 +110,40 @@ assert.deepEqual((await db.query(`select public.saved_site_payment_document('${m
 console.log('PASS: captured company address/contact/seal stay immutable; legacy snapshot stays untouched');
 console.log('PASS: six named signed extras and manual tax reason preserved in mutually confirmed immutable snapshot');
 console.log('PASS: OFF guard, administrator scope, arithmetic, revision conflict, two-party confirmation, immutable originals, stale confirmation, outsider denial');
+if(process.argv.includes('--seal-snapshots')) {
+ await db.exec(`reset role;alter table companies add column updated_at timestamptz;
+ create table invoices(id uuid primary key,company_id uuid,snapshot jsonb);
+ create table payment_certificates(id uuid primary key,company_id uuid,snapshot jsonb);
+ create table payroll_statements(id uuid primary key,company_id uuid,detail jsonb);
+ create function private.refresh_automatic_invoice(cid uuid,partner uuid,day date) returns void language plpgsql as $$
+ declare existing public.invoices; snapshot_value jsonb;
+ begin snapshot_value:='{}';if existing.id is null then return;end if;end $$;
+ create function private.refresh_automatic_payment_certificate(cid uuid,partner uuid,day date) returns void language plpgsql as $$
+ declare existing public.payment_certificates; snapshot_value jsonb;
+ begin snapshot_value:='{}';if existing.id is null then return;end if;end $$;
+ create function private.payroll_document_metadata(p_statement_id uuid) returns jsonb language sql as $$
+ select jsonb_build_object('company_seal_enabled',c.company_seal_enabled,'old',true)
+ from payroll_statements ps join companies c on c.id=ps.company_id where ps.id=p_statement_id $$;`);
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261009011357_company_seal_aoyagi_style.sql',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261009012730_company_seal_document_snapshots.sql',import.meta.url),'utf8'));
+ await db.exec(`set test.uid='${admin2}';set role authenticated;`);
+ assert.deepEqual((await db.query(`select public.saved_site_payment_document('${manual}','${child}') v`)).rows[0].v,legacy);
+ const sealSnapshots=[];
+ for(const name of ['株式会社テスト建設','株式会社長い会社名建設工業']) {
+  await db.exec(`reset role;update companies set name='${name}',company_seal_style='aoyagi_reisho',company_seal_enabled=true where id='${parent}';set test.uid='${admin1}';set role authenticated;`);
+  const workspace=(await db.query(`select public.site_payment_agreement_workspace('${item}','${parent}') v`)).rows[0].v;
+  const next=await propose(workspace.proposals[0].revision,manualTerms);
+  await db.query(`select public.confirm_site_payment_terms('${next}','${parent}')`);
+  await db.exec(`set test.uid='${admin2}'`);
+  await db.query(`select public.confirm_site_payment_terms('${next}','${child}')`);
+  const captured=(await db.query(`select public.saved_site_payment_document('${next}','${child}') v`)).rows[0].v;
+  assert.equal(captured.snapshot_version,3);
+  assert.deepEqual(captured.company_seal_snapshot,{version:1,style:'aoyagi_reisho',name});
+  await db.exec(`reset role;update companies set name='株式会社変更後',company_seal_style='legacy' where id='${parent}';set role authenticated;`);
+  assert.deepEqual((await db.query(`select public.saved_site_payment_document('${next}','${child}') v`)).rows[0].v,captured);
+  sealSnapshots.push(captured);
+ }
+ if(process.env.SKO_SITE_PAYMENT_SEAL_OUTPUT_JSON) await fs.writeFile(process.env.SKO_SITE_PAYMENT_SEAL_OUTPUT_JSON,JSON.stringify(sealSnapshots));
+ console.log('PASS: actual mutually confirmed v3 snapshots freeze genuine style/name; legacy unchanged; two short/long PDF fixtures exported');
+}
 await db.close();

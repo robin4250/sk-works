@@ -49,5 +49,5 @@ old absence, v1/v2 agreements, invalid direct company updates and helper ACLs.
 Actual invoice and certificate generator tests passed for unchanged cron writes,
 old draft/finalized preservation and real financial changes. Local Flutter/Dart is
 unavailable. Flutter PDF production generation, embedded genuine-font checks and
-short/long PNG review run in CI; results must be checked before integration.
+short/long PNG review (three monthly reports plus mutually confirmed v3 agreements) run in CI; results must be checked before integration.
 Production rollout, real iPhone operations and TestFlight remain separate work.
