@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -31,6 +33,7 @@ class _EmployeeInitialRegistrationPageState
   EmployeeInviteResult? _result;
   bool _savingUrl = false;
   bool _onlyUnprepared = true;
+  final Map<String, String> _deliveryEventIds = {}; // No password or QR payload is persisted.
 
   @override
   void initState() {
@@ -119,6 +122,38 @@ class _EmployeeInitialRegistrationPageState
     }
   }
 
+  Future<void> _recordManualSending(InitialRegistrationEmployee employee) async {
+    final repository = _repository;
+    if (repository == null || _busyWorkerId != null) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('手動送信の記録'),
+      content: Text('${employee.name}さんへ案内を実際に送ったことを記録しますか？SMSや共有画面を開いただけの場合は記録しないでください。相手への配信・受信を証明する記録ではありません。'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('送ったことを記録'))],
+    ));
+    if (confirmed != true || !mounted) return;
+    final eventId = _deliveryEventIds.putIfAbsent(
+      '${employee.registrationStatus!.companyId}/${employee.id}/${employee.registrationStatus!.invitationId}', () {
+      final bytes = List.generate(16, (_) => Random.secure().nextInt(256));
+      bytes[6] = (bytes[6] & 15) | 64;
+      bytes[8] = (bytes[8] & 63) | 128;
+      final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+      return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+    });
+    setState(() => _busyWorkerId = employee.id);
+    try {
+      await repository.recordManualSending(employee, eventId);
+      _deliveryEventIds.remove(
+        '${employee.registrationStatus!.companyId}/${employee.id}/${employee.registrationStatus!.invitationId}',
+      );
+      await _load();
+    } catch (error) {
+      if (mounted) { setState(() => _error = '記録結果を確認できません。同じ記録で再確認してください。 $error'); }
+    } finally {
+      if (mounted) setState(() => _busyWorkerId = null);
+    }
+  }
+
   Future<void> _register({required bool continueToInvite}) async {
     final repository = _repository;
     if (repository == null || _registering || _busyWorkerId != null) return;
@@ -163,7 +198,9 @@ class _EmployeeInitialRegistrationPageState
           '登録後に案内作成が失敗しても従業員は登録済みなので、再登録せず送信対象から選んでください。'
           'TestFlight URLは同じ画面で保存できます。QR・SMS作成・共有は従来と同じです。'
           'SMS作成画面や共有画面を開いたことは、実際の送信完了を意味しません。'
-          '初回案内の機能は従来の管理者権限で利用します。',
+          '初回案内の機能は従来の管理者権限で利用します。'
+          '状態確認が利用可能な場合、承認済みの初回登録完了者は一覧に出しません。未送信の絞り込みは手動送信の記録がない人を表示します。状態未確認を送信済みや登録完了と推測しません。'
+          '既存案内の安全な再発行は未対応のため、新しいアカウントを再作成しません。手動送信の記録は実配信・受信の確認とは別です。',
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('確認'))],
       ),
@@ -228,7 +265,7 @@ class _EmployeeInitialRegistrationPageState
 
   @override
   Widget build(BuildContext context) {
-    final unsent = _employees.where((item) => !item.invited).length;
+    final unsent = _employees.where((item) => item.needsSending).length;
     return Scaffold(
       appBar: AppBar(
         title: const Text('従業員登録', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -255,7 +292,7 @@ class _EmployeeInitialRegistrationPageState
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         '同じ画面で登録と初回案内を行います。'
-                        '案内未作成 $unsent人 / 一覧 ${_employees.length}人。'
+                        '未送信・状態未確認 $unsent人。'
                         'アカウント作成と実送信・初回登録完了は別です。',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
@@ -317,16 +354,16 @@ class _EmployeeInitialRegistrationPageState
                       ),
                     ),
                   SwitchListTile(
-                    title: const Text('案内未作成の人だけ表示'),
+                    title: const Text('未送信・状態未確認の人だけ表示'),
                     value: _onlyUnprepared,
                     onChanged: (value) => setState(() => _onlyUnprepared = value),
                   ),
-                  for (final employee in _employees.where((item) => !_onlyUnprepared || !item.invited))
+                  for (final employee in _employees.where((item) => !item.completed && (!_onlyUnprepared || item.needsSending)))
                     Card(
                       child: ListTile(
                         leading: CircleAvatar(
                           child: Icon(
-                            employee.invited ? Icons.check : Icons.sms_outlined,
+                            employee.hasInvitation ? Icons.check : Icons.sms_outlined,
                           ),
                         ),
                         title: Text(
@@ -335,11 +372,15 @@ class _EmployeeInitialRegistrationPageState
                         ),
                         subtitle: Text(
                           '${employee.phone}\n'
-                          '${employee.invited ? 'アカウント作成済み（送信・初回登録完了は未確認）' : '案内未作成'}',
+                          '${!employee.hasInvitation ? '案内未作成' : employee.manuallySent ? '手動送信を記録済み（配信・受信は未確認）' : '案内作成済み・送信状態未確認'}'
+                          '${employee.registrationStatus == null ? '\n状態確認はOFFまたは未導入です' : ''}'
+                          '${employee.hasInvitation ? '\n作成済み案内の安全な再開は未対応です（再登録不要）' : ''}',
                         ),
                         isThreeLine: true,
-                        trailing: employee.invited
-                            ? const Icon(Icons.check_circle_outline)
+                        trailing: employee.hasInvitation
+                            ? employee.registrationStatus?.invitationId != null && !employee.manuallySent
+                                ? TextButton(onPressed: _busyWorkerId == null ? () => _recordManualSending(employee) : null, child: const Text('送信を記録'))
+                                : const Icon(Icons.info_outline)
                             : FilledButton(
                                 onPressed: _busyWorkerId == null && !_registering
                                     ? () => _send(employee)

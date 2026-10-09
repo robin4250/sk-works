@@ -13,7 +13,7 @@ void main() {
     expect(find.text('登録だけ'), findsOneWidget);
     expect(find.text('登録して続けて案内作成'), findsNothing);
     expect(find.text('TestFlight URL'), findsNothing);
-    expect(find.text('案内未作成の人だけ表示'), findsNothing);
+    expect(find.text('未送信・状態未確認の人だけ表示'), findsNothing);
     expect(find.byIcon(Icons.refresh), findsNothing);
     await tester.tap(find.byIcon(Icons.help_outline));
     await tester.pumpAndSettle();
@@ -28,7 +28,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('登録だけ'), findsOneWidget);
     expect(find.text('登録して続けて案内作成'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('URLを保存'), 250);
+    await tester.scrollUntilVisible(
+      find.text('URLを保存'),
+      250,
+      scrollable: find.descendant(
+        of: find.byType(ListView), matching: find.byType(Scrollable),
+      ).first,
+    );
     expect(find.text('TestFlight URL'), findsOneWidget);
     expect(find.text('URLを保存'), findsOneWidget);
     expect(find.text('従業員登録'), findsOneWidget);
