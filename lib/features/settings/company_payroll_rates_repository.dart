@@ -193,7 +193,9 @@ class PayrollRatePendingWrite {
     }
     for (final item in data.items) {
       if (item.id == itemId && item.version == expectedVersion + 1 && item.origin == origin &&
-          payrollRateValuesEqual(item.value, value)) return true;
+          payrollRateValuesEqual(item.value, value)) {
+        return true;
+      }
     }
     return false;
   }

@@ -159,7 +159,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation || !confirmed) return;
       if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
         itemId: candidate.itemId, expectedVersion: item?.version ?? 0,
-        value: candidate.value, origin: 'official_candidate'), generation)) return;
+        value: candidate.value, origin: 'official_candidate'), generation)) {
+        return;
+      }
       await _repository.applyCandidate(companyId: widget.companyId, itemId: candidate.itemId,
         candidateId: candidate.id, expectedVersion: item?.version ?? 0, expectedValue: candidate.value);
       if (!mounted || generation != _generation) return;
@@ -192,7 +194,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       if (!mounted || generation != _generation) return;
       final itemId = item?.id ?? (kind == 'custom' ? _newCustomId() : kind);
       if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
-        itemId: itemId, expectedVersion: item?.version ?? 0, value: value, origin: 'manual'), generation)) return;
+        itemId: itemId, expectedVersion: item?.version ?? 0, value: value, origin: 'manual'), generation)) {
+        return;
+      }
       await _repository.saveManual(companyId: widget.companyId,
         itemId: itemId, expectedVersion: item?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
@@ -248,7 +252,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       )) ?? false;
       if (!mounted || generation != _generation || !confirmed) return;
       if (!await _prepareWrite(PayrollRatePendingWrite(companyId: widget.companyId,
-        expectedVersion: previous?.version ?? 0, value: value), generation)) return;
+        expectedVersion: previous?.version ?? 0, value: value), generation)) {
+        return;
+      }
       await _repository.saveScope(companyId: widget.companyId, expectedVersion: previous?.version ?? 0, value: value);
       if (!mounted || generation != _generation) return;
       await _completeWrite(generation);
