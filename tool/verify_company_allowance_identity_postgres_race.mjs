@@ -30,13 +30,13 @@ try {
   waiting=(await monitor.query("select wait_event_type='Lock' waiting from pg_stat_activity where pid=$1",[pid])).rows[0]?.waiting===true;
   if(waiting)break;await new Promise(resolve=>setTimeout(resolve,20));
  }
- assert.equal(waiting,true,'second real session must wait for the settings row lock');
+ assert.equal(waiting,true,'second real session must wait for company-to-settings mutation serialization');
  await first.query('commit');const loser=await pending;
  assert.equal(loser.error?.code,'40001');assert.match(loser.error?.message??'',/version conflict/);
  const result=(await second.query(stateSql,[c])).rows[0].v;
  assert.equal(result.version,winner.version);assert.equal(result.items[0].name,'勝者名称');
  assert.equal(result.items[0].id,adopted.items[0].id);assert.equal(result.history.length,2);
- console.log('PASS PG17 allowance race: row-lock wait, one winning rename/UUID/history, stale writer rejected');
+ console.log('PASS PG17 allowance race: company-to-settings serialization wait, one winning rename/UUID/history, stale writer rejected');
 } catch(error){console.error(error.message);process.exitCode=1;}finally{
  await Promise.allSettled(clients.map(async x=>{try{await x.query('rollback');}finally{await x.end();}}));
 }
