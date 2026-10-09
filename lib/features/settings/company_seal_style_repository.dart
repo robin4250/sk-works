@@ -4,11 +4,12 @@ import '../../data/supabase_backend.dart';
 
 class CompanySealStyleSettings {
   const CompanySealStyleSettings({required this.companyId, required this.name,
-    required this.style, required this.available});
+    required this.style, required this.available, this.documentSnapshotsAvailable = false});
   final String companyId;
   final String name;
   final String style;
   final bool available;
+  final bool documentSnapshotsAvailable;
 }
 
 class CompanySealStyleRepository {
@@ -52,7 +53,8 @@ class CompanySealStyleRepository {
       }
       return CompanySealStyleSettings(companyId: companyId,
           name: value['company_name'] as String,
-          style: value['company_seal_style'] as String, available: true);
+          style: value['company_seal_style'] as String, available: true,
+          documentSnapshotsAvailable: value['document_snapshot_version'] == 1);
     } on PostgrestException catch (error) {
       if (error.code != 'PGRST202' && error.code != '42883') rethrow;
       return CompanySealStyleSettings(companyId: companyId,

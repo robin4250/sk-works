@@ -250,7 +250,9 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
           if (_styleSettings != null) ...[
             const SizedBox(height: 20),
             Text(_styleSettings!.name),
-            Text(SkoLanguageController.tr('書体選択は試験用です。現在の帳票の印影は変更しません。')),
+            Text(SkoLanguageController.tr(_styleSettings!.documentSnapshotsAvailable
+                ? '試験用書体は新しく保存する帳票に反映します。過去の帳票は変更しません。'
+                : '書体選択は試験用です。現在の帳票の印影は変更しません。')),
             DropdownButtonFormField<String>(
               key: ValueKey('${_styleSettings!.companyId}:${_styleSettings!.style}'),
               initialValue: _selectedStyle,

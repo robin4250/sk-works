@@ -19,6 +19,10 @@ void main() {
     expect(() => CompanySealPdf.build('株式会社テスト', font: font,
         style: 'tensho'), throwsStateError);
     expect(CompanySealPdf.reishoGlyphSize(longName, 32), lessThan(4.5));
+    expect(() => CompanySealPdf.build(longName, font: font,
+        style: CompanySealPdf.reishoStyle), throwsStateError);
+    expect(() => CompanySealPdf.build('株式会社テスト建設', size: 12, font: font,
+        style: CompanySealPdf.reishoStyle), throwsStateError);
     expect(CompanySealPdf.reishoGlyphSize('株式会社テスト建設', 32), greaterThan(4.5));
     final usage = await rootBundle.loadString(
         'assets/fonts/company-seal/aoyagi-reisho/FONT-USAGE-utf8.txt');
@@ -27,7 +31,7 @@ void main() {
         'assets/fonts/company-seal/aoyagi-reisho/FONT-EXPLANATION-original.pdf');
     expect(explanation.lengthInBytes, greaterThan(1000));
     final pdf = pw.Document();
-    for (final name in ['株式会社テスト建設', longName]) {
+    for (final name in ['株式会社テスト建設', '株式会社長い会社名建設工業']) {
       pdf.addPage(pw.Page(pageFormat: PdfPageFormat.a4,
         build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
