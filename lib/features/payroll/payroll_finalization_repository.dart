@@ -96,7 +96,9 @@ class PayrollFinalizationRepository {
       return PayrollFinalizationStatus.parse(raw, statement);
     } on PostgrestException catch (error) {
       if ((error.code == 'PGRST202' || error.code == '42883') &&
-          error.message.contains('read_payroll_finalization_status')) return null;
+          error.message.contains('read_payroll_finalization_status')) {
+        return null;
+      }
       rethrow;
     }
   }

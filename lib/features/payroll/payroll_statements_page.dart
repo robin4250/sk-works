@@ -387,10 +387,10 @@ class _PayrollStatementPreviewPageState
               reloadStatement: _loadConfirmation,
               onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
               onVerificationRequired: (needsVerification) { if (mounted) setState(() => _finalizationUncertain = needsVerification); },
-              onSaved: (saved) { if (mounted) setState(() {
+              onSaved: (saved) { if (mounted) { setState(() {
                 _refreshedStatement = saved; _confirmation = null; _finalizationUncertain = false;
                 _statementUnavailable = false; _pdfBytes.invalidate();
-              }); }),
+              }); } }),
           if (!_statementUnavailable)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),

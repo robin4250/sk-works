@@ -87,13 +87,15 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
     bool sent = false;
     try {
       if (!await confirmPayrollConditions(context, payrollConditionWarnings(statement.detail)) ||
-        !mounted || generation != _generation) return;
+        !mounted || generation != _generation) {
+        return;
+      }
       final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
         title: const Text('給与を確定'),
         content: Text('${statement.workerName}\n${statement.monthLabel}\n差引支給額 ¥${statement.netPay}\n\nこの明細の条件・金額・確認記録を保存します。確定後の変更には別の修正処理が必要です。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して確定'))])) ?? false;
-      if (!confirmed || !mounted || generation != _generation) return;
+      if (!confirmed || !mounted || generation != _generation || !_ready) return;
       sent = true;
       final result = await repository.finalize(statement, revision);
       if (!mounted || generation != _generation) return;
