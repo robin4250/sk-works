@@ -723,7 +723,9 @@ class InvoicePdfService {
         shape: pw.BoxShape.circle,
         border: pw.Border.all(color: red, width: 1.5),
       ),
-      child: pw.Center(
+      child: surname.isEmpty
+          ? pw.SizedBox(width: 28, height: 28)
+          : pw.Center(
         child: pw.FittedBox(
           fit: pw.BoxFit.scaleDown,
           child: pw.Text(
