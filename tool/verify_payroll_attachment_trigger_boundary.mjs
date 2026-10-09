@@ -79,14 +79,17 @@ try {
  await db.exec("select private.upsert_generation_setting_issue('10000000-0000-0000-0000-000000000001','probe:notification','payroll','Fixture title','Fixture body','payroll_settings','40000000-0000-0000-0000-000000000001')");
  assert.ok((await db.query("select count(*)::int as count from public.app_notifications")).rows[0].count>0,'reopened issue reaches the actual INSERT sink');
  if(process.env.SKO_PAYROLL_ATTACHMENT_FIXTURE_URL){
-  const raceWorker='40000000-0000-0000-0000-000000000071';
-  await db.exec(`insert into public.workers(id,company_id,user_id,name,status,affiliation) values('${raceWorker}','10000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Notification race worker','active','employee');
-  insert into public.worker_payroll_settings select (jsonb_populate_record(null::public.worker_payroll_settings,to_jsonb(s)||jsonb_build_object('worker_id','${raceWorker}'))).* from public.worker_payroll_settings s where worker_id='40000000-0000-0000-0000-000000000001';
-  insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours,night_hours) values('80000000-0000-0000-0000-000000000074','10000000-0000-0000-0000-000000000001','${raceWorker}','20000000-0000-0000-0000-000000000001',(now() at time zone 'Asia/Tokyo')::date,'day',1,0,0,0);`);
+  const raceWorker='40000000-0000-0000-0000-000000000071',raceCompany='10000000-0000-0000-0000-000000000071';
+  await db.exec(`insert into public.companies select (jsonb_populate_record(null::public.companies,to_jsonb(c)||jsonb_build_object('id','${raceCompany}','name','Notification race company'))).* from public.companies c where id='10000000-0000-0000-0000-000000000001';
+  insert into public.company_members(company_id,user_id,role) values('${raceCompany}','00000000-0000-0000-0000-000000000001','owner');
+  insert into public.sites(id,company_id,name) values('20000000-0000-0000-0000-000000000071','${raceCompany}','Notification race site');
+  insert into public.workers(id,company_id,user_id,name,status,affiliation) values('${raceWorker}','${raceCompany}','00000000-0000-0000-0000-000000000001','Notification race worker','active','employee');
+  insert into public.worker_payroll_settings select (jsonb_populate_record(null::public.worker_payroll_settings,to_jsonb(s)||jsonb_build_object('worker_id','${raceWorker}','company_id','${raceCompany}'))).* from public.worker_payroll_settings s where worker_id='40000000-0000-0000-0000-000000000001';
+  insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours,night_hours) values('80000000-0000-0000-0000-000000000074','${raceCompany}','${raceWorker}','20000000-0000-0000-0000-000000000071',(now() at time zone 'Asia/Tokyo')::date,'day',1,0,0,0);`);
   await db.exec(fs.readFileSync('supabase/tests/payroll_notification_finalization_sink_fixture.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261009205616_generation_setting_issue_first_notification.sql','utf8'));
   const {verifyNotificationFinalizationRace}=await import('./payroll_notification_finalization_pg17_race.mjs');
-  await verifyNotificationFinalizationRace(db,raceWorker);
+  await verifyNotificationFinalizationRace(db,raceWorker,raceCompany);
  }
  await db.exec(fs.readFileSync('supabase/tests/payroll_parent_cascade_dependency_fixture.sql','utf8'));
  const retained=(await db.query('select to_jsonb(t) as value from payroll_final_private.documents t')).rows;
@@ -97,7 +100,7 @@ try {
  assert.deepEqual((await db.query('select to_jsonb(t) as value from payroll_final_private.history t order by changed_at')).rows,retainedHistory,'logical history survives old parent cascade');
  await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from payroll_final_private.documents'),/permission denied/);
- assert.equal((await db.query('select * from public.my_payroll_statement_rows_with_adjustments()')).rows.length,0,'former owner session cannot read detached document through personal RPC');
+ assert.equal((await db.query('select * from public.my_payroll_statement_rows_with_adjustments()')).rows.some(row=>row.id===frozen.id),false,'former owner session cannot read detached document through personal RPC');
  await db.exec('reset role');
- console.log('PASS actual meter/group/evidence/journey attachment UPDATE boundary with positive finalized snapshot, selected parent FK cascade preservation/read denial and captured notification lifecycle. Concurrent generation sink/finalize remains separate.');
+ console.log('PASS actual meter/group/evidence/journey attachment UPDATE boundary with positive finalized snapshot, selected parent FK cascade preservation/read denial and captured notification lifecycle. Native generation sink/finalization evidence is logged separately when enabled.');
 } finally {await db.close();}
