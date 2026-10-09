@@ -31,11 +31,19 @@ class FilePayrollRatePendingStore implements PayrollRatePendingStore {
     final current = completed.future;
     _locks[key] = current;
     await previous;
+    RandomAccessFile? nativeLock;
     try {
+      final record = await _file(key);
+      nativeLock = await File('${record.path}.lock').open(mode: FileMode.append);
+      await nativeLock.lock(FileLock.exclusive);
       return await action();
     } finally {
-      completed.complete();
-      if (identical(_locks[key], current)) _locks.remove(key);
+      try {
+        await nativeLock?.close();
+      } finally {
+        completed.complete();
+        if (identical(_locks[key], current)) _locks.remove(key);
+      }
     }
   }
 
@@ -59,25 +67,42 @@ class FilePayrollRatePendingStore implements PayrollRatePendingStore {
     return File('${folder.path}/${sha256.convert(utf8.encode(key))}.json');
   }
 
+  PayrollRatePendingWrite _decode(String raw, String companyId) {
+    final value = payrollRateObject(jsonDecode(raw));
+    if (value['company_id'] != companyId || value['expected_version'] is! int ||
+        (value['expected_version'] as int) < 0 ||
+        (value['item_id'] != null && value['item_id'] is! String) ||
+        (value['origin'] != null && value['origin'] is! String)) {
+      throw const FormatException('保存結果の確認情報を読み込めません');
+    }
+    return PayrollRatePendingWrite(companyId: companyId,
+      expectedVersion: value['expected_version'] as int,
+      value: payrollRateObject(value['value']), itemId: value['item_id'] as String?,
+      origin: value['origin'] as String?);
+  }
+
+  Future<File> _recordFile(String key, String companyId) async {
+    final file = await _file(key);
+    final temporary = File('${file.path}.tmp');
+    if (await temporary.exists()) {
+      if (await file.exists()) throw const FormatException('保存確認情報が競合しています');
+      _decode(await temporary.readAsString(), companyId);
+      if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
+      await temporary.rename(file.path);
+    }
+    return file;
+  }
+
   @override
   Future<PayrollRatePendingWrite?> read(String companyId) async {
     final key = _key(companyId);
     return _locked(key, () async {
-      final file = await _file(key);
+      final file = await _recordFile(key, companyId);
       if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
       if (!await file.exists()) return null;
-      final value = payrollRateObject(jsonDecode(await file.readAsString()));
+      final pending = _decode(await file.readAsString(), companyId);
       if (key != _key(companyId)) throw StateError('料率設定の利用者が変わりました');
-      if (value['company_id'] != companyId || value['expected_version'] is! int ||
-          (value['expected_version'] as int) < 0 ||
-          (value['item_id'] != null && value['item_id'] is! String) ||
-          (value['origin'] != null && value['origin'] is! String)) {
-        throw const FormatException('保存結果の確認情報を読み込めません');
-      }
-      return PayrollRatePendingWrite(companyId: companyId,
-        expectedVersion: value['expected_version'] as int,
-        value: payrollRateObject(value['value']), itemId: value['item_id'] as String?,
-        origin: value['origin'] as String?);
+      return pending;
     });
   }
 
@@ -85,10 +110,13 @@ class FilePayrollRatePendingStore implements PayrollRatePendingStore {
   Future<void> write(PayrollRatePendingWrite pending) async {
     final key = _key(pending.companyId);
     return _locked(key, () async {
-      final file = await _file(key);
+      final file = await _recordFile(key, pending.companyId);
       if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
       if (await file.exists()) throw StateError('先の保存結果を確認してください');
-      await file.writeAsString(jsonEncode(_value(pending)), flush: true);
+      final temporary = File('${file.path}.tmp');
+      await temporary.writeAsString(jsonEncode(_value(pending)), flush: true);
+      if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
+      await temporary.rename(file.path);
       if (key != _key(pending.companyId)) throw StateError('料率設定の利用者が変わりました');
     });
   }
@@ -98,7 +126,7 @@ class FilePayrollRatePendingStore implements PayrollRatePendingStore {
     final companyId = expected.companyId;
     final key = _key(companyId);
     return _locked(key, () async {
-      final file = await _file(key);
+      final file = await _recordFile(key, companyId);
       if (!await file.exists()) throw StateError('確認対象の保存結果がありません');
       final raw = jsonDecode(await file.readAsString());
       if (key != _key(companyId) || !payrollRateValuesEqual(raw, _value(expected))) {

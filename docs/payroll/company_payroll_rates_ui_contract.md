@@ -46,3 +46,5 @@ read RPCのPGRST202/42883かつ対象関数名一致だけを「準備中：こ�
 network/TimeoutException/FormatException、PGRST003等の汎用APIエラー、未知SQL/500は不明応答のまま保持する。旧read・未存在ではtimeout操作を解除しない。確定拒否のローカル記録削除に失敗した場合も変更停止を維持する。
 
 SharedPreferences公式READMEは戻り後のdisk永続化を保証しないため採用せず、既存path_provider2.1.6＋crypto3.0.7＋dart:ioでactor/companyのSHA256キーを用いた専用JSONをApplication Supportに保存する。File.writeAsString(flush:true)完了後にだけRPCを送信する（https://api.dart.dev/dart-io/File/writeAsString.html）。途中で書込に失敗したfileは成功扱いせず、読込不正は変更操作を閉じる。電源断・複数process・別端末のDB idempotencyまで保証するものではない。
+
+専用JSONの同一directory一時fileをflush完了後にrenameしてからRPCを送信する。キーごとのDart mutexに加えて専用lock fileをnative exclusive lockし、lock取得失敗は未送信で閉じる。正常な途中一時fileは再open時に同scope記録として復元し、破損一時fileやmain/temp競合は失敗のまま残して変更操作を止める。原典https://api.dart.dev/dart-io/RandomAccessFile/lock.html に従い、Linux/macOSのlockはadvisory・process単位であるため複数isolateの絶対直列化は称しない。途中temp復元・破損閉鎖・filesystem準備失敗の実file fixtureを追加。

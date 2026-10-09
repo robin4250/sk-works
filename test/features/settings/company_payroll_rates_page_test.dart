@@ -728,4 +728,38 @@ void main() {
     expect(repository.pendingStore.pending, isNull);
   });
 
+  test('flushed temporary record recovers after restart; malformed record stays closed', () async {
+    final directory = await Directory.systemTemp.createTemp('sko-rate-pending-crash-');
+    addTearDown(() => directory.delete(recursive: true));
+    FilePayrollRatePendingStore create() => FilePayrollRatePendingStore(
+      actorId: () => 'actor', directory: () async => directory);
+    final operation = PayrollRatePendingWrite(companyId: 'company', expectedVersion: 0,
+      itemId: 'original-id', origin: 'manual', value: value('custom'));
+    await create().write(operation);
+    final record = (await Directory('${directory.path}/payroll-rate-pending-v1').list().toList())
+      .whereType<File>().singleWhere((file) => file.path.endsWith('.json'));
+    final temporary = await record.rename('${record.path}.tmp');
+    expect((await create().read('company'))!.itemId, 'original-id');
+    expect(await temporary.exists(), isFalse);
+    expect(await record.exists(), isTrue);
+    await record.rename(temporary.path);
+    await temporary.writeAsString('{"incomplete":', flush: true);
+    await expectLater(create().read('company'), throwsFormatException);
+    await expectLater(create().write(operation), throwsFormatException);
+    expect(await temporary.exists(), isTrue);
+    expect(await record.exists(), isFalse);
+  });
+
+  test('file flush preparation failure cannot produce a recovery record', () async {
+    final directory = await Directory.systemTemp.createTemp('sko-rate-pending-failure-');
+    addTearDown(() => directory.delete(recursive: true));
+    final blocked = File('${directory.path}/not-a-directory');
+    await blocked.writeAsString('occupied', flush: true);
+    final store = FilePayrollRatePendingStore(actorId: () => 'actor',
+      directory: () async => Directory(blocked.path));
+    await expectLater(store.write(PayrollRatePendingWrite(companyId: 'company',
+      expectedVersion: 0, itemId: 'one', origin: 'manual', value: value('custom'))),
+      throwsA(isA<FileSystemException>()));
+  });
+
 }
