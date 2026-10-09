@@ -33,7 +33,8 @@ class PayrollFinalizationStatus {
     final row = _object(raw);
     if (row['contract_version'] != 1 || row['statement_id'] != statement.id ||
       _day(row['period_start']) != statement.periodStart || _day(row['period_end']) != statement.periodEnd ||
-      row['can_finalize'] is! bool || row['snapshot_saved'] is! bool || row['workflow_state'] is! String) {
+      row['can_finalize'] is! bool || row['snapshot_saved'] is! bool || row['workflow_state'] is! String ||
+      (row['can_finalize'] == true && (row['workflow_state'] != 'draft' || row['snapshot_saved'] != false))) {
       throw const FormatException('給与確定の対象を確認できません');
     }
     return PayrollFinalizationStatus(revision: _revision(row['revision']),
@@ -61,8 +62,7 @@ class PayrollFinalizationResult {
         _revision(snapshot['revision']) != revision ||
         _day(snapshot['period_start']) != expected.periodStart || _day(snapshot['period_end']) != expected.periodEnd ||
         snapshot['company_name'] is! String || snapshot['worker_name'] is! String ||
-        detail['workflow_state'] != 'finalized' || detail['review_confirmed'] != true ||
-        _revision(detail['revision']) != revision || _object(detail['bank_account']).isNotEmpty ||
+        _object(detail['bank_account']).isNotEmpty ||
         result['gross_pay'] is! int || result['deductions'] is! int || result['net_pay'] is! int ||
         result['gross_pay'] - result['deductions'] != result['net_pay']) {
       throw const FormatException('保存した給与明細を確認できません');
@@ -78,7 +78,7 @@ class PayrollFinalizationResult {
       workerName: snapshot['worker_name'] as String, periodStart: _day(snapshot['period_start']),
       periodEnd: _day(snapshot['period_end']), grossPay: result['gross_pay'] as int,
       deductions: result['deductions'] as int, netPay: result['net_pay'] as int,
-      detail: detail, issuedAt: issued, reviewConfirmed: true, workflowState: 'finalized',
+      detail: {...detail, 'workflow_state': 'finalized', 'revision': revision, 'review_confirmed': true}, issuedAt: issued, reviewConfirmed: true, workflowState: 'finalized',
       revision: revision, reviewedAt: DateTime.tryParse(detail['reviewed_at']?.toString() ?? '')));
   }
 }

@@ -117,7 +117,10 @@ try {
  await actor(editor);await assert.rejects(finalize(),/snapshot audit unavailable/);
  await db.exec('reset role');assert.equal((await db.query('select workflow_state from public.payroll_statements where id=$1',[ps.id])).rows[0].workflow_state,'draft');assert.equal((await db.query('select count(*)::integer n from payroll_final_private.documents')).rows[0].n,0);
  await db.exec('drop trigger fixture_fail on payroll_final_private.history');await actor(editor);
- const result=await finalize();assert.equal(result.finalized,true);assert.equal(result.snapshot.result.net_pay,293000);assert.equal(result.snapshot.adjustments[0].id,aid);assert.deepEqual(result.snapshot.detail.bank_account,{});
+ const result=await finalize();
+ const fixturePath=process.env.SKO_PAYROLL_FINALIZATION_FIXTURE_PATH;
+ if(fixturePath){fs.mkdirSync(fixturePath.slice(0,fixturePath.lastIndexOf('/')),{recursive:true});fs.writeFileSync(fixturePath,JSON.stringify(result));}
+ assert.equal(result.finalized,true);assert.equal(result.snapshot.result.net_pay,293000);assert.equal(result.snapshot.adjustments[0].id,aid);assert.deepEqual(result.snapshot.detail.bank_account,{});
  assert.equal((await readStatus()).snapshot_saved,true);assert.equal((await readStatus()).can_finalize,false);
  assert.deepEqual(await finalize(),result,'same revision retry must return saved result');
  await actor(owner);await assert.rejects(db.query('select public.cancel_payroll_adjustment($1,null)',[aid]),/explicit correction/);

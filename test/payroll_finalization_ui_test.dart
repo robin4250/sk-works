@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,6 +24,18 @@ Map<String, dynamic> response() => {'finalized': true, 'revision': 4, 'snapshot'
   'detail': {'workflow_state': 'finalized', 'review_confirmed': true, 'revision': 4, 'bank_account': {}},
 }};
 void main() {
+  final fixturePath = Platform.environment['SKO_PAYROLL_FINALIZATION_FIXTURE_PATH'];
+  test('actual source SQL response is accepted by the strict Dart snapshot consumer', () {
+    final raw = jsonDecode(File(fixturePath!).readAsStringSync()) as Map<String, dynamic>;
+    final snapshot = raw['snapshot'] as Map<String, dynamic>;
+    final expected = PayrollStatementRecord(id: snapshot['statement_id'] as String,
+      companyName: 'Changed current company', workerName: 'Changed current worker',
+      periodStart: DateTime.parse(snapshot['period_start'] as String), periodEnd: DateTime.parse(snapshot['period_end'] as String),
+      grossPay: 0, deductions: 0, netPay: 0, detail: const {}, workflowState: 'draft', revision: raw['revision'] as int);
+    final saved = PayrollFinalizationResult.parse(raw, expected, raw['revision'] as int).statement!;
+    expect(saved.companyName, snapshot['company_name']);expect(saved.netPay, 293000);
+    expect(saved.workflowState, 'finalized');expect(saved.reviewConfirmed, true);expect(saved.detail['bank_account'], isEmpty);
+  }, skip: fixturePath == null ? 'Generated exact SQL response is provided by Flutter CI' : false);
   test('strict snapshot preserves saved names and refuses wrong target and bank disclosure', () {
     final parsed = PayrollFinalizationResult.parse(response(), statement(), 4);
     expect(parsed.statement!.companyName, 'Saved company');
@@ -84,5 +98,36 @@ void main() {
     expect(find.textContaining('再送せず'), findsOneWidget);
     await tester.tap(find.text('保存状態を再読み込み'));await tester.pumpAndSettle();
     expect(reads, 2);expect(writes, 1);
+  });
+
+  testWidgets('recalculation change never reports success and requires fresh confirmation', (tester) async {
+    var writes = 0;
+    final repository = PayrollFinalizationRepository(invoke: (name, params) async {
+      if (name == 'read_payroll_finalization_status') return status();
+      writes++;return {'finalized': false, 'reason': 'recalculation_changed', 'revision': 5};
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
+      statement: statement(), repository: repository, onSaved: (_) => fail('unexpected save'),
+      reloadStatement: () async {}))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
+    expect(writes, 1);expect(find.textContaining('確認をやり直し'), findsOneWidget);
+    expect(find.text('給与明細を確定して保存しました'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '給与を確定'), findsNothing);
+  });
+  testWidgets('successful confirmation uses saved snapshot instead of current metadata', (tester) async {
+    PayrollStatementRecord? saved;
+    final repository = PayrollFinalizationRepository(invoke: (name, params) async =>
+      name == 'read_payroll_finalization_status' ? status() : response());
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollFinalizationPanel(
+      statement: statement(), repository: repository, onSaved: (value) => saved = value,
+      reloadStatement: () async {}))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '給与を確定'));await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して確定'));await tester.pumpAndSettle();
+    expect(saved!.companyName, 'Saved company');expect(saved!.isDraft, false);
+    expect(saved!.detail['bank_account'], isEmpty);
+    expect(find.text('給与明細を確定して保存しました'), findsOneWidget);
   });
 }
