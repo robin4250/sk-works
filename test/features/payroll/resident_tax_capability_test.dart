@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../lib/features/payroll/resident_tax_capability.dart';
+import 'package:sk_works/features/payroll/resident_tax_capability.dart';
 
 void main() {
   test('only confirmed legacy includes fixed amount in general save', () {
