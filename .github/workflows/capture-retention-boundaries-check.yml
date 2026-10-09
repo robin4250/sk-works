@@ -1,0 +1,33 @@
+name: Capture retention boundary design check
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/capture_retention_boundaries.sql'
+      - 'tool/verify_capture_retention_boundaries.mjs'
+      - '.github/workflows/capture-retention-boundaries-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Fetch and verify reviewed PR829 fixture commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          for fixture_commit in 46f7099482f5fa203613873b8dbd2469a3f612a0 0ba3d120199e5fd43caad9967e20f958fe7d17e0; do
+            git fetch --no-tags origin "$fixture_commit"
+            test "$(git rev-parse "$fixture_commit^{commit}")" = "$fixture_commit"
+          done
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/retention-boundary-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify additional archive boundaries
+        run: node tool/verify_capture_retention_boundaries.mjs "$RUNNER_TEMP/retention-boundary-runtime/node_modules/@electric-sql/pglite/dist/index.js"
