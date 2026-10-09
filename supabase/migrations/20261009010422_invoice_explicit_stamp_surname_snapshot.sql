@@ -39,7 +39,8 @@ begin
  select i.company_id into cid from public.invoices i where i.id=p_invoice_id;
  select coalesce(r.enabled,false) into enabled from private.invoice_stamp_surname_rollout r where r.company_id=cid;
  select coalesce(jsonb_agg(jsonb_build_object(
- 'user_id',a.approver_user_id,'snapshot_surname',s.surname,
+ 'invoice_id',p_invoice_id,'user_id',a.approver_user_id,
+ 'status',a.status,'approved_at',a.approved_at,'snapshot_surname',s.surname,
  'draft_surname',case when a.approver_user_id=auth.uid() and a.status='pending' then d.surname else null end,
  'can_set_surname',coalesce(enabled,false) and a.approver_user_id=auth.uid() and a.status='pending') order by a.position),'[]'::jsonb)
  into result from public.invoice_approval_status_rows_v2(p_invoice_id) a

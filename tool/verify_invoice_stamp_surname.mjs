@@ -46,10 +46,23 @@ try {
  assert.equal((await db.query('select count(*)::int n from private.invoice_stamp_surname_snapshots')).rows[0].n,2);
  assert.equal((await rpc('invoice_stamp_surname_rows',[iid])).rows[0].value.names[0].snapshot_surname,'斎藤');
  assert.equal((await db.query('select surname from private.invoice_stamp_surname_snapshots where approved_at=$1',[stamp.approved_at])).rows[0].surname,'斉藤');
+ const oldIid='20000000-0000-0000-0000-000000000002';
+ await db.exec(`insert into invoices(id,company_id,billing_period_start,billing_period_end,status,grand_total) values('${oldIid}','${cid}','2026-09-01','2026-09-30','draft',100)`);
+ await rpc('approve_invoice',[oldIid]);
+ assert.equal((await rpc('invoice_stamp_surname_rows',[oldIid])).rows[0].value.names[0].snapshot_surname,null);
+ assert.equal((await db.query('select count(*)::int n from private.invoice_stamp_surname_snapshots where invoice_id=$1',[oldIid])).rows[0].n,0);
+ await db.exec(`delete from company_members where company_id='${cid}' and user_id='${uid(1)}'`);
+ await assert.rejects(rpc('invoice_stamp_surname_rows',[iid]),/invoice not found/);
+ await db.exec(`insert into company_members values('${cid}','${uid(1)}','owner')`);
+ for(const table of ['invoice_stamp_surname_rollout','invoice_stamp_surname_drafts','invoice_stamp_surname_snapshots','invoice_stamp_surname_history']) {
+  for(const privilege of ['SELECT','INSERT','UPDATE','DELETE']) {
+   assert.equal((await db.query(`select has_table_privilege('authenticated','private.${table}','${privilege}') ok`)).rows[0].ok,false);
+  }
+ }
  await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from private.invoice_stamp_surname_snapshots'),/permission denied/);
  await db.exec('reset role');
  assert.equal((await db.query("select has_function_privilege('anon','public.set_invoice_stamp_surname(uuid,text)','execute') ok")).rows[0].ok,false);
- assert.equal((await db.query('select count(*)::int n from public.invoice_approval_audit where action=\'approved\'')).rows[0].n,2);
+ assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where action='approved' and invoice_id=$1",[iid])).rows[0].n,2);
  console.log('PASS: OFF, exact company, own pending only, explicit name, immutable snapshot, retry, profile change, cancel/reapprove history and ACL');
 } finally {await db.close();}

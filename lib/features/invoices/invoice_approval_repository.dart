@@ -65,6 +65,46 @@ class InvoiceApprovalRecord {
   bool get approved => status == 'approved';
 }
 
+class InvoiceStampSurnameMetadata {
+  const InvoiceStampSurnameMetadata({this.snapshotSurname, this.draftSurname, this.canSet = false});
+  final String? snapshotSurname;
+  final String? draftSurname;
+  final bool canSet;
+
+  static InvoiceStampSurnameMetadata match(
+    String invoiceId,
+    Map<String, dynamic> approval,
+    Map<String, dynamic>? name,
+  ) {
+    if (name == null || name['invoice_id'] != invoiceId ||
+        name['user_id'] != approval['approver_user_id'] ||
+        name['status'] != approval['status']) {
+      return const InvoiceStampSurnameMetadata();
+    }
+    if (approval['status'] == 'approved') {
+      final actual = DateTime.tryParse(approval['approved_at']?.toString() ?? '');
+      final captured = DateTime.tryParse(name['approved_at']?.toString() ?? '');
+      if (actual == null || captured == null || !actual.isAtSameMomentAs(captured)) {
+        return const InvoiceStampSurnameMetadata();
+      }
+      return InvoiceStampSurnameMetadata(snapshotSurname: _surname(name['snapshot_surname']));
+    }
+    if (approval['status'] == 'pending' && approval['approved_at'] == null &&
+        name['approved_at'] == null && name['can_set_surname'] == true) {
+      return InvoiceStampSurnameMetadata(draftSurname: _surname(name['draft_surname']), canSet: true);
+    }
+    return const InvoiceStampSurnameMetadata();
+  }
+
+  static String? _surname(dynamic value) {
+    if (value is! String || value.trim().isEmpty || value.length > 30 ||
+        value.contains(RegExp(r'[\r\n]'))) {
+      return null;
+    }
+    return value;
+  }
+}
+
 class InvoiceApprovalRepository {
   InvoiceApprovalRepository._(this._client);
 
@@ -125,13 +165,13 @@ class InvoiceApprovalRepository {
     }
     return raw.map((value) {
       final row = Map<String, dynamic>.from(value as Map);
-      final surname = names[row['approver_user_id']];
+      final surname = InvoiceStampSurnameMetadata.match(invoiceId, row, names[row['approver_user_id']]);
       return InvoiceApprovalRecord(
         userId: row['approver_user_id']?.toString() ?? '',
         name: row['approver_name']?.toString() ?? 'SKOユーザー',
-        stampSurname: _explicitSurname(surname?['snapshot_surname']),
-        draftStampSurname: _explicitSurname(surname?['draft_surname']),
-        canCurrentUserSetStampSurname: surname?['can_set_surname'] == true,
+        stampSurname: surname.snapshotSurname,
+        draftStampSurname: surname.draftSurname,
+        canCurrentUserSetStampSurname: surname.canSet,
         position: (row['position'] as num?)?.toInt() ?? 1,
         status: row['status']?.toString() ?? 'pending',
         approvedAt: DateTime.tryParse(row['approved_at']?.toString() ?? ''),
@@ -160,11 +200,6 @@ class InvoiceApprovalRepository {
       params: {'p_invoice_id': invoiceId},
     );
     return raw == true;
-  }
-
-  static String? _explicitSurname(dynamic value) {
-    if (value is! String || value.trim().isEmpty) return null;
-    return value;
   }
 
   Future<Map<String, dynamic>?> _loadSurnameContract(String invoiceId) async {

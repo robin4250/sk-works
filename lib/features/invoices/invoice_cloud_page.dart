@@ -589,7 +589,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
                               if (saved && mounted) setState(() => _revision++);
                             },
                           ),
-                        if (row.canCurrentUserEditDisplayDate)
+                        if (row.canCurrentUserEditDisplayDate && row.stampSurname == null)
                           IconButton(
                             tooltip: '印影の表示日付',
                             icon: const Icon(Icons.edit_calendar_outlined),
