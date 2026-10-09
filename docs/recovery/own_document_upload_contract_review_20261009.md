@@ -30,3 +30,11 @@ product候補は本人repository/本人書類画面/「？」ヘルプとその�
 本人draftのみupload可、他社/別worker/path偽装/承認済み拒否、停止中official upload拒否維持、写真選択キャンセル時の正式status不変、403/通信不明/提出失敗/再起動再照会、差し替え時の旧正式object保持、明示提出成功と承認後反映、期限/notesだけの場合の正当な保存を確認する。既存読取と会社限定管理導線も保持する。
 
 今回完了はsource所在・部分保存可能性・契約不一致・最小修正範囲の調査のみ。停止根拠、draft実定義の復元照合、商品修正、CI、最新Release実機upload成功は未完了。
+
+## 後続確認：停止導入根拠と画面修正
+
+本番担当rootがledger `20260926191548 initial_beta_official_upload_pause` の実SQLを取得し、当時の社外初期ベータで正式ファイルを会社保管とし、object/row削除はせずaccount deletionはdisabled維持という導入根拠を確認した。RESTRICTIVE INSERT/UPDATEはworker-documents・qualification-certificates・employee-onboarding-documentsを無条件拒否する。本人提出draftも同bucketを使用するため、上のdraft接続候補だけではこの停止を回避できない。前節の未発見はrepo-only調査当時の結果であり、この後続確認が現在地点。
+
+#832の新画面修正（head `58a47d3fe0cb2996bcad65b5d371647d4b9f8df9`）は写真選択/bytes読取を保存前にし、取消や失敗を成功とせず、本人データのみを読み込む。repositoryはupload確認後の正式status保存とselect.single確認を行い、旧添付・結果不明のnewobjectを削除しない。写真無し保存も会社/worker/requirementを限定して保存行を確認する。8 widget回帰は画面からの保存呼出しと表示を検証し、backend実書込順序のHTTP回帰ではない。CIは別確認、本番policy変更はない。
+
+現時点のユーザー運用を当時の社外ベータと決めつけない。会社内試験に必要な限定修正は本番担当の保持/提出/アクセス検証と別判断。#832は停止解除・実写真保存成功を意味せず、保持した未参照uploadの安全な回収も未実装。
