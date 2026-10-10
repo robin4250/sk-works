@@ -590,7 +590,7 @@ class _CompanySubmittedDocumentsPageState
                     title: Text(i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}'),
                     subtitle: Text(photos.photos[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: SizedBox(
-                      width: 120,
+                      width: 144,
                       child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
