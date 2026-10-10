@@ -618,7 +618,8 @@ class _CompanySubmittedDocumentsPageState
                       ),
                     ),
                     onTap: () async {
-                      final bytes = await photos.photos[i].readAsBytes();
+                      final selected = photos.photos[i];
+                      final bytes = await selected.readAsBytes();
                       if (!context.mounted) return;
                       await showDialog<void>(
                         context: context,
