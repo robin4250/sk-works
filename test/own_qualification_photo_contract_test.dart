@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../lib/features/qualifications/qualification_cloud_repository.dart';
+import 'package:sk_works/features/qualifications/qualification_cloud_repository.dart';
 
 void main() {
   test('legacy fallback is limited to absent optional photo columns', () {

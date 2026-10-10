@@ -191,9 +191,8 @@ class QualificationCloudRepository {
     if (error.code != '42703' && error.code != 'PGRST204') return false;
     // Exact column tokens prevent permission/network/other schema failures from
     // being hidden by a legacy retry.
-    return RegExp(
-      '(?<![A-Za-z0-9_])' + RegExp.escape(column) + '(?![A-Za-z0-9_])',
-    ).hasMatch(error.message);
+    return RegExp('(?<![A-Za-z0-9_])${RegExp.escape(column)}(?![A-Za-z0-9_])')
+        .hasMatch(error.message);
   }
 
   Future<List<Map<String, dynamic>>> _loadOwnPhotoRows({

@@ -51,8 +51,9 @@ class _OwnQualificationRegistrationPageState
     final actor = repository.currentUserId;
     try {
       final data = await repository.loadOwnQualificationWorkspace();
-      if (!mounted || actor == null || actor != repository.currentUserId)
+      if (!mounted || actor == null || actor != repository.currentUserId) {
         return;
+      }
       setState(() {
         _worker = Map<String, dynamic>.from(data['worker'] as Map);
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
