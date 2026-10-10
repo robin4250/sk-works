@@ -1,3 +1,4 @@
+import 'package:sk_works/domain/company_seal_design.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ import 'package:sk_works/features/settings/company_seal_style_repository.dart';
 
 class _Source implements CompanySealSettingsDataSource {
   String company = 'company';
+  String name = '株式会社テスト';
+  List<String> pngStyles = const [];
   String style = 'aoyagi_reisho';
   bool enabled = true;
   bool failStyle = false;
@@ -16,7 +19,7 @@ class _Source implements CompanySealSettingsDataSource {
 
   @override
   Future<CompanySealContext> loadContext() async =>
-      (companyId: company, name: '株式会社テスト');
+      (companyId: company, name: name);
   @override
   Future<bool> loadEnabled() async => enabled;
   @override
@@ -35,6 +38,7 @@ class _Source implements CompanySealSettingsDataSource {
       name: context.name,
       style: style,
       available: true,
+      pngStyles: pngStyles,
     );
   }
 
@@ -64,6 +68,31 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets(
+    'company PNG choices show inline preview and require PDF preview before saving',
+    (tester) async {
+      final source = _Source()
+        ..company = CompanySealDesign.companyId
+        ..name = CompanySealDesign.companyName
+        ..style = CompanySealDesign.designs.keys.first
+        ..pngStyles = CompanySealDesign.designs.keys.toList();
+      await _open(tester, source, (_) async => '');
+      final dropdown = tester.widget<DropdownButton<String>>(
+        find.byType(DropdownButton<String>),
+      );
+      expect(
+        dropdown.items!.map((item) => item.value),
+        containsAll(CompanySealDesign.designs.keys),
+      );
+      expect(find.byType(Image), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      expect(source.saves, 0);
+    },
+  );
+
   testWidgets(
     'coverage failure preserves legacy preview and visibility, blocks Reisho',
     (tester) async {
