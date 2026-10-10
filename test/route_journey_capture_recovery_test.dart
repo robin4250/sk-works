@@ -134,7 +134,7 @@ void main() {
         ..archived = true;
       await _open(tester, access);
       expect(find.textContaining('変更前の記録は保持されています'), findsOneWidget);
-      expect(find.text('この現場の作業を開始'), findsNothing);
+      expect(find.text('現場到着'), findsNothing);
       expect(access.submits, 0);
     },
   );
@@ -144,7 +144,7 @@ void main() {
     (tester) async {
       final access = _Access()..visits = [];
       await _open(tester, access);
-      expect(find.text('この現場の作業を開始'), findsOneWidget);
+      expect(find.text('現場到着'), findsOneWidget);
       expect(
         tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
         isNull,
@@ -168,8 +168,8 @@ void main() {
         },
       ];
     await _open(tester, access);
-    expect(find.text('この現場の作業を終了'), findsOneWidget);
-    expect(find.text('この現場の作業を開始'), findsNothing);
+    expect(find.text('現場移動'), findsOneWidget);
+    expect(find.text('現場到着'), findsNothing);
     expect(find.textContaining('作業中'), findsOneWidget);
     expect(
       tester
