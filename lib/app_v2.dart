@@ -849,7 +849,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'employee_register':
-        page = const EmployeeRegistrationPage();
+        page = EmployeeRegistrationPage(allowInvitations: _isAdmin);
         break;
       case 'initial_registration':
         page = const EmployeeInitialRegistrationPage();
@@ -1088,14 +1088,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.person_add_alt_1,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
-      if (_isAdmin)
-        _MenuAction(
-          key: 'initial_registration',
-          label: SkoLanguageController.tr('初回登録'),
-          icon: Icons.sms_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       _MenuAction(
         key: 'payroll',

@@ -42,12 +42,83 @@ class InitialRegistrationEmployee {
     required this.name,
     required this.phone,
     required this.invited,
+    this.registrationStatus,
   });
 
   final String id;
   final String name;
   final String phone;
   final bool invited;
+  final EmployeeRegistrationStatus? registrationStatus;
+
+  bool get hasInvitation => invited || registrationStatus?.invitationId != null ||
+      registrationStatus?.ambiguous == true;
+  bool get completed => registrationStatus?.completed == true;
+  bool get manuallySent => registrationStatus?.deliveryState == 'manual_sent';
+  bool get needsSending => !completed && !manuallySent;
+}
+
+class EmployeeRegistrationStatus {
+  const EmployeeRegistrationStatus({
+    required this.companyId,
+    required this.invitationId,
+    required this.completed,
+    required this.deliveryState,
+    this.ambiguous = false,
+  });
+
+  final String companyId;
+  final String? invitationId;
+  final bool completed;
+  final String deliveryState;
+  final bool ambiguous;
+
+  EmployeeRegistrationStatus withAnotherInvitation() =>
+      EmployeeRegistrationStatus(
+        companyId: companyId,
+        invitationId: null,
+        completed: false,
+        deliveryState: 'unknown',
+        ambiguous: true,
+      );
+
+  factory EmployeeRegistrationStatus.fromRow(String companyId, Map row) =>
+      EmployeeRegistrationStatus(
+        companyId: companyId,
+        invitationId: row['invitation_id']?.toString(),
+        completed: row['initial_registration_completed'] == true &&
+            row['invitation_status'] == 'approved' && row['approved_at'] != null,
+        deliveryState: row['delivery_state'] == 'manual_sent'
+            ? 'manual_sent' : 'unknown',
+      );
+}
+
+Map<String, EmployeeRegistrationStatus> resolveEmployeeRegistrationStatuses(
+  String companyId, List<dynamic> rows,
+) {
+  final grouped = <String, List<Map>>{};
+  for (final raw in rows) {
+    if (raw is! Map) {
+      continue;
+    }
+    final workerId = raw['worker_id']?.toString() ?? '';
+    if (workerId.isNotEmpty) {
+      grouped.putIfAbsent(workerId, () => []).add(raw);
+    }
+  }
+  return grouped.map((workerId, invitations) {
+    final current = invitations.where((row) =>
+      row['current_invitation'] == true && row['invitation_id'] != null,
+    ).toList(growable: false);
+    if (current.length == 1) {
+      return MapEntry(workerId, EmployeeRegistrationStatus.fromRow(companyId, current.single));
+    }
+    return MapEntry(workerId, EmployeeRegistrationStatus(
+      companyId: companyId, invitationId: null, completed: false,
+      deliveryState: 'unknown',
+      ambiguous: invitations.any((row) => row['invitation_id'] != null),
+    ));
+  });
 }
 
 class EmployeeInviteRepository {
@@ -76,7 +147,7 @@ class EmployeeInviteRepository {
     ].where((item) => item.userId.isNotEmpty).toList(growable: false);
   }
 
-  Future<void> registerEmployee({
+  Future<String> registerEmployee({
     required String name,
     required String phone,
   }) async {
@@ -87,13 +158,17 @@ class EmployeeInviteRepository {
     }
 
     try {
-      await _client.rpc(
+      final value = await _client.rpc(
         'register_employee_preregistration',
         params: {
           'p_name': trimmedName,
           'p_phone': trimmedPhone,
         },
       );
+      if (value is! String || value.isEmpty) {
+        throw StateError('登録結果を確認できません。重複登録せず一覧を確認してください。');
+      }
+      return value;
     } on PostgrestException catch (error) {
       if (error.message.contains('employee phone already registered')) {
         throw StateError('この電話番号の従業員はすでに登録されています。');
@@ -119,6 +194,7 @@ class EmployeeInviteRepository {
     final value = await _client.rpc('initial_registration_employee_rows');
     final rows = value is List ? value : const <dynamic>[];
 
+    final states = await _loadRegistrationStatuses();
     return [
       for (final raw in rows)
         if ((raw['phone']?.toString().trim() ?? '').isNotEmpty)
@@ -127,8 +203,57 @@ class EmployeeInviteRepository {
             name: raw['name']?.toString() ?? '名前未登録',
             phone: raw['phone']?.toString() ?? '',
             invited: (raw['user_id']?.toString().trim() ?? '').isNotEmpty,
+            registrationStatus: states[raw['id']?.toString()],
           ),
     ].where((item) => item.id.isNotEmpty).toList(growable: false);
+  }
+
+  Future<Map<String, EmployeeRegistrationStatus>> _loadRegistrationStatuses() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      return const {};
+    }
+    final memberships = await _client.from('company_members').select('company_id, role').eq('user_id', userId);
+    final states = <String, EmployeeRegistrationStatus>{};
+    for (final membership in memberships) {
+      if (membership['role'] != 'owner' && membership['role'] != 'admin') {
+        continue;
+      }
+      final companyId = membership['company_id']?.toString() ?? '';
+      if (companyId.isEmpty) {
+        continue;
+      }
+      try {
+        final value = await _client.rpc('employee_initial_registration_status_rows_v2', params: {'p_company_id': companyId});
+        if (value is! List) {
+          throw StateError('初回登録の状態を確認できません。');
+        }
+        for (final entry in resolveEmployeeRegistrationStatuses(companyId, value).entries) {
+          if (states.containsKey(entry.key)) {
+            states[entry.key] = states[entry.key]!.withAnotherInvitation();
+          } else {
+            states[entry.key] = entry.value;
+          }
+        }
+      } on PostgrestException catch (error) {
+        if (error.code != '55000' && error.code != 'PGRST202' && error.code != '42883') {
+          rethrow;
+        }
+      }
+    }
+    return states;
+  }
+
+  Future<void> recordManualSending(InitialRegistrationEmployee employee, String eventId) async {
+    final status = employee.registrationStatus;
+    if (status == null || status.invitationId == null || status.completed) {
+      throw StateError('対象の案内と状態を確認してから記録してください。');
+    }
+    await _client.rpc('record_employee_initial_registration_delivery', params: {
+      'p_company_id': status.companyId, 'p_worker_id': employee.id,
+      'p_invitation_id': status.invitationId, 'p_event_id': eventId,
+      'p_delivery_state': 'manual_sent', 'p_explicit_confirmation': true,
+    });
   }
 
   Future<EmployeeInviteResult> createInviteForWorker(

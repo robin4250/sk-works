@@ -4,12 +4,16 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/*employee_initial_registration_status_history.sql'
+      - 'supabase/migrations/*employee_initial_registration_current_identity.sql'
+      - 'tool/verify_employee_initial_registration_current_identity.mjs'
       - 'tool/verify_employee_initial_registration_status.mjs'
       - '.github/workflows/employee-registration-status-sql.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/*employee_initial_registration_status_history.sql'
+      - 'supabase/migrations/*employee_initial_registration_current_identity.sql'
+      - 'tool/verify_employee_initial_registration_current_identity.mjs'
       - 'tool/verify_employee_initial_registration_status.mjs'
       - '.github/workflows/employee-registration-status-sql.yml'
 permissions:
@@ -26,3 +30,4 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
           node tool/verify_employee_initial_registration_status.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_employee_initial_registration_current_identity.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"

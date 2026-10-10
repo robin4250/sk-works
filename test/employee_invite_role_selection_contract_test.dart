@@ -61,12 +61,13 @@ void main() {
     expect(page, contains('入れ替え対象'));
   });
 
-  test('home separates employee preregistration from admin initial registration', () {
+  test('home shares an entry while preserving administrator-only invitation access', () {
     final app = read('lib/app_v2.dart');
 
     expect(app, contains("key: 'employee_register'"));
     expect(app, contains('EmployeeRegistrationPage'));
-    expect(app, contains("key: 'initial_registration'"));
+    expect(app, isNot(contains("key: 'initial_registration'")));
+    expect(app, contains('EmployeeRegistrationPage(allowInvitations: _isAdmin)'));
     expect(app, contains('EmployeeInitialRegistrationPage'));
     expect(app, contains('if (_isAdmin)'));
   });
