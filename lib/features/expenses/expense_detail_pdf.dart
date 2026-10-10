@@ -55,7 +55,7 @@ class ExpenseDetailPdf {
         ),
         _chunks('${claim.applicantName}\n${claim.description}', 90),
         _chunks(
-          '${expenseApprovalLabel(claim.approval)}\n${expenseCategoryLabel(claim.allocation.category)}'
+          '${expenseClaimStatusLabel(claim)}\n${expenseCategoryLabel(claim.allocation.category)}'
           '${claim.allocation.counterpartyName == null ? '' : '\n${claim.allocation.counterpartyName}'}',
           32,
         ),

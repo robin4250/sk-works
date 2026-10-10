@@ -3,16 +3,21 @@ import 'package:flutter/services.dart';
 import 'expense_claim.dart';
 import 'expense_claims_page.dart';
 import 'expense_submission_repository.dart';
+import 'expense_personal_change_repository.dart';
+import 'expense_edit_dialog.dart';
 
 class ExpensePersonalPage extends StatefulWidget {
-  const ExpensePersonalPage({super.key, this.access});
+  const ExpensePersonalPage({super.key, this.access, this.changes});
   final ExpenseSubmissionAccess? access;
+  final ExpensePersonalChangeAccess? changes;
   @override
   State<ExpensePersonalPage> createState() => _ExpensePersonalPageState();
 }
 
 class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   ExpenseSubmissionAccess? _access;
+  ExpensePersonalChangeAccess? _changes;
+  ExpensePersonalChange? _pendingChange;
   final _description = TextEditingController(),
       _amount = TextEditingController();
   List<Map<String, dynamic>> _scopes = [];
@@ -28,6 +33,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     super.initState();
     try {
       _access = widget.access ?? ExpenseSubmissionRepository();
+      _changes =
+          widget.changes ??
+          (widget.access == null ? ExpensePersonalChangeRepository() : null);
     } catch (_) {
       _error = '経費申請に接続できません。';
       _busy = false;
@@ -80,15 +88,21 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     if (!_current(generation)) return;
     setState(() {
       _pending = pending;
-      _ready = true;
+      _ready = false;
     });
+    final change = await _changes?.pending(
+      scope['company_id'],
+      scope['worker_id'],
+    );
+    if (!_current(generation)) return;
+    setState(() => _pendingChange = change);
     final history = await _access!.history(
       scope['company_id'],
       scope['worker_id'],
       _month,
     );
     if (!_current(generation)) return;
-    setState(() => _history = history);
+    setState(() { _history = history; _ready = true; });
   }
 
   Future<void> _reload() async {
@@ -112,7 +126,13 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   }
 
   Future<void> _send() async {
-    if (_busy || !_ready || _scope == null || _access?.actor != _actor) return;
+    if (_busy ||
+        !_ready ||
+        _scope == null ||
+        _pendingChange != null ||
+        _access?.actor != _actor) {
+      return;
+    }
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -156,6 +176,104 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     }
   }
 
+  Future<void> _changeClaim(
+    ExpenseClaim claim, {
+    required bool withdraw,
+  }) async {
+    if (_busy ||
+        _changes == null ||
+        _pending != null ||
+        _pendingChange != null ||
+        claim.withdrawn) {
+      return;
+    }
+    final generation = _generation;
+    ExpenseSubmission? edit;
+    if (withdraw) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('経費申請を削除'),
+          content: const Text('この申請を取り下げます。申請・承認の履歴と確定済み帳票は残ります。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('削除する'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    } else {
+      edit = await showDialog<ExpenseSubmission>(
+        context: context,
+        builder: (_) => ExpenseEditDialog(claim: claim, actor: _actor!),
+      );
+      if (edit == null) return;
+    }
+    if (!_current(generation)) return;
+    await _sendChange(ExpensePersonalChange.create(_actor!, claim, edit: edit));
+  }
+
+  Future<void> _sendChange(ExpensePersonalChange command) async {
+    if (_busy || _access?.actor != _actor) return;
+    final generation = ++_generation;
+    setState(() {
+      _busy = true;
+      _pendingChange = command;
+      _error = null;
+    });
+    try {
+      await _changes!.send(command);
+      if (!_current(generation)) return;
+      setState(() {
+        _pendingChange = null;
+        if (!command.withdrawing) _month = DateTime.parse(command.parameters['p_date']);
+      });
+      await _loadSelection(generation);
+      if (mounted && _current(generation)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              command.withdrawing ? '申請を取り下げました' : '変更して再申請しました。承認待ちです。',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (_current(generation)) {
+        try {
+          final pending = await _changes!.pending(
+            command.company,
+            command.worker,
+          );
+          if (_current(generation)) {
+            setState(() {
+              _pendingChange = pending;
+            });
+          }
+        } catch (_) {
+          /* Keep the fixed command until its outcome is known. */
+        }
+        if (_current(generation)) {
+          setState(() {
+            _error = '変更結果を確認できません。同じ変更の再確認か、履歴の再読み込みをしてください。';
+          });
+        }
+      }
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
+  }
+
   Future<void> _pickDate({bool month = false}) async {
     final date = await showDatePicker(
       context: context,
@@ -177,7 +295,11 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   Widget build(BuildContext context) {
     final pending = _pending;
     final editable =
-        !_busy && _ready && pending == null && _access?.actor == _actor;
+        !_busy &&
+        _ready &&
+        pending == null &&
+        _pendingChange == null &&
+        _access?.actor == _actor;
     return Scaffold(
       appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('経費申請')),
       body: _actor != null && _access?.actor != _actor
@@ -266,11 +388,22 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                   ],
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: !_busy && _ready && _access?.actor == _actor
+                    onPressed:
+                        !_busy &&
+                            _ready &&
+                            _pendingChange == null &&
+                            _access?.actor == _actor
                         ? _send
                         : null,
                     child: Text(pending == null ? '申請する' : '同じ申請を再確認'),
                   ),
+                  if (_pendingChange != null)
+                    OutlinedButton(
+                      onPressed: _busy
+                          ? null
+                          : () => _sendChange(_pendingChange!),
+                      child: const Text('確認中の変更を再確認'),
+                    ),
                   const Divider(height: 32),
                   OutlinedButton(
                     onPressed: _busy ? null : () => _pickDate(month: true),
@@ -280,9 +413,30 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                     ListTile(
                       title: Text(claim.description),
                       subtitle: Text(
-                        '${_label(claim.incurredOn)}　${expenseApprovalLabel(claim.approval)}',
+                        '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}',
                       ),
-                      trailing: Text('${claim.amountYen}円'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('${claim.amountYen}円'),
+                          if (_changes != null && !claim.withdrawn)
+                            PopupMenuButton<String>(
+                              tooltip: '編集・削除',
+                              enabled: editable,
+                              onSelected: (action) => _changeClaim(
+                                claim,
+                                withdraw: action == 'withdraw',
+                              ),
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(value: 'edit', child: Text('編集')),
+                                PopupMenuItem(
+                                  value: 'withdraw',
+                                  child: Text('削除'),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
                     ),
                   if (_history.isNotEmpty)
                     TextButton(

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/expenses/expense_claim.dart';
 import 'package:sk_works/features/expenses/expense_personal_page.dart';
 import 'package:sk_works/features/expenses/expense_submission_repository.dart';
+import 'package:sk_works/features/expenses/expense_personal_change_repository.dart';
 
 class _Access implements ExpenseSubmissionAccess {
   @override
@@ -13,6 +14,7 @@ class _Access implements ExpenseSubmissionAccess {
   int writes = 0;
   final ids = <String>[];
   final months = <DateTime>[];
+  List<ExpenseClaim>? revised;
   @override
   Future<List<Map<String, dynamic>>> scopes() async => [
     {
@@ -29,6 +31,7 @@ class _Access implements ExpenseSubmissionAccess {
     DateTime month,
   ) async {
     months.add(month);
+    if (revised != null) return revised!;
     return [
       ExpenseClaim(
         id: 'old',
@@ -58,16 +61,74 @@ class _Access implements ExpenseSubmissionAccess {
   }
 }
 
-Future<void> _open(WidgetTester tester, _Access access) async {
+class _Changes implements ExpensePersonalChangeAccess {
+  _Changes(this.access);
+  final _Access access;
+  final commands = <ExpensePersonalChange>[];
+  ExpensePersonalChange? pendingCommand;
+  bool fail = false;
+  @override
+  Future<ExpensePersonalChange?> pending(String company, String worker) async => pendingCommand;
+  @override
+  Future<void> send(ExpensePersonalChange command) async {
+    commands.add(command);pendingCommand=command;
+    if (fail) throw StateError('lost response');
+    final old=(await access.history('company','worker',DateTime(2026,9))).single;
+    access.revised=[ExpenseClaim(id:old.id,companyId:old.companyId,applicantId:old.applicantId,
+      applicantName:old.applicantName,incurredOn:command.withdrawing ? old.incurredOn : DateTime.parse(command.parameters['p_date']),
+      submittedAt:old.submittedAt,description:command.withdrawing ? old.description : command.parameters['p_description'],
+      amountYen:command.withdrawing ? old.amountYen : command.parameters['p_amount'],
+      approval:command.withdrawing ? ExpenseApproval.rejected : ExpenseApproval.pending,
+      allocation:ExpenseAllocation(ExpenseCategory.unallocated),revision:old.revision+1,withdrawn:command.withdrawing)];
+    pendingCommand=null;
+  }
+}
+
+Future<void> _open(WidgetTester tester, _Access access, {ExpensePersonalChangeAccess? changes}) async {
   await tester.binding.setSurfaceSize(const Size(650, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: ExpensePersonalPage(access: access)),
+    MaterialApp(home: ExpensePersonalPage(access: access, changes: changes)),
   );
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets('personal menu edits to pending and withdrawal remains visible without edit controls', (tester) async {
+    final access=_Access();final changes=_Changes(access);
+    await _open(tester,access,changes:changes);
+    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
+    await tester.tap(find.text('編集'));await tester.pumpAndSettle();
+    final fields=find.descendant(of:find.byType(AlertDialog),matching:find.byType(TextField));
+    await tester.enterText(fields.at(0),'○○現場用の養生テープ3巻');
+    await tester.enterText(fields.at(1),'1234');
+    await tester.tap(find.text('変更して再申請'));await tester.pumpAndSettle();
+    expect(changes.commands.single.parameters['p_revision'],1);
+    expect(find.text('○○現場用の養生テープ3巻'),findsOneWidget);
+    expect(access.revised!.single.approval,ExpenseApproval.pending);
+    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));await tester.pumpAndSettle();
+    expect(changes.commands.length,1);
+    await tester.tap(find.text('削除する'));await tester.pumpAndSettle();
+    expect(changes.commands.last.parameters['p_revision'],2);
+    expect(find.textContaining('取り下げ（削除済み）'),findsOneWidget);
+    expect(find.byTooltip('編集・削除'),findsNothing);
+    expect(tester.takeException(),isNull);
+  });
+  testWidgets('uncertain edit blocks new submission and retries fixed command', (tester) async {
+    final access=_Access();final changes=_Changes(access)..fail=true;
+    await _open(tester,access,changes:changes);
+    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
+    await tester.tap(find.text('編集'));await tester.pumpAndSettle();
+    await tester.tap(find.text('変更して再申請'));await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'申請する')).onPressed,isNull);
+    final first=changes.commands.single.encoded;changes.fail=false;
+    await tester.tap(find.text('確認中の変更を再確認'));await tester.pumpAndSettle();
+    expect(changes.commands.last.encoded,first);
+    expect(find.text('確認中の変更を再確認'),findsNothing);
+    expect(access.writes,0);
+  });
+
   testWidgets('actor change during send hides previous personal data', (
     tester,
   ) async {

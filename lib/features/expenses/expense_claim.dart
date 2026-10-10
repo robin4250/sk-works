@@ -46,6 +46,8 @@ class ExpenseClaim {
     required this.amountYen,
     required this.approval,
     required this.allocation,
+    this.revision = 1,
+    this.withdrawn = false,
   }) : incurredOn = DateTime.utc(
          incurredOn.year,
          incurredOn.month,
@@ -77,11 +79,13 @@ class ExpenseClaim {
   final String description;
   final int amountYen;
   final ExpenseApproval approval;
+  final int revision;
+  final bool withdrawn;
   final ExpenseAllocation allocation;
 
   /// A candidate only. Period, payment and immutable snapshot rules belong to
   /// the future persistence contract, not to this display model.
-  bool get isSettlementCandidate => approval == ExpenseApproval.approved;
+  bool get isSettlementCandidate => !withdrawn && approval == ExpenseApproval.approved;
 
   ExpenseClaim _copy(ExpenseApproval status, ExpenseAllocation destination) =>
       ExpenseClaim(
@@ -95,18 +99,26 @@ class ExpenseClaim {
         amountYen: amountYen,
         approval: status,
         allocation: destination,
+        revision: revision,
+        withdrawn: withdrawn,
       );
 
   /// An already approved claim is not silently reassigned by a duplicate event.
-  ExpenseClaim approve() => approval == ExpenseApproval.approved
+  ExpenseClaim approve() {
+    if (withdrawn) throw StateError('Withdrawn expenses cannot be approved.');
+    return approval == ExpenseApproval.approved
       ? this
       : _copy(
           ExpenseApproval.approved,
           ExpenseAllocation(ExpenseCategory.ownCompany),
         );
-  ExpenseClaim reject() => _copy(ExpenseApproval.rejected, allocation);
+  }
+  ExpenseClaim reject() {
+    if (withdrawn) throw StateError('Withdrawn expenses cannot be reviewed.');
+    return _copy(ExpenseApproval.rejected, allocation);
+  }
   ExpenseClaim allocate(ExpenseAllocation destination) {
-    if (approval != ExpenseApproval.approved ||
+    if (withdrawn || approval != ExpenseApproval.approved ||
         destination.category == ExpenseCategory.unallocated) {
       throw StateError(
         'Only approved claims can be allocated to a destination.',
@@ -125,6 +137,8 @@ class ExpenseClaim {
       description == other.description &&
       amountYen == other.amountYen &&
       approval == other.approval &&
+      revision == other.revision &&
+      withdrawn == other.withdrawn &&
       allocation.sameAs(other.allocation);
 }
 
@@ -230,3 +244,5 @@ String expenseCategoryLabel(ExpenseCategory category) => switch (category) {
   ExpenseCategory.subcontractor => '下請け・協力会社',
   ExpenseCategory.customer => '取引先',
 };
+
+String expenseClaimStatusLabel(ExpenseClaim claim) => claim.withdrawn ? '取り下げ（削除済み）' : expenseApprovalLabel(claim.approval);

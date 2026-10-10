@@ -20,3 +20,4 @@ jobs:
       - run: node tool/verify_expense_personal_submission.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
       - run: node tool/verify_expense_review_allocation.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
       - run: node tool/verify_expense_document_details.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_personal_revision.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"

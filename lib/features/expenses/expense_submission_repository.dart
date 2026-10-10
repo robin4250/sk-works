@@ -179,6 +179,8 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         description: r['description'],
         amountYen: r['amount_yen'],
         approval: ExpenseApproval.values.byName(r['approval']),
+        revision: r['revision'] as int? ?? 1,
+        withdrawn: r['withdrawn'] == true,
         allocation: ExpenseAllocation(
           ExpenseCategory.values.byName(r['allocation']),
           counterpartyId: r['counterparty_id'],
