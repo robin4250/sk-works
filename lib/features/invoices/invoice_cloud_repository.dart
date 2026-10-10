@@ -71,7 +71,7 @@ class InvoiceCloudRepository {
         .select(
           'id, customer_id, billing_period_start, billing_period_end, '
           'invoice_number, issue_date, detail_mode, subtotal, tax, '
-          'grand_total, snapshot',
+          'grand_total, snapshot, updated_at',
         )
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
@@ -346,6 +346,7 @@ class InvoiceCloudRepository {
                     tax: _toInt(invoice['tax']),
                   ),
             invoiceId: invoiceId,
+            documentUpdatedAt: invoice['updated_at']?.toString(),
             companySealSnapshot: CompanySealSnapshot.fromJson(
                 snapshotMap['company_seal_snapshot']),
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',

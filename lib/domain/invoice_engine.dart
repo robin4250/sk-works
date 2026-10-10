@@ -119,6 +119,7 @@ class InvoiceCalculationResult {
     this.customerAddress = '',
     this.customerPhone = '',
     this.invoiceId = '',
+    this.documentUpdatedAt,
     this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.invoiceNumber = '',
     this.issueDate,
@@ -140,6 +141,7 @@ class InvoiceCalculationResult {
   /// Basis points. Example: 1000 = 10%.
   final int taxRateBps;
   final String invoiceId;
+  final String? documentUpdatedAt;
   final CompanySealSnapshot companySealSnapshot;
   final String invoiceNumber;
   final DateTime? issueDate;
@@ -172,6 +174,7 @@ class InvoiceEngine {
     String customerAddress = '',
     String customerPhone = '',
     String invoiceId = '',
+    String? documentUpdatedAt,
     CompanySealSnapshot companySealSnapshot = CompanySealSnapshot.legacy,
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -232,6 +235,7 @@ class InvoiceEngine {
       siteCalculations: List.unmodifiable(sites),
       taxRateBps: taxRateBps,
       invoiceId: invoiceId,
+      documentUpdatedAt: documentUpdatedAt,
       companySealSnapshot: companySealSnapshot,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,

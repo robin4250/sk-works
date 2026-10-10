@@ -8,13 +8,19 @@ class ExpenseClaimsPage extends StatefulWidget {
     super.key,
     required this.claims,
     this.applicantId,
+    this.header,
+    this.canDecide,
     this.onApprove,
+    this.onReject,
     this.onAllocate,
     this.destinations = const [],
   });
   final ExpenseClaims claims;
   final String? applicantId;
+  final Widget? header;
+  final bool Function(ExpenseClaim)? canDecide;
   final Future<void> Function(ExpenseClaim claim)? onApprove;
+  final Future<void> Function(ExpenseClaim claim)? onReject;
   final Future<void> Function(
     ExpenseClaim claim,
     ExpenseAllocation destination,
@@ -36,6 +42,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     if (!identical(oldWidget.claims, widget.claims) ||
         oldWidget.applicantId != widget.applicantId ||
         oldWidget.onApprove != widget.onApprove ||
+        oldWidget.onReject != widget.onReject ||
         oldWidget.onAllocate != widget.onAllocate ||
         !identical(oldWidget.destinations, widget.destinations)) {
       _generation++;
@@ -70,6 +77,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
   Widget build(BuildContext context) {
     final generation = _generation;
     final onApprove = widget.onApprove;
+    final onReject = widget.onReject;
     final onAllocate = widget.onAllocate;
     final destinations = List<ExpenseAllocation>.unmodifiable(
       widget.destinations,
@@ -80,10 +88,12 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     final visible = scope.forList(_list);
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: Text(widget.applicantId == null ? '経費申請一覧' : '個人の経費申請'),
       ),
       body: Column(
         children: [
+          if (widget.header != null) widget.header!,
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.all(12),
@@ -106,10 +116,10 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
               ],
             ),
           ),
-          if (onApprove == null && onAllocate == null)
+          if (onApprove == null && onReject == null && onAllocate == null)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('閲覧用・保存先未接続。申請送信・承認・振り分けの変更はできません。'),
+              child: Text('閲覧専用です。承認・振り分けは担当者の一覧で行います。'),
             ),
           if (_busy) const LinearProgressIndicator(),
           if (_error != null)
@@ -157,6 +167,8 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                                     onPressed:
                                         _busy ||
                                             onApprove == null ||
+                                            widget.canDecide?.call(claim) ==
+                                                false ||
                                             claim.approval ==
                                                 ExpenseApproval.approved
                                         ? null
@@ -165,6 +177,21 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                                             () => onApprove(claim),
                                           ),
                                     child: const Text('承認'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        _busy ||
+                                            onReject == null ||
+                                            widget.canDecide?.call(claim) ==
+                                                false ||
+                                            claim.approval ==
+                                                ExpenseApproval.rejected
+                                        ? null
+                                        : () => _request(
+                                            generation,
+                                            () => onReject(claim),
+                                          ),
+                                    child: const Text('却下'),
                                   ),
                                   PopupMenuButton<int>(
                                     enabled:

@@ -93,7 +93,7 @@ class ExpenseDetailPdf {
                 style: const pw.TextStyle(fontSize: 9),
               ),
               pw.Text(
-                '本頁の申請額表示は、帳票本体への金額加算を意味しません。',
+                '申請額の一覧です。支給・請求・支払額は表紙をご確認ください。',
                 style: const pw.TextStyle(fontSize: 9),
               ),
             ],

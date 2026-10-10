@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import '../../domain/company_seal_snapshot.dart';
 import 'dart:typed_data';
 
@@ -13,6 +15,7 @@ class PayrollPdfService {
 
   static Future<Uint8List> buildPdf(
     PayrollStatementRecord statement, {
+    ExpenseDocumentDetails? expenseDetails,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
@@ -21,6 +24,7 @@ class PayrollPdfService {
         (statement.detail['tax_calculation'] as Map)['blocked'] == true) {
       throw StateError('税計算の条件を確認してください。未計算の明細は出力できません。');
     }
+    final expenses = expenseDetails ?? await ExpenseDocumentRepository.load(ExpenseDocument.payroll, statement.id, statement.periodEnd, revision: statement.revision);
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final seal = CompanySealSnapshot.fromJson(
@@ -119,6 +123,9 @@ class PayrollPdfService {
           ),
         ),
       );
+      if (pageIndex == 0 && expenses != null) {
+        ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.payroll, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+      }
     }
 
     return document.save();
