@@ -494,30 +494,42 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  if (workspace?['archived'] != true || _pending != null)
+                  if (_visitsEnabled && _pending == null &&
+                      workspace?['archived'] != true) ...[
+                    // A shift starts with arrival enabled. After arrival,
+                    // only the move/leave action is enabled for this visit.
                     FilledButton.icon(
-                      onPressed:
-                          _busy ||
-                              _loading ||
-                              _loadFailed ||
+                      onPressed: !_busy && !_loading && !_loadFailed &&
+                              enabled && _openVisit == null &&
+                              _origin != null && _stopId != null
+                          ? _captureOrRetry
+                          : null,
+                      icon: const Icon(Icons.location_on_outlined),
+                      label: Text(SkoLanguageController.tr('現場到着')),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: !_busy && !_loading && !_loadFailed &&
+                              enabled && _openVisit != null &&
+                              _origin != null && _stopId != null
+                          ? _captureOrRetry
+                          : null,
+                      icon: const Icon(Icons.directions_walk_outlined),
+                      label: Text(SkoLanguageController.tr('現場移動')),
+                    ),
+                  ] else if (workspace?['archived'] != true || _pending != null)
+                    FilledButton.icon(
+                      onPressed: _busy || _loading || _loadFailed ||
                               (_pending == null &&
-                                  (!enabled ||
-                                      _origin == null ||
-                                      _stopId == null))
+                                  (!enabled || _origin == null || _stopId == null))
                           ? null
                           : _captureOrRetry,
                       icon: const Icon(Icons.camera_alt_outlined),
-                      label: Text(
-                        SkoLanguageController.tr(
-                          _pending != null
-                              ? '同じ途中現場記録で再確認'
-                              : !_visitsEnabled
-                              ? 'この現場を撮影して記録'
-                              : _openVisit == null
-                              ? 'この現場の作業を開始'
-                              : 'この現場の作業を終了',
-                        ),
-                      ),
+                      label: Text(SkoLanguageController.tr(
+                        _pending != null
+                            ? '同じ途中現場記録で再確認'
+                            : 'この現場を撮影して記録',
+                      )),
                     ),
                   if (_visitsEnabled) ...[
                     const SizedBox(height: 16),
