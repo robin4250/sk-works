@@ -1,0 +1,31 @@
+name: Qualification and document multi-photo SQL
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*qualification*photo*.sql'
+      - 'tool/verify_qualification_multi_photo_sql.mjs'
+      - 'tool/verify_multi_photo_exchange_sql.mjs'
+      - '.github/workflows/qualification-multi-photo-sql-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*qualification*photo*.sql'
+      - 'tool/verify_qualification_multi_photo_sql.mjs'
+      - 'tool/verify_multi_photo_exchange_sql.mjs'
+      - '.github/workflows/qualification-multi-photo-sql-check.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/photo-sql" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - name: Verify qualification photo validation and retention
+        run: node tool/verify_qualification_multi_photo_sql.mjs "$RUNNER_TEMP/photo-sql/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify company, worker and qualification all-photo snapshots
+        run: node tool/verify_multi_photo_exchange_sql.mjs "$RUNNER_TEMP/photo-sql/node_modules/@electric-sql/pglite/dist/index.js"
