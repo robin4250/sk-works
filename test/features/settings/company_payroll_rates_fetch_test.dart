@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:sk_works/features/settings/payroll_rate_month_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/settings/company_payroll_rates_repository.dart';
@@ -36,6 +37,27 @@ Future<void> fetch(WidgetTester tester) async {
   await tester.tap(find.text('取得して比較')); await tester.pumpAndSettle();
 }
 void main() {
+  testWidgets('registration months are prefilled and calendar choice reaches fetch', (tester) async {
+    final repository = FetchRepository();
+    await fixture.openPage(tester, repository);
+    await tester.tap(find.text('最新の公式料率を取得'));
+    await tester.pumpAndSettle();
+    for (final entry in payrollRateStartingMonths(DateTime.now()).entries) {
+      expect(tester.widget<TextFormField>(find.byKey(ValueKey('official-${entry.key}'))).controller!.text, entry.value);
+    }
+    final field = find.byKey(const ValueKey('official-payment_month'));
+    await tester.tap(find.descendant(of: field, matching: find.byTooltip('年月を選択')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2月'));
+    await tester.pumpAndSettle();
+    final chosen = tester.widget<TextFormField>(field).controller!.text;
+    expect(chosen.endsWith('-02'), isTrue);
+    await tester.tap(find.text('取得して比較'));
+    await tester.pumpAndSettle();
+    expect(repository.months!['payment_month'], '$chosen-01');
+    expect(repository.saved, isEmpty);
+  });
+
   testWidgets('iPhone width shows saved and fetched rates side by side', (tester) async {
     await tester.binding.setSurfaceSize(const Size(375, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

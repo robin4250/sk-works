@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'company_payroll_rates_repository.dart';
 import 'company_payroll_rate_pending_store.dart';
 import 'company_income_tax_page.dart';
+import 'payroll_rate_month_picker.dart';
 
 const payrollRateConfirmation = '表示された料率・適用年月・情報元をご自身で確認したうえで適用してください';
 const payrollScopeInsurers = <String, String>{'unconfigured': '未設定', 'kyokai': '協会けんぽ', 'union': '健康保険組合', 'other': 'その他'};
@@ -565,6 +566,7 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
   void initState() {
     super.initState();
     final value = widget.initialValue;
+    final startingMonths = payrollRateStartingMonths(DateTime.now());
     final source = value == null ? <String, dynamic>{} : payrollRateObject(value['source']);
     final applicability = source['applicability'] is Map ? payrollRateObject(source['applicability']) : <String, dynamic>{};
     _initialApplicability = Map<String, dynamic>.from(applicability);
@@ -573,7 +575,7 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
       for (final key in ['total', 'employee', 'employer'])
         key: TextEditingController(text: value == null ? (payrollManualStartingRates[widget.kind]?[key] ?? '') : formatPayrollRatePercent(value[key] as int)),
       for (final key in ['insurance_month', 'payroll_month', 'payment_month'])
-        key: TextEditingController(text: value == null ? '' : (value[key] as String).substring(0, 7)),
+        key: TextEditingController(text: value == null ? startingMonths[key] : (value[key] as String).substring(0, 7)),
       'publisher': TextEditingController(text: source['publisher'] as String? ?? ''),
       'url': TextEditingController(text: source['url'] as String? ?? ''),
 
@@ -584,7 +586,14 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
 
   Widget _field(String key, String label, {bool rate = false, bool month = false, bool optional = false}) =>
     Padding(padding: const EdgeInsets.only(bottom: 12), child: TextFormField(
-      key: ValueKey('rate-field-$key'), controller: _fields[key], decoration: InputDecoration(labelText: label),
+      key: ValueKey('rate-field-$key'), controller: _fields[key], decoration: InputDecoration(labelText: label,
+        suffixIcon: month ? IconButton(
+          tooltip: '年月を選択', icon: const Icon(Icons.calendar_month),
+          onPressed: () async {
+            final selected = await showPayrollRateMonthPicker(context, _fields[key]!.text);
+            if (mounted && selected != null) _fields[key]!.text = selected;
+          },
+        ) : null),
       keyboardType: rate ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
       validator: (text) {
         final input = text?.trim() ?? '';
@@ -657,6 +666,7 @@ class _PayrollRateEditorState extends State<_PayrollRateEditor> {
           ]),
         _field('label', '項目名'), _field('total', '全体料率（%）', rate: true),
         _field('employee', '従業員負担率（%）', rate: true), _field('employer', '会社負担率（%）', rate: true),
+        const Text('新規設定は登録日の月・支払月は翌月を初期表示します。適用する年月を確認し、カレンダーから変更してください。'),
         _field('insurance_month', '保険適用年月（YYYY-MM）', month: true),
         _field('payroll_month', '給与対象年月（YYYY-MM）', month: true),
         _field('payment_month', '支払年月（YYYY-MM）', month: true),
@@ -748,7 +758,15 @@ class _OfficialRateMonthsDialog extends StatefulWidget {
 
 class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
   final _form = GlobalKey<FormState>();
-  final _months = <String, String>{};
+  late final _controllers = {
+    for (final entry in payrollRateStartingMonths(DateTime.now()).entries)
+      entry.key: TextEditingController(text: entry.value),
+  };
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) { controller.dispose(); }
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('会社で適用する月を確認'),
@@ -768,9 +786,17 @@ class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
             }.entries)
               TextFormField(
                 key: ValueKey('official-${entry.key}'),
+                controller: _controllers[entry.key],
                 decoration: InputDecoration(
                   labelText: entry.value,
                   hintText: 'YYYY-MM',
+                  suffixIcon: IconButton(
+                    tooltip: '年月を選択', icon: const Icon(Icons.calendar_month),
+                    onPressed: () async {
+                      final selected = await showPayrollRateMonthPicker(context, _controllers[entry.key]!.text);
+                      if (mounted && selected != null) _controllers[entry.key]!.text = selected;
+                    },
+                  ),
                 ),
                 keyboardType: TextInputType.datetime,
                 validator: (value) =>
@@ -779,7 +805,6 @@ class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
                     ).hasMatch(value?.trim() ?? '')
                     ? null
                     : 'YYYY-MMで入力してください',
-                onSaved: (value) => _months[entry.key] = '${value!.trim()}-01',
               ),
           ],
         ),
@@ -794,7 +819,7 @@ class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
         onPressed: () {
           if (_form.currentState!.validate()) {
             _form.currentState!.save();
-            Navigator.pop(context, _months);
+            Navigator.pop(context, {for (final entry in _controllers.entries) entry.key: '${entry.value.text.trim()}-01'});
           }
         },
         child: const Text('取得して比較'),

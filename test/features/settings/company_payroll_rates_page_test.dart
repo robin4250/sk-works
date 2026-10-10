@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:sk_works/features/settings/payroll_rate_month_picker.dart';
 
 import 'package:sk_works/features/settings/company_payroll_rate_pending_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -135,7 +136,7 @@ void main() {
         find.byKey(ValueKey('rate-field-$key'))).controller!.text, '0.115');
     }
     expect(tester.widget<TextFormField>(
-      find.byKey(const ValueKey('rate-field-insurance_month'))).controller!.text, isEmpty);
+      find.byKey(const ValueKey('rate-field-insurance_month'))).controller!.text, payrollRateMonthText(DateTime.now()));
     expect(repository.saved, isEmpty);
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
@@ -162,7 +163,10 @@ void main() {
         expect(tester.widget<TextFormField>(
           find.byKey(ValueKey('rate-field-${field.key}'))).controller!.text, field.value);
       }
-      for (final key in ['insurance_month', 'payroll_month', 'payment_month', 'publisher', 'url']) {
+      for (final month in payrollRateStartingMonths(DateTime.now()).entries) {
+        expect(tester.widget<TextFormField>(find.byKey(ValueKey('rate-field-${month.key}'))).controller!.text, month.value);
+      }
+      for (final key in ['publisher', 'url']) {
         expect(tester.widget<TextFormField>(
           find.byKey(ValueKey('rate-field-$key'))).controller!.text, isEmpty);
       }
@@ -196,6 +200,9 @@ void main() {
     expect(tester.widget<TextFormField>(
       find.byKey(const ValueKey('rate-field-publisher'))).controller!.text, '登録資料');
     expect(repository.saved, isEmpty);
+    for (final key in ['insurance_month', 'payroll_month', 'payment_month']) {
+      expect(tester.widget<TextFormField>(find.byKey(ValueKey('rate-field-$key'))).controller!.text, (current[key] as String).substring(0, 7));
+    }
     expect(current, value('health_insurance', employee: 0, employer: 0));
   });
 
