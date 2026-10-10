@@ -400,7 +400,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: () => onOpen('route_visit'),
                       icon: const Icon(Icons.route_outlined),
-                      label: Text(SkoLanguageController.tr('現場到着・現場移動の記録')),
+                      label: Text(SkoLanguageController.tr('現場到着・現場移動')),
                     ),
                   ],
                   const SizedBox(height: 9),
