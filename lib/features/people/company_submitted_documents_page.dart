@@ -572,7 +572,7 @@ class _CompanySubmittedDocumentsPageState
   // Existing server attachments are never overwritten by a second photo.
   Future<void> _pickMultiplePhotos(Map<String, dynamic> row) async {
     final photos = DocumentPhotoDraft<XFile>();
-    if (!mounted || (row['id']?.toString() ?? '').isEmpty) return;
+    if (!mounted || _busy || (row['id']?.toString() ?? '').isEmpty) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
