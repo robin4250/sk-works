@@ -201,7 +201,7 @@ void main() {
       await _open(tester, access);
       expect(_reload, findsOneWidget);
       expect(
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '現場到着')).onPressed,
+        tester.widget<FilledButton>(find.byType(FilledButton).first).onPressed,
         isNull,
       );
       expect(access.submits, 0);
