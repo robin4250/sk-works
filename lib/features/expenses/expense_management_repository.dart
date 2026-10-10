@@ -123,6 +123,8 @@ class ExpenseReviewWorkspace {
           description: r['description'],
           amountYen: r['amount_yen'],
           approval: ExpenseApproval.values.byName(r['approval']),
+        revision: r['revision'] as int? ?? 1,
+        withdrawn: r['withdrawn'] == true,
           allocation: ExpenseAllocation(
             ExpenseCategory.values.byName(r['allocation']),
             counterpartyId: r['counterparty_id'],
@@ -151,7 +153,7 @@ class ExpenseReviewWorkspace {
   final revisions = <String, int>{};
   final actors = <String, String>{};
   bool canDecide(ExpenseClaim claim, String actor) =>
-      canReview && (approvers.length == 1 || actors[claim.id] != actor);
+      canReview && !claim.withdrawn && (approvers.length == 1 || actors[claim.id] != actor);
 }
 
 abstract class ExpenseManagementAccess {

@@ -7,6 +7,7 @@ import 'company_payroll_rates_repository.dart';
 import 'company_payroll_rate_pending_store.dart';
 import 'company_income_tax_page.dart';
 import 'payroll_rate_month_picker.dart';
+import 'initial_official_company_rates.dart';
 
 const payrollRateConfirmation = '表示された料率・適用年月・情報元をご自身で確認したうえで適用してください';
 const payrollScopeInsurers = <String, String>{'unconfigured': '未設定', 'kyokai': '協会けんぽ', 'union': '健康保険組合', 'other': 'その他'};
@@ -448,6 +449,15 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
 
   static String _month(dynamic value) => value is String && value.length >= 7 ? value.substring(0, 7) : '未確認';
 
+  static String _officialStartMonth(Map<String, dynamic> value) {
+    final source = value['source'];
+    final conditions = source is Map ? source['applicability'] : null;
+    if (conditions is! Map || conditions.containsKey('initial_reference')) return '未確認';
+    final month = conditions['effective_insurance_month'];
+    return month is String && RegExp(r'^20\d{2}-(0[1-9]|1[0-2])-01$').hasMatch(month)
+        ? month.substring(0, 7) : '未確認';
+  }
+
   Widget _valueSummary(Map<String, dynamic> value, String detailsId) {
     final source = payrollRateObject(value['source']);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -456,7 +466,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       Text('従業員負担 ${formatPayrollRatePercent(value['employee'] as int)}%'),
       Text('会社負担 ${formatPayrollRatePercent(value['employer'] as int)}%'),
       const SizedBox(height: 4),
-      Text('適用 ${_month(value['insurance_month'])}'),
+      Text('公式料率の施行年月 ${_officialStartMonth(value)}'),
+      Text('会社での適用年月 ${_month(value['insurance_month'])}'),
       Text('情報元 ${source['publisher']}'),
       ExpansionTile(key: PageStorageKey('rate-details-$detailsId'), title: const Text('適用月・資料の詳細'),
         tilePadding: EdgeInsets.zero,
@@ -496,7 +507,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
             const Text('現在設定値', style: TextStyle(fontWeight: FontWeight.bold)),
             if (item == null) const Text('未設定') else ...[
               _valueSummary(item.value, '$itemId-current'),
-              Text(item.origin == 'manual' ? '利用者による手動設定' : '確認値を利用者が適用した設定'),
+              Text(item.origin == 'manual' ? '手動設定・初期参考値' : '公式確認値を反映した設定'),
             ],
           ]);
           final checked = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -555,6 +566,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         if (_recoveryNotice != null) Text(_recoveryNotice!),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _busy ? null : _load, child: const Text('再試行'))],
         if (_data != null) ...[
+          if (hasInitialReference(_data!))
+            const Card(child: Padding(padding: EdgeInsets.all(12), child: Text(
+              '初期参考値を使用しています（最新未確認）。最新の料率がある可能性があります。「最新の公式料率を取得」で比較し、確認して適用してください。'))),
           if (_canEdit && payrollRateKinds.keys.any((kind) => _findKind(kind) == null))
             OutlinedButton.icon(key: const ValueKey('save-starting-rates'),
               onPressed: _writeBlocked || _data?.companyScope == null ? null : _saveStartingRates,

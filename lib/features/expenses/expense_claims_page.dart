@@ -144,7 +144,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               ),
                               Text(claim.description),
                               Text(
-                                '${expenseApprovalLabel(claim.approval)} / ${expenseCategoryLabel(claim.allocation.category)}'
+                                '${expenseClaimStatusLabel(claim)} / ${expenseCategoryLabel(claim.allocation.category)}'
                                 '${claim.allocation.counterpartyName == null ? '' : ' / ${claim.allocation.counterpartyName}'}',
                               ),
                               TextButton(
@@ -166,7 +166,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                                   TextButton(
                                     onPressed:
                                         _busy ||
-                                            onApprove == null ||
+                                            onApprove == null || claim.withdrawn ||
                                             widget.canDecide?.call(claim) ==
                                                 false ||
                                             claim.approval ==
@@ -181,7 +181,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                                   TextButton(
                                     onPressed:
                                         _busy ||
-                                            onReject == null ||
+                                            onReject == null || claim.withdrawn ||
                                             widget.canDecide?.call(claim) ==
                                                 false ||
                                             claim.approval ==

@@ -40,6 +40,18 @@ const extra=`
  assert.deepEqual(await read('invoice',52),invoice);assert.equal((await read('payroll',50)).claims.length,0);
  await db.exec(\`set test.actor='\${id(99)}'\`);await assert.rejects(read('payroll',51),/access denied/);
  await db.exec(\`set test.actor='\${actor}';set test.blocked='true'\`);await assert.rejects(read('payroll',51),/unavailable/);
+
+ await db.exec('reset role;set test.blocked=false');
+ await db.exec(fs.readFileSync('supabase/migrations/20261010152829_expense_personal_revision.sql','utf8'));
+ await db.exec(\`update workers set status='active' where id='\${worker}';set role authenticated;set test.actor='\${actor}'\`);
+ const revised=await call(\`public.expense_personal_change('\${id(81)}','\${id(10)}',1,'edit','2026-10-01','edited after finalization',2222)\`);
+ assert.equal(revised.approval,'pending');
+ await call(\`public.expense_personal_change('\${id(82)}','\${id(10)}',2,'withdraw')\`);
+ await db.exec(\`set test.actor='\${other}'\`);
+ assert.deepEqual(await read('payroll',51),frozen);
+ assert.deepEqual(await read('paymentCertificate',53),payment);
+ assert.deepEqual(await read('invoice',52),invoice);
+
  console.log('PASS expense document scope, rejected payroll history, destination IDs, draft updates, immutable final details, legacy preservation and unchanged payroll amount');
 `;
 // Keep template interpolation inside the fixture, not the generator.
