@@ -1,6 +1,6 @@
 # 外回り・会社出勤の勤務誘導
 
-状態：設計確定。PR #757で状態モデルと履歴の復元・検証を実装。勤務履歴のDB保存と画面接続は未実装。
+状態：PR #757でモデル・既存撮影画面・開始/終了RPC・原記録保持・移行を実装。本番DB反映と実機通し確認は未完了。
 
 ## 基本
 
@@ -43,16 +43,26 @@
 
 PR #757の続きで、既存撮影画面・再送ドラフト・Repositoryから開始/終了のRPCへ接続した。`route_journey_visit_workspace` が提供する実記録の状態で主ボタンを切り替え、作業中は対象現場を固定する。新RPCがまだ存在しないDBは従来の撮影記録へ戻す。旧version 1ドラフトを開始/終了へ変換しない。version 2ではアクションと開始記録IDも固定して照合する。
 
-候補SQLは `tool/fixtures/route_journey_visits/visits.sql`。既存capture INSERTと訪問イベントINSERTを同一トランザクションにし、勤務元行のロック後に未終了訪問を検査する。途中終了では勤務を閉じず、未終了訪問があればclock_out INSERTを拒否する。再送は同じID・アクション・開始ID・元payloadの一致時だけ既存結果を返す。raw写真payload・Storage policyは変更しない。勤務日は既存出勤の値を使う。履歴の開始/終了表示時刻はサーバー受信時刻で、撮影時刻/GPS測定時刻は別の原記録として保持する。
+正式移行は `supabase/migrations/20261010132957_route_journey_visit_lifecycle.sql`。既存capture INSERTと訪問イベントINSERTを同一トランザクションにし、勤務元行のロック後に未終了訪問を検査する。途中終了では勤務を閉じず、未終了訪問があればclock_out INSERTを拒否する。再送は同じID・アクション・開始ID・元payloadの一致時だけ既存結果を返す。raw写真payloadは変更しない。参照写真の削除・上書きだけを後述のrestrictive policyで保護する。勤務日は既存出勤の値を使う。履歴の開始/終了表示時刻はサーバー受信時刻で、撮影時刻/GPS測定時刻は別の原記録として保持する。
 
 隔離PGliteで2現場の開始/終了、終了後も勤務継続、未終了退勤の拒否、固定ID再送、別人/別開始ID拒否、失敗時のcapture非追加、元勤務日保持、旧captureの推測変換拒否を検証。通常より強いisolation levelでは書込みを拒否する。Flutterでは画面状態・対象固定・不正履歴拒否・ドラフト再送と旧互換を検証。
 
-候補SQLは本番migrationではなく、まだ本番へ適用していない。写真保持/削除の既存依存（#838）を維持し、全歴史migrationとの適合、実PostgreSQLの同時開始/終了/退勤/管理変更、保持・アーカイブ時のイベント関連保持、実機カメラ/GPSを確認してから正式migrationと有効化を行う必要がある。既存フラグOFFのまま。現在のiPhoneで利用可能になったとは扱わない。冒頭のDB/画面未実装は本番利用可能な状態についての記述である。
+正式移行はまだ本番へ適用していない。#838の検証条件を取り込み、実PostgreSQL17の同時操作と削除保持はCI成功。実際のGPS/取得失敗/管理変更の既存回帰テストに続けて新移行を適用するchainテストも成功。本番schema適合・Storage実API・実機カメラ/GPSの確認は残る。既存フラグOFFのまま。現在のiPhoneで利用可能になったとは扱わない。冒頭のDB/画面未実装は本番利用可能な状態についての記述である。
 
 ### 保持と競合の接続追加
 
-`retention.sql` は#838で確認済みの「原行/日報/実変更者/削除済みUUID」の条件を、今回の実テーブルと訪問イベントへ適用する候補。元出勤/日報の削除前、および途中原記録の削除・日報切離し前に最初のsnapshotを保存する。期限や回収処理は追加しない。参照写真のDELETE/UPDATEは既存権限とのrestrictive条件で拒否し、権限自体は増やさない。失敗時は削除と保持が同時rollbackする。元勤務がなくなった固定ドラフトは本人・同社所属限定の既存形式で照会でき、新規INSERTや元UUID再使用は拒否する。
+同じ正式移行の保持部分は#838で確認済みの「原行/日報/実変更者/削除済みUUID」の条件を、今回の実テーブルと訪問イベントへ適用する。元出勤/日報の削除前、および途中原記録の削除・日報切離し前に最初のsnapshotを保存する。期限や回収処理は追加しない。参照写真のDELETE/UPDATEは既存権限とのrestrictive条件で拒否し、権限自体は増やさない。失敗時は削除と保持が同時rollbackする。元勤務がなくなった固定ドラフトは本人・同社所属限定の既存形式で照会でき、新規INSERTや元UUID再使用は拒否する。
 
 新たな実PostgreSQL 17 CIは、別々の接続と実Lock待機を使い、同時開始/同じUUID/同時終了/開始・終了対退勤/管理削除対保存/OFF変更を確認する。PGliteの逐次実行成功とは区別し、CI結果をIssueへ記録する。fixtureはsyntheticな依存であり本番全chainの証明ではない。
 
 2026-10-10本番read-only確認：PostgreSQL17.6、capture/route双方のrolloutテーブル・capability/workspace・route captureテーブル・route専用bucketは未導入。既存attendance bucketの管理者DELETE/UPDATEが存在。従って本番準備は#782→#794→今回の正式migrationの順序検証が必要。データ/本番スキーマ変更はまだしていない。
+
+### 正式移行と写真アップロード（2026-10-10）
+
+CLI 2.120.0の `migration new` で正式ファイルを生成し、fixtureと本番で別SQLにならないよう全テストが正式migrationを直接読む構成にした。
+
+本番read-onlyで既存 `attendance_evidence_insert` が `storage.objects.name` ではなく `workers.name` をパス解析していることを確認。旧ポリシーのまま本人の正しいパスが拒否される再現を追加し、`20261010133056_qualify_attendance_photo_upload_path.sql` で参照だけを修正。本人は保存可能、別人・別会社・不正パスは拒否。既存の閲覧/更新/削除・承認担当は変えない。
+
+導入順：既存 `20261008173515_attendance_capture_failure_contract.sql` → `20261008204012_route_journey_capture_staged.sql` → `20261010132957_route_journey_visit_lifecycle.sql` → `20261010133056_qualify_attendance_photo_upload_path.sql`。全て初期OFF。既存GPS勤務日migrationは本番に別timestampで導入済みなので再適用しない。導入前に現行CHECK・関数・ACL・trigger・policyを保存して照合。停止時はgate OFFを使い、記録・bucketを削除しない。
+
+本番advisorsは導入前の基準として確認した。既存private RLS/API関数等の指摘は今回導入したものではなく、未適用SQLの合格証明とはしない。専用セキュリティ追加には着手しない。

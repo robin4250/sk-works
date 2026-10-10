@@ -6,6 +6,10 @@ on:
       - 'tool/fixtures/route_journey_capture/**'
       - 'tool/verify_route_journey_visits.mjs'
       - 'tool/verify_route_journey_visit_races.mjs'
+      - 'tool/verify_route_journey_visit_chain.mjs'
+      - 'tool/verify_attendance_capture_failure.mjs'
+      - 'supabase/migrations/*route_journey_visit_lifecycle.sql'
+      - 'supabase/migrations/*qualify_attendance_photo_upload_path.sql'
       - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
       - '.github/workflows/route-journey-visits-check.yml'
   workflow_dispatch:
@@ -24,6 +28,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/visit-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.8
       - name: Verify visit transaction and clock-out boundaries
         run: node tool/verify_route_journey_visits.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify actual GPS capture management and visit chain
+        run: node tool/verify_route_journey_visit_chain.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
   visit-postgres-races:
     runs-on: ubuntu-latest
