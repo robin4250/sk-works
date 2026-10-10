@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
 import 'document_photo_draft.dart';
 
 import '../common/data_date_labels.dart';
@@ -177,9 +178,13 @@ class _CompanySubmittedDocumentsPageState
                       title: Text(SkoLanguageController.tr('会社角印')),
                       subtitle: Text(SkoLanguageController.tr('会社角印のON／OFF')),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: _busy ? null : () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(builder: (_) => const CompanySealSettingsPage()),
-                      ),
+                      onTap: _busy
+                          ? null
+                          : () => Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) => const CompanySealSettingsPage(),
+                              ),
+                            ),
                     ),
                   ),
                   Card(
@@ -388,7 +393,8 @@ class _CompanySubmittedDocumentsPageState
 
   Widget _documentCard(Map<String, dynamic> row) {
     final id = row['id']?.toString() ?? '';
-    final path = row['attachment_path']?.toString() ?? '';
+    final paths = CompanySubmittedDocumentRepository.attachmentPaths(row);
+    final path = paths.isEmpty ? '' : paths.first;
     final expires = row['expires_at']?.toString() ?? '';
     return Card(
       child: Column(
@@ -410,7 +416,7 @@ class _CompanySubmittedDocumentsPageState
             ),
             subtitle: Text(
               [
-                path.isEmpty ? 'PDF・画像未登録' : '提出ファイル登録済み',
+                path.isEmpty ? 'PDF・画像未登録' : '提出ファイル ${paths.length}枚登録済み',
                 if (expires.isNotEmpty) '有効期限 ' + expires,
                 if ((row['notes']?.toString() ?? '').isNotEmpty)
                   row['notes'].toString(),
@@ -438,7 +444,7 @@ class _CompanySubmittedDocumentsPageState
                 TextButton.icon(
                   onPressed: _busy ? null : () => _pickMultiplePhotos(row),
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('表裏写真'),
+                  label: const Text('写真を管理'),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
@@ -572,9 +578,13 @@ class _CompanySubmittedDocumentsPageState
   // Existing server attachments are never overwritten by a second photo.
   Future<void> _pickMultiplePhotos(Map<String, dynamic> row) async {
     final photos = DocumentPhotoDraft<XFile>();
+    final retained = CompanySubmittedDocumentRepository.attachmentPaths(row);
+    var saving = false;
+    String? saveError;
     if (!mounted || _busy || (row['id']?.toString() ?? '').isEmpty) return;
     await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, refresh) => AlertDialog(
           title: Text('書類の写真（表・裏）: ${row['name'] ?? ''}'),
@@ -583,109 +593,234 @@ class _CompanySubmittedDocumentsPageState
             width: 340,
             child: SingleChildScrollView(
               child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var i = 0; i < photos.length; i++)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.image_outlined),
-                    title: Text(i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}'),
-                    subtitle: Text(photos.photos[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: SizedBox(
-                      width: 144,
-                      child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: '上へ移動',
-                          onPressed: i == 0
-                              ? null
-                              : () => refresh(() => photos.move(i, i - 1)),
-                          icon: const Icon(Icons.arrow_upward),
-                        ),
-                        IconButton(
-                          tooltip: '下へ移動',
-                          onPressed: i == photos.length - 1
-                              ? null
-                              : () => refresh(() => photos.move(i, i + 1)),
-                          icon: const Icon(Icons.arrow_downward),
-                        ),
-                        IconButton(
-                          tooltip: '削除',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => refresh(() => photos.removeAt(i)),
-                        ),
-                      ],
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < retained.length; i++)
+                    ListTile(
+                      title: Text('登録写真 ${i + 1}'),
+                      onTap: saving
+                          ? null
+                          : () => _previewSavedPhoto(retained[i]),
+                      trailing: Wrap(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_upward),
+                            onPressed: saving || i == 0
+                                ? null
+                                : () => refresh(() {
+                                    final path = retained.removeAt(i);
+                                    retained.insert(i - 1, path);
+                                  }),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: saving
+                                ? null
+                                : () => refresh(() => retained.removeAt(i)),
+                          ),
+                        ],
                       ),
                     ),
-                    onTap: () async {
-                      final selected = photos.photos[i];
-                      final bytes = await selected.readAsBytes();
-                      if (!context.mounted || !dialogContext.mounted) return;
-                      await showDialog<void>(
-                        context: context,
-                        builder: (previewContext) => AlertDialog(
-                          content: Image.memory(bytes, fit: BoxFit.contain),
-                          actions: [TextButton(
-                            onPressed: () => Navigator.pop(previewContext),
-                            child: const Text('閉じる'),
-                          )],
+                  if (saveError != null) Text(saveError!),
+                  for (var i = 0; i < photos.length; i++)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.image_outlined),
+                      title: Text(
+                        i == 0
+                            ? '表面'
+                            : i == 1
+                            ? '裏面'
+                            : '追加写真 ${i - 1}',
+                      ),
+                      subtitle: Text(
+                        photos.photos[i].name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: SizedBox(
+                        width: 144,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: '上へ移動',
+                              onPressed: saving || i == 0
+                                  ? null
+                                  : () => refresh(() => photos.move(i, i - 1)),
+                              icon: const Icon(Icons.arrow_upward),
+                            ),
+                            IconButton(
+                              tooltip: '下へ移動',
+                              onPressed: saving || i == photos.length - 1
+                                  ? null
+                                  : () => refresh(() => photos.move(i, i + 1)),
+                              icon: const Icon(Icons.arrow_downward),
+                            ),
+                            IconButton(
+                              tooltip: '削除',
+                              icon: const Icon(Icons.close),
+                              onPressed: saving
+                                  ? null
+                                  : () => refresh(() => photos.removeAt(i)),
+                            ),
+                          ],
                         ),
-                      );
-                    },
+                      ),
+                      onTap: () async {
+                        final selected = photos.photos[i];
+                        final bytes = await selected.readAsBytes();
+                        if (!context.mounted || !dialogContext.mounted) return;
+                        await showDialog<void>(
+                          context: context,
+                          builder: (previewContext) => AlertDialog(
+                            content: Image.memory(bytes, fit: BoxFit.contain),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(previewContext),
+                                child: const Text('閉じる'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  TextButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final picked = await _imagePicker.pickImage(
+                              source: ImageSource.camera,
+                              imageQuality: 90,
+                              maxWidth: 2600,
+                            );
+                            if (picked != null &&
+                                context.mounted &&
+                                dialogContext.mounted) {
+                              refresh(() => photos.add(picked));
+                            }
+                          },
+                    icon: const Icon(Icons.add_a_photo_outlined),
+                    label: const Text('写真を撮影して追加'),
                   ),
-                TextButton.icon(
-                  onPressed: () async {
-                    final picked = await _imagePicker.pickImage(
-                      source: ImageSource.camera,
-                      imageQuality: 90,
-                      maxWidth: 2600,
-                    );
-                    if (picked != null && context.mounted && dialogContext.mounted) {
-                      refresh(() => photos.add(picked));
-                    }
-                  },
-                  icon: const Icon(Icons.add_a_photo_outlined),
-                  label: const Text('写真を撮影して追加'),
-                ),
-                TextButton.icon(
-                  onPressed: () async {
-                    final picked = await _imagePicker.pickMultiImage(
-                      imageQuality: 90,
-                      maxWidth: 2600,
-                    );
-                    if (context.mounted && dialogContext.mounted && picked.isNotEmpty) {
-                      refresh(() => photos.addAll(picked));
-                    }
-                  },
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('ライブラリから追加'),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '選択中: ${photos.length}枚（保存前） / 表裏: ${photos.hasFrontAndBack ? '選択済み' : '未完了'}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const Text('この画面は保存前の確認用です。閉じても既存の登録写真は削除されません。'),
-              ],
+                  TextButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final picked = await _imagePicker.pickMultiImage(
+                              imageQuality: 90,
+                              maxWidth: 2600,
+                            );
+                            if (context.mounted &&
+                                dialogContext.mounted &&
+                                picked.isNotEmpty) {
+                              refresh(() => photos.addAll(picked));
+                            }
+                          },
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text('ライブラリから追加'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '選択中: ${retained.length + photos.length}枚（保存前） / 表裏: ${photos.hasFrontAndBack ? '選択済み' : '未完了'}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const Text(
+                    '登録写真と追加写真をまとめて保存します。写真を差し替える場合は元の写真を外して追加してください。',
+                  ),
+                ],
               ),
             ),
           ),
           actions: [
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      refresh(() {
+                        saving = true;
+                        saveError = null;
+                      });
+                      try {
+                        final files =
+                            <
+                              ({
+                                Uint8List bytes,
+                                String filename,
+                                String contentType,
+                              })
+                            >[];
+                        for (final photo in List<XFile>.of(photos.photos)) {
+                          files.add((
+                            bytes: await photo.readAsBytes(),
+                            filename: photo.name,
+                            contentType: photo.mimeType ?? 'image/jpeg',
+                          ));
+                        }
+                        await _repository!.savePhotos(
+                          id: row['id'].toString(),
+                          retainedPaths: List.of(retained),
+                          files: files,
+                          expectedPaths:
+                              CompanySubmittedDocumentRepository.attachmentPaths(
+                                row,
+                              ),
+                        );
+                        if (!dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+                        await _load();
+                      } catch (error) {
+                        if (dialogContext.mounted)
+                          refresh(() {
+                            saving = false;
+                            saveError = '保存できませんでした: $error';
+                          });
+                      }
+                    },
+              child: Text(saving ? '保存中' : '写真を保存'),
+            ),
             TextButton(
-              onPressed: photos.isEmpty
+              onPressed: saving || photos.isEmpty
                   ? null
                   : () => refresh(photos.clear),
               child: const Text('選択をすべて解除'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
               child: const Text('閉じる'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _previewSavedPhoto(String path) async {
+    try {
+      final url = await _repository!.createSignedUrl(path);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          content: InteractiveViewer(
+            child: Image.network(
+              url,
+              errorBuilder: (_, error, stack) => const Text('写真を表示できませんでした。'),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('閉じる'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('写真を表示できませんでした: $error')));
+    }
   }
 
   Future<void> _pickFile(Map<String, dynamic> row) async {

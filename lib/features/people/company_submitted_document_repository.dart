@@ -9,6 +9,8 @@ import '../../data/supabase_backend.dart';
 class CompanySubmittedDocumentRepository {
   CompanySubmittedDocumentRepository._(this._client);
 
+  CompanySubmittedDocumentRepository.forTesting(this._client);
+
   final SupabaseClient _client;
   static const bucket = 'company-required-documents';
 
@@ -40,6 +42,7 @@ class CompanySubmittedDocumentRepository {
       throw StateError('会社提出書類は管理者のみ操作できます。');
     }
   }
+
   Future<Map<String, dynamic>> loadCompanyData() async {
     await requireAdmin();
     final value = await _client.rpc('company_data_state');
@@ -100,13 +103,12 @@ class CompanySubmittedDocumentRepository {
     );
   }
 
-
   Future<List<Map<String, dynamic>>> listDocuments() async {
     final value = await membership();
     final rows = await _client
         .from('company_required_documents')
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
         )
         .eq('company_id', value.companyId)
         .eq('is_active', true)
@@ -136,7 +138,7 @@ class CompanySubmittedDocumentRepository {
           'original_verified': false,
         })
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);
@@ -161,7 +163,7 @@ class CompanySubmittedDocumentRepository {
         .eq('company_id', value.companyId)
         .eq('id', id)
         .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
+          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(updated);
@@ -173,52 +175,102 @@ class CompanySubmittedDocumentRepository {
     required String filename,
     required String contentType,
   }) async {
+    return savePhotos(
+      id: id,
+      retainedPaths: const [],
+      files: [(bytes: bytes, filename: filename, contentType: contentType)],
+    );
+  }
+
+  static List<String> attachmentPaths(Map<String, dynamic> row) {
+    final values = row['attachment_paths'];
+    if (values is List && values.isNotEmpty) {
+      return values
+          .map((v) => v.toString())
+          .where((v) => v.isNotEmpty)
+          .toList();
+    }
+    final legacy = row['attachment_path']?.toString() ?? '';
+    return legacy.isEmpty ? [] : [legacy];
+  }
+
+  Future<Map<String, dynamic>> savePhotos({
+    required String id,
+    required List<String> retainedPaths,
+    List<String>? expectedPaths,
+    required List<({Uint8List bytes, String filename, String contentType})>
+    files,
+  }) async {
     await requireAdmin();
     final value = await membership();
-    final rows = await _client
+    final current = await _client
         .from('company_required_documents')
-        .select('attachment_path')
+        .select('attachment_path, attachment_paths, updated_at')
         .eq('company_id', value.companyId)
         .eq('id', id)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('会社提出書類が見つかりません。');
-    final oldPath = rows.first['attachment_path']?.toString();
-    final safeName = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final path = value.companyId +
-        '/' +
-        id +
-        '/' +
-        DateTime.now().microsecondsSinceEpoch.toString() +
-        '_' +
-        safeName;
-
-    await _client.storage.from(bucket).uploadBinary(
-      path,
-      bytes,
-      fileOptions: FileOptions(contentType: contentType, upsert: false),
-    );
-
-    try {
-      final updated = await _client
-          .from('company_required_documents')
-          .update({
-            'attachment_path': path,
-            'status': 'submitted',
-          })
-          .eq('company_id', value.companyId)
-          .eq('id', id)
-          .select(
-            'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, notes, status, original_verified, created_at, updated_at',
-          )
-          .single();
-      if (oldPath != null && oldPath.isNotEmpty && oldPath != path) {
-        await _client.storage.from(bucket).remove([oldPath]);
-      }
-      return Map<String, dynamic>.from(updated);
-    } catch (_) {
-      await _client.storage.from(bucket).remove([path]);
-      rethrow;
+        .single();
+    final oldPaths = attachmentPaths(current);
+    if (expectedPaths != null &&
+        (expectedPaths.length != oldPaths.length ||
+            List.generate(
+              oldPaths.length,
+              (i) => oldPaths[i] == expectedPaths[i],
+            ).contains(false))) {
+      throw StateError('他の操作で写真が変更されました。再読み込みしてください。');
     }
+    if (retainedPaths.any((path) => !oldPaths.contains(path)) ||
+        retainedPaths.toSet().length != retainedPaths.length) {
+      throw StateError('登録済み写真を確認できません。再読み込みしてください。');
+    }
+    final paths = [...retainedPaths];
+    for (var i = 0; i < files.length; i++) {
+      final file = files[i];
+      if (file.bytes.isEmpty) throw StateError('空の写真は保存できません。');
+      final safeName = file.filename.replaceAll(
+        RegExp(r'[^A-Za-z0-9._-]'),
+        '_',
+      );
+      final path =
+          '${value.companyId}/$id/${DateTime.now().microsecondsSinceEpoch}_${i}_$safeName';
+      await _client.storage
+          .from(bucket)
+          .uploadBinary(
+            path,
+            file.bytes,
+            fileOptions: FileOptions(
+              contentType: file.contentType,
+              upsert: false,
+            ),
+          );
+      paths.add(path);
+    }
+    // Compare-and-set prevents a stale editor from replacing another saved set.
+    var query = _client
+        .from('company_required_documents')
+        .update({
+          'attachment_path': paths.isEmpty ? null : paths.first,
+          'attachment_paths': paths,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          'status': paths.isEmpty ? 'missing' : 'submitted',
+        })
+        .eq('company_id', value.companyId)
+        .eq('id', id);
+    if (current['updated_at'] != null) {
+      query = query.eq('updated_at', current['updated_at']);
+    }
+    final updated = await query.select().single();
+    final saved = attachmentPaths(updated);
+    if (saved.length != paths.length ||
+        List.generate(
+          paths.length,
+          (i) => saved[i] == paths[i],
+        ).contains(false)) {
+      throw StateError('写真の保存結果を確認できません。再読み込みしてください。');
+    }
+    // Never remove uploaded objects after an ambiguous network response.
+    // Historical / company-exchange snapshots can still reference old objects;
+    // physical cleanup requires server-side reference checks and a backup.
+    return Map<String, dynamic>.from(updated);
   }
 
   Future<String> createSignedUrl(String path) {
