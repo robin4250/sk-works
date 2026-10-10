@@ -474,7 +474,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                           !_coverageAvailable)
                   ? null
                   : _preview,
-              child: Text(SkoLanguageController.tr('角印プレビュー')),
+              child: Text(SkoLanguageController.tr('選択中の角印をプレビュー')),
             ),
             FilledButton(
               onPressed:
