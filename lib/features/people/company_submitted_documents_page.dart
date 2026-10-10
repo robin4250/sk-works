@@ -655,6 +655,11 @@ class _CompanySubmittedDocumentsPageState
                   icon: const Icon(Icons.add_photo_alternate_outlined),
                   label: const Text('ライブラリから追加'),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  '選択中: ${photos.length}枚（保存前）',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const Text('写真の保存方式を準備中です。ここでは既存の登録写真を変更しません。'),
               ],
               ),
