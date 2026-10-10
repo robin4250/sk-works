@@ -88,7 +88,6 @@ void main() {
     final page = File(
       'lib/features/qualifications/own_qualification_registration_page.dart',
     ).readAsStringSync();
-    expect(page, contains('本人による資格証写真の追加・差し替えは現在停止中'));
     expect(page, contains('InteractiveViewer'));
   });
 }

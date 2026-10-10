@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../people/worker_document_photo_editor.dart';
+import 'own_qualification_photo_contract.dart';
+import 'own_qualification_photo_submission_repository.dart';
 
 import 'qualification_cloud_repository.dart';
 
@@ -13,6 +18,15 @@ class OwnQualificationRegistrationPage extends StatefulWidget {
 class _OwnQualificationRegistrationPageState
     extends State<OwnQualificationRegistrationPage> {
   final _repository = QualificationCloudRepository.maybeCreate();
+  final _photoRepository =
+      OwnQualificationPhotoSubmissionRepository.maybeCreate();
+  OwnQualificationPhotoCapability _photoCapability =
+      OwnQualificationPhotoCapability.unavailable;
+  Map<String, dynamic>? _pendingPhotos;
+  List<Map<String, dynamic>> _photoSubmissions = const [];
+  String? _photoError;
+  bool _photoBusy = false;
+  int _loadGeneration = 0;
   final _searchController = TextEditingController();
 
   Map<String, dynamic>? _worker;
@@ -35,6 +49,7 @@ class _OwnQualificationRegistrationPageState
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -51,7 +66,10 @@ class _OwnQualificationRegistrationPageState
     final actor = repository.currentUserId;
     try {
       final data = await repository.loadOwnQualificationWorkspace();
-      if (!mounted || actor == null || actor != repository.currentUserId) {
+      if (!mounted ||
+          generation != _loadGeneration ||
+          actor == null ||
+          actor != repository.currentUserId) {
         return;
       }
       setState(() {
@@ -62,13 +80,217 @@ class _OwnQualificationRegistrationPageState
         );
         _loading = false;
       });
+      await _loadPhotoWorkspace(actor, generation);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          actor != repository.currentUserId) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error = error.toString();
       });
     }
+  }
+
+  Future<void> _loadPhotoWorkspace(String actor, int generation) async {
+    final repository = _photoRepository;
+    if (repository == null) return;
+    try {
+      final capability = await repository.capability();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          repository.actor != actor) {
+        return;
+      }
+      final pending = await repository.pending();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          repository.actor != actor) {
+        return;
+      }
+      final submissions = capability.available
+          ? await repository.submissions()
+          : <Map<String, dynamic>>[];
+      if (!mounted ||
+          generation != _loadGeneration ||
+          repository.actor != actor) {
+        return;
+      }
+      setState(() {
+        _photoCapability = capability;
+        _pendingPhotos = pending;
+        _photoSubmissions = submissions;
+        _photoError = null;
+      });
+    } catch (_) {
+      if (!mounted ||
+          generation != _loadGeneration ||
+          repository.actor != actor) {
+        return;
+      }
+      setState(() {
+        _photoCapability = OwnQualificationPhotoCapability.unavailable;
+        _photoError = '写真申請の利用状況を確認できません。保存済み写真と資格情報登録は利用できます。';
+      });
+    }
+  }
+
+  Future<void> _editPhotos(Map<String, dynamic> row) async {
+    final repository = _photoRepository;
+    final cloud = _repository;
+    if (repository == null ||
+        cloud == null ||
+        !_photoCapability.available ||
+        _photoBusy ||
+        _pendingPhotos != null) {
+      return;
+    }
+    final actor = repository.actor;
+    final photos = QualificationCloudRepository.ownPhotoAttachments(row);
+    final selection = await editWorkerDocumentPhotos(
+      context,
+      paths: photos.map((photo) => photo.path).toList(),
+      signedUrl: (path) => cloud.createOwnQualificationPhotoUrl(
+        qualificationId: row['id'].toString(),
+        storagePath: path,
+      ),
+      allowNewPhotos: _photoCapability.uploadAllowed,
+      uploadNotice: _photoCapability.uploadAllowed
+          ? '写真の変更は申請として送信し、承認後に登録内容へ反映します。資格名・番号などの情報は変更しません。'
+          : '新しい資格証写真の送信は停止中です。保存済み写真の並べ替え・一覧からの削除だけを申請できます。承認後に反映し、写真ファイルは履歴に保持します。',
+    );
+    if (!mounted ||
+        actor == null ||
+        repository.actor != actor ||
+        selection == null) {
+      return;
+    }
+    setState(() => _photoBusy = true);
+    try {
+      final result = await repository.submitSelection(
+        row: row,
+        photos: selection,
+      );
+      if (!mounted || repository.actor != actor) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.status == 'approved'
+                ? '写真の変更は承認済みです。'
+                : '写真申請を送信しました。承認後に登録内容へ反映します。',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted || repository.actor != actor) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('写真申請を確認してください: $error')));
+    } finally {
+      if (mounted && repository.actor == actor) {
+        setState(() => _photoBusy = false);
+        await _load();
+      }
+    }
+  }
+
+  Future<void> _recoverPhotos() async {
+    final repository = _photoRepository;
+    if (repository == null || _photoBusy || !_photoCapability.available) return;
+    final actor = repository.actor;
+    setState(() => _photoBusy = true);
+    try {
+      final result = await repository.recover();
+      if (!mounted || actor == null || repository.actor != actor) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.status == 'approved'
+                ? '写真の変更は承認済みです。'
+                : result.status == 'rejected'
+                ? (result.cancelled ? '未送信の写真申請の取消を確認しました。' : '写真申請は却下されています。')
+                : '同じ写真申請の送信を確認しました。承認待ちです。',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted && repository.actor == actor) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('写真申請を確認できませんでした。写真を再送せず同じ申請を再確認してください。'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted && repository.actor == actor) {
+        setState(() => _photoBusy = false);
+        await _load();
+      }
+    }
+  }
+
+  Future<void> _cancelPendingPhotos() async {
+    final repository = _photoRepository;
+    if (repository == null || _photoBusy || !_photoCapability.available) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('未送信の写真申請を取り消す'),
+        content: const Text(
+          'サーバーで本人の下書きと確認できた場合だけ取り消します。承認待ち・承認済みの申請と登録済み写真は変更しません。写真ファイルは削除しません。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('下書きを取り消す'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final actor = repository.actor;
+    setState(() => _photoBusy = true);
+    try {
+      await repository.cancelDraft();
+      if (!mounted || actor == null || actor != repository.actor) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未送信の写真申請を取り消しました。新しい申請を作成できます。')),
+      );
+    } catch (_) {
+      if (mounted && actor == repository.actor) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('本人の下書きの取消結果を確認できませんでした。保留を解除せず同じ申請を再確認してください。'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted && actor == repository.actor) {
+        setState(() => _photoBusy = false);
+        await _load();
+      }
+    }
+  }
+
+  String? _photoStatus(String targetId) {
+    final rows = _photoSubmissions
+        .where((row) => row['target_id'] == targetId)
+        .toList();
+    if (rows.isEmpty) return null;
+    return switch (rows.first['status']) {
+      'pending' => '写真変更：承認待ち',
+      'approved' => '写真変更：承認済み',
+      'rejected' =>
+        rows.first['photo_cancelled'] == true
+            ? '写真申請：下書き取消済み'
+            : '写真変更：却下（登録内容は保持）',
+      _ => '写真変更：状態を確認してください',
+    };
   }
 
   Future<void> _addQualification() async {
@@ -162,7 +384,7 @@ class _OwnQualificationRegistrationPageState
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    '資格の情報は登録できます。本人による資格証写真の追加・差し替えは現在停止中です。登録済み写真は資格一覧から確認できます。',
+                    '資格の情報はここで登録します。資格証写真の変更申請は登録後に一覧から開き、承認後に反映します。新しい写真の送信が停止中の場合も保存済み写真は確認できます。',
                   ),
                 ),
                 TextField(
@@ -267,6 +489,31 @@ class _OwnQualificationRegistrationPageState
                             '資格証写真を表示できませんでした。資格一覧へ戻って再度開いてください。',
                           );
                         }
+                        if (photos[index].path.toLowerCase().endsWith('.pdf')) {
+                          return OutlinedButton.icon(
+                            onPressed: () async {
+                              if (actor != repository.currentUserId) return;
+                              try {
+                                if (!await launchUrl(
+                                  Uri.parse(snapshot.data!),
+                                  mode: LaunchMode.externalApplication,
+                                )) {
+                                  throw StateError('PDFを開けませんでした。');
+                                }
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('PDFを開けませんでした。'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                            label: const Text('PDFを開く'),
+                          );
+                        }
                         return InteractiveViewer(
                           minScale: 1,
                           maxScale: 5,
@@ -359,6 +606,50 @@ class _OwnQualificationRegistrationPageState
                       subtitle: const Text('ログイン中の本人の資格だけを表示します'),
                     ),
                   ),
+                  Card(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            _photoError ??
+                                (!_photoCapability.available
+                                    ? '資格証写真の変更申請は準備中です。登録済み写真と資格情報登録は利用できます。'
+                                    : _photoCapability.uploadAllowed
+                                    ? '資格証写真の変更は申請し、承認後に反映します。'
+                                    : '新しい資格証写真の送信は停止中です。登録済み写真の並べ替え・削除申請は利用できます。'),
+                          ),
+                          if (_pendingPhotos != null) ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              '送信結果が未確認の写真申請があります。写真を再送せず同じ申請を確認してください。',
+                            ),
+                            OutlinedButton.icon(
+                              onPressed:
+                                  _photoBusy || !_photoCapability.available
+                                  ? null
+                                  : _recoverPhotos,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('保留中の写真申請を再確認'),
+                            ),
+                            TextButton(
+                              onPressed:
+                                  _photoBusy || !_photoCapability.available
+                                  ? null
+                                  : _cancelPendingPhotos,
+                              child: const Text('未送信の下書きを取り消す'),
+                            ),
+                          ],
+                          if (_photoBusy) const LinearProgressIndicator(),
+                        ],
+                      ),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                     child: TextField(
@@ -397,11 +688,18 @@ class _OwnQualificationRegistrationPageState
                                           master?['name']?.toString() ??
                                               '資格証写真',
                                         ),
-                                  trailing: photos.isEmpty
-                                      ? null
-                                      : const Icon(
-                                          Icons.photo_library_outlined,
-                                        ),
+                                  trailing: IconButton(
+                                    tooltip: '資格証写真を変更申請',
+                                    onPressed:
+                                        _photoBusy ||
+                                            !_photoCapability.available ||
+                                            _pendingPhotos != null
+                                        ? null
+                                        : () => _editPhotos(row),
+                                    icon: const Icon(
+                                      Icons.add_photo_alternate_outlined,
+                                    ),
+                                  ),
                                   leading: const CircleAvatar(
                                     child: Icon(Icons.badge_outlined),
                                   ),
@@ -415,6 +713,9 @@ class _OwnQualificationRegistrationPageState
                                     [
                                       if (photos.isNotEmpty)
                                         '登録写真 ${photos.length}枚（タップして確認）',
+                                      if (_photoStatus(row['id'].toString()) !=
+                                          null)
+                                        _photoStatus(row['id'].toString())!,
                                       if ((row['certificate_number']
                                                   ?.toString() ??
                                               '')
