@@ -8,14 +8,21 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   BuildContext context, {
   required List<String> paths,
   required Future<String> Function(String) signedUrl,
+  bool canEdit = true,
 }) => showDialog<List<WorkerDocumentPhoto>>(
   context: context,
-  builder: (_) => _PhotoEditor(paths: paths, signedUrl: signedUrl),
+  builder: (_) =>
+      _PhotoEditor(paths: paths, signedUrl: signedUrl, canEdit: canEdit),
 );
 
 class _PhotoEditor extends StatefulWidget {
-  const _PhotoEditor({required this.paths, required this.signedUrl});
+  const _PhotoEditor({
+    required this.paths,
+    required this.signedUrl,
+    required this.canEdit,
+  });
   final List<String> paths;
+  final bool canEdit;
   final Future<String> Function(String) signedUrl;
   @override
   State<_PhotoEditor> createState() => _PhotoEditorState();
@@ -29,6 +36,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   String? _error;
 
   Future<void> _pick({bool camera = false, int? replace}) async {
+    if (!widget.canEdit) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -130,6 +138,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('1枚目：表面 / 2枚目：裏面 / 3枚目以降：追加写真'),
+            if (!widget.canEdit) const Text('複数写真の保存準備中です。保存済みの写真は確認できます。'),
             const Text(
               '新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。その他の書類は送信停止中です。保存済み写真は確認できます。',
             ),
@@ -151,7 +160,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                         ),
                         IconButton(
                           tooltip: '前へ',
-                          onPressed: _busy || i == 0
+                          onPressed: _busy || !widget.canEdit || i == 0
                               ? null
                               : () => setState(() {
                                   final photo = _photos.removeAt(i);
@@ -161,12 +170,14 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                         ),
                         IconButton(
                           tooltip: '差し替え',
-                          onPressed: _busy ? null : () => _pick(replace: i),
+                          onPressed: _busy || !widget.canEdit
+                              ? null
+                              : () => _pick(replace: i),
                           icon: const Icon(Icons.edit_outlined),
                         ),
                         IconButton(
                           tooltip: '写真を一覧から削除',
-                          onPressed: _busy
+                          onPressed: _busy || !widget.canEdit
                               ? null
                               : () => setState(() => _photos.removeAt(i)),
                           icon: const Icon(Icons.delete_outline),
@@ -180,12 +191,14 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               spacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _pick(camera: true),
+                  onPressed: _busy || !widget.canEdit
+                      ? null
+                      : () => _pick(camera: true),
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: const Text('1枚撮影'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _pick(),
+                  onPressed: _busy || !widget.canEdit ? null : () => _pick(),
                   icon: const Icon(Icons.photo_library_outlined),
                   label: const Text('複数選択'),
                 ),
@@ -202,15 +215,18 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     actions: [
       TextButton(
         onPressed: _busy ? null : () => Navigator.pop(context),
-        child: const Text('キャンセル'),
+        child: Text(widget.canEdit ? 'キャンセル' : '閉じる'),
       ),
-      FilledButton(
-        onPressed: _busy
-            ? null
-            : () =>
-                  Navigator.pop(context, List<WorkerDocumentPhoto>.of(_photos)),
-        child: const Text('写真を確定'),
-      ),
+      if (widget.canEdit)
+        FilledButton(
+          onPressed: _busy || !widget.canEdit
+              ? null
+              : () => Navigator.pop(
+                  context,
+                  List<WorkerDocumentPhoto>.of(_photos),
+                ),
+          child: const Text('写真を確定'),
+        ),
     ],
   );
 }

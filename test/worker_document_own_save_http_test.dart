@@ -22,6 +22,9 @@ class _Fixture {
   bool loseStatusResponse = false;
   bool noStatusRow = false;
   bool echoPhotos = false;
+  bool missingPhotoColumn = false;
+  String columnErrorName = 'attachment_paths';
+  bool denyStatusRead = false;
   int? rejectUploadNumber;
   int uploads = 0;
   Map<String, dynamic>? savedPhotos;
@@ -90,18 +93,33 @@ class _Fixture {
       ];
     } else if (path == '/rest/v1/worker_document_statuses') {
       if (request.method == 'GET') {
-        response = existingStatus
-            ? [
-                {
-                  'id': _status,
-                  'worker_id': _worker,
-                  'requirement_id': _requirement,
-                  'attachment_path': 'synthetic/old.jpg',
-                  'updated_at': '2026-10-11T00:00:00Z',
-                  ...?savedPhotos,
-                },
-              ]
-            : [];
+        if (denyStatusRead) {
+          request.response.statusCode = 403;
+          response = {'code': '42501', 'message': 'permission denied'};
+        } else if (missingPhotoColumn &&
+            (request.uri.queryParameters['select'] ?? '').contains(
+              'attachment_paths',
+            )) {
+          request.response.statusCode = 400;
+          response = {
+            'code': '42703',
+            'message':
+                'column worker_document_statuses.$columnErrorName does not exist',
+          };
+        } else {
+          response = existingStatus
+              ? [
+                  {
+                    'id': _status,
+                    'worker_id': _worker,
+                    'requirement_id': _requirement,
+                    'attachment_path': 'synthetic/old.jpg',
+                    'updated_at': '2026-10-11T00:00:00Z',
+                    ...?savedPhotos,
+                  },
+                ]
+              : [];
+        }
       } else if (loseStatusResponse) {
         // The server may have accepted the write; client confirmation is lost.
         final socket = await request.response.detachSocket(writeHeaders: false);
@@ -177,6 +195,78 @@ void main() {
   tearDown(() async {
     await fixture.close();
   });
+
+  test('missing photo column alone retries legacy read and disables new photo edits', () async {
+    fixture.missingPhotoColumn = true;
+    final repository = WorkerDocumentRepository.forTesting(fixture.client);
+    final data = await repository.loadOwnDocuments();
+    expect(workerDocumentPaths(data['statuses']!.single), [
+      'synthetic/old.jpg',
+    ]);
+    expect(repository.photoEditingAvailable, isFalse);
+    final reads = fixture.requests
+        .where(
+          (r) =>
+              r.uri.path == '/rest/v1/worker_document_statuses' &&
+              r.method == 'GET',
+        )
+        .toList();
+    expect(reads, hasLength(2));
+    expect(
+      reads.last.uri.queryParameters['select'],
+      isNot(contains('attachment_paths')),
+    );
+    expect(reads.last.uri.queryParameters['company_id'], 'eq.$_company');
+    expect(reads.last.uri.queryParameters['worker_id'], 'eq.$_worker');
+    await expectLater(
+      repository.saveOwnDocumentPhotos(
+        requirementId: _requirement,
+        notes: '',
+        expectedPaths: ['synthetic/old.jpg'],
+        photos: [],
+      ),
+      throwsStateError,
+    );
+    expect(fixture.uploads, 0);
+    await repository.saveOwnDocument(
+      requirementId: _requirement,
+      notes: 'metadata',
+    );
+    final payload = jsonDecode(utf8.decode(fixture.writes.single.body)) as Map;
+    expect(payload.containsKey('attachment_path'), isFalse);
+    expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+  });
+
+  test(
+    'permission and unrelated missing columns do not retry a legacy read',
+    () async {
+      fixture.denyStatusRead = true;
+      await expectLater(
+        WorkerDocumentRepository.forTesting(fixture.client).loadOwnDocuments(),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(
+        fixture.requests.where(
+          (r) => r.uri.path == '/rest/v1/worker_document_statuses',
+        ),
+        hasLength(1),
+      );
+      fixture.requests.clear();
+      fixture.denyStatusRead = false;
+      fixture.missingPhotoColumn = true;
+      fixture.columnErrorName = 'another_column';
+      await expectLater(
+        WorkerDocumentRepository.forTesting(fixture.client).loadOwnDocuments(),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(
+        fixture.requests.where(
+          (r) => r.uri.path == '/rest/v1/worker_document_statuses',
+        ),
+        hasLength(1),
+      );
+    },
+  );
 
   Future<void> savePhotos() =>
       WorkerDocumentRepository.forTesting(fixture.client).saveOwnDocumentPhotos(

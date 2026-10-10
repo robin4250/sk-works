@@ -21,6 +21,7 @@ abstract interface class OwnDocumentRegistrationGateway {
 
 abstract interface class OwnDocumentPhotoGateway
     implements OwnDocumentRegistrationGateway {
+  bool get photoEditingAvailable;
   Future<String> signedUrl(String path);
   Future<void> savePhotos({
     required String requirementId,
@@ -39,6 +40,9 @@ class _OwnDocumentRepositoryGateway
     implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway {
   const _OwnDocumentRepositoryGateway(this.repository);
   final WorkerDocumentRepository repository;
+
+  @override
+  bool get photoEditingAvailable => repository.photoEditingAvailable;
 
   @override
   Future<String> signedUrl(String path) =>
@@ -186,6 +190,9 @@ class _OwnDocumentRegistrationPageState
     DateTime? expiresAt;
     final notes = TextEditingController();
     var attachPhoto = false;
+    final photoEditingAvailable =
+        repository is! OwnDocumentPhotoGateway ||
+        repository.photoEditingAvailable;
 
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -245,12 +252,16 @@ class _OwnDocumentRegistrationPageState
                   decoration: const InputDecoration(labelText: '備考'),
                   maxLines: 2,
                 ),
+                if (!photoEditingAvailable)
+                  const Text(WorkerDocumentRepository.photoPreparationMessage),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('写真を添付する'),
                   value: attachPhoto,
-                  onChanged: (value) =>
-                      setDialogState(() => attachPhoto = value ?? false),
+                  onChanged: !photoEditingAvailable
+                      ? null
+                      : (value) =>
+                            setDialogState(() => attachPhoto = value ?? false),
                 ),
               ],
             ),
@@ -369,6 +380,7 @@ class _OwnDocumentRegistrationPageState
       context,
       paths: workerDocumentPaths(row),
       signedUrl: gateway.signedUrl,
+      canEdit: gateway.photoEditingAvailable,
     );
     if (photos == null || !mounted) return;
     setState(() => _saving = true);

@@ -533,6 +533,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                           dialogContext,
                           paths: workerDocumentPaths(current),
                           signedUrl: repository.createSignedAttachmentUrl,
+                          canEdit: repository.photoEditingAvailable,
                         );
                         if (photos == null || !dialogContext.mounted) return;
                         setDialogState(() => savingPhotos = true);
@@ -557,7 +558,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         }
                       },
                 icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('写真の追加・編集'),
+                label: Text(
+                  repository.photoEditingAvailable ? '写真の追加・編集' : '写真を確認',
+                ),
               ),
             TextButton(
               onPressed: savingPhotos

@@ -92,22 +92,38 @@ class WorkerDocumentRepository {
     return rows.first['company_id'] as String;
   }
 
-  Future<T> _withPhotoSchema<T>(Future<T> Function() action) async {
+  bool _photoSchemaAvailable = true;
+  bool get photoEditingAvailable => _photoSchemaAvailable;
+  static const photoPreparationMessage = '複数写真の保存準備中です。保存済みの写真は確認できます。';
+  static const _legacyStatusColumns =
+      'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at';
+  static String _statusColumns(bool photos) => photos
+      ? _legacyStatusColumns.replaceFirst(
+          'attachment_path,',
+          'attachment_path, attachment_paths,',
+        )
+      : _legacyStatusColumns;
+
+  Future<List<Map<String, dynamic>>> _readPhotoStatuses(
+    Future<List<Map<String, dynamic>>> Function(bool photos) read,
+  ) async {
     try {
-      return await action();
+      final result = await read(true);
+      _photoSchemaAvailable = true;
+      return result;
     } on PostgrestException catch (error) {
-      if ((error.code == '42703' || error.code == 'PGRST204') &&
-          error.message.contains('attachment_paths')) {
-        throw StateError('複数写真の保存準備がまだ完了していません。管理者へ確認してください。既存の写真は保持されています。');
+      if ((error.code != '42703' && error.code != 'PGRST204') ||
+          !error.message.contains('attachment_paths')) {
+        rethrow;
       }
-      rethrow;
+      // Retry only a proven missing new column. Keep the same RLS filters and
+      // propagate permission/network errors instead of hiding them.
+      _photoSchemaAvailable = false;
+      return read(false);
     }
   }
 
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() =>
-      _withPhotoSchema(_loadAll);
-
-  Future<Map<String, List<Map<String, dynamic>>>> _loadAll() async {
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
 
@@ -144,16 +160,16 @@ class WorkerDocumentRepository {
       workersQuery = workersQuery.eq('id', ownWorkerId);
     }
     final workers = await workersQuery.order('name');
-    var statusesQuery = _client
-        .from('worker_document_statuses')
-        .select(
-          'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, attachment_paths, notes, created_at, updated_at',
-        )
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
-    }
-    final statuses = await statusesQuery;
+    final statuses = await _readPhotoStatuses((photos) async {
+      var statusesQuery = _client
+          .from('worker_document_statuses')
+          .select(_statusColumns(photos))
+          .eq('company_id', companyId);
+      if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+        statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
+      }
+      return await statusesQuery;
+    });
     for (final row in statuses) {
       workerDocumentPaths(row);
     }
@@ -165,10 +181,7 @@ class WorkerDocumentRepository {
     };
   }
 
-  Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() =>
-      _withPhotoSchema(_loadOwnDocuments);
-
-  Future<Map<String, List<Map<String, dynamic>>>> _loadOwnDocuments() async {
+  Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() async {
     final worker = await currentWorker();
     final companyId = await _companyId();
     final requirements = await _client
@@ -185,13 +198,13 @@ class WorkerDocumentRepository {
         .select('id, name, affiliation, status')
         .eq('company_id', companyId)
         .eq('id', worker.workerId);
-    final statuses = await _client
-        .from('worker_document_statuses')
-        .select(
-          'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, attachment_paths, notes, created_at, updated_at',
-        )
-        .eq('company_id', companyId)
-        .eq('worker_id', worker.workerId);
+    final statuses = await _readPhotoStatuses(
+      (photos) async => await _client
+          .from('worker_document_statuses')
+          .select(_statusColumns(photos))
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId),
+    );
     for (final row in statuses) {
       workerDocumentPaths(row);
     }
@@ -314,6 +327,7 @@ class WorkerDocumentRepository {
     required List<WorkerDocumentPhoto> photos,
     bool own = false,
   }) async {
+    if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
     if (own) {
       final worker = await currentWorker();
       if (row['worker_id'] != worker.workerId) {
@@ -425,6 +439,7 @@ class WorkerDocumentRepository {
     required List<WorkerDocumentPhoto> photos,
     required List<String> expectedPaths,
   }) async {
+    if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
     final worker = await currentWorker();
     final companyId = await _companyId();
     final existing = await _client

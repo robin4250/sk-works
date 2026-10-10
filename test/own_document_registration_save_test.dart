@@ -63,7 +63,7 @@ class _Gateway implements OwnDocumentRegistrationGateway {
 }
 
 class _PhotosGateway extends _Gateway implements OwnDocumentPhotoGateway {
-  _PhotosGateway()
+  _PhotosGateway({this.editingAvailable = true})
     : super(
         statuses: [
           {
@@ -76,6 +76,9 @@ class _PhotosGateway extends _Gateway implements OwnDocumentPhotoGateway {
         ],
       );
   final edits = <List<WorkerDocumentPhoto>>[];
+  final bool editingAvailable;
+  @override
+  bool get photoEditingAvailable => editingAvailable;
   @override
   Future<String> signedUrl(String path) async => 'https://example.test/$path';
   @override
@@ -121,6 +124,32 @@ Future<void> _selectPhoto(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'pending schema keeps existing photos readable and editing disabled',
+    (tester) async {
+      final gateway = _PhotosGateway(editingAvailable: false);
+      await tester.pumpWidget(
+        MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('提出済み / 画像あり（3枚）'), findsOneWidget);
+      await tester.tap(find.text('運転免許証'));
+      await tester.pumpAndSettle();
+      expect(find.text('複数写真の保存準備中です。保存済みの写真は確認できます。'), findsOneWidget);
+      expect(find.text('写真を確定'), findsNothing);
+      expect(
+        tester
+            .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '1枚撮影'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('閉じる'));
+      await tester.pumpAndSettle();
+      expect(gateway.edits, isEmpty);
+      expect(gateway.calls, isEmpty);
+    },
+  );
+
   testWidgets(
     'saved multi-photo list opens editor and cancellation makes no write',
     (tester) async {
