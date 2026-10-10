@@ -272,7 +272,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         // request another camera shot or GPS sample for the move action.
         final isMove = _visitsEnabled && _openVisit != null;
         if (isMove && (_openVisit!['route_stop_id'] is! String ||
-            _openVisit!['start_capture_id'] is! String)) {
+            (_openVisit!['route_stop_id'] as String).isEmpty ||
+            _openVisit!['start_capture_id'] is! String ||
+            (_openVisit!['start_capture_id'] as String).isEmpty)) {
           throw StateError('移動対象の現場記録を確認できません');
         }
         if (isMove) {
