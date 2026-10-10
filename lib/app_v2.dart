@@ -769,7 +769,7 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'route_visit':
-        final shifts = _attendanceStatus.openShifts;
+        final shifts = _homeAttendanceStatus.openShifts;
         if (shifts.length != 1 || shifts.single.routeId == null) return;
         page = RouteJourneyCapturePage(sourceId: shifts.single.id);
         break;
@@ -958,7 +958,8 @@ class _HomePageState extends State<HomePage> {
         key == 'attendance_method_vehicle' ||
         key == 'workplace_select' ||
         key == 'vehicle_select' ||
-        key == 'route_select') {
+        key == 'route_select' ||
+        key == 'route_visit') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
