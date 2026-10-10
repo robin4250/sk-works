@@ -165,8 +165,16 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     for (final key in _flags.keys) {
       _flags[key] = false;
     }
+    _flags['health'] = true;
+    _flags['pension'] = true;
     _initialConditionsConfirmed = false;
   }
+
+  String get _insurancePlan => _flags['health']! && _flags['pension']!
+      ? 'kenpo'
+      : !_flags['health']! && !_flags['pension']!
+      ? 'kokuho'
+      : 'custom';
 
   bool get _needsInitialConfirmation =>
       _items.isEmpty && (_income != 'fixed' || _insurance != 'fixed');
@@ -304,12 +312,19 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       enabled: _canEdit && !_busy && !_uncertain,
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
-      validator: (s) =>
-          s == null ||
-              !RegExp(r'^\d{1,9}$').hasMatch(s) ||
-              (key == 'dependents' && int.parse(s) > 99)
-          ? '0以上の整数を入力してください'
-          : null,
+      validator: (s) {
+        if (_insurance == 'rates' &&
+            ((key == 'health_base_yen' && _flags['health']!) ||
+                (key == 'pension_base_yen' && _flags['pension']!)) &&
+            (int.tryParse(s ?? '') ?? 0) <= 0) {
+          return '加入している保険の標準報酬月額を入力してください';
+        }
+        return s == null ||
+                !RegExp(r'^\d{1,9}$').hasMatch(s) ||
+                (key == 'dependents' && int.parse(s) > 99)
+            ? '0以上の整数を入力してください'
+            : null;
+      },
     ),
   );
 
@@ -360,7 +375,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                           const Text(
                             '初期設定は自動計算です。次の内容を確認して保存すると、給与へ反映されます。\n'
                             '① 所得税の甲欄・乙欄と扶養人数を確認\n'
-                            '② 加入している保険を選び、標準報酬月額を入力\n'
+                            '② けんぽ／国保を選び、加入している保険の標準報酬月額を入力\n'
                             '③ 適用開始月と会社の登録料率を確認して保存',
                           ),
                           const SizedBox(height: 6),
@@ -445,6 +460,33 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       : null,
                 ),
                 if (_insurance == 'rates') ...[
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('insurance-plan-$_insurancePlan'),
+                    initialValue: _insurancePlan,
+                    decoration: const InputDecoration(labelText: '加入保険'),
+                    items: const [
+                      DropdownMenuItem(value: 'kenpo', child: Text('けんぽ')),
+                      DropdownMenuItem(
+                        value: 'kokuho',
+                        child: Text('国保・社会保険未加入'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'custom',
+                        enabled: false,
+                        child: Text('個別に選択'),
+                      ),
+                    ],
+                    onChanged: _canEdit && !_busy && !_uncertain
+                        ? (v) {
+                            if (v == 'custom') return;
+                            setState(() {
+                              _flags['health'] = v == 'kenpo';
+                              _flags['pension'] = v == 'kenpo';
+                            });
+                          }
+                        : null,
+                  ),
+                  const Text('国保へ切り替えると健康保険・厚生年金を外します。その他の項目は個別に確認してください。'),
                   for (final item in const {
                     'health': '健康保険',
                     'pension': '厚生年金',

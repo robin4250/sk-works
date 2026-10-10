@@ -71,7 +71,7 @@ void main() {
           find.byType(DropdownButtonFormField<String>),
         )
         .map((field) => field.initialValue);
-    expect(modes, ['koh', 'rates']);
+    expect(modes, ['koh', 'rates', 'kenpo']);
     await tapSave(t);
     expect(find.byType(AlertDialog), findsNothing);
     expect(calls, ['read_worker_payroll_tax_conditions']);
@@ -94,6 +94,17 @@ void main() {
         ],
       );
     });
+    for (final label in ['健康保険の標準報酬月額（円）', '厚生年金の標準報酬月額（円）']) {
+      final field = find.widgetWithText(TextFormField, label);
+      await t.scrollUntilVisible(
+        field,
+        350,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.enterText(field, '300000');
+      t.testTextInput.hide();
+      await t.pumpAndSettle();
+    }
     final confirmation = find.widgetWithText(
       CheckboxListTile,
       '扶養人数・保険の加入／未加入・標準報酬月額を確認しました',
@@ -106,6 +117,7 @@ void main() {
     await t.tap(confirmation);
     await t.pumpAndSettle();
     await tapSave(t);
+    expect(find.byType(AlertDialog), findsOneWidget);
     expect(sent, isNull);
     await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
     await t.pumpAndSettle();
@@ -114,6 +126,10 @@ void main() {
       ...value,
       'income_mode': 'koh',
       'insurance_mode': 'rates',
+      'health': true,
+      'pension': true,
+      'health_base_yen': 300000,
+      'pension_base_yen': 300000,
     });
     await t.drag(find.byType(ListView), const Offset(0, 4000));
     await t.pumpAndSettle();
@@ -181,13 +197,36 @@ void main() {
             find.byType(DropdownButtonFormField<String>),
           )
           .map((field) => field.initialValue),
-      ['koh', 'rates'],
+      ['koh', 'rates', 'kenpo'],
+    );
+    await t.scrollUntilVisible(
+      find.widgetWithText(CheckboxListTile, '健康保険'),
+      300,
+      scrollable: find.byType(Scrollable).first,
     );
     expect(
       t
-          .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
-          .every((field) => field.value == false),
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, '健康保険'),
+          )
+          .value,
       isTrue,
+    );
+    expect(
+      t
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, '厚生年金'),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      t
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, '子ども・子育て支援金'),
+          )
+          .value,
+      isFalse,
     );
     expect(
       t
@@ -196,6 +235,97 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+    'national insurance clears only health and pension without saving',
+    (t) async {
+      var writes = 0;
+      await open(t, (name, params) async {
+        if (!name.startsWith('read_')) writes++;
+        return state();
+      });
+      final plan = find.byKey(const ValueKey('insurance-plan-kenpo'));
+      await t.scrollUntilVisible(
+        plan,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.tap(plan);
+      await t.pumpAndSettle();
+      await t.tap(find.text('国保・社会保険未加入').last);
+      await t.pumpAndSettle();
+      expect(
+        t
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, '健康保険'),
+            )
+            .value,
+        isFalse,
+      );
+      expect(
+        t
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, '厚生年金'),
+            )
+            .value,
+        isFalse,
+      );
+      expect(
+        t
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, '子ども・子育て支援金'),
+            )
+            .value,
+        isFalse,
+      );
+      await t.tap(find.byKey(const ValueKey('insurance-plan-kokuho')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('けんぽ').last);
+      await t.pumpAndSettle();
+      expect(
+        t
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, '健康保険'),
+            )
+            .value,
+        isTrue,
+      );
+      expect(
+        t
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, '厚生年金'),
+            )
+            .value,
+        isTrue,
+      );
+      expect(writes, 0);
+    },
+  );
+  testWidgets(
+    'initial kenpo requires actual standard remuneration before save',
+    (t) async {
+      var writes = 0;
+      await open(t, (name, params) async {
+        if (!name.startsWith('read_')) writes++;
+        return state();
+      });
+      final confirmation = find.widgetWithText(
+        CheckboxListTile,
+        '扶養人数・保険の加入／未加入・標準報酬月額を確認しました',
+      );
+      await t.scrollUntilVisible(
+        confirmation,
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.tap(confirmation);
+      await t.pumpAndSettle();
+      await tapSave(t);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('加入している保険の標準報酬月額を入力してください'), findsNWidgets(2));
+      expect(writes, 0);
+    },
+  );
 
   testWidgets('reader can inspect but cannot save conditions', (t) async {
     await open(t, (name, params) async => state(edit: false));
