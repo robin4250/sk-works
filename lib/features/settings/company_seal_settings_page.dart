@@ -194,6 +194,13 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
     if (_busy || settings == null) return;
     setState(() => _busy = true);
     try {
+      // A saved design must be previewed using the registered company and
+      // the same seal renderer used by exported PDFs.
+      final contextNow = await _source.loadContext();
+      if (contextNow.companyId != settings.companyId ||
+          contextNow.name != settings.name) {
+        throw StateError('Company context changed.');
+      }
       if (_selectedStyle == CompanySealPdf.reishoStyle &&
           (!_coverageAvailable || _missingCharacters.isNotEmpty)) {
         throw StateError('Unsupported registered characters.');
