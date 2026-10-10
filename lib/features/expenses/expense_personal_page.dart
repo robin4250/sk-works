@@ -245,10 +245,15 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       enabled: editable,
                       maxLength: 1000,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: '内容',
-                        helperText: '税理士・会計士に申請する文章なので、分かりやすく詳細を書き込んでください',
-                        helperMaxLines: 4,
+                      decoration: const InputDecoration(labelText: '内容'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: Text(
+                        '税理士・会計士が内容を確認するため、いつ・どこで・何のために・何を購入／利用したかを具体的に記入してください。'
+                        '説明が不足すると、再度確認をお願いする場合があります。\n'
+                        '例：○○現場で使用する養生テープ3巻を、○○店で購入。',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
                     TextField(
