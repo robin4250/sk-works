@@ -22,8 +22,9 @@ class QualificationPhotoSubmissionReviewRepository {
   }
 
   void requireActor(String actor) {
-    if (client.auth.currentUser?.id != actor)
+    if (client.auth.currentUser?.id != actor) {
       throw StateError('ログインが変更されました。画面を開き直してください。');
+    }
   }
 
   Future<dynamic> _call(String action, Map<String, dynamic> data) async {

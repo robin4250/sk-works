@@ -258,7 +258,7 @@ class _OwnQualificationRegistrationPageState
     setState(() => _photoBusy = true);
     try {
       await repository.cancelDraft();
-      if (!mounted || actor == null || actor != repository.actor) return;
+      if (!mounted || actor != repository.actor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('未送信の写真申請を取り消しました。新しい申請を作成できます。')),
       );

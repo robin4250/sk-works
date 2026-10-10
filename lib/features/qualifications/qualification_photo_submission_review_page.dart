@@ -86,7 +86,7 @@ class _ReviewState extends State<QualificationPhotoSubmissionReviewPage> {
       if (paths.isEmpty) {
         _message('登録済みの資格写真をすべて削除する申請です。');
       }
-      final urls = await Future.wait(paths.map(_repository!.signedUrl));
+      final urls = await Future.wait(paths.map(_repository.signedUrl));
       _checkActor();
       if (!mounted) return;
       await Navigator.of(context).push(

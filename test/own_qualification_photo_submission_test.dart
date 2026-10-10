@@ -240,8 +240,9 @@ class PhotoFixture {
     upload: (path, bytes, options) async {
       expect(options.upsert, false);
       uploads.add(path);
-      if (uploads.length == failUploadAt)
+      if (uploads.length == failUploadAt) {
         throw StateError('upload interrupted');
+      }
       successfulUploads.add(path);
     },
   );
@@ -298,8 +299,9 @@ class PhotoFixture {
     if (action == 'submit') {
       if ((request['upload_paths'] as List).any(
         (entry) => !successfulUploads.contains(entry['path']),
-      ))
+      )) {
         throw StateError('missing files');
+      }
       request['status'] = 'pending';
       if (loseSubmitResponse) {
         loseSubmitResponse = false;
@@ -312,12 +314,14 @@ class PhotoFixture {
     }
     if (action == 'get_photos' &&
         request['status'] == 'pending' &&
-        loseGetPending)
+        loseGetPending) {
       throw StateError('get response lost');
+    }
     if (action == 'get_photos' &&
         request['cancelled'] == true &&
-        loseGetAfterCancel)
+        loseGetAfterCancel) {
       throw StateError('unknown result');
+    }
     return Map<String, dynamic>.from(request);
   }
 }
