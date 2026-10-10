@@ -585,7 +585,9 @@ class _CompanySubmittedDocumentsPageState
               children: [
                 for (var i = 0; i < photos.length; i++)
                   ListTile(
-                    title: Text('写真 ${i + 1}'),
+                    leading: const Icon(Icons.image_outlined),
+                    title: Text(i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}'),
+                    subtitle: Text(photos.photos[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => refresh(() => photos.removeAt(i)),
