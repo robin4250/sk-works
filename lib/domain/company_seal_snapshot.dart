@@ -33,5 +33,19 @@ class CompanySealSnapshot {
     );
   }
 
+  /// Only unsaved previews may use the company's current choice. Saved
+  /// documents always read their original snapshot through [fromJson].
+  static CompanySealSnapshot forPreview(Map<String, dynamic> company) {
+    final name = company['name']?.toString() ?? '';
+    final style = company['company_seal_style']?.toString() ?? 'legacy';
+    if (name.trim().isEmpty && style == 'legacy') return legacy;
+    return fromJson({
+      'version': 1,
+      'style': style,
+      'name': name,
+      'company_id': company['id'],
+    });
+  }
+
   String registeredName(String legacyName) => name.isEmpty ? legacyName : name;
 }

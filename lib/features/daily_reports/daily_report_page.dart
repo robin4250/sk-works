@@ -887,13 +887,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   child: Icon(Icons.photo_camera_outlined),
                                 ),
                                 title: Text(
-                                  SkoLanguageController.tr('出勤確認写真'),
+                                  SkoLanguageController.tr('勤怠・現場記録'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
                                 subtitle: Text(
-                                  SkoLanguageController.trParams('{count}枚 / この日報に紐付いています', {'count': _evidence.length}),
+                                  SkoLanguageController.trParams('{count}件 / この日報に紐付いています', {'count': _evidence.length}),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => Navigator.of(context).push(
@@ -1367,7 +1367,7 @@ class DailyReportEvidencePage extends StatelessWidget {
     final repository = DailyReportRepository.maybeCreate();
     return Scaffold(
       appBar: AppBar(
-        title: Text(SkoLanguageController.tr('出勤確認写真一覧')),
+        title: Text(SkoLanguageController.tr('勤怠・現場記録一覧')),
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -1396,7 +1396,7 @@ class DailyReportEvidencePage extends StatelessWidget {
                     Text(
                       item.workerName +
                           ' / ' +
-                          (item.eventType == 'route_stop' ? SkoLanguageController.tr('途中現場') : item.eventType == 'clock_out' ? SkoLanguageController.tr('退勤') : SkoLanguageController.tr('出勤')),
+                          SkoLanguageController.tr(item.eventLabel),
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                       ),
@@ -1423,22 +1423,22 @@ class DailyReportEvidencePage extends StatelessWidget {
                     if (item.stopLabel != null) Text('${SkoLanguageController.tr('対象現場')}: ${item.stopLabel}'),
                     if (item.originKind != null) Text(SkoLanguageController.tr(item.originKind == 'company' ? '会社出勤後に現場へ' : '直行直帰')),
                     if (item.photoObservedAt != null) Text('${SkoLanguageController.tr('写真観測時刻')}: ${item.photoObservedAt!.toIso8601String()}'),
-                    if (item.photoStatus != null)
+                    if (!item.isTimeOnly && item.photoStatus != null)
                       Text(item.photoCapturedAt == null
                         ? SkoLanguageController.tr(item.eventType == 'route_stop' ? '撮影日時未取得（表示時刻は途中現場の記録時刻）' : '撮影日時未取得（表示時刻は勤怠登録時刻）')
                         : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}'),
-                    if (item.gpsStatus != null && item.capturedAddress?.trim().isNotEmpty != true)
+                    if (!item.isTimeOnly && item.gpsStatus != null && item.capturedAddress?.trim().isNotEmpty != true)
                       Text(SkoLanguageController.tr('撮影住所未取得')),
                     if (item.capturedAddress?.trim().isNotEmpty == true)
                       Text(item.capturedAddress!),
-                    if (item.photoStatus != null)
+                    if (!item.isTimeOnly && item.photoStatus != null)
                       Text(SkoLanguageController.trParams('写真: {photo} / GPS: {gps}', {
                         'photo': _captureStatusLabel(item.photoStatus),
                         'gps': _captureStatusLabel(item.gpsStatus),
                       })),
                     if (item.storagePath.isEmpty)
                       SizedBox(height: 180,
-                        child: Center(child: Text(SkoLanguageController.tr('写真未登録・送信失敗')))),
+                        child: Center(child: Text(SkoLanguageController.tr(item.missingPhotoLabel)))),
                     if (repository != null && item.storagePath.isNotEmpty)
                       FutureBuilder<String>(
                         key: ValueKey('${item.storageBucket}:${item.storagePath}'),

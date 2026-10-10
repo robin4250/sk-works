@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import 'home_route_action_state.dart';
 import 'initial_company_rates_card.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
@@ -41,6 +42,8 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showAttendanceReport = true,
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
+    this.routeActionState = HomeRouteActionState.unavailable,
+    this.hasPendingRouteRecord = false,
     this.appearance = const HomeAppearance(),
     this.contentTopInset = 10,
     required this.onOpen,
@@ -59,6 +62,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showAttendanceReport;
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final double contentTopInset;
   final Future<void> Function(String key) onOpen;
@@ -109,6 +114,8 @@ class FriendlyHomeContent extends StatelessWidget {
                 showAttendanceReport: showAttendanceReport,
                 showTodayAttendance: showTodayAttendance,
                 attendanceStatus: attendanceStatus,
+                routeActionState: routeActionState,
+                hasPendingRouteRecord: hasPendingRouteRecord,
                 appearance: appearance,
                 onOpen: onOpen,
                 onReorderAction: onReorderAction,
@@ -230,12 +237,16 @@ class _RequiredDocumentAttentionCardState
 class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
+    required this.routeActionState,
+    required this.hasPendingRouteRecord,
     required this.vehicleRoutesEnabled,
     required this.buttonOpacity,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final bool vehicleRoutesEnabled;
   final double buttonOpacity;
   final Future<void> Function(String key) onOpen;
@@ -394,13 +405,46 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     icon: const Icon(Icons.tune_outlined),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
-                  if (isWorking && status.openShifts.length == 1 &&
-                      status.openShifts.single.routeId != null) ...[
+                  if (vehicleRoutesEnabled) ...[
                     const SizedBox(height: 9),
-                    OutlinedButton.icon(
-                      onPressed: () => onOpen('route_visit'),
-                      icon: const Icon(Icons.route_outlined),
-                      label: Text(SkoLanguageController.tr('現場到着・現場移動')),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: routeActionState == HomeRouteActionState.arrive && isWorking
+                              ? FilledButton.icon(
+                                  onPressed: () => onOpen('route_visit_arrive'),
+                                  icon: const Icon(Icons.place_outlined),
+                                  label: Text(SkoLanguageController.tr('現場到着')),
+                                )
+                              : OutlinedButton.icon(
+                                  onPressed: null,
+                                  icon: const Icon(Icons.place_outlined),
+                                  label: Text(SkoLanguageController.tr('現場到着')),
+                                ),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: routeActionState == HomeRouteActionState.move && isWorking
+                              ? FilledButton.icon(
+                                  onPressed: () => onOpen('route_visit_move'),
+                                  icon: const Icon(Icons.route_outlined),
+                                  label: Text(SkoLanguageController.tr('現場移動')),
+                                )
+                              : OutlinedButton.icon(
+                                  onPressed: null,
+                                  icon: const Icon(Icons.route_outlined),
+                                  label: Text(SkoLanguageController.tr('現場移動')),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (hasPendingRouteRecord) ...[
+                    const SizedBox(height: 9),
+                    TextButton.icon(
+                      onPressed: () => onOpen('route_visit_recover'),
+                      icon: const Icon(Icons.refresh),
+                      label: Text(SkoLanguageController.tr('保留記録を再確認')),
                     ),
                   ],
                   const SizedBox(height: 9),
@@ -482,6 +526,8 @@ class _OrderedHomeContent extends StatelessWidget {
     required this.showAttendanceReport,
     required this.showTodayAttendance,
     required this.attendanceStatus,
+    required this.routeActionState,
+    required this.hasPendingRouteRecord,
     required this.appearance,
     required this.onOpen,
     required this.onReorderAction,
@@ -496,6 +542,8 @@ class _OrderedHomeContent extends StatelessWidget {
   final bool showAttendanceReport;
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function(String draggedKey, String targetKey)?
@@ -566,6 +614,8 @@ class _OrderedHomeContent extends StatelessWidget {
               opacity: appearance.cardOpacity,
               child: _PersonalAttendanceCard(
                 status: attendanceStatus,
+                routeActionState: routeActionState,
+                hasPendingRouteRecord: hasPendingRouteRecord,
                 vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
                 buttonOpacity: appearance.cardButtonOpacity,
                 onOpen: onOpen,

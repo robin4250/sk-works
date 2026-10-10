@@ -229,7 +229,7 @@ class DailyReportPdfService {
             pw.Text(
               SkoLanguageController.tr(evidence.isEmpty
                 ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
-                : '出勤・退勤の写真と取得情報は添付ページに記載しています。'),
+                : '勤怠・現場の記録時刻と写真・位置情報は添付ページに記載しています。'),
               textAlign: pw.TextAlign.center,
               style: const pw.TextStyle(
                 fontSize: 8.5,
@@ -248,7 +248,7 @@ class DailyReportPdfService {
       document.addPage(pw.MultiPage(pageFormat: format,
         margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
         build: (_) => [
-          pw.Text(SkoLanguageController.tr('日報の写真・GPS記録'),
+          pw.Text(SkoLanguageController.tr('日報の勤怠・現場記録'),
             style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           for (final caption in attachment.captions)
@@ -262,7 +262,7 @@ class DailyReportPdfService {
             pw.Container(height: 50 * PdfPageFormat.mm,
               alignment: pw.Alignment.center, color: PdfColors.grey100,
               child: pw.Text(SkoLanguageController.tr(attachment.record.storagePath.isEmpty
-                ? '写真未登録・送信失敗' : '保存済み写真を読み込めませんでした'))),
+                ? attachment.record.missingPhotoLabel : '保存済み写真を読み込めませんでした'))),
         ]));
     }
     return document.save();

@@ -185,7 +185,7 @@ class PaymentCertificateRepository {
 
     final companyRows = await _client
         .from('companies')
-        .select('name,postal_code,address,phone,fax,company_seal_enabled')
+        .select('id,name,postal_code,address,phone,fax,company_seal_enabled,company_seal_style')
         .eq('id', companyId)
         .limit(1);
     final company = companyRows.isEmpty
@@ -304,6 +304,7 @@ class PaymentCertificateRepository {
     required DateTime month,
   }) => PaymentCertificateRecord(
     id: 'preview:${setting.partnerCompanyId}:${month.year}-${month.month}',
+    companySealSnapshot: CompanySealSnapshot.forPreview(company),
     partnerCompanyId: setting.partnerCompanyId,
     partnerCompanyName: setting.partnerCompanyName,
     periodStart: DateTime(month.year, month.month, 1),
@@ -445,7 +446,7 @@ class PaymentCertificateRepository {
     final companyId = await _companyId();
     final companyRows = await _client
         .from('companies')
-        .select('name,postal_code,address,phone,fax,company_seal_enabled')
+        .select('id,name,postal_code,address,phone,fax,company_seal_enabled,company_seal_style')
         .eq('id', companyId)
         .limit(1);
     final company = companyRows.isEmpty
@@ -560,6 +561,7 @@ class PaymentCertificateRepository {
 
     return PaymentCertificateRecord(
       id: 'settings-preview',
+      companySealSnapshot: CompanySealSnapshot.forPreview(company),
       partnerCompanyName: value.partnerCompanyName,
       periodStart: start,
       periodEnd: end,
