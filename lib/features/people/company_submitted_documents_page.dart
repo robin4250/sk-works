@@ -431,6 +431,12 @@ class _CompanySubmittedDocumentsPageState
                   label: Text(path.isEmpty ? 'カメラ・写真・ファイル' : '書類を差替'),
                 ),
                 const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _busy ? null : () => _pickMultiplePhotos(row),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('表裏写真'),
+                ),
+                const SizedBox(width: 8),
                 TextButton(
                   onPressed: _busy ? null : () => _edit(row),
                   child: const Text('編集'),
@@ -557,6 +563,82 @@ class _CompanySubmittedDocumentsPageState
     name.dispose();
     notes.dispose();
     return result;
+  }
+
+  // Keep all selected sides in memory until the user confirms the set.
+  // Existing server attachments are never overwritten by a second photo.
+  Future<void> _pickMultiplePhotos(Map<String, dynamic> row) async {
+    final photos = <XFile>[];
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('書類の写真（表・裏）'),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < photos.length; i++)
+                  ListTile(
+                    title: Text('写真 ${i + 1}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => refresh(() => photos.removeAt(i)),
+                    ),
+                    onTap: () async {
+                      final bytes = await photos[i].readAsBytes();
+                      if (!context.mounted) return;
+                      await showDialog<void>(
+                        context: context,
+                        builder: (previewContext) => AlertDialog(
+                          content: Image.memory(bytes, fit: BoxFit.contain),
+                          actions: [TextButton(
+                            onPressed: () => Navigator.pop(previewContext),
+                            child: const Text('閉じる'),
+                          )],
+                        ),
+                      );
+                    },
+                  ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final picked = await _imagePicker.pickImage(
+                      source: ImageSource.camera,
+                      imageQuality: 90,
+                      maxWidth: 2600,
+                    );
+                    if (picked != null && context.mounted) {
+                      refresh(() => photos.add(picked));
+                    }
+                  },
+                  icon: const Icon(Icons.add_a_photo_outlined),
+                  label: const Text('写真を撮影して追加'),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final picked = await _imagePicker.pickMultiImage(
+                      imageQuality: 90,
+                      maxWidth: 2600,
+                    );
+                    if (context.mounted && picked.isNotEmpty) {
+                      refresh(() => photos.addAll(picked));
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('ライブラリから追加'),
+                ),
+                const Text('写真の保存方式を準備中です。ここでは既存の登録写真を変更しません。'),
+              ],
+            ),
+          ),
+          actions: [TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('閉じる'),
+          )],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickFile(Map<String, dynamic> row) async {
