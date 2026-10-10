@@ -36,7 +36,9 @@ void main() {
       expect(button.onPressed, isNull);
     }
     for (final button in tester.widgetList<IconButton>(
-      find.byTooltip('差し替え'),
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '差し替え',
+      ),
     )) {
       expect(button.onPressed, isNull);
     }
