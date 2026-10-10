@@ -311,7 +311,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHomeAttendanceStatus() async {
+    // Bind all responses to the account that initiated the request, including
+    // the first attendance read, before any asynchronous work starts.
+    final requestActor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
     final generation = ++_homeAttendanceGeneration;
+    bool acceptsResponse() => mounted &&
+        generation == _homeAttendanceGeneration &&
+        requestActor != null &&
+        SupabaseBackend.isInitialized &&
+        SupabaseBackend.client.auth.currentUser?.id == requestActor;
     if (mounted) {
       setState(() {
         _homeRouteActionState = HomeRouteActionState.unavailable;
@@ -319,16 +328,15 @@ class _HomePageState extends State<HomePage> {
       });
     }
     final repository = _attendanceVerificationRepository;
-    if (repository == null) return;
+    if (repository == null || requestActor == null) return;
     try {
       final value = await repository.loadHomeAttendanceStatus();
-      if (!mounted || generation != _homeAttendanceGeneration) return;
+      if (!acceptsResponse()) return;
       setState(() => _homeAttendanceStatus = value);
       final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
-      if (routeRepository == null) return;
-      final actor = routeRepository.userId;
+      if (routeRepository == null || routeRepository.userId != requestActor) return;
       final pending = await routeRepository.allPending();
-      if (!mounted || generation != _homeAttendanceGeneration || actor != routeRepository.userId) return;
+      if (!acceptsResponse()) return;
       // Recovery remains reachable even after clock-out or when the current
       // shift differs from the durable command. Never choose between records.
       setState(() => _homePendingRouteSourceId = pending.length == 1
@@ -336,7 +344,7 @@ class _HomePageState extends State<HomePage> {
       if (value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) return;
       final shift = value.openShifts.single;
       final workspace = await routeRepository.workspace(shift.id);
-      if (!mounted || generation != _homeAttendanceGeneration || actor != routeRepository.userId) return;
+      if (!acceptsResponse()) return;
       setState(() => _homeRouteActionState = pending.isNotEmpty
           ? HomeRouteActionState.unavailable
           : homeRouteActionState(workspace, shift.id));
