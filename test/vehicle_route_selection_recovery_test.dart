@@ -10,15 +10,19 @@ class Access implements VehicleRouteSelectionAccess {
   bool fail = false;
   String? selected;
   int loads = 0, saves = 0, unrelatedLoads = 0;
+  List<Map<String, dynamic>>? routeRows;
   Completer<List<Map<String, dynamic>>>? delayed;
   @override
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     loads++;
     if (fail) throw StateError('offline');
     return delayed?.future ??
-        Future.value([
-          {'id': 'route', 'route_name': 'A現場 → B現場'},
-        ]);
+        Future.value(
+          routeRows ??
+              [
+                {'id': 'route', 'route_name': 'A現場 → B現場'},
+              ],
+        );
   }
 
   @override
@@ -55,6 +59,71 @@ Future<void> open(WidgetTester tester, Access access) async {
 }
 
 void main() {
+  testWidgets(
+    'selected route shows ordered destinations and clears without writes',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final access = Access()
+        ..selected = 'route'
+        ..routeRows = [
+          {
+            'id': 'route',
+            'route_name': '巡回',
+            'route_stops': [
+              {'stop_order': 3, 'address': '最後の訪問住所'},
+              {
+                'stop_order': 1,
+                'source_label': '取引会社の長い名称を含む訪問先',
+                'address': '東京都の長い住所を表示しても横にはみ出さない',
+              },
+              {
+                'stop_order': 2,
+                'sites': {'name': 'B現場', 'address': '現場の登録住所'},
+              },
+            ],
+          },
+        ];
+      await open(tester, access);
+      expect(find.text('回る順番（3地点）'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('取引会社の長い名称を含む訪問先')).dy,
+        lessThan(tester.getTopLeft(find.text('B現場')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('B現場')).dy,
+        lessThan(tester.getTopLeft(find.text('最後の訪問住所')).dy),
+      );
+      expect(find.text('現場の登録住所'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // Rendering must not reorder or change the repository's source rows.
+      expect(
+        (access.routeRows!.first['route_stops'] as List).first['stop_order'],
+        3,
+      );
+      expect(access.saves, 0);
+      expect(access.loads, 1);
+      await tester.tap(find.byType(DropdownButtonFormField<String?>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ルートを使わない').last);
+      await tester.pumpAndSettle();
+      expect(find.text('回る順番（3地点）'), findsNothing);
+      expect(access.selected, 'route');
+      expect(access.saves, 0);
+    },
+  );
+  testWidgets(
+    'empty selected route is identified without fabricating destinations',
+    (tester) async {
+      await open(tester, Access()..selected = 'route');
+      expect(find.text('回る順番（0地点）'), findsOneWidget);
+      expect(find.text('地点が未登録です。ルート管理で登録してください。'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'route load failure can retry without fetching unrelated vehicles or writing',
     (tester) async {
