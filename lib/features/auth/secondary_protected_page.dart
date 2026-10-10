@@ -47,9 +47,17 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   }
 
   Future<void> _loadState() async {
+    if (mounted) setState(() { _configuredLoading = true; _message = null; });
     final repository = _repository;
     final userId = repository?.currentUser?.id;
-    if (repository == null || userId == null) return;
+    if (repository == null || userId == null) {
+      if (!mounted) return;
+      setState(() {
+        _configuredLoading = false;
+        _message = 'ログイン状態を確認できません。ログイン後に再読み込みしてください。';
+      });
+      return;
+    }
 
     try {
       final configured = await repository.secondaryPasswordConfigured();
@@ -270,6 +278,29 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Never present password setup when authentication state was not loaded.
+    if (_message != null && !_secondaryConfigured) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.title)),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(_message!, textAlign: TextAlign.center),
+              ),
+              OutlinedButton.icon(
+                onPressed: _loadState,
+                icon: const Icon(Icons.refresh),
+                label: const Text('再読み込み'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
