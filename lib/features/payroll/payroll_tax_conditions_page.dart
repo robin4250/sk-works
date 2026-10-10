@@ -46,8 +46,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     ])
       key: false,
   };
-  String _insurance = 'fixed';
-  String _income = 'fixed';
+  String _insurance = 'rates';
+  String _income = 'koh';
+  bool _initialConditionsConfirmed = false;
   bool _busy = true;
   bool _loading = true;
   bool _canEdit = false;
@@ -152,6 +153,24 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     }
   }
 
+  void _resetInitialConditions() {
+    final today = DateTime.now();
+    _month.text = '${today.year}-${today.month.toString().padLeft(2, '0')}';
+    _insurance = 'rates';
+    _income = 'koh';
+    _birth.clear();
+    for (final controller in _amounts.values) {
+      controller.text = '0';
+    }
+    for (final key in _flags.keys) {
+      _flags[key] = false;
+    }
+    _initialConditionsConfirmed = false;
+  }
+
+  bool get _needsInitialConfirmation =>
+      _items.isEmpty && (_income != 'fixed' || _insurance != 'fixed');
+
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() {
@@ -164,7 +183,11 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       final raw = await _rpc('read_worker_payroll_tax_conditions', _scope);
       if (!mounted || generation != _generation) return;
       _accept(raw);
-      if (_items.isNotEmpty) _fill(_items.first);
+      if (_items.isNotEmpty) {
+        _fill(_items.first);
+      } else {
+        _resetInitialConditions();
+      }
       _uncertain = false;
     } catch (_) {
       if (!mounted || generation != _generation) return;
@@ -182,6 +205,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   Future<void> _save() async {
+    if (_needsInitialConfirmation && !_initialConditionsConfirmed) return;
     final generation = _generation;
     if (!_form.currentState!.validate()) return;
     final start = '${_month.text}-01';
@@ -322,7 +346,32 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   ),
                 if (_message != null) Text(_message!),
                 if (_items.isEmpty && _error == null)
-                  const Text('未設定：現在は従来の固定月額を使用しています。'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'はじめての自動計算設定',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '初期設定は自動計算です。次の内容を確認して保存すると、給与へ反映されます。\n'
+                            '① 所得税の甲欄・乙欄と扶養人数を確認\n'
+                            '② 加入している保険を選び、標準報酬月額を入力\n'
+                            '③ 適用開始月と会社の登録料率を確認して保存',
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '保険の未選択は未加入として保存されます。保存までは従来の固定月額を使用します。'
+                            '登録済みの条件は、再インストールしても引き継ぎます。',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 if (_items.isNotEmpty)
                   DropdownButtonFormField<String>(
                     initialValue: _items.first['starts_on'] as String,
@@ -436,9 +485,25 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 const Text(
                   '自動計算へ切り替える税・保険料を自由控除にも登録している場合は、二重控除にならないよう確認してください。',
                 ),
+                if (_canEdit && _needsInitialConfirmation)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('扶養人数・保険の加入／未加入・標準報酬月額を確認しました'),
+                    value: _initialConditionsConfirmed,
+                    onChanged: _busy || _uncertain
+                        ? null
+                        : (v) =>
+                              setState(() => _initialConditionsConfirmed = v!),
+                  ),
                 if (_canEdit)
                   FilledButton(
-                    onPressed: _busy || _uncertain ? null : _save,
+                    onPressed:
+                        _busy ||
+                            _uncertain ||
+                            (_needsInitialConfirmation &&
+                                !_initialConditionsConfirmed)
+                        ? null
+                        : _save,
                     child: const Text('確認して保存'),
                   ),
                 TextButton(

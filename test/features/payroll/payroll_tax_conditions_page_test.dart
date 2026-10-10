@@ -57,13 +57,146 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  testWidgets('unconfigured state does not silently enable automatic taxes', (
+  testWidgets('initial setup selects automatic modes without writing payroll', (
     t,
   ) async {
-    await open(t, (name, params) async => state());
-    expect(find.text('未設定：現在は従来の固定月額を使用しています。'), findsOneWidget);
-    expect(find.text('個別設定の固定月額'), findsWidgets);
+    final calls = <String>[];
+    await open(t, (name, params) async {
+      calls.add(name);
+      return state();
+    });
+    expect(find.text('はじめての自動計算設定'), findsOneWidget);
+    final modes = t
+        .widgetList<DropdownButtonFormField<String>>(
+          find.byType(DropdownButtonFormField<String>),
+        )
+        .map((field) => field.initialValue);
+    expect(modes, ['koh', 'rates']);
+    await tapSave(t);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(calls, ['read_worker_payroll_tax_conditions']);
   });
+
+  testWidgets('confirmed initial setup saves automatic modes and hides guide', (
+    t,
+  ) async {
+    Map<String, dynamic>? sent;
+    await open(t, (name, params) async {
+      if (name.startsWith('read_')) return state();
+      sent = params;
+      return state(
+        items: [
+          {
+            'starts_on': params['p_starts_on'],
+            'version': 1,
+            'value': params['p_value'],
+          },
+        ],
+      );
+    });
+    final confirmation = find.widgetWithText(
+      CheckboxListTile,
+      '扶養人数・保険の加入／未加入・標準報酬月額を確認しました',
+    );
+    await t.scrollUntilVisible(
+      confirmation,
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await t.tap(confirmation);
+    await t.pumpAndSettle();
+    await tapSave(t);
+    expect(sent, isNull);
+    await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
+    await t.pumpAndSettle();
+    expect(sent!['p_expected_version'], 0);
+    expect(sent!['p_value'], {
+      ...value,
+      'income_mode': 'koh',
+      'insurance_mode': 'rates',
+    });
+    await t.drag(find.byType(ListView), const Offset(0, 4000));
+    await t.pumpAndSettle();
+    expect(find.text('はじめての自動計算設定'), findsNothing);
+  });
+  testWidgets('stored fixed settings survive opening the updated app', (
+    t,
+  ) async {
+    await open(
+      t,
+      (name, params) async => state(
+        items: [
+          {
+            'starts_on': '2026-04-01',
+            'version': 3,
+            'value': {...value, 'dependents': 2},
+          },
+        ],
+      ),
+    );
+    expect(find.text('はじめての自動計算設定'), findsNothing);
+    final modes = t
+        .widgetList<DropdownButtonFormField<String>>(
+          find.byType(DropdownButtonFormField<String>),
+        )
+        .map((field) => field.initialValue);
+    expect(modes, ['2026-04-01', 'fixed', 'fixed']);
+  });
+  testWidgets('switching to an unconfigured worker resets the previous draft', (
+    t,
+  ) async {
+    Future<dynamic> rpc(String name, Map<String, dynamic> params) async => {
+      ...state(),
+      'worker_id': params['p_worker_id'],
+      'items': params['p_worker_id'] == 'worker'
+          ? [
+              {
+                'starts_on': '2026-04-01',
+                'version': 1,
+                'value': {
+                  ...value,
+                  'dependents': 3,
+                  'health': true,
+                  'health_base_yen': 300000,
+                },
+              },
+            ]
+          : [],
+    };
+    await open(t, rpc);
+    await t.pumpWidget(
+      MaterialApp(
+        home: PayrollTaxConditionsPage(
+          companyId: 'company',
+          workerId: 'other',
+          rpc: rpc,
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('はじめての自動計算設定'), findsOneWidget);
+    expect(
+      t
+          .widgetList<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>),
+          )
+          .map((field) => field.initialValue),
+      ['koh', 'rates'],
+    );
+    expect(
+      t
+          .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+          .every((field) => field.value == false),
+      isTrue,
+    );
+    expect(
+      t
+          .widgetList<TextFormField>(find.byType(TextFormField))
+          .any((field) => field.controller?.text == '300000'),
+      isFalse,
+    );
+  });
+
   testWidgets('reader can inspect but cannot save conditions', (t) async {
     await open(t, (name, params) async => state(edit: false));
     expect(find.byType(FilledButton), findsNothing);
@@ -74,14 +207,20 @@ void main() {
     var writes = 0;
     Map<String, dynamic>? sent;
     await open(t, (name, params) async {
-      if (name.startsWith('read_')) return state();
+      if (name.startsWith('read_')) {
+        return state(
+          items: [
+            {'starts_on': '2020-01-01', 'version': 1, 'value': value},
+          ],
+        );
+      }
       writes++;
       sent = params;
       return state(
         items: [
           {
             'starts_on': params['p_starts_on'],
-            'version': 1,
+            'version': 2,
             'value': params['p_value'],
           },
         ],
@@ -95,7 +234,7 @@ void main() {
     await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
     await t.pumpAndSettle();
     expect(writes, 1);
-    expect(sent!['p_expected_version'], 0);
+    expect(sent!['p_expected_version'], 1);
     expect(sent!['p_value'], value);
     await t.drag(find.byType(ListView), const Offset(0, 2000));
     await t.pumpAndSettle();
@@ -105,7 +244,13 @@ void main() {
     t,
   ) async {
     await open(t, (name, params) async {
-      if (name.startsWith('read_')) return state();
+      if (name.startsWith('read_')) {
+        return state(
+          items: [
+            {'starts_on': '2020-01-01', 'version': 1, 'value': value},
+          ],
+        );
+      }
       throw TimeoutException('lost reply');
     });
     await tapSave(t);
