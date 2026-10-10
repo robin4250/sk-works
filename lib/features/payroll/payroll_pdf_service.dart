@@ -259,6 +259,7 @@ class PayrollPdfService {
                       : CompanySealPdf.build(
                           seal.registeredName(statement.companyName),
                           style: seal.style,
+                          companyId: seal.companyId,
                           size: 32,
                           font: sealFont,
                           fallbackFont: fallbackFont,

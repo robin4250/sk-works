@@ -663,6 +663,7 @@ class InvoicePdfService {
                 invoice.companySealSnapshot.registeredName(
                     settings?.companyName ?? ''),
                 style: invoice.companySealSnapshot.style,
+                companyId: invoice.companySealSnapshot.companyId,
                 font: sealFont,
                 fallbackFont: fallbackFont,
               ),

@@ -1,3 +1,4 @@
+import '../../domain/company_seal_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
@@ -224,6 +225,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                           size: size,
                           font: font,
                           style: style,
+                          companyId: settings.companyId,
                         ),
                       ],
                     ),
@@ -278,7 +280,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('会社角印の書体を保存しました'))),
+        SnackBar(content: Text(SkoLanguageController.tr('会社角印の印影を保存しました'))),
       );
     } catch (_) {
       if (!mounted) return;
@@ -357,7 +359,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                 title: Text(SkoLanguageController.tr('会社角印')),
                 content: Text(
                   SkoLanguageController.tr(
-                    '登録会社名から角印を生成します。隷書は無償社内試験用です。PDFで確認してから保存してください。未対応文字や小さすぎる印影は保存できません。残る4種類は未完成です。',
+                    '会社専用のPNG印影は背景を透過して帳票に重ねます。新しく保存する帳票に反映し、過去の帳票は変更しません。会社名を自動で書き換える機能ではありません。隷書は無償社内試験用です。PDFで確認してから保存してください。',
                   ),
                 ),
                 actions: [
@@ -390,7 +392,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
             Text(
               SkoLanguageController.tr(
                 _styleSettings!.documentSnapshotsAvailable
-                    ? '試験用書体は新しく保存する帳票に反映します。過去の帳票は変更しません。'
+                    ? '選んだ印影は新しく保存する帳票に反映します。過去の帳票は変更しません。'
                     : '書体選択は試験用です。現在の帳票の印影は変更しません。',
               ),
             ),
@@ -400,9 +402,14 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
               ),
               initialValue: _selectedStyle,
               decoration: InputDecoration(
-                labelText: SkoLanguageController.tr('会社角印の書体'),
+                labelText: SkoLanguageController.tr('会社角印のデザイン'),
               ),
               items: [
+                for (final style in _styleSettings!.pngStyles)
+                  DropdownMenuItem(
+                    value: style,
+                    child: Text(CompanySealDesign.designs[style]!.label),
+                  ),
                 DropdownMenuItem(
                   value: CompanySealPdf.legacyStyle,
                   child: Text(SkoLanguageController.tr('既存の角印')),
@@ -423,7 +430,19 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                       }
                     },
             ),
-            Text(SkoLanguageController.tr('篆書体・印相体・古印体・古印体別配置は未完成です。')),
+            if (CompanySealDesign.isPng(_selectedStyle)) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Image.asset(
+                  CompanySealDesign.designs[_selectedStyle]!.asset,
+                  width: 150,
+                  height: 150,
+                  fit: BoxFit.contain,
+                  semanticLabel: '${_styleSettings!.name}の角印',
+                ),
+              ),
+              Text(SkoLanguageController.tr('この会社専用の印影です。別の会社名には自動変換されません。')),
+            ],
             if (!_styleSettings!.available)
               Text(SkoLanguageController.tr('書体の保存準備中です。PDFプレビューのみ利用できます。')),
             if (_selectedStyle == CompanySealPdf.reishoStyle) ...[
@@ -461,7 +480,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                               _smallReisho))
                   ? null
                   : _saveStyle,
-              child: Text(SkoLanguageController.tr('書体を保存')),
+              child: Text(SkoLanguageController.tr('印影を保存')),
             ),
             TextButton(
               onPressed: _showUsage,
