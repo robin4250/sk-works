@@ -82,8 +82,9 @@ class _PhotoEditorState extends State<_PhotoEditor> {
       );
     }
     final path = photo.path!;
-    if (path.toLowerCase().endsWith('.pdf'))
+    if (path.toLowerCase().endsWith('.pdf')) {
       return const Text('PDF（写真プレビュー対象外）');
+    }
     return FutureBuilder<String>(
       future: _urls.putIfAbsent(path, () => widget.signedUrl(path)),
       builder: (_, snapshot) {

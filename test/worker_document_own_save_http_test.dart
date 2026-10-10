@@ -122,8 +122,9 @@ class _Fixture {
                 ...jsonDecode(utf8.decode(body)) as Map<String, dynamic>,
               }
             : {'id': _status};
-        if (echoPhotos)
+        if (echoPhotos) {
           savedPhotos = Map<String, dynamic>.from(response as Map);
+        }
       }
     } else if (path.startsWith('/storage/v1/object/worker-documents/')) {
       uploads++;

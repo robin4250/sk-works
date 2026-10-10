@@ -299,9 +299,10 @@ class _OwnDocumentRegistrationPageState
         );
         if (!mounted) return;
         await _load();
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(const SnackBar(content: Text('自分の書類を登録しました')));
+        }
         return;
       }
       Uint8List? attachmentBytes;
@@ -375,9 +376,10 @@ class _OwnDocumentRegistrationPageState
       await gateway.editPhotos(row, photos);
       if (mounted) await _load();
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('写真を保存できませんでした: $error')));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

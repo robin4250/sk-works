@@ -500,8 +500,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         firstDate: DateTime(1950),
                         lastDate: DateTime(now.year + 30),
                       );
-                      if (picked != null)
+                      if (picked != null) {
                         setDialogState(() => expiresAt = picked);
+                      }
                     },
                   ),
                 ],
@@ -540,16 +541,19 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                             row: current,
                             photos: photos,
                           );
-                          if (dialogContext.mounted)
+                          if (dialogContext.mounted) {
                             Navigator.pop(dialogContext, true);
+                          }
                         } catch (error) {
-                          if (dialogContext.mounted)
+                          if (dialogContext.mounted) {
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
                               SnackBar(content: Text('写真を保存できませんでした: $error')),
                             );
+                          }
                         } finally {
-                          if (dialogContext.mounted)
+                          if (dialogContext.mounted) {
                             setDialogState(() => savingPhotos = false);
+                          }
                         }
                       },
                 icon: const Icon(Icons.photo_library_outlined),

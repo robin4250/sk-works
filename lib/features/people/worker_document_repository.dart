@@ -480,8 +480,9 @@ class WorkerDocumentRepository {
           .eq('worker_id', worker.workerId)
           .eq('requirement_id', requirementId)
           .eq('id', id);
-      if (row['updated_at'] != null)
+      if (row['updated_at'] != null) {
         query = query.eq('updated_at', row['updated_at']);
+      }
       saved = await query.select().single();
     }
     _confirmPaths(saved, paths);
