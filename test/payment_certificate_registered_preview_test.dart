@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/domain/company_seal_design.dart';
+import 'package:sk_works/domain/company_seal_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
 
@@ -79,6 +81,33 @@ void main() {
     status: 'confirmed',
     revision: 1,
   );
+  test('unsaved preview follows saved PNG choice without changing a certificate', () {
+    final saved = actual(DateTime(2026, 9, 1));
+    final result = PaymentCertificateRepository.withRegisteredCompanyPreviews(
+      [saved], [setting('a', '登録会社A')],
+      company: {
+        'id': CompanySealDesign.companyId,
+        'name': CompanySealDesign.companyName,
+        'company_seal_style': 'png_sumida_v1_worn',
+      },
+      month: month,
+    );
+    expect(result.first.companySealSnapshot.style, 'png_sumida_v1_worn');
+    expect(result.first.companySealSnapshot.companyId, CompanySealDesign.companyId);
+    expect(result.last, same(saved));
+    expect(saved.companySealSnapshot, same(CompanySealSnapshot.legacy));
+  });
+
+  test('preview preserves selected font and rejects another company PNG', () {
+    expect(CompanySealSnapshot.forPreview({
+      'name': '株式会社青空工業', 'company_seal_style': 'aoyagi_reisho',
+    }).style, 'aoyagi_reisho');
+    expect(() => CompanySealSnapshot.forPreview({
+      'id': 'another-company', 'name': CompanySealDesign.companyName,
+      'company_seal_style': 'png_sumida_v1_standard',
+    }), throwsStateError);
+  });
+
   test('dedupe uses partner id and preserves the actual certificate', () {
     final saved = actual(DateTime(2026, 10, 1));
     final result = PaymentCertificateRepository.withRegisteredCompanyPreviews(

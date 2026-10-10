@@ -42,6 +42,23 @@ void main() {
     expect(captions, isNot(contains('撮影日時: 2026-11-01T07:05')));
   });
 
+  test('time-only arrivals and moves preserve actual time without photo failures', () {
+    for (final kind in ['route_arrival', 'route_move', 'clock_in', 'clock_out']) {
+      final item = DailyReportEvidenceRecord(id: kind, workerName: '本人',
+        eventType: kind, confirmedAt: DateTime(2026, 10, 11, 10, 25),
+        storagePath: '', stopLabel: '実際の現場',
+        timeOnly: true, photoStatus: 'missing', gpsStatus: 'missing');
+      final captions = DailyReportPdfEvidence(record: item).captions.join('\n');
+      expect(item.isTimeOnly, isTrue);
+      expect(captions, contains(item.eventLabel));
+      expect(captions, contains('2026-10-11T10:25:00.000'));
+      expect(captions, contains('実際の現場'));
+      expect(captions, contains('時刻のみの記録'));
+      expect(captions, isNot(contains('失敗')));
+      expect(captions, isNot(contains('撮影日時未取得')));
+    }
+  });
+
   final fontPath = Platform.environment['SKO_PDF_FONT_PATH'];
   test('actual daily report PDF embeds photos and preserves failed evidence captions', () async {
     final font = pw.Font.ttf(ByteData.sublistView(await File(fontPath!).readAsBytes()));

@@ -92,8 +92,8 @@ void main() {
 
     expect(repo, contains("'link_daily_report_attendance_evidence'"));
     expect(repo, contains('loadAttendanceEvidence'));
-    expect(page, contains("'出勤確認写真'"));
-    expect(page, contains("'出勤確認写真一覧'"));
+    expect(page, contains("'勤怠・現場記録'"));
+    expect(page, contains("'勤怠・現場記録一覧'"));
     expect(page, contains('InteractiveViewer'));
   });
 

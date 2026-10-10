@@ -134,6 +134,7 @@ class DailyReportEvidenceRecord {
     this.photoCapturedAt, this.gpsCapturedAt, this.photoObservedAt,
     this.storageBucket = 'attendance-evidence', this.stopLabel,
     this.sourceClockInId, this.routeStopId, this.originKind,
+    this.timeOnly = false,
   });
 
   final String id;
@@ -155,6 +156,18 @@ class DailyReportEvidenceRecord {
   final String? stopLabel, sourceClockInId, routeStopId, originKind;
 
   bool get hasLocation => latitude != null && longitude != null;
+  final bool timeOnly;
+  bool get isTimeOnly => storagePath.isEmpty && !hasLocation &&
+      (timeOnly || ((photoStatus == null || photoStatus == 'not_required') &&
+      (gpsStatus == null || gpsStatus == 'not_required')));
+  String get eventLabel => switch (eventType) {
+    'route_arrival' => '現場到着',
+    'route_move' => '現場移動',
+    'route_stop' => '途中現場',
+    'clock_out' => '退勤',
+    _ => '出勤',
+  };
+  String get missingPhotoLabel => isTimeOnly ? '時刻のみの記録' : '写真未登録・送信失敗';
 }
 
 class DailyReportRepository {
@@ -621,9 +634,8 @@ class DailyReportRepository {
       captureEnabled = false;
     }
     var query = _client.from('attendance_verifications').select(
-      'id,event_type,confirmed_at,source_clock_in_id,photo_storage_path,latitude,longitude,accuracy_m,workers(name)'
+      'id,event_type,verification_mode,confirmed_at,source_clock_in_id,photo_storage_path,latitude,longitude,accuracy_m,workers(name),sites(name)'
       '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,photo_observed_at,captured_address' : ''}');
-    if (!captureEnabled) { query = query.not('photo_storage_path', 'is', null); }
     query = siteId != null
         ? query.eq('site_id', siteId)
         : query.eq('route_assignment_id', routeAssignmentId!);
@@ -640,8 +652,6 @@ class DailyReportRepository {
     final rows = await query.order('confirmed_at');
     final evidence = <DailyReportEvidenceRecord>[
       for (final raw in rows)
-        if ((raw['photo_storage_path']?.toString() ?? '').isNotEmpty ||
-            raw['capture_contract_version'] == 1)
           DailyReportEvidenceRecord(
             id: raw['id']?.toString() ?? '',
             workerName: raw['workers'] is Map
@@ -652,6 +662,7 @@ class DailyReportRepository {
                 DateTime.tryParse(raw['confirmed_at']?.toString() ?? '')
                         ?.toLocal() ??
                     DateTime.fromMillisecondsSinceEpoch(0),
+            timeOnly: raw['verification_mode'] == 'manual',
             storagePath: raw['photo_storage_path']?.toString() ?? '',
             gpsStatus: raw['gps_capture_status']?.toString(),
             photoStatus: raw['photo_capture_status']?.toString(),
@@ -659,6 +670,7 @@ class DailyReportRepository {
             gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
             photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
             photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '')?.toLocal(),
+            stopLabel: raw['sites'] is Map ? raw['sites']['name']?.toString() : null,
             sourceClockInId: raw['source_clock_in_id']?.toString(),
             latitude: (raw['latitude'] as num?)?.toDouble(),
             longitude: (raw['longitude'] as num?)?.toDouble(),
@@ -675,11 +687,15 @@ class DailyReportRepository {
             throw StateError('途中現場の証跡が対象日報と一致しません');
           }
           final raw = row['payload'] as Map;
-          final recorded = DateTime.tryParse(row['recorded_at']?.toString() ?? '');
+          final recorded = DateTime.tryParse(raw['attempted_at']?.toString() ?? '') ??
+            DateTime.tryParse(row['recorded_at']?.toString() ?? '');
           if (recorded == null) throw StateError('途中現場の記録時刻を確認できません');
           evidence.add(DailyReportEvidenceRecord(id: row['id'] as String,
-            workerName: row['worker_name']?.toString() ?? '', eventType: 'route_stop',
+            workerName: row['worker_name']?.toString() ?? '',
+            eventType: row['visit_kind'] == 'end' ? 'route_move' :
+              row['visit_kind'] == 'start' ? 'route_arrival' : 'route_stop',
             confirmedAt: recorded.toLocal(), storagePath: raw['photo_storage_path']?.toString() ?? '',
+            timeOnly: row['visit_kind'] == 'end' || row['verification_mode'] == 'manual',
             storageBucket: 'attendance-route-evidence', stopLabel: row['stop_label']?.toString(),
             sourceClockInId: row['source_clock_in_id']?.toString(), routeStopId: row['route_stop_id']?.toString(),
             originKind: row['origin_kind']?.toString(), gpsStatus: raw['gps_capture_status']?.toString(),
@@ -694,7 +710,10 @@ class DailyReportRepository {
         if (error.code != 'PGRST202' && error.code != '42883') rethrow;
       }
     }
-    evidence.sort((a, b) => a.confirmedAt.compareTo(b.confirmedAt));
+    evidence.sort((a, b) {
+      final byTime = a.confirmedAt.compareTo(b.confirmedAt);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
     return evidence;
   }
 

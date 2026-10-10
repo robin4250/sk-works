@@ -4,6 +4,14 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "勤怠・現場記録": "Attendance and site records",
+    "勤怠・現場記録一覧": "Attendance and site record list",
+    "{count}件 / この日報に紐付いています": "{count} records linked to this daily report",
+    "現場到着": "Site arrival",
+    "現場移動": "Leaving site",
+    "時刻のみの記録": "Time-only record",
+    "保留記録を再確認": "Check pending record again",
+
     "住民税": "Resident tax",
     "税・社会保険の月額設定": "Monthly tax and social insurance amounts",
     "その他の控除": "Other deductions",

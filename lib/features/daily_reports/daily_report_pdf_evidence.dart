@@ -15,26 +15,26 @@ class DailyReportPdfEvidence {
   final bool downloadFailed;
 
   List<String> get captions => [
-    '${record.workerName} / ${SkoLanguageController.tr(record.eventType == 'route_stop' ? '途中現場' : record.eventType == 'clock_out' ? '退勤' : '出勤')}',
+    '${record.workerName} / ${SkoLanguageController.tr(record.eventLabel)}',
     if (record.stopLabel != null) '${SkoLanguageController.tr('対象現場')}: ${record.stopLabel}',
     if (record.originKind != null) SkoLanguageController.tr(record.originKind == 'company' ? '会社出勤後に現場へ' : '直行直帰'),
-    '${SkoLanguageController.tr(record.eventType == 'route_stop' ? '記録時刻' : '勤怠登録時刻')}: ${record.confirmedAt.toIso8601String()}',
-    record.photoCapturedAt == null
+    '${SkoLanguageController.tr(record.eventType.startsWith('route_') ? '記録時刻' : '勤怠登録時刻')}: ${record.confirmedAt.toIso8601String()}',
+    if (!record.isTimeOnly) record.photoCapturedAt == null
       ? SkoLanguageController.tr('撮影日時未取得')
       : '${SkoLanguageController.tr('撮影日時')}: ${record.photoCapturedAt!.toIso8601String()}',
     if (record.photoObservedAt != null)
       '${SkoLanguageController.tr('写真観測時刻')}: ${record.photoObservedAt!.toIso8601String()}',
     if (record.gpsCapturedAt != null)
       '${SkoLanguageController.tr('GPS取得時刻')}: ${record.gpsCapturedAt!.toIso8601String()}',
-    '${SkoLanguageController.tr('撮影住所')}: ${record.capturedAddress?.trim().isNotEmpty == true ? record.capturedAddress : SkoLanguageController.tr('未取得')}',
+    if (!record.isTimeOnly) '${SkoLanguageController.tr('撮影住所')}: ${record.capturedAddress?.trim().isNotEmpty == true ? record.capturedAddress : SkoLanguageController.tr('未取得')}',
     if (record.hasLocation) 'GPS: ${record.latitude}, ${record.longitude}',
-    if (record.photoStatus != null) '${SkoLanguageController.tr('写真の保存状態')}: ${_status(record.photoStatus)}',
-    if (record.gpsStatus != null) '${SkoLanguageController.tr('GPSの取得状態')}: ${_status(record.gpsStatus)}',
+    if (!record.isTimeOnly && record.photoStatus != null) '${SkoLanguageController.tr('写真の保存状態')}: ${_status(record.photoStatus)}',
+    if (!record.isTimeOnly && record.gpsStatus != null) '${SkoLanguageController.tr('GPSの取得状態')}: ${_status(record.gpsStatus)}',
     if (downloadFailed) SkoLanguageController.tr('保存済み写真を読み込めませんでした'),
-    if (record.storagePath.isEmpty) SkoLanguageController.tr('写真未登録・送信失敗'),
+    if (record.storagePath.isEmpty) SkoLanguageController.tr(record.missingPhotoLabel),
   ];
 
-  Object get fingerprintData => [record.id, record.workerName, record.eventType,
+  Object get fingerprintData => [record.id, record.workerName, record.eventType, record.isTimeOnly,
     record.confirmedAt.toIso8601String(), record.photoCapturedAt?.toIso8601String(),
     record.gpsCapturedAt?.toIso8601String(), record.photoObservedAt?.toIso8601String(),
     record.storageBucket, record.sourceClockInId, record.routeStopId, record.stopLabel,
