@@ -5,6 +5,8 @@ on:
       - 'tool/fixtures/route_journey_visits/**'
       - 'tool/fixtures/route_journey_capture/**'
       - 'tool/verify_route_journey_visits.mjs'
+      - 'tool/verify_daily_report_time_only_evidence.mjs'
+      - 'supabase/migrations/*link_daily_report_time_only_evidence.sql'
       - 'tool/verify_route_journey_visit_races.mjs'
       - 'tool/verify_route_journey_visit_chain.mjs'
       - 'tool/verify_attendance_capture_failure.mjs'
@@ -29,6 +31,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/visit-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.8
       - name: Verify visit transaction and clock-out boundaries
         run: node tool/verify_route_journey_visits.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify saved manual and failed-photo report evidence
+        run: node tool/verify_daily_report_time_only_evidence.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
       - name: Verify actual GPS capture management and visit chain
         run: node tool/verify_route_journey_visit_chain.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
