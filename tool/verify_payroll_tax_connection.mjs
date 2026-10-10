@@ -107,6 +107,28 @@ try {
  assert.equal(rated.detail['社会保険'],undefined,'legacy aggregate cannot double count');
  fs.mkdirSync('test/fixtures/payroll_tax_connection',{recursive:true});
  fs.writeFileSync('test/fixtures/payroll_tax_connection/automatic.json',JSON.stringify({gross_pay:rated.gross_pay,deductions:rated.deductions,net_pay:rated.net_pay,detail:{...rated.detail,company_seal_enabled:false}},null,2)+'\n');
+ // Exercise real attendance INSERT/UPDATE/DELETE triggers, not only refresh RPCs.
+ // Roll back this independent scenario so the finalized snapshot fixture is stable.
+ await db.exec('reset role;begin');
+ await db.query("update public.worker_payroll_settings set pay_type='daily',day_daily=10000,day_overtime=1563 where company_id=$1 and worker_id=$2",[cid,wid]);
+ await db.query(`insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours)
+ select gen_random_uuid(),$1,$2,'20000000-0000-0000-0000-000000000001',date '2026-09-01'+n,'day',1,0,0 from generate_series(0,19) n`,[cid,wid]);
+ const fromAttendance=await statement(month);
+ assert.equal(fromAttendance.gross_pay,200000);
+ assert.equal(fromAttendance.detail['雇用保険料'],1000);
+ assert.equal(fromAttendance.detail.tax_calculation.social_yen,46225);
+ assert.equal(fromAttendance.detail['所得税'],official.rows.find(r=>r[0]<=153775&&r[1]>153775)[2]);
+ assert.equal(fromAttendance.net_pay,200000-fromAttendance.deductions);
+ await db.query("update public.attendance_entries set overtime_hours=1 where company_id=$1 and worker_id=$2 and work_date='2026-09-20'",[cid,wid]);
+ assert.equal((await statement(month)).gross_pay,201563);
+ await db.query("delete from public.attendance_entries where company_id=$1 and worker_id=$2 and work_date='2026-09-01'",[cid,wid]);
+ const afterDelete=await statement(month);
+ assert.equal(afterDelete.gross_pay,191563);
+ await actor(owner);
+ const ownDaily=(await db.query('select * from public.my_payroll_statement_rows_with_adjustments()')).rows.find(x=>x.id===afterDelete.id);
+ assert.equal(ownDaily.deductions,afterDelete.deductions);
+ assert.equal(ownDaily.net_pay,afterDelete.net_pay);
+ await db.exec('reset role;rollback');
  await actor(editor);await saveTax(2,{...automatic,birth_date:'1986-10-02'});
  assert.equal((await statement(month)).detail['介護保険料'],0,'40th birthday after first day starts next month');
  await actor(editor);await saveTax(3,{...automatic,birth_date:'1961-10-01'});
