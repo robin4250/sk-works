@@ -237,7 +237,7 @@ void main() {
       scrollable: find.byType(Scrollable).first);
     expect(find.text('変更あり'), findsOneWidget);
     expect(find.byKey(const ValueKey('apply-viewer-candidate')), findsNothing);
-    expect(find.text('適用 2026-10'), findsWidgets);
+    expect(find.text('会社での適用年月 2026-10'), findsWidgets);
     expect(find.text('情報元 登録資料'), findsWidgets);
     await tester.scrollUntilVisible(find.text('子ども・子育て支援金率'), 250,
       scrollable: find.byType(Scrollable).first);
@@ -355,6 +355,26 @@ void main() {
     expect(repository.applied, isEmpty);
   });
 
+  for (final entry in <String, Map<String, String>>{
+    '2026-03': {'effective_insurance_month': '2026-03-01'},
+    '2017-09': {'effective_insurance_month': '2017-09-01'},
+    '未確認': {'initial_reference': '2026-10', 'effective_insurance_month': '2026-03-01'},
+  }.entries) {
+    testWidgets('official start month ${entry.key} stays separate from company month', (tester) async {
+      final repository = FakeRatesRepository();
+      final current = value('health_insurance');
+      (current['source'] as Map)['applicability'] = entry.value;
+      repository.data = CompanyPayrollRatesData(canEdit: true, items: [
+        CompanyPayrollRateItem(id: 'health_insurance', version: 1, value: current, origin: 'manual'),
+      ], candidates: [], history: []);
+      await openPage(tester, repository);
+      expect(find.text('公式料率の施行年月 ${entry.key}'), findsOneWidget);
+      expect(find.text('会社での適用年月 2026-10'), findsOneWidget);
+      expect(repository.saved, isEmpty);
+      expect(repository.applied, isEmpty);
+    });
+  }
+
   testWidgets('compact rates keep key values visible and reveal source months and audit on request', (tester) async {
     final repository = FakeRatesRepository();
     final current = value('health_insurance');
@@ -368,7 +388,8 @@ void main() {
     expect(find.text('全体 1.3%'), findsOneWidget);
     expect(find.text('従業員負担 0.5%'), findsOneWidget);
     expect(find.text('会社負担 0.8%'), findsOneWidget);
-    expect(find.text('適用 2026-10'), findsOneWidget);
+    expect(find.text('会社での適用年月 2026-10'), findsOneWidget);
+    expect(find.text('公式料率の施行年月 未確認'), findsOneWidget);
     expect(find.text('情報元 登録資料'), findsOneWidget);
     expect(find.text('給与対象年月 2026-11'), findsNothing);
     final details = find.byKey(const PageStorageKey('rate-details-health_insurance-current'));

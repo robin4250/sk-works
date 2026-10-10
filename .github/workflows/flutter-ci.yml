@@ -91,6 +91,9 @@ jobs:
           node tool/verify_payroll_split_site_allowances.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_payroll_named_financial_detail_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261008045401_preserve_payroll_named_financial_details.sql
 
+      - name: Verify initial official company rates
+        run: node tool/verify_initial_official_company_rates.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
       - name: Generate actual payroll finalization response fixture
         env:
           SKO_PAYROLL_FINALIZATION_FIXTURE_PATH: build/payroll-finalization-response.json

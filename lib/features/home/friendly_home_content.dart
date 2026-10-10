@@ -6,6 +6,7 @@ import '../attendance/attendance_verification_repository.dart';
 import '../expenses/expense_home_page.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import 'initial_company_rates_card.dart';
 import 'company_payroll_rates_home_entry.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
@@ -88,6 +89,7 @@ class FriendlyHomeContent extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (tutorialCard != null) tutorialCard!,
+              if (identity.isAdmin) const InitialCompanyRatesCard(),
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
