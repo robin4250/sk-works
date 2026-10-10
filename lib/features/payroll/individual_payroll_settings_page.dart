@@ -416,6 +416,9 @@ class _IndividualPayrollSettingsPageState
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final workspace = _workspace;
+    final companyId = _settingValues['company_id'] is String
+        ? _settingValues['company_id'] as String
+        : workspace?.companyId;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -614,12 +617,12 @@ class _IndividualPayrollSettingsPageState
                     title: '控除',
                     icon: Icons.remove_circle_outline,
                     children: [
-                      if (_workerId != null && workspace.companyId != null)
+                      if (_workerId != null && companyId != null && companyId.isNotEmpty)
                         OutlinedButton.icon(
                           icon: const Icon(Icons.calculate_outlined),
                           label: const Text('給与の税計算・自動反映'),
                           onPressed: _saving ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(
-                            builder: (_) => PayrollTaxConditionsPage(companyId: workspace.companyId!, workerId: _workerId!),
+                            builder: (_) => PayrollTaxConditionsPage(companyId: companyId, workerId: _workerId!),
                           )),
                         ),
                       _sectionTitle(SkoLanguageController.tr('税・社会保険の月額設定')),
