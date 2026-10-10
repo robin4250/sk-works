@@ -9,6 +9,7 @@ on:
       - 'tool/verify_route_journey_visit_chain.mjs'
       - 'tool/verify_attendance_capture_failure.mjs'
       - 'supabase/migrations/*route_journey_visit_lifecycle.sql'
+      - 'supabase/migrations/*route_manual_visit_capture.sql'
       - 'supabase/migrations/*qualify_attendance_photo_upload_path.sql'
       - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
       - '.github/workflows/route-journey-visits-check.yml'
