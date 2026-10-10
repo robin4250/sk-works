@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/home/company_payroll_rates_home_entry.dart';
+import 'package:sk_works/features/expenses/expense_home_page.dart';
 import 'package:sk_works/features/home/friendly_home_content.dart';
 import 'package:sk_works/features/home/home_attention_repository.dart';
 import 'package:sk_works/features/home/home_membership_repository.dart';
@@ -40,7 +41,7 @@ void main() {
       expect(find.text('税率設定'), findsOneWidget);
       final grid = tester.widget<GridView>(find.byType(GridView));
       final tiles = (grid.childrenDelegate as SliverChildListDelegate).children;
-      expect(tiles, hasLength(2));
+      expect(tiles, hasLength(3));
       expect(tester.getSize(find.byWidget(tiles[0])), tester.getSize(find.byWidget(tiles[1])));
       final borders = tester.widgetList<Container>(
         find.descendant(of: find.byWidget(tiles[0]), matching: find.byType(Container)),
@@ -58,6 +59,17 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('member opens expense submission and review choices from TOP', (tester) async {
+    await tester.pumpWidget(home('member'));
+    await tester.tap(find.text('経費'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExpenseHomePage), findsOneWidget);
+    expect(find.text('自分の経費申請'), findsOneWidget);
+    expect(find.text('全員の申請・振り分け'), findsOneWidget);
+    await tester.pageBack(); await tester.pumpAndSettle();
+    expect(find.byType(FriendlyHomeContent), findsOneWidget);
+  });
 
   for (final role in ['member', 'manager']) {
     testWidgets('$role retains existing tax access scope', (tester) async {

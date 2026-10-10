@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../attendance/attendance_verification_repository.dart';
+import '../expenses/expense_home_page.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
 import 'company_payroll_rates_home_entry.dart';
@@ -498,6 +499,7 @@ class _OrderedHomeContent extends StatelessWidget {
     };
     final showTaxRates = identity.isAdmin || identity.role == 'viewer';
     const taxKey = 'company_tax_rates';
+    const expenseKey = 'expense_claims';
     final keys = <String>[
       if (showTaxRates) taxKey,
       if (moduleEnabled('attendance') &&
@@ -513,6 +515,7 @@ class _OrderedHomeContent extends StatelessWidget {
             shortcut.key != 'attendance_verify' &&
             shortcut.key != 'attendance_today')
           shortcut.key,
+      expenseKey,
     ];
     final fallbackRank = <String, int>{
       for (var i = 0; i < keys.length; i++) keys[i]: i,
@@ -526,6 +529,7 @@ class _OrderedHomeContent extends StatelessWidget {
 
     final shortcutByKey = <String, HomeShortcut>{
       for (final shortcut in shortcuts) shortcut.key: shortcut,
+      expenseKey: const HomeShortcut(expenseKey, '経費', Icons.receipt_long),
       if (showTaxRates)
         taxKey: HomeShortcut(
           taxKey,
@@ -546,7 +550,9 @@ class _OrderedHomeContent extends StatelessWidget {
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
           onOpen: (key) async {
-            if (key == taxKey) {
+            if (key == expenseKey) {
+              await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => const ExpenseHomePage()));
+            } else if (key == taxKey) {
               await Navigator.of(context).push<void>(
                 MaterialPageRoute(builder: (_) => const CompanyPayrollRatesHomePage()),
               );

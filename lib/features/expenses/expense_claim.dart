@@ -179,6 +179,14 @@ class ExpenseClaims {
       },
     ),
   );
+  ExpenseClaims forMonth(DateTime month) => ExpenseClaims(
+    companyId: companyId,
+    claims: entries.where(
+      (c) =>
+          c.incurredOn.year == month.year && c.incurredOn.month == month.month,
+    ),
+  );
+
   ExpenseClaims forApplicant(String applicantId) {
     if (applicantId.trim().isEmpty) {
       throw ArgumentError('Applicant ID required.');

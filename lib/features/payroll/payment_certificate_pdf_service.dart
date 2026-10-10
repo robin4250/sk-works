@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -12,10 +14,12 @@ class PaymentCertificatePdfService {
 
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
+    ExpenseDocumentDetails? expenseDetails,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
@@ -38,6 +42,9 @@ class PaymentCertificatePdfService {
       ),
     );
 
+    if (expenses != null) {
+      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+    }
     return document.save();
   }
 
