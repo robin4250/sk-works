@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
+import '../operations/route_stops_preview.dart';
 import 'attendance_verification_repository.dart';
 import 'gps_auto_schedule_dialog.dart';
 
@@ -281,6 +282,10 @@ class _WorkDestinationSelectionPageState
                         icon: const Icon(Icons.check),
                         label: Text(_saving ? '保存中…' : '確定して保存'),
                       ),
+                      if (_siteId == null)
+                        RouteStopsPreview(
+                          route: _routes.where((row) => row['id'] == _routeId).firstOrNull,
+                        ),
                     ],
                   ),
       ),
