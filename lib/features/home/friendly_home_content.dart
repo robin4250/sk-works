@@ -394,6 +394,15 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     icon: const Icon(Icons.tune_outlined),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
+                  if (isWorking && status.openShifts.length == 1 &&
+                      status.openShifts.single.routeId != null) ...[
+                    const SizedBox(height: 9),
+                    OutlinedButton.icon(
+                      onPressed: () => onOpen('route_visit'),
+                      icon: const Icon(Icons.route_outlined),
+                      label: Text(SkoLanguageController.tr('現場到着・現場移動')),
+                    ),
+                  ],
                   const SizedBox(height: 9),
                   Row(
                     children: [

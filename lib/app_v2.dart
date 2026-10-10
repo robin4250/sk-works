@@ -17,6 +17,7 @@ import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/attendance_management_page.dart';
 import 'features/attendance/work_destination_selection_page.dart';
+import 'features/attendance/route_journey_capture_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/gps_auto_attendance_service.dart';
@@ -767,6 +768,11 @@ class _HomePageState extends State<HomePage> {
           initialEventType: 'clock_out',
         );
         break;
+      case 'route_visit':
+        final shifts = _homeAttendanceStatus.openShifts;
+        if (shifts.length != 1 || shifts.single.routeId == null) return;
+        page = RouteJourneyCapturePage(sourceId: shifts.single.id);
+        break;
       case 'attendance_verify':
       case 'attendance_method_vehicle':
         page = const AttendanceSelectionPage();
@@ -952,7 +958,8 @@ class _HomePageState extends State<HomePage> {
         key == 'attendance_method_vehicle' ||
         key == 'workplace_select' ||
         key == 'vehicle_select' ||
-        key == 'route_select') {
+        key == 'route_select' ||
+        key == 'route_visit') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
