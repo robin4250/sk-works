@@ -31,6 +31,8 @@ import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
 import 'features/daily_reports/daily_report_page.dart';
+import 'features/expenses/expense_home_page.dart';
+import 'features/home/company_payroll_rates_home_entry.dart';
 import 'features/help/help_page.dart';
 import 'features/help/floating_help_controller.dart';
 import 'features/help/floating_help_overlay.dart';
@@ -775,6 +777,12 @@ class _HomePageState extends State<HomePage> {
       case 'daily_report':
         page = const DailyReportPage();
         break;
+      case 'expense_claims':
+        page = const ExpenseHomePage();
+        break;
+      case 'company_tax_rates':
+        page = const CompanyPayrollRatesHomePage();
+        break;
       case 'vehicle_select':
         page = const VehicleRouteSelectionPage(
           mode: VehicleRouteSelectionMode.vehicle,
@@ -961,6 +969,9 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      if (_identity.isAdmin || _isViewer)
+        _MenuAction(key: 'company_tax_rates', label: SkoLanguageController.tr('税率設定'), icon: Icons.percent_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・閲覧権限')),
+      _MenuAction(key: 'expense_claims', label: SkoLanguageController.tr('経費申請'), icon: Icons.receipt_long_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       _MenuAction(key: 'tutorial', label: SkoLanguageController.tr('準備ガイド'),
         icon: Icons.school_outlined, homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
@@ -1400,6 +1411,7 @@ class _HomePageState extends State<HomePage> {
       'albums',
       'notes',
       'daily_report',
+      'expense_claims',
       'profile',
       'qualification_register',
       'document_register',
@@ -1422,6 +1434,7 @@ class _HomePageState extends State<HomePage> {
       'payroll_settings',
       'payroll_adjustments',
       'payroll_review',
+      'company_tax_rates',
       'attendance_list',
     };
     const admin = <String>{
