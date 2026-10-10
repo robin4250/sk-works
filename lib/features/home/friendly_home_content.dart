@@ -3,11 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../attendance/attendance_verification_repository.dart';
-import '../expenses/expense_home_page.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
 import 'initial_company_rates_card.dart';
-import 'company_payroll_rates_home_entry.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
@@ -499,11 +497,7 @@ class _OrderedHomeContent extends StatelessWidget {
     final rank = <String, int>{
       for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
     };
-    final showTaxRates = identity.isAdmin || identity.role == 'viewer';
-    const taxKey = 'company_tax_rates';
-    const expenseKey = 'expense_claims';
     final keys = <String>[
-      if (showTaxRates) taxKey,
       if (moduleEnabled('attendance') &&
           showAttendanceReport &&
           visibleHomeKeys.contains('attendance_verify'))
@@ -517,7 +511,6 @@ class _OrderedHomeContent extends StatelessWidget {
             shortcut.key != 'attendance_verify' &&
             shortcut.key != 'attendance_today')
           shortcut.key,
-      expenseKey,
     ];
     final fallbackRank = <String, int>{
       for (var i = 0; i < keys.length; i++) keys[i]: i,
@@ -531,14 +524,6 @@ class _OrderedHomeContent extends StatelessWidget {
 
     final shortcutByKey = <String, HomeShortcut>{
       for (final shortcut in shortcuts) shortcut.key: shortcut,
-      expenseKey: const HomeShortcut(expenseKey, '経費', Icons.receipt_long),
-      if (showTaxRates)
-        taxKey: HomeShortcut(
-          taxKey,
-          SkoLanguageController.isEnglish ? 'Tax rates' : '税率設定',
-          Icons.percent,
-          access: HomeShortcutAccess.viewer,
-        ),
     };
     final children = <Widget>[];
     final pending = <_HomeAction>[];
@@ -552,15 +537,7 @@ class _OrderedHomeContent extends StatelessWidget {
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
           onOpen: (key) async {
-            if (key == expenseKey) {
-              await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => const ExpenseHomePage()));
-            } else if (key == taxKey) {
-              await Navigator.of(context).push<void>(
-                MaterialPageRoute(builder: (_) => const CompanyPayrollRatesHomePage()),
-              );
-            } else {
-              await onOpen(key);
-            }
+            await onOpen(key);
           },
           onReorderAction: onReorderAction,
         ),
