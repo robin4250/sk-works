@@ -456,14 +456,16 @@ class _QualificationCertificatePageState
         if (!mounted) return;
         _replaceRow(updated);
       }
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('追加写真を保存しました')));
+      }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('追加写真の保存を確認できません。再読み込みしてください: $error')),
         );
+      }
     } finally {
       if (mounted) setState(() => _busyId = null);
     }
@@ -483,9 +485,10 @@ class _QualificationCertificatePageState
       );
       if (mounted) _replaceRow(updated);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('写真を削除できませんでした: $error')));
+      }
     } finally {
       if (mounted) setState(() => _busyId = null);
     }

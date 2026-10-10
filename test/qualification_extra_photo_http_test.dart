@@ -165,7 +165,7 @@ void main() {
     expect(write.uri.queryParameters['worker_id'], 'eq.$_worker');
     expect(
       write.uri.queryParameters['attachment_extra_paths'],
-      'eq.{extra.jpg}',
+      'eq.{"extra.jpg"}',
     );
     expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
   });
