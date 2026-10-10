@@ -576,7 +576,7 @@ class _CompanySubmittedDocumentsPageState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, refresh) => AlertDialog(
-          title: const Text('書類の写真（表・裏）'),
+          title: Text('書類の写真（表・裏）: ${row['name'] ?? ''}'),
           scrollable: true,
           content: SizedBox(
             width: 340,
