@@ -13,6 +13,7 @@ class _Access implements RouteJourneyCaptureAccess {
   String userId = 'actor';
   bool failAll = false, failWorkspace = false;
   List<Map<String, dynamic>>? visits;
+  bool archived = false;
   int loads = 0, submits = 0, uploads = 0;
   final sources = <String>[];
   RouteJourneyCaptureDraft? pending, submitted;
@@ -35,8 +36,9 @@ class _Access implements RouteJourneyCaptureAccess {
       'company_id': 'company',
       'source_clock_in_id': sourceId,
       'work_date': '2026-10-10',
-      'enabled': true,
-      'is_open': true,
+      'enabled': !archived,
+      'is_open': !archived,
+      'archived': archived,
       'origin_kind': 'company',
       'route_assignment_id': 'route',
       'worker_id': 'worker',
@@ -80,6 +82,19 @@ Future<void> _open(WidgetTester tester, _Access access) async {
 
 Finder get _reload => find.widgetWithText(OutlinedButton, '再読み込み');
 void main() {
+  testWidgets(
+    'archived source explains preservation without new capture action',
+    (tester) async {
+      final access = _Access()
+        ..visits = []
+        ..archived = true;
+      await _open(tester, access);
+      expect(find.textContaining('変更前の記録は保持されています'), findsOneWidget);
+      expect(find.text('この現場の作業を開始'), findsNothing);
+      expect(access.submits, 0);
+    },
+  );
+
   testWidgets(
     'visit workspace offers start without silently selecting a stop',
     (tester) async {

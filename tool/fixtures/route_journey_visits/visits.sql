@@ -100,8 +100,16 @@ create function private.route_journey_visit_before_clock_out() returns trigger l
 declare source public.attendance_verifications%rowtype;
 begin
  if new.event_type='clock_out' and new.source_clock_in_id is not null then
-  select * into source from public.attendance_verifications where id=new.source_clock_in_id for update;
+  select * into source from public.attendance_verifications where id=new.source_clock_in_id;
   if source.route_assignment_id is null then return new; end if;
+  if source.company_id is distinct from new.company_id or source.worker_id is distinct from new.worker_id or
+     auth.uid() is null or not private.account_access_allowed() or
+     not exists(select 1 from public.company_members where company_id=source.company_id and user_id=auth.uid()) or
+     not (exists(select 1 from public.workers where id=source.worker_id and company_id=source.company_id and user_id=auth.uid()) or private.has_company_feature(source.company_id,'can_manage_attendance')) then
+   raise exception 'route clock-out source not permitted' using errcode='42501';
+  end if;
+  perform 1 from public.companies where id=source.company_id for key share;
+  select * into source from public.attendance_verifications where id=new.source_clock_in_id for update;
   if current_setting('transaction_isolation') <> 'read committed' then
    raise exception 'visit clock-out guard requires read committed';
   end if;

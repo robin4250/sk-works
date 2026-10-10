@@ -48,3 +48,11 @@ PR #757の続きで、既存撮影画面・再送ドラフト・Repositoryから
 隔離PGliteで2現場の開始/終了、終了後も勤務継続、未終了退勤の拒否、固定ID再送、別人/別開始ID拒否、失敗時のcapture非追加、元勤務日保持、旧captureの推測変換拒否を検証。通常より強いisolation levelでは書込みを拒否する。Flutterでは画面状態・対象固定・不正履歴拒否・ドラフト再送と旧互換を検証。
 
 候補SQLは本番migrationではなく、まだ本番へ適用していない。写真保持/削除の既存依存（#838）を維持し、全歴史migrationとの適合、実PostgreSQLの同時開始/終了/退勤/管理変更、保持・アーカイブ時のイベント関連保持、実機カメラ/GPSを確認してから正式migrationと有効化を行う必要がある。既存フラグOFFのまま。現在のiPhoneで利用可能になったとは扱わない。冒頭のDB/画面未実装は本番利用可能な状態についての記述である。
+
+### 保持と競合の接続追加
+
+`retention.sql` は#838で確認済みの「原行/日報/実変更者/削除済みUUID」の条件を、今回の実テーブルと訪問イベントへ適用する候補。元出勤/日報の削除前、および途中原記録の削除・日報切離し前に最初のsnapshotを保存する。期限や回収処理は追加しない。参照写真のDELETE/UPDATEは既存権限とのrestrictive条件で拒否し、権限自体は増やさない。失敗時は削除と保持が同時rollbackする。元勤務がなくなった固定ドラフトは本人・同社所属限定の既存形式で照会でき、新規INSERTや元UUID再使用は拒否する。
+
+新たな実PostgreSQL 17 CIは、別々の接続と実Lock待機を使い、同時開始/同じUUID/同時終了/開始・終了対退勤/管理削除対保存/OFF変更を確認する。PGliteの逐次実行成功とは区別し、CI結果をIssueへ記録する。fixtureはsyntheticな依存であり本番全chainの証明ではない。
+
+2026-10-10本番read-only確認：PostgreSQL17.6、capture/route双方のrolloutテーブル・capability/workspace・route captureテーブル・route専用bucketは未導入。既存attendance bucketの管理者DELETE/UPDATEが存在。従って本番準備は#782→#794→今回の正式migrationの順序検証が必要。データ/本番スキーマ変更はまだしていない。

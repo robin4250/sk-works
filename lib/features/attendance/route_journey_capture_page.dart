@@ -347,7 +347,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('途中現場の取得状態を記録しました'))),
+        SnackBar(
+          content: Text(
+            SkoLanguageController.tr(
+              saved['archived'] == true
+                  ? '管理変更前の記録を確認しました'
+                  : '途中現場の取得状態を記録しました',
+            ),
+          ),
+        ),
       );
       await _load();
     } catch (error) {
@@ -417,7 +425,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                         '保留中の対象・写真・取得状態は固定されています。新しい記録を作らず同じUUIDを照会します。',
                       ),
                     ),
-                  if (!enabled && _pending == null)
+                  if (workspace?['archived'] == true)
+                    Text(
+                      SkoLanguageController.tr(
+                        'この勤務は管理変更されています。変更前の記録は保持されています。新しい開始・終了は登録できません。',
+                      ),
+                    ),
+                  if (!enabled &&
+                      _pending == null &&
+                      workspace?['archived'] != true)
                     Text(
                       SkoLanguageController.tr(
                         '途中現場の記録は利用できません。機能設定または対象勤務を確認してください。',
@@ -475,30 +491,31 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed:
-                        _busy ||
-                            _loading ||
-                            _loadFailed ||
-                            (_pending == null &&
-                                (!enabled ||
-                                    _origin == null ||
-                                    _stopId == null))
-                        ? null
-                        : _captureOrRetry,
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: Text(
-                      SkoLanguageController.tr(
-                        _pending != null
-                            ? '同じ途中現場記録で再確認'
-                            : !_visitsEnabled
-                            ? 'この現場を撮影して記録'
-                            : _openVisit == null
-                            ? 'この現場の作業を開始'
-                            : 'この現場の作業を終了',
+                  if (workspace?['archived'] != true || _pending != null)
+                    FilledButton.icon(
+                      onPressed:
+                          _busy ||
+                              _loading ||
+                              _loadFailed ||
+                              (_pending == null &&
+                                  (!enabled ||
+                                      _origin == null ||
+                                      _stopId == null))
+                          ? null
+                          : _captureOrRetry,
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: Text(
+                        SkoLanguageController.tr(
+                          _pending != null
+                              ? '同じ途中現場記録で再確認'
+                              : !_visitsEnabled
+                              ? 'この現場を撮影して記録'
+                              : _openVisit == null
+                              ? 'この現場の作業を開始'
+                              : 'この現場の作業を終了',
+                        ),
                       ),
                     ),
-                  ),
                   if (_visitsEnabled) ...[
                     const SizedBox(height: 16),
                     Text(
