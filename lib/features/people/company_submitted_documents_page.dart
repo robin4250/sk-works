@@ -588,9 +588,29 @@ class _CompanySubmittedDocumentsPageState
                     leading: const Icon(Icons.image_outlined),
                     title: Text(i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}'),
                     subtitle: Text(photos.photos[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => refresh(() => photos.removeAt(i)),
+                    trailing: Wrap(
+                      spacing: 2,
+                      children: [
+                        IconButton(
+                          tooltip: '上へ移動',
+                          onPressed: i == 0
+                              ? null
+                              : () => refresh(() => photos.move(i, i - 1)),
+                          icon: const Icon(Icons.arrow_upward),
+                        ),
+                        IconButton(
+                          tooltip: '下へ移動',
+                          onPressed: i == photos.length - 1
+                              ? null
+                              : () => refresh(() => photos.move(i, i + 1)),
+                          icon: const Icon(Icons.arrow_downward),
+                        ),
+                        IconButton(
+                          tooltip: '削除',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => refresh(() => photos.removeAt(i)),
+                        ),
+                      ],
                     ),
                     onTap: () async {
                       final bytes = await photos.photos[i].readAsBytes();
