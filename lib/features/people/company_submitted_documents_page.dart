@@ -589,8 +589,10 @@ class _CompanySubmittedDocumentsPageState
                     leading: const Icon(Icons.image_outlined),
                     title: Text(i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}'),
                     subtitle: Text(photos.photos[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: Wrap(
-                      spacing: 2,
+                    trailing: SizedBox(
+                      width: 120,
+                      child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           tooltip: '上へ移動',
@@ -612,6 +614,7 @@ class _CompanySubmittedDocumentsPageState
                           onPressed: () => refresh(() => photos.removeAt(i)),
                         ),
                       ],
+                      ),
                     ),
                     onTap: () async {
                       final bytes = await photos.photos[i].readAsBytes();
