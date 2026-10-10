@@ -268,6 +268,34 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         );
         final stopId = _stopId!;
         final origin = _origin!;
+        // Leaving a visited site records the action time only. Do not
+        // request another camera shot or GPS sample for the move action.
+        final isMove = _visitsEnabled && _openVisit != null;
+        if (isMove) {
+          draft = RouteJourneyCaptureDraft(
+            userId: _actor!,
+            companyId: captureContext.companyId,
+            sourceId: captureContext.sourceClockInId!,
+            stopId: stopId,
+            originKind: origin,
+            visitKind: 'end',
+            startCaptureId: _openVisit!['start_capture_id']?.toString(),
+            payload: {
+              'capture_contract_version': 1,
+              'gps_capture_status': 'missing',
+              'photo_capture_status': 'missing',
+              'gps_captured_at': null,
+              'photo_captured_at': null,
+              'photo_observed_at': null,
+              'captured_address': null,
+              'latitude': null,
+              'longitude': null,
+              'accuracy_m': null,
+              'photo_storage_path': null,
+              'attempted_at': DateTime.now().toUtc().toIso8601String(),
+            },
+          );
+        } else {
         final capture = await GpsPhotoCaptureController(
           camera: () async {
             if (!_active(generation)) throw StateError('Closed capture');
@@ -333,6 +361,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
             'attempted_at': capture.attemptedAt.toUtc().toIso8601String(),
           },
         );
+        }
         if (mounted) setState(() => _pending = draft);
       }
       if (!_active(generation)) return;
