@@ -276,7 +276,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
             userId: _actor!,
             companyId: captureContext.companyId,
             sourceId: captureContext.sourceClockInId!,
-            stopId: stopId,
+            stopId: _openVisit!['route_stop_id'] as String,
             originKind: origin,
             visitKind: 'end',
             startCaptureId: _openVisit!['start_capture_id']?.toString(),
