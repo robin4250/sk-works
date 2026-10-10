@@ -393,7 +393,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(SkoLanguageController.tr('途中現場のGPS＋写真'))),
+        appBar: AppBar(
+          toolbarHeight: kToolbarHeight,
+          title: Text(SkoLanguageController.tr('途中現場のGPS＋写真')),
+        ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(

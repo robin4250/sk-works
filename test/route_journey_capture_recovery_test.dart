@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:sk_works/features/attendance/attendance_verification_page.dart';
+import 'package:sk_works/features/attendance/attendance_selection_page.dart';
+import 'package:sk_works/features/attendance/work_destination_selection_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,6 +85,47 @@ Future<void> _open(WidgetTester tester, _Access access) async {
 
 Finder get _reload => find.widgetWithText(OutlinedButton, '再読み込み');
 void main() {
+  for (final selection in [0, 1, 2, 3]) {
+    testWidgets(
+      'back stays reachable with hidden home chrome: selection=$selection',
+      (tester) async {
+        final access = _Access()..visits = [];
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(appBarTheme: const AppBarTheme(toolbarHeight: 0)),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => switch (selection) {
+                        0 => RouteJourneyCapturePage(
+                          sourceId: 'source',
+                          access: access,
+                        ),
+                        1 => const WorkDestinationSelectionPage(),
+                        2 => const AttendanceSelectionPage(),
+                        _ => const AttendanceVerificationPage(),
+                      },
+                    ),
+                  ),
+                  child: const Text('Open work page'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open work page'));
+        await tester.pumpAndSettle();
+        expect(find.byType(BackButton).hitTestable(), findsOneWidget);
+        await tester.tap(find.byType(BackButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Open work page'), findsOneWidget);
+        expect(access.submits, 0);
+      },
+    );
+  }
+
   testWidgets(
     'archived source explains preservation without new capture action',
     (tester) async {
