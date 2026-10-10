@@ -1,3 +1,7 @@
+import 'dart:io';
+
+// Standalone verification runs without Flutter package resolution.
+// ignore: avoid_relative_lib_imports
 import '../lib/features/people/worker_document_photos.dart';
 
 void require(bool condition, String description) {
@@ -40,7 +44,7 @@ void main() {
     }
     require(rejected, 'malformed or duplicate list rejected');
   }
-  print(
+  stdout.writeln(
     'PASS: legacy and ordered photo paths, migration fallback, malformed lists',
   );
 }
