@@ -671,10 +671,18 @@ class _CompanySubmittedDocumentsPageState
               ),
             ),
           ),
-          actions: [TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('閉じる'),
-          )],
+          actions: [
+            TextButton(
+              onPressed: photos.isEmpty
+                  ? null
+                  : () => refresh(photos.clear),
+              child: const Text('選択をすべて解除'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('閉じる'),
+            ),
+          ],
         ),
       ),
     );
