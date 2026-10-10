@@ -271,6 +271,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         // Leaving a visited site records the action time only. Do not
         // request another camera shot or GPS sample for the move action.
         final isMove = _visitsEnabled && _openVisit != null;
+        if (isMove && (_openVisit!['route_stop_id'] is! String ||
+            _openVisit!['start_capture_id'] is! String)) {
+          throw StateError('移動対象の現場記録を確認できません');
+        }
         if (isMove) {
           draft = RouteJourneyCaptureDraft(
             userId: _actor!,
