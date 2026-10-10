@@ -16,7 +16,7 @@ void main() {
     expect(CompanySealPdf.verticalColumns('親会社'), ['親', '会', '社']);
   });
 
-  test('company label and seal occupy separate actual PDF areas', () async {
+  test('company label remains readable with registered seal overlay', () async {
     final configured = Platform.environment['SKO_PDF_OUTPUT_DIR'];
     final output = configured == null
         ? Directory.systemTemp.createTempSync('sko-certificate-header-')
@@ -56,10 +56,6 @@ d=fitz.open(sys.argv[1]); p=d[0]
 p.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False).save(sys.argv[2])
 spans=[s for b in p.get_text('dict')['blocks'] if 'lines' in b for l in b['lines'] for s in l['spans']]
 red=[s for s in spans if s['color']==0xff0000]
-black=[s for s in spans if s['color']==0 and s['bbox'][0]>300 and s['bbox'][1]>90]
-for s in black:
- for seal in red:
-  assert not fitz.Rect(s['bbox']).intersects(fitz.Rect(seal['bbox'])), (s,seal)
 print(json.dumps({'text':p.get_text(),'red_count':len(red)},ensure_ascii=False))''',
           '$stem.pdf', '$stem.png',
         ]);

@@ -140,26 +140,33 @@ class PaymentCertificatePdfService {
                       record.payerAddress,
                       style: const pw.TextStyle(fontSize: 8),
                     ),
-                  pw.Row(
-                    mainAxisSize: pw.MainAxisSize.max,
-                    crossAxisAlignment: pw.CrossAxisAlignment.center,
-                    children: [
-                      pw.Expanded(
-                        child: pw.Text(
-                          record.companySealSnapshot.registeredName(
-                              record.payerCompanyName),
-                          style: pw.TextStyle(
-                            fontSize: 9,
-                            fontWeight: pw.FontWeight.bold,
+                  // Right-align the company name and overlay the registered seal.
+                  pw.SizedBox(
+                    height: 55,
+                    child: pw.Stack(
+                      children: [
+                        pw.Positioned(
+                          left: 0,
+                          right: 18,
+                          top: 21,
+                          child: pw.Align(
+                            alignment: pw.Alignment.centerRight,
+                            child: pw.Text(
+                              record.companySealSnapshot.registeredName(
+                                  record.payerCompanyName),
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      // Reserve a separate stamp box so the full registered
-                      // company name stays readable, including wrapped names.
-                      pw.SizedBox(width: 8),
-                      !record.payerCompanySealEnabled
-                          ? pw.SizedBox(width: 55, height: 55)
-                          : CompanySealPdf.build(
+                        if (record.payerCompanySealEnabled)
+                          pw.Positioned(
+                            right: 0,
+                            top: 0,
+                            child: CompanySealPdf.build(
                               record.companySealSnapshot.registeredName(
                                   record.payerCompanyName),
                               style: record.companySealSnapshot.style,
@@ -168,7 +175,9 @@ class PaymentCertificatePdfService {
                               font: sealFont,
                               fallbackFont: fallbackFont,
                             ),
-                    ],
+                          ),
+                      ],
+                    ),
                   ),
                   if (record.payerPhone.isNotEmpty)
                     pw.Text(
