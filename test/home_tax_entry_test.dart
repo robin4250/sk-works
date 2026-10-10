@@ -24,6 +24,8 @@ void main() {
           needsQualification: false,
         ),
         moduleEnabled: (_) => false,
+        visibleHomeKeys: const {'payroll'},
+        shortcuts: const [HomeShortcut('payroll', '給与明細', Icons.payments_outlined)],
         showAttendanceReport: false,
         showTodayAttendance: false,
         onOpen: (_) async => fail('Tax entry must not require the admin menu'),
@@ -36,15 +38,15 @@ void main() {
     testWidgets('$role can open tax rates directly from TOP', (tester) async {
       await tester.pumpWidget(home(role));
       expect(find.text('税率設定'), findsOneWidget);
-      final entry = find.byType(CompanyPayrollRatesHomeEntry);
-      final outer = tester.widget<Container>(
-        find.descendant(of: entry, matching: find.byType(Container)).first,
-      );
-      expect((outer.decoration! as BoxDecoration).border, isNotNull);
-      final inner = tester.widget<Material>(
-        find.descendant(of: entry, matching: find.byType(Material)).first,
-      );
-      expect((inner.shape! as RoundedRectangleBorder).side.width, 1.8);
+      final grid = tester.widget<GridView>(find.byType(GridView));
+      final tiles = (grid.childrenDelegate as SliverChildListDelegate).children;
+      expect(tiles, hasLength(2));
+      expect(tester.getSize(find.byWidget(tiles[0])), tester.getSize(find.byWidget(tiles[1])));
+      final borders = tester.widgetList<Container>(
+        find.descendant(of: find.byWidget(tiles[0]), matching: find.byType(Container)),
+      ).where((container) => container.decoration is BoxDecoration &&
+          (container.decoration! as BoxDecoration).border != null);
+      expect(borders, hasLength(2));
       await tester.tap(find.text('税率設定'));
       await tester.pumpAndSettle();
       expect(find.byType(CompanyPayrollRatesHomePage), findsOneWidget);
@@ -60,7 +62,7 @@ void main() {
   for (final role in ['member', 'manager']) {
     testWidgets('$role retains existing tax access scope', (tester) async {
       await tester.pumpWidget(home(role));
-      expect(find.byType(CompanyPayrollRatesHomeEntry), findsNothing);
+      expect(find.text('税率設定'), findsNothing);
     });
   }
 
