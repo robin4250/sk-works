@@ -32,6 +32,19 @@ try {
  const saved=(await observer.query('select version,value from payroll_tax_private.worker_conditions where company_id=$1 and worker_id=$2 and starts_on=$3',[cid,wid,start])).rows[0];
  assert.equal(Number(saved.version),Number(original.version)+1);assert.deepEqual(saved.value,first);
  assert.deepEqual((await observer.query('select value from payroll_final_private.documents where company_id=$1 and worker_id=$2',[cid,wid])).rows,before);
+ // A real refresh retains a shared registry lock: independent calculations can
+ // read concurrently, but a rate writer cannot commit midway through a payroll.
+ await a.query('begin');
+ await a.query('select private.refresh_automatic_payroll_internal($1,$2,$3)',[cid,wid,start]);
+ await b.query('begin');
+ const shared=(await b.query("select pg_try_advisory_xact_lock_shared(hashtextextended($1::text||':payroll-rate-registry',0)) acquired",[cid])).rows[0].acquired;
+ assert.equal(shared,true,'payroll readers must not serialize different employees');
+ const writer=(await b.query("select pg_try_advisory_xact_lock(hashtextextended($1::text||':payroll-rate-registry',0)) acquired",[cid])).rows[0].acquired;
+ assert.equal(writer,false,'rate writer must wait for payroll calculation');
+ await b.query('rollback');await a.query('commit');
+ await b.query('begin');
+ assert.equal((await b.query("select pg_try_advisory_xact_lock(hashtextextended($1::text||':payroll-rate-registry',0)) acquired",[cid])).rows[0].acquired,true);
+ await b.query('rollback');
  console.log('PASS native PG17: competing saves serialize, stale version rejected, finalized document preserved');
 } finally {
  for(const c of [a,b]) {try {await c.query('rollback');}catch {}}

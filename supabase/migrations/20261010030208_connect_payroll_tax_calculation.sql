@@ -504,7 +504,7 @@ declare
   regular_day_base numeric:=0;
   leave_days integer:=0; leave_daily numeric:=0; leave_total numeric:=0;
 begin
-  perform pg_advisory_xact_lock(hashtextextended(cid::text||':payroll-rate-registry',0));
+  perform pg_advisory_xact_lock_shared(hashtextextended(cid::text||':payroll-rate-registry',0));
   perform pg_advisory_xact_lock(hashtextextended(cid::text||wid::text||start_day::text,0));
   select * into current_statement
   from public.payroll_statements
@@ -795,7 +795,7 @@ begin
     return new;
   end if;
 
-  perform pg_advisory_xact_lock(hashtextextended(new.company_id::text||':payroll-rate-registry',0));
+  perform pg_advisory_xact_lock_shared(hashtextextended(new.company_id::text||':payroll-rate-registry',0));
 
   select coalesce(to_jsonb(s),'{}'::jsonb)
   into settings
