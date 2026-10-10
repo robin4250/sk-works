@@ -423,7 +423,10 @@ class _CompanySubmittedDocumentsPageState
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _pickFile(row),
@@ -441,7 +444,6 @@ class _CompanySubmittedDocumentsPageState
                   onPressed: _busy ? null : () => _edit(row),
                   child: const Text('編集'),
                 ),
-                const Spacer(),
                 IconButton(
                   tooltip: '無効化',
                   onPressed: _busy ? null : () => _archive(row),
