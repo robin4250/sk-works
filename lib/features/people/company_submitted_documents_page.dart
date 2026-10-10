@@ -621,7 +621,7 @@ class _CompanySubmittedDocumentsPageState
                     onTap: () async {
                       final selected = photos.photos[i];
                       final bytes = await selected.readAsBytes();
-                      if (!context.mounted) return;
+                      if (!context.mounted || !dialogContext.mounted) return;
                       await showDialog<void>(
                         context: context,
                         builder: (previewContext) => AlertDialog(
