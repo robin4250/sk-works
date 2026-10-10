@@ -19,7 +19,8 @@ abstract interface class OwnDocumentRegistrationGateway {
   });
 }
 
-abstract interface class OwnDocumentPhotoGateway {
+abstract interface class OwnDocumentPhotoGateway
+    implements OwnDocumentRegistrationGateway {
   Future<String> signedUrl(String path);
   Future<void> savePhotos({
     required String requirementId,
