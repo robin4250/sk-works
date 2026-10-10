@@ -1,3 +1,4 @@
+import 'resident_tax_capability.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -14,12 +15,14 @@ class IndividualPayrollWorkspace {
     required this.canEdit,
     required this.isAdmin,
     required this.workers,
+    this.companyId,
   });
 
   final bool canView;
   final bool canEdit;
   final bool isAdmin;
   final List<IndividualPayrollWorker> workers;
+  final String? companyId;
 }
 
 class IndividualPayrollSetting {
@@ -40,6 +43,8 @@ class IndividualPayrollSetting {
 class IndividualPayrollSettingsRepository {
   IndividualPayrollSettingsRepository._(this._client);
 
+  IndividualPayrollSettingsRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   static IndividualPayrollSettingsRepository? maybeCreate() {
@@ -47,6 +52,18 @@ class IndividualPayrollSettingsRepository {
     final client = SupabaseBackend.client;
     if (client.auth.currentUser == null) return null;
     return IndividualPayrollSettingsRepository._(client);
+  }
+
+  Future<ResidentTaxCapability> residentTaxCapability() =>
+      readResidentTaxCapability(() => _client.rpc('resident_tax_schedule_contract_version'));
+
+  Future<bool> supportsPaidLeaveWages() async {
+    try {
+      return await _client.rpc('paid_leave_wage_contract_version') == 1;
+    } catch (_) {
+      // Older servers and failed reads must never be presented as active.
+      return false;
+    }
   }
 
   Future<IndividualPayrollWorkspace> loadWorkspace() async {
@@ -64,6 +81,7 @@ class IndividualPayrollSettingsRepository {
       canView: permissions['view'] == true,
       canEdit: permissions['edit'] == true,
       isAdmin: permissions['admin'] == true,
+      companyId: value['company_id'] is String ? value['company_id'] as String : null,
       workers: [
         for (final rawWorker in workersRaw)
           if (rawWorker is Map)
@@ -82,7 +100,16 @@ class IndividualPayrollSettingsRepository {
         .eq('worker_id', workerId)
         .limit(1);
     if (rows.isEmpty) {
-      return IndividualPayrollSetting(workerId: workerId, values: const {});
+      // Older payroll_workspace responses do not include company_id. Resolve
+      // the selected worker through the existing RLS-protected worker table,
+      // including workers whose salary settings have not been saved yet.
+      final worker = await _client.from('workers').select('company_id')
+          .eq('id', workerId).maybeSingle();
+      return IndividualPayrollSetting(
+        workerId: workerId,
+        values: {if (worker?['company_id'] is String)
+          'company_id': worker!['company_id']},
+      );
     }
     final row = Map<String, dynamic>.from(rows.first);
     return IndividualPayrollSetting(

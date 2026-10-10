@@ -19,7 +19,7 @@ class PaymentCertificatePdfService {
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
-        ? await CompanySealPdf.loadFont()
+        ? await CompanySealPdf.loadStyleFont(record.companySealSnapshot.style)
         : regular;
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
@@ -75,11 +75,13 @@ class PaymentCertificatePdfService {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(
-              'From:${record.payerCompanyName}',
+            pw.Expanded(child: pw.Text(
+              'From:${record.companySealSnapshot.registeredName(record.payerCompanyName)}',
               style: const pw.TextStyle(fontSize: 7),
-            ),
+            )),
+            pw.SizedBox(width: 8),
             pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
+            pw.SizedBox(width: 12),
             pw.Text('P.001/001', style: const pw.TextStyle(fontSize: 7)),
           ],
         ),
@@ -132,29 +134,32 @@ class PaymentCertificatePdfService {
                       style: const pw.TextStyle(fontSize: 8),
                     ),
                   pw.Row(
-                    mainAxisSize: pw.MainAxisSize.min,
+                    mainAxisSize: pw.MainAxisSize.max,
                     crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
-                      pw.Flexible(
+                      pw.Expanded(
                         child: pw.Text(
-                          record.payerCompanyName,
+                          record.companySealSnapshot.registeredName(
+                              record.payerCompanyName),
                           style: pw.TextStyle(
                             fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
                       ),
-                      pw.Transform.translate(
-                        offset: const PdfPoint(-4, 0),
-                        child: !record.payerCompanySealEnabled
-                            ? pw.SizedBox(width: 55, height: 55)
-                            : CompanySealPdf.build(
-                                record.payerCompanyName,
-                                size: 55,
-                                font: sealFont,
-                                fallbackFont: fallbackFont,
-                              ),
-                      ),
+                      // Reserve a separate stamp box so the full registered
+                      // company name stays readable, including wrapped names.
+                      pw.SizedBox(width: 8),
+                      !record.payerCompanySealEnabled
+                          ? pw.SizedBox(width: 55, height: 55)
+                          : CompanySealPdf.build(
+                              record.companySealSnapshot.registeredName(
+                                  record.payerCompanyName),
+                              style: record.companySealSnapshot.style,
+                              size: 55,
+                              font: sealFont,
+                              fallbackFont: fallbackFont,
+                            ),
                     ],
                   ),
                   if (record.payerPhone.isNotEmpty)
@@ -253,7 +258,9 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
             pw.Text(
-              record.isPreview
+              record.isAgreementSnapshot
+                  ? '双方確認済み・第${record.revision}版'
+                  : record.isPreview
                   ? 'プレビュー・出勤実績なし'
                   : record.status == 'draft'
                   ? '下書き・第${record.revision}版'

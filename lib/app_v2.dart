@@ -44,6 +44,8 @@ import 'features/invoices/invoice_page.dart';
 import 'features/notes/notes_cloud_page.dart';
 import 'features/notifications/notification_bell.dart';
 import 'features/notifications/notifications_page.dart';
+import 'features/tutorial/tutorial_home_card.dart';
+import 'features/tutorial/tutorial_page.dart';
 import 'features/operations/vehicle_route_page.dart';
 import 'features/operations/vehicle_route_selection_page.dart';
 import 'features/payroll/individual_payroll_settings_page.dart';
@@ -58,7 +60,6 @@ import 'features/people/employee_registration_page.dart';
 import 'features/people/employee_initial_registration_page.dart';
 import 'features/people/people_cloud_page.dart';
 import 'features/people/people_page.dart';
-import 'features/people/signature_list_page.dart';
 import 'features/people/worker_document_page.dart';
 import 'features/people/own_document_registration_page.dart';
 import 'features/profile/profile_page.dart';
@@ -67,7 +68,6 @@ import 'features/qualifications/qualification_cloud_page.dart';
 import 'features/qualifications/own_qualification_registration_page.dart';
 import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
-import 'features/settings/company_module_settings_page.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
@@ -162,6 +162,9 @@ class _HomePageState extends State<HomePage> {
     companyName: 'SKO',
     displayName: 'ユーザー',
   );
+  int _tutorialRefreshToken = 0;
+  String? _tutorialCompanyId;
+  String? _tutorialUserId;
   int _selectedIndex = 0;
   bool _chromeVisible = true;
   VoidCallback? _chromeListener;
@@ -259,7 +262,26 @@ class _HomePageState extends State<HomePage> {
     try {
       final identity = await repository.loadIdentity();
       if (!mounted) return;
-      setState(() => _identity = identity);
+      String? companyId;
+      final userId = SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id : null;
+      if (userId != null) {
+        try {
+          final rows = await SupabaseBackend.client.from('company_members')
+              .select('company_id').eq('user_id', userId).limit(1);
+          if (rows.isNotEmpty) {
+            companyId = rows.first['company_id']?.toString();
+          }
+        } catch (_) {
+          // Optional guide scope must never prevent authoritative identity loading.
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _identity = identity;
+        _tutorialUserId = userId;
+        _tutorialCompanyId = companyId;
+      });
     } catch (_) {
       // Keep the safest default if identity loading fails.
     }
@@ -271,7 +293,10 @@ class _HomePageState extends State<HomePage> {
     try {
       final value = await repository.loadRequiredDocumentAttention();
       if (!mounted) return;
-      setState(() => _requiredDocumentAttention = value);
+      setState(() {
+        _requiredDocumentAttention = value;
+        _tutorialRefreshToken++;
+      });
     } catch (_) {
       // Missing-document attention must not block the home screen.
     }
@@ -613,6 +638,9 @@ class _HomePageState extends State<HomePage> {
     unawaited(_recordUsage(key));
     if (!mounted) return;
 
+    // Ignore retired shortcut keys retained in older home preferences.
+    if (key == 'signatures') return;
+
     final requiredModule = switch (key) {
       'attendance' ||
       'attendance_list' ||
@@ -649,9 +677,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (key == 'company_modules' && !_isAdmin) {
+    if (key == 'company_modules') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('利用機能の変更は管理者のみ行えます')),
+        const SnackBar(content: Text('利用機能のON／OFFはMaster側に保管しています')),
       );
       return;
     }
@@ -810,6 +838,14 @@ class _HomePageState extends State<HomePage> {
           role: ManualContent.fromMembershipRole(_identity.role),
         );
         break;
+      case 'tutorial':
+        final userId = _tutorialUserId;
+        final companyId = _tutorialCompanyId;
+        if (userId == null || companyId == null) return;
+        page = TutorialPage(userId: userId, companyId: companyId,
+          availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+          onOpenAction: _openHomeAction);
+        break;
       case 'help':
         page = HelpPage(
           role: ManualContent.fromMembershipRole(_identity.role),
@@ -856,9 +892,6 @@ class _HomePageState extends State<HomePage> {
       case 'company_documents':
         page = const CompanySubmittedDocumentsPage();
         break;
-      case 'signatures':
-        page = const SignatureListPage();
-        break;
       case 'attendance_management':
         page = const AttendanceManagementPage();
         break;
@@ -883,9 +916,6 @@ class _HomePageState extends State<HomePage> {
       case 'appearance':
         await _openHomeAppearanceSettings();
         return;
-      case 'company_modules':
-        page = const CompanyModuleSettingsPage();
-        break;
       case 'settings':
         page = const SettingsPage();
         break;
@@ -903,6 +933,10 @@ class _HomePageState extends State<HomePage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => page!),
     );
+
+    if (!mounted) return;
+    setState(() => _tutorialRefreshToken++);
+    await _loadRequiredDocumentAttention();
 
     if (key == 'clock_in' ||
         key == 'clock_out' ||
@@ -927,6 +961,9 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      _MenuAction(key: 'tutorial', label: SkoLanguageController.tr('準備ガイド'),
+        icon: Icons.school_outlined, homeEligible: false,
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       if (_moduleEnabled('attendance'))
         _MenuAction(
           key: 'attendance_verify',
@@ -1129,14 +1166,6 @@ class _HomePageState extends State<HomePage> {
         ),
       if (_isAdmin)
         _MenuAction(
-          key: 'company_modules',
-          label: SkoLanguageController.tr('利用機能のON／OFF'),
-          icon: Icons.toggle_on_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
-        ),
-      if (_isAdmin)
-        _MenuAction(
           key: 'company_documents',
           label: SkoLanguageController.tr('会社データ'),
           icon: Icons.business_center_outlined,
@@ -1183,13 +1212,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.manage_history_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
-        ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'signatures',
-          label: SkoLanguageController.tr('サイン一覧'),
-          icon: Icons.draw_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       _MenuAction(
         key: 'appearance',
@@ -1331,6 +1353,11 @@ class _HomePageState extends State<HomePage> {
           body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
+          tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
+              ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
+                  availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+                  onOpenAction: _openHomeAction, refreshToken: _tutorialRefreshToken)
+              : null,
           moduleEnabled: _moduleEnabled,
           gridColumns: _homeGridColumns,
           actionOrder: _homeActionOrder,
@@ -1385,7 +1412,6 @@ class _HomePageState extends State<HomePage> {
       'approvals',
       'documents',
       'employee_qualifications',
-      'signatures',
       'attendance_management',
       'payment_certificates',
       'trade_companies',
@@ -1400,6 +1426,7 @@ class _HomePageState extends State<HomePage> {
     };
     const admin = <String>{
       'admin_sites',
+      'company_modules',
       'company_documents',
       'site_map',
       'today_line',

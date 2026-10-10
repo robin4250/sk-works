@@ -6,8 +6,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../domain/invoice_engine.dart';
+import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
+import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
 
 class InvoicePdfService {
@@ -29,14 +31,14 @@ class InvoicePdfService {
 
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
-    final sealFont = effectiveSettings?.companySealEnabled == false
-        ? regular
-        : await CompanySealPdf.loadFont();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      final sealFont = effectiveSettings?.companySealEnabled == false
+          ? regular
+          : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);
       List<InvoiceApprovalRecord> approvals = const [];
       if (approvalsByInvoice?.containsKey(invoice.invoiceId) == true) {
         approvals = List<InvoiceApprovalRecord>.unmodifiable(
@@ -47,6 +49,8 @@ class InvoicePdfService {
           approvals = await approvalRepository.loadForInvoice(
             invoice.invoiceId,
           );
+        } on InvoiceStampSurnameReadException {
+          rethrow;
         } catch (_) {
           approvals = const [];
         }
@@ -590,7 +594,7 @@ class InvoicePdfService {
     box(28, 744.8898, right - 28, 70);
     line(377.2756, 749.8898, 0, 60);
     text(
-      settings?.companyName ?? '',
+      invoice.companySealSnapshot.registeredName(settings?.companyName ?? ''),
       50,
       756,
       285,
@@ -631,7 +635,8 @@ class InvoicePdfService {
     final companyNameWidth =
         (companyFont
                     .getFont(context)
-                    .stringMetrics(settings?.companyName ?? '')
+                    .stringMetrics(invoice.companySealSnapshot.registeredName(
+                        settings?.companyName ?? ''))
                     .advanceWidth *
                 11)
             .clamp(0.0, 285.0)
@@ -648,7 +653,9 @@ class InvoicePdfService {
             child: pw.FittedBox(
               fit: pw.BoxFit.fill,
               child: CompanySealPdf.build(
-                settings?.companyName ?? '',
+                invoice.companySealSnapshot.registeredName(
+                    settings?.companyName ?? ''),
+                style: invoice.companySealSnapshot.style,
                 font: sealFont,
                 fallbackFont: fallbackFont,
               ),
@@ -714,8 +721,36 @@ class InvoicePdfService {
 
   static pw.Widget _datedApprovalStamp(InvoiceApprovalRecord record) {
     final red = PdfColor.fromHex('#D9272E');
+    final surname = record.stampSurname;
+    if (surname == null || surname.isEmpty) return _legacyApprovalStamp(record);
+    return pw.Container(
+      width: 36,
+      height: 36,
+      padding: const pw.EdgeInsets.all(4),
+      decoration: pw.BoxDecoration(
+        shape: pw.BoxShape.circle,
+        border: pw.Border.all(color: red, width: 1.5),
+      ),
+      child: pw.Center(
+        child: pw.FittedBox(
+          fit: pw.BoxFit.scaleDown,
+          child: pw.Text(
+            surname,
+            style: pw.TextStyle(
+              color: red,
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _legacyApprovalStamp(InvoiceApprovalRecord record) {
+    final red = PdfColor.fromHex('#D9272E');
     final date = record.stampDisplayDate;
-    final surname = _surname(record.name);
+    final surname = _legacySurname(record.name);
     return pw.Container(
       width: 36,
       height: 36,
@@ -766,7 +801,7 @@ class InvoicePdfService {
     );
   }
 
-  static String _surname(String name) {
+  static String _legacySurname(String name) {
     final value = name.trim();
     if (value.isEmpty) return '';
     return value.split(RegExp(r'[\s　]+')).first;
@@ -922,6 +957,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
     try {
       return await repository.loadForInvoice(invoice.invoiceId);
+    } on InvoiceStampSurnameReadException {
+      rethrow;
     } catch (_) {
       return const [];
     }
@@ -932,6 +969,15 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     final repository = _approvalRepository;
     if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
       return;
+    }
+    final rows = await repository.loadForInvoice(invoice.invoiceId);
+    if (!mounted) return;
+    final ownPending = rows.where((row) => row.canCurrentUserApprove).toList();
+    if (ownPending.length != 1) return;
+    final row = ownPending.single;
+    if (row.canCurrentUserSetStampSurname && row.draftStampSurname == null) {
+      final saved = await editInvoiceStampSurname(context, repository, invoice.invoiceId);
+      if (!saved || !mounted) return;
     }
     await repository.approve(invoice.invoiceId);
     if (!mounted) return;
@@ -1023,6 +1069,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                             ),
                         ],
                       ),
+                    ),
+                  if (approvals.any((row) => row.stampSurname == null))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: Text(SkoLanguageController.isEnglish
+                          ? 'Approval-seal surname unconfigured or unconfirmed: existing seals are retained. Set your surname before a new approval when available.'
+                          : '承認印の名字未設定・未確認：既存の印影を保持しています。設定が利用可能な場合は、新しい承認前に本人の名字を入力してください。'),
                     ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),

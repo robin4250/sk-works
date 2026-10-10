@@ -50,7 +50,14 @@ jobs:
         run: flutter --version
 
       - name: Create Android project files
-        run: flutter create . --platforms=android --project-name sk_works --org com.skworks
+        run: |
+          set -euo pipefail
+          lock_backup=$(mktemp)
+          cp pubspec.lock "$lock_backup"
+          trap 'cp "$lock_backup" pubspec.lock; rm -f "$lock_backup"' EXIT
+          flutter create . --no-pub --platforms=android --project-name sk_works --org com.skworks
+          cp "$lock_backup" pubspec.lock
+          git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Scan tracked files for production secrets
         run: bash tool/check_no_client_secrets.sh
@@ -59,7 +66,7 @@ jobs:
         run: bash tool/check_dependency_pins.sh
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Verify lockfile is stable
         run: git diff --exit-code -- pubspec.lock
@@ -84,6 +91,11 @@ jobs:
           node tool/verify_payroll_split_site_allowances.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/verify_payroll_named_financial_detail_sql.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261008045401_preserve_payroll_named_financial_details.sql
 
+      - name: Generate actual payroll finalization response fixture
+        env:
+          SKO_PAYROLL_FINALIZATION_FIXTURE_PATH: build/payroll-finalization-response.json
+        run: node tool/verify_finalized_payroll_document_snapshot.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
       - name: Prepare adopted PDF verification
         run: |
           python -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
@@ -91,6 +103,7 @@ jobs:
 
       - name: Test
         env:
+          SKO_PAYROLL_FINALIZATION_FIXTURE_PATH: build/payroll-finalization-response.json
           SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
           SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
         run: flutter test
@@ -100,7 +113,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: adopted-report-pdf-comparison
-          path: build/pdf-fixtures/*.pdf
+          path: |
+            build/pdf-fixtures/*.pdf
+            build/pdf-fixtures/daily_report_capture_evidence_*.png
+            build/pdf-fixtures/payment_agreement_*.png
           if-no-files-found: warn
 
       - name: Pre-device release gate

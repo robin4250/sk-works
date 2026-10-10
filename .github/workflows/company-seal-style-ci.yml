@@ -1,0 +1,74 @@
+name: Company seal style contracts
+on:
+  push:
+    branches: [main, 'fix/company-seal-aoyagi-*', 'fix/company-seal-document-*']
+    paths:
+      - 'assets/fonts/company-seal/aoyagi-reisho/**'
+      - 'lib/features/shared/company_seal_pdf.dart'
+      - 'lib/domain/company_seal_snapshot.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/payroll/*pdf_service.dart'
+      - 'lib/features/payroll/site_payment_agreement_document.dart'
+      - 'lib/features/settings/company_seal*'
+      - 'test/company_seal*_pdf_test.dart'
+      - 'supabase/migrations/*company_seal*.sql'
+      - 'tool/verify_company_seal*.mjs'
+      - 'tool/verify_site_payment_agreement.mjs'
+      - '.github/workflows/company-seal-style-ci.yml'
+  pull_request:
+    paths:
+      - 'assets/fonts/company-seal/aoyagi-reisho/**'
+      - 'lib/features/shared/company_seal_pdf.dart'
+      - 'lib/domain/company_seal_snapshot.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/payroll/*pdf_service.dart'
+      - 'lib/features/payroll/site_payment_agreement_document.dart'
+      - 'lib/features/settings/company_seal*'
+      - 'test/company_seal*_pdf_test.dart'
+      - 'supabase/migrations/*company_seal*.sql'
+      - 'tool/verify_company_seal*.mjs'
+      - 'tool/verify_site_payment_agreement.mjs'
+      - '.github/workflows/company-seal-style-ci.yml'
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-seal-runtime" @electric-sql/pglite@0.3.14
+      - run: node tool/verify_company_seal_style_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_company_seal_snapshot_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_invoice_calculation_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js" --seal-snapshots
+      - run: node tool/audit_payment_certificate_math.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js" --seal-snapshots
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: python -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+      - run: python tool/prepare_pdf_fixture_font.py
+      - run: flutter test test/company_seal_reisho_pdf_test.dart test/company_seal_document_pdf_test.dart
+        env:
+          SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+          SKO_PAYMENT_PGLITE_PATH: ${{ runner.temp }}/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js
+      - name: Render actual Flutter proof
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          for path in Path('build/company-seal-proof').glob('*.pdf'):
+              with fitz.open(path) as document:
+                  for number, page in enumerate(document):
+                      page.get_pixmap(matrix=fitz.Matrix(2,2)).save(path.with_name(f'{path.stem}_{number}.png'))
+                  if '_reisho_' in path.stem and not path.stem.startswith('company_seal'):
+                      assert any('aoyagi' in font[3].lower() for page in document for font in page.get_fonts()), path
+                      text = ''.join(page.get_text() for page in document)
+                      assert '株式会社変更後' not in text, path
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: company-seal-reisho-proof
+          path: build/company-seal-proof/

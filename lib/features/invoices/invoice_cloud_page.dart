@@ -5,6 +5,7 @@ import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_approval_repository.dart';
+import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_pdf_service.dart';
 import 'invoice_settings_page.dart';
 
@@ -559,7 +560,9 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
                   '確認・承認と印影',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const Text('印影の表示日付を変更しても、実際の承認日時と履歴は変わりません。'),
+                Text(SkoLanguageController.isEnglish
+                    ? 'Explicit surnames are fixed when approved. Previous seals and approval history remain unchanged. Unconfigured seals keep their existing display.'
+                    : '名字は本人が入力し、承認時に固定します。過去の印影と承認履歴は変更しません。未設定の印影は従来の表示を保持します。'),
                 for (final row in rows)
                   ListTile(
                     title: Text(
@@ -573,7 +576,20 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (row.canCurrentUserEditDisplayDate)
+                        if (row.canCurrentUserSetStampSurname)
+                          IconButton(
+                            tooltip: SkoLanguageController.isEnglish ? 'Approval-seal surname' : '承認印の名字',
+                            icon: const Icon(Icons.badge_outlined),
+                            onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              final saved = await editInvoiceStampSurname(
+                                context, repository, widget.invoice.invoiceId,
+                                initialSurname: row.draftStampSurname,
+                              );
+                              if (saved && mounted) setState(() => _revision++);
+                            },
+                          ),
+                        if (row.canCurrentUserEditDisplayDate && row.stampSurname == null)
                           IconButton(
                             tooltip: '印影の表示日付',
                             icon: const Icon(Icons.edit_calendar_outlined),

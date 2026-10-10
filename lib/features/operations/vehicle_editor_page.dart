@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'vehicle_route_repository.dart';
+import 'vehicle_notification_settings_page.dart';
+import 'vehicle_notification_settings_repository.dart';
 
 class VehicleEditorPage extends StatefulWidget {
   const VehicleEditorPage({
@@ -33,6 +35,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   _PendingDocument? _compulsoryDoc;
   _PendingDocument? _voluntaryDoc;
   bool _saving = false;
+  bool _canManageVehicleNotifications = false;
 
   @override
   void initState() {
@@ -50,6 +53,20 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
     _storageAddress = TextEditingController(
       text: row?['storage_address']?.toString() ?? '',
     );
+    _loadNotificationPermission();
+  }
+
+  Future<void> _loadNotificationPermission() async {
+    final id = widget.vehicle?['id']?.toString();
+    final repository = VehicleNotificationSettingsRepository.maybeCreate();
+    if (id == null || repository == null) return;
+    try {
+      final settings = await repository.load(id);
+      if (!mounted) return;
+      setState(() => _canManageVehicleNotifications = settings.canManage);
+    } catch (_) {
+      // Missing staged RPC or an unauthorized role must not enable the entry.
+    }
   }
 
   @override
@@ -255,6 +272,24 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
+          if (row?['id'] != null && _canManageVehicleNotifications)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.blue, width: 2),
+              ),
+              onPressed: _saving
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => VehicleNotificationSettingsPage(
+                            vehicleId: row!['id'].toString(),
+                            vehicleName: row['display_name']?.toString() ?? '車両',
+                          ),
+                        ),
+                      ),
+              icon: const Icon(Icons.notifications_outlined),
+              label: const Text('車両管理者（通知先）'),
+            ),
           TextField(
             controller: _name,
             decoration: const InputDecoration(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import 'company_payroll_rates_home_entry.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
@@ -32,6 +33,7 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.identity,
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
+    this.tutorialCard,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
     this.visibleHomeKeys = const <String>{},
@@ -48,6 +50,7 @@ class FriendlyHomeContent extends StatelessWidget {
 
   final HomeIdentity identity;
   final RequiredDocumentAttention requiredDocumentAttention;
+  final Widget? tutorialCard;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
@@ -83,6 +86,7 @@ class FriendlyHomeContent extends StatelessWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
+              if (tutorialCard != null) tutorialCard!,
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
@@ -168,13 +172,7 @@ class _RequiredDocumentAttentionCardState
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => widget.onOpen(
-            widget.attention.paidLeaveApprovalCount > 0
-                ? 'approvals'
-                : widget.attention.generationIssueCount > 0
-                    ? 'notifications'
-                    : 'documents',
-          ),
+          onTap: () => widget.onOpen('notifications'),
           child: IntrinsicHeight(
             child: Row(
               children: [
@@ -498,7 +496,10 @@ class _OrderedHomeContent extends StatelessWidget {
     final rank = <String, int>{
       for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
     };
+    final showTaxRates = identity.isAdmin || identity.role == 'viewer';
+    const taxKey = 'company_tax_rates';
     final keys = <String>[
+      if (showTaxRates) taxKey,
       if (moduleEnabled('attendance') &&
           showAttendanceReport &&
           visibleHomeKeys.contains('attendance_verify'))
@@ -525,6 +526,13 @@ class _OrderedHomeContent extends StatelessWidget {
 
     final shortcutByKey = <String, HomeShortcut>{
       for (final shortcut in shortcuts) shortcut.key: shortcut,
+      if (showTaxRates)
+        taxKey: HomeShortcut(
+          taxKey,
+          SkoLanguageController.isEnglish ? 'Tax rates' : '税率設定',
+          Icons.percent,
+          access: HomeShortcutAccess.viewer,
+        ),
     };
     final children = <Widget>[];
     final pending = <_HomeAction>[];
@@ -537,7 +545,15 @@ class _OrderedHomeContent extends StatelessWidget {
           columns: gridColumns,
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
-          onOpen: onOpen,
+          onOpen: (key) async {
+            if (key == taxKey) {
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute(builder: (_) => const CompanyPayrollRatesHomePage()),
+              );
+            } else {
+              await onOpen(key);
+            }
+          },
           onReorderAction: onReorderAction,
         ),
       );
@@ -868,7 +884,7 @@ class _HomeActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: dragging ? null : () => onOpen(item.key),
           child: Container(
-            padding: EdgeInsets.all(compact ? 8 : 14),
+            padding: EdgeInsets.all(compact ? (isViewer ? 5 : 8) : 14),
             decoration: BoxDecoration(
               border: borderWidth > 0
                   ? Border.all(color: borderColor, width: borderWidth)

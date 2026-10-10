@@ -9,6 +9,8 @@ import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
+import 'company_payroll_rates_page.dart';
+import 'company_allowance_identity_entry.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -32,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _canManageCompany = false;
   bool _isMasterAdmin = false;
   String? _companyId;
+  bool _canReadPayrollRates = false;
   String? _loadError;
   String _detailMode = 'siteBreakdownOnInvoice';
   String _languageCode = SkoLanguageController.languageCode;
@@ -89,6 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final companyId = memberships.first['company_id'] as String;
     final role = memberships.first['role']?.toString() ?? 'viewer';
     _canManageCompany = role == 'owner' || role == 'admin';
+    _canReadPayrollRates = _canManageCompany || role == 'viewer';
 
     final masterRepository = MasterDeviceRepository.maybeCreate();
     if (masterRepository != null) {
@@ -101,7 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final companies = await SupabaseBackend.client
         .from('companies')
         .select(
-          'id, name, tax_rate, default_unit_price, default_invoice_detail_mode',
+          'id, name, default_unit_price, default_invoice_detail_mode',
         )
         .eq('id', companyId)
         .limit(1);
@@ -112,7 +116,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final company = companies.first;
     _companyId = companyId;
     _companyName.text = company['name'] as String? ?? ProductBrand.displayName;
-    _taxRate.text = (company['tax_rate'] ?? 10).toString();
     _defaultUnitPrice.text = (company['default_unit_price'] ?? 25000).toString();
     _detailMode = _fromDatabaseDetailMode(
       company['default_invoice_detail_mode'] as String?,
@@ -141,7 +144,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final taxRate = double.tryParse(_taxRate.text.trim());
     final unitPrice = int.tryParse(_defaultUnitPrice.text.trim());
-    if (_companyName.text.trim().isEmpty || taxRate == null || unitPrice == null) {
+    if (_companyName.text.trim().isEmpty ||
+        (!_usesCloud && taxRate == null) || unitPrice == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('入力内容を確認してください')),
       );
@@ -157,14 +161,13 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         await SupabaseBackend.client.from('companies').update({
           'name': _companyName.text.trim(),
-          'tax_rate': taxRate,
           'default_unit_price': unitPrice,
           'default_invoice_detail_mode': _toDatabaseDetailMode(_detailMode),
         }).eq('id', companyId);
       } else {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('settings_company_name', _companyName.text.trim());
-        await prefs.setDouble('settings_tax_rate', taxRate);
+        await prefs.setDouble('settings_tax_rate', taxRate!);
         await prefs.setInt('settings_default_unit_price', unitPrice);
         await prefs.setString('settings_invoice_detail_mode', _detailMode);
       }
@@ -412,26 +415,12 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.widgets_outlined),
-                            title: const Text('利用機能の設定'),
-                            subtitle: const Text('会社で使う機能をON / OFF'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const CompanyModuleSettingsPage(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
                         if (_canManageCompany) ...[
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.currency_yen_outlined),
-                              title: const Text('会社単価・手当設定'),
-                              subtitle: const Text('福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
+                              title: const Text('消費税・会社手当設定'),
+                              subtitle: const Text('消費税率・福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -442,7 +431,65 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 16),
                         ],
+                        if (_canManageCompany && _companyId != null) ...[
+                          CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_canReadPayrollRates && _companyId != null) ...[
+                          Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(23),
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 1.8,
+                              ),
+                            ),
+                            child: Container(
+                              margin: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 1.8,
+                                ),
+                              ),
+                              child: ListTile(
+                                leading: const Icon(Icons.percent_outlined),
+                                title: const Text('会社共通の税率・保険料率'),
+                                subtitle: Text(_canManageCompany
+                                    ? '社会保険・雇用保険・所得税資料'
+                                    : '料率・適用月・情報元の閲覧'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CompanyPayrollRatesPage(
+                                      companyId: _companyId!,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.widgets_outlined),
+                              title: const Text('利用機能のON／OFF（保管中）'),
+                              subtitle: const Text('用途は検討中。既存設定の確認のみ'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: '利用機能のON／OFF（保管中）',
+                                    child: CompanyModuleSettingsPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.dashboard_outlined),
@@ -533,14 +580,15 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                       ),
                       const SizedBox(height: 10),
-                      TextField(
-                        controller: _taxRate,
-                        enabled: !_usesCloud || _canManageCompany,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: '消費税率（%）'),
-                      ),
-                      const SizedBox(height: 14),
+                      if (!_usesCloud) ...[
+                        TextField(
+                          controller: _taxRate,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(labelText: '消費税率（%）'),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       TextField(
                         controller: _defaultUnitPrice,
                         enabled: !_usesCloud || _canManageCompany,

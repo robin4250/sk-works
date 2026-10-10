@@ -1,0 +1,30 @@
+name: Source notification restricted recipients check
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008211227_source_notification_restricted_recipients.sql'
+      - 'tool/verify_source_notification_restricted_recipients.mjs'
+      - '.github/workflows/source-notification-restricted-recipients-check.yml'
+  push:
+    branches: [main, 'fix/source-notification-restricted-recipients-*']
+    paths:
+      - 'supabase/migrations/20261008211227_source_notification_restricted_recipients.sql'
+      - 'tool/verify_source_notification_restricted_recipients.mjs'
+      - '.github/workflows/source-notification-restricted-recipients-check.yml'
+permissions:
+  contents: read
+jobs:
+  recipient-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/restricted-recipient-runtime" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify existing restriction recipient contract
+        run: node tool/verify_source_notification_restricted_recipients.mjs "$RUNNER_TEMP/restricted-recipient-runtime/node_modules/@electric-sql/pglite/dist/index.js"

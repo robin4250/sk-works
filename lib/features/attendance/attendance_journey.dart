@@ -1,9 +1,17 @@
 /// Pure journey model. IDs/timestamps are supplied by the persistence boundary;
 /// constructing a journey does not save attendance or authorize proxy actions.
 enum AttendanceJourneyOrigin { selfGps, selfManual, teamProxy }
+
 enum AttendanceJourneyPlace { company, site }
+
 enum AttendanceJourneyPath { singleSite, multiSitePhoto }
-enum AttendanceJourneyAction { startVisit, endVisit, directClockOut, companyClockOut }
+
+enum AttendanceJourneyAction {
+  startVisit,
+  endVisit,
+  directClockOut,
+  companyClockOut,
+}
 
 class AttendanceJourneyGps {
   AttendanceJourneyGps({
@@ -12,7 +20,9 @@ class AttendanceJourneyGps {
     required this.observedAt,
     this.accuracyM,
   }) {
-    if (!latitude.isFinite || !longitude.isFinite || latitude.abs() > 90 ||
+    if (!latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
         longitude.abs() > 180 ||
         (accuracyM != null && (!accuracyM!.isFinite || accuracyM! < 0))) {
       throw ArgumentError('Invalid GPS observation');
@@ -34,11 +44,15 @@ class AttendanceJourneyEvidence {
     required this.origin,
     this.gps,
   }) {
-    if (id.trim().isEmpty || workerId.trim().isEmpty || actorId.trim().isEmpty) {
+    if (id.trim().isEmpty ||
+        workerId.trim().isEmpty ||
+        actorId.trim().isEmpty) {
       throw ArgumentError('Evidence requires event, worker and actor IDs');
     }
     if (gps != null && gps!.observedAt.isAfter(occurredAt)) {
-      throw ArgumentError('A later GPS observation cannot fill historical evidence');
+      throw ArgumentError(
+        'A later GPS observation cannot fill historical evidence',
+      );
     }
   }
 
@@ -50,7 +64,8 @@ class AttendanceJourneyEvidence {
   final AttendanceJourneyGps? gps;
 
   // A proxy's location is not evidence of the employee's own GPS observation.
-  bool get hasPersonalGps => origin == AttendanceJourneyOrigin.selfGps && gps != null;
+  bool get hasPersonalGps =>
+      origin == AttendanceJourneyOrigin.selfGps && gps != null;
   bool get isProxy => origin == AttendanceJourneyOrigin.teamProxy;
 }
 
@@ -66,7 +81,8 @@ class AttendanceJourneyStart {
     this.path = AttendanceJourneyPath.singleSite,
   }) : workDate = DateTime(workDate.year, workDate.month, workDate.day) {
     if (companyId.trim().isEmpty ||
-        (place == AttendanceJourneyPlace.site && (siteId?.trim().isEmpty ?? true))) {
+        (place == AttendanceJourneyPlace.site &&
+            (siteId?.trim().isEmpty ?? true))) {
       throw ArgumentError('Clock-in requires a company and its selected place');
     }
   }
@@ -83,7 +99,10 @@ class AttendanceJourneyStart {
 
 class AttendanceJourneyVisit {
   const AttendanceJourneyVisit({
-    required this.shift, required this.siteId, required this.started, this.ended,
+    required this.shift,
+    required this.siteId,
+    required this.started,
+    this.ended,
   });
 
   final AttendanceJourneyStart shift;
@@ -98,7 +117,10 @@ class AttendanceJourneyVisit {
 
 class AttendanceJourneyEnd {
   const AttendanceJourneyEnd({
-    required this.shift, required this.evidence, required this.place, this.siteId,
+    required this.shift,
+    required this.evidence,
+    required this.place,
+    this.siteId,
   });
 
   final AttendanceJourneyStart shift;
@@ -117,11 +139,55 @@ class AttendanceJourneyChoice {
 }
 
 class AttendanceJourney {
-  AttendanceJourney._(this.start, Iterable<AttendanceJourneyVisit> visits, this.end)
-    : visits = List.unmodifiable(visits);
+  AttendanceJourney._(
+    this.start,
+    Iterable<AttendanceJourneyVisit> visits,
+    this.end,
+  ) : visits = List.unmodifiable(visits);
 
   factory AttendanceJourney.begin(AttendanceJourneyStart start) =>
       AttendanceJourney._(start, const [], null);
+
+  /// Rebuild only from an explicitly selected shift and its recorded visits.
+  /// Replays the same transition checks as live input; never closes a visit,
+  /// infers an end time, or reassigns a record to another shift.
+  factory AttendanceJourney.restore({
+    required AttendanceJourneyStart start,
+    required Iterable<AttendanceJourneyVisit> visits,
+    AttendanceJourneyEnd? end,
+  }) {
+    void checkShift(AttendanceJourneyStart recorded) {
+      if (recorded.clockIn.id != start.clockIn.id ||
+          recorded.companyId != start.companyId ||
+          recorded.clockIn.workerId != start.clockIn.workerId ||
+          recorded.workDate != start.workDate ||
+          recorded.routeId != start.routeId ||
+          recorded.clockIn.occurredAt != start.clockIn.occurredAt ||
+          recorded.clockIn.actorId != start.clockIn.actorId ||
+          recorded.clockIn.origin != start.clockIn.origin ||
+          recorded.place != start.place ||
+          recorded.path != start.path ||
+          recorded.siteId != start.siteId ||
+          recorded.vehicleId != start.vehicleId) {
+        throw StateError('対象勤務と訪問記録が一致しません');
+      }
+    }
+
+    var result = AttendanceJourney.begin(start);
+    for (final visit in visits) {
+      checkShift(visit.shift);
+      result = result.startVisit(siteId: visit.siteId, evidence: visit.started);
+      if (visit.ended != null) result = result.endVisit(visit.ended!);
+    }
+    if (end != null) {
+      checkShift(end.shift);
+      result = result.clockOut(place: end.place, evidence: end.evidence);
+      if (result.end!.siteId != end.siteId) {
+        throw StateError('退勤場所と最後の訪問記録が一致しません');
+      }
+    }
+    return result;
+  }
 
   final AttendanceJourneyStart start;
   final List<AttendanceJourneyVisit> visits;
@@ -132,7 +198,8 @@ class AttendanceJourney {
   bool get isWorking => end == null;
   AttendanceJourneyVisit? get openVisit =>
       visits.isNotEmpty && visits.last.isOpen ? visits.last : null;
-  String? get lastSiteId => visits.isNotEmpty ? visits.last.siteId : start.siteId;
+  String? get lastSiteId =>
+      visits.isNotEmpty ? visits.last.siteId : start.siteId;
 
   List<AttendanceJourneyChoice> get nextChoices {
     if (!isWorking) return const [];
@@ -143,14 +210,24 @@ class AttendanceJourney {
     }
     return [
       if (start.path == AttendanceJourneyPath.multiSitePhoto)
-        const AttendanceJourneyChoice(AttendanceJourneyAction.startVisit, '次の現場へ訪問開始'),
+        const AttendanceJourneyChoice(
+          AttendanceJourneyAction.startVisit,
+          '次の現場へ訪問開始',
+        ),
       if (lastSiteId != null)
-        const AttendanceJourneyChoice(AttendanceJourneyAction.directClockOut, '最後の現場から直帰して退勤'),
-      const AttendanceJourneyChoice(AttendanceJourneyAction.companyClockOut, '会社へ帰社して退勤'),
+        const AttendanceJourneyChoice(
+          AttendanceJourneyAction.directClockOut,
+          '最後の現場から直帰して退勤',
+        ),
+      const AttendanceJourneyChoice(
+        AttendanceJourneyAction.companyClockOut,
+        '会社へ帰社して退勤',
+      ),
     ];
   }
 
-  DateTime get _lastAt => visits.isEmpty ? start.clockIn.occurredAt
+  DateTime get _lastAt => visits.isEmpty
+      ? start.clockIn.occurredAt
       : (visits.last.ended ?? visits.last.started).occurredAt;
 
   void _validateNext(AttendanceJourneyEvidence evidence) {
@@ -161,28 +238,44 @@ class AttendanceJourney {
     if (evidence.occurredAt.isBefore(_lastAt)) {
       throw StateError('実際の記録時刻の順序を確認してください');
     }
-    final ids = {start.clockIn.id, for (final visit in visits) visit.started.id,
-      for (final visit in visits) if (visit.ended != null) visit.ended!.id};
+    final ids = {
+      start.clockIn.id,
+      for (final visit in visits) visit.started.id,
+      for (final visit in visits)
+        if (visit.ended != null) visit.ended!.id,
+    };
     if (ids.contains(evidence.id)) throw StateError('同じ証拠を二重登録できません');
   }
 
-  AttendanceJourney startVisit({required String siteId, required AttendanceJourneyEvidence evidence}) {
+  AttendanceJourney startVisit({
+    required String siteId,
+    required AttendanceJourneyEvidence evidence,
+  }) {
     _validateNext(evidence);
     if (start.path != AttendanceJourneyPath.multiSitePhoto) {
       throw StateError('途中写真は複数現場の勤務で選択してください');
     }
     if (siteId.trim().isEmpty) throw ArgumentError('訪問先の現場を選択してください');
     if (openVisit != null) throw StateError('現在の訪問を終了してから次を開始してください');
-    return AttendanceJourney._(start, [...visits,
-      AttendanceJourneyVisit(shift: start, siteId: siteId, started: evidence)], null);
+    return AttendanceJourney._(start, [
+      ...visits,
+      AttendanceJourneyVisit(shift: start, siteId: siteId, started: evidence),
+    ], null);
   }
 
   AttendanceJourney endVisit(AttendanceJourneyEvidence evidence) {
     _validateNext(evidence);
     final visit = openVisit;
     if (visit == null) throw StateError('終了する訪問がありません');
-    return AttendanceJourney._(start, [...visits.take(visits.length - 1),
-      AttendanceJourneyVisit(shift: start, siteId: visit.siteId, started: visit.started, ended: evidence)], null);
+    return AttendanceJourney._(start, [
+      ...visits.take(visits.length - 1),
+      AttendanceJourneyVisit(
+        shift: start,
+        siteId: visit.siteId,
+        started: visit.started,
+        ended: evidence,
+      ),
+    ], null);
   }
 
   AttendanceJourney clockOut({
@@ -194,10 +287,16 @@ class AttendanceJourney {
     if (place == AttendanceJourneyPlace.site && lastSiteId == null) {
       throw StateError('直帰する現場がありません');
     }
-    return AttendanceJourney._(start, visits, AttendanceJourneyEnd(
-      shift: start, evidence: evidence, place: place,
-      siteId: place == AttendanceJourneyPlace.site ? lastSiteId : null,
-    ));
+    return AttendanceJourney._(
+      start,
+      visits,
+      AttendanceJourneyEnd(
+        shift: start,
+        evidence: evidence,
+        place: place,
+        siteId: place == AttendanceJourneyPlace.site ? lastSiteId : null,
+      ),
+    );
   }
 }
 
@@ -210,11 +309,18 @@ class AttendanceJourneyRoster {
     required DateTime workDate,
     required Iterable<AttendanceJourney> attendance,
   }) : workDate = DateTime(workDate.year, workDate.month, workDate.day),
-       members = List.unmodifiable(attendance.where((journey) =>
-         journey.start.companyId == companyId &&
-         journey.start.siteId == siteId &&
-         journey.workDate == DateTime(workDate.year, workDate.month, workDate.day))) {
-    final workers = members.map((member) => member.start.clockIn.workerId).toSet();
+       members = List.unmodifiable(
+         attendance.where(
+           (journey) =>
+               journey.start.companyId == companyId &&
+               journey.start.siteId == siteId &&
+               journey.workDate ==
+                   DateTime(workDate.year, workDate.month, workDate.day),
+         ),
+       ) {
+    final workers = members
+        .map((member) => member.start.clockIn.workerId)
+        .toSet();
     if (workers.length != members.length) {
       throw StateError('複数の勤務候補から対象勤務を選択してください');
     }
@@ -225,27 +331,33 @@ class AttendanceJourneyRoster {
   final DateTime workDate;
   final List<AttendanceJourney> members;
 
-  bool containsWorker(String workerId) => members.any(
-    (member) => member.start.clockIn.workerId == workerId);
+  bool containsWorker(String workerId) =>
+      members.any((member) => member.start.clockIn.workerId == workerId);
 
   /// Already closed members (including early leave) are untouched.
   /// No persistence occurs here: save the resulting group transaction atomically.
   List<AttendanceJourney> proxyClockOut({
     required String actingWorkerId,
     required String actingActorId,
-    required AttendanceJourneyEvidence Function(AttendanceJourney member) evidenceFor,
+    required AttendanceJourneyEvidence Function(AttendanceJourney member)
+    evidenceFor,
   }) {
     if (!containsWorker(actingWorkerId)) {
       throw StateError('この勤務のメンバーが退勤を登録してください');
     }
-    return List.unmodifiable(members.map((member) {
-      if (!member.isWorking) return member;
-      final evidence = evidenceFor(member);
-      if (!evidence.isProxy || evidence.actorId != actingActorId) {
-        throw StateError('代理退勤の入力者と対象者を記録してください');
-      }
-      return member.clockOut(place: AttendanceJourneyPlace.site, evidence: evidence);
-    }));
+    return List.unmodifiable(
+      members.map((member) {
+        if (!member.isWorking) return member;
+        final evidence = evidenceFor(member);
+        if (!evidence.isProxy || evidence.actorId != actingActorId) {
+          throw StateError('代理退勤の入力者と対象者を記録してください');
+        }
+        return member.clockOut(
+          place: AttendanceJourneyPlace.site,
+          evidence: evidence,
+        );
+      }),
+    );
   }
 
   /// Membership permits requesting a change, not applying it without approval.
@@ -257,5 +369,6 @@ class AttendanceJourneyRoster {
 bool attendanceJourneyVehicleAvailable({
   required String vehicleId,
   required Iterable<AttendanceJourney> attendance,
-}) => !attendance.any((journey) =>
-  journey.isWorking && journey.start.vehicleId == vehicleId);
+}) => !attendance.any(
+  (journey) => journey.isWorking && journey.start.vehicleId == vehicleId,
+);

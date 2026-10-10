@@ -1,0 +1,40 @@
+name: Payroll snapshot boundaries check
+on:
+  pull_request:
+    paths:
+      - 'docs/payroll/payroll_snapshot_adoption_contract.md'
+      - 'tool/verify_payroll_snapshot_boundaries.mjs'
+      - 'tool/verify_paid_leave_wage_sql.mjs'
+      # Includes actual migration overrides and shared invoice/payroll bootstrap.
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+      - '.github/workflows/payroll-snapshot-boundaries-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/payroll/payroll_snapshot_adoption_contract.md'
+      - 'tool/verify_payroll_snapshot_boundaries.mjs'
+      - 'tool/verify_paid_leave_wage_sql.mjs'
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+      - '.github/workflows/payroll-snapshot-boundaries-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check runner syntax
+        run: |
+          node --check tool/verify_payroll_snapshot_boundaries.mjs
+          node --check tool/verify_paid_leave_wage_sql.mjs
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/payroll-snapshot-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify draft recalculation and preserved finalized manual rows
+        run: node tool/verify_payroll_snapshot_boundaries.mjs "$RUNNER_TEMP/payroll-snapshot-runtime/node_modules/@electric-sql/pglite/dist/index.js"

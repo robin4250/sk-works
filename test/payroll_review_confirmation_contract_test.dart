@@ -49,8 +49,8 @@ void main() {
     expect(page, contains('value: !worker.visibleToManager'));
     expect(page, contains('visible: !hidden'));
     expect(page, contains("'確認済み'"));
-    expect(page, contains("'未確定'"));
-    expect(page, contains("'全員確認後に確定'"));
+    expect(page, contains("'未確認'"));
+    expect(page, contains("'確認を登録'"));
     expect(page, contains('PayrollStatementPreviewPage'));
   });
 }

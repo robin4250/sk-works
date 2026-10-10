@@ -1,0 +1,46 @@
+{
+  "source_heads": {
+    "761": "7a7b957d6cc8f676214e1fe29443b857a316e12a",
+    "764": "78925606441eb42912c1b7bbdba7e01c6d1dadb5",
+    "765": "dfc63e46dd4aeb67c714a84edaa881ce5185d6b1",
+    "768": "fbd954e02b009d552721b73caa84042f9594f22f",
+    "771": "8708d1d3101c7a3ec31ad397b9d38d6ba661ee0c",
+    "773": "102a5a36ece3630154aca7d972b14692ce07a8f0",
+    "776": "4e5e835276d87b3a48b4f4353298201d4dd7ebeb",
+    "779": "2749ed98f4ee18c508ddabcde92f88d626e91db6"
+  },
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261008153425_vehicle_active_driver_claims.sql",
+      "sha256": "e2724c997f77b54d209cfe0561b4575d86b97c4b8aa502f020dbe83faf1f1faf"
+    },
+    {
+      "path": "supabase/migrations/20261008154241_group_proxy_checkout_staged.sql",
+      "sha256": "d85797647a734cd675b2cc9743d6c422d2da0b1bac67ce424bc155d4ac3ce861"
+    },
+    {
+      "path": "supabase/migrations/20261008154433_vehicle_meter_snapshots.sql",
+      "sha256": "10776bf491774bc32efcab30959d46fbc4886b608572e553cf46d697674c1c45"
+    },
+    {
+      "path": "supabase/migrations/20261008160834_attendance_rollout_capabilities.sql",
+      "sha256": "2ce913b5ae1912ba38f7d9697dc8e4d2a4bbebe5ec02d123ebf1e2bfd109214e"
+    },
+    {
+      "path": "supabase/migrations/20261008161708_group_report_source_attachment.sql",
+      "sha256": "a2ad603fb93d0334d8105823967ce8cb6d265e30df39807d9f66f22644882f1b"
+    },
+    {
+      "path": "supabase/migrations/20261008162618_attach_vehicle_meter_to_report.sql",
+      "sha256": "ebee3bf277197a912baacb54370375de8c52b603a99cb1e38c2272ad86ceb405"
+    },
+    {
+      "path": "supabase/migrations/20261008171216_source_member_notifications.sql",
+      "sha256": "2b2ce4fc0aa228a5a94190874ab9e7a7f412931735369e8dfb7b098abd4de00a"
+    },
+    {
+      "path": "supabase/migrations/20261008173515_attendance_capture_failure_contract.sql",
+      "sha256": "6d5a191ce2dd4826fe8919f27b6c0f65b469ec83714432256d3653f04fc1ad6a"
+    }
+  ]
+}

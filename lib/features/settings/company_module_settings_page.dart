@@ -16,7 +16,6 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
   final _repository = CompanyModuleSettingsRepository.maybeCreate();
 
   bool _loading = true;
-  bool _canManage = false;
   String? _error;
   Map<String, bool> _states = const {};
   Map<String, bool> _subAdminStates = const {};
@@ -46,13 +45,11 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
       final values = await Future.wait([
         repository.loadOptionalModuleStates(),
         repository.loadSubAdminHomeStates(),
-        repository.canManage(),
       ]);
       if (!mounted) return;
       setState(() {
         _states = Map<String, bool>.from(values[0] as Map);
         _subAdminStates = Map<String, bool>.from(values[1] as Map);
-        _canManage = values[2] as bool;
         _loading = false;
       });
     } catch (error) {
@@ -61,42 +58,6 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
         _loading = false;
         _error = error.toString();
       });
-    }
-  }
-
-  Future<void> _setEnabled(String key, bool enabled) async {
-    final repository = _repository;
-    if (repository == null || !_canManage) return;
-
-    final previous = _states[key] ?? true;
-    setState(() => _states = {..._states, key: enabled});
-
-    try {
-      await repository.setEnabled(key, enabled);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _states = {..._states, key: previous});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.trParams('モジュール設定を保存できませんでした: {error}', {'error': error}))),
-      );
-    }
-  }
-
-  Future<void> _setSubAdminEnabled(String key, bool enabled) async {
-    final repository = _repository;
-    if (repository == null || !_canManage) return;
-
-    final previous = _subAdminStates[key] ?? false;
-    setState(() => _subAdminStates = {..._subAdminStates, key: enabled});
-
-    try {
-      await repository.setSubAdminHomeEnabled(key, enabled);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _subAdminStates = {..._subAdminStates, key: previous});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.trParams('サブ管理者表示設定を保存できませんでした: {error}', {'error': error}))),
-      );
     }
   }
 
@@ -120,6 +81,23 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
         title: Text(SkoLanguageController.tr('利用機能のON／OFF')),
         actions: [
           IconButton(
+            tooltip: 'この画面について',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('利用機能のON／OFF（保管中）'),
+                content: const Text('既に作成した画面をMaster側に保管しています。用途は今後検討します。現在は所属会社の既存設定を読み取り専用で確認し、会社所属がない場合や取得権限がない場合は表示できません。アプリ全体の機能や公開範囲は変更しません。担当者ごとの業務権限設定とは別です。保存済みの設定・登録データ・履歴は変更しません。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('確認'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
             tooltip: SkoLanguageController.tr('再読み込み'),
             onPressed: _loading ? null : _load,
             icon: Icon(Icons.refresh),
@@ -136,9 +114,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        _canManage
-                            ? SkoLanguageController.tr('会社全員に共通の設定です。使う機能はON、使わない機能はOFFにしてください。OFFでも登録データは残り、ONに戻すと再び利用できます。')
-                            : SkoLanguageController.tr('会社共通の利用機能を確認できます。ON／OFFの変更は管理者が行います。'),
+                        SkoLanguageController.tr('Master側に保管中です。用途は今後検討します。既存の会社設定は読み取り専用で、個人別の業務権限ではありません。設定・登録データは変更しません。'),
                       ),
                     ),
                   ),
@@ -177,14 +153,14 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                     ),
                   SizedBox(height: 18),
                   Text(
-                    SkoLanguageController.tr('サブ管理者に表示する機能'),
+                    SkoLanguageController.tr('既存のサブ管理者共通表示設定（保管中）'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
                   SizedBox(height: 4),
                   Text(
-                    SkoLanguageController.tr('一般ユーザー用・閲覧者用は自動で表示されます。下記はチェックONの項目だけサブ管理者へ表示します。'),
+                    SkoLanguageController.tr('保存済みの共通表示設定です。Aさん・Bさんなど個人別の業務権限を設定するものではありません。'),
                   ),
                   SizedBox(height: 8),
                   for (final key
@@ -194,9 +170,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                       child: CheckboxListTile(
                         title: Text(_subAdminLabel(key)),
                         value: _subAdminStates[key] ?? false,
-                        onChanged: _canManage
-                            ? (value) => _setSubAdminEnabled(key, value == true)
-                            : null,
+                        onChanged: null,
                       ),
                     ),
                   SizedBox(height: 18),
@@ -214,9 +188,7 @@ class _CompanyModuleSettingsPageState extends State<CompanyModuleSettingsPage> {
                         title: Text(SkoLanguageController.tr(module.label)),
                         subtitle: Text(SkoLanguageController.tr(module.description)),
                         value: _states[module.key] ?? true,
-                        onChanged: _canManage
-                            ? (enabled) => _setEnabled(module.key, enabled)
-                            : null,
+                        onChanged: null,
                       ),
                     ),
                 ],

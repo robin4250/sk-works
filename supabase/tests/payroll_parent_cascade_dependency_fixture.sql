@@ -1,0 +1,24 @@
+-- Exact subset of captured parent FK metadata, not all 134 production edges.
+alter table public.payroll_statement_reviews add column company_id uuid;
+alter table public.company_members add constraint company_members_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.payroll_audit add constraint payroll_audit_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.payroll_audit add constraint payroll_audit_statement_id_fkey FOREIGN KEY (statement_id) REFERENCES payroll_statements(id) ON DELETE CASCADE;
+alter table public.payroll_confirmation_history add constraint payroll_confirmation_history_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.payroll_confirmation_history add constraint payroll_confirmation_history_statement_id_fkey FOREIGN KEY (statement_id) REFERENCES payroll_statements(id) ON DELETE CASCADE;
+alter table public.payroll_statement_reviews add constraint payroll_statement_reviews_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.payroll_statement_reviews add constraint payroll_statement_reviews_statement_id_fkey FOREIGN KEY (statement_id) REFERENCES payroll_statements(id) ON DELETE CASCADE;
+alter table public.payroll_statements add constraint payroll_statements_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.payroll_statements add constraint payroll_statements_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE;
+alter table public.workers add constraint workers_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.attendance_entries drop constraint if exists attendance_entries_company_id_fkey;
+alter table public.attendance_entries add constraint attendance_entries_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.attendance_entries drop constraint if exists attendance_entries_worker_id_fkey;
+alter table public.attendance_entries add constraint attendance_entries_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE RESTRICT;
+alter table public.attendance_verifications drop constraint if exists attendance_verifications_company_id_fkey;
+alter table public.attendance_verifications add constraint attendance_verifications_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+alter table public.attendance_verifications drop constraint if exists attendance_verifications_worker_id_fkey;
+alter table public.attendance_verifications add constraint attendance_verifications_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE;
+alter table public.daily_report_workers drop constraint if exists daily_report_workers_worker_id_fkey;
+alter table public.daily_report_workers add constraint daily_report_workers_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE;
+alter table public.daily_reports drop constraint if exists daily_reports_company_id_fkey;
+alter table public.daily_reports add constraint daily_reports_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;

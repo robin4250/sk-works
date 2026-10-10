@@ -1,0 +1,31 @@
+name: Paid leave wage check
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
+      - 'supabase/tests/paid_leave_wage_assertions.sql'
+      - 'tool/verify_paid_leave_wage_sql.mjs'
+      - '.github/workflows/paid-leave-wage-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
+      - 'supabase/tests/paid_leave_wage_assertions.sql'
+      - 'tool/verify_paid_leave_wage_sql.mjs'
+      - '.github/workflows/paid-leave-wage-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sql-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/payroll-sql-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify actual payroll triggers and preserved finalized amounts
+        run: node tool/verify_paid_leave_wage_sql.mjs "$RUNNER_TEMP/payroll-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"

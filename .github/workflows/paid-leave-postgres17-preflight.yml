@@ -1,0 +1,56 @@
+name: Paid Leave PostgreSQL 17 Preflight
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tool/verify_paid_leave_postgres17.mjs'
+      - 'tool/paid_leave_pg17_database_guard*'
+      - 'tool/fixtures/paid_leave_pg17/**'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/tests/invoice_stamp_approval_workflow.sql'
+      - 'supabase/migrations/*payroll*.sql'
+      - 'supabase/migrations/*monthly_salary*.sql'
+      - 'supabase/tests/paid_leave_wage_assertions.sql'
+      - 'supabase/tests/payroll_named_financial_detail_assertions.sql'
+      - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
+      - '.github/workflows/paid-leave-postgres17-preflight.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/verify_paid_leave_postgres17.mjs'
+      - 'tool/paid_leave_pg17_database_guard*'
+      - 'tool/fixtures/paid_leave_pg17/**'
+      - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
+      - '.github/workflows/paid-leave-postgres17-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Docker Official Images public distribution; no registry secret required.
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_paid_leave_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_paid_leave_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Reject nonfixture connection URLs
+        run: node --test tool/paid_leave_pg17_database_guard.test.mjs
+      - name: Install pinned PostgreSQL client
+        run: npm install --prefix "$RUNNER_TEMP/sko-paid-leave-pg17" --save-exact --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify rollout, protected rows and DDL recovery
+        env:
+          SKO_PAID_LEAVE_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_paid_leave_fixture
+        run: node tool/verify_paid_leave_postgres17.mjs "$RUNNER_TEMP/sko-paid-leave-pg17/node_modules/pg/lib/index.js"

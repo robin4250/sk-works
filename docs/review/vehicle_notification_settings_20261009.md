@@ -1,0 +1,15 @@
+# 車両管理者1〜3名：段階導入UI
+
+初期候補は操作中のowner/admin本人1名のみ。保存済み設定がある場合はそのIDを保持する。任意の先頭管理者を自動選定・自動保存しない。
+
+対象車両の会社にowner/adminで所属する呼出者だけが読取RPCを実行できる。候補には自社active workerと、従業員情報未登録のowner/adminを含める。表示はID・氏名・役割のみ。管理者・サブ管理者・閲覧者を選んでもcompany_membersの役割変更や管理権限付与は行わない。
+
+既存setter `set_vehicle_notification_assignees`を利用する。新しいgetter `get_vehicle_notification_settings`は読取だけでありrollout変更や通知送信を行わない。OFF/取得失敗時はUI保存を禁止。保存前に同じ車両の設定とcapabilityを再読込する。
+
+保存済み停止/不明受信者は自動削除せず、未解決表示を残す。追加migration `20261008204054_source_notification_active_recipients.sql`は業務上の停止従業員を候補・setter・送信・対象導線から除外する。紐付く従業員が停止中ならowner/adminでも候補に戻さず、従業員未登録owner/adminのみ初期登録候補を許可する。送信時に停止している受信者はskipし、選択配列や重複防止台帳は保持する。
+
+アカウント削除処理によるrecipient側アクセス制限の判定は未実装。既存`account_access_allowed()`はcaller用であり、他人のUIDを認証情報へ入れて呼び出す実装はしない。削除制限tableの定義・依存をこの変更で推測せず、共通認証/RLSを変更しない。通知rolloutは本番OFFを維持し、この未完了条件と実機・全体接続確認を解消するまで有効化しない。
+
+新規車両は保存後に一覧から編集し、通知先設定を開く。外部メール送信・整備通知間隔の設定はこの画面に含まない。
+
+検証：独立PGliteで同社owner/admin、他社会員viewerへの拒否、anon/停止caller拒否、初期本人提案、候補active制限、停止owner候補とsetter拒否、保存済み不明ID保持、読取で通知/rollout/役割を変更しないことを確認。さらに真正車両開始通知のactive受信者1件、受信者停止後の追加送信0件と導線拒否、既存配列/台帳保持、OFF送信0件を確認。Flutter検証・実機表示はCI/導入後に確認する。本番migration未適用。

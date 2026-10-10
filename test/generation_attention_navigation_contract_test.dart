@@ -9,8 +9,9 @@ void main() {
     final home = read('lib/features/home/friendly_home_content.dart');
     final app = read('lib/app_v2.dart');
 
-    expect(home, contains('generationIssueCount > 0'));
-    expect(home, contains("'notifications'"));
+    expect(home, contains("widget.onOpen('notifications')"));
+    expect(home, isNot(contains('generationIssueCount > 0')));
+    expect(home, isNot(contains("? 'approvals'")));
     expect(app, contains("case 'notifications':"));
     expect(app, contains('NotificationsPage'));
   });

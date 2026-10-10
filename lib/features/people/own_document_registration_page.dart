@@ -1,10 +1,52 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
 
+abstract interface class OwnDocumentRegistrationGateway {
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll();
+
+  Future<void> saveOwnDocument({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    Uint8List? attachmentBytes,
+    String? originalFilename,
+  });
+}
+
+class _OwnDocumentRepositoryGateway
+    implements OwnDocumentRegistrationGateway {
+  const _OwnDocumentRepositoryGateway(this.repository);
+  final WorkerDocumentRepository repository;
+
+  @override
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll() =>
+      repository.loadOwnDocuments();
+
+  @override
+  Future<void> saveOwnDocument({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    Uint8List? attachmentBytes,
+    String? originalFilename,
+  }) => repository.saveOwnDocument(
+    requirementId: requirementId,
+    expiresAt: expiresAt,
+    notes: notes,
+    attachmentBytes: attachmentBytes,
+    originalFilename: originalFilename,
+  );
+}
+
 class OwnDocumentRegistrationPage extends StatefulWidget {
-  const OwnDocumentRegistrationPage({super.key});
+  const OwnDocumentRegistrationPage({super.key, this.gateway, this.pickPhoto});
+
+  final OwnDocumentRegistrationGateway? gateway;
+  final Future<XFile?> Function(ImageSource source)? pickPhoto;
 
   @override
   State<OwnDocumentRegistrationPage> createState() =>
@@ -13,19 +55,25 @@ class OwnDocumentRegistrationPage extends StatefulWidget {
 
 class _OwnDocumentRegistrationPageState
     extends State<OwnDocumentRegistrationPage> {
-  final _repository = WorkerDocumentRepository.maybeCreate();
+  OwnDocumentRegistrationGateway? _repository;
   final _picker = ImagePicker();
 
   List<Map<String, dynamic>> _requirements = const [];
   List<Map<String, dynamic>> _statuses = const [];
   Map<String, dynamic>? _worker;
   bool _loading = true;
+  bool _saving = false;
   String? _error;
   String _query = '';
 
   @override
   void initState() {
     super.initState();
+    final repository = widget.gateway == null
+        ? WorkerDocumentRepository.maybeCreate()
+        : null;
+    _repository = widget.gateway ??
+        (repository == null ? null : _OwnDocumentRepositoryGateway(repository));
     _load();
   }
 
@@ -71,7 +119,7 @@ class _OwnDocumentRegistrationPageState
 
   Future<void> _registerDocument() async {
     final repository = _repository;
-    if (repository == null || _requirements.isEmpty) return;
+    if (repository == null || _requirements.isEmpty || _saving) return;
 
     final needle = _query.trim().toLowerCase();
     final candidates = _requirements.where((row) {
@@ -154,7 +202,7 @@ class _OwnDocumentRegistrationPageState
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('登録後に写真を添付する'),
+                  title: const Text('写真を添付する'),
                   value: attachPhoto,
                   onChanged: (value) =>
                       setDialogState(() => attachPhoto = value ?? false),
@@ -183,61 +231,56 @@ class _OwnDocumentRegistrationPageState
       ),
     );
     notes.dispose();
-    if (draft == null) return;
+    if (draft == null || !mounted) return;
 
     final requirement = draft['requirementId'] as String;
+    setState(() => _saving = true);
     try {
-      await repository.updateOwnStatus(
+      Uint8List? attachmentBytes;
+      String? originalFilename;
+      if (draft['attachPhoto'] == true) {
+        final source = await showModalBottomSheet<ImageSource>(
+          context: context,
+          builder: (sheetContext) => SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('カメラで撮影'),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('写真から選ぶ'),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (source == null || !mounted) return;
+        final picked = widget.pickPhoto != null
+            ? await widget.pickPhoto!(source)
+            : await _picker.pickImage(
+                source: source,
+                imageQuality: 88,
+                maxWidth: 2400,
+              );
+        if (picked == null || !mounted) return;
+        attachmentBytes = await picked.readAsBytes();
+        originalFilename = picked.name;
+        if (!mounted) return;
+      }
+
+      await repository.saveOwnDocument(
         requirementId: requirement,
         expiresAt: draft['expiresAt'] as DateTime?,
         notes: draft['notes'] as String,
+        attachmentBytes: attachmentBytes,
+        originalFilename: originalFilename,
       );
-      await _load();
       if (!mounted) return;
-
-      if (draft['attachPhoto'] == true) {
-        final status = _statusFor(requirement);
-        if (status != null) {
-          final source = await showModalBottomSheet<ImageSource>(
-            context: context,
-            builder: (sheetContext) => SafeArea(
-              child: Wrap(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.photo_camera_outlined),
-                    title: const Text('カメラで撮影'),
-                    onTap: () =>
-                        Navigator.pop(sheetContext, ImageSource.camera),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.photo_library_outlined),
-                    title: const Text('写真から選ぶ'),
-                    onTap: () =>
-                        Navigator.pop(sheetContext, ImageSource.gallery),
-                  ),
-                ],
-              ),
-            ),
-          );
-          if (source != null) {
-            final picked = await _picker.pickImage(
-              source: source,
-              imageQuality: 88,
-              maxWidth: 2400,
-            );
-            if (picked != null) {
-              await repository.uploadOwnAttachment(
-                statusId: status['id'].toString(),
-                requirementId: requirement,
-                bytes: await picked.readAsBytes(),
-                originalFilename: picked.name,
-              );
-              await _load();
-            }
-          }
-        }
-      }
-
+      await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('自分の書類を登録しました')),
@@ -247,7 +290,33 @@ class _OwnDocumentRegistrationPageState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('書類を登録できませんでした: $error')),
       );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _showRegistrationHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('自分の書類を登録'),
+        content: const Text(
+          '写真を添付する場合は、写真を選んでから登録します。'
+          '写真の選択や撮影をキャンセルした場合は保存しません。'
+          '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
+          '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
+          'すでに保存した写真は、この画面の差し替えで削除しません。'
+          '\n\n保存先の設定によって写真の送信が拒否される場合があります。'
+          '失敗表示が出た場合は登録完了ではありません。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -270,14 +339,21 @@ class _OwnDocumentRegistrationPageState
         ),
         actions: [
           IconButton(
+            tooltip: '書類登録のヘルプ',
+            onPressed: _showRegistrationHelp,
+            icon: const Icon(Icons.help_outline),
+          ),
+          IconButton(
             tooltip: '再読み込み',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading || _saving ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || _requirements.isEmpty ? null : _registerDocument,
+        onPressed: _loading || _saving || _requirements.isEmpty
+            ? null
+            : _registerDocument,
         icon: const Icon(Icons.note_add_outlined),
         label: const Text('書類登録'),
       ),
@@ -321,6 +397,8 @@ class _OwnDocumentRegistrationPageState
                             final requirement = requirements[index];
                             final id = requirement['id']?.toString() ?? '';
                             final status = _statusFor(id);
+                            final attachmentPath =
+                                status?['attachment_path']?.toString().trim() ?? '';
                             final label = status?['status']?.toString() ==
                                         'verified'
                                     ? '確認済み'
@@ -345,10 +423,10 @@ class _OwnDocumentRegistrationPageState
                                     if ((status?['expires_at']?.toString() ?? '')
                                         .isNotEmpty)
                                       '期限 ${status!['expires_at']}',
-                                    if ((status?['attachment_path']?.toString() ??
-                                            '')
-                                        .isNotEmpty)
-                                      '画像あり',
+                                    if (attachmentPath.isNotEmpty)
+                                      '画像あり'
+                                    else if (status?['status'] == 'submitted')
+                                      '写真未添付',
                                   ].join(' / '),
                                 ),
                               ),

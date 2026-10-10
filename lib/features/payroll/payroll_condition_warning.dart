@@ -17,6 +17,8 @@ List<String> payrollConditionWarnings(Map<String, dynamic> detail) {
 /// Translate only server-owned warning templates, preserving any employee-name prefix.
 String localizedPayrollConditionWarning(String warning) {
   final patterns = <(RegExp, String, String)>[
+    (RegExp(r'有給([0-9]+)日：有給単価が0円です。個別給与設定の有給額を確認してください。$'),
+      '有給{count}日：有給単価が0円です。個別給与設定の有給額を確認してください。', 'count'),
     (RegExp(r'有給([0-9]+)日：日給・時給の有給支給額は現在の自動計算に含まれていません。会社の有給給与条件と支給額を確認してください。$'),
       '有給{count}日：日給・時給の有給支給額は現在の自動計算に含まれていません。会社の有給給与条件と支給額を確認してください。', 'count'),
     (RegExp(r'通常勤務に夜間([0-9]+(?:\.[0-9]+)?)時間が登録されています。夜間時間だけの割増は現在の自動計算に含まれません。勤務区分と会社の夜間給与条件を確認してください。$'),

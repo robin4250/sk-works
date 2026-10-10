@@ -1,0 +1,31 @@
+name: Attendance capture failure check
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261008173515_attendance_capture_failure_contract.sql'
+      - 'supabase/tests/attendance_capture_failure_assertions.sql'
+      - 'tool/verify_attendance_capture_failure.mjs'
+      - '.github/workflows/attendance-capture-failure-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008173515_attendance_capture_failure_contract.sql'
+      - 'supabase/tests/attendance_capture_failure_assertions.sql'
+      - 'tool/verify_attendance_capture_failure.mjs'
+      - '.github/workflows/attendance-capture-failure-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sql-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/capture-sql-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify GPS failures, immutable capture and existing attendance contracts
+        run: node tool/verify_attendance_capture_failure.mjs "$RUNNER_TEMP/capture-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
