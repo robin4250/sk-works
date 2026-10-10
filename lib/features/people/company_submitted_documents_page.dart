@@ -576,7 +576,8 @@ class _CompanySubmittedDocumentsPageState
           title: const Text('書類の写真（表・裏）'),
           content: SizedBox(
             width: 340,
-            child: Column(
+            child: SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (var i = 0; i < photos.length; i++)
@@ -630,6 +631,7 @@ class _CompanySubmittedDocumentsPageState
                 ),
                 const Text('写真の保存方式を準備中です。ここでは既存の登録写真を変更しません。'),
               ],
+              ),
             ),
           ),
           actions: [TextButton(
