@@ -277,8 +277,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
             (_openVisit!['start_capture_id'] as String).isEmpty ||
             _openVisit!['ended_at'] != null ||
             _openVisit!['end_capture_id'] != null ||
-            _openVisit!['route_stop_id'] != stopId ||
-            !_visitsEnabled)) {
+            _openVisit!['route_stop_id'] != stopId)) {
           throw StateError('移動対象の現場記録を確認できません');
         }
         if (isMove) {
