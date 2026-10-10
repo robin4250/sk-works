@@ -778,11 +778,12 @@ class _CompanySubmittedDocumentsPageState
                         Navigator.pop(dialogContext);
                         await _load();
                       } catch (error) {
-                        if (dialogContext.mounted)
+                        if (dialogContext.mounted) {
                           refresh(() {
                             saving = false;
                             saveError = '保存できませんでした: $error';
                           });
+                        }
                       }
                     },
               child: Text(saving ? '保存中' : '写真を保存'),
@@ -825,9 +826,10 @@ class _CompanySubmittedDocumentsPageState
         ),
       );
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('写真を表示できませんでした: $error')));
+      }
     }
   }
 
