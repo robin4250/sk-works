@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import 'company_payroll_rates_home_entry.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
@@ -85,6 +86,10 @@ class FriendlyHomeContent extends StatelessWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
+              if (identity.isAdmin || identity.role == 'viewer') ...[
+                const CompanyPayrollRatesHomeEntry(),
+                const SizedBox(height: 12),
+              ],
               if (tutorialCard != null) tutorialCard!,
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
