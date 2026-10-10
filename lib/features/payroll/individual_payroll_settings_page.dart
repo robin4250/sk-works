@@ -1,3 +1,4 @@
+import 'payroll_tax_conditions_page.dart';
 import '../../international/language_controller.dart';
 import 'dart:convert';
 
@@ -613,6 +614,14 @@ class _IndividualPayrollSettingsPageState
                     title: '控除',
                     icon: Icons.remove_circle_outline,
                     children: [
+                      if (_workerId != null && workspace.companyId != null)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.calculate_outlined),
+                          label: const Text('給与の税計算・自動反映'),
+                          onPressed: _saving ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(
+                            builder: (_) => PayrollTaxConditionsPage(companyId: workspace.companyId!, workerId: _workerId!),
+                          )),
+                        ),
                       _sectionTitle(SkoLanguageController.tr('税・社会保険の月額設定')),
                       _amountField('income_tax_monthly', SkoLanguageController.tr('所得税・月額')),
                       _amountField('social_insurance_monthly', SkoLanguageController.tr('社会保険・月額')),

@@ -1,0 +1,46 @@
+name: Payroll tax connection
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*connect_payroll_tax_calculation.sql'
+      - 'tool/verify_payroll_tax_connection.mjs'
+      - 'tool/verify_payroll_tax_connection_race.mjs'
+      - 'test/fixtures/nta_monthly_2026.json'
+      - '.github/workflows/payroll-tax-connection-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*connect_payroll_tax_calculation.sql'
+      - 'tool/verify_payroll_tax_connection*.mjs'
+      - '.github/workflows/payroll-tax-connection-check.yml'
+permissions:
+  contents: read
+jobs:
+  native-postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_DB: sko_resident_tax_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_resident_tax_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_RESIDENT_TAX_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned test database client
+        run: npm install --prefix "$RUNNER_TEMP/sko-tax-pg" --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify official table, payroll recalculation and frozen documents
+        run: node tool/verify_payroll_tax_connection.mjs "file://$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-tax-pg/node_modules/pg/lib/index.js"
+      - name: Verify concurrent tax condition saves
+        run: node tool/verify_payroll_tax_connection_race.mjs "$RUNNER_TEMP/sko-tax-pg/node_modules/pg/lib/index.js"
