@@ -53,9 +53,13 @@ class RouteJourneyCapturePage extends StatefulWidget {
     super.key,
     required this.sourceId,
     this.access,
+    this.initialAction,
   });
   final RouteJourneyCaptureAccess? access;
   final String sourceId;
+
+  /// Highlights the requested home action without recording it automatically.
+  final String? initialAction;
   @override
   State<RouteJourneyCapturePage> createState() =>
       _RouteJourneyCapturePageState();
@@ -271,24 +275,28 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         // Leaving a visited site records the action time only. Do not
         // request another camera shot or GPS sample for the move action.
         final isMove = _visitsEnabled && _openVisit != null;
-        if (isMove && (_openVisit!['route_stop_id'] is! String ||
-            (_openVisit!['route_stop_id'] as String).isEmpty ||
-            _openVisit!['start_capture_id'] is! String ||
-            (_openVisit!['start_capture_id'] as String).isEmpty ||
-            _openVisit!['ended_at'] != null ||
-            _openVisit!['end_capture_id'] != null ||
-            _openVisit!['route_stop_id'] != stopId)) {
+        if (isMove &&
+            (_openVisit!['route_stop_id'] is! String ||
+                (_openVisit!['route_stop_id'] as String).isEmpty ||
+                _openVisit!['start_capture_id'] is! String ||
+                (_openVisit!['start_capture_id'] as String).isEmpty ||
+                _openVisit!['ended_at'] != null ||
+                _openVisit!['end_capture_id'] != null ||
+                _openVisit!['route_stop_id'] != stopId)) {
           throw StateError('移動対象の現場記録を確認できません');
         }
-        if (isMove) {
+        final isManual = workspace['verification_mode'] == 'manual';
+        if (isMove || isManual) {
           draft = RouteJourneyCaptureDraft(
             userId: _actor!,
             companyId: captureContext.companyId,
             sourceId: captureContext.sourceClockInId!,
-            stopId: _openVisit!['route_stop_id'] as String,
+            stopId: isMove ? _openVisit!['route_stop_id'] as String : stopId,
             originKind: origin,
-            visitKind: 'end',
-            startCaptureId: _openVisit!['start_capture_id']?.toString(),
+            visitKind: isMove ? 'end' : 'start',
+            startCaptureId: isMove
+                ? _openVisit!['start_capture_id']?.toString()
+                : null,
             payload: {
               'capture_contract_version': 1,
               'gps_capture_status': 'missing',
@@ -305,71 +313,71 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
             },
           );
         } else {
-        final capture = await GpsPhotoCaptureController(
-          camera: () async {
-            if (!_active(generation)) throw StateError('Closed capture');
-            _checkActor();
-            final image = await _picker.pickImage(
-              source: ImageSource.camera,
-              imageQuality: 85,
-              maxWidth: 2200,
-            );
-            if (image == null) return null;
-            final observed = DateTime.now();
-            return CapturedPhoto(
-              bytes: await image.readAsBytes(),
-              observedAt: observed,
-              capturedAt: await _metadata.readPhotoCapturedAt(image.path),
-            );
-          },
-          sampleGps: () async {
-            if (!_active(generation)) throw StateError('Closed capture');
-            _checkActor();
-            final position = await _position();
-            return CapturedGpsSample(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              sampledAt: position.timestamp,
-              accuracyM: position.accuracy,
-              address: await _metadata.reverseGeocodeCapturedLocation(
+          final capture = await GpsPhotoCaptureController(
+            camera: () async {
+              if (!_active(generation)) throw StateError('Closed capture');
+              _checkActor();
+              final image = await _picker.pickImage(
+                source: ImageSource.camera,
+                imageQuality: 85,
+                maxWidth: 2200,
+              );
+              if (image == null) return null;
+              final observed = DateTime.now();
+              return CapturedPhoto(
+                bytes: await image.readAsBytes(),
+                observedAt: observed,
+                capturedAt: await _metadata.readPhotoCapturedAt(image.path),
+              );
+            },
+            sampleGps: () async {
+              if (!_active(generation)) throw StateError('Closed capture');
+              _checkActor();
+              final position = await _position();
+              return CapturedGpsSample(
                 latitude: position.latitude,
                 longitude: position.longitude,
-              ),
-            );
-          },
-          upload: (photo, shift) {
-            if (!_active(generation)) throw StateError('Closed capture');
-            _checkActor();
-            return repository.upload(
-              photo,
-              shift,
-              workspace['worker_id'] as String,
-            );
-          },
-          prompt: _prompt,
-          now: DateTime.now,
-        ).capture(captureContext);
-        if (!_active(generation)) return;
-        _checkActor();
-        draft = RouteJourneyCaptureDraft(
-          userId: _actor!,
-          companyId: captureContext.companyId,
-          sourceId: captureContext.sourceClockInId!,
-          stopId: stopId,
-          originKind: origin,
-          visitKind: _visitsEnabled
-              ? (_openVisit == null ? 'start' : 'end')
-              : null,
-          startCaptureId: _openVisit?['start_capture_id']?.toString(),
-          payload: {
-            ...capture.insertMetadata,
-            'latitude': capture.gps?.latitude,
-            'longitude': capture.gps?.longitude,
-            'accuracy_m': capture.gps?.accuracyM,
-            'photo_storage_path': capture.storagePath,
-            'attempted_at': capture.attemptedAt.toUtc().toIso8601String(),
-          },
-        );
+                sampledAt: position.timestamp,
+                accuracyM: position.accuracy,
+                address: await _metadata.reverseGeocodeCapturedLocation(
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                ),
+              );
+            },
+            upload: (photo, shift) {
+              if (!_active(generation)) throw StateError('Closed capture');
+              _checkActor();
+              return repository.upload(
+                photo,
+                shift,
+                workspace['worker_id'] as String,
+              );
+            },
+            prompt: _prompt,
+            now: DateTime.now,
+          ).capture(captureContext);
+          if (!_active(generation)) return;
+          _checkActor();
+          draft = RouteJourneyCaptureDraft(
+            userId: _actor!,
+            companyId: captureContext.companyId,
+            sourceId: captureContext.sourceClockInId!,
+            stopId: stopId,
+            originKind: origin,
+            visitKind: _visitsEnabled
+                ? (_openVisit == null ? 'start' : 'end')
+                : null,
+            startCaptureId: _openVisit?['start_capture_id']?.toString(),
+            payload: {
+              ...capture.insertMetadata,
+              'latitude': capture.gps?.latitude,
+              'longitude': capture.gps?.longitude,
+              'accuracy_m': capture.gps?.accuracyM,
+              'photo_storage_path': capture.storagePath,
+              'attempted_at': capture.attemptedAt.toUtc().toIso8601String(),
+            },
+          );
         }
         if (mounted) setState(() => _pending = draft);
       }
@@ -433,7 +441,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       child: Scaffold(
         appBar: AppBar(
           toolbarHeight: kToolbarHeight,
-          title: Text(SkoLanguageController.tr('途中現場のGPS＋写真')),
+          title: Text(SkoLanguageController.tr('現場到着・現場移動')),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -442,9 +450,19 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                 children: [
                   Text(
                     SkoLanguageController.tr(
-                      '出勤→現場→現場→退勤の行程です。会社出勤後の移動か直行直帰かを選び、実際に到着した現場を撮影します。',
+                      '出勤後に到着した現場を記録し、現場を離れるときは移動の時刻を記録してください。GPS＋写真方式では到着時に撮影します。',
                     ),
                   ),
+                  if (widget.initialAction != null)
+                    Text(
+                      SkoLanguageController.tr(
+                        widget.initialAction == 'move'
+                            ? '現在の現場から移動する時刻を記録します。'
+                            : '到着した現場を選んで記録してください。',
+                      ),
+                    ),
+                  if (workspace?['verification_mode'] == 'manual')
+                    Text(SkoLanguageController.tr('手動出勤では到着・移動の時刻のみ記録します。')),
                   if (workspace != null)
                     Text(
                       '${SkoLanguageController.tr('勤務日')}: ${workspace['work_date']}',
@@ -532,14 +550,20 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  if (_visitsEnabled && _pending == null &&
+                  if (_visitsEnabled &&
+                      _pending == null &&
                       workspace?['archived'] != true) ...[
                     // A shift starts with arrival enabled. After arrival,
                     // only the move/leave action is enabled for this visit.
                     FilledButton.icon(
-                      onPressed: !_busy && !_loading && !_loadFailed &&
-                              enabled && _openVisit == null &&
-                              _origin != null && _stopId != null
+                      onPressed:
+                          !_busy &&
+                              !_loading &&
+                              !_loadFailed &&
+                              enabled &&
+                              _openVisit == null &&
+                              _origin != null &&
+                              _stopId != null
                           ? _captureOrRetry
                           : null,
                       icon: const Icon(Icons.location_on_outlined),
@@ -547,13 +571,19 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                     const SizedBox(height: 8),
                     FilledButton.icon(
-                      onPressed: !_busy && !_loading && !_loadFailed &&
-                              enabled && _openVisit != null &&
+                      onPressed:
+                          !_busy &&
+                              !_loading &&
+                              !_loadFailed &&
+                              enabled &&
+                              _openVisit != null &&
                               _origin != null &&
                               _openVisit!['route_stop_id'] is String &&
-                              (_openVisit!['route_stop_id'] as String).isNotEmpty &&
+                              (_openVisit!['route_stop_id'] as String)
+                                  .isNotEmpty &&
                               _openVisit!['start_capture_id'] is String &&
-                              (_openVisit!['start_capture_id'] as String).isNotEmpty &&
+                              (_openVisit!['start_capture_id'] as String)
+                                  .isNotEmpty &&
                               _openVisit!['route_stop_id'] == _stopId &&
                               _openVisit!['ended_at'] == null &&
                               _openVisit!['end_capture_id'] == null
@@ -564,17 +594,22 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ] else if (workspace?['archived'] != true || _pending != null)
                     FilledButton.icon(
-                      onPressed: _busy || _loading || _loadFailed ||
+                      onPressed:
+                          _busy ||
+                              _loading ||
+                              _loadFailed ||
                               (_pending == null &&
-                                  (!enabled || _origin == null || _stopId == null))
+                                  (!enabled ||
+                                      _origin == null ||
+                                      _stopId == null))
                           ? null
                           : _captureOrRetry,
                       icon: const Icon(Icons.camera_alt_outlined),
-                      label: Text(SkoLanguageController.tr(
-                        _pending != null
-                            ? '同じ途中現場記録で再確認'
-                            : 'この現場を撮影して記録',
-                      )),
+                      label: Text(
+                        SkoLanguageController.tr(
+                          _pending != null ? '同じ途中現場記録で再確認' : 'この現場を撮影して記録',
+                        ),
+                      ),
                     ),
                   if (_visitsEnabled) ...[
                     const SizedBox(height: 16),

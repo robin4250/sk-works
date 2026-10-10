@@ -22,7 +22,7 @@ try {
  await admin.query('drop schema if exists private cascade;drop schema if exists auth cascade;drop schema if exists storage cascade;drop schema public cascade;create schema public');
  await admin.query("do $$begin if not exists(select 1 from pg_roles where rolname='anon')then create role anon;end if;if not exists(select 1 from pg_roles where rolname='authenticated')then create role authenticated;end if;end$$");
  const schema=await fs.readFile(new URL('./fixtures/route_journey_capture/schema.sql',import.meta.url),'utf8');await admin.query(schema.replace('create role anon; create role authenticated;',''));
- for(const path of ['../supabase/migrations/20261008204012_route_journey_capture_staged.sql','../supabase/migrations/20261010132957_route_journey_visit_lifecycle.sql'])await admin.query(await fs.readFile(new URL(path,import.meta.url),'utf8'));
+ for(const path of ['../supabase/migrations/20261008204012_route_journey_capture_staged.sql','../supabase/migrations/20261010132957_route_journey_visit_lifecycle.sql','../supabase/migrations/20261010222139_route_manual_visit_capture.sql'])await admin.query(await fs.readFile(new URL(path,import.meta.url),'utf8'));
  await admin.query(`insert into companies values('${company}');insert into company_members values('${company}','${actor}','member');insert into workers values('${worker}','${company}','${actor}','本人','active');insert into route_assignments values('${route}','${company}');insert into route_stops values('${stop}','${route}',null,1,'計画住所','現場1');insert into private.route_journey_rollouts values('${company}',true)`);
  for(const c of [admin,a,b])await c.query(`set test.uid='${actor}'`);
  for(const c of [a,b])await c.query('set role authenticated');

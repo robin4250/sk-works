@@ -14,6 +14,7 @@ const additions=[
  'tool/fixtures/route_journey_visits/photo_path_fixed.sql',
  'supabase/migrations/20261008204012_route_journey_capture_staged.sql',
  'supabase/migrations/20261010132957_route_journey_visit_lifecycle.sql',
+ 'supabase/migrations/20261010222139_route_manual_visit_capture.sql',
  'tool/fixtures/route_journey_visits/chain_flow.sql',
 ].map(p=>fs.readFileSync(p,'utf8'));
 const source=baseline.replace("import fs from 'node:fs';",'')

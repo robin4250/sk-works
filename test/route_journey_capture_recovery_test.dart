@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:sk_works/features/attendance/attendance_verification_page.dart';
 import 'package:sk_works/features/attendance/attendance_selection_page.dart';
 import 'package:sk_works/features/attendance/work_destination_selection_page.dart';
@@ -17,6 +18,7 @@ class _Access implements RouteJourneyCaptureAccess {
   bool failAll = false, failWorkspace = false;
   List<Map<String, dynamic>>? visits;
   bool archived = false;
+  String mode = 'location_photo';
   int loads = 0, submits = 0, uploads = 0;
   final sources = <String>[];
   RouteJourneyCaptureDraft? pending, submitted;
@@ -36,6 +38,7 @@ class _Access implements RouteJourneyCaptureAccess {
     return {
       if (visits != null) 'visit_contract_version': 1,
       if (visits != null) 'visits': visits,
+      'verification_mode': mode,
       'company_id': 'company',
       'source_clock_in_id': sourceId,
       'work_date': '2026-10-10',
@@ -146,7 +149,9 @@ void main() {
       await _open(tester, access);
       expect(find.text('現場到着'), findsOneWidget);
       expect(
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '現場到着')).onPressed,
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '現場到着'))
+            .onPressed,
         isNull,
       );
       expect(access.submits, 0);
@@ -180,11 +185,64 @@ void main() {
       isNull,
     );
     expect(
-      tester.widget<FilledButton>(find.widgetWithText(FilledButton, '現場移動')).onPressed,
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '現場移動'))
+          .onPressed,
       isNotNull,
     );
     expect(access.submits, 0);
   });
+  testWidgets('manual arrival records time without camera GPS or upload', (
+    tester,
+  ) async {
+    final access = _Access()
+      ..visits = []
+      ..mode = 'manual';
+    await _open(tester, access);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1. Test site').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '現場到着'));
+    await tester.pumpAndSettle();
+    expect(access.submits, 1);
+    expect(access.uploads, 0);
+    expect(access.submitted!.visitKind, 'start');
+    expect(access.submitted!.payload['gps_capture_status'], 'missing');
+    expect(access.submitted!.payload['photo_capture_status'], 'missing');
+    expect(access.submitted!.payload['photo_storage_path'], isNull);
+    expect(
+      DateTime.tryParse(access.submitted!.payload['attempted_at'] as String),
+      isNotNull,
+    );
+  });
+  testWidgets(
+    'moving records current visit time without recapturing evidence',
+    (tester) async {
+      final access = _Access()
+        ..visits = [
+          {
+            'start_capture_id': 'start',
+            'route_stop_id': 'stop',
+            'stop_label': 'Test site',
+            'work_date': '2026-10-10',
+            'started_at': '2026-10-10T09:00:00Z',
+            'ended_at': null,
+            'end_capture_id': null,
+          },
+        ];
+      await _open(tester, access);
+      await tester.tap(find.widgetWithText(FilledButton, '現場移動'));
+      await tester.pumpAndSettle();
+      expect(access.submits, 1);
+      expect(access.uploads, 0);
+      expect(access.submitted!.visitKind, 'end');
+      expect(access.submitted!.startCaptureId, 'start');
+      expect(access.submitted!.stopId, 'stop');
+      expect(access.submitted!.payload['latitude'], isNull);
+      expect(access.submitted!.payload['photo_capture_status'], 'missing');
+    },
+  );
   testWidgets(
     'ambiguous open visits fail closed instead of offering a new start',
     (tester) async {
@@ -335,9 +393,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(1.3)),
           child: child!,
         ),
         home: RouteJourneyCapturePage(sourceId: 'source', access: access),
