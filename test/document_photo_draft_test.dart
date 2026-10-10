@@ -20,6 +20,13 @@ void main() {
     expect(draft.photos, ['front', 'new-back', 'extra']);
   });
 
+  test('invalid moves leave all photos untouched', () {
+    final draft = DocumentPhotoDraft<String>(['front', 'back']);
+    expect(() => draft.move(-1, 0), throwsRangeError);
+    expect(() => draft.move(0, 2), throwsRangeError);
+    expect(draft.photos, ['front', 'back']);
+  });
+
   test('external callers cannot mutate the photo list', () {
     final draft = DocumentPhotoDraft<String>(['front']);
     expect(() => draft.photos.add('back'), throwsUnsupportedError);
