@@ -641,7 +641,7 @@ class _CompanySubmittedDocumentsPageState
                       imageQuality: 90,
                       maxWidth: 2600,
                     );
-                    if (picked != null && context.mounted) {
+                    if (picked != null && context.mounted && dialogContext.mounted) {
                       refresh(() => photos.add(picked));
                     }
                   },
@@ -654,7 +654,7 @@ class _CompanySubmittedDocumentsPageState
                       imageQuality: 90,
                       maxWidth: 2600,
                     );
-                    if (context.mounted && picked.isNotEmpty) {
+                    if (context.mounted && dialogContext.mounted && picked.isNotEmpty) {
                       refresh(() => photos.addAll(picked));
                     }
                   },
