@@ -71,6 +71,57 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     }
   }
 
+  Future<void> _fetchOfficial() async {
+    if (_writeBlocked ||
+        !_canEdit ||
+        _repository is! OfficialCompanyPayrollRateFetcher) {
+      return;
+    }
+    final generation = _generation;
+    final companyId = widget.companyId;
+    final repository = _repository as OfficialCompanyPayrollRateFetcher;
+    final actor = repository.officialFetchActor;
+    setState(() => _busy = true);
+    try {
+      final months = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (_) => const _OfficialRateMonthsDialog(),
+      );
+      if (!mounted || generation != _generation || months == null) return;
+      if (actor.isEmpty || actor != repository.officialFetchActor) {
+        setState(() => _data = null);
+        throw StateError('Account changed');
+      }
+      final warnings = await repository.fetchOfficial(companyId, months);
+      if (!mounted || generation != _generation) return;
+      if (actor != repository.officialFetchActor) {
+        setState(() => _data = null);
+        throw StateError('Account changed');
+      }
+      await _load();
+      if (!mounted || generation + 1 != _generation) return;
+      if (_data != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              warnings.isEmpty
+                  ? '公式料率を取得しました。現在値と比較して、項目ごとに適用してください。'
+                  : warnings.join('\n'),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted && generation == _generation) {
+        setState(
+          () => _error = '公式料率を取得できませんでした。現在の設定は変更していません。会社条件・適用月・接続を確認してください。',
+        );
+      }
+    } finally {
+      if (mounted && generation == _generation) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() { _busy = true; _loading = true; _error = null; _unavailable = false; });
@@ -392,12 +443,12 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
               const SizedBox(height: 12),
             ],
           ]);
-          if (constraints.maxWidth < 340) {
+          if (constraints.maxWidth < 280) {
             return Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [current, const Divider(), checked]);
           }
           return Row(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [Expanded(child: current), const SizedBox(width: 24), Expanded(child: checked)]);
+            children: [Expanded(child: current), const SizedBox(width: 12), Expanded(child: checked)]);
         }),
       ],
     )));
@@ -408,7 +459,7 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。確認値は登録済み資料の値で、公式サイトの自動取得は準備中です。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n保存結果が不明な場合は再送せず、再読み込みで保存値を確認してください。確認できるまで変更操作を停止します。\n\n個別給与設定の「給与の税計算」で加入条件・標準報酬・適用開始月を確認して自動計算へ切り替えます。介護保険は登録した生年月日と保険適用月から判定します。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の自動取得は準備中です。給与への適用は個別給与設定で管理します。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。会社条件と適用月を確認して「最新の公式料率を取得」を押すと、対応する公式資料の値を比較できます。取得だけでは設定を変更しません。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n保存結果が不明な場合は再送せず、再読み込みで保存値を確認してください。確認できるまで変更操作を停止します。\n\n個別給与設定の「給与の税計算」で加入条件・標準報酬・適用開始月を確認して自動計算へ切り替えます。介護保険は登録した生年月日と保険適用月から判定します。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の取得・設定への適用は会社管理者が行います。給与への適用は個別給与設定で管理します。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
@@ -418,7 +469,19 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh),
           label: const Text('確認値を再読み込み')),
-        const Text('登録済みの確認値を表示します。公式資料の自動取得は準備中です。'),
+            if (_canEdit &&
+                _repository is OfficialCompanyPayrollRateFetcher) ...[
+              FilledButton.icon(
+                onPressed: _writeBlocked || _data?.companyScope == null
+                    ? null
+                    : _fetchOfficial,
+                icon: const Icon(Icons.cloud_download_outlined),
+                label: const Text('最新の公式料率を取得'),
+              ),
+              const Text('取得した値を現在値と比較し、確認した項目だけ適用します。所得税は別の税額表で計算します。'),
+              if (_data?.companyScope == null)
+                const Text('先に会社の適用条件を保存してください。'),
+            ],
         if (_loading) const LinearProgressIndicator(),
         if (_unavailable) const Text('準備中：この会社では料率設定をまだ利用できません。'),
         if (_pendingWrite != null) const Text('保存結果が不明です。設定を再読み込みして確認するまで、変更操作を停止しています。'),
@@ -673,5 +736,69 @@ class _PayrollScopeEditorState extends State<_PayrollScopeEditor> {
       FilledButton(onPressed: () => Navigator.pop(context, <String, dynamic>{'insurer': _insurer,
         'prefecture': _prefecture.isEmpty ? null : _prefecture,
         'employment_business': _business.isEmpty ? null : _business}), child: const Text('会社条件を確認'))],
+  );
+}
+
+class _OfficialRateMonthsDialog extends StatefulWidget {
+  const _OfficialRateMonthsDialog();
+  @override
+  State<_OfficialRateMonthsDialog> createState() =>
+      _OfficialRateMonthsDialogState();
+}
+
+class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
+  final _form = GlobalKey<FormState>();
+  final _months = <String, String>{};
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('会社で適用する月を確認'),
+    content: SingleChildScrollView(
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '最新の公式料率を確認します。会社で採用する開始月を入力してください。資料の納付月と給与支払月は別です。この操作だけでは現在の設定を変更しません。',
+            ),
+            for (final entry in const {
+              'insurance_month': '保険適用開始年月',
+              'payroll_month': '給与対象開始年月',
+              'payment_month': '給与支払年月',
+            }.entries)
+              TextFormField(
+                key: ValueKey('official-${entry.key}'),
+                decoration: InputDecoration(
+                  labelText: entry.value,
+                  hintText: 'YYYY-MM',
+                ),
+                keyboardType: TextInputType.datetime,
+                validator: (value) =>
+                    RegExp(
+                      r'^20\d{2}-(0[1-9]|1[0-2])$',
+                    ).hasMatch(value?.trim() ?? '')
+                    ? null
+                    : 'YYYY-MMで入力してください',
+                onSaved: (value) => _months[entry.key] = '${value!.trim()}-01',
+              ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('キャンセル'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (_form.currentState!.validate()) {
+            _form.currentState!.save();
+            Navigator.pop(context, _months);
+          }
+        },
+        child: const Text('取得して比較'),
+      ),
+    ],
   );
 }
