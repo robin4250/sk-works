@@ -1,3 +1,26 @@
+-- Preserve the exact verified production contract; abort on any upstream RPC change.
+do $guard$
+begin
+ if to_regprocedure('private.company_document_exchange(text,jsonb)') is null
+   or md5(pg_get_functiondef('private.company_document_exchange(text,jsonb)'::regprocedure))<>'47778347a62ceca3ccef09f659cdbd28' then
+   raise exception '会社間送信RPCが更新されています。差分を確認してから適用してください。' using errcode='55000';
+ end if;
+end $guard$;
+
+-- Only new delivery photos get an ordinal. Existing delivery snapshots are untouched.
+alter table private.document_delivery_items add column photo_order bigint;
+create function private.assign_document_delivery_photo_order() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from private.document_deliveries d where d.id=new.delivery_id for update;
+ select coalesce(max(i.photo_order),0)+1 into new.photo_order
+ from private.document_delivery_items i where i.delivery_id=new.delivery_id;
+ return new;
+end $$;
+revoke all on function private.assign_document_delivery_photo_order() from public,anon,authenticated;
+create trigger document_delivery_photo_order before insert on private.document_delivery_items
+for each row execute function private.assign_document_delivery_photo_order();
+
 -- Requires company and worker attachment_paths additive migrations. Existing deliveries remain immutable.
 CREATE OR REPLACE FUNCTION private.company_document_exchange(p_action text, p_data jsonb DEFAULT '{}'::jsonb)
  RETURNS jsonb
@@ -24,7 +47,7 @@ begin
    from private.document_deliveries d where d.recipient_company_id=c or d.sender_company_id=c),'[]'::jsonb);
  elsif p_action='items' then
   if not exists(select 1 from private.document_deliveries d where d.id=(p_data->>'id')::uuid and (d.recipient_company_id=c or d.sender_company_id=c)) then raise exception 'この提出書類は確認できません。';end if;
-  return coalesce((select jsonb_agg(to_jsonb(i) order by i.name) from private.document_delivery_items i where i.delivery_id=(p_data->>'id')::uuid),'[]'::jsonb);
+  return coalesce((select jsonb_agg(to_jsonb(i) order by i.photo_order nulls last,i.name,i.id) from private.document_delivery_items i where i.delivery_id=(p_data->>'id')::uuid),'[]'::jsonb);
  elsif p_action='data_items' then
   if not exists(select 1 from private.document_deliveries d where d.id=(p_data->>'id')::uuid and (d.recipient_company_id=c or d.sender_company_id=c)) then raise exception 'この提出データは確認できません。';end if;
   return coalesce((select jsonb_agg(to_jsonb(i) order by i.created_at,i.id) from private.company_data_delivery_items i where i.delivery_id=(p_data->>'id')::uuid),'[]'::jsonb);

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 const { PGlite } = await import(pathToFileURL(process.argv[2]).href);
 const db = new PGlite();
 const c='10000000-0000-0000-0000-000000000001',t='10000000-0000-0000-0000-000000000002',u='10000000-0000-0000-0000-000000000003',w='10000000-0000-0000-0000-000000000004',q='10000000-0000-0000-0000-000000000005',m='10000000-0000-0000-0000-000000000006',d='10000000-0000-0000-0000-000000000007',s='10000000-0000-0000-0000-000000000008',req='10000000-0000-0000-0000-000000000009';
-await db.exec(`create schema private;create schema auth;create schema storage;
+await db.exec(`create role anon;create role authenticated;create schema private;create schema auth;create schema storage;
 create function auth.uid() returns uuid language sql as $$select '${u}'::uuid$$;
 create table companies(id uuid,name text);
 create table company_members(company_id uuid,user_id uuid,role text);
@@ -31,6 +31,8 @@ insert into company_required_documents values('${d}','${c}','company-document','
 insert into document_requirements values('${req}','${c}','required-document','upstream',true);
 insert into worker_document_statuses values('${s}','${c}','${w}','${req}','worker1.jpg',array['worker1.jpg','worker2.jpg','worker3.jpg'],null,'submitted');
 insert into storage.objects values('qualification-certificates','front.jpg'),('qualification-certificates','back.jpg'),('qualification-certificates','extra1.jpg'),('qualification-certificates','extra2.jpg'),('company-required-documents','company1.jpg'),('company-required-documents','company2.jpg'),('worker-documents','worker1.jpg'),('worker-documents','worker2.jpg'),('worker-documents','worker3.jpg');`);
+await db.exec(readFileSync('supabase/migrations/20260930201810_send_qualification_certificate_back_image.sql','utf8'));
+assert.equal((await db.query("select md5(pg_get_functiondef('private.company_document_exchange(text,jsonb)'::regprocedure)) hash")).rows[0].hash,'47778347a62ceca3ccef09f659cdbd28');
 await db.exec(readFileSync('supabase/migrations/20261010222901_send_qualification_extra_photo_snapshots.sql','utf8'));
 async function send(kind,id) {
  const code=(await db.query('select gen_random_uuid() id')).rows[0].id;
@@ -45,6 +47,8 @@ assert.deepEqual((await db.query('select path from private.document_delivery_ite
 assert.deepEqual((await db.query('select payload from private.company_data_delivery_items where delivery_id=$1',[qual.delivery])).rows[0].payload.attachment_paths,['front.jpg','back.jpg','extra1.jpg','extra2.jpg']);
 await db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(qual.data)]);
 assert.equal((await db.query('select count(*) n from private.document_delivery_items where delivery_id=$1',[qual.delivery])).rows[0].n,4);
+const ordered=(await db.query("select private.company_document_exchange('items',$1::jsonb) items",[JSON.stringify({id:qual.delivery})])).rows[0].items;
+assert.deepEqual(ordered.map(i=>i.path),['front.jpg','back.jpg','extra1.jpg','extra2.jpg']);
 const company=await send('company',d);
 assert.equal((await db.query('select count(*) n from private.document_delivery_items where delivery_id=$1',[company.delivery])).rows[0].n,2);
 const worker=await send('worker_document',s);
@@ -58,5 +62,13 @@ assert.equal((await db.query('select count(*) n from private.document_deliveries
 await db.query('update company_required_documents set attachment_paths=$1 where id=$2',[[],d]);
 const legacy=await send('company',d);
 assert.equal((await db.query('select count(*) n from private.document_delivery_items where delivery_id=$1',[legacy.delivery])).rows[0].n,1);
-console.log('PASS exchange: qualification all-photo snapshot, company/worker all photos, personnel bundle, idempotent retry, missing-file transactional rollback, legacy fallback, prior snapshot immutable');
+const manyPaths=Array.from({length:12},(_,i)=>`company-${i+1}.jpg`);
+for(const path of manyPaths) await db.query("insert into storage.objects values('company-required-documents',$1)",[path]);
+await db.query('update company_required_documents set attachment_path=$1,attachment_paths=$2 where id=$3',[manyPaths[0],manyPaths,d]);
+const many=await send('company',d);
+const manyItems=(await db.query("select private.company_document_exchange('items',$1::jsonb) items",[JSON.stringify({id:many.delivery})])).rows[0].items;
+assert.deepEqual(manyItems.map(i=>i.path),manyPaths);
+await db.exec("create or replace function private.company_document_exchange(p_action text,p_data jsonb default '{}'::jsonb) returns jsonb language sql as $$select '{}'::jsonb$$");
+await assert.rejects(db.exec(readFileSync('supabase/migrations/20261010222901_send_qualification_extra_photo_snapshots.sql','utf8')),e=>e.code==='55000');
+console.log('PASS exchange (verified production MD5 and immutable photo ordinals): qualification all-photo snapshot, company/worker all photos, personnel bundle, idempotent retry, missing-file transactional rollback, legacy fallback, prior snapshot immutable');
 await db.close();
