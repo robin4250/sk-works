@@ -553,7 +553,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                               _openVisit!['route_stop_id'] is String &&
                               (_openVisit!['route_stop_id'] as String).isNotEmpty &&
                               _openVisit!['start_capture_id'] is String &&
-                              (_openVisit!['start_capture_id'] as String).isNotEmpty
+                              (_openVisit!['start_capture_id'] as String).isNotEmpty &&
+                              _openVisit!['route_stop_id'] == _stopId &&
+                              _openVisit!['ended_at'] == null &&
+                              _openVisit!['end_capture_id'] == null
                           ? _captureOrRetry
                           : null,
                       icon: const Icon(Icons.directions_walk_outlined),
