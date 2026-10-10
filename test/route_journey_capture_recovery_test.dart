@@ -12,6 +12,7 @@ class _Access implements RouteJourneyCaptureAccess {
   @override
   String userId = 'actor';
   bool failAll = false, failWorkspace = false;
+  List<Map<String, dynamic>>? visits;
   int loads = 0, submits = 0, uploads = 0;
   final sources = <String>[];
   RouteJourneyCaptureDraft? pending, submitted;
@@ -29,6 +30,8 @@ class _Access implements RouteJourneyCaptureAccess {
     sources.add(sourceId);
     if (failWorkspace) throw StateError('offline');
     return {
+      if (visits != null) 'visit_contract_version': 1,
+      if (visits != null) 'visits': visits,
       'company_id': 'company',
       'source_clock_in_id': sourceId,
       'work_date': '2026-10-10',
@@ -77,6 +80,75 @@ Future<void> _open(WidgetTester tester, _Access access) async {
 
 Finder get _reload => find.widgetWithText(OutlinedButton, '再読み込み');
 void main() {
+  testWidgets(
+    'visit workspace offers start without silently selecting a stop',
+    (tester) async {
+      final access = _Access()..visits = [];
+      await _open(tester, access);
+      expect(find.text('この現場の作業を開始'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      expect(access.submits, 0);
+    },
+  );
+  testWidgets('open visit offers only end and locks its selected stop', (
+    tester,
+  ) async {
+    final access = _Access()
+      ..visits = [
+        {
+          'start_capture_id': 'start',
+          'route_stop_id': 'stop',
+          'stop_label': 'Test site',
+          'work_date': '2026-10-10',
+          'started_at': '2026-10-10T09:00:00Z',
+          'ended_at': null,
+          'end_capture_id': null,
+        },
+      ];
+    await _open(tester, access);
+    expect(find.text('この現場の作業を終了'), findsOneWidget);
+    expect(find.text('この現場の作業を開始'), findsNothing);
+    expect(find.textContaining('作業中'), findsOneWidget);
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>),
+          )
+          .onChanged,
+      isNull,
+    );
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
+    expect(access.submits, 0);
+  });
+  testWidgets(
+    'ambiguous open visits fail closed instead of offering a new start',
+    (tester) async {
+      final visit = <String, dynamic>{
+        'start_capture_id': 'start',
+        'route_stop_id': 'stop',
+        'stop_label': 'Test site',
+        'work_date': '2026-10-10',
+        'started_at': '2026-10-10T09:00:00Z',
+        'ended_at': null,
+        'end_capture_id': null,
+      };
+      final access = _Access()..visits = [visit, visit];
+      await _open(tester, access);
+      expect(_reload, findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      expect(access.submits, 0);
+    },
+  );
+
   testWidgets('initial pending read failure retries without writes', (
     tester,
   ) async {
