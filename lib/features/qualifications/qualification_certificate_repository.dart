@@ -79,24 +79,42 @@ class QualificationCertificateRepository {
     }
     final workers = await workersQuery.order('name');
 
-    var qualificationsQuery = _client
-        .from('worker_qualifications')
-        .select(
-          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, attachment_extra_paths, notes',
-        )
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
+    Future<List<Map<String, dynamic>>> readQualifications({
+      required bool extras,
+    }) async {
+      var query = _client
+          .from('worker_qualifications')
+          .select(
+            'id, worker_id, qualification_master_id, certificate_number, expires_at, '
+            'attachment_path, attachment_back_path, '
+            '${extras ? 'attachment_extra_paths, ' : ''}notes',
+          )
+          .eq('company_id', companyId);
+      if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+        query = query.eq('worker_id', ownWorkerId);
+      }
+      final rows = await query.order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(rows);
     }
-    final qualifications = await qualificationsQuery.order(
-      'created_at',
-      ascending: false,
-    );
+
+    var supportsExtraPhotos = true;
+    List<Map<String, dynamic>> qualifications;
+    try {
+      qualifications = await readQualifications(extras: true);
+    } on PostgrestException catch (error) {
+      if (!{'42703', 'PGRST204'}.contains(error.code) ||
+          !error.message.contains('attachment_extra_paths')) {
+        rethrow;
+      }
+      supportsExtraPhotos = false;
+      qualifications = await readQualifications(extras: false);
+    }
 
     return {
       'masters': List<Map<String, dynamic>>.from(masters),
       'workers': List<Map<String, dynamic>>.from(workers),
-      'qualifications': List<Map<String, dynamic>>.from(qualifications),
+      'qualifications': qualifications,
+      'supports_extra_photos': supportsExtraPhotos,
     };
   }
 
@@ -144,9 +162,7 @@ class QualificationCertificateRepository {
             oldPath == null ? 'is' : 'eq',
             oldPath ?? 'null',
           )
-          .select(
-            'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, attachment_extra_paths, notes',
-          )
+          .select()
           .single();
 
       // Old objects can be referenced by company exchange snapshots.
@@ -204,9 +220,7 @@ class QualificationCertificateRepository {
             oldPath == null ? 'is' : 'eq',
             oldPath ?? 'null',
           )
-          .select(
-            'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, attachment_extra_paths, notes',
-          )
+          .select()
           .single();
 
       // Old objects can be referenced by company exchange snapshots.
@@ -230,9 +244,7 @@ class QualificationCertificateRepository {
         .eq('company_id', companyId)
         .eq('id', qualificationId)
         .eq('attachment_back_path', storagePath)
-        .select(
-          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, attachment_extra_paths, notes',
-        )
+        .select()
         .single();
     return Map<String, dynamic>.from(updated);
   }
@@ -253,9 +265,7 @@ class QualificationCertificateRepository {
         .eq('company_id', companyId)
         .eq('id', qualificationId)
         .eq('attachment_path', storagePath)
-        .select(
-          'id, worker_id, qualification_master_id, certificate_number, expires_at, attachment_path, attachment_back_path, attachment_extra_paths, notes',
-        )
+        .select()
         .single();
     return Map<String, dynamic>.from(updated);
   }
@@ -282,6 +292,9 @@ class QualificationCertificateRepository {
         .eq('worker_id', workerId)
         .eq('id', qualificationId)
         .single();
+    if (!existing.containsKey('attachment_extra_paths')) {
+      throw StateError('追加写真の保存は準備中です。表面・裏面は引き続き確認できます。');
+    }
     final paths = extraPaths(existing);
     if (replacingPath != null && !paths.contains(replacingPath)) {
       throw StateError('写真が更新されています。再読み込みしてください。');

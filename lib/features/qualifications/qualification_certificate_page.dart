@@ -22,6 +22,7 @@ class _QualificationCertificatePageState
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
   bool _canManage = false;
+  bool _extraPhotosAvailable = false;
   String _query = '';
   String? _busyId;
   String? _error;
@@ -58,6 +59,7 @@ class _QualificationCertificatePageState
       if (!mounted) return;
       setState(() {
         _canManage = values[1] as bool;
+        _extraPhotosAvailable = data['supports_extra_photos'] == true;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
         _qualifications = List<Map<String, dynamic>>.from(
@@ -328,7 +330,11 @@ class _QualificationCertificatePageState
                         : null,
                   ),
                 ],
-                if (_canManage) ...[
+                if (!_extraPhotosAvailable) ...[
+                  const SizedBox(height: 18),
+                  const Text('追加写真の保存は準備中です。表面・裏面は引き続き確認できます。'),
+                ],
+                if (_canManage && _extraPhotosAvailable) ...[
                   const SizedBox(height: 18),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -438,7 +444,7 @@ class _QualificationCertificatePageState
     bool multiple = false,
   }) async {
     final repository = _repository;
-    if (repository == null || _busyId != null) return;
+    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
     final files = multiple
         ? await _picker.pickMultiImage(imageQuality: 88, maxWidth: 2400)
         : [if (await _pickExtra(source) case final XFile file) file];
@@ -476,7 +482,7 @@ class _QualificationCertificatePageState
 
   Future<void> _removeExtra(Map<String, dynamic> row, String path) async {
     final repository = _repository;
-    if (repository == null || _busyId != null) return;
+    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
     setState(() => _busyId = row['id'].toString());
     try {
       final updated = await repository.removeExtraCertificate(

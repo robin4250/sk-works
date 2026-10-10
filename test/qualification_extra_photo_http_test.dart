@@ -18,6 +18,8 @@ class _Fixture {
   bool rejectUpload = false;
   bool loseStatusResponse = false;
   bool noStatusRow = false;
+  bool legacyExtraColumnMissing = false;
+  bool qualificationReadDenied = false;
 
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -73,6 +75,14 @@ class _Fixture {
       response = [
         {'company_id': _company},
       ];
+    } else if (path == '/rest/v1/qualification_master') {
+      response = [
+        {'id': _status, 'name': 'synthetic qualification'},
+      ];
+    } else if (path == '/rest/v1/workers') {
+      response = [
+        {'id': _worker, 'name': 'synthetic worker'},
+      ];
     } else if (path == '/rest/v1/worker_qualifications') {
       if (request.method == 'GET') {
         final row = {
@@ -82,9 +92,33 @@ class _Fixture {
           'attachment_back_path': 'back.jpg',
           'attachment_extra_paths': ['extra.jpg'],
         };
-        response = request.uri.queryParameters.containsKey('limit')
-            ? [row]
-            : row;
+        if (legacyExtraColumnMissing) row.remove('attachment_extra_paths');
+        if (qualificationReadDenied) {
+          request.response.statusCode = 403;
+          response = {
+            'code': '42501',
+            'message': 'permission denied',
+            'details': '',
+            'hint': null,
+          };
+        } else if (legacyExtraColumnMissing &&
+            (request.uri.queryParameters['select'] ?? '').contains(
+              'attachment_extra_paths',
+            )) {
+          request.response.statusCode = 400;
+          response = {
+            'code': '42703',
+            'message': 'column attachment_extra_paths does not exist',
+            'details': '',
+            'hint': null,
+          };
+        } else {
+          response =
+              request.uri.queryParameters.containsKey('limit') ||
+                  request.uri.queryParameters.containsKey('order')
+              ? [row]
+              : row;
+        }
       } else if (loseStatusResponse) {
         final socket = await request.response.detachSocket(writeHeaders: false);
         socket.destroy();
@@ -194,6 +228,49 @@ void main() {
     expect(updated['attachment_back_path'], 'back.jpg');
     expect(updated['attachment_extra_paths'], hasLength(1));
     expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+  });
+  test(
+    'legacy schema keeps front/back visible and disables extra photos',
+    () async {
+      fixture.legacyExtraColumnMissing = true;
+      final data = await QualificationCertificateRepository.forTesting(
+        fixture.client,
+      ).loadAll();
+      expect(data['supports_extra_photos'], false);
+      final row = (data['qualifications'] as List).single as Map;
+      expect(row['attachment_path'], 'front.jpg');
+      expect(row['attachment_back_path'], 'back.jpg');
+      expect(
+        fixture.requests.where(
+          (r) => r.uri.path == '/rest/v1/worker_qualifications',
+        ),
+        hasLength(2),
+      );
+    },
+  );
+  test(
+    'permission errors cannot fall back to a false empty or legacy list',
+    () async {
+      fixture.qualificationReadDenied = true;
+      await expectLater(
+        QualificationCertificateRepository.forTesting(fixture.client).loadAll(),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(
+        fixture.requests.where(
+          (r) => r.uri.path == '/rest/v1/worker_qualifications',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+  test('legacy extra upload stops before creating an orphan', () async {
+    fixture.legacyExtraColumnMissing = true;
+    await expectLater(fixture.saveExtra(), throwsStateError);
+    expect(
+      fixture.requests.where((r) => r.uri.path.startsWith('/storage/')),
+      isEmpty,
+    );
   });
   test('stale replacement stops before uploading', () async {
     await expectLater(
