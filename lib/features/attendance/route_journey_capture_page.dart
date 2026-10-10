@@ -544,7 +544,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     FilledButton.icon(
                       onPressed: !_busy && !_loading && !_loadFailed &&
                               enabled && _openVisit != null &&
-                              _origin != null && _stopId != null
+                              _origin != null &&
+                              _openVisit!['route_stop_id'] is String &&
+                              _openVisit!['start_capture_id'] is String
                           ? _captureOrRetry
                           : null,
                       icon: const Icon(Icons.directions_walk_outlined),
