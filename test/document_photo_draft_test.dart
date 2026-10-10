@@ -4,8 +4,10 @@ import 'package:sk_works/features/people/document_photo_draft.dart';
 void main() {
   test('front and back remain separate and ordered', () {
     final draft = DocumentPhotoDraft<String>();
+    expect(draft.hasFrontAndBack, isFalse);
     draft.add('front');
     draft.add('back');
+    expect(draft.hasFrontAndBack, isTrue);
     draft.addAll(['extra']);
     expect(draft.photos, ['front', 'back', 'extra']);
     expect(draft.removeAt(1), 'back');
