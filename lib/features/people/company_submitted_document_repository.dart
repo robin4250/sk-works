@@ -105,15 +105,22 @@ class CompanySubmittedDocumentRepository {
 
   Future<List<Map<String, dynamic>>> listDocuments() async {
     final value = await membership();
-    final rows = await _client
-        .from('company_required_documents')
-        .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
-        )
-        .eq('company_id', value.companyId)
-        .eq('is_active', true)
-        .order('name');
-    return List<Map<String, dynamic>>.from(rows);
+    try {
+      final rows = await _client
+          .from('company_required_documents')
+          .select(
+            'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
+          )
+          .eq('company_id', value.companyId)
+          .eq('is_active', true)
+          .order('name');
+      return List<Map<String, dynamic>>.from(rows);
+    } on PostgrestException catch (error) {
+      if (error.code == '42703' || error.code == 'PGRST204') {
+        throw StateError('書類の写真保存機能の準備が完了していません。更新後に再度お試しください。');
+      }
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> createDocument({
@@ -198,6 +205,7 @@ class CompanySubmittedDocumentRepository {
     required String id,
     required List<String> retainedPaths,
     List<String>? expectedPaths,
+    List<int>? insertionIndices,
     required List<({Uint8List bytes, String filename, String contentType})>
     files,
   }) async {
@@ -222,6 +230,17 @@ class CompanySubmittedDocumentRepository {
         retainedPaths.toSet().length != retainedPaths.length) {
       throw StateError('登録済み写真を確認できません。再読み込みしてください。');
     }
+    if (insertionIndices != null &&
+        (insertionIndices.length != files.length ||
+            List.generate(
+              files.length,
+              (i) =>
+                  insertionIndices[i] >= 0 &&
+                  insertionIndices[i] <= retainedPaths.length + i &&
+                  (i == 0 || insertionIndices[i] > insertionIndices[i - 1]),
+            ).contains(false))) {
+      throw StateError('写真の順序を確認できません。');
+    }
     final paths = [...retainedPaths];
     for (var i = 0; i < files.length; i++) {
       final file = files[i];
@@ -242,7 +261,7 @@ class CompanySubmittedDocumentRepository {
               upsert: false,
             ),
           );
-      paths.add(path);
+      paths.insert(insertionIndices?[i] ?? paths.length, path);
     }
     // Compare-and-set prevents a stale editor from replacing another saved set.
     var query = _client

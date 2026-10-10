@@ -577,8 +577,9 @@ class _CompanySubmittedDocumentsPageState
   // Keep all selected sides in memory until the user confirms the set.
   // Existing server attachments are never overwritten by a second photo.
   Future<void> _pickMultiplePhotos(Map<String, dynamic> row) async {
-    final photos = DocumentPhotoDraft<XFile>();
-    final retained = CompanySubmittedDocumentRepository.attachmentPaths(row);
+    final photos = DocumentPhotoDraft<Object>(
+      CompanySubmittedDocumentRepository.attachmentPaths(row),
+    );
     var saving = false;
     String? saveError;
     if (!mounted || _busy || (row['id']?.toString() ?? '').isEmpty) return;
@@ -595,32 +596,6 @@ class _CompanySubmittedDocumentsPageState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (var i = 0; i < retained.length; i++)
-                    ListTile(
-                      title: Text('登録写真 ${i + 1}'),
-                      onTap: saving
-                          ? null
-                          : () => _previewSavedPhoto(retained[i]),
-                      trailing: Wrap(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_upward),
-                            onPressed: saving || i == 0
-                                ? null
-                                : () => refresh(() {
-                                    final path = retained.removeAt(i);
-                                    retained.insert(i - 1, path);
-                                  }),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: saving
-                                ? null
-                                : () => refresh(() => retained.removeAt(i)),
-                          ),
-                        ],
-                      ),
-                    ),
                   if (saveError != null) Text(saveError!),
                   for (var i = 0; i < photos.length; i++)
                     ListTile(
@@ -634,12 +609,14 @@ class _CompanySubmittedDocumentsPageState
                             : '追加写真 ${i - 1}',
                       ),
                       subtitle: Text(
-                        photos.photos[i].name,
+                        photos.photos[i] is XFile
+                            ? (photos.photos[i] as XFile).name
+                            : '登録済み',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: SizedBox(
-                        width: 144,
+                        width: 192,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -658,6 +635,26 @@ class _CompanySubmittedDocumentsPageState
                               icon: const Icon(Icons.arrow_downward),
                             ),
                             IconButton(
+                              tooltip: '差し替え',
+                              icon: const Icon(Icons.swap_horiz),
+                              onPressed: saving
+                                  ? null
+                                  : () async {
+                                      final picked = await _imagePicker
+                                          .pickImage(
+                                            source: ImageSource.gallery,
+                                            imageQuality: 90,
+                                            maxWidth: 2600,
+                                          );
+                                      if (picked != null &&
+                                          dialogContext.mounted) {
+                                        refresh(
+                                          () => photos.replaceAt(i, picked),
+                                        );
+                                      }
+                                    },
+                            ),
+                            IconButton(
                               tooltip: '削除',
                               icon: const Icon(Icons.close),
                               onPressed: saving
@@ -669,7 +666,11 @@ class _CompanySubmittedDocumentsPageState
                       ),
                       onTap: () async {
                         final selected = photos.photos[i];
-                        final bytes = await selected.readAsBytes();
+                        if (selected is String) {
+                          await _previewSavedPhoto(selected);
+                          return;
+                        }
+                        final bytes = await (selected as XFile).readAsBytes();
                         if (!context.mounted || !dialogContext.mounted) return;
                         await showDialog<void>(
                           context: context,
@@ -722,11 +723,11 @@ class _CompanySubmittedDocumentsPageState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '選択中: ${retained.length + photos.length}枚（保存前） / 表裏: ${photos.hasFrontAndBack ? '選択済み' : '未完了'}',
+                    '選択中: ${photos.length}枚（保存前） / 表裏: ${photos.hasFrontAndBack ? '選択済み' : '未完了'}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const Text(
-                    '登録写真と追加写真をまとめて保存します。写真を差し替える場合は元の写真を外して追加してください。',
+                    '登録写真と追加写真をまとめて保存します。矢印で表・裏・追加写真の順序を変更できます。差し替えボタンでその位置の写真を変更できます。',
                   ),
                 ],
               ),
@@ -750,7 +751,13 @@ class _CompanySubmittedDocumentsPageState
                                 String contentType,
                               })
                             >[];
-                        for (final photo in List<XFile>.of(photos.photos)) {
+                        final selected = List<Object>.of(photos.photos);
+                        final retained = selected.whereType<String>().toList();
+                        final insertionIndices = <int>[];
+                        for (var i = 0; i < selected.length; i++) {
+                          if (selected[i] is! XFile) continue;
+                          final photo = selected[i] as XFile;
+                          insertionIndices.add(i);
                           files.add((
                             bytes: await photo.readAsBytes(),
                             filename: photo.name,
@@ -761,6 +768,7 @@ class _CompanySubmittedDocumentsPageState
                           id: row['id'].toString(),
                           retainedPaths: List.of(retained),
                           files: files,
+                          insertionIndices: insertionIndices,
                           expectedPaths:
                               CompanySubmittedDocumentRepository.attachmentPaths(
                                 row,

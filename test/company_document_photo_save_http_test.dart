@@ -119,9 +119,10 @@ class _Fixture {
       )
       .toList();
 
-  Future<Map<String, dynamic>> savePhoto() =>
+  Future<Map<String, dynamic>> savePhoto({List<int>? insertionIndices}) =>
       CompanySubmittedDocumentRepository.forTesting(client).savePhotos(
         id: _status,
+        insertionIndices: insertionIndices,
         retainedPaths: ['$_company/$_status/old.jpg'],
         files: [
           (
@@ -160,6 +161,17 @@ void main() {
     );
     expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
   });
+  test(
+    'a replacement front photo stays before retained back and appended extra',
+    () async {
+      final saved = await fixture.savePhoto(insertionIndices: [0, 2]);
+      final paths = saved['attachment_paths'] as List;
+      expect(paths[0], endsWith('_front.jpg'));
+      expect(paths[1], '$_company/$_status/old.jpg');
+      expect(paths[2], endsWith('_back.jpg'));
+      expect(saved['attachment_path'], paths[0]);
+    },
+  );
   test(
     'upload failure never mutates the saved set or deletes objects',
     () async {
