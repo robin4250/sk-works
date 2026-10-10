@@ -245,7 +245,11 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       enabled: editable,
                       maxLength: 1000,
                       maxLines: 2,
-                      decoration: const InputDecoration(labelText: '内容'),
+                      decoration: const InputDecoration(
+                        labelText: '内容',
+                        helperText: '税理士・会計士に申請する文章なので、分かりやすく詳細を書き込んでください',
+                        helperMaxLines: 4,
+                      ),
                     ),
                     TextField(
                       controller: _amount,
