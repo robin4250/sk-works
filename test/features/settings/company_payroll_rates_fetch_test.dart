@@ -36,6 +36,21 @@ Future<void> fetch(WidgetTester tester) async {
   await tester.tap(find.text('取得して比較')); await tester.pumpAndSettle();
 }
 void main() {
+  testWidgets('iPhone width shows saved and fetched rates side by side', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = FetchRepository();
+    await fixture.openPage(tester,repository);
+    await fetch(tester);
+    await fixture.reveal(tester,find.byKey(const ValueKey('apply-official')));
+    final card = find.ancestor(of: find.byKey(const ValueKey('apply-official')), matching:find.byType(Card));
+    final current = find.descendant(of:card,matching:find.text('現在設定値'));
+    final candidate = find.descendant(of:card,matching:find.text('登録済みの確認値'));
+    expect(tester.getTopLeft(current).dy,tester.getTopLeft(candidate).dy);
+    expect(tester.getTopLeft(current).dx,lessThan(tester.getTopLeft(candidate).dx));
+    expect(tester.takeException(),isNull);
+  });
+
   testWidgets('fetch publishes a comparison without applying or saving company rates', (tester) async {
     final repository = FetchRepository();
     await fixture.openPage(tester,repository);
