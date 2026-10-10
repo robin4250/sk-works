@@ -13,6 +13,13 @@ class CompanySubmittedDocumentRepository {
 
   final SupabaseClient _client;
   static const bucket = 'company-required-documents';
+  bool _supportsPhotoSets = true;
+  bool get supportsPhotoSets => _supportsPhotoSets;
+  static const _allFields =
+      'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at';
+  String get _fields => _supportsPhotoSets
+      ? _allFields
+      : _allFields.replaceAll('attachment_paths, ', '');
 
   static CompanySubmittedDocumentRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -108,18 +115,25 @@ class CompanySubmittedDocumentRepository {
     try {
       final rows = await _client
           .from('company_required_documents')
-          .select(
-            'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
-          )
+          .select(_allFields)
+          .eq('company_id', value.companyId)
+          .eq('is_active', true)
+          .order('name');
+      _supportsPhotoSets = true;
+      return List<Map<String, dynamic>>.from(rows);
+    } on PostgrestException catch (error) {
+      final missingPhotoColumn =
+          (error.code == '42703' || error.code == 'PGRST204') &&
+          '${error.message} ${error.details}'.contains('attachment_paths');
+      if (!missingPhotoColumn) rethrow;
+      _supportsPhotoSets = false;
+      final rows = await _client
+          .from('company_required_documents')
+          .select(_fields)
           .eq('company_id', value.companyId)
           .eq('is_active', true)
           .order('name');
       return List<Map<String, dynamic>>.from(rows);
-    } on PostgrestException catch (error) {
-      if (error.code == '42703' || error.code == 'PGRST204') {
-        throw StateError('書類の写真保存機能の準備が完了していません。更新後に再度お試しください。');
-      }
-      rethrow;
     }
   }
 
@@ -144,9 +158,7 @@ class CompanySubmittedDocumentRepository {
           'status': 'missing',
           'original_verified': false,
         })
-        .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
-        )
+        .select(_fields)
         .single();
     return Map<String, dynamic>.from(inserted);
   }
@@ -169,9 +181,7 @@ class CompanySubmittedDocumentRepository {
         })
         .eq('company_id', value.companyId)
         .eq('id', id)
-        .select(
-          'id, name, scope, upstream_name, is_active, expiry_required, expires_at, attachment_path, attachment_paths, notes, status, original_verified, created_at, updated_at',
-        )
+        .select(_fields)
         .single();
     return Map<String, dynamic>.from(updated);
   }
@@ -185,6 +195,7 @@ class CompanySubmittedDocumentRepository {
     return savePhotos(
       id: id,
       retainedPaths: const [],
+      legacySingleReplacement: true,
       files: [(bytes: bytes, filename: filename, contentType: contentType)],
     );
   }
@@ -206,14 +217,25 @@ class CompanySubmittedDocumentRepository {
     required List<String> retainedPaths,
     List<String>? expectedPaths,
     List<int>? insertionIndices,
+    bool legacySingleReplacement = false,
     required List<({Uint8List bytes, String filename, String contentType})>
     files,
   }) async {
+    if (!_supportsPhotoSets &&
+        (!legacySingleReplacement ||
+            files.length != 1 ||
+            retainedPaths.isNotEmpty)) {
+      throw StateError('複数写真の保存機能は準備中です。登録済み書類は引き続き確認できます。');
+    }
     await requireAdmin();
     final value = await membership();
     final current = await _client
         .from('company_required_documents')
-        .select('attachment_path, attachment_paths, updated_at')
+        .select(
+          _supportsPhotoSets
+              ? 'attachment_path, attachment_paths, updated_at'
+              : 'attachment_path, updated_at',
+        )
         .eq('company_id', value.companyId)
         .eq('id', id)
         .single();
@@ -268,7 +290,7 @@ class CompanySubmittedDocumentRepository {
         .from('company_required_documents')
         .update({
           'attachment_path': paths.isEmpty ? null : paths.first,
-          'attachment_paths': paths,
+          if (_supportsPhotoSets) 'attachment_paths': paths,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
           'status': paths.isEmpty ? 'missing' : 'submitted',
         })

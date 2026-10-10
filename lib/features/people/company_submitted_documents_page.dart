@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'document_photo_draft.dart';
 
@@ -442,10 +443,21 @@ class _CompanySubmittedDocumentsPageState
                 ),
                 const SizedBox(width: 8),
                 TextButton.icon(
-                  onPressed: _busy ? null : () => _pickMultiplePhotos(row),
+                  onPressed: _busy || _repository?.supportsPhotoSets != true
+                      ? null
+                      : () => _pickMultiplePhotos(row),
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('写真を管理'),
+                  label: Text(
+                    _repository?.supportsPhotoSets == true
+                        ? '写真を管理'
+                        : '複数写真は準備中',
+                  ),
                 ),
+                if (path.isNotEmpty)
+                  TextButton(
+                    onPressed: _busy ? null : () => _previewSavedPhoto(path),
+                    child: const Text('登録書類を見る'),
+                  ),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: _busy ? null : () => _edit(row),
@@ -808,6 +820,15 @@ class _CompanySubmittedDocumentsPageState
     try {
       final url = await _repository!.createSignedUrl(path);
       if (!mounted) return;
+      if (path.toLowerCase().endsWith('.pdf')) {
+        if (!await launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalApplication,
+        )) {
+          throw StateError('PDFを開けませんでした。');
+        }
+        return;
+      }
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(

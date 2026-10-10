@@ -16,6 +16,8 @@ class _Fixture {
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool rejectUpload = false;
   bool noStatusRow = false;
+  bool missingPhotoColumn = false;
+  bool denyList = false;
 
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -70,7 +72,28 @@ class _Fixture {
         {'company_id': _company, 'role': 'admin'},
       ];
     } else if (path == '/rest/v1/company_required_documents') {
-      if (request.method == 'GET') {
+      if (request.method == 'GET' &&
+          request.uri.queryParameters['select']!.contains('name')) {
+        if (denyList ||
+            (missingPhotoColumn &&
+                request.uri.queryParameters['select']!.contains(
+                  'attachment_paths',
+                ))) {
+          request.response.statusCode = 400;
+          response = {
+            'code': denyList ? '42501' : '42703',
+            'message': denyList ? 'permission denied' : 'column company_required_documents.attachment_paths does not exist',
+          };
+        } else {
+          response = [
+            {
+              'id': _status,
+              'name': '既存書類',
+              'attachment_path': '$_company/$_status/old.jpg',
+            },
+          ];
+        }
+      } else if (request.method == 'GET') {
         response = {
           'id': _status,
           'attachment_path': '$_company/$_status/old.jpg',
@@ -181,6 +204,44 @@ void main() {
       expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
     },
   );
+  test(
+    'missing photo column preserves legacy listing and single-file replacement',
+    () async {
+      fixture.missingPhotoColumn = true;
+      final repository = CompanySubmittedDocumentRepository.forTesting(
+        fixture.client,
+      );
+      final rows = await repository.listDocuments();
+      expect(repository.supportsPhotoSets, isFalse);
+      expect(rows.single['attachment_path'], '$_company/$_status/old.jpg');
+      await repository.upload(
+        id: _status,
+        bytes: Uint8List.fromList([1]),
+        filename: 'new.jpg',
+        contentType: 'image/jpeg',
+      );
+      final write = jsonDecode(utf8.decode(fixture.writes.single.body)) as Map;
+      expect(write.containsKey('attachment_paths'), isFalse);
+      expect(write['attachment_path'], endsWith('_new.jpg'));
+    },
+  );
+  test('permission failure never triggers legacy fallback', () async {
+    fixture.denyList = true;
+    final repository = CompanySubmittedDocumentRepository.forTesting(
+      fixture.client,
+    );
+    await expectLater(
+      repository.listDocuments(),
+      throwsA(isA<PostgrestException>()),
+    );
+    expect(
+      fixture.requests.where(
+        (r) => r.uri.path == '/rest/v1/company_required_documents',
+      ),
+      hasLength(1),
+    );
+    expect(repository.supportsPhotoSets, isTrue);
+  });
   test('unconfirmed row update never deletes uploaded or old photos', () async {
     fixture.noStatusRow = true;
     await expectLater(fixture.savePhoto(), throwsA(isA<PostgrestException>()));
