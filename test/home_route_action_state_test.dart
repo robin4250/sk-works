@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/home/home_route_action_state.dart';
+import 'package:sk_works/features/home/home_route_action_state.dart';
 
 void main() {
   Map<String, dynamic> workspace() => {
