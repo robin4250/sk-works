@@ -665,7 +665,7 @@ class _CompanySubmittedDocumentsPageState
                   '選択中: ${photos.length}枚（保存前）',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                const Text('写真の保存方式を準備中です。ここでは既存の登録写真を変更しません。'),
+                const Text('この画面は保存前の確認用です。閉じても既存の登録写真は削除されません。'),
               ],
               ),
             ),
