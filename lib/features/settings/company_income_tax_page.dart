@@ -206,12 +206,12 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
-        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。給与連携は準備中です。'),
+        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得は準備中です。令和8年月額表による自動計算は、個別給与設定の「給与の税計算」で設定します。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。令和8年月額表の自動計算は個別給与設定で設定します。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
     )),
   ]), body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
-    const Text('会社内のPDF資料を管理します。給与連携は準備中です。'),
+    const Text('会社内のPDF資料を管理します。給与の自動計算は「個別給与設定」→「給与の税計算」で設定します。'),
     Card(child: ExpansionTile(
       title: const Text('国税庁の公式資料'),
       subtitle: const Text('源泉徴収税額表・年度別の資料'),
