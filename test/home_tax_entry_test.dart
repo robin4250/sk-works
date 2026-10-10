@@ -12,7 +12,7 @@ import 'package:sk_works/features/settings/company_payroll_rates_page.dart';
 void main() {
   Widget home(String role) => MaterialApp(
     home: Scaffold(
-      body: FriendlyHomeContent(
+      body: Builder(builder: (testContext) => FriendlyHomeContent(
         identity: HomeIdentity(
           role: role,
           companyName: 'Test',
@@ -25,13 +25,24 @@ void main() {
           needsQualification: false,
         ),
         moduleEnabled: (_) => false,
-        visibleHomeKeys: const {'payroll'},
-        shortcuts: const [HomeShortcut('payroll', '給与明細', Icons.payments_outlined)],
+        visibleHomeKeys: const {'payroll', 'company_tax_rates', 'expense_claims'},
+        shortcuts: [
+          if (role == 'viewer' || role == 'admin' || role == 'owner')
+            const HomeShortcut('company_tax_rates', '税率設定', Icons.percent_outlined, access: HomeShortcutAccess.viewer),
+          const HomeShortcut('payroll', '給与明細', Icons.payments_outlined),
+          const HomeShortcut('expense_claims', '経費', Icons.receipt_long_outlined),
+        ],
         showAttendanceReport: false,
         showTodayAttendance: false,
-        onOpen: (_) async => fail('Tax entry must not require the admin menu'),
+        onOpen: (key) async {
+          if (key == 'company_tax_rates') {
+            await Navigator.of(testContext).push<void>(MaterialPageRoute(builder: (_) => const CompanyPayrollRatesHomePage()));
+          } else if (key == 'expense_claims') {
+            await Navigator.of(testContext).push<void>(MaterialPageRoute(builder: (_) => const ExpenseHomePage()));
+          }
+        },
         onRefresh: () async {},
-      ),
+      )),
     ),
   );
 
