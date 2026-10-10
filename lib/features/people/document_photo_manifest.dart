@@ -66,6 +66,7 @@ class DocumentPhotoManifest {
           path.contains('\\') ||
           path.endsWith('/') ||
           path.trim() != path ||
+          path.split('/').last.trim().isEmpty ||
           !seen.add(path) ||
           !const ['image/jpeg', 'image/png', 'image/heic', 'image/heif']
               .contains(entry.contentType)) {
