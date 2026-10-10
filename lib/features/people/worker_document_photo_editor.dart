@@ -129,6 +129,9 @@ class _PhotoEditorState extends State<_PhotoEditor> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('1枚目：表面 / 2枚目：裏面 / 3枚目以降：追加写真'),
+            const Text(
+              '新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。その他の書類は送信停止中です。保存済み写真は確認できます。',
+            ),
             const SizedBox(height: 8),
             for (var i = 0; i < _photos.length; i++)
               Card(
