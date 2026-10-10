@@ -40,6 +40,27 @@ void main() {
     );
   });
 
+  test('round trip validates saved photo order', () {
+    final saved = [front.toJson(), back.toJson()];
+    final restored = DocumentPhotoManifest.decode(
+      companyId: 'company',
+      documentId: 'document',
+      value: saved,
+    );
+    expect(restored.map((e) => e.path), [front.path, back.path]);
+  });
+
+  test('rejects malformed saved photo metadata', () {
+    expect(
+      () => DocumentPhotoManifest.decode(
+        companyId: 'company',
+        documentId: 'document',
+        value: [{'path': 'company/document/front.jpg'}],
+      ),
+      throwsStateError,
+    );
+  });
+
   test('rejects duplicate photos', () {
     expect(
       () => DocumentPhotoManifest.validate(
