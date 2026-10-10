@@ -663,7 +663,7 @@ class _CompanySubmittedDocumentsPageState
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '選択中: ${photos.length}枚（保存前）',
+                  '選択中: ${photos.length}枚（保存前） / 表裏: ${photos.hasFrontAndBack ? '選択済み' : '未完了'}',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const Text('この画面は保存前の確認用です。閉じても既存の登録写真は削除されません。'),
