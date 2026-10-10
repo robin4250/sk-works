@@ -61,6 +61,43 @@ void main() {
     );
   });
 
+  test('rejects traversal and unsafe object names', () {
+    for (final unsafe in [
+      'company/document/../other.jpg',
+      'company/document//front.jpg',
+      'company/document/front.jpg?token=x',
+      'company/document/',
+    ]) {
+      expect(
+        () => DocumentPhotoManifest.validate(
+          companyId: 'company',
+          documentId: 'document',
+          entries: [
+            DocumentPhotoEntry(path: unsafe, contentType: 'image/jpeg'),
+          ],
+        ),
+        throwsStateError,
+        reason: unsafe,
+      );
+    }
+  });
+
+  test('rejects unsupported file content types', () {
+    expect(
+      () => DocumentPhotoManifest.validate(
+        companyId: 'company',
+        documentId: 'document',
+        entries: [
+          const DocumentPhotoEntry(
+            path: 'company/document/file.pdf',
+            contentType: 'application/pdf',
+          ),
+        ],
+      ),
+      throwsStateError,
+    );
+  });
+
   test('rejects duplicate photos', () {
     expect(
       () => DocumentPhotoManifest.validate(
