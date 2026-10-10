@@ -884,7 +884,7 @@ class _HomeActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: dragging ? null : () => onOpen(item.key),
           child: Container(
-            padding: EdgeInsets.all(compact ? 8 : 14),
+            padding: EdgeInsets.all(compact ? (isViewer ? 5 : 8) : 14),
             decoration: BoxDecoration(
               border: borderWidth > 0
                   ? Border.all(color: borderColor, width: borderWidth)
