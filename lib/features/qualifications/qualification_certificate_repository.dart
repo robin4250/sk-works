@@ -82,7 +82,7 @@ class QualificationCertificateRepository {
     Future<List<Map<String, dynamic>>> readQualifications({
       required bool extras,
     }) async {
-      var query = _client
+      var qualificationsQuery = _client
           .from('worker_qualifications')
           .select(
             'id, worker_id, qualification_master_id, certificate_number, expires_at, '
@@ -91,9 +91,12 @@ class QualificationCertificateRepository {
           )
           .eq('company_id', companyId);
       if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-        query = query.eq('worker_id', ownWorkerId);
+        qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
       }
-      final rows = await query.order('created_at', ascending: false);
+      final rows = await qualificationsQuery.order(
+        'created_at',
+        ascending: false,
+      );
       return List<Map<String, dynamic>>.from(rows);
     }
 
