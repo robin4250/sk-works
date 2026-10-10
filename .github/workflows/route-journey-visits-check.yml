@@ -1,0 +1,63 @@
+name: Route journey visits check
+on:
+  pull_request:
+    paths:
+      - 'tool/fixtures/route_journey_visits/**'
+      - 'tool/fixtures/route_journey_capture/**'
+      - 'tool/verify_route_journey_visits.mjs'
+      - 'tool/verify_route_journey_visit_races.mjs'
+      - 'tool/verify_route_journey_visit_chain.mjs'
+      - 'tool/verify_attendance_capture_failure.mjs'
+      - 'supabase/migrations/*route_journey_visit_lifecycle.sql'
+      - 'supabase/migrations/*qualify_attendance_photo_upload_path.sql'
+      - 'supabase/migrations/20261008204012_route_journey_capture_staged.sql'
+      - '.github/workflows/route-journey-visits-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  visit-transactions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/visit-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.8
+      - name: Verify visit transaction and clock-out boundaries
+        run: node tool/verify_route_journey_visits.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify actual GPS capture management and visit chain
+        run: node tool/verify_route_journey_visit_chain.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+  visit-postgres-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: route-capture-fixture
+          POSTGRES_DB: sko_route_capture_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_route_capture_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_ROUTE_RACE_DATABASE_URL: postgres://postgres:route-capture-fixture@127.0.0.1:5432/sko_route_capture_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated Postgres client
+        run: npm install --prefix "$RUNNER_TEMP/visit-pg-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify observed visit lock schedules
+        run: node tool/verify_route_journey_visit_races.mjs "$RUNNER_TEMP/visit-pg-runtime/node_modules/pg/lib/index.js"

@@ -251,6 +251,7 @@ class _AttendanceVerificationPageState
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: Text(
           isClockOut ? '退勤' : '出勤',
           style: const TextStyle(fontWeight: FontWeight.w900),

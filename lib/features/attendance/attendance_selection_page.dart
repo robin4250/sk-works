@@ -180,6 +180,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: const Text(
           '出勤方法と車両を選択',
           style: TextStyle(fontWeight: FontWeight.w900),

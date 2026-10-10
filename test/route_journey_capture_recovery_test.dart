@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:sk_works/features/attendance/attendance_verification_page.dart';
+import 'package:sk_works/features/attendance/attendance_selection_page.dart';
+import 'package:sk_works/features/attendance/work_destination_selection_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +15,8 @@ class _Access implements RouteJourneyCaptureAccess {
   @override
   String userId = 'actor';
   bool failAll = false, failWorkspace = false;
+  List<Map<String, dynamic>>? visits;
+  bool archived = false;
   int loads = 0, submits = 0, uploads = 0;
   final sources = <String>[];
   RouteJourneyCaptureDraft? pending, submitted;
@@ -29,11 +34,14 @@ class _Access implements RouteJourneyCaptureAccess {
     sources.add(sourceId);
     if (failWorkspace) throw StateError('offline');
     return {
+      if (visits != null) 'visit_contract_version': 1,
+      if (visits != null) 'visits': visits,
       'company_id': 'company',
       'source_clock_in_id': sourceId,
       'work_date': '2026-10-10',
-      'enabled': true,
-      'is_open': true,
+      'enabled': !archived,
+      'is_open': !archived,
+      'archived': archived,
       'origin_kind': 'company',
       'route_assignment_id': 'route',
       'worker_id': 'worker',
@@ -77,6 +85,129 @@ Future<void> _open(WidgetTester tester, _Access access) async {
 
 Finder get _reload => find.widgetWithText(OutlinedButton, '再読み込み');
 void main() {
+  for (final selection in [0, 1, 2, 3]) {
+    testWidgets(
+      'back stays reachable with hidden home chrome: selection=$selection',
+      (tester) async {
+        final access = _Access()..visits = [];
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(appBarTheme: const AppBarTheme(toolbarHeight: 0)),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => switch (selection) {
+                        0 => RouteJourneyCapturePage(
+                          sourceId: 'source',
+                          access: access,
+                        ),
+                        1 => const WorkDestinationSelectionPage(),
+                        2 => const AttendanceSelectionPage(),
+                        _ => const AttendanceVerificationPage(),
+                      },
+                    ),
+                  ),
+                  child: const Text('Open work page'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open work page'));
+        await tester.pumpAndSettle();
+        expect(find.byType(BackButton).hitTestable(), findsOneWidget);
+        await tester.tap(find.byType(BackButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Open work page'), findsOneWidget);
+        expect(access.submits, 0);
+      },
+    );
+  }
+
+  testWidgets(
+    'archived source explains preservation without new capture action',
+    (tester) async {
+      final access = _Access()
+        ..visits = []
+        ..archived = true;
+      await _open(tester, access);
+      expect(find.textContaining('変更前の記録は保持されています'), findsOneWidget);
+      expect(find.text('この現場の作業を開始'), findsNothing);
+      expect(access.submits, 0);
+    },
+  );
+
+  testWidgets(
+    'visit workspace offers start without silently selecting a stop',
+    (tester) async {
+      final access = _Access()..visits = [];
+      await _open(tester, access);
+      expect(find.text('この現場の作業を開始'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      expect(access.submits, 0);
+    },
+  );
+  testWidgets('open visit offers only end and locks its selected stop', (
+    tester,
+  ) async {
+    final access = _Access()
+      ..visits = [
+        {
+          'start_capture_id': 'start',
+          'route_stop_id': 'stop',
+          'stop_label': 'Test site',
+          'work_date': '2026-10-10',
+          'started_at': '2026-10-10T09:00:00Z',
+          'ended_at': null,
+          'end_capture_id': null,
+        },
+      ];
+    await _open(tester, access);
+    expect(find.text('この現場の作業を終了'), findsOneWidget);
+    expect(find.text('この現場の作業を開始'), findsNothing);
+    expect(find.textContaining('作業中'), findsOneWidget);
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>),
+          )
+          .onChanged,
+      isNull,
+    );
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
+    expect(access.submits, 0);
+  });
+  testWidgets(
+    'ambiguous open visits fail closed instead of offering a new start',
+    (tester) async {
+      final visit = <String, dynamic>{
+        'start_capture_id': 'start',
+        'route_stop_id': 'stop',
+        'stop_label': 'Test site',
+        'work_date': '2026-10-10',
+        'started_at': '2026-10-10T09:00:00Z',
+        'ended_at': null,
+        'end_capture_id': null,
+      };
+      final access = _Access()..visits = [visit, visit];
+      await _open(tester, access);
+      expect(_reload, findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      expect(access.submits, 0);
+    },
+  );
+
   testWidgets('initial pending read failure retries without writes', (
     tester,
   ) async {

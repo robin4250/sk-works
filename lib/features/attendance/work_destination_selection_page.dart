@@ -181,6 +181,7 @@ class _WorkDestinationSelectionPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: const Text(
           '現場の選択',
           style: TextStyle(fontWeight: FontWeight.w900),

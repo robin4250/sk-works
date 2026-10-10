@@ -71,6 +71,17 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   bool _loading = false, _busy = false, _loadFailed = false;
   int _generation = 0;
   bool _left = false;
+  Map? get _openVisit {
+    final visits = _workspace?['visits'];
+    if (visits is! List) return null;
+    return visits
+        .whereType<Map>()
+        .where((row) => row['end_capture_id'] == null)
+        .singleOrNull;
+  }
+
+  bool get _visitsEnabled => _workspace?['visit_contract_version'] == 1;
+
   String? _actor;
   @override
   void initState() {
@@ -130,10 +141,33 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         if (!_active(generation)) return;
         _checkActor();
       }
+      if (workspace['visit_contract_version'] != null) {
+        final visits = workspace['visits'];
+        if (workspace['visit_contract_version'] != 1 ||
+            visits is! List ||
+            visits.any(
+              (row) =>
+                  row is! Map ||
+                  row['start_capture_id'] is! String ||
+                  row['route_stop_id'] is! String ||
+                  row['work_date'] != workspace['work_date'] ||
+                  DateTime.tryParse(row['started_at']?.toString() ?? '') ==
+                      null ||
+                  !row.containsKey('end_capture_id') ||
+                  !row.containsKey('ended_at') ||
+                  ((row['end_capture_id'] == null) !=
+                      (row['ended_at'] == null)) ||
+                  (row['ended_at'] != null &&
+                      DateTime.tryParse(row['ended_at'].toString()) == null),
+            ) ||
+            visits.where((row) => row['end_capture_id'] == null).length > 1) {
+          throw StateError('訪問履歴を確認できません');
+        }
+      }
       setState(() {
         _workspace = workspace;
         _origin = pending?.originKind ?? workspace['origin_kind']?.toString();
-        _stopId = pending?.stopId;
+        _stopId = pending?.stopId ?? _openVisit?['route_stop_id']?.toString();
       });
     } catch (_) {
       if (_active(generation)) {
@@ -286,6 +320,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
           sourceId: captureContext.sourceClockInId!,
           stopId: stopId,
           originKind: origin,
+          visitKind: _visitsEnabled
+              ? (_openVisit == null ? 'start' : 'end')
+              : null,
+          startCaptureId: _openVisit?['start_capture_id']?.toString(),
           payload: {
             ...capture.insertMetadata,
             'latitude': capture.gps?.latitude,
@@ -309,7 +347,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('途中現場の取得状態を記録しました'))),
+        SnackBar(
+          content: Text(
+            SkoLanguageController.tr(
+              saved['archived'] == true
+                  ? '管理変更前の記録を確認しました'
+                  : '途中現場の取得状態を記録しました',
+            ),
+          ),
+        ),
       );
       await _load();
     } catch (error) {
@@ -322,6 +368,12 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
     } finally {
       if (mounted && !_left) setState(() => _busy = false);
     }
+  }
+
+  String _visitTime(Object? raw) {
+    final time = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (time == null) return SkoLanguageController.tr('時刻不明');
+    return '${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -341,7 +393,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(SkoLanguageController.tr('途中現場のGPS＋写真'))),
+        appBar: AppBar(
+          toolbarHeight: kToolbarHeight,
+          title: Text(SkoLanguageController.tr('途中現場のGPS＋写真')),
+        ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
@@ -373,7 +428,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                         '保留中の対象・写真・取得状態は固定されています。新しい記録を作らず同じUUIDを照会します。',
                       ),
                     ),
-                  if (!enabled && _pending == null)
+                  if (workspace?['archived'] == true)
+                    Text(
+                      SkoLanguageController.tr(
+                        'この勤務は管理変更されています。変更前の記録は保持されています。新しい開始・終了は登録できません。',
+                      ),
+                    ),
+                  if (!enabled &&
+                      _pending == null &&
+                      workspace?['archived'] != true)
                     Text(
                       SkoLanguageController.tr(
                         '途中現場の記録は利用できません。機能設定または対象勤務を確認してください。',
@@ -405,10 +468,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      key: ValueKey(_generation),
                       initialValue: _stopId,
                       isExpanded: true,
                       decoration: InputDecoration(
-                        labelText: SkoLanguageController.tr('到着した現場（登録済みルート）'),
+                        labelText: SkoLanguageController.tr(
+                          _visitsEnabled
+                              ? '作業する現場（登録済みルート）'
+                              : '到着した現場（登録済みルート）',
+                        ),
                       ),
                       items: [
                         for (final stop in stops)
@@ -420,30 +488,55 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                             ),
                           ),
                       ],
-                      onChanged: _busy
+                      onChanged: _busy || _openVisit != null
                           ? null
                           : (value) => setState(() => _stopId = value),
                     ),
                   ],
                   const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed:
-                        _busy ||
-                            _loading ||
-                            _loadFailed ||
-                            (_pending == null &&
-                                (!enabled ||
-                                    _origin == null ||
-                                    _stopId == null))
-                        ? null
-                        : _captureOrRetry,
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: Text(
-                      SkoLanguageController.tr(
-                        _pending == null ? 'この現場を撮影して記録' : '同じ途中現場記録で再確認',
+                  if (workspace?['archived'] != true || _pending != null)
+                    FilledButton.icon(
+                      onPressed:
+                          _busy ||
+                              _loading ||
+                              _loadFailed ||
+                              (_pending == null &&
+                                  (!enabled ||
+                                      _origin == null ||
+                                      _stopId == null))
+                          ? null
+                          : _captureOrRetry,
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: Text(
+                        SkoLanguageController.tr(
+                          _pending != null
+                              ? '同じ途中現場記録で再確認'
+                              : !_visitsEnabled
+                              ? 'この現場を撮影して記録'
+                              : _openVisit == null
+                              ? 'この現場の作業を開始'
+                              : 'この現場の作業を終了',
+                        ),
                       ),
                     ),
-                  ),
+                  if (_visitsEnabled) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      SkoLanguageController.tr(
+                        '現場の終了と退勤は別です。最後の現場を終了した後、ホームから退勤してください。',
+                      ),
+                    ),
+                    for (final visit
+                        in (_workspace?['visits'] as List? ?? const [])
+                            .whereType<Map>())
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(visit['stop_label']?.toString() ?? ''),
+                        subtitle: Text(
+                          '${_visitTime(visit['started_at'])} → ${visit['ended_at'] == null ? SkoLanguageController.tr('作業中') : _visitTime(visit['ended_at'])}',
+                        ),
+                      ),
+                  ],
                   if (_saved != null) ...[
                     const SizedBox(height: 16),
                     Text('${_saved!['stop_label']} / ${_saved!['work_date']}'),
