@@ -52,6 +52,51 @@ class DocumentPhotoManifest {
         companyId.contains('/') || documentId.contains('/')) {
       throw StateError('Invalid document owner.');
     }
+    if (!RegExp(r'^[A-Za-z0-9_-]+
+    final result = <DocumentPhotoEntry>[];
+    final seen = <String>{};
+    for (final entry in entries) {
+      final path = entry.path;
+      if (!path.startsWith(prefix) ||
+          path.length <= prefix.length ||
+          path.contains('..') ||
+          path.contains('//') ||
+          path.contains('?') ||
+          path.contains('#') ||
+          path.contains('\\') ||
+          !seen.add(path) ||
+          !const ['image/jpeg', 'image/png', 'image/heic', 'image/heif']
+              .contains(entry.contentType)) {
+        throw StateError('Invalid or duplicate document photo.');
+      }
+      result.add(entry);
+    }
+    return List.unmodifiable(result);
+  }
+}
+).hasMatch(companyId) ||
+        !RegExp(r'^[A-Za-z0-9_-]+
+    final result = <DocumentPhotoEntry>[];
+    final seen = <String>{};
+    for (final entry in entries) {
+      final path = entry.path;
+      if (!path.startsWith(prefix) ||
+          path.length <= prefix.length ||
+          path.contains('..') ||
+          path.contains('\\') ||
+          !seen.add(path) ||
+          !const ['image/jpeg', 'image/png', 'image/heic', 'image/heif']
+              .contains(entry.contentType)) {
+        throw StateError('Invalid or duplicate document photo.');
+      }
+      result.add(entry);
+    }
+    return List.unmodifiable(result);
+  }
+}
+).hasMatch(documentId)) {
+      throw StateError('Invalid document owner.');
+    }
     final prefix = '$companyId/$documentId/';
     final result = <DocumentPhotoEntry>[];
     final seen = <String>{};
