@@ -8,6 +8,7 @@ class DocumentPhotoDraft<T> {
   List<T> get photos => List<T>.unmodifiable(_photos);
   int get length => _photos.length;
   bool get isEmpty => _photos.isEmpty;
+  bool get hasFrontAndBack => _photos.length >= 2;
 
   void add(T photo) => _photos.add(photo);
   void addAll(Iterable<T> photos) => _photos.addAll(photos);
