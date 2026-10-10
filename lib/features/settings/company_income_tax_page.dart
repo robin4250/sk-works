@@ -187,7 +187,7 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   ));
 
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('所得税の税額表'), actions: [
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
         content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。給与連携は準備中です。'),

@@ -38,3 +38,7 @@ PGlite 0.5.8の使い捨てDBで以下の既存5スイートが成功した。�
 所得税ページに折りたたみ式「国税庁の公式資料」を追加。2026年（令和8年）PDFと年度別関連資料一覧を外部ブラウザで開く。閲覧者や会社PDF未登録/読込失敗時にも利用できる。年度を明示し、開くだけでは登録・検証済み化・給与への採用をしない。リンク先は2026-10-10に国税庁の[資料一覧](https://www.nta.go.jp/publication/pamph/01.htm)と[2026年PDF](https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/all.pdf)を確認。
 
 所得税page/entryの既存15テスト成功、Flutter analyze指摘なし。新しい閲覧導線の実機反映はPR統合後のRelease更新で行う。
+
+## TOPスクロール後の戻る操作
+
+TOPで見出しを隠した状態が次のrouteへ継承され、税率・所得税ページと会社読込エラー画面のAppBarが高さ0になることを実機とwidget testで再現。対象3画面だけtoolbarHeightを指定し、戻るボタンを維持する。共通スクロール処理や他画面は変更しない。3ケースは修正前すべて失敗、修正後成功。税率/所得税/ホームの関連60テスト成功、analyze指摘なし。
