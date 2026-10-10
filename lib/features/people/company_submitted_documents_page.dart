@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'document_photo_draft.dart';
 
 import '../common/data_date_labels.dart';
 import '../../international/language_controller.dart';
@@ -570,7 +571,7 @@ class _CompanySubmittedDocumentsPageState
   // Keep all selected sides in memory until the user confirms the set.
   // Existing server attachments are never overwritten by a second photo.
   Future<void> _pickMultiplePhotos(Map<String, dynamic> row) async {
-    final photos = <XFile>[];
+    final photos = DocumentPhotoDraft<XFile>();
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -590,7 +591,7 @@ class _CompanySubmittedDocumentsPageState
                       onPressed: () => refresh(() => photos.removeAt(i)),
                     ),
                     onTap: () async {
-                      final bytes = await photos[i].readAsBytes();
+                      final bytes = await photos.photos[i].readAsBytes();
                       if (!context.mounted) return;
                       await showDialog<void>(
                         context: context,
