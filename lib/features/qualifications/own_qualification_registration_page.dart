@@ -233,6 +233,8 @@ class _OwnQualificationRegistrationPageState
   Future<void> _cancelPendingPhotos() async {
     final repository = _photoRepository;
     if (repository == null || _photoBusy || !_photoCapability.available) return;
+    final actor = repository.actor;
+    if (actor == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -252,8 +254,7 @@ class _OwnQualificationRegistrationPageState
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    final actor = repository.actor;
+    if (confirmed != true || !mounted || actor != repository.actor) return;
     setState(() => _photoBusy = true);
     try {
       await repository.cancelDraft();
