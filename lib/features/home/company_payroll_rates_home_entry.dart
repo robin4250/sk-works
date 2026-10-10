@@ -96,7 +96,10 @@ class _CompanyPayrollRatesHomePageState
       }
       final english = SkoLanguageController.isEnglish;
       return Scaffold(
-        appBar: AppBar(title: Text(english ? 'Tax rates' : '税率設定')),
+        appBar: AppBar(
+          toolbarHeight: kToolbarHeight,
+          title: Text(english ? 'Tax rates' : '税率設定'),
+        ),
         body: Center(
           child:
               snapshot.connectionState == ConnectionState.done &&

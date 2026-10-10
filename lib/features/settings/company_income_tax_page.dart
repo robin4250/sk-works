@@ -142,6 +142,19 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
     ],
   );
 
+  Future<void> _openOfficialReference(String url) async {
+    try {
+      if (!await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)) {
+        throw StateError('Could not open reference');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('国税庁の資料を開けませんでした。接続を確認して再度お試しください。')),
+      );
+    }
+  }
+
   Future<void> _openPdf(CompanyIncomeTaxTable table) async {
     if (_busy) return;
     final generation = _generation;
@@ -174,7 +187,7 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   ));
 
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('所得税の税額表'), actions: [
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
         content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。給与連携は準備中です。'),
@@ -183,6 +196,24 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
     )),
   ]), body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
     const Text('会社内のPDF資料を管理します。給与連携は準備中です。'),
+    Card(child: ExpansionTile(
+      title: const Text('国税庁の公式資料'),
+      subtitle: const Text('源泉徴収税額表・年度別の資料'),
+      children: [
+        ListTile(
+          title: const Text('2026年（令和8年）分の税額表PDF'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () => _openOfficialReference('https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/all.pdf'),
+        ),
+        ListTile(
+          title: const Text('年度別の税額表・関連資料'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () => _openOfficialReference('https://www.nta.go.jp/publication/pamph/01.htm'),
+        ),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text('対象の年分を確認してください。資料を開くだけでは会社への登録や給与への反映は行われません。')),
+      ],
+    )),
     if (_unknown != null) const Card(child: Padding(padding: EdgeInsets.all(12), child: Text('登録結果の確認が必要です。再読み込みで確認してください。重複登録を防ぐため追加登録は停止しています。'))),
     if (_data?.canEdit == true && _retryUpload != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       const Text('アップロード結果を確認できません。再試行または別のPDFを選択できます。'),
