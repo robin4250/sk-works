@@ -48,14 +48,18 @@ class _OwnQualificationRegistrationPageState
       _loading = true;
       _error = null;
     });
+    final actor = repository.currentUserId;
     try {
       final data = await repository.loadOwnQualificationWorkspace();
-      if (!mounted) return;
+      if (!mounted || actor == null || actor != repository.currentUserId) {
+        return;
+      }
       setState(() {
         _worker = Map<String, dynamic>.from(data['worker'] as Map);
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
-        _qualifications =
-            List<Map<String, dynamic>>.from(data['qualifications'] as List);
+        _qualifications = List<Map<String, dynamic>>.from(
+          data['qualifications'] as List,
+        );
         _loading = false;
       });
     } catch (error) {
@@ -71,19 +75,20 @@ class _OwnQualificationRegistrationPageState
     final repository = _repository;
     if (repository == null || _masters.isEmpty) return;
 
-    final filteredMasters = _masters.where((row) {
-      final needle = _query.trim().toLowerCase();
-      if (needle.isEmpty) return true;
-      return [
-        row['name'],
-        row['category'],
-        row['issuer'],
-      ].whereType<Object>().join(' ').toLowerCase().contains(needle);
-    }).toList(growable: false);
+    final filteredMasters = _masters
+        .where((row) {
+          final needle = _query.trim().toLowerCase();
+          if (needle.isEmpty) return true;
+          return [
+            row['name'],
+            row['category'],
+            row['issuer'],
+          ].whereType<Object>().join(' ').toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
     if (filteredMasters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('該当する資格種類がありません')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('該当する資格種類がありません')));
       return;
     }
 
@@ -121,8 +126,7 @@ class _OwnQualificationRegistrationPageState
                         child: Text(row['name']?.toString() ?? '資格'),
                       ),
                   ],
-                  onChanged: (value) =>
-                      setDialogState(() => masterId = value),
+                  onChanged: (value) => setDialogState(() => masterId = value),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -155,6 +159,12 @@ class _OwnQualificationRegistrationPageState
                     }
                   },
                 ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '資格の情報は登録できます。本人による資格証写真の追加・差し替えは現在停止中です。登録済み写真は資格一覧から確認できます。',
+                  ),
+                ),
                 TextField(
                   controller: notesController,
                   decoration: const InputDecoration(labelText: '備考'),
@@ -172,13 +182,13 @@ class _OwnQualificationRegistrationPageState
               onPressed: masterId == null
                   ? null
                   : () => Navigator.pop(dialogContext, {
-                        'masterId': masterId,
-                        'certificateNumber': certificateController.text.trim(),
-                        'issuer': issuerController.text.trim(),
-                        'issuedAt': issuedAt,
-                        'expiresAt': expiresAt,
-                        'notes': notesController.text.trim(),
-                      }),
+                      'masterId': masterId,
+                      'certificateNumber': certificateController.text.trim(),
+                      'issuer': issuerController.text.trim(),
+                      'issuedAt': issuedAt,
+                      'expiresAt': expiresAt,
+                      'notes': notesController.text.trim(),
+                    }),
               child: const Text('登録'),
             ),
           ],
@@ -203,15 +213,80 @@ class _OwnQualificationRegistrationPageState
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('自分の資格を登録しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('自分の資格を登録しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('資格を登録できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('資格を登録できませんでした: $error')));
     }
+  }
+
+  Future<void> _previewPhotos(Map<String, dynamic> row, String title) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final photos = QualificationCloudRepository.ownPhotoAttachments(row);
+    if (photos.isEmpty) return;
+    final actor = repository.currentUserId;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(title)),
+          body: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: photos.length,
+            itemBuilder: (context, index) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      photos[index].label,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    FutureBuilder<String>(
+                      future: repository.createOwnQualificationPhotoUrl(
+                        qualificationId: row['id'].toString(),
+                        storagePath: photos[index].path,
+                      ),
+                      builder: (context, snapshot) {
+                        if (actor == null ||
+                            actor != repository.currentUserId) {
+                          return const Text('ログイン状態が変わりました。画面を開き直してください。');
+                        }
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const SizedBox(
+                            height: 120,
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        if (snapshot.hasError || snapshot.data == null) {
+                          return const Text(
+                            '資格証写真を表示できませんでした。資格一覧へ戻って再度開いてください。',
+                          );
+                        }
+                        return InteractiveViewer(
+                          minScale: 1,
+                          maxScale: 5,
+                          child: Image.network(
+                            snapshot.data!,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                const Text('資格証写真を表示できませんでした。'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<DateTime?> _pickDate(BuildContext context, DateTime? value) {
@@ -230,18 +305,20 @@ class _OwnQualificationRegistrationPageState
       for (final row in _masters) row['id']?.toString() ?? '': row,
     };
     final needle = _query.trim().toLowerCase();
-    final qualifications = _qualifications.where((row) {
-      if (needle.isEmpty) return true;
-      final master =
-          masterById[row['qualification_master_id']?.toString() ?? ''];
-      return [
-        master?['name'],
-        master?['category'],
-        master?['issuer'],
-        row['certificate_number'],
-        row['issuer'],
-      ].whereType<Object>().join(' ').toLowerCase().contains(needle);
-    }).toList(growable: false);
+    final qualifications = _qualifications
+        .where((row) {
+          if (needle.isEmpty) return true;
+          final master =
+              masterById[row['qualification_master_id']?.toString() ?? ''];
+          return [
+            master?['name'],
+            master?['category'],
+            master?['issuer'],
+            row['certificate_number'],
+            row['issuer'],
+          ].whereType<Object>().join(' ').toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -266,82 +343,98 @@ class _OwnQualificationRegistrationPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _OwnQualificationError(message: _error!, onRetry: _load)
-                : Column(
-                    children: [
-                      Card(
-                        margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.person_outline),
-                          ),
-                          title: Text(
-                            _worker?['name']?.toString() ?? '本人',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          subtitle: const Text('ログイン中の本人の資格だけを表示します'),
-                        ),
+            ? _OwnQualificationError(message: _error!, onRetry: _load)
+            : Column(
+                children: [
+                  Card(
+                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.person_outline),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search),
-                            hintText: '資格種類・証明書番号で検索',
-                          ),
-                          onChanged: (value) => setState(() => _query = value),
-                        ),
+                      title: Text(
+                        _worker?['name']?.toString() ?? '本人',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
-                      Expanded(
-                        child: qualifications.isEmpty
-                            ? const Center(child: Text('登録済みの資格はありません'))
-                            : ListView.separated(
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 0, 12, 96),
-                                itemCount: qualifications.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 6),
-                                itemBuilder: (context, index) {
-                                  final row = qualifications[index];
-                                  final master = masterById[
-                                      row['qualification_master_id']
-                                              ?.toString() ??
-                                          ''];
-                                  return Card(
-                                    child: ListTile(
-                                      leading: const CircleAvatar(
-                                        child: Icon(Icons.badge_outlined),
-                                      ),
-                                      title: Text(
-                                        master?['name']?.toString() ?? '資格',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        [
-                                          if ((row['certificate_number']
-                                                      ?.toString() ??
-                                                  '')
-                                              .isNotEmpty)
-                                            '証明書 ${row['certificate_number']}',
-                                          if ((row['expires_at']?.toString() ??
-                                                  '')
-                                              .isNotEmpty)
-                                            '期限 ${row['expires_at']}',
-                                          if ((row['issuer']?.toString() ?? '')
-                                              .isNotEmpty)
-                                            row['issuer'].toString(),
-                                        ].join(' / '),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
+                      subtitle: const Text('ログイン中の本人の資格だけを表示します'),
+                    ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: '資格種類・証明書番号で検索',
+                      ),
+                      onChanged: (value) => setState(() => _query = value),
+                    ),
+                  ),
+                  Expanded(
+                    child: qualifications.isEmpty
+                        ? const Center(child: Text('登録済みの資格はありません'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                            itemCount: qualifications.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 6),
+                            itemBuilder: (context, index) {
+                              final row = qualifications[index];
+                              final master =
+                                  masterById[row['qualification_master_id']
+                                          ?.toString() ??
+                                      ''];
+                              final photos =
+                                  QualificationCloudRepository.ownPhotoAttachments(
+                                    row,
+                                  );
+                              return Card(
+                                child: ListTile(
+                                  onTap: photos.isEmpty
+                                      ? null
+                                      : () => _previewPhotos(
+                                          row,
+                                          master?['name']?.toString() ??
+                                              '資格証写真',
+                                        ),
+                                  trailing: photos.isEmpty
+                                      ? null
+                                      : const Icon(
+                                          Icons.photo_library_outlined,
+                                        ),
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.badge_outlined),
+                                  ),
+                                  title: Text(
+                                    master?['name']?.toString() ?? '資格',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    [
+                                      if (photos.isNotEmpty)
+                                        '登録写真 ${photos.length}枚（タップして確認）',
+                                      if ((row['certificate_number']
+                                                  ?.toString() ??
+                                              '')
+                                          .isNotEmpty)
+                                        '証明書 ${row['certificate_number']}',
+                                      if ((row['expires_at']?.toString() ?? '')
+                                          .isNotEmpty)
+                                        '期限 ${row['expires_at']}',
+                                      if ((row['issuer']?.toString() ?? '')
+                                          .isNotEmpty)
+                                        row['issuer'].toString(),
+                                    ].join(' / '),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -374,10 +467,7 @@ class _DateTile extends StatelessWidget {
 }
 
 class _OwnQualificationError extends StatelessWidget {
-  const _OwnQualificationError({
-    required this.message,
-    required this.onRetry,
-  });
+  const _OwnQualificationError({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;

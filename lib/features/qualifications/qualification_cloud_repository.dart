@@ -75,7 +75,9 @@ class QualificationCloudRepository {
 
     final masters = await _client
         .from('qualification_master')
-        .select('id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom')
+        .select(
+          'id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom',
+        )
         .eq('company_id', companyId)
         .order('name');
 
@@ -103,11 +105,12 @@ class QualificationCloudRepository {
         )
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      qualificationsQuery =
-          qualificationsQuery.eq('worker_id', ownWorkerId);
+      qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
     }
-    final qualifications =
-        await qualificationsQuery.order('created_at', ascending: false);
+    final qualifications = await qualificationsQuery.order(
+      'created_at',
+      ascending: false,
+    );
 
     return {
       'masters': List<Map<String, dynamic>>.from(masters),
@@ -136,7 +139,9 @@ class QualificationCloudRepository {
           'is_active': true,
           'is_company_custom': true,
         })
-        .select('id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom')
+        .select(
+          'id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom',
+        )
         .single();
     return Map<String, dynamic>.from(inserted);
   }
@@ -159,27 +164,111 @@ class QualificationCloudRepository {
     );
   }
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+
+  /// Read-only preview follows existing ownership and Storage SELECT policies.
+  /// Optional extra-photo data remains compatible before its migration deploys.
+  static List<({String label, String path})> ownPhotoAttachments(Map row) {
+    final photos = <({String label, String path})>[];
+    final seen = <String>{};
+    void add(Object? value, String label) {
+      if (value is! String || value.trim().isEmpty || !seen.add(value)) return;
+      photos.add((label: label, path: value));
+    }
+
+    add(row['attachment_path'], '表面');
+    add(row['attachment_back_path'], '裏面');
+    final extra = row['attachment_extra_paths'];
+    if (extra is List) {
+      for (var i = 0; i < extra.length; i++) {
+        add(extra[i], '追加写真 ${i + 1}');
+      }
+    }
+    return List.unmodifiable(photos);
+  }
+
+  static bool isMissingOwnPhotoColumn(PostgrestException error, String column) {
+    if (error.code != '42703' && error.code != 'PGRST204') return false;
+    // Exact column tokens prevent permission/network/other schema failures from
+    // being hidden by a legacy retry.
+    return RegExp('(?<![A-Za-z0-9_])${RegExp.escape(column)}(?![A-Za-z0-9_])')
+        .hasMatch(error.message);
+  }
+
+  Future<List<Map<String, dynamic>>> _loadOwnPhotoRows({
+    required String companyId,
+    required String workerId,
+    String? qualificationId,
+  }) async {
+    const baseFields =
+        'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+    final optionalFields = <String>[
+      'attachment_back_path',
+      'attachment_extra_paths',
+    ];
+    while (true) {
+      try {
+        var query = _client
+            .from('worker_qualifications')
+            .select([baseFields, ...optionalFields].join(', '))
+            .eq('company_id', companyId)
+            .eq('worker_id', workerId);
+        if (qualificationId != null) query = query.eq('id', qualificationId);
+        final rows = qualificationId == null
+            ? await query.order('created_at', ascending: false)
+            : await query.limit(1);
+        return List<Map<String, dynamic>>.from(rows);
+      } on PostgrestException catch (error) {
+        final missing = optionalFields
+            .where((column) => isMissingOwnPhotoColumn(error, column))
+            .toList();
+        if (missing.isEmpty) rethrow;
+        optionalFields.remove(missing.single);
+      }
+    }
+  }
+
+  Future<String> createOwnQualificationPhotoUrl({
+    required String qualificationId,
+    required String storagePath,
+  }) async {
+    final actor = currentUserId;
+    if (actor == null) throw StateError('ログインを確認してください。');
+    final worker = await currentWorker();
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    final companyId = await _companyId();
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    final rows = await _loadOwnPhotoRows(
+      companyId: companyId,
+      workerId: worker.workerId,
+      qualificationId: qualificationId,
+    );
+    if (currentUserId != actor ||
+        rows.length != 1 ||
+        !ownPhotoAttachments(rows.single)
+            .any((photo) => photo.path == storagePath)) {
+      throw StateError('本人の資格証写真を確認できませんでした。');
+    }
+    final url = await _client.storage
+        .from('qualification-certificates')
+        .createSignedUrl(storagePath, 60 * 10);
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    return url;
+  }
+
   Future<Map<String, dynamic>> loadOwnQualificationWorkspace() async {
     final worker = await currentWorker();
     final masters = await loadActiveMasters();
     final companyId = await _companyId();
-    final qualifications = await _client
-        .from('worker_qualifications')
-        .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
-        )
-        .eq('company_id', companyId)
-        .eq('worker_id', worker.workerId)
-        .order('created_at', ascending: false);
+    final qualifications = await _loadOwnPhotoRows(
+      companyId: companyId,
+      workerId: worker.workerId,
+    );
 
     return {
-      'worker': {
-        'id': worker.workerId,
-        'name': worker.workerName,
-      },
+      'worker': {'id': worker.workerId, 'name': worker.workerName},
       'masters': masters,
-      'qualifications':
-          List<Map<String, dynamic>>.from(qualifications),
+      'qualifications': List<Map<String, dynamic>>.from(qualifications),
     };
   }
 
@@ -187,9 +276,7 @@ class QualificationCloudRepository {
     final companyId = await _companyId();
     final rows = await _client
         .from('qualification_master')
-        .select(
-          'id, name, category, issuer, expiry_required, notes, is_active',
-        )
+        .select('id, name, category, issuer, expiry_required, notes, is_active')
         .eq('company_id', companyId)
         .eq('is_active', true)
         .order('name');
