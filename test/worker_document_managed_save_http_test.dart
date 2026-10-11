@@ -21,7 +21,8 @@ class Fixture {
   bool foreignWorker = false,
       uploadDenied = false,
       casConflict = false,
-      switchActor = false;
+      switchActor = false,
+      switchActorDuringStatusRead = false;
   Map<String, dynamic>? existing;
   Map<String, dynamic>? saved;
   final requests = <({String method, Uri uri, List<int> bytes})>[];
@@ -69,6 +70,9 @@ class Fixture {
         ];
       } else if (request.uri.path == '/rest/v1/worker_document_statuses') {
         if (request.method == 'GET') {
+          if (switchActorDuringStatusRead) {
+            await client.auth.signOut(scope: SignOutScope.local);
+          }
           response = existing == null ? [] : [existing];
         } else if (casConflict) {
           request.response.statusCode = 406;
@@ -134,6 +138,31 @@ class Fixture {
 }
 
 void main() {
+  test('status-only actor change during read prevents writes', () async {
+    final f = Fixture()..switchActorDuringStatusRead = true;
+    await f.start();
+    try {
+      await expectLater(
+        WorkerDocumentRepository.forTesting(f.client).updateStatus(
+          workerId: worker,
+          requirementId: requirement,
+          status: 'submitted',
+          originalVerified: false,
+          notes: '',
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(f.saved, isNull);
+      expect(f.mutations, isEmpty);
+      final read = f.requests.singleWhere(
+        (r) => r.uri.path == '/rest/v1/worker_document_statuses',
+      );
+      expect(read.uri.queryParameters['company_id'], 'eq.$company');
+    } finally {
+      await f.close();
+    }
+  });
+
   for (final role in ['owner', 'admin', 'manager']) {
     test(
       '$role registers another company worker with all photos in one row',

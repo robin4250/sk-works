@@ -812,14 +812,26 @@ class WorkerDocumentRepository {
     required bool originalVerified,
     required String notes,
   }) async {
+    final actor = actorId;
+    void requireActor() {
+      if (actor == null || actorId != actor) {
+        throw StateError('ログイン情報が変わりました。画面を開き直してください。');
+      }
+    }
+
+    requireActor();
     await _requireManagePeople();
+    requireActor();
     final companyId = await _companyId();
+    requireActor();
     final existing = await _client
         .from('worker_document_statuses')
         .select('id')
+        .eq('company_id', companyId)
         .eq('worker_id', workerId)
         .eq('requirement_id', requirementId)
         .limit(1);
+    requireActor();
     final payload = {
       'company_id': companyId,
       'worker_id': workerId,
@@ -828,17 +840,22 @@ class WorkerDocumentRepository {
       'expires_at': expiresAt?.toIso8601String().split('T').first,
       'original_verified': originalVerified,
       'notes': notes.trim().isEmpty ? null : notes.trim(),
-      'updated_by': _client.auth.currentUser?.id,
+      'updated_by': actor,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
 
+    requireActor();
     if (existing.isEmpty) {
       await _client.from('worker_document_statuses').insert(payload);
     } else {
       await _client
           .from('worker_document_statuses')
           .update(payload)
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('requirement_id', requirementId)
           .eq('id', existing.first['id']);
     }
+    requireActor();
   }
 }
