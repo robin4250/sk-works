@@ -24,9 +24,16 @@ void main() {
         'verification_mode': 'location_photo',
         'capture_contract_version': 1,
         'photo_storage_path': 'company/owned.jpg',
+        'latitude': 35.703883354849315,
+        'longitude': 139.81095488528197,
+        'accuracy_m': 14.490435292144875,
       });
       final snapshot = <String, dynamic>{
         ...draft.payload,
+        // The production extra_float_digits=0 archive JSON representation.
+        'latitude': 35.7038833548493,
+        'longitude': 139.810954885282,
+        'accuracy_m': 14.4904352921449,
         'confirmed_at': '2026-10-11T17:00:00Z',
         'work_date': '2026-10-12',
       };
