@@ -31,8 +31,12 @@ void main() {
       'lib/features/attendance/attendance_verification_page.dart',
     ).readAsStringSync();
 
-    expect(page.indexOf("labelText: '出勤方法'"), lessThan(page.indexOf("labelText: '現場'")));
-    expect(page.indexOf("labelText: '現場'"), lessThan(page.indexOf("label: '車両'")));
+    // The site field is a reusable widget; check its position in the form,
+    // rather than the label in the widget's declaration above the page.
+    final siteField = page.indexOf('AttendanceDestinationSiteField(',
+        page.indexOf("labelText: '出勤方法'"));
+    expect(siteField, greaterThan(page.indexOf("labelText: '出勤方法'")));
+    expect(siteField, lessThan(page.indexOf("label: '車両'")));
     expect(page.indexOf("label: '車両'"), lessThan(page.indexOf("label: 'ルート'")));
     expect(page.indexOf("label: 'ルート'"), lessThan(page.indexOf("labelText: 'メモ'")));
     expect(page, contains("'出勤を確定'"));

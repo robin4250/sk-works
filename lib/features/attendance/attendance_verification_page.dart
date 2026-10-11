@@ -21,6 +21,50 @@ import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
 
+/// Today's explicit destination wins over a saved GPS schedule, including nulls.
+({String? siteId, String? routeId}) resolveAttendanceClockInDestination({
+  required Map<String, dynamic> selection,
+  required Map<String, dynamic> gpsSchedule,
+  String? selectedRouteId,
+}) {
+  String? id(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+  if (selection.isNotEmpty) {
+    final site = id(selection['site_id']);
+    return (siteId: site, routeId: site == null ? id(selection['route_assignment_id']) : null);
+  }
+  final route = id(selectedRouteId) ?? id(gpsSchedule['route_assignment_id']);
+  return (siteId: route == null ? id(gpsSchedule['site_id']) : null, routeId: route);
+}
+
+class AttendanceDestinationSiteField extends StatelessWidget {
+  const AttendanceDestinationSiteField({super.key, required this.siteId,
+    required this.routeId, required this.sites, required this.locked,
+    required this.onChanged});
+  final String? siteId;
+  final String? routeId;
+  final List<Map<String, dynamic>> sites;
+  final bool locked;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<String?>(
+    key: ValueKey('site:$siteId'),
+    initialValue: siteId,
+    decoration: const InputDecoration(labelText: '現場',
+      prefixIcon: Icon(Icons.business_outlined), border: OutlineInputBorder()),
+    items: [
+      const DropdownMenuItem<String?>(value: null, child: Text('未登録（ルートで出勤）')),
+      for (final site in sites) DropdownMenuItem<String?>(
+        value: site['id']?.toString(), child: Text(site['name']?.toString() ?? '現場')),
+    ],
+    // A route's individual stops are selected after clock-in, at arrival.
+    onChanged: locked || (routeId?.trim().isNotEmpty ?? false) ? null : onChanged,
+  );
+}
+
 class AttendanceVerificationPage extends StatefulWidget {
   const AttendanceVerificationPage({
     super.key,
@@ -126,8 +170,10 @@ class _AttendanceVerificationPageState
       if (selectedMode == 'location') selectedMode = 'gps_auto';
 
       final sites = values[1] as List<Map<String, dynamic>>;
-      final selectedSiteId = selection['site_id']?.toString() ??
-          schedule['site_id']?.toString();
+      final destination = resolveAttendanceClockInDestination(
+        selection: selection, gpsSchedule: schedule,
+        selectedRouteId: status.selectedRouteId,
+      );
 
       final pendingCapture = await repository.loadPendingCaptureDraft();
       final journeyShifts = <AttendanceShiftContext>[];
@@ -149,14 +195,14 @@ class _AttendanceVerificationPageState
         _recent = values[2] as List<Map<String, dynamic>>;
         _workerId =
             _workers.isEmpty ? null : _workers.first['id']?.toString();
-        _siteId = selectedSiteId;
+        _siteId = destination.siteId;
         _mode = selectedMode;
         _gpsWeekdays =
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
         _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
         _vehicleName = status.selectedVehicleName;
         _vehicleId = status.selectedVehicleId;
-        _routeId = status.selectedRouteId;
+        _routeId = destination.routeId;
         _routeName = status.selectedRouteName;
         _canManageAttendance = values[5] == true;
         _openShifts = status.openShifts;
@@ -377,28 +423,12 @@ class _AttendanceVerificationPageState
                     ),
                   ],
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey('site:$_siteId'),
-                    initialValue: _siteId,
-                    decoration: const InputDecoration(
-                      labelText: '現場',
-                      prefixIcon: Icon(Icons.business_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('未登録（ルートで出勤）'),
-                      ),
-                      for (final site in _sites)
-                        DropdownMenuItem<String?>(
-                          value: site['id']?.toString(),
-                          child: Text(site['name']?.toString() ?? '現場'),
-                        ),
-                    ],
-                    onChanged: _editingLocked || _shift != null
-                        ? null
-                        : (value) => setState(() => _siteId = value),
+                  AttendanceDestinationSiteField(
+                    siteId: _siteId,
+                    routeId: _routeId,
+                    sites: _sites,
+                    locked: _editingLocked || _shift != null,
+                    onChanged: (value) => setState(() => _siteId = value),
                   ),
                   if (_selectedSite != null) ...[
                     const SizedBox(height: 6),

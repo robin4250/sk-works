@@ -256,6 +256,20 @@ class _PersonalAttendanceCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final isWorking = status.phase == HomeAttendancePhase.working;
     final isFinished = status.phase == HomeAttendancePhase.finished;
+    // A selected route is only a future destination. These controls belong to
+    // one confirmed, currently open route shift, including when selection has
+    // subsequently changed.
+    final hasActiveRouteShift = isWorking &&
+        status.openShifts.length == 1 &&
+        (status.openShifts.single.routeId?.trim().isNotEmpty ?? false);
+    final hasRouteDestination = hasActiveRouteShift ||
+        (status.selectedRouteId?.trim().isNotEmpty ?? false);
+    final routeName = status.selectedRouteName ??
+        (hasActiveRouteShift ? status.openShifts.single.routeName : null);
+    final disabledActionStyle = OutlinedButton.styleFrom(
+      disabledForegroundColor: colors.onSurface.withValues(alpha: 0.38),
+      side: BorderSide(color: colors.onSurface.withValues(alpha: 0.12)),
+    );
 
     return Card(
       child: Padding(
@@ -310,7 +324,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (status.siteName?.trim().isNotEmpty == true) ...[
+            if (!hasRouteDestination && status.siteName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -356,7 +370,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               ),
             ],
             if (vehicleRoutesEnabled &&
-                status.selectedRouteName?.trim().isNotEmpty == true) ...[
+                routeName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -367,7 +381,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '選択中のルート：${status.selectedRouteName}',
+                          '選択中のルート：$routeName',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -405,7 +419,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     icon: const Icon(Icons.tune_outlined),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
-                  if (vehicleRoutesEnabled) ...[
+                  if (vehicleRoutesEnabled && hasActiveRouteShift) ...[
                     const SizedBox(height: 9),
                     Row(
                       children: [
@@ -417,6 +431,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                                   label: Text(SkoLanguageController.tr('現場到着')),
                                 )
                               : OutlinedButton.icon(
+                                  style: disabledActionStyle,
                                   onPressed: null,
                                   icon: const Icon(Icons.place_outlined),
                                   label: Text(SkoLanguageController.tr('現場到着')),
@@ -431,6 +446,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                                   label: Text(SkoLanguageController.tr('現場移動')),
                                 )
                               : OutlinedButton.icon(
+                                  style: disabledActionStyle,
                                   onPressed: null,
                                   icon: const Icon(Icons.route_outlined),
                                   label: Text(SkoLanguageController.tr('現場移動')),
@@ -438,6 +454,12 @@ class _PersonalAttendanceCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (routeActionState == HomeRouteActionState.unavailable)
+                      TextButton.icon(
+                        onPressed: () => onOpen('route_visit'),
+                        icon: const Icon(Icons.info_outline),
+                        label: Text(SkoLanguageController.tr('現場記録の状態を確認')),
+                      ),
                   ],
                   if (hasPendingRouteRecord) ...[
                     const SizedBox(height: 9),
@@ -453,7 +475,8 @@ class _PersonalAttendanceCard extends StatelessWidget {
                       Expanded(
                         child: isWorking || isFinished
                             ? OutlinedButton.icon(
-                                onPressed: () => onOpen('clock_in'),
+                                style: disabledActionStyle,
+                                onPressed: null,
                                 icon: const Icon(Icons.login),
                                 label: Text(SkoLanguageController.tr('出勤')),
                               )
@@ -472,7 +495,8 @@ class _PersonalAttendanceCard extends StatelessWidget {
                                 label: Text(SkoLanguageController.tr('退勤')),
                               )
                             : OutlinedButton.icon(
-                                onPressed: () => onOpen('clock_out'),
+                                style: disabledActionStyle,
+                                onPressed: null,
                                 icon: const Icon(Icons.logout),
                                 label: Text(SkoLanguageController.tr('退勤')),
                               ),
