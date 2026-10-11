@@ -820,8 +820,9 @@ class _HomeReorderSurface extends StatelessWidget {
             child: Material(color: Colors.transparent, child: child),
           ),
           childWhenDragging: const SizedBox(width: 28, height: 28),
-          child: Tooltip(
-            message: 'ここを長押しして並べ替え',
+          child: Semantics(
+            label: 'ここを長押しして並べ替え',
+            button: true,
             child: SizedBox(
               key: ValueKey('home-reorder-$data'),
               width: 28,

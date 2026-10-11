@@ -136,7 +136,7 @@ void main() {
         expect(tester.takeException(), isNull);
       }
       // A deliberate long press continues to provide the existing reorder feedback.
-      await tester.ensureVisible(find.text('操作8'));
+      await tester.ensureVisible(find.byKey(const ValueKey('home-reorder-action-8')));
       await tester.pump();
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const ValueKey('home-reorder-action-8'))),
