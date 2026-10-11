@@ -16,6 +16,8 @@ void main() {
     bool pending = false,
     String? routeId = 'route',
     String? selectedRouteId,
+    String? selectedRouteName,
+    String? siteName,
     int shiftCount = 1,
   }) => MaterialApp(
     home: Scaffold(
@@ -37,6 +39,8 @@ void main() {
         attendanceStatus: HomeAttendanceStatus(
           phase: phase,
           selectedRouteId: selectedRouteId,
+          selectedRouteName: selectedRouteName,
+          siteName: siteName,
           openShifts: List.generate(
             shiftCount,
             (index) => AttendanceShiftContext(
@@ -153,4 +157,77 @@ void main() {
       expect(opened, ['route_visit']);
     },
   );
+  testWidgets(
+    'route destination hides the site label; ordinary attendance retains it',
+    (tester) async {
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          [],
+          phase: HomeAttendancePhase.notStarted,
+          shiftCount: 0,
+          selectedRouteId: 'route',
+          selectedRouteName: '江戸川→東京海上',
+          siteName: '江戸川→東京海上',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('選択中の現場：江戸川→東京海上'), findsNothing);
+      expect(find.text('選択中のルート：江戸川→東京海上'), findsOneWidget);
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          [],
+          routeId: null,
+          siteName: '江戸川',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('選択中の現場：江戸川'), findsOneWidget);
+    },
+  );
+
+  testWidgets('unavailable clock actions are truly disabled and gray', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    for (final phase in HomeAttendancePhase.values) {
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: phase,
+          routeId: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final label in ['出勤', '退勤']) {
+        final finder = find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is ButtonStyleButton,
+          ),
+        );
+        final button = tester.widget<ButtonStyleButton>(finder);
+        final enabled = label == '出勤'
+            ? phase == HomeAttendancePhase.notStarted
+            : phase == HomeAttendancePhase.working;
+        expect(button.onPressed != null, enabled);
+        if (!enabled) {
+          final context = tester.element(finder);
+          expect(
+            button.style!.foregroundColor!.resolve({WidgetState.disabled}),
+            Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
+          );
+          expect(
+            button.style!.side!.resolve({WidgetState.disabled})!.color,
+            Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
+          );
+          await tester.ensureVisible(find.text(label));
+          await tester.tap(find.text(label));
+        }
+      }
+    }
+    expect(opened, isEmpty);
+  });
 }
