@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sk_works/main.dart';
+import 'package:sk_works/widgets/sko_scroll_chrome.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/attendance_worker_list_page.dart';
 import 'package:sk_works/features/sites/admin_site_financial_page.dart';
@@ -139,4 +142,39 @@ void main() {
       await tester.pump();
     },
   );
+  testWidgets('TOP scroll extent stays fixed when chrome visibility changes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    SkoScrollChromeController.visible.value = true;
+    addTearDown(() => SkoScrollChromeController.visible.value = true);
+    await tester.binding.setSurfaceSize(const Size(375, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
+    await tester.pump();
+    final contentFinder = find.byType(FriendlyHomeContent);
+    final initial = tester
+        .widget<FriendlyHomeContent>(contentFinder)
+        .contentTopInset;
+    final scrollable = find
+        .descendant(of: contentFinder, matching: find.byType(Scrollable))
+        .first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(100);
+    await tester.pump();
+    final extent = position.maxScrollExtent;
+    SkoScrollChromeController.visible.value = false;
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      tester.widget<FriendlyHomeContent>(contentFinder).contentTopInset,
+      initial,
+    );
+    expect(position.maxScrollExtent, extent);
+    expect(position.pixels, 100);
+    SkoScrollChromeController.visible.value = true;
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(position.maxScrollExtent, extent);
+    expect(position.pixels, 100);
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -1511,9 +1511,8 @@ class _HomePageState extends State<HomePage> {
           hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
           hasPendingRouteReports: _homeHasPendingRouteReports,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible
-              ? MediaQuery.paddingOf(context).top + 72
-              : 8,
+          // Keep scroll geometry stable when the overlay header hides or returns.
+          contentTopInset: MediaQuery.paddingOf(context).top + 72,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
