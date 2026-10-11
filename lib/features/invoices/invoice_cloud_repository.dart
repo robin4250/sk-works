@@ -84,8 +84,9 @@ class InvoiceCloudRepository {
       invoices = await readRows(true);
     } on PostgrestException catch (error) {
       if (!['42703', 'PGRST204'].contains(error.code) ||
-          !error.message.contains('invoice_seal_frozen'))
+          !error.message.contains('invoice_seal_frozen')) {
         rethrow;
+      }
       // Until invoice lifecycle migration is deployed, preserve all saved seals.
       invoices = await readRows(false);
     }

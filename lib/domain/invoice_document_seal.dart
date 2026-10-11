@@ -16,8 +16,9 @@ CompanySealSnapshot invoiceDocumentSeal({
   required Map<String, dynamic>? currentCompany,
   required String companyId,
 }) {
-  if (!invoiceUsesCurrentSeal(document))
+  if (!invoiceUsesCurrentSeal(document)) {
     return CompanySealSnapshot.fromJson(saved);
+  }
   if (currentCompany == null || currentCompany['id'] != companyId) {
     throw StateError('請求書の現在の角印設定を確認できません。再読み込みしてください。');
   }
