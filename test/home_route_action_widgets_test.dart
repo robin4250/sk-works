@@ -23,6 +23,8 @@ void main() {
     String? selectedRouteName,
     String? siteName,
     int shiftCount = 1,
+    DateTime? clockIn,
+    DateTime? clockOut,
   }) => MaterialApp(
     home: Scaffold(
       body: FriendlyHomeContent(
@@ -43,6 +45,8 @@ void main() {
         showTodayAttendance: false,
         attendanceStatus: HomeAttendanceStatus(
           phase: phase,
+          clockIn: clockIn,
+          clockOut: clockOut,
           selectedRouteId: selectedRouteId,
           selectedRouteName: selectedRouteName,
           siteName: siteName,
@@ -434,6 +438,40 @@ void main() {
       await tester.tap(find.text('出勤'));
       expect(opened, ['clock_in']);
       expect(find.text('現場別日報を再開'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'saved 10:36 to 14:48 route enables start and disables checkout',
+    (tester) async {
+      final opened = <String>[];
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.finished,
+          shiftCount: 0,
+          selectedRouteId: 'route',
+          selectedRouteName: '江戸川→東京海上→愛宕',
+          clockIn: DateTime(2026, 10, 11, 10, 36),
+          clockOut: DateTime(2026, 10, 11, 14, 48),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('本日は退勤済'), findsOneWidget);
+      expect(find.text('出勤 10:36　退勤 14:48'), findsOneWidget);
+      final start = find.ancestor(
+        of: find.text('出勤'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      final end = find.ancestor(
+        of: find.text('退勤'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      expect(tester.widget<ButtonStyleButton>(start).onPressed, isNotNull);
+      expect(tester.widget<ButtonStyleButton>(end).onPressed, isNull);
+      await tester.ensureVisible(start);
+      await tester.tap(start);
+      expect(opened, ['clock_in']);
     },
   );
 }
