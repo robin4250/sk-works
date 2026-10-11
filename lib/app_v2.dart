@@ -17,6 +17,7 @@ import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
 import 'features/attendance/attendance_management_page.dart';
 import 'features/attendance/work_destination_selection_page.dart';
+import 'features/attendance/route_journey_capture_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
 import 'features/attendance/attendance_verification_repository.dart';
 import 'features/attendance/gps_auto_attendance_service.dart';
@@ -31,11 +32,15 @@ import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
 import 'features/daily_reports/daily_report_page.dart';
+import 'features/expenses/expense_home_page.dart';
+import 'features/home/company_payroll_rates_home_entry.dart';
 import 'features/help/help_page.dart';
 import 'features/help/floating_help_controller.dart';
 import 'features/help/floating_help_overlay.dart';
 import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
+import 'features/home/home_route_action_state.dart';
+import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_appearance.dart';
 import 'features/home/home_membership_repository.dart';
@@ -177,6 +182,9 @@ class _HomePageState extends State<HomePage> {
         needsQualification: false,
       );
   HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
+  HomeRouteActionState _homeRouteActionState = HomeRouteActionState.unavailable;
+  int _homeAttendanceGeneration = 0;
+  String? _homePendingRouteSourceId;
 
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
@@ -303,14 +311,45 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHomeAttendanceStatus() async {
+    // Bind all responses to the account that initiated the request, including
+    // the first attendance read, before any asynchronous work starts.
+    final requestActor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    final generation = ++_homeAttendanceGeneration;
+    bool acceptsResponse() => mounted &&
+        generation == _homeAttendanceGeneration &&
+        requestActor != null &&
+        SupabaseBackend.isInitialized &&
+        SupabaseBackend.client.auth.currentUser?.id == requestActor;
+    if (mounted) {
+      setState(() {
+        _homeRouteActionState = HomeRouteActionState.unavailable;
+        _homePendingRouteSourceId = null;
+      });
+    }
     final repository = _attendanceVerificationRepository;
-    if (repository == null) return;
+    if (repository == null || requestActor == null) return;
     try {
       final value = await repository.loadHomeAttendanceStatus();
-      if (!mounted) return;
+      if (!acceptsResponse()) return;
       setState(() => _homeAttendanceStatus = value);
+      final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
+      if (routeRepository == null || routeRepository.userId != requestActor) return;
+      final pending = await routeRepository.allPending();
+      if (!acceptsResponse()) return;
+      // Recovery remains reachable even after clock-out or when the current
+      // shift differs from the durable command. Never choose between records.
+      setState(() => _homePendingRouteSourceId = pending.length == 1
+          ? pending.single.sourceId : null);
+      if (value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) return;
+      final shift = value.openShifts.single;
+      final workspace = await routeRepository.workspace(shift.id);
+      if (!acceptsResponse()) return;
+      setState(() => _homeRouteActionState = pending.isNotEmpty
+          ? HomeRouteActionState.unavailable
+          : homeRouteActionState(workspace, shift.id));
     } catch (_) {
-      // Attendance status is supplemental and must not block the home screen.
+      // Unknown or stale route state never enables an arrival/move action.
     }
   }
 
@@ -765,6 +804,24 @@ class _HomePageState extends State<HomePage> {
           initialEventType: 'clock_out',
         );
         break;
+      case 'route_visit_recover':
+        final pendingSource = _homePendingRouteSourceId;
+        if (pendingSource == null) return;
+        page = RouteJourneyCapturePage(sourceId: pendingSource);
+        break;
+      case 'route_visit':
+      case 'route_visit_arrive':
+      case 'route_visit_move':
+        final shifts = _homeAttendanceStatus.openShifts;
+        if (shifts.length != 1 || shifts.single.routeId == null) return;
+        if (key == 'route_visit_arrive' && _homeRouteActionState != HomeRouteActionState.arrive) return;
+        if (key == 'route_visit_move' && _homeRouteActionState != HomeRouteActionState.move) return;
+        setState(() => _homeRouteActionState = HomeRouteActionState.unavailable);
+        page = RouteJourneyCapturePage(
+          sourceId: shifts.single.id,
+          initialAction: key == 'route_visit_arrive' ? 'arrive' : key == 'route_visit_move' ? 'move' : null,
+        );
+        break;
       case 'attendance_verify':
       case 'attendance_method_vehicle':
         page = const AttendanceSelectionPage();
@@ -774,6 +831,12 @@ class _HomePageState extends State<HomePage> {
         break;
       case 'daily_report':
         page = const DailyReportPage();
+        break;
+      case 'expense_claims':
+        page = const ExpenseHomePage();
+        break;
+      case 'company_tax_rates':
+        page = const CompanyPayrollRatesHomePage();
         break;
       case 'vehicle_select':
         page = const VehicleRouteSelectionPage(
@@ -944,7 +1007,11 @@ class _HomePageState extends State<HomePage> {
         key == 'attendance_method_vehicle' ||
         key == 'workplace_select' ||
         key == 'vehicle_select' ||
-        key == 'route_select') {
+        key == 'route_select' ||
+        key == 'route_visit' ||
+        key == 'route_visit_arrive' ||
+        key == 'route_visit_move' ||
+        key == 'route_visit_recover') {
       await _loadHomeAttendanceStatus();
     }
     if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
@@ -961,6 +1028,9 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      if (_identity.isAdmin || _isViewer)
+        _MenuAction(key: 'company_tax_rates', label: SkoLanguageController.tr('税率設定'), icon: Icons.percent_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・閲覧権限')),
+      _MenuAction(key: 'expense_claims', label: SkoLanguageController.tr('経費申請'), icon: Icons.receipt_long_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       _MenuAction(key: 'tutorial', label: SkoLanguageController.tr('準備ガイド'),
         icon: Icons.school_outlined, homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
@@ -1380,6 +1450,8 @@ class _HomePageState extends State<HomePage> {
           showTodayAttendance:
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
+          routeActionState: _homeRouteActionState,
+          hasPendingRouteRecord: _homePendingRouteSourceId != null,
           appearance: bodyAppearance,
           contentTopInset: _chromeVisible
               ? MediaQuery.paddingOf(context).top + 72
@@ -1400,6 +1472,7 @@ class _HomePageState extends State<HomePage> {
       'albums',
       'notes',
       'daily_report',
+      'expense_claims',
       'profile',
       'qualification_register',
       'document_register',
@@ -1422,6 +1495,7 @@ class _HomePageState extends State<HomePage> {
       'payroll_settings',
       'payroll_adjustments',
       'payroll_review',
+      'company_tax_rates',
       'attendance_list',
     };
     const admin = <String>{

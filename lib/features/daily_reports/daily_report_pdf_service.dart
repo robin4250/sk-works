@@ -11,6 +11,7 @@ import 'package:printing/printing.dart';
 
 import 'daily_report_repository.dart';
 import 'daily_report_pdf_evidence.dart';
+import 'daily_report_photo_pages.dart';
 
 class DailyReportPdfService {
   const DailyReportPdfService._();
@@ -34,9 +35,15 @@ class DailyReportPdfService {
     required DailyReportRecord? report,
     PdfPageFormat format = PdfPageFormat.a4,
     List<DailyReportPdfEvidence> evidence = const [],
+    bool photoPagesOnly = false,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final photos = dailyReportPhotoRecords(evidence);
+    if (photoPagesOnly && photos.isEmpty) {
+      throw StateError('写真の記録がありません');
+    }
+    final coverImage = photos.map(_photoImage).whereType<pw.MemoryImage>().firstOrNull;
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
@@ -64,7 +71,8 @@ class DailyReportPdfService {
         MapEntry(entry.key, entry.value.toString()),
     ];
 
-    document.addPage(
+    if (!photoPagesOnly) {
+      document.addPage(
       pw.Page(
         pageFormat: format,
         margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
@@ -226,46 +234,87 @@ class DailyReportPdfService {
             ),
             pw.Spacer(),
             pw.Divider(thickness: 0.8),
-            pw.Text(
-              SkoLanguageController.tr(evidence.isEmpty
-                ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
-                : '出勤・退勤の写真と取得情報は添付ページに記載しています。'),
-              textAlign: pw.TextAlign.center,
-              style: const pw.TextStyle(
-                fontSize: 8.5,
-                color: PdfColors.grey700,
-              ),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Expanded(child: pw.Text(
+                  SkoLanguageController.tr(photos.isEmpty
+                    ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
+                    : '勤怠・現場の記録時刻と写真・位置情報は添付ページに記載しています。'),
+                  style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700),
+                )),
+                if (photos.isNotEmpty) ...[
+                  pw.SizedBox(width: 8),
+                  pw.Column(children: [
+                    if (coverImage case final image?)
+                      pw.SizedBox(width: 38, height: 28,
+                        child: pw.Image(image, fit: pw.BoxFit.contain)),
+                    pw.Text('${photos.length} ${SkoLanguageController.tr('写真')}',
+                      style: const pw.TextStyle(fontSize: 7)),
+                  ]),
+                ],
+              ],
             ),
           ],
         ),
       ),
-    );
-    for (final attachment in evidence) {
-      pw.MemoryImage? image;
-      if (attachment.photoBytes != null) {
-        try { image = pw.MemoryImage(attachment.photoBytes!); } catch (_) { image = null; }
-      }
-      document.addPage(pw.MultiPage(pageFormat: format,
-        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
-        build: (_) => [
-          pw.Text(SkoLanguageController.tr('日報の写真・GPS記録'),
-            style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 10),
-          for (final caption in attachment.captions)
-            pw.Padding(padding: const pw.EdgeInsets.only(bottom: 5),
-              child: pw.Text(caption, style: const pw.TextStyle(fontSize: 10))),
-          pw.SizedBox(height: 8),
-          if (image != null)
-            pw.SizedBox(height: 145 * PdfPageFormat.mm,
-              child: pw.Image(image, fit: pw.BoxFit.contain))
-          else
-            pw.Container(height: 50 * PdfPageFormat.mm,
-              alignment: pw.Alignment.center, color: PdfColors.grey100,
-              child: pw.Text(SkoLanguageController.tr(attachment.record.storagePath.isEmpty
-                ? '写真未登録・送信失敗' : '保存済み写真を読み込めませんでした'))),
-        ]));
+      );
     }
+    _appendPhotoPages(document, photos, date: date, format: format);
     return document.save();
+  }
+
+  static pw.MemoryImage? _photoImage(DailyReportPdfEvidence item) {
+    if (item.photoBytes == null) return null;
+    try { return pw.MemoryImage(item.photoBytes!); } catch (_) { return null; }
+  }
+
+  static void _appendPhotoPages(pw.Document document,
+      List<DailyReportPdfEvidence> photos, {required DateTime date,
+      required PdfPageFormat format}) {
+    if (photos.isEmpty) return;
+    document.addPage(pw.MultiPage(
+      pageFormat: format,
+      margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+      header: (_) => pw.Padding(padding: const pw.EdgeInsets.only(bottom: 10),
+        child: pw.Text('${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}',
+          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold))),
+      build: (_) => [
+        for (var i = 0; i < photos.length; i += 2)
+          pw.Padding(padding: const pw.EdgeInsets.only(bottom: 8),
+            child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(child: _photoTile(photos[i])),
+                pw.SizedBox(width: 10),
+                pw.Expanded(child: i + 1 < photos.length
+                  ? _photoTile(photos[i + 1]) : pw.SizedBox()),
+              ])),
+      ],
+    ));
+  }
+
+  static pw.Widget _photoTile(DailyReportPdfEvidence item) {
+    final image = _photoImage(item);
+    final location = dailyReportPhotoLocation(item);
+    return pw.SizedBox(height: 88 * PdfPageFormat.mm,
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(item.record.workerName,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 65 * PdfPageFormat.mm,
+            child: image != null ? pw.Image(image, fit: pw.BoxFit.contain)
+              : pw.Container(alignment: pw.Alignment.center,
+                  color: PdfColors.grey100,
+                  padding: const pw.EdgeInsets.all(8),
+                  child: pw.Text(SkoLanguageController.tr(item.record.storagePath.isEmpty
+                    ? item.record.missingPhotoLabel : '保存済み写真を読み込めませんでした'),
+                    style: const pw.TextStyle(fontSize: 10)))),
+          pw.SizedBox(height: 4),
+          pw.Text(location.isEmpty ? SkoLanguageController.tr('撮影住所未取得') : location,
+            maxLines: 2, style: const pw.TextStyle(fontSize: 9)),
+          pw.Text(dailyReportPhotoTime(item), style: const pw.TextStyle(fontSize: 9)),
+        ]));
   }
 
   static String fingerprint({required DateTime date, required String siteName,

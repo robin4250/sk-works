@@ -40,6 +40,42 @@ try {
  ('00000000-0000-0000-0000-000000000003','{"snapshot_version":2}');`);
  await db.exec(readFileSync('supabase/migrations/20261009011357_company_seal_aoyagi_style.sql','utf8'));
  await db.exec(readFileSync('supabase/migrations/20261009012730_company_seal_document_snapshots.sql','utf8'));
+ if(process.argv.includes('--png')) {
+  await db.exec(readFileSync('supabase/migrations/20261010160154_company_seal_png_designs.sql','utf8'));
+  const pngCid='0f117273-0a06-4a2f-85ec-720a3c9f4cf4';
+  const actor='00000000-0000-0000-0000-000000000099';
+  await db.exec(`insert into companies(id,name) values('${pngCid}','すみだ建設株式会社');
+   insert into company_members values('${pngCid}','${actor}','admin');
+   create or replace function auth.uid() returns uuid language sql as $$select '${actor}'::uuid$$;`);
+  const styles=['png_sumida_v1_standard','png_sumida_v1_light','png_sumida_v1_worn'];
+  const settings=(await db.query('select public.company_seal_style_settings($1) value',[pngCid])).rows[0].value;
+  assert.deepEqual(settings.png_styles,styles);
+  for(const style of styles) {
+   const saved=(await db.query('select public.save_company_seal_style($1,$2,$3) value',[pngCid,style,'すみだ建設株式会社'])).rows[0].value;
+   assert.equal(saved.company_seal_style,style);
+   for(const [table,column] of [['invoices','snapshot'],['payment_certificates','snapshot'],['payroll_statements','detail']]) {
+    const id=(await db.query(`insert into ${table} values(gen_random_uuid(),$1,'{}') returning id`,[pngCid])).rows[0].id;
+    const initial=(await db.query(`select ${column} value from ${table} where id=$1`,[id])).rows[0].value;
+    assert.deepEqual(initial.company_seal_snapshot,{version:1,style,name:'すみだ建設株式会社',company_id:pngCid});
+    await db.query("select public.save_company_seal_style($1,'legacy',$2)",[pngCid,'すみだ建設株式会社']);
+    await db.query(`update ${table} set ${column}='{}' where id=$1`,[id]);
+    assert.deepEqual((await db.query(`select ${column} value from ${table} where id=$1`,[id])).rows[0].value,initial);
+    await db.query('select public.save_company_seal_style($1,$2,$3)',[pngCid,style,'すみだ建設株式会社']);
+   }
+  }
+  await assert.rejects(db.query("select public.save_company_seal_style($1,$2,'旧社名')",[pngCid,styles[0]]),e=>e.code==='40001');
+  await assert.rejects(db.query("update companies set company_seal_style=$1 where id<>$2",[styles[0],pngCid]),e=>e.code==='23514');
+  await db.exec(`update company_members set role='viewer' where company_id='${pngCid}'`);
+  await assert.rejects(db.query('select public.save_company_seal_style($1,$2,$3)',[pngCid,styles[0],'すみだ建設株式会社']),e=>e.code==='42501');
+  await db.exec(`delete from company_members where company_id='${pngCid}'`);
+  await assert.rejects(db.query('select public.company_seal_style_settings($1)',[pngCid]),e=>e.code==='42501');
+  await db.exec(`create or replace function auth.uid() returns uuid language sql as $$select null::uuid$$;`);
+  await assert.rejects(db.query('select public.save_company_seal_style($1,$2,$3)',[pngCid,styles[0],'すみだ建設株式会社']),e=>e.code==='42501');
+  // Remove only this disposable fixture, so original historical tests stay intact.
+  for(const t of ['invoices','payment_certificates','payroll_statements']) await db.query(`delete from ${t} where company_id=$1`,[pngCid]);
+  await db.query('delete from companies where id=$1',[pngCid]);
+  console.log('PASS: three PNG styles, exact company, role/name guards, all three immutable document snapshots');
+ }
  const cid='00000000-0000-0000-0000-000000000001';
  await db.exec(`update companies set company_seal_style='aoyagi_reisho'`);
  for(const [table,column] of [['invoices','snapshot'],['payment_certificates','snapshot'],['payroll_statements','detail']]) {

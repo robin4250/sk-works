@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import 'worker_document_photos.dart';
+import 'worker_document_photo_editor.dart';
 import 'worker_document_send_page.dart';
 
 class WorkerDocumentPage extends StatefulWidget {
@@ -16,7 +17,6 @@ class WorkerDocumentPage extends StatefulWidget {
 
 class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   final _repository = WorkerDocumentRepository.maybeCreate();
-  final _picker = ImagePicker();
 
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _requirements = [];
@@ -61,8 +61,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         _canManageRequirements = values[1] as bool;
         _canManageStatuses = values[2] as bool;
         if (_selectedWorkerId == null ||
-            !_workers.any((row) => row['id']?.toString() == _selectedWorkerId)) {
-          _selectedWorkerId = _workers.isEmpty ? null : _workers.first['id']?.toString();
+            !_workers.any(
+              (row) => row['id']?.toString() == _selectedWorkerId,
+            )) {
+          _selectedWorkerId = _workers.isEmpty
+              ? null
+              : _workers.first['id']?.toString();
         }
         _loading = false;
         _error = null;
@@ -83,13 +87,19 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         .where((row) => _scope == 'all' || row['scope']?.toString() == _scope)
         .toList(growable: false);
     final statusByRequirement = <String, Map<String, dynamic>>{
-      for (final row in _statuses.where((row) => row['worker_id']?.toString() == workerId))
+      for (final row in _statuses.where(
+        (row) => row['worker_id']?.toString() == workerId,
+      ))
         row['requirement_id']?.toString() ?? '': row,
     };
     final today = DateTime.now();
     final completed = visibleRequirements.where((requirement) {
       final status = statusByRequirement[requirement['id']?.toString()];
-      final effectiveStatus = _effectiveDocumentStatus(requirement, status, today);
+      final effectiveStatus = _effectiveDocumentStatus(
+        requirement,
+        status,
+        today,
+      );
       return effectiveStatus == 'submitted' || effectiveStatus == 'verified';
     }).length;
     final needsAttention = visibleRequirements.where((requirement) {
@@ -117,12 +127,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
           ),
           IconButton(
             tooltip: '標準項目を追加',
-            onPressed: _loading || !_canManageRequirements ? null : _addDefaults,
+            onPressed: _loading || !_canManageRequirements
+                ? null
+                : _addDefaults,
             icon: const Icon(Icons.playlist_add_check_circle_outlined),
           ),
           IconButton(
             tooltip: '自由項目を追加',
-            onPressed: _loading || !_canManageRequirements ? null : _addRequirement,
+            onPressed: _loading || !_canManageRequirements
+                ? null
+                : _addRequirement,
             icon: const Icon(Icons.add_circle_outline),
           ),
           IconButton(
@@ -136,132 +150,136 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _ErrorState(message: _error!, onRetry: _reload)
-                : _workers.isEmpty
-                    ? const Center(child: Text('先に社員・作業員を登録してください'))
-                    : Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                            child: TextField(
-                              decoration: const InputDecoration(
-                                labelText: '従業員検索',
-                                prefixIcon: Icon(Icons.person_search_outlined),
-                              ),
-                              onChanged: (value) =>
-                                  setState(() => _workerQuery = value),
-                            ),
-                          ),
-                          SizedBox(
-                            height: 148,
-                            child: Builder(
-                              builder: (context) {
-                                final needle =
-                                    _workerQuery.trim().toLowerCase();
-                                final visibleWorkers = _workers.where((row) {
-                                  if (needle.isEmpty) return true;
-                                  return (row['name']?.toString() ?? '')
-                                      .toLowerCase()
-                                      .contains(needle);
-                                }).toList(growable: false);
-                                return ListView.separated(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: visibleWorkers.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 4),
-                                  itemBuilder: (context, index) {
-                                    final worker = visibleWorkers[index];
-                                    final id = worker['id']?.toString();
-                                    final selected = id == _selectedWorkerId;
-                                    return Card(
-                                      color: selected
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primaryContainer
-                                          : null,
-                                      child: ListTile(
-                                        dense: true,
-                                        leading: const CircleAvatar(
-                                          child: Icon(Icons.person_outline),
-                                        ),
-                                        title: Text(
-                                          worker['name']?.toString() ??
-                                              '名前未登録',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        trailing: selected
-                                            ? const Icon(Icons.check_circle)
-                                            : const Icon(Icons.chevron_right),
-                                        onTap: () => setState(
-                                          () => _selectedWorkerId = id,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                FilterChip(
-                                  label: const Text('すべて'),
-                                  selected: _scope == 'all',
-                                  onSelected: (_) => setState(() => _scope = 'all'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  label: const Text('社内'),
-                                  selected: _scope == 'internal',
-                                  onSelected: (_) => setState(() => _scope = 'internal'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  label: const Text('元請・得意先'),
-                                  selected: _scope == 'upstream',
-                                  onSelected: (_) => setState(() => _scope = 'upstream'),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  needsAttention == 0
-                                      ? '完了 $completed/${visibleRequirements.length}'
-                                      : '完了 $completed/${visibleRequirements.length} / 要確認 $needsAttention',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: _requirements.isEmpty
-                                ? _EmptyState(
-                                    onAddDefaults:
-                                        _canManageRequirements ? _addDefaults : null,
-                                  )
-                                : ListView.separated(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                                    itemCount: visibleRequirements.length,
-                                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                    itemBuilder: (context, index) {
-                                      final requirement = visibleRequirements[index];
-                                      final status = statusByRequirement[
-                                          requirement['id']?.toString() ?? ''];
-                                      return _RequirementTile(
-                                        requirement: requirement,
-                                        status: status,
-                                        onTap: _canManageStatuses
-                                            ? () => _editStatus(requirement, status)
-                                            : null,
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
+            ? _ErrorState(message: _error!, onRetry: _reload)
+            : _workers.isEmpty
+            ? const Center(child: Text('先に社員・作業員を登録してください'))
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        labelText: '従業員検索',
+                        prefixIcon: Icon(Icons.person_search_outlined),
                       ),
+                      onChanged: (value) =>
+                          setState(() => _workerQuery = value),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 148,
+                    child: Builder(
+                      builder: (context) {
+                        final needle = _workerQuery.trim().toLowerCase();
+                        final visibleWorkers = _workers
+                            .where((row) {
+                              if (needle.isEmpty) return true;
+                              return (row['name']?.toString() ?? '')
+                                  .toLowerCase()
+                                  .contains(needle);
+                            })
+                            .toList(growable: false);
+                        return ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: visibleWorkers.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 4),
+                          itemBuilder: (context, index) {
+                            final worker = visibleWorkers[index];
+                            final id = worker['id']?.toString();
+                            final selected = id == _selectedWorkerId;
+                            return Card(
+                              color: selected
+                                  ? Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer
+                                  : null,
+                              child: ListTile(
+                                dense: true,
+                                leading: const CircleAvatar(
+                                  child: Icon(Icons.person_outline),
+                                ),
+                                title: Text(
+                                  worker['name']?.toString() ?? '名前未登録',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                trailing: selected
+                                    ? const Icon(Icons.check_circle)
+                                    : const Icon(Icons.chevron_right),
+                                onTap: () =>
+                                    setState(() => _selectedWorkerId = id),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        FilterChip(
+                          label: const Text('すべて'),
+                          selected: _scope == 'all',
+                          onSelected: (_) => setState(() => _scope = 'all'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('社内'),
+                          selected: _scope == 'internal',
+                          onSelected: (_) =>
+                              setState(() => _scope = 'internal'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          label: const Text('元請・得意先'),
+                          selected: _scope == 'upstream',
+                          onSelected: (_) =>
+                              setState(() => _scope = 'upstream'),
+                        ),
+                        const Spacer(),
+                        Text(
+                          needsAttention == 0
+                              ? '完了 $completed/${visibleRequirements.length}'
+                              : '完了 $completed/${visibleRequirements.length} / 要確認 $needsAttention',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: _requirements.isEmpty
+                        ? _EmptyState(
+                            onAddDefaults: _canManageRequirements
+                                ? _addDefaults
+                                : null,
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            itemCount: visibleRequirements.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final requirement = visibleRequirements[index];
+                              final status =
+                                  statusByRequirement[requirement['id']
+                                          ?.toString() ??
+                                      ''];
+                              return _RequirementTile(
+                                requirement: requirement,
+                                status: status,
+                                onTap: _canManageStatuses
+                                    ? () => _editStatus(requirement, status)
+                                    : null,
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -305,6 +323,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       ),
     );
   }
+
   void _reload() {
     setState(() => _loading = true);
     _load();
@@ -318,15 +337,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       await repository.addDefaultRequirements();
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('標準の必要書類候補を追加しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('標準の必要書類候補を追加しました')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('追加できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('追加できませんでした: $error')));
     }
   }
 
@@ -358,7 +375,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   decoration: const InputDecoration(labelText: '用途'),
                   items: const [
                     DropdownMenuItem(value: 'internal', child: Text('社内手続き')),
-                    DropdownMenuItem(value: 'upstream', child: Text('元請・得意先提出')),
+                    DropdownMenuItem(
+                      value: 'upstream',
+                      child: Text('元請・得意先提出'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value != null) setDialogState(() => scope = value);
@@ -368,13 +388,15 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('必須'),
                   value: isRequired,
-                  onChanged: (value) => setDialogState(() => isRequired = value),
+                  onChanged: (value) =>
+                      setDialogState(() => isRequired = value),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('有効期限あり'),
                   value: expiryRequired,
-                  onChanged: (value) => setDialogState(() => expiryRequired = value),
+                  onChanged: (value) =>
+                      setDialogState(() => expiryRequired = value),
                 ),
               ],
             ),
@@ -413,9 +435,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('追加できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('追加できませんでした: $error')));
     }
   }
 
@@ -428,10 +449,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final requirementId = requirement['id']?.toString();
     if (repository == null || workerId == null || requirementId == null) return;
 
+    var savingPhotos = false;
     var status = current?['status']?.toString() ?? 'not_submitted';
     var originalVerified = current?['original_verified'] == true;
     DateTime? expiresAt = _parseDate(current?['expires_at']);
-    final notesController = TextEditingController(text: current?['notes']?.toString() ?? '');
+    final notesController = TextEditingController(
+      text: current?['notes']?.toString() ?? '',
+    );
 
     final save = await showDialog<bool>(
       context: context,
@@ -446,7 +470,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   initialValue: status,
                   decoration: const InputDecoration(labelText: '状態'),
                   items: const [
-                    DropdownMenuItem(value: 'not_submitted', child: Text('未提出')),
+                    DropdownMenuItem(
+                      value: 'not_submitted',
+                      child: Text('未提出'),
+                    ),
                     DropdownMenuItem(value: 'submitted', child: Text('提出済み')),
                     DropdownMenuItem(value: 'verified', child: Text('確認済み')),
                     DropdownMenuItem(value: 'missing', child: Text('不足')),
@@ -461,7 +488,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('有効期限'),
-                    subtitle: Text(expiresAt == null ? '未設定' : _formatDate(expiresAt!)),
+                    subtitle: Text(
+                      expiresAt == null ? '未設定' : _formatDate(expiresAt!),
+                    ),
                     trailing: const Icon(Icons.calendar_month_outlined),
                     onTap: () async {
                       final now = DateTime.now();
@@ -471,7 +500,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         firstDate: DateTime(1950),
                         lastDate: DateTime(now.year + 30),
                       );
-                      if (picked != null) setDialogState(() => expiresAt = picked);
+                      if (picked != null) {
+                        setDialogState(() => expiresAt = picked);
+                      }
                     },
                   ),
                 ],
@@ -479,106 +510,68 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('原本確認済み'),
                   value: originalVerified,
-                  onChanged: (value) => setDialogState(() => originalVerified = value ?? false),
+                  onChanged: (value) =>
+                      setDialogState(() => originalVerified = value ?? false),
                 ),
                 TextField(
                   controller: notesController,
                   decoration: const InputDecoration(labelText: '備考'),
                   maxLines: 3,
                 ),
-                if ((current?['attachment_path']?.toString() ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  FutureBuilder<String>(
-                    future: repository.createSignedAttachmentUrl(
-                      current!['attachment_path'].toString(),
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const LinearProgressIndicator();
-                      }
-                      if (snapshot.hasError || snapshot.data == null) {
-                        return const Text('添付写真を表示できませんでした。');
-                      }
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          snapshot.data!,
-                          height: 180,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              const Text('添付写真を表示できませんでした。'),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                if (workerDocumentPaths(current).isNotEmpty)
+                  Text('登録写真 ${workerDocumentPaths(current).length}枚'),
               ],
             ),
           ),
           actions: [
             if (current != null)
               TextButton.icon(
-                onPressed: () async {
-                  final source = await showModalBottomSheet<ImageSource>(
-                    context: dialogContext,
-                    builder: (sheetContext) => SafeArea(
-                      child: Wrap(
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.photo_camera_outlined),
-                            title: const Text('カメラで撮影'),
-                            onTap: () =>
-                                Navigator.pop(sheetContext, ImageSource.camera),
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.photo_library_outlined),
-                            title: const Text('写真から選ぶ'),
-                            onTap: () =>
-                                Navigator.pop(sheetContext, ImageSource.gallery),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                  if (source == null) return;
-                  final picked = await _picker.pickImage(
-                    source: source,
-                    imageQuality: 88,
-                    maxWidth: 2400,
-                  );
-                  if (picked == null) return;
-                  try {
-                    await repository.uploadAttachment(
-                      statusId: current['id'].toString(),
-                      workerId: workerId,
-                      requirementId: requirementId,
-                      bytes: await picked.readAsBytes(),
-                      originalFilename: picked.name,
-                    );
-                    if (dialogContext.mounted) {
-                      Navigator.pop(dialogContext, true);
-                    }
-                  } catch (error) {
-                    if (dialogContext.mounted) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        SnackBar(content: Text('写真を保存できませんでした: $error')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.attach_file),
+                onPressed: savingPhotos
+                    ? null
+                    : () async {
+                        final photos = await editWorkerDocumentPhotos(
+                          dialogContext,
+                          paths: workerDocumentPaths(current),
+                          signedUrl: repository.createSignedAttachmentUrl,
+                          canEdit: repository.photoEditingAvailable,
+                        );
+                        if (photos == null || !dialogContext.mounted) return;
+                        setDialogState(() => savingPhotos = true);
+                        try {
+                          await repository.saveAttachmentPhotos(
+                            row: current,
+                            photos: photos,
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext, true);
+                          }
+                        } catch (error) {
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(content: Text('写真を保存できませんでした: $error')),
+                            );
+                          }
+                        } finally {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => savingPhotos = false);
+                          }
+                        }
+                      },
+                icon: const Icon(Icons.photo_library_outlined),
                 label: Text(
-                  (current['attachment_path']?.toString() ?? '').isEmpty
-                      ? '写真を添付'
-                      : '写真を差し替え',
+                  repository.photoEditingAvailable ? '写真の追加・編集' : '写真を確認',
                 ),
               ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: savingPhotos
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
               child: const Text('キャンセル'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: savingPhotos
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
               child: const Text('保存'),
             ),
           ],
@@ -601,9 +594,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存できませんでした: $error')));
     }
   }
 
@@ -616,7 +608,6 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 }
 
-
 DateTime? _parseDocumentDate(Object? value) {
   if (value == null) return null;
   final parsed = DateTime.tryParse(value.toString());
@@ -624,7 +615,8 @@ DateTime? _parseDocumentDate(Object? value) {
   return DateTime(parsed.year, parsed.month, parsed.day);
 }
 
-DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _dateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
 int _reminderDays(Map<String, dynamic> requirement) {
   final raw = requirement['renewal_reminder_days'];
@@ -709,8 +701,8 @@ class _RequirementTile extends StatelessWidget {
             statusValue == 'verified'
                 ? Icons.check
                 : statusValue == 'expired'
-                    ? Icons.warning_amber_rounded
-                    : Icons.description_outlined,
+                ? Icons.warning_amber_rounded
+                : Icons.description_outlined,
           ),
         ),
         title: Text(
@@ -724,8 +716,7 @@ class _RequirementTile extends StatelessWidget {
             if (expiry != null && expiry.isNotEmpty) '期限 $expiry',
             if (expiryHint != null) expiryHint,
             if (status?['original_verified'] == true) '原本確認済み',
-            if ((status?['attachment_path']?.toString() ?? '').isNotEmpty)
-              '写真あり',
+            if (workerDocumentPaths(status).isNotEmpty) '写真あり',
             ...DataDateLabels.labels(
               createdAt: status?['created_at'] ?? requirement['created_at'],
               updatedAt: status?['updated_at'] ?? requirement['updated_at'],

@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import '../../domain/company_seal_snapshot.dart';
 import 'dart:typed_data';
 
@@ -13,10 +15,16 @@ class PayrollPdfService {
 
   static Future<Uint8List> buildPdf(
     PayrollStatementRecord statement, {
+    ExpenseDocumentDetails? expenseDetails,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    if (statement.detail['tax_calculation'] is Map &&
+        (statement.detail['tax_calculation'] as Map)['blocked'] == true) {
+      throw StateError('税計算の条件を確認してください。未計算の明細は出力できません。');
+    }
+    final expenses = expenseDetails ?? await ExpenseDocumentRepository.load(ExpenseDocument.payroll, statement.id, statement.periodEnd, revision: statement.revision);
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final seal = CompanySealSnapshot.fromJson(
@@ -32,6 +40,10 @@ class PayrollPdfService {
     final earnings = _pick(detail, const ['基本給', '残業手当', '交通費', '出勤に基づく支給額']);
     final deductions = _pick(detail, const [
       '健康保険料',
+      '介護保険料',
+      '厚生年金保険',
+      '雇用保険料',
+      '子ども・子育て支援金',
       '所得税',
       '住民税',
       '道具代',
@@ -70,6 +82,10 @@ class PayrollPdfService {
         '健康保険料',
         deductions['健康保険料'] ?? deductions['社会保険'],
       ),
+      if (detail['tax_calculation'] is Map &&
+          (detail['tax_calculation'] as Map)['premiums'] is Map)
+        for (final name in const ['介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金'])
+          MapEntry<String, Object?>(name, deductions[name]),
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
       MapEntry<String, Object?>('道具代', deductions['道具代']),
@@ -107,6 +123,9 @@ class PayrollPdfService {
           ),
         ),
       );
+      if (pageIndex == 0 && expenses != null) {
+        ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.payroll, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+      }
     }
 
     return document.save();
@@ -240,6 +259,7 @@ class PayrollPdfService {
                       : CompanySealPdf.build(
                           seal.registeredName(statement.companyName),
                           style: seal.style,
+                          companyId: seal.companyId,
                           size: 32,
                           font: sealFont,
                           fallbackFont: fallbackFont,
@@ -1020,6 +1040,27 @@ class PayrollPdfService {
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
     }
+    final tax = detail['tax_calculation'];
+    if (tax is Map) {
+      final conditions = tax['conditions'];
+      if (label == '所得税' && tax['income_table'] != null && conditions is Map) {
+        final column = conditions['income_mode'] == 'koh' ? '甲' : '乙';
+        return '月額表 $column${conditions['dependents']}人';
+      }
+      final kind = const {'健康保険料':'health_insurance', '介護保険料':'nursing_insurance',
+        '厚生年金保険':'pension_insurance', '雇用保険料':'employment_insurance',
+        '子ども・子育て支援金':'child_support'}[label];
+      if (kind != null && tax['rates'] is List) {
+        for (final entry in tax['rates'] as List) {
+          if (entry is! Map || entry['value'] is! Map) continue;
+          final value = entry['value'] as Map;
+          if (value['kind'] != kind || value['employee'] is! num) continue;
+          final rate = ((value['employee'] as num) / 1000000).toStringAsFixed(6)
+              .replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+          return '${_number((_asNumber(entry['base_yen']) ?? 0).round())}円 × $rate%';
+        }
+      }
+    }
     if (label == '有給支給額' && detail['有給単価'] != null) {
       return '${_number((_asNumber(detail['有給単価']) ?? 0).round())}円 × ${detail['有給日数'] ?? 0}日';
     }
@@ -1097,6 +1138,7 @@ class PayrollPdfService {
     'schema_version',
     'snapshot_version',
     'calculation_warnings',
+    'tax_calculation',
     '出勤日数',
     '休出日数',
     '休日出勤',
@@ -1248,7 +1290,10 @@ class PayrollPdfService {
     required int direction,
   }) {
     final result = <String, Object?>{};
+    final tax = detail['tax_calculation'];
+    final premiums = tax is Map ? tax['premiums'] : null;
     for (final entry in detail.entries) {
+      if (premiums is Map && premiums.containsKey(entry.key)) continue;
       if (_nonMoneyDetailKeys.contains(entry.key) ||
           _fixedMoneyKeys.contains(entry.key) ||
           _isAggregatePlaceholder(entry.key)) {

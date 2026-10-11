@@ -3,6 +3,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'secure_onboarding_repository.dart';
+import 'secondary_password_reset_page.dart';
 
 class SecondaryProtectedPage extends StatefulWidget {
   const SecondaryProtectedPage({
@@ -46,9 +47,17 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   }
 
   Future<void> _loadState() async {
+    if (mounted) setState(() { _configuredLoading = true; _message = null; });
     final repository = _repository;
     final userId = repository?.currentUser?.id;
-    if (repository == null || userId == null) return;
+    if (repository == null || userId == null) {
+      if (!mounted) return;
+      setState(() {
+        _configuredLoading = false;
+        _message = 'ログイン状態を確認できません。ログイン後に再読み込みしてください。';
+      });
+      return;
+    }
 
     try {
       final configured = await repository.secondaryPasswordConfigured();
@@ -57,7 +66,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
           prefs.getBool('sko_secondary_biometric_enabled_$userId') ?? false;
       final available =
           await _localAuth.isDeviceSupported() &&
-              await _localAuth.canCheckBiometrics;
+          await _localAuth.canCheckBiometrics;
       if (!mounted) return;
       setState(() {
         _secondaryConfigured = configured;
@@ -217,10 +226,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
 
       if (ok && userId != null && !_biometricEnabled) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool(
-          'sko_secondary_biometric_enabled_$userId',
-          true,
-        );
+        await prefs.setBool('sko_secondary_biometric_enabled_$userId', true);
       }
 
       if (!mounted) return;
@@ -242,12 +248,59 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     }
   }
 
+  Future<void> _resetPassword() async {
+    if (_busy) return;
+    final userId = _repository?.currentUser?.id;
+    setState(() => _busy = true);
+    _password.clear();
+    _confirm.clear();
+    final reset = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            SecondaryPasswordResetPage(biometricAvailable: _biometricAvailable),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _unlocked = false;
+      _password.clear();
+      _confirm.clear();
+      _message = reset == true && userId == _repository?.currentUser?.id
+          ? '第2パスワードを再設定しました。新しいパスワードで認証してください。'
+          : null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_configuredLoading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Never present password setup when authentication state was not loaded.
+    if (_message != null && !_secondaryConfigured) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.title)),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(_message!, textAlign: TextAlign.center),
+              ),
+              OutlinedButton.icon(
+                onPressed: _loadState,
+                icon: const Icon(Icons.refresh),
+                label: const Text('再読み込み'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -272,9 +325,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                         const SizedBox(height: 14),
                         Text(
                           '第2パスワードを設定',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                         const SizedBox(height: 8),
@@ -325,9 +376,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                             contentPadding: EdgeInsets.zero,
                             title: const Text('Face ID / Touch IDも使う'),
                             value: _enableBiometricOnSetup,
-                            onChanged: (value) => setState(
-                              () => _enableBiometricOnSetup = value,
-                            ),
+                            onChanged: (value) =>
+                                setState(() => _enableBiometricOnSetup = value),
                           ),
                         ],
                         if (_message != null) ...[
@@ -374,15 +424,11 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                       const SizedBox(height: 14),
                       Text(
                         '第2認証が必要です',
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineSmall
+                        style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        '${widget.title}を開くため、第2パスワードで確認します。',
-                      ),
+                      Text('${widget.title}を開くため、第2パスワードで確認します。'),
                       const SizedBox(height: 20),
                       TextField(
                         controller: _password,
@@ -417,6 +463,10 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                         onPressed: _busy ? null : _unlockWithPassword,
                         icon: const Icon(Icons.lock_open_outlined),
                         label: const Text('第2パスワードで開く'),
+                      ),
+                      TextButton(
+                        onPressed: _busy ? null : _resetPassword,
+                        child: const Text('第2パスワードを再設定'),
                       ),
                       if (_biometricAvailable) ...[
                         const SizedBox(height: 10),

@@ -5,14 +5,16 @@ import 'package:url_launcher/url_launcher.dart';
 import 'company_income_tax_repository.dart';
 
 typedef IncomeTaxPdfPicker = Future<IncomeTaxPdfFile?> Function();
+typedef OfficialReferenceLauncher = Future<bool> Function(Uri uri, {required LaunchMode mode});
 
 String _civilDate(DateTime day) => '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
 
 class CompanyIncomeTaxPage extends StatefulWidget {
-  const CompanyIncomeTaxPage({super.key, required this.companyId, this.repository, this.pickPdf});
+  const CompanyIncomeTaxPage({super.key, required this.companyId, this.repository, this.pickPdf, this.referenceLauncher});
   final String companyId;
   final CompanyIncomeTaxRepository? repository;
   final IncomeTaxPdfPicker? pickPdf;
+  final OfficialReferenceLauncher? referenceLauncher;
   @override
   State<CompanyIncomeTaxPage> createState() => _CompanyIncomeTaxPageState();
 }
@@ -26,6 +28,7 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   IncomeTaxUploadRequest? _retryUpload;
   bool _busy = false;
   bool _loading = false;
+  bool _openingOfficialReference = false;
   int _generation = 0;
   String? _error;
   @override
@@ -142,6 +145,32 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
     ],
   );
 
+  Future<void> _openOfficialReference(String url) async {
+    if (_openingOfficialReference) return;
+    setState(() => _openingOfficialReference = true);
+    final uri = Uri.parse(url);
+    try {
+      // An external browser may be unavailable even for a valid HTTPS URL.
+      // Keep this fallback limited to the public official references.
+      for (final mode in [LaunchMode.externalApplication, LaunchMode.inAppBrowserView]) {
+        if (!mounted) return;
+        try {
+          final opened = await (widget.referenceLauncher?.call(uri, mode: mode)
+              ?? launchUrl(uri, mode: mode));
+          if (opened) return;
+        } catch (_) {
+          // Try the next presentation mode before reporting failure.
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('国税庁の資料を表示できませんでした。時間をおいて再度お試しください。')),
+      );
+    } finally {
+      if (mounted) setState(() => _openingOfficialReference = false);
+    }
+  }
+
   Future<void> _openPdf(CompanyIncomeTaxTable table) async {
     if (_busy) return;
     final generation = _generation;
@@ -174,15 +203,33 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   ));
 
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('所得税の税額表'), actions: [
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
-        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得と実給与の税額表計算は準備中です。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。給与連携は準備中です。'),
+        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得は準備中です。令和8年月額表による自動計算は、個別給与設定の「給与の税計算」で設定します。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。令和8年月額表の自動計算は個別給与設定で設定します。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
     )),
   ]), body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
-    const Text('会社内のPDF資料を管理します。給与連携は準備中です。'),
+    const Text('会社内のPDF資料を管理します。給与の自動計算は「個別給与設定」→「給与の税計算」で設定します。'),
+    Card(child: ExpansionTile(
+      title: const Text('国税庁の公式資料'),
+      subtitle: const Text('源泉徴収税額表・年度別の資料'),
+      children: [
+        ListTile(
+          title: const Text('2026年（令和8年）分の税額表PDF'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: _openingOfficialReference ? null : () => _openOfficialReference('https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/all.pdf'),
+        ),
+        ListTile(
+          title: const Text('年度別の税額表・関連資料'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: _openingOfficialReference ? null : () => _openOfficialReference('https://www.nta.go.jp/publication/pamph/01.htm'),
+        ),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text('対象の年分を確認してください。資料を開くだけでは会社への登録や給与への反映は行われません。')),
+      ],
+    )),
     if (_unknown != null) const Card(child: Padding(padding: EdgeInsets.all(12), child: Text('登録結果の確認が必要です。再読み込みで確認してください。重複登録を防ぐため追加登録は停止しています。'))),
     if (_data?.canEdit == true && _retryUpload != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       const Text('アップロード結果を確認できません。再試行または別のPDFを選択できます。'),

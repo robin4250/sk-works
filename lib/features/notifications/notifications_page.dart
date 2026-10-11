@@ -12,6 +12,7 @@ import '../invoices/invoice_cloud_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
 import '../payroll/payroll_review_page.dart';
+import '../attendance/today_attendance_page.dart';
 import '../payroll/payroll_review_repository.dart';
 import '../payroll/payment_certificates_page.dart';
 import '../settings/settings_page.dart';
@@ -241,6 +242,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 /// Known notification routes reuse the same protected pages as the home menu.
 /// Repositories in each destination retain their existing access checks and RLS.
 Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMonth}) => switch (item.actionKey) {
+  'attendance_today' => const TodayAttendancePage(),
   'document_register' => const OwnDocumentRegistrationPage(),
   'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),
   'site_map' => const GeneralSiteMapPage(),

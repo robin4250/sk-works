@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -12,10 +14,12 @@ class PaymentCertificatePdfService {
 
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
+    ExpenseDocumentDetails? expenseDetails,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
@@ -38,6 +42,9 @@ class PaymentCertificatePdfService {
       ),
     );
 
+    if (expenses != null) {
+      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+    }
     return document.save();
   }
 
@@ -133,34 +140,44 @@ class PaymentCertificatePdfService {
                       record.payerAddress,
                       style: const pw.TextStyle(fontSize: 8),
                     ),
-                  pw.Row(
-                    mainAxisSize: pw.MainAxisSize.max,
-                    crossAxisAlignment: pw.CrossAxisAlignment.center,
-                    children: [
-                      pw.Expanded(
-                        child: pw.Text(
-                          record.companySealSnapshot.registeredName(
-                              record.payerCompanyName),
-                          style: pw.TextStyle(
-                            fontSize: 9,
-                            fontWeight: pw.FontWeight.bold,
+                  // Right-align the company name and overlay the registered seal.
+                  pw.SizedBox(
+                    height: 55,
+                    child: pw.Stack(
+                      children: [
+                        pw.Positioned(
+                          left: 0,
+                          right: 18,
+                          top: 21,
+                          child: pw.Align(
+                            alignment: pw.Alignment.centerRight,
+                            child: pw.Text(
+                              record.companySealSnapshot.registeredName(
+                                  record.payerCompanyName),
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      // Reserve a separate stamp box so the full registered
-                      // company name stays readable, including wrapped names.
-                      pw.SizedBox(width: 8),
-                      !record.payerCompanySealEnabled
-                          ? pw.SizedBox(width: 55, height: 55)
-                          : CompanySealPdf.build(
+                        if (record.payerCompanySealEnabled)
+                          pw.Positioned(
+                            right: 0,
+                            top: 0,
+                            child: CompanySealPdf.build(
                               record.companySealSnapshot.registeredName(
                                   record.payerCompanyName),
                               style: record.companySealSnapshot.style,
+                              companyId: record.companySealSnapshot.companyId,
                               size: 55,
                               font: sealFont,
                               fallbackFont: fallbackFont,
                             ),
-                    ],
+                          ),
+                      ],
+                    ),
                   ),
                   if (record.payerPhone.isNotEmpty)
                     pw.Text(

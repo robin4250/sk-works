@@ -10,6 +10,8 @@ import '../attendance/paid_leave_repository.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
 import '../daily_reports/daily_report_repository.dart';
 import '../notifications/notification_bell.dart';
+import '../qualifications/qualification_photo_submission_review_page.dart';
+import '../qualifications/qualification_photo_submission_review_repository.dart';
 import '../people/people_cloud_repository.dart';
 import '../people/worker_personnel_change_approvals_page.dart';
 import '../sites/site_cloud_repository.dart';
@@ -30,6 +32,9 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
   final _onboardingRepository = EmployeeOnboardingRepository.maybeCreate();
   final _siteRepository = SiteCloudRepository.maybeCreate();
   final _peopleRepository = PeopleCloudRepository.maybeCreate();
+  final _qualificationRepository =
+      QualificationPhotoSubmissionReviewRepository.maybeCreate();
+  int _qualificationCount = 0;
 
   int _dailyCount = 0;
   int _attendanceCount = 0;
@@ -55,9 +60,20 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
     }
 
     final values = await Future.wait<int>([
-      safe(() async => (await _dailyRepository?.loadPendingApprovals())?.length ?? 0),
-      safe(() async => (await _attendanceRepository?.loadPending())?.length ?? 0),
-      safe(() async => (await _paidLeaveRepository?.loadPendingApprovals())?.length ?? 0),
+      safe(
+        () async => (await _qualificationRepository?.pending())?.length ?? 0,
+      ),
+      safe(
+        () async =>
+            (await _dailyRepository?.loadPendingApprovals())?.length ?? 0,
+      ),
+      safe(
+        () async => (await _attendanceRepository?.loadPending())?.length ?? 0,
+      ),
+      safe(
+        () async =>
+            (await _paidLeaveRepository?.loadPendingApprovals())?.length ?? 0,
+      ),
       safe(() async {
         final repository = _onboardingRepository;
         if (repository == null || !await repository.canReview()) return 0;
@@ -67,9 +83,13 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
         final repository = _siteRepository;
         if (repository == null) return 0;
         final items = await repository.loadInformationRequests();
-        return items.where((item) =>
-          item['status']?.toString() == 'pending' && item['can_review'] == true
-        ).length;
+        return items
+            .where(
+              (item) =>
+                  item['status']?.toString() == 'pending' &&
+                  item['can_review'] == true,
+            )
+            .length;
       }),
       safe(() async {
         final repository = _peopleRepository;
@@ -79,20 +99,20 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
     ]);
     if (!mounted) return;
     setState(() {
-      _dailyCount = values[0];
-      _attendanceCount = values[1];
-      _paidLeaveCount = values[2];
-      _onboardingCount = values[3];
-      _siteInformationCount = values[4];
-      _personnelChangeCount = values[5];
+      _qualificationCount = values[0];
+      _dailyCount = values[1];
+      _attendanceCount = values[2];
+      _paidLeaveCount = values[3];
+      _onboardingCount = values[4];
+      _siteInformationCount = values[5];
+      _personnelChangeCount = values[6];
       _loadingCounts = false;
     });
   }
 
   Future<void> _open(Widget page) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => page),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => page));
     if (!mounted) return;
     await _loadCounts();
   }
@@ -156,6 +176,19 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
             Card(
               child: ListTile(
                 leading: const CircleAvatar(
+                  child: Icon(Icons.photo_library_outlined),
+                ),
+                title: const Text('資格写真の承認待ち'),
+                subtitle: const Text('本人から届いた資格写真の確認・承認・却下'),
+                trailing: _trailing(_qualificationCount),
+                onTap: () =>
+                    _open(const QualificationPhotoSubmissionReviewPage()),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(
                   child: Icon(Icons.edit_note_outlined),
                 ),
                 title: Text(
@@ -177,7 +210,9 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                   SkoLanguageController.tr('勤務修正の承認待ち'),
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: Text(SkoLanguageController.tr('勤務修正・過去まとめて出勤の申請を確認して承認')),
+                subtitle: Text(
+                  SkoLanguageController.tr('勤務修正・過去まとめて出勤の申請を確認して承認'),
+                ),
                 trailing: _trailing(_attendanceCount),
                 onTap: () => _open(const AttendanceCorrectionApprovalsPage()),
               ),
@@ -207,9 +242,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                   SkoLanguageController.tr('現場データの承認待ち'),
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: Text(
-                  SkoLanguageController.tr('現場情報の変更・終了申請を確認して承認'),
-                ),
+                subtitle: Text(SkoLanguageController.tr('現場情報の変更・終了申請を確認して承認')),
                 trailing: _trailing(_siteInformationCount),
                 onTap: () => _open(const SiteInformationApprovalsPage()),
               ),
@@ -228,8 +261,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
                   SkoLanguageController.tr('社員個人情報の変更申請を確認して承認・拒否'),
                 ),
                 trailing: _trailing(_personnelChangeCount),
-                onTap: () =>
-                    _open(const WorkerPersonnelChangeApprovalsPage()),
+                onTap: () => _open(const WorkerPersonnelChangeApprovalsPage()),
               ),
             ),
             const SizedBox(height: 8),

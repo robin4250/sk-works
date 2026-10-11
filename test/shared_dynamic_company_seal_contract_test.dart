@@ -31,7 +31,7 @@ void main() {
       }
     },
   );
-  test('seal uses registered company name and never a fixed bitmap', () {
+  test('legacy seal continues to use its registered company name', () {
     expect(CompanySealPdf.verticalColumns(''), isEmpty);
     expect(CompanySealPdf.verticalColumns('株式会社テスト'), isNotEmpty);
     expect(

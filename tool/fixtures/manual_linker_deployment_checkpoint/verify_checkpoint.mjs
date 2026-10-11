@@ -1,0 +1,58 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const {PGlite}=await import(process.argv[2]);
+const db=new PGlite();
+const read=p=>fs.readFile(new URL(p,import.meta.url),'utf8');
+try {
+ const source = await read('../../../supabase/migrations/20261011000100_link_daily_report_time_only_evidence.sql');
+ const definition = sql => {
+  const start = sql.indexOf('CREATE OR REPLACE FUNCTION private.link_daily_report_attendance_evidence');
+  const end = sql.indexOf('$function$;', start);
+  assert.ok(start >= 0 && end > start, 'linker function boundaries missing');
+  return sql.slice(start, end + '$function$;'.length).trim();
+ };
+ const original = JSON.parse(await read('definition_checkpoint.json'));
+ const predicate = '    and a.photo_storage_path is not null\n';
+ assert.equal(original.definition.split(predicate).length,2);
+ const expected = original.definition.replace(predicate,'').trim()+';';
+ assert.equal(definition(source),expected,'tracked migration must only remove the photo predicate');
+ assert.equal(definition(await read('guarded_forward.sql')),expected);
+ assert.equal((await read('forward_definition.sql')).trim(),expected);
+ assert.equal(definition(await read('guarded_restore.sql')),original.definition.trim()+';');
+
+ await db.exec(`create schema private;create schema auth;create role authenticated;
+ create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+ create table daily_reports(id uuid,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date);
+ create table company_members(company_id uuid,user_id uuid);
+ create table attendance_verifications(id uuid,company_id uuid,site_id uuid,route_assignment_id uuid,work_date date,confirmed_at timestamptz,photo_storage_path text,daily_report_id uuid);
+ create schema storage;create table storage.objects(id uuid,name text);
+ insert into company_members values('60000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000002');
+ insert into daily_reports values('60000000-0000-0000-0000-000000000003','60000000-0000-0000-0000-000000000001',null,'60000000-0000-0000-0000-000000000004','2026-10-11');
+ insert into attendance_verifications values('60000000-0000-0000-0000-000000000005','60000000-0000-0000-0000-000000000001',null,'60000000-0000-0000-0000-000000000004','2026-10-11','2026-10-11T00:00:00Z',null,null);
+ insert into storage.objects values('60000000-0000-0000-0000-000000000006','keep.jpg');`);
+ await db.exec(await read('restore_original.sql'));
+ const metadata=async()=> (await db.query(`select md5(pg_get_functiondef(oid)) md5,pg_get_userbyid(proowner) owner,proacl::text acl,to_jsonb(proconfig) config,prosecdef security_definer from pg_proc where oid='private.link_daily_report_attendance_evidence(uuid)'::regprocedure`)).rows[0];
+ const snapshot=async()=> (await db.query(`select (select jsonb_agg(to_jsonb(a)) from attendance_verifications a) attendance,(select jsonb_agg(to_jsonb(d)) from daily_reports d) reports,(select jsonb_agg(to_jsonb(o)) from storage.objects o) storage`)).rows[0];
+ const old=await metadata(),before=await snapshot();
+ const checkpoint=JSON.parse(await read('definition_checkpoint.json'));
+ for (const key of ['md5','owner','acl','config','security_definer']) assert.deepEqual(old[key],checkpoint[key]);
+ await db.exec('begin');await db.exec(await read('guarded_forward.sql'));await db.exec('commit');
+ const forward=await metadata();
+ for(const k of ['owner','acl','config','security_definer']) assert.deepEqual(forward[k],old[k]);
+ assert.deepEqual(await snapshot(),before,'installation performs no data or Storage updates');
+ await db.exec('begin');await db.exec(await read('guarded_restore.sql'));await db.exec('commit');
+ assert.deepEqual(await metadata(),old);assert.deepEqual(await snapshot(),before);
+ await db.exec('begin');
+ await db.exec(`alter function private.link_daily_report_attendance_evidence(uuid) set search_path to public`);
+ await assert.rejects(db.exec(await read('guarded_forward.sql')),/precondition mismatch/);
+ await db.exec('rollback');
+ assert.deepEqual(await metadata(),old);
+ await db.exec('begin');
+ const corruptedPostcondition = (await read('guarded_forward.sql')).replace('5eea7f844f43c6d0f7099a8231cb4b1f','00000000000000000000000000000000');
+ await assert.rejects(db.exec(corruptedPostcondition),/postcondition mismatch/);
+ await db.exec('rollback');
+ assert.deepEqual(await metadata(),old,'failed postcondition rolls back new definition');
+ assert.deepEqual(await snapshot(),before);
+ assert.equal(forward.md5,'5eea7f844f43c6d0f7099a8231cb4b1f');
+ console.log('PASS linker definition guard, exact one-predicate change, owner/ACL/config preserved, forward/restore data and Storage unchanged');
+} catch(e) { console.error(e.message,e.where??'');process.exitCode=1; } finally {await db.close();}

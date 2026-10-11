@@ -256,6 +256,26 @@ class PaymentCertificatePreviewPage extends StatefulWidget {
 class _PaymentCertificatePreviewPageState
     extends State<PaymentCertificatePreviewPage> {
   final _pdfBytes = PdfBytesCache();
+  bool _sharing = false;
+
+  Future<void> _saveOrShare() async {
+    if (_sharing) return;
+    final record = widget.record;
+    setState(() => _sharing = true);
+    try {
+      final bytes = await _pdfBytes.get(() => PaymentCertificatePdfService.buildPdf(record));
+      await Printing.sharePdf(bytes: bytes,
+        filename: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.isEnglish ? 'Could not open save/share: $error' : '保存・共有を開けませんでした: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
 
   @override
   void didUpdateWidget(covariant PaymentCertificatePreviewPage oldWidget) {
@@ -279,18 +299,36 @@ class _PaymentCertificatePreviewPageState
         ),
         actions: const [SkoNotificationBell()],
       ),
-      body: PdfPreview(
+      body: Column(children: [
+        Expanded(child: PdfPreview(
         initialPageFormat: PdfPageFormat.a4,
         canChangePageFormat: false,
         canChangeOrientation: false,
         allowPrinting: true,
-        allowSharing: true,
+        allowSharing: false,
         pdfFileName:
             '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
         build: (_) => _pdfBytes.get(
           () => PaymentCertificatePdfService.buildPdf(record),
         ),
-      ),
+      )),
+        SafeArea(top: false, child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(SkoLanguageController.isEnglish
+              ? 'On iPhone, choose Save to Files in the share menu.'
+              : 'iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。'),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _sharing ? null : _saveOrShare,
+              icon: const Icon(Icons.ios_share_outlined),
+              label: Text(SkoLanguageController.isEnglish
+                ? (_sharing ? 'Opening…' : 'Save / Share')
+                : (_sharing ? '開いています…' : '保存・共有')),
+            ),
+          ]),
+        )),
+      ]),
     );
   }
 }

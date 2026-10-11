@@ -43,6 +43,8 @@ class IndividualPayrollSetting {
 class IndividualPayrollSettingsRepository {
   IndividualPayrollSettingsRepository._(this._client);
 
+  IndividualPayrollSettingsRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   static IndividualPayrollSettingsRepository? maybeCreate() {
@@ -98,7 +100,16 @@ class IndividualPayrollSettingsRepository {
         .eq('worker_id', workerId)
         .limit(1);
     if (rows.isEmpty) {
-      return IndividualPayrollSetting(workerId: workerId, values: const {});
+      // Older payroll_workspace responses do not include company_id. Resolve
+      // the selected worker through the existing RLS-protected worker table,
+      // including workers whose salary settings have not been saved yet.
+      final worker = await _client.from('workers').select('company_id')
+          .eq('id', workerId).maybeSingle();
+      return IndividualPayrollSetting(
+        workerId: workerId,
+        values: {if (worker?['company_id'] is String)
+          'company_id': worker!['company_id']},
+      );
     }
     final row = Map<String, dynamic>.from(rows.first);
     return IndividualPayrollSetting(

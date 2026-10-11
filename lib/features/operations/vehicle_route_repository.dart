@@ -6,10 +6,22 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
-class VehicleRouteRepository {
+abstract class VehicleRouteSelectionAccess {
+  String? get selectionActorId;
+  Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false});
+  Future<List<Map<String, dynamic>>> routes({bool activeOnly = false});
+  Future<Map<String, dynamic>> loadTodaySelection();
+  Future<void> saveTodayVehicleSelection(String? vehicleId);
+  Future<void> saveTodayRouteSelection(String? routeId);
+}
+
+class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   VehicleRouteRepository._(this._client);
 
   final SupabaseClient _client;
+
+  @override
+  String? get selectionActorId => _client.auth.currentUser?.id;
   static const _documentBucket = 'vehicle-documents';
 
   static VehicleRouteRepository? maybeCreate() {
@@ -35,6 +47,7 @@ class VehicleRouteRepository {
     };
   }
 
+  @override
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false}) async {
     var query = _client.from('vehicles').select(
       'id,display_name,registration_number,odometer_km,storage_address,'
@@ -48,6 +61,7 @@ class VehicleRouteRepository {
     return [for (final row in rows) Map<String, dynamic>.from(row)];
   }
 
+  @override
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     var query = _client.from('route_assignments').select(
       'id,route_name,notes,is_active,created_at,updated_at,'
@@ -271,6 +285,7 @@ class VehicleRouteRepository {
     }).eq('id', id);
   }
 
+  @override
   Future<Map<String, dynamic>> loadTodaySelection() async {
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
@@ -291,6 +306,7 @@ class VehicleRouteRepository {
     return row == null ? const {} : Map<String, dynamic>.from(row);
   }
 
+  @override
   Future<void> saveTodayVehicleSelection(String? vehicleId) async {
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
@@ -313,6 +329,7 @@ class VehicleRouteRepository {
     );
   }
 
+  @override
   Future<void> saveTodayRouteSelection(String? routeId) async {
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
