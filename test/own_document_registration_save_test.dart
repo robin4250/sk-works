@@ -51,6 +51,7 @@ class _Gateway implements OwnDocumentRegistrationGateway {
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   }) async {
     calls.add((
       requirement: requirementId,
@@ -63,18 +64,22 @@ class _Gateway implements OwnDocumentRegistrationGateway {
 }
 
 class _PhotosGateway extends _Gateway implements OwnDocumentPhotoGateway {
-  _PhotosGateway({this.editingAvailable = true})
-    : super(
-        statuses: [
-          {
-            'id': 'status',
-            'requirement_id': 'license',
-            'status': 'submitted',
-            'attachment_path': 'front.pdf',
-            'attachment_paths': ['front.pdf', 'back.pdf', 'extra.pdf'],
-          },
-        ],
-      );
+  _PhotosGateway({
+    this.editingAvailable = true,
+    List<Map<String, dynamic>>? statuses,
+  }) : super(
+         statuses:
+             statuses ??
+             [
+               {
+                 'id': 'status',
+                 'requirement_id': 'license',
+                 'status': 'submitted',
+                 'attachment_path': 'front.pdf',
+                 'attachment_paths': ['front.pdf', 'back.pdf', 'extra.pdf'],
+               },
+             ],
+       );
   final edits = <List<WorkerDocumentPhoto>>[];
   final bool editingAvailable;
   @override
@@ -124,6 +129,34 @@ Future<void> _selectPhoto(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'unregistered row opens that document registration with legacy photo option',
+    (tester) async {
+      final gateway = _PhotosGateway(editingAvailable: false, statuses: []);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OwnDocumentRegistrationPage(
+            gateway: gateway,
+            pickPhoto: (_) async => _MemoryPhoto([1, 2, 3]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('登録する'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile))
+            .onChanged,
+        isNotNull,
+      );
+      await _selectPhoto(tester);
+      await tester.tap(find.text('写真から選ぶ'));
+      await tester.pumpAndSettle();
+      expect(gateway.calls.single.bytes, Uint8List.fromList([1, 2, 3]));
+      expect(gateway.edits, isEmpty);
+    },
+  );
   testWidgets(
     'pending schema keeps existing photos readable and editing disabled',
     (tester) async {

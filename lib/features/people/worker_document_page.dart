@@ -4,6 +4,7 @@ import '../../domain/company_data_transfer.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import 'own_document_registration_page.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
 import 'worker_document_send_page.dart';
@@ -146,6 +147,20 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _loading
+            ? null
+            : () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const OwnDocumentRegistrationPage(),
+                  ),
+                );
+                if (mounted) _reload();
+              },
+        icon: const Icon(Icons.note_add_outlined),
+        label: const Text('自分の書類を登録'),
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -155,6 +170,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ? const Center(child: Text('先に社員・作業員を登録してください'))
             : Column(
                 children: [
+                  WorkerDocumentRegistrationActions(
+                    canManage: _canManageRequirements,
+                    photoEditingAvailable:
+                        _repository?.photoEditingAvailable ?? false,
+                    onAddRequirement: _addRequirement,
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                     child: TextField(
@@ -524,6 +545,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ),
           ),
           actions: [
+            if (current == null)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('まず状態を保存すると、写真の登録・確認を開けます。'),
+              ),
             if (current != null)
               TextButton.icon(
                 onPressed: savingPhotos
@@ -784,4 +810,35 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+}
+
+class WorkerDocumentRegistrationActions extends StatelessWidget {
+  const WorkerDocumentRegistrationActions({
+    super.key,
+    required this.canManage,
+    required this.photoEditingAvailable,
+    required this.onAddRequirement,
+  });
+  final bool canManage;
+  final bool photoEditingAvailable;
+  final VoidCallback onAddRequirement;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('本人の提出は「自分の書類を登録」から開けます。'),
+        if (canManage)
+          OutlinedButton.icon(
+            onPressed: onAddRequirement,
+            icon: const Icon(Icons.add),
+            label: const Text('必要書類の項目を追加'),
+          ),
+        if (canManage) const Text('各項目を開いて状態を保存後、写真を登録・確認できます。'),
+        if (!photoEditingAvailable)
+          const Text(WorkerDocumentRepository.photoPreparationMessage),
+      ],
+    ),
+  );
 }

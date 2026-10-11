@@ -16,6 +16,7 @@ abstract interface class OwnDocumentRegistrationGateway {
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   });
 }
 
@@ -82,12 +83,14 @@ class _OwnDocumentRepositoryGateway
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   }) => repository.saveOwnDocument(
     requirementId: requirementId,
     expiresAt: expiresAt,
     notes: notes,
     attachmentBytes: attachmentBytes,
     originalFilename: originalFilename,
+    requireEmptyAttachment: requireEmptyAttachment,
   );
 }
 
@@ -166,7 +169,7 @@ class _OwnDocumentRegistrationPageState
     return null;
   }
 
-  Future<void> _registerDocument() async {
+  Future<void> _registerDocument({String? initialRequirementId}) async {
     final repository = _repository;
     if (repository == null || _requirements.isEmpty || _saving) return;
 
@@ -186,7 +189,8 @@ class _OwnDocumentRegistrationPageState
       return;
     }
 
-    var requirementId = candidates.first['id']?.toString();
+    var requirementId =
+        initialRequirementId ?? candidates.first['id']?.toString();
     DateTime? expiresAt;
     final notes = TextEditingController();
     var attachPhoto = false;
@@ -221,8 +225,10 @@ class _OwnDocumentRegistrationPageState
                         child: Text(row['name']?.toString() ?? '書類'),
                       ),
                   ],
-                  onChanged: (value) =>
-                      setDialogState(() => requirementId = value),
+                  onChanged: (value) => setDialogState(() {
+                    requirementId = value;
+                    attachPhoto = false;
+                  }),
                 ),
                 const SizedBox(height: 8),
                 ListTile(
@@ -253,12 +259,17 @@ class _OwnDocumentRegistrationPageState
                   maxLines: 2,
                 ),
                 if (!photoEditingAvailable)
-                  const Text(WorkerDocumentRepository.photoPreparationMessage),
+                  const Text(
+                    '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
+                  ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('写真を添付する'),
                   value: attachPhoto,
-                  onChanged: !photoEditingAvailable
+                  onChanged:
+                      !photoEditingAvailable &&
+                          workerDocumentPaths(_statusFor(requirementId ?? ''))
+                              .isNotEmpty
                       ? null
                       : (value) =>
                             setDialogState(() => attachPhoto = value ?? false),
@@ -293,6 +304,7 @@ class _OwnDocumentRegistrationPageState
     setState(() => _saving = true);
     try {
       if (repository is OwnDocumentPhotoGateway &&
+          repository.photoEditingAvailable &&
           widget.pickPhoto == null &&
           draft['attachPhoto'] == true) {
         final photos = await editWorkerDocumentPhotos(
@@ -358,6 +370,10 @@ class _OwnDocumentRegistrationPageState
         notes: draft['notes'] as String,
         attachmentBytes: attachmentBytes,
         originalFilename: originalFilename,
+        requireEmptyAttachment:
+            repository is OwnDocumentPhotoGateway &&
+            !repository.photoEditingAvailable &&
+            attachmentBytes != null,
       );
       if (!mounted) return;
       await _load();
@@ -482,6 +498,18 @@ class _OwnDocumentRegistrationPageState
                       subtitle: const Text('ログイン中の本人の書類だけを表示します'),
                     ),
                   ),
+                  if (_repository is OwnDocumentPhotoGateway &&
+                      !(_repository as OwnDocumentPhotoGateway)
+                          .photoEditingAvailable)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。現在の試験登録は会社が許可した運転免許証に限られます。',
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                     child: TextField(
@@ -502,6 +530,12 @@ class _OwnDocumentRegistrationPageState
                         final id = requirement['id']?.toString() ?? '';
                         final status = _statusFor(id);
                         final paths = workerDocumentPaths(status);
+                        final needsRegistration =
+                            status == null ||
+                            (paths.isEmpty &&
+                                _repository is OwnDocumentPhotoGateway &&
+                                !(_repository as OwnDocumentPhotoGateway)
+                                    .photoEditingAvailable);
                         final label =
                             status?['status']?.toString() == 'verified'
                             ? '確認済み'
@@ -510,12 +544,38 @@ class _OwnDocumentRegistrationPageState
                             : '未登録';
                         return Card(
                           child: ListTile(
-                            onTap:
-                                status == null ||
-                                    _saving ||
-                                    _repository is! OwnDocumentPhotoGateway
+                            onTap: _saving
                                 ? null
-                                : () => _editPhotos(status),
+                                : needsRegistration
+                                ? () => _registerDocument(
+                                    initialRequirementId: id,
+                                  )
+                                : _repository is OwnDocumentPhotoGateway
+                                ? () => _editPhotos(status)
+                                : null,
+                            trailing: TextButton(
+                              onPressed: _saving
+                                  ? null
+                                  : needsRegistration
+                                  ? () => _registerDocument(
+                                      initialRequirementId: id,
+                                    )
+                                  : _repository is OwnDocumentPhotoGateway
+                                  ? () => _editPhotos(status)
+                                  : () => _registerDocument(
+                                      initialRequirementId: id,
+                                    ),
+                              child: Text(
+                                needsRegistration
+                                    ? '登録する'
+                                    : _repository is OwnDocumentPhotoGateway &&
+                                          !(_repository
+                                                  as OwnDocumentPhotoGateway)
+                                              .photoEditingAvailable
+                                    ? '写真を確認'
+                                    : '写真を追加・編集',
+                              ),
+                            ),
                             leading: const CircleAvatar(
                               child: Icon(Icons.description_outlined),
                             ),
