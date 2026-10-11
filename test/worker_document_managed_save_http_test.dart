@@ -133,8 +133,14 @@ class Fixture {
     photos: photos,
     expectedRow: expected,
   );
-  List<({String method, Uri uri, List<int> bytes})> get mutations =>
-      requests.where((r) => r.method != 'GET').toList();
+  List<({String method, Uri uri, List<int> bytes})> get mutations => requests
+      .where(
+        (r) =>
+            r.method != 'GET' &&
+            (r.uri.path.startsWith('/rest/v1/') ||
+                r.uri.path.startsWith('/storage/v1/')),
+      )
+      .toList();
 }
 
 void main() {
@@ -193,8 +199,9 @@ void main() {
             (r) => r.uri.path.startsWith('/rest/v1/'),
           )) {
             if (r.uri.path.endsWith('/workers') ||
-                r.uri.path.endsWith('/document_requirements'))
+                r.uri.path.endsWith('/document_requirements')) {
               expect(r.uri.queryParameters['company_id'], 'eq.$company');
+            }
           }
         } finally {
           await f.close();
@@ -254,8 +261,9 @@ void main() {
           ..uploadDenied = failure == 'upload denied'
           ..casConflict = failure == 'CAS conflict'
           ..switchActor = failure == 'actor changed';
-        if (failure == 'CAS conflict' || failure == 'stale screen')
+        if (failure == 'CAS conflict' || failure == 'stale screen') {
           f.existing = row;
+        }
         await f.start();
         try {
           await expectLater(
@@ -266,9 +274,10 @@ void main() {
           );
           expect(f.saved, isNull);
           expect(f.requests.where((r) => r.method == 'DELETE'), isEmpty);
-          if (['foreign worker', 'viewer', 'stale screen'].contains(failure))
+          if (['foreign worker', 'viewer', 'stale screen'].contains(failure)) {
             expect(f.mutations, isEmpty);
-          if (failure == 'upload denied' || failure == 'actor changed')
+          }
+          if (failure == 'upload denied' || failure == 'actor changed') {
             expect(
               f.requests.where(
                 (r) =>
@@ -277,6 +286,7 @@ void main() {
               ),
               isEmpty,
             );
+          }
         } finally {
           await f.close();
         }

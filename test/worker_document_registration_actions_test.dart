@@ -21,7 +21,7 @@ void main() {
     expect(find.text('必要書類の項目を追加'), findsOneWidget);
     await tester.tap(find.text('必要書類の項目を追加'));
     expect(added, isTrue);
-    expect(find.textContaining('保存後'), findsOneWidget);
+    expect(find.text('各項目の登録ボタンから、状態と写真をまとめて登録できます。'), findsOneWidget);
   });
   testWidgets('viewer sees own registration guidance without manager action', (
     tester,
