@@ -1,10 +1,20 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'route_billing_quantity_approval_repository.dart';
 
 class RouteBillingQuantityApprovalsPage extends StatefulWidget {
-  const RouteBillingQuantityApprovalsPage({super.key, this.initialRequestId});
+  const RouteBillingQuantityApprovalsPage({super.key, this.initialRequestId})
+    : repositoryOverride = null;
+
+  @visibleForTesting
+  const RouteBillingQuantityApprovalsPage.forTesting({
+    super.key,
+    required this.repositoryOverride,
+    this.initialRequestId,
+  });
+  final RouteBillingQuantityApprovalRepository? repositoryOverride;
   final String? initialRequestId;
   @override
   State<RouteBillingQuantityApprovalsPage> createState() =>
@@ -13,7 +23,9 @@ class RouteBillingQuantityApprovalsPage extends StatefulWidget {
 
 class _RouteBillingQuantityApprovalsPageState
     extends State<RouteBillingQuantityApprovalsPage> {
-  final _repository = RouteBillingQuantityApprovalRepository.maybeCreate();
+  late final _repository =
+      widget.repositoryOverride ??
+      RouteBillingQuantityApprovalRepository.maybeCreate();
   List<RouteBillingQuantityRequest> _items = [];
   bool _loading = true;
   bool _busy = false;
@@ -153,6 +165,11 @@ class _QuantityDecisionPageState extends State<_QuantityDecisionPage> {
     if (value == 1 || value == 0.5) {
       _quantity = value;
     }
+    _siteId = widget.request.raw['representative_site_id']?.toString();
+    final savedPrice = widget.request.raw['unit_price_yen'];
+    if (savedPrice is num && savedPrice > 0) {
+      _price.text = savedPrice.toInt().toString();
+    }
   }
 
   @override
@@ -168,13 +185,17 @@ class _QuantityDecisionPageState extends State<_QuantityDecisionPage> {
     }
     setState(() => _busy = true);
     try {
+      final selectedSite = widget.request.evidence
+          .where((row) => row['site_id']?.toString() == _siteId)
+          .firstOrNull;
+      final selectedPrice = int.tryParse(_price.text.trim());
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(approve ? '請求数量を承認' : '請求数量を却下'),
           content: Text(
             '${widget.request.customerName}\n${widget.request.workDate}  ${widget.request.workerName}\n請求数量：${_quantity!}人工'
-            '${approve ? '\n1人工の単価：${_price.text.trim()}円' : ''}',
+            '${approve ? '\n請求現場：${selectedSite?["site_name"] ?? _siteId}\n1人工の単価：${_price.text.trim()}円\n請求額：${(_quantity! * (selectedPrice ?? 0)).round()}円' : ''}',
           ),
           actions: [
             TextButton(
@@ -218,7 +239,10 @@ class _QuantityDecisionPageState extends State<_QuantityDecisionPage> {
   Widget build(BuildContext context) {
     final request = widget.request;
     final sites = <String, Map<String, dynamic>>{};
-    for (final evidence in request.siteOptions) {
+    for (final evidence
+        in request.status == 'pending'
+            ? request.siteOptions
+            : request.evidence) {
       final id = evidence['site_id']?.toString();
       if (id != null && id.isNotEmpty) {
         sites[id] = evidence;
