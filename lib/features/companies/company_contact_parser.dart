@@ -33,8 +33,9 @@ List<({String text, Uri? uri})> companyNoteParts(String text) {
   for (final match in matches) {
     final uri = companyPhoneUri(match.group(0)!);
     if (uri == null) continue;
-    if (match.start > start)
+    if (match.start > start) {
       result.add((text: text.substring(start, match.start), uri: null));
+    }
     result.add((text: text.substring(match.start, match.end), uri: uri));
     start = match.end;
   }

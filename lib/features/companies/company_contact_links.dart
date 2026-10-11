@@ -52,10 +52,11 @@ class _CompanyNotesLinksState extends State<CompanyNotesLinks> {
     _recognizers.clear();
     _parts = companyNoteParts(widget.text);
     for (final part in _parts) {
-      if (part.uri != null)
+      if (part.uri != null) {
         _recognizers.add(
           TapGestureRecognizer()..onTap = () => widget.onOpen(part.uri!),
         );
+      }
     }
   }
 
