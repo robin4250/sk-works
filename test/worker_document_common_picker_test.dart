@@ -5,7 +5,7 @@ import 'package:sk_works/features/people/worker_document_page.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 
 class _Repository extends WorkerDocumentRepository {
-  _Repository(SupabaseClient client) : super.forTesting(client);
+  _Repository(super.client) : super.forTesting();
   @override
   String? get actorId => 'actor';
   final row = <String, dynamic>{'id': 'original-id', 'name': '履歴書', 'scope': 'upstream', 'is_required': false, 'expiry_required': true};
