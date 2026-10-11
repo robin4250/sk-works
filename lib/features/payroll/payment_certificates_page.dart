@@ -267,8 +267,10 @@ class _PaymentCertificatePreviewPageState
       await Printing.sharePdf(bytes: bytes,
         filename: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf');
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.isEnglish ? 'Could not open save/share: $error' : '保存・共有を開けませんでした: $error')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.isEnglish ? 'Could not open save/share: $error' : '保存・共有を開けませんでした: $error')));
+      }
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
