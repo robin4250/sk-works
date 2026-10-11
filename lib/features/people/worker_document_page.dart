@@ -6,6 +6,7 @@ import '../help/floating_help_controller.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
 import 'worker_document_send_page.dart';
@@ -105,7 +106,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     if (widget.view == WorkerDocumentView.settings) return _buildSettings();
     final workerId = _selectedWorkerId;
     final visibleRequirements = _requirements
-        .where((row) => _scope == 'all' || row['scope']?.toString() == _scope)
+        .where((row) => workerDocumentMatchesScope(row['scope'], _scope))
         .toList(growable: false);
     final statusByRequirement = <String, Map<String, dynamic>>{
       for (final row in _statuses.where(
@@ -320,7 +321,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   }
 
   Widget _buildSettings() {
-    final rows = _requirements.where((r) => r['scope'] == _scope).toList();
+    final rows = _requirements.where((r) => workerDocumentMatchesScope(r['scope'], _scope)).toList();
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr('必要書類設定'))),
       body: _loading
@@ -554,6 +555,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   items: const [
                     DropdownMenuItem(value: 'internal', child: Text('社内手続き')),
                     DropdownMenuItem(value: 'upstream', child: Text('取引先提出')),
+                    DropdownMenuItem(value: 'both', child: Text('自社・取引会社で共用')),
                   ],
                   onChanged: (value) {
                     if (value != null) setDialogState(() => scope = value);
@@ -919,7 +921,7 @@ class _RequirementTile extends StatelessWidget {
       'missing': '不足',
       'expired': '期限切れ',
     };
-    final scopeLabel = requirement['scope'] == 'upstream' ? '取引先' : '社内';
+    final scopeLabel = workerDocumentScopeLabel(requirement['scope']);
     final requiredLabel = requirement['is_required'] == true ? '必須' : '任意';
     final expiry = status?['expires_at']?.toString();
     final expiryDate = _parseDocumentDate(expiry);

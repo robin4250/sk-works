@@ -30,6 +30,14 @@ insert into document_requirements values('${r}','${c}','身分証明 写真',tru
 insert into worker_document_statuses values('${c}','${w}','${r}','${portrait}','submitted');
 insert into storage.objects values('worker-documents','${portrait}'),('worker-documents','${other}');
 set fixture.actor='${u}';`);
+// Apply the actual shared-scope migration before the actual personnel read migration.
+await db.exec(`alter table document_requirements add column upstream_name text not null default '', add constraint document_requirements_scope_check check(scope in ('internal','upstream')), add constraint document_requirement_upstream_scope check((scope='upstream' or upstream_name='') and upstream_name=btrim(upstream_name) and char_length(upstream_name)<=200);`);
+const original=fs.readFileSync(root+'/supabase/migrations/20261010222901_send_qualification_extra_photo_snapshots.sql','utf8');
+await db.exec(original.slice(original.indexOf('CREATE OR REPLACE FUNCTION private.company_document_exchange')));
+await db.exec(fs.readFileSync(root+'/supabase/migrations/20261011204133_worker_document_shared_scope.sql','utf8'));
+await db.exec(`update document_requirements set scope='both',upstream_name='取引会社';`);
+assert.equal((await db.query("select count(*)::int n from document_requirements where scope in ('internal','both')")).rows[0].n,1);
+assert.equal((await db.query("select count(*)::int n from document_requirements where scope in ('upstream','both')")).rows[0].n,1);
 await db.exec(fs.readFileSync(root+'/supabase/migrations/20261011204715_employee_personnel_read_view.sql','utf8'));
 await db.exec('set role authenticated');
 let value=(await db.query('select public.employee_personnel_view($1) payload',[c])).rows[0].payload;
@@ -57,4 +65,4 @@ await assert.rejects(db.query('select public.employee_personnel_view($1)',[c]),e
 await db.exec('reset role;set role anon');
 await assert.rejects(db.query('select public.employee_personnel_view($1)',[c]),e=>e.code==='42501');
 await db.close();
-console.log('PASS: four permitted roles, shared profile/family data, tenant isolation, current saved portrait only; employee, disabled manager, blocked account and anonymous denied');
+console.log('PASS: ACTUAL SHARED + PERSONNEL MIGRATIONS together; one canonical both-scope portrait; four permitted roles, shared profile/family data, tenant isolation, current saved portrait only; employee, disabled manager, blocked account and anonymous denied');
