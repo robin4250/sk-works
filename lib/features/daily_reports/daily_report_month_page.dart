@@ -37,8 +37,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     try {
       final repository = _repository;
       final actor = _actor;
-      if (repository == null || actor == null)
+      if (repository == null || actor == null) {
         throw StateError('ログインを確認してください。');
+      }
       repository.checkActor(actor);
       final entries = await repository.list(_month);
       repository.checkActor(actor);
@@ -48,8 +49,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       if (!mounted || generation != _generation) return;
       setState(() => _error = '日報一覧を取得できません。ログイン状態を確認して再読み込みしてください。');
     } finally {
-      if (mounted && generation == _generation)
+      if (mounted && generation == _generation) {
         setState(() => _loading = false);
+      }
     }
   }
 
@@ -60,8 +62,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
         actor == null ||
         _loading ||
         _exporting ||
-        _entries.isEmpty)
+        _entries.isEmpty) {
       return;
+    }
     final month = _month;
     final entries = List<DailyReportMonthEntry>.of(_entries);
     setState(() => _exporting = true);
@@ -110,7 +113,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
         } catch (_) {}
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -118,6 +121,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
             ),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
