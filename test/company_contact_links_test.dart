@@ -52,4 +52,24 @@ void main() {
     await tester.pump();
     expect(opened, [phone]);
   });
+  testWidgets(
+    'a number inside notes opens its phone and keeps selection available',
+    (tester) async {
+      final opened = <Uri>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CompanyNotesLinks(
+              text: '090-1234-5678',
+              onOpen: (uri) async => opened.add(uri),
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(SelectionArea), findsOneWidget);
+      await tester.tap(find.text('090-1234-5678'));
+      await tester.pump();
+      expect(opened.map((uri) => uri.toString()), ['tel:09012345678']);
+    },
+  );
 }

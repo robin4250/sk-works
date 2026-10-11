@@ -82,21 +82,23 @@ class _CompanyNotesLinksState extends State<CompanyNotesLinks> {
   @override
   Widget build(BuildContext context) {
     var index = 0;
-    return SelectableText.rich(
-      TextSpan(
-        children: [
-          for (final part in _parts)
-            TextSpan(
-              text: part.text,
-              recognizer: part.uri == null ? null : _recognizers[index++],
-              style: part.uri == null
-                  ? null
-                  : TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      decoration: TextDecoration.underline,
-                    ),
-            ),
-        ],
+    return SelectionArea(
+      child: Text.rich(
+        TextSpan(
+          children: [
+            for (final part in _parts)
+              TextSpan(
+                text: part.text,
+                recognizer: part.uri == null ? null : _recognizers[index++],
+                style: part.uri == null
+                    ? null
+                    : TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+              ),
+          ],
+        ),
       ),
     );
   }
