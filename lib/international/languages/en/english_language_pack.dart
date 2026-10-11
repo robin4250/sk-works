@@ -4,6 +4,8 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "確認中": "Checking",
+    "作業中の現場があります。現場移動を記録してから退勤してください。": "A site visit is still open. Record leaving the site before checking out.",
     "協力会社への工事代金を、出勤実績と支払設定から自動計算して確認・印刷・保存・共有します。": "Calculate partner-company construction payments from attendance and payment settings, then review, print or share them.",
     "支払証明書設定の日給/時給、残業・早出・夜勤・休日系の計算式、名称自由の手当、福利厚生費率、消費税率を使って自動計算します。登録済みの協力会社は出勤がなくても当月の空欄プレビューを開けます。プレビューだけでは出勤・支払記録は保存しません。設定プレビューと本帳票は同じPDF生成ロジックです。プレビューの「保存・共有」から、iPhoneでは「ファイルに保存」を選ぶと表示中のPDFを保存できます。": "Calculations use the registered daily or hourly rate, overtime, early-work, night-work and holiday formulas, named allowances, welfare rate and consumption-tax rate. Registered partner companies can open a blank preview for the current month even without attendance. Previewing alone does not save attendance or payment records. Settings previews and actual certificates use the same PDF generation logic. Choose Save / Share in the preview, then Save to Files on iPhone to save the displayed PDF.",
     "請求内容を確認・作成し、拡大縮小できるPDFプレビュー、印刷、保存・共有、承認を行います。": "Review or create invoices, zoom PDF previews, print, share and approve them.",

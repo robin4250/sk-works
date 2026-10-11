@@ -8,6 +8,7 @@ import 'gps_photo_capture_controller.dart';
 import 'gps_photo_capture_result.dart';
 import 'route_journey_capture_draft.dart';
 import 'route_journey_capture_repository.dart';
+import 'route_journey_visit_progress.dart';
 
 abstract class RouteJourneyCaptureAccess {
   String get userId;
@@ -75,14 +76,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   bool _loading = false, _busy = false, _loadFailed = false;
   int _generation = 0;
   bool _left = false;
-  Map? get _openVisit {
-    final visits = _workspace?['visits'];
-    if (visits is! List) return null;
-    return visits
-        .whereType<Map>()
-        .where((row) => row['end_capture_id'] == null)
-        .singleOrNull;
-  }
+  RouteJourneyVisitProgress? get _progress => _workspace == null
+      ? null
+      : RouteJourneyVisitProgress.fromWorkspace(_workspace!, widget.sourceId);
+  Map? get _openVisit => _progress?.openVisit;
 
   bool get _visitsEnabled => _workspace?['visit_contract_version'] == 1;
 
@@ -274,6 +271,37 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         final origin = _origin!;
         // Leaving a visited site records the action time only. Do not
         // request another camera shot or GPS sample for the move action.
+        if (_visitsEnabled) {
+          final fresh = await repository.workspace(widget.sourceId);
+          if (!_active(generation)) return;
+          _checkActor();
+          final progress = RouteJourneyVisitProgress.fromWorkspace(
+            fresh,
+            widget.sourceId,
+          );
+          final previousOpen = _openVisit;
+          final freshOpen = progress?.openVisit;
+          if (progress == null ||
+              fresh['company_id'] != workspace['company_id'] ||
+              fresh['worker_id'] != workspace['worker_id'] ||
+              fresh['work_date'] != workspace['work_date'] ||
+              fresh['route_assignment_id'] != workspace['route_assignment_id'] ||
+              (previousOpen == null &&
+                  (!progress.canArrive ||
+                      !progress.remainingStopIds.contains(stopId))) ||
+              (previousOpen != null &&
+                  (freshOpen == null ||
+                      freshOpen['start_capture_id'] !=
+                          previousOpen['start_capture_id'] ||
+                      freshOpen['route_stop_id'] != stopId))) {
+            setState(() {
+              _workspace = fresh;
+              _stopId = freshOpen?['route_stop_id']?.toString();
+            });
+            return;
+          }
+          setState(() => _workspace = fresh);
+        }
         final isMove = _visitsEnabled && _openVisit != null;
         if (isMove &&
             (_openVisit!['route_stop_id'] is! String ||
@@ -536,15 +564,24 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                       ),
                       items: [
                         for (final stop in stops)
-                          DropdownMenuItem(
-                            value: stop['id'] as String,
-                            child: Text(
-                              '${stop['stop_order']}. ${stop['label']}',
-                              overflow: TextOverflow.ellipsis,
+                          if (!_visitsEnabled ||
+                              _openVisit != null ||
+                              _progress?.remainingStopIds.contains(
+                                    stop['id'],
+                                  ) ==
+                                  true)
+                            DropdownMenuItem(
+                              value: stop['id'] as String,
+                              child: Text(
+                                '${stop['stop_order']}. ${stop['label']}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
                       ],
-                      onChanged: _busy || _openVisit != null
+                      onChanged:
+                          _busy ||
+                              _openVisit != null ||
+                              (_visitsEnabled && _progress?.canArrive != true)
                           ? null
                           : (value) => setState(() => _stopId = value),
                     ),
@@ -562,6 +599,8 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                               !_loadFailed &&
                               enabled &&
                               _openVisit == null &&
+                              _progress?.canArrive == true &&
+                              _progress!.remainingStopIds.contains(_stopId) &&
                               _origin != null &&
                               _stopId != null
                           ? _captureOrRetry
