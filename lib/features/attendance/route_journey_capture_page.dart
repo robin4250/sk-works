@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../international/language_controller.dart';
+import '../help/floating_help_controller.dart';
 import '../daily_reports/daily_report_page.dart';
 import '../daily_reports/route_visit_report_context.dart';
 import 'attendance_capture_metadata_service.dart';
@@ -619,6 +620,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    FloatingHelpController.setContext(featureKey: 'attendance');
     final workspace = _workspace;
     final stops = workspace?['stops'] is List
         ? (workspace!['stops'] as List).whereType<Map>().toList()

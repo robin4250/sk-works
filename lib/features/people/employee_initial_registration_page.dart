@@ -5,6 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
+import 'employee_registration_page.dart';
+import '../../international/language_controller.dart';
 
 class EmployeeInitialRegistrationPage extends StatefulWidget {
   const EmployeeInitialRegistrationPage({super.key});
@@ -69,9 +71,8 @@ class _EmployeeInitialRegistrationPageState
     try {
       await repository.saveTestFlightUrl(_testFlightUrl.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('TestFlight URLを保存しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('TestFlight URLを保存しました')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
@@ -137,7 +138,10 @@ class _EmployeeInitialRegistrationPageState
     final unsent = _employees.where((item) => !item.invited).length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('初回登録', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text(
+          '従業員登録',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           IconButton(
             tooltip: '再読み込み',
@@ -152,6 +156,22 @@ class _EmployeeInitialRegistrationPageState
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
+                  FilledButton.icon(
+                    onPressed: _busyWorkerId != null
+                        ? null
+                        : () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const EmployeeRegistrationPage(),
+                              ),
+                            );
+                            if (mounted) _load();
+                          },
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: Text(SkoLanguageController.tr('従業員を追加')),
+                  ),
+                  const SizedBox(height: 12),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -170,7 +190,10 @@ class _EmployeeInitialRegistrationPageState
                         children: [
                           const Text(
                             'TestFlight誘導URL',
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           const Text(
@@ -214,7 +237,7 @@ class _EmployeeInitialRegistrationPageState
                     const Card(
                       child: Padding(
                         padding: EdgeInsets.all(18),
-                        child: Text('先に「従業員登録」で名前と電話番号を登録してください。'),
+                        child: Text('上の「従業員を追加」から名前と電話番号を登録してください。'),
                       ),
                     ),
                   for (final employee in _employees)
@@ -243,7 +266,9 @@ class _EmployeeInitialRegistrationPageState
                                 child: _busyWorkerId == employee.id
                                     ? const SizedBox.square(
                                         dimension: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
                                       )
                                     : const Text('送信'),
                               ),

@@ -49,12 +49,14 @@ void main() {
     }
 
     expect(app, contains("label: SkoLanguageController.tr('出勤表一覧')"));
-    expect(app, contains("label: SkoLanguageController.tr('社員データ')"));
+    expect(app, contains("label: SkoLanguageController.tr('社員資格書類')"));
+    final resources = File('lib/features/home/employee_resources_page.dart').readAsStringSync();
+    expect(resources, contains("('people', '社員データ'"));
     expect(app, contains("label: SkoLanguageController.tr('車両ルート')"));
     expect(app, contains("label: SkoLanguageController.tr('本日のLINE')"));
     expect(app, contains("label: SkoLanguageController.tr('背景')"));
     expect(app, contains("label: SkoLanguageController.tr('資格登録')"));
-    expect(app, contains("label: SkoLanguageController.tr('従業員資格')"));
+    expect(resources, contains("('employee_qualifications', '従業員資格'"));
     expect(app, contains("key: 'settings'"));
     expect(app, contains('homeEligible: false'));
     expect(app, isNot(contains("key: 'employee_onboarding_approvals'")));
