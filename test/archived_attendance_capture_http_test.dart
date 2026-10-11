@@ -141,8 +141,4 @@ void main() {
 }
 
 // Keep Flutter plugin mocks while exercising the real loopback HTTP server.
-class _RealHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) =>
-      super.createHttpClient(context);
-}
+class _RealHttpOverrides extends HttpOverrides {}
