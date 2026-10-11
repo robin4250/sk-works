@@ -835,48 +835,6 @@ class _HomeReorderSurface extends StatelessWidget {
   );
 }
 
-// Only the handle competes for a long press. A stationary finger on card text
-// must remain available to the vertical scroll recognizer, regardless of delay.
-class _HomeReorderSurface extends StatelessWidget {
-  const _HomeReorderSurface({
-    required this.data,
-    required this.feedbackWidth,
-    required this.child,
-  });
-  final String data;
-  final double feedbackWidth;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      child,
-      Positioned(
-        top: 0,
-        right: 0,
-        child: LongPressDraggable<String>(
-          data: data,
-          delay: const Duration(milliseconds: 600),
-          feedback: SizedBox(
-            width: feedbackWidth,
-            child: Material(color: Colors.transparent, child: child),
-          ),
-          childWhenDragging: const SizedBox(width: 28, height: 28),
-          child: Tooltip(
-            message: 'ここを長押しして並べ替え',
-            child: SizedBox(
-              key: ValueKey('home-reorder-$data'),
-              width: 28,
-              height: 28,
-              child: const Icon(Icons.drag_indicator, size: 18),
-            ),
-          ),
-        ),
-      ),
-    ],
-  );
-}
-
 class _TodayAttendanceHomeCard extends StatelessWidget {
   const _TodayAttendanceHomeCard({
     required this.buttonOpacity,
