@@ -772,6 +772,7 @@ const englishLanguagePack = LanguagePack(
     'この日の出勤メンバーがまだありません': 'No attendance members for this date yet',
     '日付を変更': 'Change Date',
     '出勤確認写真一覧': 'Attendance Photos',
+    '月の日報一覧': 'Monthly daily reports',
     '写真ページを印刷できませんでした': 'Could not print the photo pages',
     '写真ページのみ印刷': 'Print photo pages only',
     '写真の記録がありません': 'No photo records',
