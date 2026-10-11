@@ -169,8 +169,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         labelText: '従業員検索',
                         prefixIcon: Icon(Icons.person_search_outlined),
                       ),
-                      onChanged: (value) =>
-                          setState(() => _workerQuery = value),
+                      onChanged: (value) => setState(() {
+                        _workerQuery = value;
+                        _selectedWorkerId = null;
+                      }),
                     ),
                   ),
                   SizedBox(

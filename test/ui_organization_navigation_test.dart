@@ -24,7 +24,8 @@ class DocumentFixture extends WorkerDocumentRepository {
     'requirements': [
       if (!removed.contains('internal'))
         {'id': 'internal', 'name': '社内書類', 'scope': 'internal'},
-      {'id': 'upstream', 'name': '取引先書類', 'scope': 'upstream'},
+      if (!removed.contains('upstream'))
+        {'id': 'upstream', 'name': '取引先書類', 'scope': 'upstream'},
     ],
     'statuses': [
       {
@@ -125,6 +126,7 @@ void main() {
       await tester.tap(find.text('削除'));
       await tester.pumpAndSettle();
       expect(repo.removed, ['upstream']);
+      expect(find.text('取引先書類'), findsNothing);
     },
   );
 }
