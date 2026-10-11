@@ -15,7 +15,7 @@ void main() {
     expect(member.ageOn(DateTime(2026, 10, 3)), 16);
   });
 
-  test('family details stay in profile and out of employee detail/list print', () {
+  test('family details are shared into the permitted detail and kept out of list print', () {
     final detail = File(
       'lib/features/people/employee_personnel_detail_page.dart',
     ).readAsStringSync();
@@ -25,7 +25,9 @@ void main() {
       'lib/features/people/employee_personnel_print_page.dart',
     ).readAsStringSync();
 
-    expect(detail, isNot(contains("'家族・扶養情報'")));
+    expect(detail, contains("'家族・扶養情報'"));
+    expect(detail, contains("if (canViewFamily)"));
+    expect(detail, contains("required this.canViewFamily"));
     expect(detail, isNot(contains("'扶養対象'")));
     expect(profile, contains("'家族・扶養情報'"));
     expect(profile, contains("'配偶者・子供・扶養家族を追加'"));

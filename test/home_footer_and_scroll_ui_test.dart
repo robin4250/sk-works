@@ -105,7 +105,7 @@ void main() {
     },
   );
   testWidgets(
-    'a short finger pause still scrolls through cards and shortcut buttons',
+    'a pause longer than reorder delay still scrolls through card and button text',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(375, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -120,7 +120,7 @@ void main() {
         final gesture = await tester.startGesture(
           tester.getCenter(find.text(label)),
         );
-        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(milliseconds: 900));
         // First cross touch slop, then continue the same finger movement.
         await gesture.moveBy(const Offset(0, -25));
         await tester.pump(const Duration(milliseconds: 16));
@@ -136,10 +136,10 @@ void main() {
         expect(tester.takeException(), isNull);
       }
       // A deliberate long press continues to provide the existing reorder feedback.
-      await tester.ensureVisible(find.text('操作8'));
+      await tester.ensureVisible(find.byKey(const ValueKey('home-reorder-action-8')));
       await tester.pump();
       final gesture = await tester.startGesture(
-        tester.getCenter(find.text('操作8')),
+        tester.getCenter(find.byKey(const ValueKey('home-reorder-action-8'))),
       );
       await tester.pump(const Duration(milliseconds: 700));
       await gesture.moveBy(const Offset(10, 20));
