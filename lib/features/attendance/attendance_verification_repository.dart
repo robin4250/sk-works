@@ -205,6 +205,11 @@ class AttendanceVerificationRepository {
     );
   }
 
+  Future<void> validateNewClockInOptions() async {
+    final status = await loadHomeAttendanceStatus();
+    await _requireNewOptionalWork(vehicleId: status.selectedVehicleId, routeId: status.selectedRouteId);
+  }
+
   Future<void> _requireNewOptionalWork({String? vehicleId, String? routeId}) async {
     if ((vehicleId == null || vehicleId.trim().isEmpty) &&
         (routeId == null || routeId.trim().isEmpty)) return;
@@ -519,8 +524,17 @@ class AttendanceVerificationRepository {
 
   Future<String> uploadCapturedPhoto(CapturedPhoto photo, CaptureShiftContext context,
       String workerId) async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('ログイン情報を確認してください。');
     if (context.companyId != await _companyId()) {
       throw StateError('撮影中に会社が変更されました');
+    }
+    if (context.sourceClockInId == null) {
+      final status = await loadHomeAttendanceStatus();
+      await _requireNewOptionalWork(vehicleId: status.selectedVehicleId, routeId: context.routeId);
+    }
+    if (_client.auth.currentUser?.id != actor) {
+      throw StateError('撮影中にログイン情報が変更されました');
     }
     final path = '${context.companyId}/attendance/${context.siteId ?? context.routeId ?? 'route'}/$workerId/${DateTime.now().microsecondsSinceEpoch}.jpg';
     await _client.storage.from(_bucket).uploadBinary(path, photo.bytes,
