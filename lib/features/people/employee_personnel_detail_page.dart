@@ -13,11 +13,17 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     required this.record,
     required this.allEmployees,
     required this.companyName,
+    this.canManage = true,
+    required this.canViewFamily,
+    this.portraitLoader,
   });
 
   final PersonRecord record;
   final List<PersonRecord> allEmployees;
   final String companyName;
+  final bool canManage;
+  final bool canViewFamily;
+  final Future<String?> Function()? portraitLoader;
 
   Future<bool?> _chooseScope(BuildContext context, String action) {
     return showModalBottomSheet<bool>(
@@ -88,8 +94,9 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     if (dial.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: dial);
     if (!await launchUrl(uri) && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('電話を開始できませんでした')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('電話を開始できませんでした')));
     }
   }
 
@@ -102,8 +109,9 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     });
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
         context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Googleマップを開けませんでした')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Googleマップを開けませんでした')));
     }
   }
 
@@ -155,30 +163,37 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
-            for (final row in rows)
-              Card(
-                child: ListTile(
-                  title: Text(row.$1),
-                  subtitle: Text(
-                    row.$2.trim().isEmpty ? '未登録' : row.$2,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  trailing: switch (row.$1) {
-                    '電話番号' || '緊急連絡先電話番号' when row.$2.trim().isNotEmpty =>
-                      const Icon(Icons.phone_outlined),
-                    '住所' || '緊急連絡先住所' when row.$2.trim().isNotEmpty =>
-                      const Icon(Icons.map_outlined),
-                    _ => null,
-                  },
-                  onTap: switch (row.$1) {
-                    '電話番号' || '緊急連絡先電話番号' when row.$2.trim().isNotEmpty =>
-                      () => _callPhone(context, row.$2),
-                    '住所' || '緊急連絡先住所' when row.$2.trim().isNotEmpty =>
-                      () => _openGoogleMap(context, row.$2),
-                    _ => null,
-                  },
-                ),
+            _PersonnelPortrait(key: ValueKey(record.id), loader: portraitLoader),
+            const SizedBox(height: 12),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(1),
+                  1: FlexColumnWidth(2),
+                },
+                border: TableBorder.all(color: Theme.of(context).dividerColor),
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                children: [
+                  for (final row in rows)
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(row.$1),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            row.$2.trim().isEmpty ? '未登録' : row.$2,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
+            ),
             _actionCard(
               context,
               label: '電話番号',
@@ -237,48 +252,158 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
                   ? null
                   : () => _openGoogleMap(context, record.emergencyAddress),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push<bool>(
-                MaterialPageRoute(
-                  builder: (_) => EmployeePersonnelEditPage(record: record),
-                ),
+            const SizedBox(height: 16),
+            if (canViewFamily) ...[
+              const Text(
+                '家族・扶養情報',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('編集'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
+              const Text('社会保険手続き用・プロフィールの登録内容を表示'),
+              const SizedBox(height: 8),
+              Text(
+                '家族構成：${record.familyComposition.trim().isEmpty ? '未登録' : record.familyComposition}',
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _send(context),
-                    icon: const Icon(Icons.send_outlined),
-                    label: const Text('送信'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
+              const SizedBox(height: 8),
+              if (record.familyMembers.isEmpty)
+                const Text('家族・扶養家族の登録はありません')
+              else
+                Table(
+                  border: TableBorder.all(
+                    color: Theme.of(context).dividerColor,
+                  ),
+                  columnWidths: const {
+                    0: FlexColumnWidth(2),
+                    1: FlexColumnWidth(2),
+                    2: FlexColumnWidth(1),
+                    3: FlexColumnWidth(1),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
+                      ),
+                      children: [
+                        for (final label in ['氏名', '生年月日', '続柄', '扶養'])
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                    for (final member in record.familyMembers)
+                      TableRow(
+                        children: [
+                          for (final value in [
+                            member.name,
+                            member.birthDate == null
+                                ? '未登録'
+                                : '${member.birthDate!.year}/${member.birthDate!.month.toString().padLeft(2, '0')}/${member.birthDate!.day.toString().padLeft(2, '0')}',
+                            member.relation,
+                            member.isDependent ? 'あり' : 'なし',
+                          ])
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(value.isEmpty ? '未登録' : value),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+            ],
+            if (canManage) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => EmployeePersonnelEditPage(record: record),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _print(context),
-                    icon: const Icon(Icons.print_outlined),
-                    label: const Text('印刷'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('編集'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _send(context),
+                      icon: const Icon(Icons.send_outlined),
+                      label: const Text('送信'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _print(context),
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('印刷'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _PersonnelPortrait extends StatefulWidget {
+  const _PersonnelPortrait({super.key, this.loader});
+  final Future<String?> Function()? loader;
+  @override
+  State<_PersonnelPortrait> createState() => _PersonnelPortraitState();
+}
+
+class _PersonnelPortraitState extends State<_PersonnelPortrait> {
+  late final Future<String?> _portrait =
+      widget.loader?.call() ?? Future.value(null);
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SizedBox(
+      width: 132,
+      height: 164,
+      child: FutureBuilder<String?>(
+        future: _portrait,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          Widget placeholder(String text) => Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.person_outline, size: 64),
+              Text(text, textAlign: TextAlign.center),
+            ],
+          );
+          if (snapshot.hasError) return placeholder('顔写真を取得できません');
+          final url = snapshot.data;
+          if (url == null) return placeholder('顔写真未登録');
+          return Image.network(
+            url,
+            fit: BoxFit.contain,
+            semanticLabel: '必要書類に登録済みの顔写真',
+            errorBuilder: (_, _, _) => placeholder('顔写真を表示できません'),
+          );
+        },
+      ),
+    ),
+  );
 }
