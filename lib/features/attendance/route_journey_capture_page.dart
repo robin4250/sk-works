@@ -282,6 +282,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
           final previousOpen = _openVisit;
           final freshOpen = progress?.openVisit;
           if (progress == null ||
+              fresh['company_id'] != workspace['company_id'] ||
+              fresh['worker_id'] != workspace['worker_id'] ||
+              fresh['work_date'] != workspace['work_date'] ||
+              fresh['route_assignment_id'] != workspace['route_assignment_id'] ||
               (previousOpen == null &&
                   (!progress.canArrive ||
                       !progress.remainingStopIds.contains(stopId))) ||

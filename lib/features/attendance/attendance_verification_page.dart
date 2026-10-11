@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../daily_reports/daily_report_page.dart';
 import '../../international/language_controller.dart';
@@ -117,7 +118,7 @@ class _AttendanceVerificationPageState
   Map<String, dynamic>? _savedCaptureVerification;
   String? _savedVerificationActor;
   AttendanceShiftContext? _unconfirmedCheckout;
-  bool get _editingLocked => _saving || _pendingCaptureDraft != null || _savedCaptureVerification != null;
+  bool get _editingLocked => _saving || _pendingCaptureDraft != null || _savedCaptureVerification != null || _unconfirmedCheckout != null;
   bool _canManageAttendance = false;
   String? _error;
 
@@ -602,6 +603,11 @@ class _AttendanceVerificationPageState
     final siteId = _siteId;
     if (repository == null || siteId == null) return;
 
+    final operationActor = repository.userId;
+    if (operationActor == null) return;
+    void requireActor() {
+      if (repository.userId != operationActor) throw StateError('操作したアカウントを再確認してください');
+    }
     setState(() => _saving = true);
     try {
       final position = await _currentPosition();
@@ -651,6 +657,7 @@ class _AttendanceVerificationPageState
       final uncertain = _unconfirmedCheckout;
       if (uncertain != null) {
         final recovered = await repository.recoverClockOut(uncertain);
+        requireActor();
         if (recovered == null) throw StateError('退勤の保存結果を確認できませんでした。再読み込みしてください');
         _savedCaptureVerification = recovered;
         _unconfirmedCheckout = null;
@@ -663,10 +670,11 @@ class _AttendanceVerificationPageState
       final pending = _pendingCaptureDraft;
       if (pending != null) {
         final saved = await repository.submitCaptureDraft(pending);
+        requireActor();
         if (mounted) { setState(() {
           _pendingCaptureDraft = null;
           _savedCaptureVerification = saved;
-          _savedVerificationActor = repository.userId;
+          _savedVerificationActor = operationActor;
         }); }
         await _finishSavedVerification(saved);
         return;
@@ -813,7 +821,7 @@ class _AttendanceVerificationPageState
 
       if (_eventType == 'clock_out') {
         _unconfirmedCheckout = capture == null ? _shift : null;
-        _savedVerificationActor = repository.userId;
+        _savedVerificationActor = operationActor;
       }
       final saved = await repository.createVerification(
         workerId: workerId,
@@ -835,15 +843,23 @@ class _AttendanceVerificationPageState
         },
       );
 
+      requireActor();
       if (mounted) { setState(() {
         _pendingCaptureDraft = null;
         _savedCaptureVerification = saved;
-        _savedVerificationActor = repository.userId;
+        _savedVerificationActor = operationActor;
         _unconfirmedCheckout = null;
       }); }
       await _finishSavedVerification(saved);
     } catch (error) {
       if (!mounted) return;
+      if (error is PostgrestException && error.code == 'P0001' &&
+          error.message == 'finish current visit before clock-out') {
+        _unconfirmedCheckout = null;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          SkoLanguageController.tr('作業中の現場があります。現場移動を記録してから退勤してください。'))));
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_savedCaptureVerification != null
             ? '勤怠は登録済みです。日報を開けませんでした: $error'
@@ -856,6 +872,9 @@ class _AttendanceVerificationPageState
 
   Future<void> _finishSavedVerification(Map<String, dynamic> saved) async {
       if (!mounted) return;
+      if (_savedVerificationActor == null || _repository?.userId != _savedVerificationActor) {
+        throw StateError('操作したアカウントを再確認してください');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

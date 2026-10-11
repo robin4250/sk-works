@@ -13,6 +13,8 @@ void main() {
     'mismatch',
     'read-failure',
     'actor-change',
+    'actor-company-read',
+    'actor-insert-response',
   ]) {
     test('manual route checkout recovery: $scenario', () async {
       const actor = '10000000-0000-0000-0000-000000000002';
@@ -67,6 +69,8 @@ void main() {
             },
           };
         } else if (path.endsWith('/company_members')) {
+          if (scenario == 'actor-company-read')
+            await client.auth.signOut(scope: SignOutScope.local);
           response = [
             {'company_id': company},
           ];
@@ -86,7 +90,9 @@ void main() {
             if (scenario == 'read-failure') {
               request.response.statusCode = 503;
               response = {'code': 'PGRST000', 'message': 'Unavailable'};
-            } else if (scenario == 'race' && reads == 1) {
+            } else if ((scenario == 'race' ||
+                    scenario == 'actor-insert-response') &&
+                reads == 1) {
               response = null;
             } else {
               response = {
@@ -97,12 +103,17 @@ void main() {
             }
           } else {
             inserts++;
-            request.response.statusCode = 409;
-            response = {
-              'code': '23505',
-              'message':
-                  'duplicate key attendance_verifications_one_out_per_start',
-            };
+            if (scenario == 'actor-insert-response') {
+              await client.auth.signOut(scope: SignOutScope.local);
+              response = saved;
+            } else {
+              request.response.statusCode = 409;
+              response = {
+                'code': '23505',
+                'message':
+                    'duplicate key attendance_verifications_one_out_per_start',
+              };
+            }
           }
         } else {
           request.response.statusCode = 500;
@@ -146,7 +157,9 @@ void main() {
           expect(inserts, scenario == 'race' ? 1 : 0);
         } else {
           await expectLater(operation, throwsA(anything));
-          expect(inserts, 0);
+          expect(inserts, scenario == 'actor-insert-response' ? 1 : 0);
+          if (scenario == 'actor-company-read') expect(reads, 0);
+          if (scenario == 'actor-insert-response') expect(reads, 1);
         }
       } finally {
         await client.dispose();

@@ -578,6 +578,7 @@ class AttendanceVerificationRepository {
     final actor = userId;
     _requireMutationActor(actor);
     final companyId = await _companyId();
+    _requireMutationActor(actor);
     final row = await _client.from('attendance_verifications').select()
         .eq('company_id', companyId).eq('worker_id', shift.workerId)
         .eq('source_clock_in_id', shift.id).eq('event_type', 'clock_out').maybeSingle();
@@ -615,6 +616,7 @@ class AttendanceVerificationRepository {
     final actor = _client.auth.currentUser?.id;
     _requireMutationActor(actor);
     final companyId = await _companyId();
+    _requireMutationActor(actor);
     if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
       throw StateError('退勤対象の勤務を確認してください');
     }
@@ -623,7 +625,9 @@ class AttendanceVerificationRepository {
       throw StateError('退勤対象の勤務を確認してください');
     }
     if (shift != null && capture == null) {
+      _requireMutationActor(actor);
       final existing = await recoverClockOut(shift);
+      _requireMutationActor(actor);
       if (existing != null) return existing;
     }
 
@@ -719,7 +723,9 @@ class AttendanceVerificationRepository {
       return Map<String, dynamic>.from(row);
     } catch (_) {
       if (capture == null && shift != null) {
+        _requireMutationActor(actor);
         final existing = await recoverClockOut(shift);
+        _requireMutationActor(actor);
         if (existing != null) return existing;
         // An unknown insert result must never delete potentially saved evidence.
         rethrow;
