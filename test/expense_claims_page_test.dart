@@ -66,7 +66,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('r')),
-          matching: find.text('却下'),
+          matching: find.widgetWithText(Chip, '却下'),
         ),
         findsOneWidget,
       );
