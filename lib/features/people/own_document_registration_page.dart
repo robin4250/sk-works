@@ -551,7 +551,7 @@ class _OwnDocumentRegistrationPageState
                                     initialRequirementId: id,
                                   )
                                 : _repository is OwnDocumentPhotoGateway
-                                ? () => _editPhotos(status!)
+                                ? () => _editPhotos(status)
                                 : null,
                             trailing: TextButton(
                               onPressed: _saving
@@ -561,7 +561,7 @@ class _OwnDocumentRegistrationPageState
                                       initialRequirementId: id,
                                     )
                                   : _repository is OwnDocumentPhotoGateway
-                                  ? () => _editPhotos(status!)
+                                  ? () => _editPhotos(status)
                                   : () => _registerDocument(
                                       initialRequirementId: id,
                                     ),
