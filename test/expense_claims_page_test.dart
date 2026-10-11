@@ -5,40 +5,70 @@ import 'package:sk_works/features/expenses/expense_claim.dart';
 import 'package:sk_works/features/expenses/expense_claims_page.dart';
 import 'expense_fixture.dart';
 
+Future<void> reveal(WidgetTester tester, Finder target) async {
+  tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position
+      .jumpTo(0);
+  await tester.pump();
+  await tester.scrollUntilVisible(
+    target,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('unconnected all list shows every status and disables writes', (
-    tester,
-  ) async {
-    final claims = ExpenseClaims(
-      companyId: 'company',
-      claims: [
-        expenseFixture('p'),
-        expenseFixture('a', applicant: 'other', name: '別の社員').approve(),
-        expenseFixture('r').reject(),
-      ],
-    );
-    await tester.pumpWidget(
-      MaterialApp(home: ExpenseClaimsPage(claims: claims)),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('p')), findsOneWidget);
-    expect(find.byKey(const ValueKey('a')), findsOneWidget);
-    expect(find.byKey(const ValueKey('r')), findsOneWidget);
-    expect(find.textContaining('未承認 /'), findsOneWidget);
-    expect(find.textContaining('却下 /'), findsOneWidget);
-    for (final button in tester.widgetList<TextButton>(
-      find.widgetWithText(TextButton, '承認'),
-    )) {
-      expect(button.onPressed, isNull);
-    }
-    await tester.tap(find.text('別の社員'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('a')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p')), findsNothing);
-    expect(find.byKey(const ValueKey('r')), findsNothing);
-  });
   testWidgets(
-    'callback pending prevents duplicate writes and failure does not approve locally',
+    'all history, readable status and applicant link retain ID scope',
+    (tester) async {
+      final claims = ExpenseClaims(
+        companyId: 'company',
+        claims: [
+          expenseFixture('p'),
+          expenseFixture('a', applicant: 'other', name: '別の社員').approve(),
+          expenseFixture('r').reject(),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: ExpenseClaimsPage(claims: claims)),
+      );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.byKey(const ValueKey('p')));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('p')),
+          matching: find.text('未承認'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, '承認').first)
+            .onPressed,
+        isNull,
+      );
+      await reveal(tester, find.byKey(const ValueKey('r')));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('r')),
+          matching: find.text('却下'),
+        ),
+        findsOneWidget,
+      );
+      await reveal(tester, find.text('別の社員'));
+      await tester.tap(find.text('別の社員'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('p')), findsNothing);
+      expect(find.byKey(const ValueKey('r')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'callback pending blocks duplicates and failure never approves locally',
     (tester) async {
       final response = Completer<void>();
       var calls = 0;
@@ -56,6 +86,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.widgetWithText(TextButton, '承認'));
       final button = tester.widget<TextButton>(
         find.widgetWithText(TextButton, '承認'),
       );
@@ -65,12 +97,125 @@ void main() {
       expect(calls, 1);
       response.completeError(StateError('synthetic'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('未承認 /'), findsOneWidget);
+      expect(find.text('未承認'), findsOneWidget);
       expect(find.textContaining('更新結果を確認できません'), findsOneWidget);
     },
   );
+
   testWidgets(
-    'compact view preserves long descriptions and status with no overflow',
+    'status and destination filters combine without counting rejected money',
+    (tester) async {
+      final customer = ExpenseAllocation(
+        ExpenseCategory.customer,
+        counterpartyId: 'customer',
+        counterpartyName: '取引会社A',
+      );
+      final claims = ExpenseClaims(
+        companyId: 'company',
+        claims: [
+          expenseFixture('p'),
+          expenseFixture('a').approve().allocate(customer),
+          expenseFixture('r').approve().allocate(customer).reject(),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: ExpenseClaimsPage(claims: claims)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, '取引会社（2）'));
+      await tester.tap(find.widgetWithText(ChoiceChip, '承認済み'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('p')), findsNothing);
+      expect(find.byKey(const ValueKey('r')), findsNothing);
+      final amount = claims.entries.singleWhere((c) => c.id == 'a').amountYen;
+      expect(find.text('表示：1件 / この負担先の承認済み：1件・$amount円'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ChoiceChip, '却下'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('r')), findsOneWidget);
+      expect(find.byKey(const ValueKey('a')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'allocation requires category, registered company and explicit save; cancel never writes',
+    (tester) async {
+      final destinations = [
+        ExpenseAllocation(ExpenseCategory.ownCompany),
+        ExpenseAllocation(
+          ExpenseCategory.customer,
+          counterpartyId: 'customer-a',
+          counterpartyName: '取引会社A',
+        ),
+        ExpenseAllocation(
+          ExpenseCategory.customer,
+          counterpartyId: 'customer-b',
+          counterpartyName: '取引会社B',
+        ),
+        ExpenseAllocation(
+          ExpenseCategory.subcontractor,
+          counterpartyId: 'partner-a',
+          counterpartyName: '下請け会社A',
+        ),
+      ];
+      final sent = <ExpenseAllocation>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExpenseClaimsPage(
+            claims: ExpenseClaims(
+              companyId: 'company',
+              claims: [expenseFixture('a').approve()],
+            ),
+            destinations: destinations,
+            onAllocate: (_, d) async => sent.add(d),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.widgetWithText(OutlinedButton, '振り分け'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '振り分け'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '確認して保存'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byType(DropdownButtonFormField<ExpenseCategory>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取引会社').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '確認して保存'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取引会社B').last);
+      await tester.pumpAndSettle();
+      expect(find.text('変更後：取引会社 / 取引会社B'), findsOneWidget);
+      expect(find.text('経費明細の表示先：取引会社の請求書'), findsOneWidget);
+      expect(sent, isEmpty);
+      await tester.tap(find.text('キャンセル'));
+      await tester.pumpAndSettle();
+      expect(sent, isEmpty);
+      await tester.tap(find.widgetWithText(OutlinedButton, '振り分け'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<ExpenseCategory>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('自社').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確認して保存'));
+      await tester.pumpAndSettle();
+      expect(sent.single.category, ExpenseCategory.ownCompany);
+      expect(find.text('費用の負担先：自社'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    '320 pixel view with large text scrolls through header and long claim; help opens',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 640));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -97,11 +242,18 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('却下 /'), findsOneWidget);
+      await reveal(tester, find.widgetWithText(TextButton, '承認'));
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('経費の承認・振り分けのヘルプ'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('確定済み帳票は変更しません'), findsOneWidget);
+      await tester.tap(find.text('閉じる'));
+      await tester.pumpAndSettle();
     },
   );
+
   testWidgets(
-    'old company callbacks cannot act after authoritative data changes',
+    'old company callback cannot write after authoritative data changes',
     (tester) async {
       var calls = 0;
       Future<void> approve(ExpenseClaim _) async {
@@ -119,6 +271,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.widgetWithText(TextButton, '承認'));
       final oldAction = tester
           .widget<TextButton>(find.widgetWithText(TextButton, '承認'))
           .onPressed!;
@@ -136,6 +290,7 @@ void main() {
       oldAction();
       await tester.pumpAndSettle();
       expect(calls, 0);
+      await reveal(tester, find.byKey(const ValueKey('new')));
       expect(find.byKey(const ValueKey('new')), findsOneWidget);
     },
   );

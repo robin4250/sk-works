@@ -195,12 +195,26 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('交通費'), findsOneWidget);
+      await tester.ensureVisible(find.widgetWithText(TextButton, '承認'));
       await tester.tap(find.widgetWithText(TextButton, '承認'));
       await tester.pumpAndSettle();
-      expect(find.text('承認済み / 自社'), findsOneWidget);
+      expect(find.text('費用の負担先：自社'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('claim')),
+          matching: find.text('承認済み'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.widgetWithText(TextButton, '却下'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('却下 /'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('claim')),
+          matching: find.text('却下'),
+        ),
+        findsOneWidget,
+      );
       expect(access.calls, 2);
     },
   );
@@ -247,6 +261,7 @@ void main() {
       MaterialApp(home: ExpenseManagementPage(access: access)),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(TextButton, '承認'));
     await tester.tap(find.widgetWithText(TextButton, '承認'));
     await tester.pump();
     access.actor = 'other';
