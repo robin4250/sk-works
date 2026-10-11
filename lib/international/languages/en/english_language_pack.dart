@@ -770,8 +770,6 @@ const englishLanguagePack = LanguagePack(
     '写真ページのみ印刷': 'Print photo pages only',
     '写真の記録がありません': 'No photo records',
     '読込中...': 'Loading...',
-    '撮影住所未取得': 'Photo address unavailable',
-    '保存済み写真を読み込めませんでした': 'Could not load the saved photo',
     '位置を地図で確認': 'View Location on Map',
     '日報 A4プレビュー': 'Daily Report A4 Preview',
     '日報機能を利用できません。': 'Daily Reports are unavailable.',
