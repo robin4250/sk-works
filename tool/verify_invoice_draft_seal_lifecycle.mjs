@@ -1,0 +1,108 @@
+// Synthetic disposable SQL only. Production connections are never opened.
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import assert from 'node:assert/strict';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+let db;
+if(process.argv[3]==='--pg17') {
+ const {validatePaidLeaveFixtureUrl}=await import('./paid_leave_pg17_database_guard.mjs');
+ const module=await import(pathToFileURL(path.resolve(process.argv[2])).href);
+ const Client=module.Client??module.default?.Client;
+ db=new Client({connectionString:validatePaidLeaveFixtureUrl(process.env.SKO_PAID_LEAVE_FIXTURE_URL)});
+ await db.connect();db.exec=q=>db.query(q);db.close=()=>db.end();
+ assert.equal(Math.floor(Number((await db.query('show server_version_num')).rows[0].server_version_num)/10000),17);
+ assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private','auth') and c.relkind in ('r','v','m')")).rows[0].n,0);
+} else {const {PGlite}=await import(pathToFileURL(path.resolve(process.argv[2])).href);db=new PGlite();}
+const cid='0f117273-0a06-4a2f-85ec-720a3c9f4cf4',other='00000000-0000-0000-0000-000000000001',uid='00000000-0000-0000-0000-000000000002';
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const extract=(text,name)=>{const re=new RegExp(`create (?:or replace )?function ${name.replaceAll('.','\\.')}\\([\\s\\S]*?end;? \\$\\$;`,'i');const found=text.match(re);assert.ok(found,`Function ${name} exists`);return found[0];};
+try {
+ await db.exec(`create role anon;create role authenticated;create schema private;create schema auth;
+ create function auth.uid() returns uuid language sql as $$select '${uid}'::uuid$$;
+ create table public.companies(id uuid primary key,name text,company_seal_style text);
+ create table public.company_members(company_id uuid,user_id uuid);
+ create table public.invoices(id uuid primary key default gen_random_uuid(),company_id uuid,status text default 'draft',snapshot jsonb default '{}',finalized_at timestamptz,approval_finalized_at timestamptz,updated_at timestamptz,subtotal int default 1);
+ create table public.payment_certificates(id uuid primary key default gen_random_uuid(),company_id uuid,snapshot jsonb default '{}');
+ create table public.payroll_statements(id uuid primary key default gen_random_uuid(),company_id uuid,detail jsonb default '{}');
+ create table public.invoice_approvals(invoice_id uuid,approver_user_id uuid,status text default 'pending',approved_at timestamptz);
+ create table public.invoice_approval_audit(id serial,invoice_id uuid,company_id uuid,actor_user_id uuid,action text);
+ create function private.aoyagi_reisho_name_supported(text) returns boolean language sql as $$select true$$;
+ create function private.ensure_invoice_approval_rows(uuid) returns void language sql as $$select null::void$$;
+ create function private.invalidate_invoice_approval(p_id uuid) returns void language plpgsql as $$begin
+ update public.invoice_approvals set status='pending',approved_at=null where invoice_id=p_id;
+ update public.invoices set approval_finalized_at=null where id=p_id;
+ insert into public.invoice_approval_audit(invoice_id,action) values(p_id,'content_changed');end $$;
+ insert into public.companies values('${cid}','すみだ建設株式会社','legacy'),('${other}','株式会社試験','legacy');
+ insert into public.company_members values('${cid}','${uid}');`);
+ await db.exec(extract(read('supabase/migrations/20261010160154_company_seal_png_designs.sql'),'private.document_company_seal_snapshot'));
+ const originalGeneric=extract(read('supabase/migrations/20261009012730_company_seal_document_snapshots.sql'),'private.preserve_document_company_seal_snapshot');
+ await db.exec(originalGeneric);
+ for(const table of ['invoices','payment_certificates','payroll_statements']) await db.exec(`create trigger zz_company_seal_snapshot before insert or update on public.${table} for each row execute function private.preserve_document_company_seal_snapshot()`);
+ const approvalSource=read('supabase/migrations/20261007221757_invoice_stamp_policy_and_approval_history.sql');
+ await db.exec(extract(approvalSource,'private.invoice_material_change_trigger'));
+ await db.exec('create trigger invoice_material_change_after_update after update on public.invoices for each row execute function private.invoice_material_change_trigger()');
+ await db.exec(extract(approvalSource,'public.approve_invoice'));
+ const make=async(status='draft',history=false)=>{
+ const row=(await db.query("insert into public.invoices(company_id,status) values($1,$2) returning id",[cid,status])).rows[0];
+ if(history)await db.query("insert into public.invoice_approval_audit(invoice_id,action) values($1,'approved')",[row.id]);
+ await db.query('insert into public.invoice_approvals(invoice_id,approver_user_id) values($1,$2)',[row.id,uid]);
+ return row.id;};
+ const oldCancelled=await make('draft',true),oldFinal=await make('finalized'),oldUnknown=await make('unrecognized'),pending=await make();
+ // Historical null JSON is preserved byte-for-byte as well.
+ await db.exec('drop trigger zz_company_seal_snapshot on public.invoices');
+ const oldNull=(await db.query("insert into public.invoices(company_id,status,snapshot) values($1,'draft',null) returning id",[cid])).rows[0].id;
+ await db.query("insert into public.invoice_approval_audit(invoice_id,action) values($1,'cancelled')",[oldNull]);
+ await db.exec('create trigger zz_company_seal_snapshot before insert or update on public.invoices for each row execute function private.preserve_document_company_seal_snapshot()');
+ const baseline=(await db.query('select id,snapshot from public.invoices order by id')).rows;
+ const history=(await db.query('select * from public.invoice_approval_audit order by id')).rows;
+ const otherDoc=(await db.query('insert into public.payment_certificates(company_id) values($1) returning id,snapshot',[cid])).rows[0];
+ const payroll=(await db.query('insert into public.payroll_statements(company_id) values($1) returning id,detail',[cid])).rows[0];
+ const genericBefore=(await db.query("select pg_get_functiondef('private.preserve_document_company_seal_snapshot()'::regprocedure) d")).rows[0].d;
+ await db.exec(read('supabase/migrations/20261011031108_invoice_draft_seal_finalization.sql'));
+ assert.deepEqual((await db.query('select id,snapshot from public.invoices order by id')).rows,baseline,'Migration never changes existing snapshots');
+ assert.deepEqual((await db.query('select * from public.invoice_approval_audit order by id')).rows,history,'Migration never rewrites approval audit');
+ assert.equal((await db.query("select pg_get_functiondef('private.preserve_document_company_seal_snapshot()'::regprocedure) d")).rows[0].d,genericBefore,'Generic financial function untouched');
+ for(const id of [oldCancelled,oldFinal,oldUnknown,oldNull])assert.equal((await db.query('select invoice_seal_frozen from public.invoices where id=$1',[id])).rows[0].invoice_seal_frozen,true);
+ assert.equal((await db.query('select invoice_seal_frozen from public.invoices where id=$1',[pending])).rows[0].invoice_seal_frozen,false);
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_standard' where id=$1",[cid]);
+ const invoice=await make();
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_light' where id=$1",[cid]);
+ // Real approve_invoice timestamp contract; status remains draft.
+ assert.equal((await db.query('select public.approve_invoice($1) value',[invoice])).rows[0].value,true);
+ const fixed=(await db.query('select * from public.invoices where id=$1',[invoice])).rows[0];
+ assert.equal(fixed.status,'draft');assert.ok(fixed.approval_finalized_at);assert.equal(fixed.invoice_seal_frozen,true);
+ assert.equal(fixed.snapshot.company_seal_snapshot.style,'png_sumida_v1_light');
+ assert.equal((await db.query('select status from public.invoice_approvals where invoice_id=$1',[invoice])).rows[0].status,'approved','Legitimate freeze does not invalidate approval');
+ assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='content_changed'",[invoice])).rows[0].n,0);
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_worn' where id=$1",[cid]);
+ await db.query("update public.invoices set approval_finalized_at=null,status='draft',invoice_seal_frozen=false where id=$1",[invoice]);
+ await db.query("update public.invoice_approvals set status='pending',approved_at=null where invoice_id=$1",[invoice]);
+ await db.query('select public.approve_invoice($1)',[invoice]);
+ assert.deepEqual((await db.query('select snapshot from public.invoices where id=$1',[invoice])).rows[0].snapshot,fixed.snapshot,'Cancel/reapprove cannot replace a frozen seal');
+ await db.query('select public.approve_invoice($1)',[oldCancelled]);
+ assert.deepEqual((await db.query('select snapshot from public.invoices where id=$1',[oldCancelled])).rows[0].snapshot,baseline.find(r=>r.id===oldCancelled).snapshot,'Pre-migration cancellation also stays frozen');
+ const changed=await make();
+ const before=(await db.query('select snapshot from public.invoices where id=$1',[changed])).rows[0].snapshot;
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_standard' where id=$1",[cid]);
+ await db.query('update public.invoices set subtotal=2,approval_finalized_at=now() where id=$1',[changed]);
+ assert.deepEqual((await db.query('select snapshot from public.invoices where id=$1',[changed])).rows[0].snapshot,before,'Concurrent material changes cannot silently freeze a replacement');
+ assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='content_changed'",[changed])).rows[0].n,1);
+ const statusFinal=await make();
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_light' where id=$1",[cid]);
+ await db.query("update public.invoices set status='finalized' where id=$1",[statusFinal]);
+ assert.equal((await db.query('select snapshot from public.invoices where id=$1',[statusFinal])).rows[0].snapshot.company_seal_snapshot.style,'png_sumida_v1_light');
+ const unknownTransition=await make();const unknownBefore=(await db.query('select snapshot from public.invoices where id=$1',[unknownTransition])).rows[0].snapshot;
+ await db.query("update public.companies set company_seal_style='png_sumida_v1_worn' where id=$1",[cid]);
+ await db.query("update public.invoices set status='unknown',approval_finalized_at=now() where id=$1",[unknownTransition]);
+ assert.deepEqual((await db.query('select snapshot from public.invoices where id=$1',[unknownTransition])).rows[0].snapshot,unknownBefore);
+ assert.equal((await db.query('select invoice_seal_frozen from public.invoices where id=$1',[unknownTransition])).rows[0].invoice_seal_frozen,true);
+ const foreign=await make();const foreignBefore=(await db.query('select snapshot from public.invoices where id=$1',[foreign])).rows[0].snapshot;
+ await db.query('update public.invoices set company_id=$2,approval_finalized_at=now() where id=$1',[foreign,other]);
+ assert.deepEqual((await db.query('select snapshot from public.invoices where id=$1',[foreign])).rows[0].snapshot,foreignBefore);
+ await db.query("update public.payment_certificates set snapshot='{}' where id=$1",[otherDoc.id]);
+ assert.deepEqual((await db.query('select snapshot from public.payment_certificates where id=$1',[otherDoc.id])).rows[0].snapshot,otherDoc.snapshot);
+ await db.query("update public.payroll_statements set detail='{}' where id=$1",[payroll.id]);
+ assert.deepEqual((await db.query('select detail from public.payroll_statements where id=$1',[payroll.id])).rows[0].detail,payroll.detail);
+ console.log('PASS: real invoice approval freeze, fixed cancellation/history, material and company guards, untouched snapshots/generic contracts');
+} finally {await db.close();}

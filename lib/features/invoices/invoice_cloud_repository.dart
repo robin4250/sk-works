@@ -67,19 +67,31 @@ class InvoiceCloudRepository {
     // Keep the primary invoice query independent from related tables. An
     // unavailable customer/site relation must never hide an otherwise valid
     // saved invoice.
-    final invoices = await _client
-        .from('invoices')
-        .select(
-          'id, customer_id, billing_period_start, billing_period_end, '
-          'invoice_number, issue_date, detail_mode, subtotal, tax, '
-          'grand_total, snapshot, updated_at, status',
-        )
-        .eq('company_id', companyId)
-        .order('billing_period_start', ascending: false)
-        .order('created_at', ascending: false);
+    Future<List<Map<String, dynamic>>> readRows(bool lifecycleReady) async =>
+        await _client
+            .from('invoices')
+            .select(
+              'id, customer_id, billing_period_start, billing_period_end, '
+              'invoice_number, issue_date, detail_mode, subtotal, tax, '
+              'grand_total, snapshot, updated_at, status, finalized_at, approval_finalized_at'
+              '${lifecycleReady ? ', invoice_seal_frozen' : ''}',
+            )
+            .eq('company_id', companyId)
+            .order('billing_period_start', ascending: false)
+            .order('created_at', ascending: false);
+    List<Map<String, dynamic>> invoices;
+    try {
+      invoices = await readRows(true);
+    } on PostgrestException catch (error) {
+      if (!['42703', 'PGRST204'].contains(error.code) ||
+          !error.message.contains('invoice_seal_frozen'))
+        rethrow;
+      // Until invoice lifecycle migration is deployed, preserve all saved seals.
+      invoices = await readRows(false);
+    }
 
     Map<String, dynamic>? currentSealCompany;
-    if (invoices.any((row) => row['status'] == 'draft')) {
+    if (invoices.any(invoiceUsesCurrentSeal)) {
       final company = await _client
           .from('companies')
           .select('id,name,company_seal_style')
@@ -359,7 +371,7 @@ class InvoiceCloudRepository {
             invoiceId: invoiceId,
             documentUpdatedAt: invoice['updated_at']?.toString(),
             companySealSnapshot: invoiceDocumentSeal(
-              status: invoice['status'],
+              document: invoice,
               saved: snapshotMap['company_seal_snapshot'],
               currentCompany: currentSealCompany,
               companyId: companyId,

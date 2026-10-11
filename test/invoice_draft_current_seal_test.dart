@@ -16,6 +16,13 @@ Map<String, dynamic> company(String style) => {
   'company_seal_style': style,
 };
 
+Map<String, dynamic> document(Object? status) => {
+  'status': status,
+  'finalized_at': null,
+  'approval_finalized_at': null,
+  'invoice_seal_frozen': false,
+};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final saved = {
@@ -30,7 +37,7 @@ void main() {
       for (final old in [null, saved]) {
         for (final style in CompanySealDesign.designs.keys) {
           final seal = invoiceDocumentSeal(
-            status: 'draft',
+            document: document('draft'),
             saved: old,
             currentCompany: company(style),
             companyId: CompanySealDesign.companyId,
@@ -56,7 +63,7 @@ void main() {
         'DRAFT',
       ]) {
         final seal = invoiceDocumentSeal(
-          status: status,
+          document: document(status),
           saved: saved,
           currentCompany: null,
           companyId: CompanySealDesign.companyId,
@@ -64,7 +71,7 @@ void main() {
         expect(seal.style, 'legacy');
         expect(
           invoiceDocumentSeal(
-            status: status,
+            document: document(status),
             saved: null,
             currentCompany: company('png_sumida_v1_standard'),
             companyId: CompanySealDesign.companyId,
@@ -83,7 +90,7 @@ void main() {
       'company_id': CompanySealDesign.companyId,
     };
     final seal = invoiceDocumentSeal(
-      status: 'finalized',
+      document: document('finalized'),
       saved: original,
       currentCompany: company('png_sumida_v1_standard'),
       companyId: CompanySealDesign.companyId,
@@ -92,6 +99,31 @@ void main() {
     expect(original['style'], 'png_sumida_v1_worn');
   });
 
+  test(
+    'approved drafts, reopened history and old payloads never use current seal',
+    () {
+      for (final row in [
+        {...document('draft'), 'approval_finalized_at': '2026-10-11T00:00:00Z'},
+        {...document('draft'), 'finalized_at': '2026-10-11T00:00:00Z'},
+        {...document('draft'), 'invoice_seal_frozen': true},
+        {'status': 'draft'},
+        {...document('draft')}..remove('finalized_at'),
+        {...document('draft')}..remove('approval_finalized_at'),
+        {...document('draft')}..remove('invoice_seal_frozen'),
+      ]) {
+        expect(
+          invoiceDocumentSeal(
+            document: row,
+            saved: saved,
+            currentCompany: company('png_sumida_v1_standard'),
+            companyId: CompanySealDesign.companyId,
+          ).style,
+          'legacy',
+        );
+      }
+    },
+  );
+
   test('draft rejects unavailable or foreign company settings', () {
     for (final current in [
       null,
@@ -99,7 +131,7 @@ void main() {
     ]) {
       expect(
         () => invoiceDocumentSeal(
-          status: 'draft',
+          document: document('draft'),
           saved: saved,
           currentCompany: current,
           companyId: CompanySealDesign.companyId,
@@ -122,7 +154,7 @@ void main() {
           detailMode: InvoiceDetailMode.consolidatedOnly,
           sites: const [],
           companySealSnapshot: invoiceDocumentSeal(
-            status: 'draft',
+            document: document('draft'),
             saved: saved,
             currentCompany: company(style),
             companyId: CompanySealDesign.companyId,
