@@ -517,7 +517,52 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     }
   }
 
-  Future<void> _addRequirement() => _editRequirement();
+  Future<void> _addRequirement() async {
+    if (!_canManageRequirements || _loading) return;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('必要書類を選択'),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Text('登録済みの書類を選ぶと、同じ写真・有効期限を使えます。両方で必要な書類は共用します。'),
+              const SizedBox(height: 12),
+              for (final row in _requirements)
+                ListTile(
+                  title: Text(row['name']?.toString() ?? ''),
+                  subtitle: Text(workerDocumentScopeLabel(row['scope'])),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.pop(context, row['id'] as String),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, '__new__'),
+            icon: const Icon(Icons.add),
+            label: const Text('新しい書類を登録'),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) return;
+    if (selected == '__new__') {
+      await _editRequirement();
+      return;
+    }
+    final matches = _requirements.where((row) => row['id'] == selected);
+    if (matches.length != 1) return;
+    final row = matches.single;
+    await _editRequirement({
+      ...row,
+      if (!workerDocumentMatchesScope(row['scope'], _scope)) 'scope': 'both',
+    });
+  }
 
   Future<void> _editRequirement([Map<String, dynamic>? current]) async {
     final repository = _repository;
@@ -531,6 +576,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         (_scope == 'upstream' ? 'upstream' : 'internal');
     var isRequired = current?['is_required'] != false;
     var expiryRequired = current?['expiry_required'] == true;
+    String? nameError;
 
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -546,7 +592,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: '書類名 *'),
+                  decoration: InputDecoration(labelText: '書類名 *', errorText: nameError),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -586,6 +632,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             FilledButton(
               onPressed: () {
                 if (nameController.text.trim().isEmpty) return;
+                if (current == null && _requirements.any(
+                  (row) => row['name']?.toString().trim() == nameController.text.trim(),
+                )) {
+                  setDialogState(() => nameError = '登録済みです。書類一覧から選択してください。');
+                  return;
+                }
                 Navigator.pop(dialogContext, {
                   'name': nameController.text.trim(),
                   'scope': scope,
