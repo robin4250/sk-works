@@ -15,8 +15,8 @@ const id=()=>`10000000-0000-0000-0000-${String(counter++).padStart(12,'0')}`;
 try{
  await exec(`create role authenticated;create role anon;create role service_role;create schema private;create schema auth;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('fixture.uid',true),'')::uuid$$;
- create table private.master_feature_settings(feature_key text primary key,enabled boolean not null);
- insert into private.master_feature_settings values('vehicle_management',true),('route_assignment',true);
+ create table private.master_feature_settings(feature_key text primary key,enabled boolean not null,updated_at timestamptz,updated_by uuid);
+ insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',true),('route_assignment',true);
  create table workers(id uuid primary key,company_id uuid,user_id uuid,status text);
  insert into workers values('${worker}','${company}','${uid}','active');
  create table vehicles(id uuid primary key,company_id uuid,odometer_km numeric,name text,updated_by uuid,updated_at timestamptz);
@@ -33,9 +33,14 @@ try{
  alter table attendance_verifications enable row level security;
  create policy fixture_own on attendance_verifications to authenticated using(worker_id='${worker}'::uuid) with check(worker_id='${worker}'::uuid);
  set fixture.uid='${uid}';`);
+ await exec(`create function public.is_current_user_master_admin() returns boolean language sql stable as $$select auth.uid()='${uid}'::uuid$$`);
+ const masterBaseline=await readFile(resolve(root,'supabase/migrations/20260930065000_add_master_feature_controls.sql'),'utf8');
+ await exec(masterBaseline.slice(masterBaseline.indexOf('create or replace function public.current_master_feature_flags')));
+ const routineBefore=(await db.query("select oid,md5(pg_get_functiondef(oid)) hash,proacl::text from pg_proc where proname in ('current_master_feature_flags','set_master_feature_enabled') order by oid")).rows;
  const before=(await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows;
  const migration=(await readdir(resolve(root,'supabase/migrations'))).find(f=>f.endsWith('_guard_master_optional_feature_writes.sql'));
  await exec(await readFile(resolve(root,'supabase/migrations',migration),'utf8'));
+ assert.deepEqual((await db.query("select oid,md5(pg_get_functiondef(oid)) hash,proacl::text from pg_proc where proname in ('current_master_feature_flags','set_master_feature_enabled') order by oid")).rows,routineBefore);
  assert.deepEqual((await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows,before);
  await exec(`insert into vehicles values('${vehicle}','${company}',100,'Fixture',null,null);
  insert into route_assignments values('${route}','${company}',null,'Fixture');
@@ -83,14 +88,14 @@ try{
  // An absent feature row keeps the legacy ON default; explicit OFF still rejects.
  await exec("delete from private.master_feature_settings where feature_key='vehicle_management';set role authenticated");
  await exec(attendance('clock_in',vehicle,route));
- await exec("reset role;insert into private.master_feature_settings values('vehicle_management',false)");
+ await exec("reset role;insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',false)");
  for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege('${role}','private.guard_master_optional_feature_write()','execute') allowed`)).rows[0].allowed,false);
  if(pgMode){
   const a=new runtime.Client({connectionString:process.env.FIXTURE_DATABASE_URL}),b=new runtime.Client({connectionString:process.env.FIXTURE_DATABASE_URL});
   await a.connect();await b.connect();
   try{
    await db.query("update private.master_feature_settings set enabled=true where feature_key='route_assignment'");
-   await a.query('begin');await a.query("update private.master_feature_settings set enabled=false where feature_key='route_assignment'");
+   await a.query(`set fixture.uid='${uid}'`);await a.query('begin');await a.query("select public.set_master_feature_enabled('route_assignment',false)");
    let settled=false;
    const blocked=b.query(attendance('clock_in',null,route)).then(()=>{settled=true;throw Error('OFF race allowed new start');},e=>{settled=true;assert.equal(e.code,'P0001');});
    await new Promise(resolve=>setTimeout(resolve,100));assert.equal(settled,false,'new start must wait for OFF setter');

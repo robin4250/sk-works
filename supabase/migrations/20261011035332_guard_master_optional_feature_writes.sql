@@ -73,7 +73,7 @@ begin
   elsif TG_TABLE_NAME='attendance_verifications' then
     -- Old source rows and all checkout evidence remain available while OFF.
     if n->>'event_type'<>'clock_in' then return NEW; end if;
-    if TG_OP='UPDATE' and row(n->>'vehicle_id',n->>'route_assignment_id')
+    if TG_OP='UPDATE' and o->>'event_type'='clock_in' and row(n->>'vehicle_id',n->>'route_assignment_id')
        is not distinct from row(o->>'vehicle_id',o->>'route_assignment_id') then return NEW; end if;
     if n->>'route_assignment_id' is not null then perform private.require_master_optional_feature('route_assignment'); end if;
     if n->>'vehicle_id' is not null then perform private.require_master_optional_feature('vehicle_management'); end if;
