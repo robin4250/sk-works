@@ -45,7 +45,16 @@ await db.exec('reset role');await db.exec(`update site_calculation_source_prefer
 assert.equal((await detail(a)).site_options[0].unit_price_yen,20000);assert.equal((await detail(a)).site_options[0].man_day_method,true);
 await assert.rejects(db.query(`select * from private.route_billing_site_daily_rate('${company}','${siteA}')`),/permission denied/);
 const approved=await decide(a);assert.equal(approved.status,'approved');assert.equal((await decide(a)).status,'approved');
-await decide(b,0.5,siteB,25000);
+const approvedB=await decide(b,0.5,siteB,25000);
+// An unchanged submission retry must retain the reviewer-adjusted quantity.
+await db.exec(`set test.uid='${user}'`);
+const retriedB=(await submit([reportB],[{customer_id:custB,quantity:1}]))[0];
+assert.equal(retriedB.id,b.id);
+assert.equal(retriedB.status,'approved');
+assert.equal(Number(retriedB.quantity),0.5);
+assert.equal(retriedB.version,approvedB.version);
+await db.exec(`set test.uid='${manager}'`);
+assert.equal((await detail(b)).unit_price_yen,25000);
 await db.exec(`set test.uid='${user}'`);const revised=(await submit([reportA,reportA2],[{customer_id:custA,quantity:1}]))[0];assert.equal(revised.status,'pending');assert.equal(revised.version,2);assert.equal(revised.unit_price_yen,undefined);assert.deepEqual(revised.site_options,[]);assert.equal(Object.hasOwn(revised,'unit_price_yen'),false);
 await db.exec(`set test.uid='${manager}'`);assert.equal((await detail(a)).site_options.length,2);await assert.rejects(decide(a),/request changed/);await decide(revised,1,siteA2,30000);
 // Current evidence/customer reassignment invalidates stale approval.

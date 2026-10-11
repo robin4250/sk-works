@@ -65,7 +65,7 @@ class _EmployeeRegistrationPageState extends State<EmployeeRegistrationPage> {
                 padding: EdgeInsets.all(16),
                 child: Text(
                   'ここでは従業員の名前と携帯電話番号だけを先に登録します。'
-                  '登録後、TOPページの「初回登録」からTestFlightと初回ログイン情報を送ります。',
+                  '登録後、従業員登録の一覧からTestFlightと初回ログイン情報の案内を作成します。',
                 ),
               ),
             ),

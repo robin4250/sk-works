@@ -16,7 +16,9 @@ void main() {
             .readAsStringSync();
 
     expect(app, contains("key: 'attendance_list'"));
-    expect(app, contains('const AttendanceWorkerListPage()'));
+    expect(app, contains('builder: (_) => AttendanceWorkerListPage('));
+    expect(app, contains("? () => _openHomeAction('attendance_management')"));
+    expect(list, contains('RelatedActionFooter('));
     expect(list, contains("'出勤表一覧'"));
     expect(list, contains("'全社員の出勤表をまとめて印刷'"));
     expect(list, contains('WorkerAttendanceSheetPage('));
@@ -45,8 +47,9 @@ void main() {
 
     expect(app, contains("key: 'qualification_register'"));
     expect(app, contains("SkoLanguageController.tr('資格登録')"));
-    expect(app, contains("key: 'employee_qualifications'"));
-    expect(app, contains("SkoLanguageController.tr('従業員資格')"));
+    expect(app, contains("case 'employee_qualifications':"));
+    expect(app, contains("key: 'employee_resources'"));
+    expect(File('lib/features/home/employee_resources_page.dart').readAsStringSync(), contains("('employee_qualifications', '従業員資格'"));
     expect(own, contains("'ログイン中の本人の資格だけを表示します'"));
     expect(own, contains('loadOwnQualificationWorkspace'));
     expect(own, contains('insertOwnQualification'));

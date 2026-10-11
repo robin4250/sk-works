@@ -31,7 +31,7 @@ async function blocked() {
 }
 const actor = (c, uid) => c.query(`set test.uid='${uid}';set role authenticated`);
 const submit = (c, reports, allocations) => c.query('select public.submit_route_customer_day_allocations($1,$2,$3) v', [worker, reports, JSON.stringify(allocations)]);
-const approve = (c, request, site, price) => c.query("select public.decide_route_billing_quantity($1,1,'approve','confirmed',1,$2,$3) v", [request.id, site, price]);
+const approve = (c, request, site, price, quantity = 1) => c.query("select public.decide_route_billing_quantity($1,$4,'approve','confirmed',1,$2,$3) v", [request.id, site, price, quantity]);
 try {
   admin = await connect('billing-admin'); a = await connect('billing-a'); b = await connect('billing-b'); observer = await connect('billing-observer');
   assert.match((await admin.query('show server_version')).rows[0].server_version, /^17\./);
@@ -84,11 +84,23 @@ try {
   await admin.query('update site_financial_settings set billing_contract_amount_yen=99999 where site_id=$1', [siteA]);
   assert.equal((await option()).unit_price_yen, 20000); assert.equal((await option()).man_day_method, true);
   await admin.query('begin'); await admin.query('select id from private.route_billing_quantity_requests where id=$1 for update', [requestA.id]);
-  const x = settle(approve(a, requestA, siteA, 20000)), y = settle(approve(b, requestA, siteA, 20000));
+  const x = settle(approve(a, requestA, siteA, 20000, 0.5)), y = settle(approve(b, requestA, siteA, 20000, 0.5));
   await blocked(); await admin.query('commit');
   const approvals = await Promise.all([x, y]);
   assert.equal(approvals[0].rows[0].v.status, 'approved');
   assert.deepEqual(approvals[0].rows[0].v, approvals[1].rows[0].v);
+  assert.equal((await admin.query('select count(*)::int n from private.route_billing_quantity_audit where request_id=$1', [requestA.id])).rows[0].n, 1);
+  // Replaying the original quantity 1 retains the reviewer's approved 0.5.
+  await actor(b, user);
+  const retried = (await submit(b, [reportA], [{customer_id: customerA, quantity: 1}])).rows[0].v[0];
+  assert.equal(retried.id, requestA.id);
+  assert.equal(retried.status, 'approved');
+  assert.equal(Number(retried.requested_quantity), 1);
+  assert.equal(Number(retried.quantity), 0.5);
+  assert.equal(retried.version, approvals[0].rows[0].v.version);
+  const savedApproval = (await admin.query('select * from private.route_billing_quantity_requests where id=$1', [requestA.id])).rows[0];
+  assert.equal(savedApproval.representative_site_id, siteA);
+  assert.equal(savedApproval.unit_price_yen, 20000);
   assert.equal((await admin.query('select count(*)::int n from private.route_billing_quantity_audit where request_id=$1', [requestA.id])).rows[0].n, 1);
   // Evidence/quantity revision and old approval compete on the same request.
   await actor(b, user);

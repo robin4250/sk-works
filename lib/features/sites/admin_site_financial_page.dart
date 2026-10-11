@@ -1,3 +1,4 @@
+import '../shared/related_action_footer.dart';
 import '../payroll/site_payment_agreement_page.dart';
 import 'package:flutter/material.dart';
 
@@ -6,7 +7,8 @@ import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
 
 class AdminSiteFinancialPage extends StatefulWidget {
-  const AdminSiteFinancialPage({super.key});
+  const AdminSiteFinancialPage({super.key, this.onOpenMap});
+  final Future<void> Function()? onOpenMap;
 
   @override
   State<AdminSiteFinancialPage> createState() =>
@@ -73,9 +75,16 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
     }).toList();
 
     return Scaffold(
+      bottomNavigationBar: widget.onOpenMap == null
+          ? null
+          : RelatedActionFooter(
+              label: '現場マップ',
+              icon: Icons.map_outlined,
+              onPressed: widget.onOpenMap!,
+            ),
       appBar: AppBar(
         title: const Text(
-          '管理者用現場データ',
+          '現場管理',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [if (_canManage) IconButton(tooltip: '親会社との金額調整', onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SitePaymentAgreementPage())), icon: const Icon(Icons.handshake_outlined)), const SkoNotificationBell()],

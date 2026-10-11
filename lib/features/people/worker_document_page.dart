@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/company_data_transfer.dart';
+import '../../international/language_controller.dart';
+import '../help/floating_help_controller.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
-import 'own_document_registration_page.dart';
+import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
 import 'worker_document_send_page.dart';
 
+enum WorkerDocumentView { home, workers, settings }
+
 class WorkerDocumentPage extends StatefulWidget {
-  const WorkerDocumentPage({super.key});
+  const WorkerDocumentPage({
+    super.key,
+    this.view = WorkerDocumentView.home,
+    this.repositoryOverride,
+  });
+  @visibleForTesting
+  final WorkerDocumentRepository? repositoryOverride;
+  final WorkerDocumentView view;
 
   @override
   State<WorkerDocumentPage> createState() => _WorkerDocumentPageState();
 }
 
 class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
-  final _repository = WorkerDocumentRepository.maybeCreate();
+  late final _repository =
+      widget.repositoryOverride ?? WorkerDocumentRepository.maybeCreate();
 
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _requirements = [];
@@ -34,6 +46,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.view == WorkerDocumentView.settings) _scope = 'internal';
     _load();
   }
 
@@ -71,9 +84,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             !_workers.any(
               (row) => row['id']?.toString() == _selectedWorkerId,
             )) {
-          _selectedWorkerId = _workers.isEmpty
-              ? null
-              : _workers.first['id']?.toString();
+          _selectedWorkerId = null;
         }
         _loading = false;
         _error = null;
@@ -89,9 +100,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
+    FloatingHelpController.setContext(featureKey: 'documents');
+    if (widget.view == WorkerDocumentView.home) return _buildHome();
+    if (widget.view == WorkerDocumentView.settings) return _buildSettings();
     final workerId = _selectedWorkerId;
     final visibleRequirements = _requirements
-        .where((row) => _scope == 'all' || row['scope']?.toString() == _scope)
+        .where((row) => workerDocumentMatchesScope(row['scope'], _scope))
         .toList(growable: false);
     final statusByRequirement = <String, Map<String, dynamic>>{
       for (final row in _statuses.where(
@@ -116,7 +131,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('必要書類チェック'),
+        title: Text(SkoLanguageController.tr('従業員データ編集')),
         actions: [
           IconButton(
             tooltip: '親会社に送る',
@@ -133,39 +148,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             icon: const Icon(Icons.print_outlined),
           ),
           IconButton(
-            tooltip: '標準項目を追加',
-            onPressed: _loading || !_canManageRequirements
-                ? null
-                : _addDefaults,
-            icon: const Icon(Icons.playlist_add_check_circle_outlined),
-          ),
-          IconButton(
-            tooltip: '自由項目を追加',
-            onPressed: _loading || !_canManageRequirements
-                ? null
-                : _addRequirement,
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-          IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _reload,
             icon: const Icon(Icons.refresh),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading
-            ? null
-            : () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const OwnDocumentRegistrationPage(),
-                  ),
-                );
-                if (mounted) _reload();
-              },
-        icon: const Icon(Icons.note_add_outlined),
-        label: const Text('自分の書類を登録'),
       ),
       body: SafeArea(
         child: _loading
@@ -176,12 +163,6 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ? const Center(child: Text('先に社員・作業員を登録してください'))
             : Column(
                 children: [
-                  WorkerDocumentRegistrationActions(
-                    canManage: _canManageRequirements,
-                    photoEditingAvailable:
-                        _repository?.photoEditingAvailable ?? false,
-                    onAddRequirement: _addRequirement,
-                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                     child: TextField(
@@ -189,8 +170,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         labelText: '従業員検索',
                         prefixIcon: Icon(Icons.person_search_outlined),
                       ),
-                      onChanged: (value) =>
-                          setState(() => _workerQuery = value),
+                      onChanged: (value) => setState(() {
+                        _workerQuery = value;
+                        _selectedWorkerId = null;
+                      }),
                     ),
                   ),
                   SizedBox(
@@ -246,28 +229,27 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         FilterChip(
                           label: const Text('すべて'),
                           selected: _scope == 'all',
                           onSelected: (_) => setState(() => _scope = 'all'),
                         ),
-                        const SizedBox(width: 8),
                         FilterChip(
                           label: const Text('社内'),
                           selected: _scope == 'internal',
                           onSelected: (_) =>
                               setState(() => _scope = 'internal'),
                         ),
-                        const SizedBox(width: 8),
                         FilterChip(
-                          label: const Text('元請・得意先'),
+                          label: Text(SkoLanguageController.tr('取引先')),
                           selected: _scope == 'upstream',
                           onSelected: (_) =>
                               setState(() => _scope = 'upstream'),
                         ),
-                        const Spacer(),
                         Text(
                           needsAttention == 0
                               ? '完了 $completed/${visibleRequirements.length}'
@@ -278,12 +260,14 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   ),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: _requirements.isEmpty
-                        ? _EmptyState(
-                            onAddDefaults: _canManageRequirements
-                                ? _addDefaults
-                                : null,
+                    child: workerId == null
+                        ? Center(
+                            child: Text(
+                              SkoLanguageController.tr('従業員を検索して選択してください'),
+                            ),
                           )
+                        : _requirements.isEmpty
+                        ? const _EmptyState(onAddDefaults: null)
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                             itemCount: visibleRequirements.length,
@@ -298,7 +282,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                               return _RequirementTile(
                                 requirement: requirement,
                                 status: status,
-                                onTap: _canManageStatuses
+                                onTap: _canManageStatuses && status != null
                                     ? () => _editStatus(requirement, status)
                                     : null,
                               );
@@ -309,6 +293,163 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
               ),
       ),
     );
+  }
+
+  Widget _buildHome() => Scaffold(
+    appBar: AppBar(title: Text(SkoLanguageController.tr('必要書類'))),
+    body: _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+        ? _ErrorState(message: _error!, onRetry: _reload)
+        : WorkerDocumentEntryChoices(
+            canManageRequirements: _canManageRequirements,
+            onOpenWorkers: () => _openView(WorkerDocumentView.workers),
+            onOpenSettings: () => _openView(WorkerDocumentView.settings),
+          ),
+  );
+
+  Future<void> _openView(WorkerDocumentView view) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WorkerDocumentPage(
+          view: view,
+          repositoryOverride: widget.repositoryOverride,
+        ),
+      ),
+    );
+    if (mounted) _reload();
+  }
+
+  Widget _buildSettings() {
+    final rows = _requirements.where((r) => workerDocumentMatchesScope(r['scope'], _scope)).toList();
+    return Scaffold(
+      appBar: AppBar(title: Text(SkoLanguageController.tr('必要書類設定'))),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? _ErrorState(message: _error!, onRetry: _reload)
+          : !_canManageRequirements
+          ? Center(child: Text(SkoLanguageController.tr('必要書類を変更する権限がありません。')))
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(
+                        value: 'internal',
+                        label: Text(SkoLanguageController.tr('社内')),
+                      ),
+                      ButtonSegment(
+                        value: 'upstream',
+                        label: Text(SkoLanguageController.tr('取引先')),
+                      ),
+                    ],
+                    selected: {_scope},
+                    onSelectionChanged: (v) =>
+                        setState(() => _scope = v.single),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _addRequirement,
+                      icon: const Icon(Icons.add),
+                      label: Text(SkoLanguageController.tr('必要書類を追加')),
+                    ),
+                    TextButton(
+                      onPressed: _addDefaults,
+                      child: Text(SkoLanguageController.tr('標準項目を追加')),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: rows.isEmpty
+                      ? Center(
+                          child: Text(
+                            SkoLanguageController.tr('必要書類の設定がまだありません'),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: rows.length,
+                          itemBuilder: (context, i) {
+                            final row = rows[i];
+                            return Card(
+                              child: ListTile(
+                                title: Text(row['name']?.toString() ?? ''),
+                                subtitle: Text(
+                                  SkoLanguageController.tr(
+                                    row['is_required'] == true ? '必須' : '任意',
+                                  ),
+                                ),
+                                onTap: () => _editRequirement(row),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (action) {
+                                    if (action == 'edit') {
+                                      _editRequirement(row);
+                                    } else {
+                                      _removeRequirement(row);
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text(
+                                        SkoLanguageController.tr('編集'),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'remove',
+                                      child: Text(
+                                        SkoLanguageController.tr('削除'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _removeRequirement(Map<String, dynamic> row) async {
+    final actor = _loadedActorId;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(SkoLanguageController.tr('必要書類を削除')),
+        content: Text(SkoLanguageController.tr('一覧から外します。提出済みデータと写真は保持します。')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(SkoLanguageController.tr('キャンセル')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(SkoLanguageController.tr('削除')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      if (actor == null || _repository?.actorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+      await _repository?.deactivateRequirement(row['id'] as String);
+      if (mounted) _reload();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
   }
 
   List<PersonnelExportWorker> get _exportWorkers => _workers
@@ -361,7 +502,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     if (repository == null) return;
     setState(() => _loading = true);
     try {
-      await repository.addDefaultRequirements();
+      await repository.addDefaultRequirements(
+        scope: widget.view == WorkerDocumentView.settings ? _scope : null,
+      );
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -374,19 +517,28 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     }
   }
 
-  Future<void> _addRequirement() async {
+  Future<void> _addRequirement() => _editRequirement();
+
+  Future<void> _editRequirement([Map<String, dynamic>? current]) async {
     final repository = _repository;
     if (repository == null) return;
-    final nameController = TextEditingController();
-    var scope = 'internal';
-    var isRequired = true;
-    var expiryRequired = false;
+    final actor = _loadedActorId;
+    final nameController = TextEditingController(
+      text: current?['name']?.toString() ?? '',
+    );
+    var scope =
+        current?['scope']?.toString() ??
+        (_scope == 'upstream' ? 'upstream' : 'internal');
+    var isRequired = current?['is_required'] != false;
+    var expiryRequired = current?['expiry_required'] == true;
 
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('必要書類を追加'),
+          title: Text(
+            SkoLanguageController.tr(current == null ? '必要書類を追加' : '必要書類を編集'),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -402,10 +554,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   decoration: const InputDecoration(labelText: '用途'),
                   items: const [
                     DropdownMenuItem(value: 'internal', child: Text('社内手続き')),
-                    DropdownMenuItem(
-                      value: 'upstream',
-                      child: Text('元請・得意先提出'),
-                    ),
+                    DropdownMenuItem(value: 'upstream', child: Text('取引先提出')),
+                    DropdownMenuItem(value: 'both', child: Text('自社・取引会社で共用')),
                   ],
                   onChanged: (value) {
                     if (value != null) setDialogState(() => scope = value);
@@ -443,22 +593,37 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   'expiryRequired': expiryRequired,
                 });
               },
-              child: const Text('追加'),
+              child: Text(
+                SkoLanguageController.tr(current == null ? '追加' : '保存'),
+              ),
             ),
           ],
         ),
       ),
     );
     nameController.dispose();
-    if (draft == null) return;
+    if (draft == null || !mounted) return;
 
     try {
-      await repository.addRequirement(
-        name: draft['name'] as String,
-        scope: draft['scope'] as String,
-        isRequired: draft['isRequired'] as bool,
-        expiryRequired: draft['expiryRequired'] as bool,
-      );
+      if (actor == null || repository.actorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+      if (current == null) {
+        await repository.addRequirement(
+          name: draft['name'] as String,
+          scope: draft['scope'] as String,
+          isRequired: draft['isRequired'] as bool,
+          expiryRequired: draft['expiryRequired'] as bool,
+        );
+      } else {
+        await repository.updateRequirement(
+          id: current['id'] as String,
+          name: draft['name'] as String,
+          scope: draft['scope'] as String,
+          isRequired: draft['isRequired'] as bool,
+          expiryRequired: draft['expiryRequired'] as bool,
+        );
+      }
       _reload();
     } catch (error) {
       if (!mounted) return;
@@ -756,7 +921,7 @@ class _RequirementTile extends StatelessWidget {
       'missing': '不足',
       'expired': '期限切れ',
     };
-    final scopeLabel = requirement['scope'] == 'upstream' ? '元請・得意先' : '社内';
+    final scopeLabel = workerDocumentScopeLabel(requirement['scope']);
     final requiredLabel = requirement['is_required'] == true ? '必須' : '任意';
     final expiry = status?['expires_at']?.toString();
     final expiryDate = _parseDocumentDate(expiry);
@@ -793,10 +958,7 @@ class _RequirementTile extends StatelessWidget {
         ),
         trailing: onTap == null
             ? null
-            : OutlinedButton(
-                onPressed: onTap,
-                child: Text(status == null ? '登録する' : '登録・編集'),
-              ),
+            : OutlinedButton(onPressed: onTap, child: const Text('編集')),
         onTap: onTap,
       ),
     );
@@ -887,5 +1049,42 @@ class WorkerDocumentRegistrationActions extends StatelessWidget {
           const Text(WorkerDocumentRepository.photoPreparationMessage),
       ],
     ),
+  );
+}
+
+class WorkerDocumentEntryChoices extends StatelessWidget {
+  const WorkerDocumentEntryChoices({
+    super.key,
+    required this.canManageRequirements,
+    required this.onOpenWorkers,
+    required this.onOpenSettings,
+  });
+  final bool canManageRequirements;
+  final VoidCallback onOpenWorkers;
+  final VoidCallback onOpenSettings;
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.person_search_outlined),
+          title: Text(SkoLanguageController.tr('従業員データ編集')),
+          subtitle: Text(SkoLanguageController.tr('従業員を検索して、提出済みの書類を確認・編集')),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onOpenWorkers,
+        ),
+      ),
+      if (canManageRequirements)
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: Text(SkoLanguageController.tr('必要書類設定')),
+            subtitle: Text(SkoLanguageController.tr('社内・取引先の書類項目を追加・編集・削除')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onOpenSettings,
+          ),
+        ),
+    ],
   );
 }

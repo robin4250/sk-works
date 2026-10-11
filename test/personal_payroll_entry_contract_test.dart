@@ -24,6 +24,6 @@ void main() {
     expect(app, contains("key: 'payroll_review'"));
     expect(app, contains("label: SkoLanguageController.tr('給料一覧')"));
     expect(app, contains("title: '給料一覧'"));
-    expect(app, contains('PayrollReviewPage()'));
+    expect(app, contains('PayrollReviewPage(onOpenSettings:'));
   });
 }

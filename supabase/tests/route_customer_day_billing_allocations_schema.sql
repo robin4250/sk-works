@@ -3,6 +3,7 @@
 create table private.route_billing_quantity_requests(
  id uuid primary key default gen_random_uuid(),company_id uuid not null,worker_id uuid not null,worker_name text not null,
  work_date date not null,customer_id uuid not null,customer_name text not null,
+ requested_quantity numeric not null check(requested_quantity in (0.5,1)),
  quantity numeric not null check(quantity in (0.5,1)),status text not null default 'pending' check(status in ('pending','approved','rejected')),
  version integer not null default 1,requested_by uuid not null,reviewed_by uuid,reviewed_at timestamptz,
  representative_site_id uuid,unit_price_yen integer check(unit_price_yen>0),review_note text,
@@ -107,15 +108,15 @@ begin
   wanted_customer:=(item->>'customer_id')::uuid;q:=(item->>'quantity')::numeric;
   if q is null or q not in (0.5,1) then raise exception 'quantity must be 1 or 0.5'; end if;
   if not exists(select 1 from private.route_visit_reports v join public.sites st on st.id=v.site_id where v.id=any(p_report_ids) and st.customer_id=wanted_customer and st.company_id=cid) then raise exception 'customer outside visit evidence'; end if;
-  insert into private.route_billing_quantity_requests(company_id,worker_id,worker_name,work_date,customer_id,customer_name,quantity,requested_by)
-   select cid,p_worker_id,w.name,day,c.id,c.name,q,auth.uid() from public.customers c where c.id=wanted_customer and c.company_id=cid
+  insert into private.route_billing_quantity_requests(company_id,worker_id,worker_name,work_date,customer_id,customer_name,requested_quantity,quantity,requested_by)
+   select cid,p_worker_id,w.name,day,c.id,c.name,q,q,auth.uid() from public.customers c where c.id=wanted_customer and c.company_id=cid
    on conflict(company_id,worker_id,work_date,customer_id) do nothing;
   select * into req from private.route_billing_quantity_requests where company_id=cid and worker_id=p_worker_id and work_date=day and customer_id=wanted_customer for update;
   if not found then raise exception 'customer unavailable'; end if;
   -- Exact retries return the original state. New evidence invalidates approval/version.
-  if req.quantity is distinct from q or exists(select 1 from private.route_visit_reports v join public.sites st on st.id=v.site_id where v.id=any(p_report_ids) and st.customer_id=wanted_customer
+  if req.requested_quantity is distinct from q or exists(select 1 from private.route_visit_reports v join public.sites st on st.id=v.site_id where v.id=any(p_report_ids) and st.customer_id=wanted_customer
    and not exists(select 1 from private.route_billing_quantity_evidence e where e.request_id=req.id and e.start_capture_id=v.start_capture_id)) and exists(select 1 from private.route_billing_quantity_evidence e where e.request_id=req.id) then
-   update private.route_billing_quantity_requests set quantity=q,status='pending',version=version+1,reviewed_by=null,reviewed_at=null,representative_site_id=null,unit_price_yen=null,updated_at=now() where id=req.id returning * into req;
+   update private.route_billing_quantity_requests set requested_quantity=q,quantity=q,status='pending',version=version+1,reviewed_by=null,reviewed_at=null,representative_site_id=null,unit_price_yen=null,updated_at=now() where id=req.id returning * into req;
   end if;
   insert into private.route_billing_quantity_evidence(request_id,report_id,source_clock_in_id,start_capture_id,end_capture_id,site_id,site_name,customer_id)
    select req.id,v.id,v.source_clock_in_id,v.start_capture_id,v.end_capture_id,v.site_id,v.site_name,st.customer_id from private.route_visit_reports v join public.sites st on st.id=v.site_id where v.id=any(p_report_ids) and st.customer_id=wanted_customer on conflict do nothing;

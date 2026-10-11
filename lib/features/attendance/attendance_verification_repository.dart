@@ -4,6 +4,8 @@ import '../settings/master_feature_controls_repository.dart';
 
 import 'package:flutter/foundation.dart';
 
+import 'dart:convert';
+
 import 'gps_photo_capture_result.dart';
 import 'capture_verification_draft.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -495,7 +497,24 @@ class AttendanceVerificationRepository {
   Future<Map<String, dynamic>?> _recoverCaptureDraft(CaptureVerificationDraft draft) async {
     final row = await _client.from('attendance_verifications').select()
       .eq('id', draft.id).eq('created_by', _client.auth.currentUser!.id).maybeSingle();
-    if (row == null) { return null; }
+    if (row == null) {
+      if (draft.payload['route_assignment_id'] == null) { return null; }
+      final archived = await _client.rpc(
+        'get_archived_attendance_capture',
+        params: {'p_id': draft.id},
+      );
+      if (archived == null) { return null; }
+      if (archived is! Map ||
+          archived['version'] != 1 ||
+          archived['archived'] != true ||
+          archived['verification'] is! Map) {
+        throw StateError('保留中の勤怠記録が一致しません');
+      }
+      final snapshot = Map<String, dynamic>.from(
+        archived['verification'] as Map,
+      );
+      if (!draft.matchesRow(snapshot)) { throw StateError('保留中の勤怠記録が一致しません'); }
+      throw ArchivedCaptureVerification(snapshot); }
     if (!draft.matchesRow(row)) { throw StateError('保留中の勤怠記録が一致しません'); }
     return Map<String, dynamic>.from(row);
   }
@@ -539,6 +558,40 @@ class AttendanceVerificationRepository {
     _requireMutationActor(actor);
     await preferences.remove(key);
     return saved;
+  }
+
+  Future<void> acknowledgeArchivedCaptureDraft(
+    CaptureVerificationDraft draft,
+  ) async {
+    final actor = userId;
+    _requireMutationActor(actor);
+    if (draft.payload['event_type'] != 'clock_in' ||
+        draft.payload['created_by'] != actor ||
+        draft.payload['company_id'] != await _companyId()) {
+      throw StateError('保留中の勤怠の本人・会社が一致しません');
+    }
+    Map<String, dynamic>? archived;
+    try {
+      await _recoverCaptureDraft(draft);
+    } on ArchivedCaptureVerification catch (error) {
+      archived = error.verification;
+    }
+    if (archived == null) { throw StateError('保留中の撮影記録を再確認してください'); }
+    final preferences = await SharedPreferences.getInstance();
+    final key = await _captureDraftKey();
+    _requireMutationActor(actor);
+    if (preferences.getString(key) != draft.encoded) {
+      throw StateError('保留中の撮影記録を再確認してください');
+    }
+    // Retain the immutable attempt and server snapshot before releasing the blocker.
+    if (!await preferences.setString(
+      '$key.archived.${draft.id}',
+      jsonEncode({'draft': draft.encoded, 'verification': archived}),
+    )) {
+      throw StateError('再確認用の撮影記録を保存できません');
+    }
+    _requireMutationActor(actor);
+    if (!await preferences.remove(key)) { throw StateError('保留中の撮影記録を再確認してください'); }
   }
 
   Future<String> captureCompanyId() => _companyId();

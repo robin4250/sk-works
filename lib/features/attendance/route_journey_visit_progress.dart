@@ -7,6 +7,7 @@ class RouteJourneyVisitProgress {
   final Set<String> remainingStopIds;
   final Map<String, dynamic>? openVisit;
   bool get canArrive => openVisit == null && remainingStopIds.isNotEmpty;
+  bool get isFinalVisit => openVisit != null && remainingStopIds.isEmpty;
 
   static RouteJourneyVisitProgress? fromWorkspace(
     Map<String, dynamic> workspace,

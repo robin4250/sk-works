@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../international/language_controller.dart';
+import '../help/floating_help_controller.dart';
 import '../daily_reports/daily_report_page.dart';
 import '../daily_reports/route_visit_report_context.dart';
 import 'attendance_capture_metadata_service.dart';
@@ -201,7 +202,11 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       setState(() {
         _pendingReport = reportMatches.isEmpty ? null : reportMatches.first;
         _workspace = workspace;
-        _origin = pending?.originKind ?? workspace['origin_kind']?.toString();
+        // Preserve saved command/origin contracts after removing the UI choice.
+        _origin =
+            pending?.originKind ??
+            workspace['origin_kind']?.toString() ??
+            'company';
         _stopId = pending?.stopId ?? _openVisit?['route_stop_id']?.toString();
       });
     } catch (_) {
@@ -471,6 +476,15 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       await _load();
       if (draft.visitKind == 'end' && _pendingReport != null && mounted) {
         await _resumeReport();
+      } else if (draft.visitKind == 'start' &&
+          mounted &&
+          saved['archived'] != true &&
+          !_loadFailed) {
+        if (_progress?.isFinalVisit == true) {
+          Navigator.of(context).pop(true);
+        } else {
+          await _returnHome('作業終了して次の現場に向かう時に現場移動ボタン押してください');
+        }
       }
     } catch (error) {
       if (_active(generation)) {
@@ -558,6 +572,14 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       if (!mounted || _left) return;
       _checkActor();
       await _load();
+      if (!_loadFailed && _pendingReport == null && mounted) {
+        if (_workspace?['is_open'] == true &&
+            _progress?.remainingStopIds.isNotEmpty == true) {
+          await _returnHome('次の現場に到着したら現場到着ボタンを押してください');
+        } else {
+          Navigator.of(context).pop(true);
+        }
+      }
     } catch (error) {
       if (mounted && !_left) {
         setState(
@@ -569,6 +591,26 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
     }
   }
 
+  Future<void> _returnHome(String message) async {
+    if (!mounted || _left) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        content: Text(SkoLanguageController.tr(message)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(SkoLanguageController.tr('確認')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || _left) return;
+    _checkActor();
+    Navigator.of(context).pop(true);
+  }
+
   String _visitTime(Object? raw) {
     final time = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
     if (time == null) return SkoLanguageController.tr('時刻不明');
@@ -578,6 +620,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    FloatingHelpController.setContext(featureKey: 'attendance');
     final workspace = _workspace;
     final stops = workspace?['stops'] is List
         ? (workspace!['stops'] as List).whereType<Map>().toList()
@@ -601,11 +644,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Text(
-                    SkoLanguageController.tr(
-                      '出勤後に到着した現場を記録し、現場を離れるときは移動の時刻を記録してください。GPS＋写真方式では到着時に撮影します。現場移動の保存後、この訪問の日報を作成するか選択します。途中で戻った場合は「現場日報を再開」から同じ訪問を仕上げてください。',
-                    ),
-                  ),
+                  Text(SkoLanguageController.tr('作業する現場を選び、現場到着のボタンを押してください')),
                   if (widget.initialAction != null)
                     Text(
                       SkoLanguageController.tr(
@@ -654,29 +693,6 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                   if (_pending == null &&
                       _pendingReport == null &&
                       enabled) ...[
-                    const SizedBox(height: 12),
-                    SegmentedButton<String>(
-                      emptySelectionAllowed: true,
-                      selected: _origin == null ? {} : {_origin!},
-                      segments: [
-                        ButtonSegment(
-                          value: 'company',
-                          label: Text(SkoLanguageController.tr('会社出勤後に現場へ')),
-                        ),
-                        ButtonSegment(
-                          value: 'direct',
-                          label: Text(SkoLanguageController.tr('直行直帰')),
-                        ),
-                      ],
-                      onSelectionChanged:
-                          _busy || workspace?['origin_kind'] != null
-                          ? null
-                          : (values) => setState(
-                              () => _origin = values.isEmpty
-                                  ? null
-                                  : values.single,
-                            ),
-                    ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       key: ValueKey(_generation),
@@ -760,6 +776,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                               _pendingReport == null &&
                               enabled &&
                               _openVisit != null &&
+                              _progress?.isFinalVisit != true &&
                               _origin != null &&
                               _openVisit!['route_stop_id'] is String &&
                               (_openVisit!['route_stop_id'] as String)
@@ -799,7 +816,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     const SizedBox(height: 16),
                     Text(
                       SkoLanguageController.tr(
-                        '現場の終了と退勤は別です。最後の現場を終了した後、ホームから退勤してください。',
+                        '最後の現場に到着したらホームから退勤してください。退勤後に日報とサインを登録します。',
                       ),
                     ),
                     for (final visit

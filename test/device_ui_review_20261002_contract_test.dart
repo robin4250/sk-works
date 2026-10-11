@@ -87,8 +87,10 @@ void main() {
       '20261002091418_extend_site_map_management_directory.sql',
     ).readAsStringSync();
 
-    expect(app, contains("key: 'site_map'"));
-    expect(app, contains("SkoLanguageController.tr('現場マップ')"));
+    expect(app, contains("case 'site_map':"));
+    expect(app, contains("_nestedActionKeys.contains('site_map')"));
+    expect(app, isNot(contains("key: 'site_map'")));
+    expect(File('lib/features/sites/admin_site_financial_page.dart').readAsStringSync(), contains("label: '現場マップ'"));
     expect(page, contains("'www.google.com'"));
     expect(page, contains("'/maps/search/'"));
     expect(page, contains("'取引会社'"));

@@ -41,6 +41,7 @@ import 'features/help/floating_help_overlay.dart';
 import 'features/help/manual_content.dart';
 import 'features/home/friendly_home_content.dart';
 import 'features/home/home_route_action_state.dart';
+import 'features/home/employee_resources_page.dart';
 import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_appearance.dart';
@@ -60,8 +61,8 @@ import 'features/payroll/payroll_adjustment_repository.dart';
 import 'features/payroll/payroll_review_page.dart';
 import 'features/payroll/payroll_statements_page.dart';
 import 'features/payroll/payment_certificates_page.dart';
-import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/company_submitted_documents_page.dart';
+import 'features/people/company_delivery_inbox_page.dart';
 import 'features/people/employee_registration_page.dart';
 import 'features/people/employee_initial_registration_page.dart';
 import 'features/people/people_cloud_page.dart';
@@ -715,10 +716,20 @@ class _HomePageState extends State<HomePage> {
     FloatingHelpController.setContext(
       featureKey: key,
       currentRole: ManualContent.fromMembershipRole(_identity.role),
-      visibleKeys: _menuItems.map((item) => item.key).toSet(),
+      visibleKeys: _availableActionKeys,
     );
     unawaited(_recordUsage(key));
     if (!mounted) return;
+
+    if (const {
+          'attendance_management',
+          'payment_certificate_settings',
+          'site_map',
+          'approvals',
+        }.contains(key) &&
+        !_nestedActionKeys.contains(key)) {
+      return;
+    }
 
     // Ignore retired shortcut keys retained in older home preferences.
     if (key == 'signatures') return;
@@ -772,7 +783,7 @@ class _HomePageState extends State<HomePage> {
       );
       return;
     }
-    if (key == 'company_deliveries' && !_identity.isManagement) {
+    if ((key == 'company_deliveries' || key == 'company_delivery_inbox') && !_identity.isManagement) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者・サブ管理者のみ利用できます'))),
       );
@@ -795,6 +806,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    if (!_subAdminFeatureEnabled(key == 'company_delivery_inbox' ? 'company_deliveries' : key)) return;
     _recordCloudUsageForAction(key);
 
     if (key == 'footer_home') {
@@ -808,7 +820,12 @@ class _HomePageState extends State<HomePage> {
     if (key == 'attendance_list') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const AttendanceWorkerListPage(),
+          builder: (_) => AttendanceWorkerListPage(
+            onOpenManagement:
+                _nestedActionKeys.contains('attendance_management')
+                ? () => _openHomeAction('attendance_management')
+                : null,
+          ),
         ),
       );
       return;
@@ -897,6 +914,9 @@ class _HomePageState extends State<HomePage> {
       case 'workplace_select':
         page = const WorkDestinationSelectionPage();
         break;
+      case 'employee_resources':
+        page = EmployeeResourcesPage(availableKeys: _employeeResourceKeys, onOpen: _openHomeAction);
+        break;
       case 'daily_report':
         page = const DailyReportPage();
         break;
@@ -917,10 +937,8 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'employee_register':
-        page = const EmployeeRegistrationPage();
-        break;
       case 'initial_registration':
-        page = const EmployeeInitialRegistrationPage();
+        page = _isAdmin ? const EmployeeInitialRegistrationPage() : const EmployeeRegistrationPage();
         break;
       case 'approvals':
         page = const ApprovalsHubPage();
@@ -944,15 +962,20 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'payroll_review':
-        page = const SecondaryProtectedPage(
+        page = SecondaryProtectedPage(
           title: '給料一覧',
-          child: PayrollReviewPage(),
+          child: PayrollReviewPage(onOpenSettings: (_identity.isManagement || _identity.can('can_manage_payroll_adjustments')) ? () => _openHomeAction('payroll_settings') : null),
         );
         break;
       case 'payment_certificates':
-        page = const SecondaryProtectedPage(
+        page = SecondaryProtectedPage(
           title: '支払証明書',
-          child: PaymentCertificatesPage(),
+          child: PaymentCertificatesPage(
+            onOpenSettings:
+                _nestedActionKeys.contains('payment_certificate_settings')
+                ? () => _openHomeAction('payment_certificate_settings')
+                : null,
+          ),
         );
         break;
       case 'payment_certificate_settings':
@@ -974,22 +997,26 @@ class _HomePageState extends State<HomePage> {
         final companyId = _tutorialCompanyId;
         if (userId == null || companyId == null) return;
         page = TutorialPage(userId: userId, companyId: companyId,
-          availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+          availableActionKeys: _availableActionKeys,
           onOpenAction: _openHomeAction);
         break;
       case 'help':
         page = HelpPage(
           role: ManualContent.fromMembershipRole(_identity.role),
-          visibleFeatureKeys: _menuItems.map((item) => item.key).toSet(),
+          visibleFeatureKeys: _availableActionKeys,
         );
         break;
       case 'site_map':
         page = const AdminSiteMapPage();
         break;
       case 'admin_sites':
-        page = const SecondaryProtectedPage(
-          title: '管理者用現場データ',
-          child: AdminSiteFinancialPage(),
+        page = SecondaryProtectedPage(
+          title: '現場管理',
+          child: AdminSiteFinancialPage(
+            onOpenMap: _nestedActionKeys.contains('site_map')
+                ? () => _openHomeAction('site_map')
+                : null,
+          ),
         );
         break;
       case 'qualification_certificates':
@@ -1007,8 +1034,11 @@ class _HomePageState extends State<HomePage> {
       case 'document_register':
         page = const OwnDocumentRegistrationPage();
         break;
-      case 'company_deliveries':
+      case 'company_delivery_inbox':
         page = const CompanyDeliveryInboxPage();
+        break;
+      case 'company_deliveries':
+        page = TradeCompanyPage(mode: TradeCompanyPageMode.subcontractor, onOpenDeliveries: () => _openHomeAction('company_delivery_inbox'));
         break;
       case 'trade_companies':
         page = const TradeCompanyPage(
@@ -1016,8 +1046,9 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'subcontractors':
-        page = const TradeCompanyPage(
+        page = TradeCompanyPage(
           mode: TradeCompanyPageMode.subcontractor,
+          onOpenDeliveries: _subAdminFeatureEnabled('company_deliveries') ? () => _openHomeAction('company_delivery_inbox') : null,
         );
         break;
       case 'company_documents':
@@ -1095,6 +1126,38 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Set<String> get _employeeResourceKeys => {
+    if (_identity.isManagement && _subAdminFeatureEnabled('people')) 'people',
+    if (_identity.isManagement && _moduleEnabled('qualifications') && _subAdminFeatureEnabled('employee_qualifications')) 'employee_qualifications',
+    if (_identity.isManagement && _moduleEnabled('documents') && _subAdminFeatureEnabled('documents')) 'documents',
+  };
+
+  Set<String> get _nestedActionKeys => {
+    if (_moduleEnabled('attendance') &&
+        _identity.isManagement &&
+        _identity.can('can_manage_attendance') &&
+        _subAdminFeatureEnabled('attendance_management'))
+      'attendance_management',
+    if (_identity.isManagement &&
+        _subAdminFeatureEnabled('payment_certificate_settings'))
+      'payment_certificate_settings',
+    if (_moduleEnabled('sites') &&
+        _identity.isManagement &&
+        _subAdminFeatureEnabled('site_map'))
+      'site_map',
+    if (_identity.can('can_approve_daily_report_edits') &&
+        _subAdminFeatureEnabled('approvals'))
+      'approvals',
+  };
+
+  Set<String> get _availableActionKeys => {
+    ..._menuItems.map((item) => item.key), ..._employeeResourceKeys,
+    ..._nestedActionKeys,
+    if (_isAdmin) 'initial_registration',
+    if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments')) 'payroll_settings',
+    if (_identity.isManagement && _subAdminFeatureEnabled('company_deliveries')) 'company_deliveries',
+  };
+
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
       if (_identity.isAdmin || _isViewer)
@@ -1134,14 +1197,8 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'people',
-          label: SkoLanguageController.tr('社員データ'),
-          icon: Icons.groups_2_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・閲覧権限'),
-        ),
+      if (_employeeResourceKeys.isNotEmpty)
+        _MenuAction(key: 'employee_resources', label: SkoLanguageController.tr('社員資格書類'), icon: Icons.folder_shared_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者')),
       if (_identity.isManagement && _moduleEnabled('vehicle_routes'))
         _MenuAction(
           key: 'vehicle_routes',
@@ -1158,14 +1215,6 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
-      if (_isAdmin)
-        _MenuAction(
-          key: 'initial_registration',
-          label: SkoLanguageController.tr('初回登録'),
-          icon: Icons.sms_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者'),
-        ),
       _MenuAction(
         key: 'payroll',
         label: SkoLanguageController.tr('給与明細'),
@@ -1173,14 +1222,6 @@ class _HomePageState extends State<HomePage> {
         homeEligible: true,
         accessLabel: SkoLanguageController.tr('本人'),
       ),
-      if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments'))
-        _MenuAction(
-          key: 'payroll_settings',
-          label: SkoLanguageController.tr('個別給与設定'),
-          icon: Icons.manage_accounts_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・給与編集権限'),
-        ),
       if (_identity.isManagement || _identity.can('can_view_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_adjustments',
@@ -1188,7 +1229,7 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.price_change_outlined,
           accessLabel: SkoLanguageController.tr('管理者・給与閲覧権限'),
         ),
-      if (_identity.isManagement || _isViewer)
+      if (_identity.isManagement || _isViewer || _identity.can('can_manage_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_review',
           label: SkoLanguageController.tr('給料一覧'),
@@ -1201,14 +1242,6 @@ class _HomePageState extends State<HomePage> {
           key: 'payment_certificates',
           label: SkoLanguageController.tr('支払証明書'),
           icon: Icons.receipt_long_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'payment_certificate_settings',
-          label: SkoLanguageController.tr('支払証明書設定'),
-          icon: Icons.tune_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
@@ -1227,14 +1260,6 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_identity.isManagement && _moduleEnabled('qualifications'))
-        _MenuAction(
-          key: 'employee_qualifications',
-          label: SkoLanguageController.tr('従業員資格'),
-          icon: Icons.badge_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
       if (_moduleEnabled('documents'))
         _MenuAction(
           key: 'document_register',
@@ -1242,14 +1267,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.note_add_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
-        ),
-      if (_identity.isManagement && _moduleEnabled('documents'))
-        _MenuAction(
-          key: 'documents',
-          label: SkoLanguageController.tr('必要書類'),
-          icon: Icons.fact_check_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (_moduleEnabled('notes'))
         _MenuAction(
@@ -1265,13 +1282,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.photo_album_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_identity.can('can_approve_daily_report_edits'))
-        _MenuAction(
-          key: 'approvals',
-          label: SkoLanguageController.tr('承認待ち'),
-          icon: Icons.approval_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
-        ),
       if (_isAdmin &&
           _moduleEnabled('line_bridge'))
         _MenuAction(
@@ -1279,13 +1289,6 @@ class _HomePageState extends State<HomePage> {
           label: SkoLanguageController.tr('本日のLINE'),
           icon: Icons.today_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
-        ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'company_deliveries',
-          label: SkoLanguageController.tr('協力会社情報'),
-          icon: Icons.folder_shared_outlined,
-          accessLabel: SkoLanguageController.tr('管理者'),
         ),
       if (_identity.isManagement)
         _MenuAction(
@@ -1323,18 +1326,10 @@ class _HomePageState extends State<HomePage> {
       if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))
         _MenuAction(
           key: 'admin_sites',
-          label: SkoLanguageController.tr('管理現場'),
+          label: SkoLanguageController.tr('現場管理'),
           icon: Icons.admin_panel_settings_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・現場閲覧権限'),
-        ),
-      if (_identity.isManagement && _moduleEnabled('sites'))
-        _MenuAction(
-          key: 'site_map',
-          label: SkoLanguageController.tr('現場マップ'),
-          icon: Icons.map_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (!_identity.isManagement && _moduleEnabled('sites'))
         _MenuAction(
@@ -1343,14 +1338,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.add_business_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
-        ),
-      if (_identity.isManagement && _identity.can('can_manage_attendance'))
-        _MenuAction(
-          key: 'attendance_management',
-          label: SkoLanguageController.tr('勤怠管理'),
-          icon: Icons.manage_history_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
       _MenuAction(
         key: 'appearance',
@@ -1400,7 +1387,7 @@ class _HomePageState extends State<HomePage> {
     FloatingHelpController.setContext(
       featureKey: 'home',
       currentRole: ManualContent.fromMembershipRole(_identity.role),
-      visibleKeys: _menuItems.map((item) => item.key).toSet(),
+      visibleKeys: _availableActionKeys,
     );
     final now = DateTime.now();
     final dateLabel = SkoLanguageController.isEnglish
@@ -1494,7 +1481,7 @@ class _HomePageState extends State<HomePage> {
           requiredDocumentAttention: _requiredDocumentAttention,
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
               ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
-                  availableActionKeys: _menuItems.map((item) => item.key).toSet(),
+                  availableActionKeys: _availableActionKeys,
                   onOpenAction: _openHomeAction, refreshToken: _tutorialRefreshToken)
               : null,
           moduleEnabled: _moduleEnabled,
@@ -1524,9 +1511,8 @@ class _HomePageState extends State<HomePage> {
           hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
           hasPendingRouteReports: _homeHasPendingRouteReports,
           appearance: bodyAppearance,
-          contentTopInset: _chromeVisible
-              ? MediaQuery.paddingOf(context).top + 72
-              : 8,
+          // Keep scroll geometry stable when the overlay header hides or returns.
+          contentTopInset: MediaQuery.paddingOf(context).top + 72,
           onOpen: _openHomeAction,
           onRefresh: _loadHomeData,
           onReorderAction: _reorderHomeActionByKey,
@@ -1549,6 +1535,7 @@ class _HomePageState extends State<HomePage> {
       'document_register',
     };
     const subAdmin = <String>{
+      'employee_resources',
       'people',
       'company_deliveries',
       'vehicle_routes',

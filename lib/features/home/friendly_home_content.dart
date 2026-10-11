@@ -226,12 +226,26 @@ class _RequiredDocumentAttentionCardState
                       horizontal: 12,
                       vertical: 10,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
                       children: [
                         Expanded(
                           child: Text(
                             SkoLanguageController.tr('要対応'),
-                            style: const TextStyle(fontWeight: FontWeight.w900),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize:
+                                          (Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.fontSize ??
+                                              14) *
+                                          1.25,
+                                    ),
                           ),
                         ),
                         Text(
@@ -243,6 +257,21 @@ class _RequiredDocumentAttentionCardState
                         ),
                         const SizedBox(width: 4),
                         const Icon(Icons.chevron_right),
+                          ],
+                        ),
+                        if (widget
+                            .attention
+                            .notificationPreviews
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.attention.notificationPreviews.join('\n'),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(fontSize: 11),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -753,26 +782,58 @@ class _DraggableHomeCard extends StatelessWidget {
         return AnimatedScale(
           scale: highlighted ? 1.015 : 1,
           duration: const Duration(milliseconds: 120),
-          child: LongPressDraggable<String>(
+          child: _HomeReorderSurface(
             data: keyName,
-            delay: const Duration(milliseconds: 320),
-            feedback: SizedBox(
-              width: MediaQuery.sizeOf(context).width - 32,
-              child: Material(
-                color: Colors.transparent,
-                child: child,
-              ),
-            ),
-            childWhenDragging: Opacity(
-              opacity: 0.35,
-              child: child,
-            ),
+            feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
         );
       },
     );
   }
+}
+
+// Only the handle competes for a long press. A stationary finger on card text
+// must remain available to the vertical scroll recognizer, regardless of delay.
+class _HomeReorderSurface extends StatelessWidget {
+  const _HomeReorderSurface({
+    required this.data,
+    required this.feedbackWidth,
+    required this.child,
+  });
+  final String data;
+  final double feedbackWidth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      child,
+      Positioned(
+        top: 0,
+        right: 0,
+        child: LongPressDraggable<String>(
+          data: data,
+          delay: const Duration(milliseconds: 600),
+          feedback: SizedBox(
+            width: feedbackWidth,
+            child: Material(color: Colors.transparent, child: child),
+          ),
+          childWhenDragging: const SizedBox(width: 28, height: 28),
+          child: Semantics(
+            label: 'ここを長押しして並べ替え',
+            button: true,
+            child: SizedBox(
+              key: ValueKey('home-reorder-$data'),
+              width: 28,
+              height: 28,
+              child: const Icon(Icons.drag_indicator, size: 18),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class _TodayAttendanceHomeCard extends StatelessWidget {
@@ -807,7 +868,16 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。',
+                maxLines: 1,
+                softWrap: false,
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(fontSize: 11),
+              ),
+            ),
             const SizedBox(height: 12),
             Opacity(
               opacity: buttonOpacity,
@@ -1028,20 +1098,9 @@ class _HomeActionTile extends StatelessWidget {
         return AnimatedScale(
           scale: highlighted ? 1.04 : 1,
           duration: const Duration(milliseconds: 120),
-          child: LongPressDraggable<String>(
+          child: _HomeReorderSurface(
             data: item.key,
-            delay: const Duration(milliseconds: 320),
-            feedback: SizedBox(
-              width: fourColumns ? 92 : (compact ? 120 : 220),
-              child: Material(
-                color: Colors.transparent,
-                child: tile(dragging: true),
-              ),
-            ),
-            childWhenDragging: Opacity(
-              opacity: 0.35,
-              child: tile(),
-            ),
+            feedbackWidth: fourColumns ? 92 : (compact ? 120 : 220),
             child: tile(),
           ),
         );
@@ -1065,5 +1124,3 @@ class _HomeAction {
   final IconData icon;
   final HomeShortcutAccess access;
 }
-
-

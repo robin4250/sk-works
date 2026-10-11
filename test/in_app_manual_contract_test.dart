@@ -24,7 +24,7 @@ void main() {
 
     expect(adminText, isNot(contains('請求書・現場単価は対象外')));
     expect(adminText, contains('会社単価・手当設定'));
-    expect(adminText, contains('管理現場'));
+    expect(adminText, contains('現場管理'));
     expect(adminText, contains('初回設定の6項目'));
     expect(adminText, contains('給与の締め日・給料日・確認者'));
     expect(adminText, isNot(contains('サブ管理者には現場単価を表示しません')));

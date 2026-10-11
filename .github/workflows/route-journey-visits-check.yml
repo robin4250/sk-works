@@ -7,6 +7,10 @@ on:
       - 'tool/fixtures/route_journey_capture/**'
       - 'tool/fixtures/route_manual_deployment_checkpoint/**'
       - 'tool/verify_route_journey_visits.mjs'
+      - 'tool/verify_route_final_visit_clock_out.mjs'
+      - 'tool/verify_archived_attendance_capture_recovery.mjs'
+      - 'supabase/migrations/*archived_attendance_capture_recovery.sql'
+      - 'supabase/migrations/*route_final_visit_clock_out.sql'
       - 'tool/verify_daily_report_time_only_evidence.mjs'
       - 'supabase/migrations/*link_daily_report_time_only_evidence.sql'
       - 'tool/verify_route_journey_visit_races.mjs'
@@ -33,6 +37,12 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/visit-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.8
       - name: Verify visit transaction and clock-out boundaries
         run: node tool/verify_route_journey_visits.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify archived clock-in exact recovery
+        run: node tool/verify_archived_attendance_capture_recovery.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+
+      - name: Verify atomic final visit clock-out
+        run: node tool/verify_route_final_visit_clock_out.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
       - name: Verify saved manual and failed-photo report evidence
         run: node tool/verify_daily_report_time_only_evidence.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"

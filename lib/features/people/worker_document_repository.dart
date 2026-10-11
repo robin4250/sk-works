@@ -216,7 +216,8 @@ class WorkerDocumentRepository {
     };
   }
 
-  Future<void> addDefaultRequirements() async {
+  Future<void> addDefaultRequirements({String? scope}) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     final existingRows = await _client
         .from('document_requirements')
@@ -229,8 +230,9 @@ class WorkerDocumentRepository {
     var order = 0;
     for (final item in defaultRequirements) {
       final name = item['name']! as String;
-      final scope = item['scope']! as String;
-      final key = '$scope::$name';
+      if (scope != null && item['scope'] != scope) continue;
+      final itemScope = item['scope']! as String;
+      final key = '$itemScope::$name';
       if (existing.contains(key)) {
         order += 10;
         continue;
@@ -238,7 +240,7 @@ class WorkerDocumentRepository {
       await _client.from('document_requirements').insert({
         'company_id': companyId,
         'name': name,
-        'scope': scope,
+        'scope': itemScope,
         'is_required': true,
         'expiry_required': item['expiry']! as bool,
         'renewal_reminder_days': 30,
@@ -254,6 +256,7 @@ class WorkerDocumentRepository {
     required bool isRequired,
     required bool expiryRequired,
   }) async {
+    await _requireManagePeople();
     final companyId = await _companyId();
     await _client.from('document_requirements').insert({
       'company_id': companyId,
@@ -263,6 +266,46 @@ class WorkerDocumentRepository {
       'expiry_required': expiryRequired,
       'renewal_reminder_days': 30,
     });
+  }
+
+  Future<void> updateRequirement({
+    required String id,
+    required String name,
+    required String scope,
+    required bool isRequired,
+    required bool expiryRequired,
+  }) => _changeRequirement(id, {
+    'name': name.trim(),
+    'scope': scope,
+    'is_required': isRequired,
+    'expiry_required': expiryRequired,
+  });
+
+  // Hide the requirement without cascading deletion into submitted documents.
+  Future<void> deactivateRequirement(String id) =>
+      _changeRequirement(id, {'is_active': false});
+
+  Future<void> _changeRequirement(
+    String id,
+    Map<String, dynamic> values,
+  ) async {
+    final actor = actorId;
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    if (actor == null || actorId != actor) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+    final rows = await _client
+        .from('document_requirements')
+        .update(values)
+        .eq('company_id', companyId)
+        .eq('id', id)
+        .eq('is_active', true)
+        .select('id');
+    if (actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    if (rows.length != 1 || rows.single['id'] != id) {
+      throw StateError('書類項目を更新できませんでした。再読み込みしてください。');
+    }
   }
 
   Future<Map<String, dynamic>> uploadAttachment({

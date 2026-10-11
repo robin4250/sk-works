@@ -10,6 +10,7 @@ class RequiredDocumentAttention {
     this.generationIssueCount = 0,
     this.generationIssueMessages = const [],
     this.unresolvedCountOverride,
+    this.notificationPreviews = const [],
   });
 
   final int missingCount;
@@ -21,6 +22,7 @@ class RequiredDocumentAttention {
   final List<String> generationIssueMessages;
 
   final int? unresolvedCountOverride;
+  final List<String> notificationPreviews;
 
   int get unresolvedCount => unresolvedCountOverride ??
       (missingCount + paidLeaveApprovalCount + generationIssueCount);
@@ -43,6 +45,13 @@ class HomeAttentionRepository {
     final documents = pending.where((item) => item.source == 'required_document');
     final generation = pending.where((item) => item.source == 'generation_setting');
     return RequiredDocumentAttention(
+      notificationPreviews: pending
+          .map(
+            (item) => item.body.trim().isEmpty
+                ? item.title
+                : '${item.title}：${item.body}',
+          )
+          .toList(),
       missingCount: documents.length,
       missingNames: documents.map((item) => item.title).toList(),
       needsLicense: false,
