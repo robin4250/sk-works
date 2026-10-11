@@ -226,28 +226,27 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         FilterChip(
                           label: const Text('すべて'),
                           selected: _scope == 'all',
                           onSelected: (_) => setState(() => _scope = 'all'),
                         ),
-                        const SizedBox(width: 8),
                         FilterChip(
                           label: const Text('社内'),
                           selected: _scope == 'internal',
                           onSelected: (_) =>
                               setState(() => _scope = 'internal'),
                         ),
-                        const SizedBox(width: 8),
                         FilterChip(
                           label: Text(SkoLanguageController.tr('取引先')),
                           selected: _scope == 'upstream',
                           onSelected: (_) =>
                               setState(() => _scope = 'upstream'),
                         ),
-                        const Spacer(),
                         Text(
                           needsAttention == 0
                               ? '完了 $completed/${visibleRequirements.length}'
@@ -437,14 +436,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      if (actor == null || _repository?.actorId != actor)
+      if (actor == null || _repository?.actorId != actor) {
         throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       await _repository?.deactivateRequirement(row['id'] as String);
       if (mounted) _reload();
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
     }
   }
 
@@ -600,8 +601,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     if (draft == null || !mounted) return;
 
     try {
-      if (actor == null || repository.actorId != actor)
+      if (actor == null || repository.actorId != actor) {
         throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       if (current == null) {
         await repository.addRequirement(
           name: draft['name'] as String,

@@ -13,7 +13,7 @@ void main() {
     expect(app, contains("key: 'company_documents'"));
     expect(app, contains("SkoLanguageController.tr('会社データ')"));
     expect(app, contains("key == 'company_documents' && !_isAdmin"));
-    expect(app, contains("key == 'company_deliveries' && !_identity.isManagement"));
+    expect(app, contains("(key == 'company_deliveries' || key == 'company_delivery_inbox') && !_identity.isManagement"));
     expect(app, contains('HomeShortcut('));
     expect(home, contains("shortcut.access"));
     expect(app, contains("'company_documents',"));

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/home/employee_resources_page.dart';
+import 'package:sk_works/features/payroll/payroll_review_page.dart';
 import 'package:sk_works/features/people/worker_document_page.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 
@@ -40,6 +41,17 @@ class DocumentFixture extends WorkerDocumentRepository {
 }
 
 void main() {
+  testWidgets('payroll settings entry survives unavailable review data', (
+    tester,
+  ) async {
+    var opened = false;
+    await tester.pumpWidget(
+      MaterialApp(home: PayrollReviewPage(onOpenSettings: () => opened = true)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('個別給与設定'));
+    expect(opened, isTrue);
+  });
   testWidgets(
     'resources exposes permitted children only and opens their existing actions',
     (tester) async {

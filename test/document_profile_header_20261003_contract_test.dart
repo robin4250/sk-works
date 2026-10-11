@@ -21,7 +21,7 @@ void main() {
     expect(app, contains("SkoLanguageController.tr('書類登録')"));
     expect(app, contains("case 'documents':"));
     expect(app, contains("key: 'employee_resources'"));
-    expect(app, contains("SkoLanguageController.tr('必要書類')"));
+    expect(File('lib/features/home/employee_resources_page.dart').readAsStringSync(), contains("('documents', '必要書類'"));
     expect(ownDocs, contains("'ログイン中の本人の書類だけを表示します'"));
     expect(ownDocs, contains('saveOwnDocument'));
     expect(ownDocs, contains('repository.loadOwnDocuments()'));

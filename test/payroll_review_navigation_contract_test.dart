@@ -11,7 +11,7 @@ void main() {
     expect(app, contains("import 'features/payroll/payroll_review_page.dart';"));
     expect(app, contains("case 'payroll_review':"));
     expect(app, contains("title: '給料一覧'"));
-    expect(app, contains('child: PayrollReviewPage()'));
+    expect(app, contains('child: PayrollReviewPage(onOpenSettings:'));
     expect(app, contains("key: 'payroll_review'"));
     expect(app, contains("label: SkoLanguageController.tr('給料一覧')"));
     expect(app, contains('_identity.isManagement || _isViewer'));

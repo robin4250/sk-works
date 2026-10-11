@@ -20,7 +20,8 @@ void main() {
     expect(app, contains("key: 'subcontractors'"));
     expect(app, contains("SkoLanguageController.tr('取引会社登録')"));
     expect(app, contains("SkoLanguageController.tr('協力会社登録')"));
-    expect(app, contains("SkoLanguageController.tr('協力会社情報')"));
+    expect(app, contains("case 'company_deliveries':"));
+    expect(page, contains('onOpenDeliveries'));
     expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
     expect(app, contains("if (_identity.isManagement)"));
   });

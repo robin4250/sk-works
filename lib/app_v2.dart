@@ -1186,7 +1186,7 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.price_change_outlined,
           accessLabel: SkoLanguageController.tr('管理者・給与閲覧権限'),
         ),
-      if (_identity.isManagement || _isViewer)
+      if (_identity.isManagement || _isViewer || _identity.can('can_manage_payroll_adjustments'))
         _MenuAction(
           key: 'payroll_review',
           label: SkoLanguageController.tr('給料一覧'),
