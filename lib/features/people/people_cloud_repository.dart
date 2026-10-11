@@ -73,7 +73,51 @@ class PeopleCloudRepository {
     return rows.first['company_id'] as String;
   }
 
+  String? get actorId => _client.auth.currentUser?.id;
+
+  Future<bool> canViewPeople() async {
+    final member = await membership();
+    return ['owner', 'admin', 'manager', 'viewer'].contains(member.role);
+  }
+
+  Future<String?> portraitUrl(String workerId) async {
+    final actor = actorId;
+    final member = await membership();
+    final path = await _client.rpc(
+      'employee_personnel_portrait',
+      params: {'p_company': member.companyId, 'p_worker': workerId},
+    );
+    if (actor == null || actorId != actor) throw StateError('ログイン情報が変更されました');
+    if (path == null) return null;
+    final value = path.toString();
+    if (!value.startsWith('${member.companyId}/$workerId/'))
+      throw StateError('顔写真の所属が一致しません');
+    final url = await _client.storage
+        .from('worker-documents')
+        .createSignedUrl(value, 600);
+    if (actorId != actor) throw StateError('ログイン情報が変更されました');
+    return url;
+  }
+
   Future<List<Map<String, dynamic>>> loadAll() async {
+    final member = await membership();
+    if (member.role == 'viewer') {
+      final actor = actorId;
+      final raw = await _client.rpc(
+        'employee_personnel_view',
+        params: {'p_company': member.companyId},
+      );
+      if (actor == null ||
+          actorId != actor ||
+          raw is! Map ||
+          raw['company_id'] != member.companyId ||
+          raw['records'] is! List) {
+        throw StateError('社員情報の取得結果を確認できません');
+      }
+      return (raw['records'] as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList(growable: false);
+    }
     await _requireManagePeople();
     final rows = await _client.rpc('people_management_records');
     if (rows is! List) return const <Map<String, dynamic>>[];

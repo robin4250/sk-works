@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/people/phone_display.dart';
 
 void main() {
-  test('employee detail access is restricted to management roles', () {
+  test('employee detail allows scoped viewers while edits remain management-only', () {
     final repository = File(
       'lib/features/people/people_cloud_repository.dart',
     ).readAsStringSync();
@@ -15,7 +15,10 @@ void main() {
     expect(repository, contains("member.role == 'owner'"));
     expect(repository, contains("member.role == 'admin'"));
     expect(repository, contains("member.role == 'manager'"));
-    expect(page, contains("onTap: !_canManagePeople"));
+    expect(repository, contains("member.role == 'viewer'"));
+    expect(page, contains("onTap: !_canViewPeople"));
+    expect(page, contains("canManage: _canManagePeople"));
+    expect(repository, contains("'employee_personnel_view'"));
   });
 
   test('employee detail page exposes required personnel fields', () {
