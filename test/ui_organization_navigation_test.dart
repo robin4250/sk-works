@@ -8,7 +8,15 @@ import 'package:sk_works/features/people/worker_document_repository.dart';
 
 class DocumentFixture extends WorkerDocumentRepository {
   DocumentFixture()
-    : super.forTesting(SupabaseClient('http://127.0.0.1', 'fixture'));
+    : this._(
+        SupabaseClient(
+          'http://127.0.0.1',
+          'fixture',
+          authOptions: const AuthClientOptions(autoRefreshToken: false),
+        ),
+      );
+  DocumentFixture._(this.client) : super.forTesting(client);
+  final SupabaseClient client;
   final removed = <String>[];
   @override
   String get actorId => 'actor';
@@ -77,6 +85,7 @@ void main() {
     'documents separates employee search from settings and does not select an employee automatically',
     (tester) async {
       final repo = DocumentFixture();
+      addTearDown(repo.client.dispose);
       await tester.pumpWidget(
         MaterialApp(home: WorkerDocumentPage(repositoryOverride: repo)),
       );
@@ -97,6 +106,7 @@ void main() {
     'settings shows selected scope; cancelled removal never changes a requirement',
     (tester) async {
       final repo = DocumentFixture();
+      addTearDown(repo.client.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: WorkerDocumentPage(

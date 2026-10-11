@@ -10,11 +10,17 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('admin home routes to people module', (tester) async {
+  testWidgets('admin home routes through employee resources to people module', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
+    expect(find.text('社員データ'), findsNothing);
+    await tester.ensureVisible(find.text('社員資格書類'));
+    await tester.tap(find.text('社員資格書類'));
+    await tester.pumpAndSettle();
     expect(find.text('社員データ'), findsOneWidget);
     await tester.ensureVisible(find.text('社員データ'));
     await tester.pump();
@@ -77,8 +83,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReorderableListView), findsOneWidget);
-    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格登録', '従業員資格']) {
+    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格登録', '社員資格書類']) {
       expect(find.text(label), findsOneWidget);
     }
+    expect(find.text('初回登録'), findsNothing);
+    expect(find.text('個別給与設定'), findsNothing);
+    await tester.tap(find.text('社員資格書類'));
+    await tester.pumpAndSettle();
+    expect(find.text('社員データ'), findsOneWidget);
+    expect(find.text('従業員資格'), findsOneWidget);
+    expect(find.text('必要書類'), findsOneWidget);
   });
 }
