@@ -1,11 +1,13 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../data/supabase_backend.dart';
 import 'gps_photo_capture_result.dart';
 import 'route_journey_capture_draft.dart';
 
 class RouteJourneyCaptureRepository {
   RouteJourneyCaptureRepository._(this._client);
+  RouteJourneyCaptureRepository.forTesting(this._client);
   final SupabaseClient _client;
   static const bucket = 'attendance-route-evidence';
   static RouteJourneyCaptureRepository? maybeCreate() {
@@ -92,6 +94,175 @@ class RouteJourneyCaptureRepository {
     return List.unmodifiable(pending);
   }
 
+  String _reportKey(RouteVisitReportPending pending) =>
+      'sko.route.visit.report.pending.v1.${pending.userId}.${pending.companyId}.${pending.sourceId}.${pending.endCaptureId}';
+
+  void _requireActor(String actor) {
+    if (userId != actor) throw StateError('操作したアカウントを再確認してください');
+  }
+
+  Future<RouteVisitReportPending> retainPendingReport(
+    RouteJourneyCaptureDraft draft,
+    Map<String, dynamic> saved,
+  ) async {
+    final actor = userId;
+    if (draft.userId != actor) throw StateError('日報対象の本人が一致しません');
+    final pending = RouteVisitReportPending.fromSaved(draft, saved);
+    await _requireMembership(pending.companyId);
+    _requireActor(actor);
+    final preferences = await SharedPreferences.getInstance();
+    _requireActor(actor);
+    final key = _reportKey(pending);
+    final existing = preferences.getString(key);
+    if (existing != null) {
+      final restored = RouteVisitReportPending.restore(existing);
+      if (restored.move.encoded != pending.move.encoded ||
+          restored.workDate != pending.workDate) {
+        throw StateError('保留中の現場日報が一致しません');
+      }
+      return restored;
+    }
+    if (!await preferences.setString(key, pending.encoded)) {
+      throw StateError('現場日報の再開情報を保存できません');
+    }
+    _requireActor(actor);
+    return pending;
+  }
+
+  Future<List<RouteVisitReportPending>> loadPendingReports(
+    String companyId,
+  ) async {
+    final actor = userId;
+    await _requireMembership(companyId);
+    _requireActor(actor);
+    final preferences = await SharedPreferences.getInstance();
+    _requireActor(actor);
+    final prefix = 'sko.route.visit.report.pending.v1.$actor.$companyId.';
+    final pending = <RouteVisitReportPending>[];
+    for (final key
+        in preferences.getKeys().where((key) => key.startsWith(prefix)).toList()
+          ..sort()) {
+      final value = preferences.getString(key);
+      if (value == null) throw StateError('保留中の現場日報を確認できません');
+      final row = RouteVisitReportPending.restore(value);
+      if (row.userId != actor ||
+          row.companyId != companyId ||
+          _reportKey(row) != key) {
+        throw StateError('保留中の現場日報の本人・会社が一致しません');
+      }
+      pending.add(row);
+    }
+    return List.unmodifiable(pending);
+  }
+
+  Future<List<RouteVisitReportPending>> allPendingReports() async {
+    final actor = userId;
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', actor);
+    _requireActor(actor);
+    final pending = <RouteVisitReportPending>[];
+    for (final companyId
+        in rows.map((row) => row['company_id'] as String).toSet()) {
+      pending.addAll(await loadPendingReports(companyId));
+      _requireActor(actor);
+    }
+    return List.unmodifiable(pending);
+  }
+
+  Future<Map<String, dynamic>> _reportParams(
+    RouteVisitReportPending pending,
+  ) async {
+    final actor = userId;
+    if (pending.userId != actor) throw StateError('日報対象の本人が一致しません');
+    final shift = await workspace(pending.sourceId);
+    _requireActor(actor);
+    if (shift['company_id'] != pending.companyId ||
+        shift['work_date'] != pending.workDate ||
+        shift['route_assignment_id'] is! String ||
+        (shift['route_assignment_id'] as String).isEmpty) {
+      throw StateError('日報対象の勤務が一致しません');
+    }
+    return {
+      'p_source_clock_in_id': pending.sourceId,
+      'p_route_assignment_id': shift['route_assignment_id'],
+      'p_route_stop_id': pending.stopId,
+      'p_start_capture_id': pending.startCaptureId,
+      'p_end_capture_id': pending.endCaptureId,
+    };
+  }
+
+  void _requireReportIdentity(
+    Map result,
+    RouteVisitReportPending pending,
+    Map<String, dynamic> params,
+  ) {
+    if (result['id'] is! String ||
+        (result['id'] as String).isEmpty ||
+        result['created_by'] != pending.userId ||
+        result['company_id'] != pending.companyId ||
+        result['report_date'] != pending.workDate ||
+        params.entries.any(
+          (entry) => result[entry.key.substring(2)] != entry.value,
+        )) {
+      throw StateError('現場日報の訪問対象が一致しません');
+    }
+  }
+
+  Future<RouteVisitReportPending> chooseReport(
+    RouteVisitReportPending pending,
+    String choice,
+  ) async {
+    final actor = userId;
+    final params = await _reportParams(pending);
+    final selected = pending.withChoice(choice);
+    final preferences = await SharedPreferences.getInstance();
+    _requireActor(actor);
+    if (!await preferences.setString(_reportKey(selected), selected.encoded)) {
+      throw StateError('日報の選択を保存できません');
+    }
+    _requireActor(actor);
+    final result = await _client.rpc(
+      'choose_route_visit_report',
+      params: {...params, 'p_create': choice == 'create'},
+    );
+    _requireActor(actor);
+    if (result is! Map ||
+        ![
+          'draft',
+          'reporter_signed',
+          'skipped',
+          'completed',
+        ].contains(result['status'])) {
+      throw StateError('日報の選択結果を確認できません');
+    }
+    _requireReportIdentity(result, pending, params);
+    // Server terminal state wins if a previous response was lost.
+    if (result['status'] == 'skipped' || result['status'] == 'completed') {
+      return selected.withChoice('skip');
+    }
+    return selected;
+  }
+
+  Future<void> finishReport(RouteVisitReportPending pending) async {
+    final actor = userId;
+    final params = await _reportParams(pending);
+    // Reconcile the same immutable visit; a local UI result alone is no proof.
+    final result = await _client.rpc('read_route_visit_report', params: params);
+    _requireActor(actor);
+    if (result is! Map ||
+        !['skipped', 'completed'].contains(result['status'])) {
+      throw StateError('日報の完了結果を確認できません');
+    }
+    _requireReportIdentity(result, pending, params);
+    final preferences = await SharedPreferences.getInstance();
+    _requireActor(actor);
+    if (!await preferences.remove(_reportKey(pending))) {
+      throw StateError('日報の完了状態を保存できません');
+    }
+  }
+
   Future<Map<String, dynamic>> submit(RouteJourneyCaptureDraft draft) async {
     if (draft.userId != userId) throw StateError('保留中の本人・会社が一致しません');
     await _requireMembership(draft.companyId);
@@ -140,6 +311,11 @@ class RouteJourneyCaptureRepository {
         return Map<String, dynamic>.from(value);
       },
     );
+    if (draft.visitKind == 'end') {
+      // Persist the next required decision before retiring the fixed move command.
+      await retainPendingReport(draft, row);
+    }
+    if (draft.userId != userId) throw StateError('操作したアカウントを再確認してください');
     await preferences.remove(key);
     return row;
   }

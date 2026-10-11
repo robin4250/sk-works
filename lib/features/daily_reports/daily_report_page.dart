@@ -23,6 +23,7 @@ import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
+import 'route_visit_report_context.dart';
 
 class DailyReportPage extends StatefulWidget {
   const DailyReportPage({
@@ -32,7 +33,13 @@ class DailyReportPage extends StatefulWidget {
     this.initialRouteAssignmentId,
     this.vehicleClockInId,
     this.groupClockInAnchorId,
+    this.routeVisitContext,
+    @visibleForTesting this.repositoryForTesting,
   });
+
+  final RouteVisitReportContext? routeVisitContext;
+  @visibleForTesting
+  final DailyReportRepository? repositoryForTesting;
 
   final DateTime? initialDate;
   final String? initialSiteId;
@@ -45,7 +52,7 @@ class DailyReportPage extends StatefulWidget {
 }
 
 class _DailyReportPageState extends State<DailyReportPage> {
-  final _repository = DailyReportRepository.maybeCreate();
+  late final _repository = widget.repositoryForTesting ?? DailyReportRepository.maybeCreate();
   String? _evidenceAttachmentFingerprint;
   final _workDescription = TextEditingController();
   final _picker = ImagePicker();
@@ -74,6 +81,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final Map<String, TextEditingController> _allowanceLabel = {};
   final Map<String, TextEditingController> _odometer = {};
 
+  bool get _visitReport => widget.routeVisitContext != null;
+
   bool get _signed => _report?.signed == true;
 
   String? get _currentGroupAnchor {
@@ -94,7 +103,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     return widget.vehicleClockInId;
   }
 
-  bool get _editable => !_signed && !_saving;
+  bool get _visitReporterLocked => _visitReport &&
+      (_report?.status == 'reporter_signed' || _report?.reporterSignatureJson != null);
+  bool get _editable => !_signed && !_visitReporterLocked && !_saving;
 
   @override
   void initState() {
@@ -102,9 +113,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final initial = widget.initialDate ?? DateTime.now();
     _date = DateTime(initial.year, initial.month, initial.day);
     _siteId = widget.initialSiteId;
-    _routeAssignmentId = widget.initialRouteAssignmentId;
+    _routeAssignmentId = widget.routeVisitContext?.routeAssignmentId ?? widget.initialRouteAssignmentId;
     _loadDay();
-    _restoreNotificationRetry();
+    if (!_visitReport) _restoreNotificationRetry();
   }
 
   @override
@@ -132,6 +143,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _loadDay() async {
+    if (_visitReport) {
+      await _loadSelectedSite();
+      return;
+    }
     final generation = ++_loadGeneration;
     final date = _date;
     final repository = _repository;
@@ -202,6 +217,36 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
 
     try {
+      if (_visitReport) {
+        final existing = await repository.loadVisitReport(
+          widget.routeVisitContext!,
+        );
+        if (!mounted || generation != _loadGeneration) return;
+        if (existing == null) throw StateError('現場訪問の日報を確認できません');
+        setState(() {
+          _report = existing;
+          _siteId = existing.siteId;
+          _routeAssignmentId = existing.routeAssignmentId;
+          _siteName = existing.siteName;
+          _date = existing.date;
+          _workers = existing.workers;
+          _groups = [
+            DailyReportSiteGroup(
+              siteId: existing.siteId,
+              routeAssignmentId: existing.routeAssignmentId,
+              siteName: existing.siteName,
+              workers: existing.workers,
+            ),
+          ];
+          _evidence = const [];
+          _workDescription.text = existing.workDescription;
+          _loading = false;
+          _error = null;
+        });
+        _resetWorkerControllers();
+        _savedDraftFingerprint = _draftFingerprint();
+        return;
+      }
       final existing = await repository.loadReport(
         date: date,
         siteId: siteId,
@@ -229,15 +274,19 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final anchor = _currentGroupAnchor;
       if (anchor != null) {
         workers = await repository.loadAnchoredWorkers(anchorId: anchor, workDate: date,
-          existing: workers, fallback: List<DailyReportWorkerDraft>.from(group?.workers ?? const []),
-          allowNewMembers: existing?.signed != true);
+          existing: workers, fallback: List<DailyReportWorkerDraft>.from(group?.workers ?? const [],
+          ),
+          allowNewMembers: existing?.signed != true,
+        );
         if (!mounted || generation != _loadGeneration) return;
       }
 
 
-      final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor);
+      final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor,
+      );
       if (meterEnabled) {
-        for (final worker in workers.where((worker) => worker.vehicleId != null)) {
+        for (final worker in workers.where((worker) => worker.vehicleId != null,
+        )) {
           worker.meterManaged = true;
         }
       }
@@ -267,13 +316,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _disposeWorkerControllers();
     for (final worker in _workers) {
       _overtime[worker.workerId] =
-          TextEditingController(text: _number(worker.overtimeHours));
+          TextEditingController(text: _number(worker.overtimeHours),
+      );
       _early[worker.workerId] =
-          TextEditingController(text: _number(worker.earlyHours));
+          TextEditingController(text: _number(worker.earlyHours),
+      );
       _night[worker.workerId] =
-          TextEditingController(text: _number(worker.nightHours));
+          TextEditingController(text: _number(worker.nightHours),
+      );
       _allowanceLabel[worker.workerId] =
-          TextEditingController(text: worker.allowanceLabel);
+          TextEditingController(text: worker.allowanceLabel,
+      );
       _odometer[worker.workerId] = TextEditingController(
         text: worker.odometerKm == null ? '' : _number(worker.odometerKm!),
       );
@@ -350,43 +403,65 @@ class _DailyReportPageState extends State<DailyReportPage> {
         'vehicle_meter_source_clock_in_id': worker.meterSourceClockInId,
         'previous_odometer_km': worker.previousOdometerKm,
         'trip_distance_km': worker.tripDistanceKm,
-      }).toList(),
+      },
+          ).toList(),
     });
   }
 
   Future<String?> _saveBeforeSignature() async {
-    if (_signed) return _report?.id;
-    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+    if (_signed || _visitReporterLocked) return _report?.id;
+    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
+    )) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+        SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください',
+            ),
+          ),
+        ),
+      );
       return null;
     }
-    if (_workers.any((worker) => worker.sourceClockInId != null && worker.sourceClockOutAt == null)) {
+    if (_workers.any((worker) => worker.sourceClockInId != null && worker.sourceClockOutAt == null,
+    )) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        SkoLanguageController.tr('未退勤のメンバーがいます。下書き保存後、退勤を確認して日報を再読み込みしてください'))));
+        SkoLanguageController.tr('未退勤のメンバーがいます。下書き保存後、退勤を確認して日報を再読み込みしてください',
+            ),
+          ),
+        ),
+      );
       return null;
     }
     if (((_currentGroupAnchor != null && _workers.any((worker) => worker.sourceClockInId != null)) ||
          (_currentVehicleAnchor != null && _workers.any((worker) => worker.meterManaged))) &&
         _evidenceAttachmentFingerprint != _draftFingerprint()) {
       final id = await _saveDraft(ownsBusyState: false);
-      if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+      if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
+      )) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-            SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+            SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください',
+                ),
+              ),
+            ),
+          );
         }
         return null;
       }
       return id;
     }
-    if (_report != null && _savedDraftFingerprint == _draftFingerprint()) {
+    if (_report != null &&
+        _report!.id.isNotEmpty && _savedDraftFingerprint == _draftFingerprint()) {
       return _report!.id;
     }
     final id = await _saveDraft(ownsBusyState: false);
-    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null)) {
+    if (_workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
+    )) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください'))));
+          SkoLanguageController.tr('運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください',
+              ),
+            ),
+          ),
+        );
       }
       return null;
     }
@@ -394,8 +469,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _captureOdometer(
-    DailyReportWorkerDraft worker,
-  ) async {
+    DailyReportWorkerDraft worker) async {
     final photo = await _picker.pickImage(
       source: ImageSource.camera,
       imageQuality: 92,
@@ -409,7 +483,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.trParams('メーターを読み取れませんでした: {error}', {'error': error}))),
+        SnackBar(content: Text(SkoLanguageController.trParams('メーターを読み取れませんでした: {error}', {'error': error,
+            }),
+          ),
+        ),
       );
       return;
     }
@@ -429,14 +506,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              SkoLanguageController.tr('数値が合っていれば登録してください。違う場合は手入力で修正するか、再撮影できます。'),
+              SkoLanguageController.tr('数値が合っていれば登録してください。違う場合は手入力で修正するか、再撮影できます。',
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               autofocus: true,
               keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+                  const TextInputType.numberWithOptions(decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: SkoLanguageController.tr('走行距離'),
                 suffixText: 'km',
@@ -469,7 +548,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (value == null || value < 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(SkoLanguageController.tr('走行距離を数字で入力してください'))),
+            SnackBar(content: Text(SkoLanguageController.tr('走行距離を数字で入力してください')),
+            ),
           );
         }
       } else {
@@ -485,13 +565,19 @@ class _DailyReportPageState extends State<DailyReportPage> {
   // signatures, previews and reloads never publish notifications.
   Future<void> _register() async {
     if (_saving) return;
+    if (_visitReport) {
+      await _saveDraft();
+      return;
+    }
     setState(() => _saving = true);
     try {
       final completeGroup = groupReportPublicationEligible(
         anchorSourceId: _currentGroupAnchor, siteId: _siteId,
         routeAssignmentId: _routeAssignmentId,
         roster: _workers.map((worker) => (
-          sourceId: worker.sourceClockInId, clockOutAt: worker.sourceClockOutAt)),
+          sourceId: worker.sourceClockInId, clockOutAt: worker.sourceClockOutAt,
+          ),
+        ),
       );
       await registerSavedGroupReport(
         notificationEligible: completeGroup,
@@ -524,7 +610,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
           SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
-        )));
+        ),
+          ),
+        );
       }
     }
   }
@@ -548,14 +636,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!sent && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
           SkoLanguageController.tr('日報は登録済みです。通知結果は未確認です。同じ日報の通知のみ再確認できます'),
-        )));
+        ),
+          ),
+        );
       }
     } catch (_) {
       await _restoreNotificationRetry();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('日報は登録済みです。メンバー通知の結果は未確認です。通知のみ再確認できます'),
-      )));
+      ),
+        ),
+      );
     }
   }
 
@@ -576,7 +668,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
           SkoLanguageController.tr('保存済み通知の再確認情報を読み込めません。保存内容は保持しています'),
-        )));
+        ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -585,6 +679,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<String?> _saveDraft({bool ownsBusyState = true}) async {
     if (ownsBusyState && _saving) return null;
+    if (_visitReport && (_signed || _visitReporterLocked)) return null;
     final repository = _repository;
     final siteId = _siteId;
     final routeAssignmentId = _routeAssignmentId;
@@ -598,12 +693,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final missingOdometer = _workers.where(
       (worker) => worker.vehicleId != null && !worker.meterManaged && worker.odometerKm == null,
     );
-    if (missingOdometer.isNotEmpty) {
+    if (!_visitReport && missingOdometer.isNotEmpty) {
       final names = missingOdometer.map((worker) => worker.workerName).join('、');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            SkoLanguageController.trParams('{names} の退勤時走行距離を入力してください', {'names': names}),
+            SkoLanguageController.trParams('{names} の退勤時走行距離を入力してください', {'names': names,
+            }),
           ),
         ),
       );
@@ -612,7 +708,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     if (ownsBusyState) setState(() => _saving = true);
     try {
-      final id = await repository.saveDraft(
+      final id = _visitReport
+          ? await repository.saveVisitDraft(
+              context: widget.routeVisitContext!,
+              expectedReportId: _report?.id.isNotEmpty == true ? _report!.id : null,
+              workDescription: _workDescription.text,
+              workers: _workers,
+            )
+          : await repository.saveDraft(
         reportId: _report?.id,
         siteId: siteId,
         routeAssignmentId: routeAssignmentId,
@@ -633,7 +736,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
     } catch (error) {
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error')),
+        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error'),
+        ),
       );
       return null;
     } finally {
@@ -642,37 +746,68 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _signReporter() async {
-    if (_saving || _signed) return;
+    if (_saving || _signed || _visitReporterLocked) return;
+    final signingActor = _repository?.currentActorId;
+    final signingDate = _date;
+    final signingSite = _siteId;
+    final signingRoute = _routeAssignmentId;
+    void checkSigningContext() {
+      if (signingActor == null ||
+          _repository?.currentActorId != signingActor ||
+          _date != signingDate ||
+          _siteId != signingSite ||
+          _routeAssignmentId != signingRoute) {
+        throw const DailyReportActorChanged();
+      }
+    }
+
     setState(() => _saving = true);
     try {
       final reportId = await _saveBeforeSignature();
       if (reportId == null || !mounted) return;
+      checkSigningContext();
       final result = await Navigator.of(context).push<SignatureResult>(
         MaterialPageRoute(builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
           submitLabel: SkoLanguageController.tr('報告者サインを保存'),
           initialSignerName: _report?.reporterSignerName ?? '',
-          signerNameOptions: [for (final worker in _workers) worker.workerName],
-        )),
+          signerNameOptions: [for (final worker in _workers) worker.workerName,
+            ],
+          ),
+        ),
       );
       if (result == null || !mounted) return;
+      checkSigningContext();
+      if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
       if (repository == null) return;
-      await repository.saveReporterSignature(
+      if (_visitReport) {
+        await repository.signVisit(
+          reportId: reportId,
+          role: 'reporter',
+          signerName: result.signerName,
+          signatureJson: result.toJson(),
+        );
+      } else {
+        await repository.saveReporterSignature(
         reportId: reportId, signerName: result.signerName,
         signatureJson: result.toJson(),
       );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('報告者サインを保存しました')),
-      ));
+        content: Text(SkoLanguageController.tr('報告者サインを保存しました'))),
+      );
       await _loadSelectedSite();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': error})),
-        ));
+          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': error,
+              }),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -681,15 +816,32 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _sign() async {
     if (_saving) return;
+    final signingActor = _repository?.currentActorId;
+    final signingDate = _date;
+    final signingSite = _siteId;
+    final signingRoute = _routeAssignmentId;
+    void checkSigningContext() {
+      if (signingActor == null ||
+          _repository?.currentActorId != signingActor ||
+          _date != signingDate ||
+          _siteId != signingSite ||
+          _routeAssignmentId != signingRoute) {
+        throw const DailyReportActorChanged();
+      }
+    }
+
     setState(() => _saving = true);
     try {
       final reportId = await _saveBeforeSignature();
       if (reportId == null || !mounted) return;
+      checkSigningContext();
       // Saving changes invalidates the earlier reporter signature server-side.
       if (_report?.reporterSignatureJson == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.tr('編集内容を保存した場合は、報告者サインを再登録してから確定してください')),
-        ));
+          content: Text(SkoLanguageController.tr('編集内容を保存した場合は、報告者サインを再登録してから確定してください'),
+            ),
+          ),
+        );
         return;
       }
       // Existing saved names take precedence over current registration defaults.
@@ -699,36 +851,58 @@ class _DailyReportPageState extends State<DailyReportPage> {
         try {
           responsibleName = await _repository!.loadResponsibleName(
             siteId: _siteId,
-            routeAssignmentId: _routeAssignmentId,
+            routeAssignmentId: _visitReport ? null : _routeAssignmentId,
           );
+        } on DailyReportActorChanged {
+          rethrow;
         } catch (_) {
           // Missing registration or unavailable lookup still allows manual entry.
         }
       }
       if (!mounted) return;
+      checkSigningContext();
       final result = await Navigator.of(context).push<SignatureResult>(
         MaterialPageRoute(builder: (_) => SignatureCapturePage(
           initialSignerName: responsibleName,
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           submitLabel: SkoLanguageController.tr('責任者サインで確定'),
-        )),
+        ),
+        ),
       );
       if (result == null || !mounted) return;
+      checkSigningContext();
+      if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
       if (repository == null) return;
-      await repository.sign(reportId: reportId,
-        signerName: result.signerName, signatureJson: result.toJson());
+      if (_visitReport) {
+        await repository.signVisit(
+          reportId: reportId,
+          role: 'responsible',
+          signerName: result.signerName,
+          signatureJson: result.toJson(),
+        );
+      } else {
+        await repository.sign(reportId: reportId,
+        signerName: result.signerName, signatureJson: result.toJson(),
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました')),
-      ));
+        content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました'))),
+      );
       await _loadSelectedSite();
+      if (_visitReport && mounted && _error == null && _signed) {
+        Navigator.of(context).pop(true);
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': error})),
-        ));
+          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': error,
+              }),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -752,13 +926,15 @@ class _DailyReportPageState extends State<DailyReportPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              SkoLanguageController.tr('確定済みの日報は直接変更できません。会社で設定した承認担当者（1〜3名）へ承認依頼を送ります。'),
+              SkoLanguageController.tr('確定済みの日報は直接変更できません。会社で設定した承認担当者（1〜3名）へ承認依頼を送ります。',
+                ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: reason,
               maxLines: 3,
-              decoration: InputDecoration(labelText: SkoLanguageController.tr('修正理由（任意）')),
+              decoration: InputDecoration(labelText: SkoLanguageController.tr('修正理由（任意）'),
+                ),
             ),
           ],
         ),
@@ -778,8 +954,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (confirmed != true || !mounted) return;
       await repository.requestEdit(
         reportId: report.id,
-        reason: reason.text,
-      );
+        reason: reason.text);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -791,7 +966,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.trParams('承認依頼を送れませんでした: {error}', {'error': error}))),
+        SnackBar(content: Text(SkoLanguageController.trParams('承認依頼を送れませんでした: {error}', {'error': error,
+            }),
+          ),
+        ),
       );
     } finally {
       reason.dispose();
@@ -811,7 +989,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          SkoLanguageController.trParams('責任者サイン：{name}', {'name': report.responsibleSignerName ?? report.signerName ?? ''}),
+          SkoLanguageController.trParams('責任者サイン：{name}', {'name': report.responsibleSignerName ?? report.signerName ?? '',
+          }),
         ),
         content: SizedBox(
           width: 460,
@@ -841,7 +1020,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
             key: const Key('daily-report-month-list'),
             tooltip: SkoLanguageController.tr('月の日報一覧'),
             onPressed: _saving ? null : () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => DailyReportMonthPage(initialMonth: _date)),
+              MaterialPageRoute(builder: (_) => DailyReportMonthPage(initialMonth: _date),
+                    ),
             ),
             icon: const Icon(Icons.calendar_month_outlined),
           ),
@@ -853,7 +1033,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           onPressed: _saving ? null : _retrySavedReportNotification,
           icon: const Icon(Icons.notifications_outlined),
           label: Text(SkoLanguageController.tr('登録済み日報の通知のみ再確認')),
-        )),
+        ),
+              ),
       ),
       body: SafeArea(
         child: _loading
@@ -870,7 +1051,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             label: SkoLanguageController.tr('日付'),
                             value:
                                 '${_date.year}/${_two(_date.month)}/${_two(_date.day)}',
-                            onTap: _saving ? null : _pickDate,
+                            onTap: _saving || _visitReport ? null : _pickDate,
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
@@ -894,11 +1075,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   child: Text(
                                     group.routeAssignmentId == null
                                         ? group.siteName
-                                        : SkoLanguageController.trParams('ルート：{name}', {'name': group.siteName}),
+                                        : SkoLanguageController.trParams('ルート：{name}', {'name': group.siteName,
+                                  }),
                                   ),
                                 ),
                             ],
-                            onChanged: _saving ? null : _selectSite,
+                            onChanged: _saving || _visitReport ? null : _selectSite,
                           ),
                           const SizedBox(height: 16),
                           _MemberSummary(workers: _workers),
@@ -906,7 +1088,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             hasClockedInWorkers: _groups.any((group) =>
                               group.siteId == _siteId &&
                               group.routeAssignmentId == _routeAssignmentId &&
-                              group.workers.isNotEmpty),
+                              group.workers.isNotEmpty,
+                    ),
                             isSigned: _signed,
                           ),
                           if (_evidence.isNotEmpty) ...[
@@ -919,11 +1102,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 title: Text(
                                   SkoLanguageController.tr('勤怠・現場記録'),
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                    fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
-                                  SkoLanguageController.trParams('{count}件 / この日報に紐付いています', {'count': _evidence.length}),
+                                  SkoLanguageController.trParams('{count}件 / この日報に紐付いています', {'count': _evidence.length},
+                          ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => Navigator.of(context).push(
@@ -1001,10 +1184,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                     ? SkoLanguageController.tr('日報を作成した報告者がサインします')
                                     : _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'),
                               ),
-                              trailing: _signed
+                              trailing: _signed || _visitReporterLocked
                                   ? null
                                   : const Icon(Icons.chevron_right),
-                              onTap: _saving || _signed ? null : _signReporter,
+                              onTap: _saving || _signed || _visitReporterLocked ? null : _signReporter,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1012,8 +1195,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             Card(
                               child: ListTile(
                                 leading: const CircleAvatar(
-                                  child: Icon(Icons.check),
-                                ),
+                                  child: Icon(Icons.check)),
                                 title: Text(
                                   SkoLanguageController.tr('責任者サイン済み・確定'),
                                   style: TextStyle(fontWeight: FontWeight.w900),
@@ -1036,24 +1218,33 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
-                                  SkoLanguageController.tr('報告者サインの後、責任者サインで日報と出勤データを確定します'),
+                                  SkoLanguageController.tr(
+                            _visitReport
+                                ? '報告者サインの後、責任者サインでこの訪問の日報を確定します'
+                                : '報告者サインの後、責任者サインで日報と出勤データを確定します',
+                          ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _saving ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
-                          if (!_signed)
+                          if (!_signed && !_visitReporterLocked)
                             FilledButton.icon(
                               onPressed: _saving ? null : _register,
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
                             ),
-                          if (_signed)
+                          if (_signed && !_visitReport)
                             FilledButton.tonalIcon(
                               onPressed: _saving ? null : _requestEdit,
                               icon: const Icon(Icons.edit_outlined),
                               label: Text(SkoLanguageController.tr('編集・修正を申請')),
+                    ),
+                  if (_signed && _visitReport)
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: Text(SkoLanguageController.tr('次の現場へ')),
                             ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
@@ -1125,11 +1316,14 @@ class _WorkerDetailCard extends StatelessWidget {
             SkoLanguageController.tr('個別の残業・早出・手当を設定'),
             if (worker.sourceClockInId != null)
               SkoLanguageController.tr(worker.sourceClockOutAt == null
-                ? '退勤未登録・確定前に確認' : '退勤済み・元勤務と連携'),
+                ? '退勤未登録・確定前に確認' : '退勤済み・元勤務と連携',
+              ),
             if (worker.vehicleName?.trim().isNotEmpty == true)
-              SkoLanguageController.trParams('車両：{name}', {'name': worker.vehicleName!}),
+              SkoLanguageController.trParams('車両：{name}', {'name': worker.vehicleName!,
+              }),
             if (worker.routeName?.trim().isNotEmpty == true)
-              SkoLanguageController.trParams('ルート：{name}', {'name': worker.routeName!}),
+              SkoLanguageController.trParams('ルート：{name}', {'name': worker.routeName!,
+              }),
           ].join(' / '),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
@@ -1141,9 +1335,11 @@ class _WorkerDetailCard extends StatelessWidget {
               child: Text(
                 [
                   if (worker.vehicleName?.trim().isNotEmpty == true)
-                    SkoLanguageController.trParams('車両：{name}', {'name': worker.vehicleName!}),
+                    SkoLanguageController.trParams('車両：{name}', {'name': worker.vehicleName!,
+                    }),
                   if (worker.routeName?.trim().isNotEmpty == true)
-                    SkoLanguageController.trParams('ルート：{name}', {'name': worker.routeName!}),
+                    SkoLanguageController.trParams('ルート：{name}', {'name': worker.routeName!,
+                    }),
                 ].join('　'),
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
@@ -1152,13 +1348,18 @@ class _WorkerDetailCard extends StatelessWidget {
           ],
           if (worker.meterManaged) ...[
             Text(SkoLanguageController.tr(worker.meterEventId == null
-              ? '運転手のメーター登録待ち' : '車両距離は運転手の登録記録から表示します')),
+              ? '運転手のメーター登録待ち' : '車両距離は運転手の登録記録から表示します',
+              ),
+            ),
             if (worker.previousOdometerKm != null)
-              Text('${SkoLanguageController.tr('前回距離')}: ${worker.previousOdometerKm} km'),
+              Text('${SkoLanguageController.tr('前回距離')}: ${worker.previousOdometerKm} km',
+              ),
             if (worker.meterEventId != null && worker.odometerKm != null)
-              Text('${SkoLanguageController.tr('今回距離')}: ${worker.odometerKm} km'),
+              Text('${SkoLanguageController.tr('今回距離')}: ${worker.odometerKm} km',
+              ),
             if (worker.tripDistanceKm != null)
-              Text('${SkoLanguageController.tr('当日の走行距離')}: ${worker.tripDistanceKm} km'),
+              Text('${SkoLanguageController.tr('当日の走行距離')}: ${worker.tripDistanceKm} km',
+              ),
             const SizedBox(height: 10),
           ],
           if (worker.vehicleId != null && !worker.meterManaged) ...[
@@ -1166,7 +1367,8 @@ class _WorkerDetailCard extends StatelessWidget {
               controller: odometer,
               enabled: editable,
               keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+                  const TextInputType.numberWithOptions(decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: SkoLanguageController.tr('退勤時の走行距離'),
                 suffixText: 'km',
@@ -1266,7 +1468,8 @@ class _MemberSummary extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              SkoLanguageController.trParams('朝の出勤メンバー  {count}名', {'count': workers.length}),
+              SkoLanguageController.trParams('朝の出勤メンバー  {count}名', {'count': workers.length,
+              }),
               style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
@@ -1322,8 +1525,7 @@ class _HeaderField extends StatelessWidget {
 class _EmptyDay extends StatelessWidget {
   const _EmptyDay({
     required this.date,
-    required this.onPickDate,
-  });
+    required this.onPickDate});
 
   final DateTime date;
   final VoidCallback onPickDate;
@@ -1397,8 +1599,7 @@ class DailyReportEvidencePage extends StatelessWidget {
     final repository = DailyReportRepository.maybeCreate();
     return Scaffold(
       appBar: AppBar(
-        title: Text(SkoLanguageController.tr('勤怠・現場記録一覧')),
-      ),
+        title: Text(SkoLanguageController.tr('勤怠・現場記録一覧'))),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
@@ -1428,8 +1629,7 @@ class DailyReportEvidencePage extends StatelessWidget {
                           ' / ' +
                           SkoLanguageController.tr(item.eventLabel),
                       style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                      ),
+                        fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1445,43 +1645,57 @@ class DailyReportEvidencePage extends StatelessWidget {
                         label: Text(
                           item.accuracyM == null
                               ? SkoLanguageController.tr('位置を地図で確認')
-                              : SkoLanguageController.trParams('位置を地図で確認（精度 約{accuracy}m）', {'accuracy': item.accuracyM!.round()}),
+                              : SkoLanguageController.trParams('位置を地図で確認（精度 約{accuracy}m）', {'accuracy': item.accuracyM!.round()},
+                                ),
                         ),
                       ),
                     ],
                     const SizedBox(height: 8),
-                    if (item.stopLabel != null) Text('${SkoLanguageController.tr('対象現場')}: ${item.stopLabel}'),
-                    if (item.originKind != null) Text(SkoLanguageController.tr(item.originKind == 'company' ? '会社出勤後に現場へ' : '直行直帰')),
-                    if (item.photoObservedAt != null) Text('${SkoLanguageController.tr('写真観測時刻')}: ${item.photoObservedAt!.toIso8601String()}'),
+                    if (item.stopLabel != null) Text('${SkoLanguageController.tr('対象現場')}: ${item.stopLabel}',
+                      ),
+                    if (item.originKind != null) Text(SkoLanguageController.tr(item.originKind == 'company' ? '会社出勤後に現場へ' : '直行直帰',
+                        ),
+                      ),
+                    if (item.photoObservedAt != null) Text('${SkoLanguageController.tr('写真観測時刻')}: ${item.photoObservedAt!.toIso8601String()}',
+                      ),
                     if (!item.isTimeOnly && item.photoStatus != null)
                       Text(item.photoCapturedAt == null
-                        ? SkoLanguageController.tr(item.eventType == 'route_stop' ? '撮影日時未取得（表示時刻は途中現場の記録時刻）' : '撮影日時未取得（表示時刻は勤怠登録時刻）')
-                        : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}'),
+                        ? SkoLanguageController.tr(item.eventType == 'route_stop' ? '撮影日時未取得（表示時刻は途中現場の記録時刻）' : '撮影日時未取得（表示時刻は勤怠登録時刻）',
+                              )
+                        : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}',
+                      ),
                     if (!item.isTimeOnly && (item.gpsStatus != null || item.hasLocation) && item.capturedAddress?.trim().isNotEmpty != true)
                       Text(SkoLanguageController.tr('撮影住所未取得')),
                     if (item.capturedAddress?.trim().isNotEmpty == true)
-                      Text('${SkoLanguageController.tr('撮影住所')}: ${item.capturedAddress!}'),
+                      Text('${SkoLanguageController.tr('撮影住所')}: ${item.capturedAddress!}',
+                      ),
                     if (!item.isTimeOnly && item.photoStatus != null)
                       Text(SkoLanguageController.trParams('写真: {photo} / GPS: {gps}', {
                         'photo': _captureStatusLabel(item.photoStatus),
                         'gps': _captureStatusLabel(item.gpsStatus),
-                      })),
+                      },
+                        ),
+                      ),
                     if (item.storagePath.isEmpty)
                       SizedBox(height: 180,
-                        child: Center(child: Text(SkoLanguageController.tr(item.missingPhotoLabel)))),
+                        child: Center(child: Text(SkoLanguageController.tr(item.missingPhotoLabel),
+                          ),
+                        ),
+                      ),
                     if (repository != null && item.storagePath.isNotEmpty)
                       FutureBuilder<String>(
-                        key: ValueKey('${item.storageBucket}:${item.storagePath}'),
+                        key: ValueKey('${item.storageBucket}:${item.storagePath}',
+                        ),
                         future:
-                            repository.attendanceEvidenceUrl(item.storagePath, bucket: item.storageBucket),
+                            repository.attendanceEvidenceUrl(item.storagePath, bucket: item.storageBucket,
+                        ),
                         builder: (context, snapshot) {
                           final url = snapshot.data;
                           if (url == null) {
                             return const SizedBox(
                               height: 180,
                               child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
+                                child: CircularProgressIndicator()),
                             );
                           }
                           return InteractiveViewer(
@@ -1514,7 +1728,8 @@ class DailyReportEvidencePage extends StatelessWidget {
 class DailyReportPrintPreviewPage extends StatefulWidget {
   const DailyReportPrintPreviewPage({super.key, required this.date,
     required this.siteName, required this.workers, required this.workDescription,
-    required this.report, this.evidence = const []});
+    required this.report, this.evidence = const [],
+  });
 
   final DateTime date;
   final String siteName;
@@ -1538,7 +1753,9 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     final repository = DailyReportRepository.maybeCreate();
     if (repository == null) {
       return [for (final record in widget.evidence)
-        DailyReportPdfEvidence(record: record, downloadFailed: record.storagePath.isNotEmpty)];
+        DailyReportPdfEvidence(record: record, downloadFailed: record.storagePath.isNotEmpty,
+          ),
+      ];
     }
     return repository.loadPdfEvidence(widget.evidence);
   }
@@ -1556,7 +1773,8 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
         date: widget.date, siteName: widget.siteName, workers: widget.workers,
         workDescription: widget.workDescription, report: widget.report,
         evidence: photos, photoPagesOnly: true,
-      ));
+      ),
+      );
       await Printing.layoutPdf(
         name: '${widget.date.toIso8601String().substring(0, 10)}_日報写真.pdf',
         format: PdfPageFormat.a4, onLayout: (_) async => bytes,
@@ -1564,7 +1782,8 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.tr('写真ページを印刷できませんでした'))));
+          content: Text(SkoLanguageController.tr('写真ページを印刷できませんでした'))),
+        );
       }
     } finally {
       if (mounted) setState(() => _printingPhotos = false);
@@ -1577,7 +1796,9 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     final fingerprint = DailyReportPdfService.fingerprint(date: widget.date,
       siteName: widget.siteName, workers: widget.workers,
       workDescription: widget.workDescription, report: widget.report,
-      evidence: [for (final record in widget.evidence) DailyReportPdfEvidence(record: record)]);
+      evidence: [for (final record in widget.evidence) DailyReportPdfEvidence(record: record),
+      ],
+    );
     if (_fingerprint != fingerprint) {
       _fingerprint = fingerprint;
       _pdfBytes.invalidate();
@@ -1586,26 +1807,34 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     }
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
-        actions: const [SkoNotificationBell()]),
+        actions: const [SkoNotificationBell()],
+      ),
       body: Column(children: [
         FutureBuilder<List<DailyReportPdfEvidence>>(
           future: _savedEvidence(),
           builder: (context, snapshot) {
             final photos = dailyReportPhotoRecords(snapshot.data ?? const []);
-            return Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            return Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6,
+                ),
               child: Row(children: [
                 Expanded(child: photos.isNotEmpty
                   ? Align(alignment: Alignment.centerLeft,
-                      child: DailyReportPhotoPreview(photos: photos))
+                      child: DailyReportPhotoPreview(photos: photos),
+                            )
                   : Text(SkoLanguageController.tr(snapshot.connectionState == ConnectionState.done
-                      ? '写真の記録がありません' : '読込中...'))),
+                      ? '写真の記録がありません' : '読込中...',
+                              ),
+                            ),
+                    ),
                 TextButton.icon(
                   key: const ValueKey('print-daily-report-photo-pages'),
                   onPressed: photos.isEmpty || _printingPhotos ? null : _printPhotoPages,
                   icon: const Icon(Icons.print_outlined),
                   label: Text(SkoLanguageController.tr('写真ページのみ印刷')),
                 ),
-              ]));
+              ],
+                ),
+              );
           },
         ),
         Expanded(child: PdfPreview(initialPageFormat: PdfPageFormat.a4,
@@ -1615,8 +1844,13 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
           build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
             date: widget.date, siteName: widget.siteName, workers: widget.workers,
             workDescription: widget.workDescription, report: widget.report,
-            evidence: await _savedEvidence())))),
-      ]),
+            evidence: await _savedEvidence(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1624,8 +1858,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
 class _ErrorState extends StatelessWidget {
   const _ErrorState({
     required this.message,
-    required this.onRetry,
-  });
+    required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;

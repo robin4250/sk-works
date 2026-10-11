@@ -1,0 +1,21 @@
+name: Route visit reports check
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  visit-report-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/visit-report-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.8
+      - name: Visit report real role assertions
+        run: node tool/verify_route_visit_reports.mjs "$RUNNER_TEMP/visit-report-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Existing lifecycle integration and retention
+        run: node tool/verify_route_visit_reports_integration.mjs "$RUNNER_TEMP/visit-report-runtime/node_modules/@electric-sql/pglite/dist/index.js"

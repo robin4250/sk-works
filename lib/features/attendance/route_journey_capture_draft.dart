@@ -186,3 +186,71 @@ Future<Map<String, dynamic>> recoverRouteJourneyCapture(
     return check(recovered);
   }
 }
+
+/// A saved move awaiting an explicit report choice. It is never a new visit.
+class RouteVisitReportPending {
+  RouteVisitReportPending._({
+    required this.move,
+    required this.workDate,
+    required this.choice,
+  });
+  factory RouteVisitReportPending.fromSaved(
+    RouteJourneyCaptureDraft move,
+    Map<String, dynamic> saved,
+  ) {
+    if (move.visitKind != 'end' ||
+        !move.matchesRow(saved) ||
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$')
+            .hasMatch(saved['work_date']?.toString() ?? '') ||
+        DateTime.tryParse(saved['work_date'] as String) == null) {
+      throw StateError('日報対象の保存済み現場移動を確認できません');
+    }
+    return RouteVisitReportPending._(
+      move: move,
+      workDate: saved['work_date'] as String,
+      choice: 'undecided',
+    );
+  }
+  factory RouteVisitReportPending.restore(String encoded) {
+    final data = jsonDecode(encoded);
+    if (data is! Map ||
+        data['version'] != 1 ||
+        data['move'] is! String ||
+        !['undecided', 'create', 'skip'].contains(data['choice']) ||
+        data['work_date'] is! String ||
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(data['work_date'] as String) ||
+        DateTime.tryParse(data['work_date'] as String) == null) {
+      throw StateError('保留中の現場日報を確認できません');
+    }
+    final move = RouteJourneyCaptureDraft.restore(data['move'] as String);
+    if (move.visitKind != 'end') throw StateError('保存済み移動の対象を確認してください');
+    return RouteVisitReportPending._(
+      move: move,
+      workDate: data['work_date'] as String,
+      choice: data['choice'] as String,
+    );
+  }
+  final RouteJourneyCaptureDraft move;
+  final String workDate, choice;
+  String get userId => move.userId;
+  String get companyId => move.companyId;
+  String get sourceId => move.sourceId;
+  String get stopId => move.stopId;
+  String get startCaptureId => move.visitStartId!;
+  String get endCaptureId => move.id;
+  String get encoded => jsonEncode({
+    'version': 1,
+    'move': move.encoded,
+    'work_date': workDate,
+    'choice': choice,
+  });
+  RouteVisitReportPending withChoice(String value) {
+    if (!['create', 'skip'].contains(value))
+      throw ArgumentError.value(value, 'choice');
+    return RouteVisitReportPending._(
+      move: move,
+      workDate: workDate,
+      choice: value,
+    );
+  }
+}

@@ -9,6 +9,7 @@ import '../attendance/group_checkout_repository.dart';
 import 'group_daily_report_roster.dart';
 import 'vehicle_report_snapshot.dart';
 import '../notifications/saved_group_report_publication.dart';
+import 'route_visit_report_context.dart';
 import '../notifications/saved_report_notification_retry_store.dart';
 
 class DailyReportWorkerDraft {
@@ -184,12 +185,20 @@ class DailyReportEvidenceRecord {
   String get missingPhotoLabel => isTimeOnly ? '時刻のみの記録' : '写真未登録・送信失敗';
 }
 
+class DailyReportActorChanged implements Exception {
+  const DailyReportActorChanged();
+  @override
+  String toString() => 'ログイン利用者が変わりました。日報を開き直してください';
+}
+
 class DailyReportRepository {
   DailyReportRepository._(this._client);
 
   DailyReportRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+
+  String? get currentActorId => _client.auth.currentUser?.id;
 
   static DailyReportRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -203,8 +212,14 @@ class DailyReportRepository {
     String? siteId,
     String? routeAssignmentId,
   }) async {
+    final actor = currentActorId;
+    void checkActor() {
+      if (currentActorId != actor) throw const DailyReportActorChanged();
+    }
+
     if (siteId != null) {
       final rows = await _client.rpc('site_directory_rows_v2');
+      checkActor();
       if (rows is List) {
         for (final row in rows) {
           if (row is Map && row['id'] == siteId) {
@@ -220,6 +235,7 @@ class DailyReportRepository {
           .select('responsible_name')
           .eq('id', routeAssignmentId)
           .maybeSingle();
+      checkActor();
       return row?['responsible_name']?.toString().trim() ?? '';
     }
     return '';
@@ -227,7 +243,8 @@ class DailyReportRepository {
 
   Future<bool> vehicleMeterEnabled(String companyId) async {
     try {
-      final value = await _client.rpc('get_attendance_rollout_capabilities', params: {'p_company_id': companyId});
+      final value = await _client.rpc('get_attendance_rollout_capabilities', params: {'p_company_id': companyId},
+      );
       return value is Map && value['version'] == 1 && value['company_id'] == companyId && value['vehicle_meter_enabled'] == true;
     } catch (_) {
       return false;
@@ -247,12 +264,15 @@ class DailyReportRepository {
     }
   }
 
-  Future<List<VehicleReportSnapshot>> _vehicleReportContext(String reportId, DateTime date) async {
-    final value = await _client.rpc('get_report_vehicle_meter_context', params: {'p_report_id': reportId});
+  Future<List<VehicleReportSnapshot>> _vehicleReportContext(String reportId, DateTime date,
+  ) async {
+    final value = await _client.rpc('get_report_vehicle_meter_context', params: {'p_report_id': reportId},
+    );
     return parseVehicleReportContext(value, _dbDate(date));
   }
 
-  void _applyMeterSnapshots(List<DailyReportWorkerDraft> workers, List<VehicleReportSnapshot> snapshots) {
+  void _applyMeterSnapshots(List<DailyReportWorkerDraft> workers, List<VehicleReportSnapshot> snapshots,
+  ) {
     for (final snapshot in snapshots) {
       final matches = workers.where((worker) => worker.workerId == snapshot.workerId).toList();
       if (matches.length != 1) {
@@ -332,7 +352,8 @@ class DailyReportRepository {
           )
           .eq('event_type', 'clock_in')
           .inFilter('worker_id', workerIds)
-          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})')
+          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})',
+          )
           .order('confirmed_at');
 
       final byWorker = <String, Map<String, dynamic>>{
@@ -376,6 +397,129 @@ class DailyReportRepository {
         .toList();
   }
 
+  Future<Map<String, dynamic>?> _visitRpc(
+    String rpc,
+    Map<String, Object?> params,
+  ) async {
+    final actor = currentActorId;
+    final result = await _client.rpc(rpc, params: params);
+    if (currentActorId != actor) throw const DailyReportActorChanged();
+    if (result == null) return null;
+    if (result is! Map) throw StateError('現場訪問の日報を確認できません');
+    return Map<String, dynamic>.from(result);
+  }
+
+  DailyReportRecord _visitRecord(
+    Map<String, dynamic> row,
+    RouteVisitReportContext context,
+  ) {
+    if (!context.matches(row)) throw StateError('現場訪問の記録が変わりました');
+    final rawWorkers = row['workers'] ?? row['daily_report_workers'];
+    final workers = <DailyReportWorkerDraft>[];
+    if (rawWorkers is List) {
+      for (final raw in rawWorkers) {
+        if (raw is! Map) continue;
+        final worker = raw['workers'];
+        workers.add(
+          DailyReportWorkerDraft(
+            workerId: raw['worker_id']?.toString() ?? '',
+            workerName:
+                raw['worker_name']?.toString() ??
+                (worker is Map ? worker['name']?.toString() : null) ??
+                '',
+            overtimeHours: _number(raw['overtime_hours']),
+            earlyHours: _number(raw['early_hours']),
+            nightHours: _number(raw['night_hours']),
+            allowanceAmount: (raw['allowance_amount'] as num?)?.toInt() ?? 0,
+            allowanceLabel: raw['allowance_label']?.toString() ?? '',
+          ),
+        );
+      }
+    }
+    final site = row['sites'];
+    return DailyReportRecord(
+      id: row['id']?.toString() ?? '',
+      siteId: row['site_id']?.toString(),
+      routeAssignmentId: context.routeAssignmentId,
+      siteName:
+          row['site_name']?.toString() ??
+          (site is Map ? site['name']?.toString() : null) ??
+          '',
+      date: DateTime.parse(row['report_date'].toString()),
+      workDescription: row['work_description']?.toString() ?? '',
+      status: row['status'] == 'completed'
+          ? 'signed'
+          : row['status']?.toString() ?? 'draft',
+      workers: workers,
+      reporterSignerName: row['representative_signer_name']?.toString(),
+      reporterSignatureJson: row['representative_signature_json'],
+      responsibleSignerName: row['supervisor_signer_name']?.toString(),
+      responsibleSignatureJson: row['supervisor_signature_json'],
+      signedAt: DateTime.tryParse(row['signed_at']?.toString() ?? '')
+          ?.toLocal(),
+    );
+  }
+
+  Future<DailyReportRecord?> loadVisitReport(
+    RouteVisitReportContext context,
+  ) async {
+    final row = await _visitRpc(
+      'read_route_visit_report',
+      context.toRpcParams(),
+    );
+    return row == null ? null : _visitRecord(row, context);
+  }
+
+  Future<String> saveVisitDraft({
+    required RouteVisitReportContext context,
+    String? expectedReportId,
+    required String workDescription,
+    required List<DailyReportWorkerDraft> workers,
+  }) async {
+    final row = await _visitRpc('save_route_visit_report_draft', {
+      ...context.toRpcParams(),
+      'p_work_description': workDescription.trim(),
+      'p_workers': workers.map((worker) => worker.toRpcJson()).toList(),
+    });
+    if (row == null || !context.matches(row) || row['id'] == null) {
+      throw StateError('現場訪問の日報IDを確認できません');
+    }
+    final record = _visitRecord(row, context);
+    if (record.id.trim().isEmpty || record.status != 'draft' ||
+        record.reporterSignatureJson != null || record.responsibleSignatureJson != null ||
+        (expectedReportId != null && record.id != expectedReportId) ||
+        record.workDescription != workDescription.trim()) {
+      throw StateError('日報は変更されているか署名済みです。再読み込みしてください');
+    }
+    final expected = {for (final worker in workers) worker.workerId: worker.toRpcJson()};
+    final actual = {for (final worker in record.workers) worker.workerId: worker.toRpcJson()};
+    if (expected.length != workers.length || actual.length != record.workers.length ||
+        expected.keys.any((id) => id.trim().isEmpty) ||
+        expected.length != actual.length || expected.entries.any((entry) =>
+          actual[entry.key] == null || entry.value.entries.any((field) =>
+            actual[entry.key]![field.key] != field.value))) {
+      throw StateError('保存された現場メンバーまたは数量が異なります。再読み込みしてください');
+    }
+    return record.id;
+  }
+
+  Future<void> signVisit({
+    required String reportId,
+    required String role,
+    required String signerName,
+    required Object signatureJson,
+  }) async {
+    if (role != 'reporter' && role != 'responsible')
+      throw ArgumentError.value(role);
+    final row = await _visitRpc('save_route_visit_report_signature', {
+      'p_report_id': reportId,
+      'p_role': role,
+      'p_signer_name': signerName.trim(),
+      'p_signature_json': {'strokes': signatureJson},
+    });
+    if (row == null || row['id'] != reportId) throw StateError('対象日報が変わりました');
+  }
+
   Future<DailyReportRecord?> loadReport({
     required DateTime date,
     String? siteId,
@@ -399,11 +543,13 @@ class DailyReportRepository {
     final site = row['sites'];
     final route = row['route_assignments'];
     final rawWorkers = row['daily_report_workers'];
-    final meterEnabled = await vehicleMeterEnabled(row['company_id']?.toString() ?? '');
+    final meterEnabled = await vehicleMeterEnabled(row['company_id']?.toString() ?? '',
+    );
     final storedMeters = <String, Map<String, dynamic>>{};
     if (meterEnabled) {
       final details = await _client.from('daily_report_workers').select(
-        'worker_id,vehicle_meter_event_id,vehicle_meter_source_clock_in_id,previous_odometer_km,trip_distance_km')
+        'worker_id,vehicle_meter_event_id,vehicle_meter_source_clock_in_id,previous_odometer_km,trip_distance_km',
+          )
         .eq('report_id', row['id']);
       for (final detail in details) {
         storedMeters[detail['worker_id'].toString()] = Map<String, dynamic>.from(detail);
@@ -414,7 +560,8 @@ class DailyReportRepository {
     if (rawWorkers is List) {
       for (final raw in rawWorkers) {
         final detail = Map<String, dynamic>.from(raw as Map);
-        detail.addAll(storedMeters[detail['worker_id']?.toString()] ?? const {});
+        detail.addAll(storedMeters[detail['worker_id']?.toString()] ?? const {},
+        );
         final worker = detail['workers'];
         workers.add(
           DailyReportWorkerDraft(
@@ -454,12 +601,14 @@ class DailyReportRepository {
 
     if (meterEnabled && vehicleClockInAnchorId != null && row['status'] != 'signed' &&
         (row['created_by'] == _client.auth.currentUser?.id || row['updated_by'] == _client.auth.currentUser?.id)) {
-      _applyMeterSnapshots(workers, await _vehicleReportContext(row['id'].toString(), date));
+      _applyMeterSnapshots(workers, await _vehicleReportContext(row['id'].toString(), date),
+      );
     }
 
     return DailyReportRecord(
       id: row['id']?.toString() ?? '',
-      notificationRetryScope: savedReportNotificationScopeFromRow(row, notificationRetryUserId),
+      notificationRetryScope: savedReportNotificationScopeFromRow(row, notificationRetryUserId,
+      ),
       siteId: row['site_id']?.toString(),
       routeAssignmentId: row['route_assignment_id']?.toString(),
       siteName: site is Map
@@ -492,7 +641,8 @@ class DailyReportRepository {
     final candidates = await GroupCheckoutRepository(_client).loadIfEnabled(anchorId, workDate);
     if (candidates == null) return existing;
     return mergeAnchoredGroupRoster(existing: existing, fallback: fallback,
-      candidates: candidates, allowNewMembers: allowNewMembers);
+      candidates: candidates, allowNewMembers: allowNewMembers,
+    );
   }
 
   Future<String> saveDraft({
@@ -510,13 +660,16 @@ class DailyReportRepository {
       if (candidates == null) {
         throw StateError('現場メンバーの勤務を再確認してください');
       }
-      final byWorker = {for (final row in candidates) row.workerId: row.sourceId};
+      final byWorker = {for (final row in candidates) row.workerId: row.sourceId,
+      };
       if (workers.any((worker) => worker.sourceClockInId != null &&
-          byWorker[worker.workerId] != worker.sourceClockInId)) {
+          byWorker[worker.workerId] != worker.sourceClockInId,
+      )) {
         throw StateError('対象勤務が変わりました。日報を再読み込みしてください');
       }
     }
-    final meterEnabled = await vehicleMeterEnabledForAnchor(vehicleClockInAnchorId);
+    final meterEnabled = await vehicleMeterEnabledForAnchor(vehicleClockInAnchorId,
+    );
     if (!meterEnabled && workers.any((worker) => worker.meterManaged)) {
       throw StateError('車両の勤務記録を再確認してください');
     }
@@ -543,7 +696,8 @@ class DailyReportRepository {
       for (final snapshot in snapshots.where((snapshot) => snapshot.hasEvent)) {
         final attached = await _client.rpc('attach_vehicle_meter_to_report', params: {
           'p_report_id': id, 'p_source_clock_in_id': snapshot.sourceId,
-        });
+        },
+        );
         if (attached is! Map || attached['attached'] != true || attached['has_claim'] != true || attached['has_event'] != true ||
             attached['previous_km'] == null || attached['current_km'] == null || attached['distance_km'] == null ||
             attached['source_clock_in_id'] != snapshot.sourceId ||
@@ -584,7 +738,8 @@ class DailyReportRepository {
         'p_daily_report_id': id,
         'p_anchor_source_clock_in_id': groupClockInAnchorId,
         'p_source_clock_in_ids': groupSources,
-      });
+      },
+      );
       if (!groupReportSourcesAttached(attachment, id, groupSources)) {
         throw StateError('日報は保存済みですが勤務証跡の連携が未確認です。同じ日報を再保存してください');
       }
@@ -592,7 +747,8 @@ class DailyReportRepository {
 
     if (routeAssignmentId != null) {
       try {
-        await _client.rpc('link_route_journey_report', params: {'p_report_id': id});
+        await _client.rpc('link_route_journey_report', params: {'p_report_id': id},
+        );
       } on PostgrestException catch (error) {
         if (error.code != 'PGRST202' && error.code != '42883') rethrow;
         // New staged migration is optional while OFF; no legacy data changes.
@@ -604,7 +760,8 @@ class DailyReportRepository {
 
   String? get notificationRetryUserId => _client.auth.currentUser?.id;
 
-  Future<void> verifySavedNotificationScope(SavedReportNotificationRetry retry) async {
+  Future<void> verifySavedNotificationScope(SavedReportNotificationRetry retry,
+  ) async {
     if (notificationRetryUserId != retry.userId) throw StateError('日報通知の利用者が変更されています');
     final row = await _client.from('daily_reports').select('id,company_id,updated_by')
       .eq('id', retry.reportId).eq('company_id', retry.companyId)
@@ -620,7 +777,9 @@ class DailyReportRepository {
   Future<bool> publishSavedGroupReportNotifications(String reportId) async {
     return publishSavedGroupReport(reportId, invoke: (id) =>
       _client.rpc('publish_saved_group_report_notifications',
-        params: {'p_report_id': id}));
+        params: {'p_report_id': id},
+      ),
+    );
   }
 
   Future<void> sign({
@@ -670,7 +829,8 @@ class DailyReportRepository {
       if (memberships.isEmpty) { throw StateError('会社情報がありません'); }
       final companyId = memberships.first['company_id'] as String;
       final capability = await _client.rpc('get_attendance_capture_capability',
-        params: {'p_company_id': companyId});
+        params: {'p_company_id': companyId},
+      );
       captureEnabled = capability is Map && capability['version'] == 1 &&
         capability['company_id'] == companyId && capability['capture_enabled'] == true;
     } catch (_) {
@@ -678,7 +838,8 @@ class DailyReportRepository {
     }
     var query = _client.from('attendance_verifications').select(
       'id,event_type,verification_mode,confirmed_at,source_clock_in_id,photo_storage_path,latitude,longitude,accuracy_m,workers(name),sites(name)'
-      '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,photo_observed_at,captured_address' : ''}');
+      '${captureEnabled ? ',capture_contract_version,gps_capture_status,photo_capture_status,gps_captured_at,photo_captured_at,photo_observed_at,captured_address' : ''}',
+        );
     query = siteId != null
         ? query.eq('site_id', siteId)
         : query.eq('route_assignment_id', routeAssignmentId!);
@@ -689,7 +850,8 @@ class DailyReportRepository {
       final start = DateTime(date.year, date.month, date.day);
       final end = start.add(const Duration(days: 1));
       query = query
-          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})');
+          .or('work_date.eq.${_dbDate(date)},and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})',
+      );
     }
 
     final rows = await query.order('confirmed_at');
@@ -710,9 +872,12 @@ class DailyReportRepository {
             gpsStatus: raw['gps_capture_status']?.toString(),
             photoStatus: raw['photo_capture_status']?.toString(),
             capturedAddress: raw['captured_address']?.toString(),
-            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
-            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
-            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '')?.toLocal(),
+            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '',
+          )?.toLocal(),
+            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '',
+          )?.toLocal(),
+            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '',
+          )?.toLocal(),
             stopLabel: raw['sites'] is Map ? raw['sites']['name']?.toString() : null,
             sourceClockInId: raw['source_clock_in_id']?.toString(),
             latitude: (raw['latitude'] as num?)?.toDouble(),
@@ -722,7 +887,8 @@ class DailyReportRepository {
     ];
     if (routeAssignmentId != null && reportId != null && reportId.isNotEmpty) {
       try {
-        final value = await _client.rpc('route_journey_report_evidence', params: {'p_report_id': reportId});
+        final value = await _client.rpc('route_journey_report_evidence', params: {'p_report_id': reportId},
+        );
         if (value is! List) throw StateError('途中現場の証跡を確認できません');
         for (final row in value) {
           if (row is! Map || row['payload'] is! Map || row['route_assignment_id'] != routeAssignmentId ||
@@ -743,11 +909,16 @@ class DailyReportRepository {
             sourceClockInId: row['source_clock_in_id']?.toString(), routeStopId: row['route_stop_id']?.toString(),
             originKind: row['origin_kind']?.toString(), gpsStatus: raw['gps_capture_status']?.toString(),
             photoStatus: raw['photo_capture_status']?.toString(), capturedAddress: raw['captured_address']?.toString(),
-            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '')?.toLocal(),
-            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '')?.toLocal(),
-            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '')?.toLocal(),
+            gpsCapturedAt: DateTime.tryParse(raw['gps_captured_at']?.toString() ?? '',
+              )?.toLocal(),
+            photoCapturedAt: DateTime.tryParse(raw['photo_captured_at']?.toString() ?? '',
+              )?.toLocal(),
+            photoObservedAt: DateTime.tryParse(raw['photo_observed_at']?.toString() ?? '',
+              )?.toLocal(),
             latitude: (raw['latitude'] as num?)?.toDouble(), longitude: (raw['longitude'] as num?)?.toDouble(),
-            accuracyM: (raw['accuracy_m'] as num?)?.toDouble()));
+            accuracyM: (raw['accuracy_m'] as num?)?.toDouble(),
+            ),
+          );
         }
       } on PostgrestException catch (error) {
         if (error.code != 'PGRST202' && error.code != '42883') rethrow;
@@ -769,10 +940,13 @@ class DailyReportRepository {
         gpsStatus: record.gpsStatus,
         timeOnly: record.timeOnly || record.isTimeOnly,
       ),
-    )));
+    ),
+      ),
+    );
   }
 
-  Future<List<DailyReportPdfEvidence>> loadPdfEvidence(List<DailyReportEvidenceRecord> records) async {
+  Future<List<DailyReportPdfEvidence>> loadPdfEvidence(List<DailyReportEvidenceRecord> records,
+  ) async {
     final attachments = <DailyReportPdfEvidence>[];
     for (final record in records) {
       if (record.storagePath.isEmpty) {
@@ -782,15 +956,18 @@ class DailyReportRepository {
       try {
         final bytes = await _client.storage.from(record.storageBucket)
           .download(record.storagePath).timeout(const Duration(seconds: 15));
-        attachments.add(DailyReportPdfEvidence(record: record, photoBytes: bytes));
+        attachments.add(DailyReportPdfEvidence(record: record, photoBytes: bytes),
+        );
       } catch (_) {
-        attachments.add(DailyReportPdfEvidence(record: record, downloadFailed: true));
+        attachments.add(DailyReportPdfEvidence(record: record, downloadFailed: true),
+        );
       }
     }
     return attachments;
   }
 
-  Future<String> attendanceEvidenceUrl(String path, {String bucket = 'attendance-evidence'}) {
+  Future<String> attendanceEvidenceUrl(String path, {String bucket = 'attendance-evidence',
+  }) {
     return _client.storage
         .from(bucket)
         .createSignedUrl(path, 3600);
@@ -798,14 +975,12 @@ class DailyReportRepository {
 
   Future<String> requestEdit({
     required String reportId,
-    String? reason,
-  }) async {
+    String? reason}) async {
     final value = await _client.rpc(
       'request_daily_report_edit',
       params: {
         'p_report_id': reportId,
-        'p_reason': reason?.trim(),
-      },
+        'p_reason': reason?.trim()},
     );
     return value?.toString() ?? '';
   }
@@ -865,7 +1040,8 @@ class _SiteGroupDraft {
 }
 
 
-bool groupReportSourcesAttached(Object? value, String reportId, List<String> sourceIds) {
+bool groupReportSourcesAttached(Object? value, String reportId, List<String> sourceIds,
+) {
   if (value is! Map || value['daily_report_id'] != reportId || value['source_clock_in_ids'] is! List) {
     return false;
   }
@@ -876,5 +1052,6 @@ bool groupReportSourcesAttached(Object? value, String reportId, List<String> sou
   final sources = rows.cast<String>().toList()..sort();
   final expected = sourceIds.toList()..sort();
   return sources.length == expected.length &&
-    List.generate(sources.length, (i) => sources[i] == expected[i]).every((same) => same);
+    List.generate(sources.length, (i) => sources[i] == expected[i],
+      ).every((same) => same);
 }

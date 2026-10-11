@@ -3,6 +3,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../international/language_controller.dart';
+import '../daily_reports/daily_report_page.dart';
+import '../daily_reports/route_visit_report_context.dart';
 import 'attendance_capture_metadata_service.dart';
 import 'gps_photo_capture_controller.dart';
 import 'gps_photo_capture_result.dart';
@@ -23,7 +25,17 @@ abstract class RouteJourneyCaptureAccess {
   );
 }
 
-class _RepositoryAccess implements RouteJourneyCaptureAccess {
+abstract class RouteVisitReportAccess {
+  Future<List<RouteVisitReportPending>> allPendingReports();
+  Future<RouteVisitReportPending> chooseReport(
+    RouteVisitReportPending pending,
+    String choice,
+  );
+  Future<void> finishReport(RouteVisitReportPending pending);
+}
+
+class _RepositoryAccess
+    implements RouteJourneyCaptureAccess, RouteVisitReportAccess {
   final _repository = RouteJourneyCaptureRepository.maybeCreate();
   RouteJourneyCaptureRepository get repository =>
       _repository ?? (throw StateError('途中現場の記録を利用できません'));
@@ -41,6 +53,17 @@ class _RepositoryAccess implements RouteJourneyCaptureAccess {
   @override
   Future<Map<String, dynamic>> submit(RouteJourneyCaptureDraft draft) =>
       repository.submit(draft);
+  @override
+  Future<List<RouteVisitReportPending>> allPendingReports() =>
+      repository.allPendingReports();
+  @override
+  Future<RouteVisitReportPending> chooseReport(
+    RouteVisitReportPending pending,
+    String choice,
+  ) => repository.chooseReport(pending, choice);
+  @override
+  Future<void> finishReport(RouteVisitReportPending pending) =>
+      repository.finishReport(pending);
   @override
   Future<String> upload(
     CapturedPhoto photo,
@@ -72,10 +95,11 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   final _metadata = const AttendanceCaptureMetadataService();
   Map<String, dynamic>? _workspace, _saved;
   RouteJourneyCaptureDraft? _pending;
+  RouteVisitReportPending? _pendingReport;
   String? _origin, _stopId, _error;
   bool _loading = false, _busy = false, _loadFailed = false;
   int _generation = 0;
-  bool _left = false;
+  bool _left = false, _reportBusy = false;
   RouteJourneyVisitProgress? get _progress => _workspace == null
       ? null
       : RouteJourneyVisitProgress.fromWorkspace(_workspace!, widget.sourceId);
@@ -165,7 +189,16 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
           throw StateError('訪問履歴を確認できません');
         }
       }
+      final reports = repository is RouteVisitReportAccess
+          ? await (repository as RouteVisitReportAccess).allPendingReports()
+          : <RouteVisitReportPending>[];
+      if (!_active(generation)) return;
+      _checkActor();
+      final reportMatches = reports
+          .where((row) => row.sourceId == widget.sourceId)
+          .toList();
       setState(() {
+        _pendingReport = reportMatches.isEmpty ? null : reportMatches.first;
         _workspace = workspace;
         _origin = pending?.originKind ?? workspace['origin_kind']?.toString();
         _stopId = pending?.stopId ?? _openVisit?['route_stop_id']?.toString();
@@ -244,7 +277,8 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   }
 
   Future<void> _captureOrRetry() async {
-    if (_busy || _loading || _loadFailed || _left) return;
+    if (_busy || _loading || _loadFailed || _left || _pendingReport != null)
+      return;
     final repository = _repository;
     final generation = _generation;
     setState(() => _busy = true);
@@ -285,7 +319,8 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
               fresh['company_id'] != workspace['company_id'] ||
               fresh['worker_id'] != workspace['worker_id'] ||
               fresh['work_date'] != workspace['work_date'] ||
-              fresh['route_assignment_id'] != workspace['route_assignment_id'] ||
+              fresh['route_assignment_id'] !=
+                  workspace['route_assignment_id'] ||
               (previousOpen == null &&
                   (!progress.canArrive ||
                       !progress.remainingStopIds.contains(stopId))) ||
@@ -432,6 +467,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         ),
       );
       await _load();
+      if (draft.visitKind == 'end' && _pendingReport != null && mounted) {
+        await _resumeReport();
+      }
     } catch (error) {
       if (_active(generation)) {
         setState(
@@ -441,6 +479,87 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       }
     } finally {
       if (mounted && !_left) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resumeReport() async {
+    final access = _repository;
+    var pending = _pendingReport;
+    if (pending == null ||
+        access is! RouteVisitReportAccess ||
+        _left ||
+        _reportBusy)
+      return;
+    setState(() => _reportBusy = true);
+    try {
+      _checkActor();
+      if (pending.choice == 'undecided') {
+        final choice = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(SkoLanguageController.tr('この現場の日報')),
+            content: Text(SkoLanguageController.tr('この現場の日報を作成しますか？')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, 'skip'),
+                child: Text(SkoLanguageController.tr('作成しない')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, 'create'),
+                child: Text(SkoLanguageController.tr('作成する')),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || _left || choice == null) return;
+        _checkActor();
+        pending = pending.withChoice(choice);
+        if (!mounted || _left) return;
+        _checkActor();
+        setState(() => _pendingReport = pending);
+      }
+      pending = await access.chooseReport(pending, pending.choice);
+      if (!mounted || _left) return;
+      _checkActor();
+      setState(() => _pendingReport = pending);
+      if (pending.choice == 'create') {
+        final report = pending;
+        final workspace = _workspace!;
+        final stops = (workspace['stops'] as List).whereType<Map>();
+        final stop = stops
+            .where((row) => row['id'] == report.stopId)
+            .firstOrNull;
+        final completed = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => DailyReportPage(
+              initialDate: DateTime.parse(report.workDate),
+              initialSiteId: stop?['site_id']?.toString(),
+              routeVisitContext: RouteVisitReportContext(
+                sourceClockInId: report.sourceId,
+                routeAssignmentId: workspace['route_assignment_id'] as String,
+                routeStopId: report.stopId,
+                startCaptureId: report.startCaptureId,
+                endCaptureId: report.endCaptureId,
+              ),
+            ),
+          ),
+        );
+        if (!mounted || _left) return;
+        _checkActor();
+        if (completed != true) return;
+      }
+      await access.finishReport(pending);
+      if (!mounted || _left) return;
+      _checkActor();
+      await _load();
+    } catch (error) {
+      if (mounted && !_left)
+        setState(
+          () => _error = '${SkoLanguageController.tr('現場日報を再開してください')}: $error',
+        );
+    } finally {
+      if (mounted && !_left) setState(() => _reportBusy = false);
     }
   }
 
@@ -478,7 +597,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                 children: [
                   Text(
                     SkoLanguageController.tr(
-                      '出勤後に到着した現場を記録し、現場を離れるときは移動の時刻を記録してください。GPS＋写真方式では到着時に撮影します。',
+                      '出勤後に到着した現場を記録し、現場を離れるときは移動の時刻を記録してください。GPS＋写真方式では到着時に撮影します。現場移動の保存後、この訪問の日報を作成するか選択します。途中で戻った場合は「現場日報を再開」から同じ訪問を仕上げてください。',
                     ),
                   ),
                   if (widget.initialAction != null)
@@ -526,7 +645,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                         '途中現場の記録は利用できません。機能設定または対象勤務を確認してください。',
                       ),
                     ),
-                  if (_pending == null && enabled) ...[
+                  if (_pending == null &&
+                      _pendingReport == null &&
+                      enabled) ...[
                     const SizedBox(height: 12),
                     SegmentedButton<String>(
                       emptySelectionAllowed: true,
@@ -586,6 +707,21 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                           : (value) => setState(() => _stopId = value),
                     ),
                   ],
+                  if (_pendingReport != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      SkoLanguageController.tr(
+                        'この訪問の日報が未完了です。作成または作成しないを確定してから次の現場へ進んでください。',
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _busy || _loading || _reportBusy
+                          ? null
+                          : _resumeReport,
+                      icon: const Icon(Icons.description_outlined),
+                      label: Text(SkoLanguageController.tr('現場日報を再開')),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (_visitsEnabled &&
                       _pending == null &&
@@ -597,6 +733,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                           !_busy &&
                               !_loading &&
                               !_loadFailed &&
+                              _pendingReport == null &&
                               enabled &&
                               _openVisit == null &&
                               _progress?.canArrive == true &&
@@ -614,6 +751,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                           !_busy &&
                               !_loading &&
                               !_loadFailed &&
+                              _pendingReport == null &&
                               enabled &&
                               _openVisit != null &&
                               _origin != null &&
@@ -637,6 +775,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                           _busy ||
                               _loading ||
                               _loadFailed ||
+                              _pendingReport != null ||
                               (_pending == null &&
                                   (!enabled ||
                                       _origin == null ||

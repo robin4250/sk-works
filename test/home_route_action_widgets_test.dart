@@ -14,6 +14,9 @@ void main() {
     List<String> opened, {
     HomeAttendancePhase phase = HomeAttendancePhase.working,
     bool pending = false,
+    bool pendingReports = false,
+    bool showAttendanceReport = true,
+    bool modulesEnabled = true,
     bool optionalClockInAllowed = true,
     String? routeId = 'route',
     String? selectedRouteId,
@@ -34,7 +37,8 @@ void main() {
           needsLicense: false,
           needsQualification: false,
         ),
-        moduleEnabled: (_) => true,
+        moduleEnabled: (_) => modulesEnabled,
+        showAttendanceReport: showAttendanceReport,
         visibleHomeKeys: const {'attendance_verify'},
         showTodayAttendance: false,
         attendanceStatus: HomeAttendanceStatus(
@@ -57,6 +61,7 @@ void main() {
         routeActionState: state,
         optionalClockInAllowed: optionalClockInAllowed,
         hasPendingRouteRecord: pending,
+        hasPendingRouteReports: pendingReports,
         onOpen: (key) async {
           opened.add(key);
         },
@@ -228,6 +233,27 @@ void main() {
       expect(opened, ['route_visit_recover']);
     },
   );
+  testWidgets(
+    'pending visit report survives hidden attendance and disabled module',
+    (tester) async {
+      final opened = <String>[];
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.finished,
+          pendingReports: true,
+          showAttendanceReport: false,
+          modulesEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('現場別日報を再開'), findsOneWidget);
+      await tester.tap(find.text('現場別日報を再開'));
+      expect(opened, ['route_visit_recover']);
+    },
+  );
+
   testWidgets(
     'ordinary, selected-only and ambiguous shifts hide route actions',
     (tester) async {
