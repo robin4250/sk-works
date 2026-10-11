@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tool/fixtures/route_journey_visits/**'
+      - 'tool/fixtures/manual_linker_deployment_checkpoint/**'
       - 'tool/fixtures/route_journey_capture/**'
       - 'tool/fixtures/route_manual_deployment_checkpoint/**'
       - 'tool/verify_route_journey_visits.mjs'
@@ -36,6 +37,8 @@ jobs:
       - name: Verify saved manual and failed-photo report evidence
         run: node tool/verify_daily_report_time_only_evidence.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
+      - name: Verify guarded manual report linker deployment and restore
+        run: node tool/fixtures/manual_linker_deployment_checkpoint/verify_checkpoint.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify observed manual-route definition guards and recovery
         run: node tool/fixtures/route_manual_deployment_checkpoint/verify_checkpoint.mjs "$RUNNER_TEMP/visit-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
