@@ -43,6 +43,8 @@ jobs:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/sko-seal-runtime" @electric-sql/pglite@0.3.14
       - run: node tool/verify_company_seal_style_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify direct seal-column reads preserve company and financial scope
+        run: node tool/verify_company_seal_column_read_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - run: node tool/verify_company_seal_snapshot_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js" --png
       - run: node tool/verify_invoice_calculation_sql.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js" --seal-snapshots
       - run: node tool/audit_payment_certificate_math.mjs "$RUNNER_TEMP/sko-seal-runtime/node_modules/@electric-sql/pglite/dist/index.js" --seal-snapshots
