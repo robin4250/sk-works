@@ -20,7 +20,7 @@ const submit=(reports,alloc)=>rpc(`public.submit_route_customer_day_allocations(
 const detail=req=>rpc(`public.route_billing_quantity_request_detail('${req.id}')`);
 const decide=(req,qty=1,site=siteA,price=20000,version=req.version)=>rpc(`public.decide_route_billing_quantity('${req.id}',${qty},'approve','note',${version},'${site}',${price})`);
 await db.exec(`set test.uid='${user}';set role authenticated`);
-const rows=await submit([reportA,reportB],[{customer_id:custA,quantity:1},{customer_id:custB,quantity:1}]);assert.equal(rows.length,2);assert.equal(rows.reduce((sum,r)=>sum+Number(r.quantity),0),2);
+const rows=await submit([reportA,reportB],[{customer_id:custA,quantity:1},{customer_id:custB,quantity:1}]);assert.equal(rows.length,2);assert.deepEqual(rows[0].site_options,[]);assert.equal(Object.hasOwn(rows[0],'unit_price_yen'),false);assert.equal(rows.reduce((sum,r)=>sum+Number(r.quantity),0),2);
 const a=rows.find(r=>r.customer_id===custA),b=rows.find(r=>r.customer_id===custB);
 assert.equal((await submit([reportA,reportB],[{customer_id:custA,quantity:1},{customer_id:custB,quantity:1}]))[0].version,1);
 await assert.rejects(decide(a),/manager approval required/);
@@ -30,8 +30,8 @@ await db.exec(`set test.uid='${manager}'`);assert.equal((await rpc('public.pendi
 await assert.rejects(decide(a,1,siteB,25000),/evidenced/);await assert.rejects(decide(a,0.2),/explicit quantity/);
 const approved=await decide(a);assert.equal(approved.status,'approved');assert.equal((await decide(a)).status,'approved');
 await decide(b,0.5,siteB,25000);
-await db.exec(`set test.uid='${user}'`);const revised=(await submit([reportA,reportA2],[{customer_id:custA,quantity:1}]))[0];assert.equal(revised.status,'pending');assert.equal(revised.version,2);assert.equal(revised.unit_price_yen,null);assert.equal(revised.site_options.length,2);
-await db.exec(`set test.uid='${manager}'`);await assert.rejects(decide(a),/request changed/);await decide(revised,1,siteA2,30000);
+await db.exec(`set test.uid='${user}'`);const revised=(await submit([reportA,reportA2],[{customer_id:custA,quantity:1}]))[0];assert.equal(revised.status,'pending');assert.equal(revised.version,2);assert.equal(revised.unit_price_yen,undefined);assert.deepEqual(revised.site_options,[]);assert.equal(Object.hasOwn(revised,'unit_price_yen'),false);
+await db.exec(`set test.uid='${manager}'`);assert.equal((await detail(a)).site_options.length,2);await assert.rejects(decide(a),/request changed/);await decide(revised,1,siteA2,30000);
 // Current evidence/customer reassignment invalidates stale approval.
 await db.exec('reset role');await db.exec(`update sites set customer_id='${custB}' where id='${siteA}'`);await db.exec(`set test.uid='${user}';set role authenticated`);
 await submit([reportA2],[{customer_id:custA,quantity:0.5}]);const pending=await detail(a);await db.exec(`set test.uid='${manager}'`);await assert.rejects(decide(pending,0.5,siteA2,30000),/customer evidence changed/);

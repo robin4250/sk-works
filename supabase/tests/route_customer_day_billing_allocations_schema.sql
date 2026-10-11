@@ -31,18 +31,21 @@ language sql security definer set search_path='' as $$
 $$;
 create function private.route_billing_quantity_detail(p_request_id uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare r private.route_billing_quantity_requests%rowtype; evidence jsonb; options jsonb;
+declare r private.route_billing_quantity_requests%rowtype; evidence jsonb; options jsonb; reviewer boolean; result jsonb;
 begin
  if auth.uid() is null or not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501'; end if;
  select * into r from private.route_billing_quantity_requests where id=p_request_id;
  if not found or not exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid())
  or (r.requested_by<>auth.uid() and not private.route_billing_actor_can_review(r.company_id)) then raise exception 'billing request unavailable' using errcode='42501'; end if;
+ reviewer:=private.route_billing_actor_can_review(r.company_id);
  select coalesce(jsonb_agg(to_jsonb(e) order by e.start_capture_id),'[]') into evidence from private.route_billing_quantity_evidence e where e.request_id=r.id;
  select coalesce(jsonb_agg(to_jsonb(o) order by o.site_id),'[]') into options from (
  select distinct e.site_id,e.site_name,f.billing_unit_price_yen as unit_price_yen,
  (coalesce(f.billing_unit_price_yen,0)>0 and coalesce(f.billing_square_meter_unit_price_yen,0)=0 and coalesce(f.billing_contract_amount_yen,0)=0) as man_day_method
  from private.route_billing_quantity_evidence e left join public.site_financial_settings f on f.company_id=r.company_id and f.site_id=e.site_id where e.request_id=r.id) o;
- return to_jsonb(r)||jsonb_build_object('evidence',evidence,'site_options',options,'report_ids',(select coalesce(jsonb_agg(distinct e.report_id),'[]') from private.route_billing_quantity_evidence e where e.request_id=r.id));
+ result:=to_jsonb(r)||jsonb_build_object('evidence',evidence,'site_options',case when reviewer then options else '[]'::jsonb end,'report_ids',(select coalesce(jsonb_agg(distinct e.report_id),'[]') from private.route_billing_quantity_evidence e where e.request_id=r.id));
+ if not reviewer then result:=result-'unit_price_yen'; end if;
+ return result;
 end $$;
 create function public.route_billing_quantity_request_detail(p_request_id uuid) returns jsonb language sql security invoker set search_path='' as $$select private.route_billing_quantity_detail(p_request_id)$$;
 create function private.pending_route_billing_quantity_rows() returns jsonb language plpgsql security definer set search_path='' as $$
