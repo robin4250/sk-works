@@ -41,6 +41,8 @@ void main() {
             'created_at': '2026-01-01T00:00:00Z',
           },
         };
+      } else if (path.endsWith('/current_master_feature_flags')) {
+        response = {'vehicle_management': true, 'route_assignment': true};
       } else if (path.endsWith('/company_members')) {
         response = [
           {'company_id': company},
