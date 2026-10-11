@@ -279,7 +279,6 @@ class _PersonalAttendanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isWorking = status.phase == HomeAttendancePhase.working;
-    final isFinished = status.phase == HomeAttendancePhase.finished;
     // A selected route is only a future destination. These controls belong to
     // one confirmed, currently open route shift, including when selection has
     // subsequently changed.
@@ -497,7 +496,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: status.phase == HomeAttendancePhase.unknown || isWorking || isFinished || !optionalClockInAllowed
+                        child: status.phase == HomeAttendancePhase.unknown || isWorking || !optionalClockInAllowed
                             ? OutlinedButton.icon(
                                 style: disabledActionStyle,
                                 onPressed: null,

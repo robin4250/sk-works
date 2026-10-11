@@ -1068,6 +1068,7 @@ class _HomePageState extends State<HomePage> {
 
     if (key == 'clock_in' ||
         key == 'clock_out' ||
+        key == 'daily_report' ||
         key == 'attendance_verify' ||
         key == 'attendance_method_vehicle' ||
         key == 'workplace_select' ||

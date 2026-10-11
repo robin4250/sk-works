@@ -484,12 +484,14 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
 
   Future<void> _resumeReport() async {
     final access = _repository;
-    var pending = _pendingReport;
-    if (pending == null ||
+    final initialPending = _pendingReport;
+    if (initialPending == null ||
         access is! RouteVisitReportAccess ||
         _left ||
         _reportBusy)
       return;
+    final reportAccess = access as RouteVisitReportAccess;
+    RouteVisitReportPending pending = initialPending;
     setState(() => _reportBusy = true);
     try {
       _checkActor();
@@ -519,7 +521,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         _checkActor();
         setState(() => _pendingReport = pending);
       }
-      pending = await access.chooseReport(pending, pending.choice);
+      pending = await reportAccess.chooseReport(pending, pending.choice);
       if (!mounted || _left) return;
       _checkActor();
       setState(() => _pendingReport = pending);
@@ -549,7 +551,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         _checkActor();
         if (completed != true) return;
       }
-      await access.finishReport(pending);
+      await reportAccess.finishReport(pending);
       if (!mounted || _left) return;
       _checkActor();
       await _load();

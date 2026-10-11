@@ -228,6 +228,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('現場到着'), findsNothing);
       expect(find.text('現場移動'), findsNothing);
+      expect(tester.widget<ButtonStyleButton>(find.ancestor(
+        of: find.text('出勤'), matching: find.byType(FilledButton),
+      )).onPressed, isNotNull);
+      expect(tester.widget<ButtonStyleButton>(find.ancestor(
+        of: find.text('退勤'), matching: find.byType(OutlinedButton),
+      )).onPressed, isNull);
       await tester.ensureVisible(find.text('保留記録を再確認'));
       await tester.tap(find.text('保留記録を再確認'));
       expect(opened, ['route_visit_recover']);
