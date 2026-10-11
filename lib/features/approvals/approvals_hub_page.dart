@@ -10,6 +10,8 @@ import '../attendance/paid_leave_repository.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
 import '../daily_reports/daily_report_repository.dart';
 import '../notifications/notification_bell.dart';
+import '../route_billing/route_billing_quantity_approval_repository.dart';
+import '../route_billing/route_billing_quantity_approvals_page.dart';
 import '../qualifications/qualification_photo_submission_review_page.dart';
 import '../qualifications/qualification_photo_submission_review_repository.dart';
 import '../people/people_cloud_repository.dart';
@@ -34,6 +36,9 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
   final _peopleRepository = PeopleCloudRepository.maybeCreate();
   final _qualificationRepository =
       QualificationPhotoSubmissionReviewRepository.maybeCreate();
+  final _routeBillingRepository =
+      RouteBillingQuantityApprovalRepository.maybeCreate();
+  int _routeBillingCount = 0;
   int _qualificationCount = 0;
 
   int _dailyCount = 0;
@@ -96,6 +101,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
         if (repository == null) return 0;
         return (await repository.loadPendingPersonnelChanges()).length;
       }),
+      safe(() async => (await _routeBillingRepository?.pending())?.length ?? 0),
     ]);
     if (!mounted) return;
     setState(() {
@@ -106,6 +112,7 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
       _onboardingCount = values[4];
       _siteInformationCount = values[5];
       _personnelChangeCount = values[6];
+      _routeBillingCount = values[7];
       _loadingCounts = false;
     });
   }
@@ -173,6 +180,18 @@ class _ApprovalsHubPageState extends State<ApprovalsHubPage> {
         child: ListView(
           padding: const EdgeInsets.all(12),
           children: [
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.assignment_turned_in_outlined),
+                ),
+                title: const Text('ルート請求数量の承認待ち'),
+                subtitle: const Text('取引会社ごとの1人工・0.5人工と請求単価を確認'),
+                trailing: _trailing(_routeBillingCount),
+                onTap: () => _open(const RouteBillingQuantityApprovalsPage()),
+              ),
+            ),
+            const SizedBox(height: 8),
             Card(
               child: ListTile(
                 leading: const CircleAvatar(
