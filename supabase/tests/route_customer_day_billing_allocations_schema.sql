@@ -29,6 +29,28 @@ language sql security definer set search_path='' as $$
  select auth.uid() is not null and private.account_access_allowed() and exists(
  select 1 from public.company_members m where m.company_id=p_company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager'))
 $$;
+-- Match the current invoice calculation source and daily-before-fixed precedence.
+-- Internal helper only: callers enforce requester/reviewer company access.
+create function private.route_billing_site_daily_rate(p_company_id uuid,p_site_id uuid)
+returns table(unit_price_yen integer,man_day_method boolean)
+language sql stable security definer set search_path='' as $$
+ select case when pref.source='trade_company' then coalesce(pref.daily_rate_yen,0)
+ else coalesce(f.billing_unit_price_yen,0) end,
+ case when pref.source='trade_company' then pref.contract_method='daily' and coalesce(pref.daily_rate_yen,0)>0
+ else coalesce(f.billing_unit_price_yen,0)>0 end
+ from public.sites s
+ left join public.site_financial_settings f on f.company_id=s.company_id and f.site_id=s.id
+ left join lateral (
+  select p.source,c.contract_method,c.daily_rate_yen
+  from public.site_calculation_source_preferences p
+  join public.trade_companies t on t.id=p.trade_company_id and t.company_id=p_company_id
+  left join public.trade_company_contracts c on c.company_id=p_company_id and c.trade_company_id=t.id
+  where p.company_id=p_company_id and p.site_id=p_site_id and p.output_type='invoice' and p.source='trade_company'
+  limit 1
+ ) pref on true
+ where s.company_id=p_company_id and s.id=p_site_id
+$$;
+revoke all on function private.route_billing_site_daily_rate(uuid,uuid) from public,anon,authenticated;
 create function private.route_billing_quantity_detail(p_request_id uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare r private.route_billing_quantity_requests%rowtype; evidence jsonb; options jsonb; reviewer boolean; result jsonb;
@@ -40,9 +62,8 @@ begin
  reviewer:=private.route_billing_actor_can_review(r.company_id);
  select coalesce(jsonb_agg(to_jsonb(e) order by e.start_capture_id),'[]') into evidence from private.route_billing_quantity_evidence e where e.request_id=r.id;
  select coalesce(jsonb_agg(to_jsonb(o) order by o.site_id),'[]') into options from (
- select distinct e.site_id,e.site_name,f.billing_unit_price_yen as unit_price_yen,
- (coalesce(f.billing_unit_price_yen,0)>0 and coalesce(f.billing_square_meter_unit_price_yen,0)=0 and coalesce(f.billing_contract_amount_yen,0)=0) as man_day_method
- from private.route_billing_quantity_evidence e left join public.site_financial_settings f on f.company_id=r.company_id and f.site_id=e.site_id where e.request_id=r.id) o;
+ select distinct e.site_id,e.site_name,f.unit_price_yen,f.man_day_method
+ from private.route_billing_quantity_evidence e left join lateral private.route_billing_site_daily_rate(r.company_id,e.site_id) f on true where e.request_id=r.id) o;
  result:=to_jsonb(r)||jsonb_build_object('evidence',evidence,'site_options',case when reviewer then options else '[]'::jsonb end,'report_ids',(select coalesce(jsonb_agg(distinct e.report_id),'[]') from private.route_billing_quantity_evidence e where e.request_id=r.id));
  if not reviewer then result:=result-'unit_price_yen'; end if;
  return result;
@@ -120,9 +141,9 @@ begin
  if p_decision='approve' then
   if p_quantity is null or p_quantity not in (0.5,1) or p_unit_price_yen is null or p_unit_price_yen<=0 or p_representative_site_id is null then raise exception 'explicit quantity, representative site and price required'; end if;
   if not exists(select 1 from private.route_billing_quantity_evidence e join public.sites s on s.id=e.site_id and s.company_id=r.company_id
-   join public.site_financial_settings f on f.site_id=s.id and f.company_id=s.company_id
+   join lateral private.route_billing_site_daily_rate(s.company_id,s.id) f on true
    where e.request_id=r.id and e.site_id=p_representative_site_id and e.customer_id=r.customer_id and s.customer_id=r.customer_id
-   and f.billing_unit_price_yen>0 and coalesce(f.billing_square_meter_unit_price_yen,0)=0 and coalesce(f.billing_contract_amount_yen,0)=0) then raise exception 'representative site must be evidenced man-day billing site'; end if;
+   and f.man_day_method) then raise exception 'representative site must be evidenced man-day billing site'; end if;
   if exists(select 1 from private.route_billing_quantity_evidence e join public.sites s on s.id=e.site_id where e.request_id=r.id and s.customer_id is distinct from e.customer_id) then raise exception 'customer evidence changed; resubmit'; end if;
  end if;
  update private.route_billing_quantity_requests set quantity=case when p_decision='approve' then p_quantity else quantity end,

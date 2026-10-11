@@ -6,6 +6,9 @@ create function private.account_access_allowed() returns boolean language sql as
 create table company_members(company_id uuid,user_id uuid,role text);create table workers(id uuid,company_id uuid,name text);
 create table customers(id uuid,company_id uuid,name text);create table sites(id uuid,company_id uuid,name text,customer_id uuid);
 create table site_financial_settings(company_id uuid,site_id uuid,billing_unit_price_yen integer,billing_square_meter_unit_price_yen integer,billing_contract_amount_yen integer);
+create table site_calculation_source_preferences(company_id uuid,site_id uuid,output_type text,source text,trade_company_id uuid);
+create table trade_companies(id uuid,company_id uuid);
+create table trade_company_contracts(company_id uuid,trade_company_id uuid,contract_method text,daily_rate_yen integer);
 create table private.route_visit_reports(id uuid,company_id uuid,created_by uuid,report_date date,status text,roster_workers jsonb,site_id uuid,site_name text,source_clock_in_id uuid,start_capture_id uuid,end_capture_id uuid);
 create table attendance_entries(id uuid,base_man_days numeric);create table invoices(id uuid,status text,snapshot jsonb);`);
 await db.exec(await fs.readFile(new URL('../supabase/tests/route_customer_day_billing_allocations_schema.sql',import.meta.url),'utf8'));
@@ -28,6 +31,19 @@ await db.exec(`set test.uid='${employee}'`);await assert.rejects(detail(a),/unav
 await db.exec(`set test.uid='${foreign}'`);await assert.rejects(decide(a),/manager approval required/);
 await db.exec(`set test.uid='${manager}'`);assert.equal((await rpc('public.pending_route_billing_quantity_rows()')).length,2);
 await assert.rejects(decide(a,1,siteB,25000),/evidenced/);await assert.rejects(decide(a,0.2),/explicit quantity/);
+// Invoice-selected trade company rate overrides site rate; fixed contracts cannot be approved as days.
+await db.exec('reset role');await db.exec(`insert into trade_companies values('${id(80)}','${company}');insert into trade_company_contracts values('${company}','${id(80)}','daily',42000);insert into site_calculation_source_preferences values('${company}','${siteA}','invoice','trade_company','${id(80)}');set role authenticated`);
+assert.equal((await detail(a)).site_options[0].unit_price_yen,42000);assert.equal((await detail(a)).site_options[0].man_day_method,true);
+for (const method of ['monthly','square_meter','contract','none']) {
+ await db.exec('reset role');await db.exec(`update trade_company_contracts set contract_method='${method}';set role authenticated`);
+ assert.equal((await detail(a)).site_options[0].man_day_method,false);await assert.rejects(decide(a),/evidenced/);
+}
+await db.exec('reset role');await db.exec(`update trade_company_contracts set contract_method='daily',daily_rate_yen=0;set role authenticated`);
+assert.equal((await detail(a)).site_options[0].man_day_method,false);await assert.rejects(decide(a),/evidenced/);
+// A site daily rate takes precedence over old fixed fields, just as the invoice does.
+await db.exec('reset role');await db.exec(`update site_calculation_source_preferences set source='site';update site_financial_settings set billing_contract_amount_yen=99999 where site_id='${siteA}';set role authenticated`);
+assert.equal((await detail(a)).site_options[0].unit_price_yen,20000);assert.equal((await detail(a)).site_options[0].man_day_method,true);
+await assert.rejects(db.query(`select * from private.route_billing_site_daily_rate('${company}','${siteA}')`),/permission denied/);
 const approved=await decide(a);assert.equal(approved.status,'approved');assert.equal((await decide(a)).status,'approved');
 await decide(b,0.5,siteB,25000);
 await db.exec(`set test.uid='${user}'`);const revised=(await submit([reportA,reportA2],[{customer_id:custA,quantity:1}]))[0];assert.equal(revised.status,'pending');assert.equal(revised.version,2);assert.equal(revised.unit_price_yen,undefined);assert.deepEqual(revised.site_options,[]);assert.equal(Object.hasOwn(revised,'unit_price_yen'),false);

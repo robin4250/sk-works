@@ -67,6 +67,22 @@ try {
   assert.equal((await admin.query('select count(*)::int n from private.route_billing_quantity_requests')).rows[0].n, 2);
   const requestA = first.find(r => r.customer_id === customerA), requestB = first.find(r => r.customer_id === customerB);
   await actor(a, manager); await actor(b, manager);
+  // Registered invoice source must also govern approval eligibility.
+  await admin.query('insert into trade_companies values($1,$2)', [id(80), company]);
+  await admin.query("insert into trade_company_contracts values($1,$2,'daily',42000)", [company, id(80)]);
+  await admin.query("insert into site_calculation_source_preferences values($1,$2,'invoice','trade_company',$3)", [company, siteA, id(80)]);
+  const option = async () => (await a.query('select public.route_billing_quantity_request_detail($1) v', [requestA.id])).rows[0].v.site_options[0];
+  assert.equal((await option()).unit_price_yen, 42000); assert.equal((await option()).man_day_method, true);
+  for (const method of ['monthly', 'square_meter', 'contract', 'none']) {
+    await admin.query('update trade_company_contracts set contract_method=$1', [method]);
+    assert.equal((await option()).man_day_method, false);
+    await assert.rejects(approve(a, requestA, siteA, 20000), /evidenced/);
+  }
+  await admin.query("update trade_company_contracts set contract_method='daily',daily_rate_yen=0");
+  await assert.rejects(approve(a, requestA, siteA, 20000), /evidenced/);
+  await admin.query("update site_calculation_source_preferences set source='site'");
+  await admin.query('update site_financial_settings set billing_contract_amount_yen=99999 where site_id=$1', [siteA]);
+  assert.equal((await option()).unit_price_yen, 20000); assert.equal((await option()).man_day_method, true);
   await admin.query('begin'); await admin.query('select id from private.route_billing_quantity_requests where id=$1 for update', [requestA.id]);
   const x = settle(approve(a, requestA, siteA, 20000)), y = settle(approve(b, requestA, siteA, 20000));
   await blocked(); await admin.query('commit');
