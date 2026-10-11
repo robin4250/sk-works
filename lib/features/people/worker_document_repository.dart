@@ -13,6 +13,7 @@ class WorkerDocumentRepository {
   WorkerDocumentRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+  String? get actorId => _client.auth.currentUser?.id;
   static const _bucket = 'worker-documents';
 
   static WorkerDocumentRepository? maybeCreate() {
@@ -380,6 +381,7 @@ class WorkerDocumentRepository {
     List<WorkerDocumentPhoto> photos, {
     required List<String> existing,
     required String prefix,
+    void Function()? requireActor,
   }) async {
     if (photos.length > 20) throw ArgumentError('写真は20枚以内で登録してください。');
     final retained = photos
@@ -408,6 +410,7 @@ class WorkerDocumentRepository {
       } else {
         final path =
             '$prefix/${DateTime.now().microsecondsSinceEpoch}_$index${_extensionOf(photo.filename!)}';
+        requireActor?.call();
         await _client.storage
             .from(_bucket)
             .uploadBinary(
@@ -415,6 +418,7 @@ class WorkerDocumentRepository {
               photo.bytes!,
               fileOptions: const FileOptions(upsert: false),
             );
+        requireActor?.call();
         paths.add(path);
       }
     }
@@ -685,6 +689,121 @@ class WorkerDocumentRepository {
     );
   }
 
+  /// Register another worker's complete document through existing company ACLs.
+  /// Uploads never replace/delete a saved object; one CAS publishes the full list.
+  Future<void> saveManagedDocumentPhotos({
+    required String workerId,
+    required String requirementId,
+    required String status,
+    DateTime? expiresAt,
+    required bool originalVerified,
+    required String notes,
+    required List<WorkerDocumentPhoto> photos,
+    required Map<String, dynamic>? expectedRow,
+  }) async {
+    if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
+    final actor = _client.auth.currentUser?.id;
+    void requireActor() {
+      if (actor == null || _client.auth.currentUser?.id != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+    }
+
+    requireActor();
+    await _requireManagePeople();
+    requireActor();
+    final companyId = await _companyId();
+    requireActor();
+    final worker = await _client
+        .from('workers')
+        .select('id,company_id,status')
+        .eq('id', workerId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+    requireActor();
+    final requirement = await _client
+        .from('document_requirements')
+        .select('id,company_id,is_active')
+        .eq('id', requirementId)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .maybeSingle();
+    requireActor();
+    if (worker == null || requirement == null) {
+      throw StateError('所属会社の社員と必要書類を確認してください。');
+    }
+    if (photos.any((photo) => photo.path == null) &&
+        worker['status'] != 'active') {
+      throw StateError('在籍中の社員の書類へ写真を登録してください。');
+    }
+    final fresh = await _client
+        .from('worker_document_statuses')
+        .select()
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq('requirement_id', requirementId)
+        .maybeSingle();
+    requireActor();
+    if ((fresh == null) != (expectedRow == null) ||
+        (fresh != null &&
+            (fresh['id'] != expectedRow!['id'] ||
+                fresh['updated_at'] == null ||
+                fresh['updated_at'] != expectedRow['updated_at']))) {
+      throw StateError('書類が更新されています。再読み込みしてください。');
+    }
+    final expectedPaths = workerDocumentPaths(expectedRow);
+    final currentPaths = workerDocumentPaths(fresh);
+    if (expectedPaths.length != currentPaths.length ||
+        List.generate(
+          expectedPaths.length,
+          (i) => i,
+        ).any((i) => expectedPaths[i] != currentPaths[i])) {
+      throw StateError('登録写真が更新されています。再読み込みしてください。');
+    }
+    final paths = await _uploadPhotos(
+      photos,
+      existing: currentPaths,
+      prefix:
+          '$companyId/$workerId/$requirementId/${fresh?['id'] ?? 'own-upload'}',
+      requireActor: requireActor,
+    );
+    requireActor();
+    final payload = <String, dynamic>{
+      'company_id': companyId,
+      'worker_id': workerId,
+      'requirement_id': requirementId,
+      'status': status,
+      'expires_at': expiresAt?.toIso8601String().split('T').first,
+      'original_verified': originalVerified,
+      'notes': notes.trim().isEmpty ? null : notes.trim(),
+      'attachment_path': paths.isEmpty ? null : paths.first,
+      'attachment_paths': paths,
+      'updated_by': actor,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final Map<String, dynamic> saved;
+    if (fresh == null) {
+      saved = await _client
+          .from('worker_document_statuses')
+          .insert(payload)
+          .select()
+          .single();
+    } else {
+      saved = await _client
+          .from('worker_document_statuses')
+          .update(payload)
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('requirement_id', requirementId)
+          .eq('id', fresh['id'])
+          .eq('updated_at', fresh['updated_at'])
+          .select()
+          .single();
+    }
+    requireActor();
+    _confirmPaths(saved, paths);
+  }
+
   Future<void> updateStatus({
     required String workerId,
     required String requirementId,
@@ -693,14 +812,26 @@ class WorkerDocumentRepository {
     required bool originalVerified,
     required String notes,
   }) async {
+    final actor = actorId;
+    void requireActor() {
+      if (actor == null || actorId != actor) {
+        throw StateError('ログイン情報が変わりました。画面を開き直してください。');
+      }
+    }
+
+    requireActor();
     await _requireManagePeople();
+    requireActor();
     final companyId = await _companyId();
+    requireActor();
     final existing = await _client
         .from('worker_document_statuses')
         .select('id')
+        .eq('company_id', companyId)
         .eq('worker_id', workerId)
         .eq('requirement_id', requirementId)
         .limit(1);
+    requireActor();
     final payload = {
       'company_id': companyId,
       'worker_id': workerId,
@@ -709,17 +840,22 @@ class WorkerDocumentRepository {
       'expires_at': expiresAt?.toIso8601String().split('T').first,
       'original_verified': originalVerified,
       'notes': notes.trim().isEmpty ? null : notes.trim(),
-      'updated_by': _client.auth.currentUser?.id,
+      'updated_by': actor,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
 
+    requireActor();
     if (existing.isEmpty) {
       await _client.from('worker_document_statuses').insert(payload);
     } else {
       await _client
           .from('worker_document_statuses')
           .update(payload)
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('requirement_id', requirementId)
           .eq('id', existing.first['id']);
     }
+    requireActor();
   }
 }
