@@ -226,12 +226,26 @@ class _RequiredDocumentAttentionCardState
                       horizontal: 12,
                       vertical: 10,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
                       children: [
                         Expanded(
                           child: Text(
                             SkoLanguageController.tr('要対応'),
-                            style: const TextStyle(fontWeight: FontWeight.w900),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize:
+                                          (Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.fontSize ??
+                                              14) *
+                                          1.25,
+                                    ),
                           ),
                         ),
                         Text(
@@ -243,6 +257,21 @@ class _RequiredDocumentAttentionCardState
                         ),
                         const SizedBox(width: 4),
                         const Icon(Icons.chevron_right),
+                          ],
+                        ),
+                        if (widget
+                            .attention
+                            .notificationPreviews
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.attention.notificationPreviews.join('\n'),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(fontSize: 11),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -755,7 +784,7 @@ class _DraggableHomeCard extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           child: LongPressDraggable<String>(
             data: keyName,
-            delay: const Duration(milliseconds: 320),
+            delay: const Duration(milliseconds: 600),
             feedback: SizedBox(
               width: MediaQuery.sizeOf(context).width - 32,
               child: Material(
@@ -807,7 +836,16 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。',
+                maxLines: 1,
+                softWrap: false,
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(fontSize: 11),
+              ),
+            ),
             const SizedBox(height: 12),
             Opacity(
               opacity: buttonOpacity,
@@ -1030,7 +1068,7 @@ class _HomeActionTile extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           child: LongPressDraggable<String>(
             data: item.key,
-            delay: const Duration(milliseconds: 320),
+            delay: const Duration(milliseconds: 600),
             feedback: SizedBox(
               width: fourColumns ? 92 : (compact ? 120 : 220),
               child: Material(
@@ -1065,5 +1103,3 @@ class _HomeAction {
   final IconData icon;
   final HomeShortcutAccess access;
 }
-
-

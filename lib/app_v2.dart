@@ -721,6 +721,16 @@ class _HomePageState extends State<HomePage> {
     unawaited(_recordUsage(key));
     if (!mounted) return;
 
+    if (const {
+          'attendance_management',
+          'payment_certificate_settings',
+          'site_map',
+          'approvals',
+        }.contains(key) &&
+        !_nestedActionKeys.contains(key)) {
+      return;
+    }
+
     // Ignore retired shortcut keys retained in older home preferences.
     if (key == 'signatures') return;
 
@@ -810,7 +820,12 @@ class _HomePageState extends State<HomePage> {
     if (key == 'attendance_list') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const AttendanceWorkerListPage(),
+          builder: (_) => AttendanceWorkerListPage(
+            onOpenManagement:
+                _nestedActionKeys.contains('attendance_management')
+                ? () => _openHomeAction('attendance_management')
+                : null,
+          ),
         ),
       );
       return;
@@ -953,9 +968,14 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'payment_certificates':
-        page = const SecondaryProtectedPage(
+        page = SecondaryProtectedPage(
           title: '支払証明書',
-          child: PaymentCertificatesPage(),
+          child: PaymentCertificatesPage(
+            onOpenSettings:
+                _nestedActionKeys.contains('payment_certificate_settings')
+                ? () => _openHomeAction('payment_certificate_settings')
+                : null,
+          ),
         );
         break;
       case 'payment_certificate_settings':
@@ -990,9 +1010,13 @@ class _HomePageState extends State<HomePage> {
         page = const AdminSiteMapPage();
         break;
       case 'admin_sites':
-        page = const SecondaryProtectedPage(
-          title: '管理者用現場データ',
-          child: AdminSiteFinancialPage(),
+        page = SecondaryProtectedPage(
+          title: '現場管理',
+          child: AdminSiteFinancialPage(
+            onOpenMap: _nestedActionKeys.contains('site_map')
+                ? () => _openHomeAction('site_map')
+                : null,
+          ),
         );
         break;
       case 'qualification_certificates':
@@ -1108,8 +1132,27 @@ class _HomePageState extends State<HomePage> {
     if (_identity.isManagement && _moduleEnabled('documents') && _subAdminFeatureEnabled('documents')) 'documents',
   };
 
+  Set<String> get _nestedActionKeys => {
+    if (_moduleEnabled('attendance') &&
+        _identity.isManagement &&
+        _identity.can('can_manage_attendance') &&
+        _subAdminFeatureEnabled('attendance_management'))
+      'attendance_management',
+    if (_identity.isManagement &&
+        _subAdminFeatureEnabled('payment_certificate_settings'))
+      'payment_certificate_settings',
+    if (_moduleEnabled('sites') &&
+        _identity.isManagement &&
+        _subAdminFeatureEnabled('site_map'))
+      'site_map',
+    if (_identity.can('can_approve_daily_report_edits') &&
+        _subAdminFeatureEnabled('approvals'))
+      'approvals',
+  };
+
   Set<String> get _availableActionKeys => {
     ..._menuItems.map((item) => item.key), ..._employeeResourceKeys,
+    ..._nestedActionKeys,
     if (_isAdmin) 'initial_registration',
     if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments')) 'payroll_settings',
     if (_identity.isManagement && _subAdminFeatureEnabled('company_deliveries')) 'company_deliveries',
@@ -1202,14 +1245,6 @@ class _HomePageState extends State<HomePage> {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'payment_certificate_settings',
-          label: SkoLanguageController.tr('支払証明書設定'),
-          icon: Icons.tune_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
       _MenuAction(
         key: 'profile',
         label: SkoLanguageController.tr('プロフィール'),
@@ -1246,13 +1281,6 @@ class _HomePageState extends State<HomePage> {
           label: SkoLanguageController.tr('アルバム'),
           icon: Icons.photo_album_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
-        ),
-      if (_identity.can('can_approve_daily_report_edits'))
-        _MenuAction(
-          key: 'approvals',
-          label: SkoLanguageController.tr('承認待ち'),
-          icon: Icons.approval_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（承認権限）'),
         ),
       if (_isAdmin &&
           _moduleEnabled('line_bridge'))
@@ -1298,18 +1326,10 @@ class _HomePageState extends State<HomePage> {
       if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))
         _MenuAction(
           key: 'admin_sites',
-          label: SkoLanguageController.tr('管理現場'),
+          label: SkoLanguageController.tr('現場管理'),
           icon: Icons.admin_panel_settings_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・現場閲覧権限'),
-        ),
-      if (_identity.isManagement && _moduleEnabled('sites'))
-        _MenuAction(
-          key: 'site_map',
-          label: SkoLanguageController.tr('現場マップ'),
-          icon: Icons.map_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
       if (!_identity.isManagement && _moduleEnabled('sites'))
         _MenuAction(
@@ -1318,14 +1338,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.add_business_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('一般・閲覧権限'),
-        ),
-      if (_identity.isManagement && _identity.can('can_manage_attendance'))
-        _MenuAction(
-          key: 'attendance_management',
-          label: SkoLanguageController.tr('勤怠管理'),
-          icon: Icons.manage_history_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
         ),
       _MenuAction(
         key: 'appearance',

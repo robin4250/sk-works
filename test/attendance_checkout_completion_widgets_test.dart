@@ -155,4 +155,30 @@ void main() {
     expect(button.onPressed, isNull);
     expect(repository.inserts, 0);
   });
+  testWidgets('archived clock-in keeps pending on back, then allows an explicit fresh start without inserting', (tester) async {
+    final repository=ArchivedRepository()..open=false;
+    await tester.pumpWidget(MaterialApp(home:AttendanceVerificationPage(initialEventType:'clock_in',repository:repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('同じ撮影記録で再確認'));await tester.pumpAndSettle();
+    expect(find.text('以前の出勤は履歴化されています'),findsOneWidget);
+    await tester.tap(find.text('戻る'));await tester.pumpAndSettle();
+    expect(repository.acknowledged,isFalse);expect(repository.inserts,0);
+    await tester.tap(find.text('同じ撮影記録で再確認'));await tester.pumpAndSettle();
+    await tester.tap(find.text('新しい出勤を始める'));await tester.pumpAndSettle();
+    expect(repository.acknowledged,isTrue);expect(repository.inserts,0);
+    expect(find.text('同じ撮影記録で再確認'),findsNothing);
+    expect(find.text('出勤を確定'),findsOneWidget);
+  });
+
+}
+
+class ArchivedRepository extends _Repository {
+  final draft = CaptureVerificationDraft({'event_type':'clock_in','company_id':'company','worker_id':'worker','created_by':'actor','route_assignment_id':'route','site_id':null,'verification_mode':'location_photo','capture_contract_version':1,'photo_storage_path':'old.jpg'});
+  bool acknowledged=false;
+  @override
+  Future<CaptureVerificationDraft?> loadPendingCaptureDraft() async => acknowledged ? null : draft;
+  @override
+  Future<Map<String,dynamic>> submitCaptureDraft(CaptureVerificationDraft d) async => throw const ArchivedCaptureVerification({});
+  @override
+  Future<void> acknowledgeArchivedCaptureDraft(CaptureVerificationDraft d) async {expect(d.id,draft.id);acknowledged=true;}
 }

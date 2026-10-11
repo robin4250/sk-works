@@ -854,6 +854,51 @@ class _AttendanceVerificationPageState
       await _finishSavedVerification(saved);
     } catch (error) {
       if (!mounted) return;
+      if (error is ArchivedCaptureVerification &&
+          _pendingCaptureDraft != null) {
+        final pending = _pendingCaptureDraft!;
+        final restart = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(SkoLanguageController.tr('以前の出勤は履歴化されています')),
+            content: Text(
+              SkoLanguageController.tr(
+                'この出勤は削除・修正後の履歴に保存されています。同じ記録では再出勤できません。記録と写真を保持して、新しい出勤を始めます。',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(SkoLanguageController.tr('戻る')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(SkoLanguageController.tr('新しい出勤を始める')),
+              ),
+            ],
+          ),
+        );
+        if (restart == true && mounted && repository.userId == operationActor) {
+          try {
+            await repository.acknowledgeArchivedCaptureDraft(pending);
+            requireActor();
+            if (!mounted) return;
+            setState(() {
+              _pendingCaptureDraft = null;
+              _noteController.clear();
+            });
+            await _load();
+          } catch (recoveryError) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('確認を登録できませんでした: $recoveryError')),
+              );
+            }
+          }
+        }
+        return;
+      }
       if (error is PostgrestException && error.code == 'P0001' &&
           error.message == 'finish current visit before clock-out') {
         _unconfirmedCheckout = null;
