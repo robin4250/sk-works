@@ -681,6 +681,7 @@ class _AttendanceVerificationPageState
       }
       if (workerId == null) { throw StateError('社員情報を確認してください'); }
       if (_mode == 'gps_auto') {
+        if (!mounted) return;
         final allowed = await ensureGpsAutoLocationPermission(context);
         if (!allowed || !mounted) return;
       }

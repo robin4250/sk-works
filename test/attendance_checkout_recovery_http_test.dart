@@ -69,8 +69,9 @@ void main() {
             },
           };
         } else if (path.endsWith('/company_members')) {
-          if (scenario == 'actor-company-read')
+          if (scenario == 'actor-company-read') {
             await client.auth.signOut(scope: SignOutScope.local);
+          }
           response = [
             {'company_id': company},
           ];
@@ -85,8 +86,9 @@ void main() {
             );
             expect(request.uri.queryParameters['company_id'], 'eq.$company');
             expect(request.uri.queryParameters['worker_id'], 'eq.$worker');
-            if (scenario == 'actor-change')
+            if (scenario == 'actor-change') {
               await client.auth.signOut(scope: SignOutScope.local);
+            }
             if (scenario == 'read-failure') {
               request.response.statusCode = 503;
               response = {'code': 'PGRST000', 'message': 'Unavailable'};

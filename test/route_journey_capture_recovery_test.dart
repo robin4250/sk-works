@@ -201,7 +201,7 @@ void main() {
         ..visits = []
         ..mode = 'manual';
       access.onWorkspace = (count) {
-        if (count > 1)
+        if (count > 1) {
           access.visits = [
             {
               'start_capture_id': 'existing-start',
@@ -212,6 +212,7 @@ void main() {
               'ended_at': '2026-10-10T10:00:00Z',
             },
           ];
+        }
       };
       await _open(tester, access);
       await tester.tap(find.byType(DropdownButtonFormField<String>));

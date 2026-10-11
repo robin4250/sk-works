@@ -104,8 +104,9 @@ void main() {
                       openSavedReport: (context, saved) async {
                         expect(saved, repository.saved);
                         reports++;
-                        if (reports == 1)
+                        if (reports == 1) {
                           throw StateError('report temporarily unavailable');
+                        }
                       },
                     ),
                   ),
