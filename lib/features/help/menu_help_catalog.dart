@@ -86,21 +86,12 @@ class MenuHelpCatalog {
       roles: {ManualRole.subAdmin, ManualRole.admin},
     ),
     MenuHelpItem(
-      key: 'initial_registration',
-      label: '初回登録',
-      purpose: '従業員登録済みの人へ、TestFlightと本人専用の初回ログイン情報を送ります。',
-      destination: 'TOPページの「初回登録」から、未送信の従業員一覧へ移動します。',
-      access: '管理者',
-      details: '先に「従業員登録」で名前と携帯電話番号を登録します。その後「初回登録」で未送信の従業員を選び、TestFlight URLと本人専用の初回ログインQR/初期ログイン情報を送ります。送信済みの人は一覧で判別できます。',
-      roles: {ManualRole.admin},
-    ),
-    MenuHelpItem(
       key: 'employee_register',
       label: '従業員登録',
-      purpose: '従業員の名前と携帯電話番号を先に登録します。',
+      purpose: '従業員の登録と初回ログイン案内を1画面で行います。',
       destination: '従業員登録画面へ移動します。',
       access: '管理者・サブ管理者',
-      details: 'ここでは名前と電話番号だけを登録します。TestFlightや初回ログイン情報の送信は、管理者がTOPページの「初回登録」から別に行います。',
+      details: '名前と携帯電話番号を登録するだけ、登録して続けて案内作成、登録済みの従業員への案内作成を同じ画面で選びます。管理者はTestFlight URLも同画面で保存できます。SMS作成と共有は実送信完了とは別です。サブ管理者は既存の登録権限の範囲だけ利用し、初回案内の権限を追加しません。',
       roles: {ManualRole.subAdmin, ManualRole.admin},
     ),
     MenuHelpItem(
