@@ -1,3 +1,4 @@
+import '../settings/master_feature_availability.dart';
 import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
@@ -25,6 +26,13 @@ class _AttendanceWorkplaceSelectionPageState
   String _mode = 'manual';
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  String? _loadedActorId;
+  void _requireLoadedActor() {
+    if (_loadedActorId == null || _routeRepository?.selectionActorId != _loadedActorId) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
+  MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -47,11 +55,13 @@ class _AttendanceWorkplaceSelectionPageState
     }
 
     try {
+      final actor = routes.selectionActorId;
       final values = await Future.wait([
         attendance.loadSites(),
         attendance.loadAttendanceSelectionWorkspace(),
         routes.routes(activeOnly: true),
         routes.loadTodaySelection(),
+        routes.featureAvailability(),
       ]);
       final workspace = values[1] as Map<String, dynamic>;
       final selection = workspace['selection'] is Map
@@ -65,7 +75,12 @@ class _AttendanceWorkplaceSelectionPageState
           routeSelection['route_assignment_id']?.toString();
 
       if (!mounted) return;
+      if (actor == null || routes.selectionActorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       setState(() {
+        _loadedActorId = actor;
+        _availability = values[4] as MasterFeatureAvailability;
         _sites = (values[0] as List<Map<String, dynamic>>)
             .where((row) => row['status']?.toString() != 'completed')
             .toList(growable: false);
@@ -99,8 +114,11 @@ class _AttendanceWorkplaceSelectionPageState
 
     setState(() => _saving = true);
     try {
+      _requireLoadedActor();
       if (_kind == 'route') {
+        _requireLoadedActor();
         await routes.saveTodayRouteSelection(_routeId);
+        _requireLoadedActor();
         await attendance.saveAttendanceSelection(
           mode: _mode,
           siteId: null,
@@ -110,6 +128,7 @@ class _AttendanceWorkplaceSelectionPageState
               : null,
         );
       } else {
+        _requireLoadedActor();
         await attendance.saveAttendanceSelection(
           mode: _mode,
           siteId: _siteId,
@@ -120,6 +139,7 @@ class _AttendanceWorkplaceSelectionPageState
         );
       }
       if (!mounted) return;
+      _requireLoadedActor();
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
@@ -179,6 +199,8 @@ class _AttendanceWorkplaceSelectionPageState
                                 }),
                       ),
                       const SizedBox(height: 16),
+                      if (!_availability.routeAssignment)
+                        const Text('新しいルートの利用は一時停止中です。出勤中の勤務記録は継続できます。'),
                       if (_kind == 'site')
                         DropdownButtonFormField<String?>(
                           initialValue: _siteId,
@@ -218,6 +240,7 @@ class _AttendanceWorkplaceSelectionPageState
                             for (final route in _routes)
                               DropdownMenuItem<String?>(
                                 value: route['id']?.toString(),
+                              enabled: _availability.routeAssignment,
                                 child: Text(
                                   route['route_name']?.toString() ?? 'ルート',
                                 ),

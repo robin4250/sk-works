@@ -26,6 +26,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
   }
 
   Future<void> _load() async {
+    if (_busyKey != null) return;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -35,13 +36,14 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
       return;
     }
 
+    final actor = repository.actorId;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final value = await repository.load();
-      if (!mounted) return;
+      if (!mounted || actor == null || repository.actorId != actor) return;
       setState(() {
         _availability = value;
         _loading = false;
@@ -61,7 +63,9 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
     required bool current,
   }) async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || _busyKey != null || _loading) return;
+    final actor = repository.actorId;
+    if (actor == null) return;
     final next = !current;
 
     final confirmed = await showDialog<bool>(
@@ -85,7 +89,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || repository.actorId != actor) return;
 
     setState(() => _busyKey = featureKey);
     try {
@@ -93,7 +97,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
         featureKey: featureKey,
         enabled: next,
       );
-      if (!mounted) return;
+      if (!mounted || repository.actorId != actor) return;
       setState(() => _availability = updated);
     } catch (error) {
       if (!mounted) return;
@@ -115,7 +119,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading || _busyKey != null ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -134,7 +138,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                             child: Padding(
                               padding: EdgeInsets.all(16),
                               child: Text(
-                                '機能を一時停止してもデータは削除しません。'
+                                '機能を一時停止してもデータは削除しません。出勤中の到着・移動・退勤は続行できます。'
                                 '再びONにすると、保存済みの履歴をそのまま利用できます。',
                                 style: TextStyle(fontWeight: FontWeight.w700),
                               ),
@@ -144,14 +148,14 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                           _featureTile(
                             featureKey: 'vehicle_management',
                             label: '車両管理',
-                            description: '車両の閲覧・登録・変更・休止',
+                            description: '新しい車両の登録・変更・選択を停止。車両を使わない出勤は継続',
                             enabled: availability.vehicleManagement,
                           ),
                           const SizedBox(height: 10),
                           _featureTile(
                             featureKey: 'route_assignment',
                             label: 'ルート・配車',
-                            description: '運行日・車両・現場・運転者のルート共有',
+                            description: '新しいルートの登録・選択・出勤を停止。出勤中のルートは継続',
                             enabled: availability.routeAssignment,
                           ),
                         ],
@@ -170,7 +174,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
     return Card(
       child: SwitchListTile(
         value: enabled,
-        onChanged: busy
+        onChanged: _busyKey != null || _loading
             ? null
             : (_) => _toggle(
                   featureKey: featureKey,

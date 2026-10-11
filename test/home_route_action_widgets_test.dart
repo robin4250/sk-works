@@ -14,6 +14,7 @@ void main() {
     List<String> opened, {
     HomeAttendancePhase phase = HomeAttendancePhase.working,
     bool pending = false,
+    bool optionalClockInAllowed = true,
     String? routeId = 'route',
     String? selectedRouteId,
     String? selectedRouteName,
@@ -54,6 +55,7 @@ void main() {
           ),
         ),
         routeActionState: state,
+        optionalClockInAllowed: optionalClockInAllowed,
         hasPendingRouteRecord: pending,
         onOpen: (key) async {
           opened.add(key);
@@ -61,6 +63,46 @@ void main() {
         onRefresh: () async {},
       ),
     ),
+  );
+
+  testWidgets(
+    'Master OFF prevents new optional clock-in but preserves the active route',
+    (tester) async {
+      final opened = <String>[];
+      ButtonStyleButton action(String label) =>
+          tester.widget<ButtonStyleButton>(
+            find.ancestor(
+              of: find.text(label),
+              matching: find.byWidgetPredicate(
+                (widget) => widget is ButtonStyleButton,
+              ),
+            ),
+          );
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.notStarted,
+          shiftCount: 0,
+          selectedRouteId: 'route',
+          optionalClockInAllowed: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(action('出勤').onPressed, isNull);
+      expect(opened, isEmpty);
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.arrive,
+          opened,
+          optionalClockInAllowed: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(action('現場到着').onPressed, isNotNull);
+      expect(action('退勤').onPressed, isNotNull);
+      expect(action('現場移動').onPressed, isNull);
+    },
   );
 
   testWidgets('only confirmed next route action is enabled', (tester) async {

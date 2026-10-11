@@ -44,6 +44,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.routeActionState = HomeRouteActionState.unavailable,
+    this.optionalClockInAllowed = true,
     this.hasPendingRouteRecord = false,
     this.appearance = const HomeAppearance(),
     this.contentTopInset = 10,
@@ -64,6 +65,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeRouteActionState routeActionState;
+  final bool optionalClockInAllowed;
   final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final double contentTopInset;
@@ -116,6 +118,7 @@ class FriendlyHomeContent extends StatelessWidget {
                 showTodayAttendance: showTodayAttendance,
                 attendanceStatus: attendanceStatus,
                 routeActionState: routeActionState,
+                optionalClockInAllowed: optionalClockInAllowed,
                 hasPendingRouteRecord: hasPendingRouteRecord,
                 appearance: appearance,
                 onOpen: onOpen,
@@ -239,6 +242,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
     required this.routeActionState,
+    required this.optionalClockInAllowed,
     required this.hasPendingRouteRecord,
     required this.vehicleRoutesEnabled,
     required this.buttonOpacity,
@@ -247,6 +251,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
 
   final HomeAttendanceStatus status;
   final HomeRouteActionState routeActionState;
+  final bool optionalClockInAllowed;
   final bool hasPendingRouteRecord;
   final bool vehicleRoutesEnabled;
   final double buttonOpacity;
@@ -474,7 +479,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: isWorking || isFinished
+                        child: isWorking || isFinished || !optionalClockInAllowed
                             ? OutlinedButton.icon(
                                 style: disabledActionStyle,
                                 onPressed: null,
@@ -552,6 +557,7 @@ class _OrderedHomeContent extends StatelessWidget {
     required this.showTodayAttendance,
     required this.attendanceStatus,
     required this.routeActionState,
+    required this.optionalClockInAllowed,
     required this.hasPendingRouteRecord,
     required this.appearance,
     required this.onOpen,
@@ -568,6 +574,7 @@ class _OrderedHomeContent extends StatelessWidget {
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
   final HomeRouteActionState routeActionState;
+  final bool optionalClockInAllowed;
   final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
@@ -640,6 +647,7 @@ class _OrderedHomeContent extends StatelessWidget {
               child: _PersonalAttendanceCard(
                 status: attendanceStatus,
                 routeActionState: routeActionState,
+                optionalClockInAllowed: optionalClockInAllowed,
                 hasPendingRouteRecord: hasPendingRouteRecord,
                 vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
                 buttonOpacity: appearance.cardButtonOpacity,

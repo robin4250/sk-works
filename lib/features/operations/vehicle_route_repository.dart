@@ -5,9 +5,11 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../settings/master_feature_controls_repository.dart';
 
 abstract class VehicleRouteSelectionAccess {
   String? get selectionActorId;
+  Future<MasterFeatureAvailability> featureAvailability();
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false});
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false});
   Future<Map<String, dynamic>> loadTodaySelection();
@@ -17,6 +19,8 @@ abstract class VehicleRouteSelectionAccess {
 
 class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   VehicleRouteRepository._(this._client);
+
+  VehicleRouteRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 
@@ -31,6 +35,23 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     return VehicleRouteRepository._(client);
   }
 
+  @override
+  Future<MasterFeatureAvailability> featureAvailability() =>
+      MasterFeatureControlsRepository.loadForClient(_client);
+
+  void _requireSelectionActor(String? actor) {
+    if (actor == null || _client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
+
+  Future<void> _requireFeature({required bool vehicle}) async {
+    final flags = await featureAvailability();
+    if (vehicle ? !flags.vehicleManagement : !flags.routeAssignment) {
+      throw StateError(vehicle ? '車両の新しい利用は一時停止中です。' : 'ルート・配車の新しい利用は一時停止中です。');
+    }
+  }
+
   Future<Map<String, dynamic>> permissions() async {
     final user = _client.auth.currentUser;
     if (user == null) return const {};
@@ -40,10 +61,13 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
         .eq('user_id', user.id)
         .limit(1);
     final role = rows.isEmpty ? '' : rows.first['role']?.toString() ?? '';
+    MasterFeatureAvailability flags;
+    try { flags = await featureAvailability(); }
+    catch (_) { flags = MasterFeatureAvailability.unavailable; }
     final canManage = role == 'owner' || role == 'admin' || role == 'manager';
     return {
-      'can_manage_vehicles': canManage,
-      'can_manage_routes': canManage,
+      'can_manage_vehicles': canManage && flags.vehicleManagement,
+      'can_manage_routes': canManage && flags.routeAssignment,
     };
   }
 
@@ -118,6 +142,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required double odometerKm,
     required String storageAddress,
   }) async {
+    await _requireFeature(vehicle: true);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     final companyId = await _membership();
@@ -151,6 +176,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required String filename,
     required String contentType,
   }) async {
+    await _requireFeature(vehicle: true);
     final column = switch (kind) {
       'registration' => 'registration_document_path',
       'compulsory' => 'compulsory_insurance_path',
@@ -211,6 +237,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   }
 
   Future<void> setVehicleActive(String id, bool active) async {
+    await _requireFeature(vehicle: true);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     await _client.from('vehicles').update({
@@ -225,6 +252,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required String notes,
     required List<Map<String, Object?>> stops,
   }) async {
+    await _requireFeature(vehicle: false);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     final companyId = await _membership();
@@ -277,6 +305,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   }
 
   Future<void> setRouteActive(String id, bool active) async {
+    await _requireFeature(vehicle: false);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     await _client.from('route_assignments').update({
@@ -308,6 +337,10 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayVehicleSelection(String? vehicleId) async {
+    final actor = selectionActorId;
+    if (vehicleId != null && vehicleId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: true);
+    }
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
@@ -315,6 +348,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     final workDate = _date(DateTime.now());
 
     final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
@@ -331,6 +365,24 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayRouteSelection(String? routeId) async {
+    final actor = selectionActorId;
+    if (routeId == null || routeId.trim().isEmpty) {
+      _requireSelectionActor(actor);
+      final workDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      final result = await _client.rpc('clear_my_route_attendance_selection');
+      _requireSelectionActor(actor);
+      final responseDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      if (result is! Map || result['cleared'] != true ||
+          !result.containsKey('route_assignment_id') ||
+          result['route_assignment_id'] != null ||
+          (result['work_date'] != workDate && result['work_date'] != responseDate)) {
+        throw StateError('ルート選択の解除を確認できません。再読み込みしてください。');
+      }
+      return;
+    }
+    if (routeId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: false);
+    }
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
@@ -338,6 +390,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     final workDate = _date(DateTime.now());
 
     final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
@@ -351,7 +404,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
       onConflict: 'company_id,worker_id,work_date',
     );
 
-    if (routeId != null && routeId.trim().isNotEmpty) {
+    if (routeId.trim().isNotEmpty) {
       final currentAttendance = await _client
           .from('work_attendance_selections')
           .select('verification_mode')
@@ -361,6 +414,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
           .maybeSingle();
       final mode =
           currentAttendance?['verification_mode']?.toString() ?? 'manual';
+      _requireSelectionActor(actor);
       await _client.from('work_attendance_selections').upsert(
         {
           'company_id': companyId,

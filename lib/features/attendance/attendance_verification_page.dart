@@ -669,6 +669,7 @@ class _AttendanceVerificationPageState
             : null,
       );
         await GpsAutoAttendanceService.instance.refresh();
+        await repository.validateNewClockInOptions();
       }
 
       if (_mode == 'gps_auto' && _eventType == 'clock_in') {

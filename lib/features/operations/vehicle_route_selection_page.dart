@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'vehicle_route_repository.dart';
 import 'route_stops_preview.dart';
+import '../settings/master_feature_availability.dart';
 
 enum VehicleRouteSelectionMode { vehicle, route }
 
@@ -24,6 +25,13 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
   List<Map<String, dynamic>> _routes = const [];
   String? _vehicleId;
   String? _routeId;
+  MasterFeatureAvailability _availability =
+      MasterFeatureAvailability.unavailable;
+  bool get _featureEnabled => _vehicleMode
+      ? _availability.vehicleManagement
+      : _availability.routeAssignment;
+  bool get _blockedSelection =>
+      !_featureEnabled && (_vehicleMode ? _vehicleId : _routeId) != null;
   bool _loading = false;
   bool _saving = false;
   String? _error;
@@ -68,6 +76,7 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
             ? repository.routes(activeOnly: true)
             : Future.value(<Map<String, dynamic>>[]),
         repository.loadTodaySelection(),
+        repository.featureAvailability(),
       ]);
       final selection = values[2] as Map<String, dynamic>;
       if (!mounted) return;
@@ -76,6 +85,7 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
       }
       setState(() {
         _loadedActorId = actorId;
+        _availability = values[3] as MasterFeatureAvailability;
         _vehicles = values[0] as List<Map<String, dynamic>>;
         _routes = values[1] as List<Map<String, dynamic>>;
         _vehicleId = selection['vehicle_id']?.toString();
@@ -98,7 +108,8 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
         _saving ||
         _loading ||
         _error != null ||
-        _missingSelection) {
+        _missingSelection ||
+        _blockedSelection) {
       return;
     }
     if (_loadedActorId == null ||
@@ -114,13 +125,12 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
       } else {
         await repository.saveTodayRouteSelection(_routeId);
       }
-      if (!mounted) return;
+      if (!mounted || repository.selectionActorId != _loadedActorId) return;
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存できませんでした: $error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存できませんでした: $error')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -159,6 +169,10 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
+                  if (!_featureEnabled)
+                    const Text(
+                      '新しい利用は一時停止中です。保存済みの履歴と出勤中の記録は保持します。使わないへ変更できます。',
+                    ),
                   if (_vehicleMode) ...[
                     const Text(
                       '車両は勤務先とは別です。現場1か所でもルートでも、日報へ利用車両を記録するために選択します。',
@@ -190,6 +204,7 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
                         for (final vehicle in _vehicles)
                           DropdownMenuItem<String?>(
                             value: vehicle['id']?.toString(),
+                            enabled: _featureEnabled,
                             child: Text(
                               vehicle['display_name']?.toString() ?? '車両',
                             ),
@@ -230,6 +245,7 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
                         for (final route in _routes)
                           DropdownMenuItem<String?>(
                             value: route['id']?.toString(),
+                            enabled: _featureEnabled,
                             child: Text(
                               route['route_name']?.toString() ?? 'ルート',
                             ),
@@ -246,7 +262,9 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
                   ],
                   const SizedBox(height: 18),
                   FilledButton.icon(
-                    onPressed: _saving || _missingSelection ? null : _save,
+                    onPressed: _saving || _missingSelection || _blockedSelection
+                        ? null
+                        : _save,
                     icon: const Icon(Icons.check),
                     label: Text(_saving ? '保存中…' : '確定して保存'),
                   ),
