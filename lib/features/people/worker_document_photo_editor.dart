@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'worker_document_photos.dart';
 
@@ -9,10 +10,17 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   required List<String> paths,
   required Future<String> Function(String) signedUrl,
   bool canEdit = true,
+  bool allowNewPhotos = true,
+  String? uploadNotice,
 }) => showDialog<List<WorkerDocumentPhoto>>(
   context: context,
-  builder: (_) =>
-      _PhotoEditor(paths: paths, signedUrl: signedUrl, canEdit: canEdit),
+  builder: (_) => _PhotoEditor(
+    paths: paths,
+    signedUrl: signedUrl,
+    canEdit: canEdit,
+    allowNewPhotos: allowNewPhotos,
+    uploadNotice: uploadNotice,
+  ),
 );
 
 class _PhotoEditor extends StatefulWidget {
@@ -20,9 +28,13 @@ class _PhotoEditor extends StatefulWidget {
     required this.paths,
     required this.signedUrl,
     required this.canEdit,
+    required this.allowNewPhotos,
+    required this.uploadNotice,
   });
   final List<String> paths;
   final bool canEdit;
+  final bool allowNewPhotos;
+  final String? uploadNotice;
   final Future<String> Function(String) signedUrl;
   @override
   State<_PhotoEditor> createState() => _PhotoEditorState();
@@ -36,7 +48,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   String? _error;
 
   Future<void> _pick({bool camera = false, int? replace}) async {
-    if (!widget.canEdit) return;
+    if (!widget.canEdit || !widget.allowNewPhotos) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -108,7 +120,22 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     );
   }
 
-  void _preview(WorkerDocumentPhoto photo) {
+  Future<void> _preview(WorkerDocumentPhoto photo) async {
+    if (photo.path?.toLowerCase().endsWith('.pdf') == true) {
+      try {
+        final url = await widget.signedUrl(photo.path!);
+        if (!mounted) return;
+        if (!await launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalApplication,
+        )) {
+          throw StateError('PDFを開けませんでした。');
+        }
+      } catch (_) {
+        if (mounted) setState(() => _error = 'PDFを開けませんでした。再度お試しください。');
+      }
+      return;
+    }
     showDialog<void>(
       context: context,
       builder: (context) => Dialog(
@@ -139,8 +166,8 @@ class _PhotoEditorState extends State<_PhotoEditor> {
           children: [
             const Text('1枚目：表面 / 2枚目：裏面 / 3枚目以降：追加写真'),
             if (!widget.canEdit) const Text('複数写真の保存準備中です。保存済みの写真は確認できます。'),
-            const Text(
-              '新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。その他の書類は送信停止中です。保存済み写真は確認できます。',
+            Text(
+              widget.uploadNotice ?? '新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。その他の書類は送信停止中です。保存済み写真は確認できます。',
             ),
             const SizedBox(height: 8),
             for (var i = 0; i < _photos.length; i++)
@@ -170,7 +197,8 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                         ),
                         IconButton(
                           tooltip: '差し替え',
-                          onPressed: _busy || !widget.canEdit
+                          onPressed:
+                              _busy || !widget.canEdit || !widget.allowNewPhotos
                               ? null
                               : () => _pick(replace: i),
                           icon: const Icon(Icons.edit_outlined),
@@ -191,14 +219,16 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               spacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: _busy || !widget.canEdit
+                  onPressed: _busy || !widget.canEdit || !widget.allowNewPhotos
                       ? null
                       : () => _pick(camera: true),
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: const Text('1枚撮影'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _busy || !widget.canEdit ? null : () => _pick(),
+                  onPressed: _busy || !widget.canEdit || !widget.allowNewPhotos
+                      ? null
+                      : () => _pick(),
                   icon: const Icon(Icons.photo_library_outlined),
                   label: const Text('複数選択'),
                 ),
