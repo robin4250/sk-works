@@ -198,8 +198,8 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
               ),
             const SizedBox(height: 10),
             SegmentedButton<String>(
-              showSelectedIcon: false,
-              style: ButtonStyle(
+              showSelectedIcon: !widget.compact,
+              style: widget.compact ? ButtonStyle(
                 backgroundColor: WidgetStateProperty.resolveWith(
                   (states) => states.contains(WidgetState.selected)
                       ? Theme.of(context).colorScheme.primary
@@ -210,7 +210,7 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
                       ? Theme.of(context).colorScheme.onPrimary
                       : null,
                 ),
-              ),
+              ) : null,
               segments: const [
                 ButtonSegment(value: 'daily', label: Text('日給')),
                 ButtonSegment(value: 'hourly', label: Text('時給')),
@@ -264,7 +264,7 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
             ],
             const SizedBox(height: 8),
             ExpansionTile(
-              maintainState: true,
+              maintainState: widget.compact,
               tilePadding: EdgeInsets.zero,
               title: Text(
                 widget.compact ? '詳細設定' : '計算式を変更',
