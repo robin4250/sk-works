@@ -28,8 +28,9 @@ class DailyReportEvidenceAddressResolver {
         latitude > 90 ||
         longitude < -180 ||
         longitude > 180 ||
-        (gpsStatus != null && gpsStatus != 'acquired'))
+        (gpsStatus != null && gpsStatus != 'acquired')) {
       return null;
+    }
     return _lookups.putIfAbsent('$latitude,$longitude', () async {
       try {
         return normalizeRecordedAddress(
