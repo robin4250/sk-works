@@ -507,7 +507,7 @@ class _OwnDocumentRegistrationPageState
                         vertical: 8,
                       ),
                       child: Text(
-                        WorkerDocumentRepository.photoPreparationMessage,
+                        '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。現在の試験登録は会社が許可した運転免許証に限られます。',
                       ),
                     ),
                   Padding(
