@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
 import '../help/floating_help_controller.dart';
-import '../../branding/product_brand.dart';
 import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
@@ -26,17 +25,12 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _companyName = TextEditingController(text: ProductBrand.displayName);
-  final _taxRate = TextEditingController(text: '10');
-  final _defaultUnitPrice = TextEditingController(text: '25000');
   bool _loading = true;
-  bool _saving = false;
   bool _canManageCompany = false;
   bool _isMasterAdmin = false;
   String? _companyId;
   bool _canReadPayrollRates = false;
   String? _loadError;
-  String _detailMode = 'siteBreakdownOnInvoice';
   String _languageCode = SkoLanguageController.languageCode;
   bool _floatingHelpEnabled = true;
   bool _appNotificationSoundEnabled = true;
@@ -63,8 +57,6 @@ class _SettingsPageState extends State<SettingsPage> {
           personalPrefs.getBool('sko_app_notification_sound_enabled') ?? true;
       if (_usesCloud) {
         await _loadFromCloud();
-      } else {
-        await _loadFromLocal();
       }
     } catch (error) {
       _loadError = '設定の読み込みに失敗しました: $error';
@@ -104,106 +96,15 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final companies = await SupabaseBackend.client
         .from('companies')
-        .select(
-          'id, name, default_unit_price, default_invoice_detail_mode',
-        )
+        .select('id')
         .eq('id', companyId)
         .limit(1);
     if (companies.isEmpty) {
       throw StateError('会社情報が見つかりません。');
     }
 
-    final company = companies.first;
     _companyId = companyId;
-    _companyName.text = company['name'] as String? ?? ProductBrand.displayName;
-    _defaultUnitPrice.text = (company['default_unit_price'] ?? 25000).toString();
-    _detailMode = _fromDatabaseDetailMode(
-      company['default_invoice_detail_mode'] as String?,
-    );
     _languageCode = SkoLanguageController.languageCode;
-  }
-
-  Future<void> _loadFromLocal() async {
-    final prefs = await SharedPreferences.getInstance();
-    _companyName.text = prefs.getString('settings_company_name') ?? ProductBrand.displayName;
-    _taxRate.text = prefs.getDouble('settings_tax_rate')?.toString() ?? '10';
-    _defaultUnitPrice.text =
-        prefs.getInt('settings_default_unit_price')?.toString() ?? '25000';
-    _detailMode = prefs.getString('settings_invoice_detail_mode') ??
-        'siteBreakdownOnInvoice';
-    _languageCode = SkoLanguageController.languageCode;
-  }
-
-  Future<void> _save() async {
-    if (_usesCloud && !_canManageCompany) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('会社設定は管理者のみ変更できます')),
-      );
-      return;
-    }
-
-    final taxRate = double.tryParse(_taxRate.text.trim());
-    final unitPrice = int.tryParse(_defaultUnitPrice.text.trim());
-    if (_companyName.text.trim().isEmpty ||
-        (!_usesCloud && taxRate == null) || unitPrice == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('入力内容を確認してください')),
-      );
-      return;
-    }
-
-    setState(() => _saving = true);
-    try {
-      if (_usesCloud) {
-        final companyId = _companyId;
-        if (companyId == null) {
-          throw StateError('会社IDが取得できません。');
-        }
-        await SupabaseBackend.client.from('companies').update({
-          'name': _companyName.text.trim(),
-          'default_unit_price': unitPrice,
-          'default_invoice_detail_mode': _toDatabaseDetailMode(_detailMode),
-        }).eq('id', companyId);
-      } else {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('settings_company_name', _companyName.text.trim());
-        await prefs.setDouble('settings_tax_rate', taxRate!);
-        await prefs.setInt('settings_default_unit_price', unitPrice);
-        await prefs.setString('settings_invoice_detail_mode', _detailMode);
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_usesCloud ? 'クラウドに設定を保存しました' : '設定を保存しました'),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('設定の保存に失敗しました: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
-  String _fromDatabaseDetailMode(String? value) {
-    return switch (value) {
-      'consolidated_only' => 'consolidatedOnly',
-      'site_breakdown_attachment' => 'siteDetailAttachment',
-      _ => 'siteBreakdownOnInvoice',
-    };
-  }
-
-  String _toDatabaseDetailMode(String value) {
-    return switch (value) {
-      'consolidatedOnly' => 'consolidated_only',
-      'siteDetailAttachment' => 'site_breakdown_attachment',
-      _ => 'site_breakdown_on_invoice',
-    };
   }
 
   Future<void> _setLanguage(String code) async {
@@ -224,14 +125,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _companyName.dispose();
-    _taxRate.dispose();
-    _defaultUnitPrice.dispose();
-    super.dispose();
   }
 
   @override
@@ -560,78 +453,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                       ],
-                      Text(
-                        '会社情報',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _companyName,
-                        enabled: !_usesCloud || _canManageCompany,
-                        decoration: const InputDecoration(labelText: '会社名'),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        '請求設定',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (!_usesCloud) ...[
-                        TextField(
-                          controller: _taxRate,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(labelText: '消費税率（%）'),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                      TextField(
-                        controller: _defaultUnitPrice,
-                        enabled: !_usesCloud || _canManageCompany,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: '標準人工単価（円）'),
-                      ),
-                      const SizedBox(height: 14),
-                      DropdownButtonFormField<String>(
-                        initialValue: _detailMode,
-                        decoration: const InputDecoration(labelText: '標準の請求明細方式'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'consolidatedOnly',
-                            child: Text('合算のみ'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'siteBreakdownOnInvoice',
-                            child: Text('請求書に現場別内訳'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'siteDetailAttachment',
-                            child: Text('現場別明細を別紙添付'),
-                          ),
-                        ],
-                        onChanged: _usesCloud && !_canManageCompany
-                            ? null
-                            : (value) => setState(() {
-                                  _detailMode = value ?? _detailMode;
-                                }),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: _saving || (_usesCloud && !_canManageCompany)
-                            ? null
-                            : _save,
-                        icon: _saving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.save_outlined),
-                        label: Text(_saving ? '保存中...' : '設定を保存'),
-                      ),
                     ],
                   ),
       ),
