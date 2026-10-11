@@ -440,6 +440,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // English guidance wraps over more lines at this text size. Exercise the
+    // recovery action through the scrollable page, as a user would.
+    await tester.scrollUntilVisible(
+      find.text('Reload'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Reload'), findsOneWidget);
     expect(
       find.text('Could not load the shift. Retry to check the same record.'),

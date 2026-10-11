@@ -46,11 +46,15 @@ class SignatureCapturePage extends StatefulWidget {
     this.title = '責任者サイン',
     this.signerLabel = '現場責任者名',
     this.submitLabel = 'このサインで確定',
+    this.initialSignerName = '',
+    this.signerNameOptions = const [],
   });
 
   final String title;
   final String signerLabel;
   final String submitLabel;
+  final String initialSignerName;
+  final List<String> signerNameOptions;
 
   @override
   State<SignatureCapturePage> createState() => _SignatureCapturePageState();
@@ -60,6 +64,12 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   final _signer = TextEditingController();
   final _strokes = <List<Offset>>[];
   Size _canvasSize = Size.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _signer.text = widget.initialSignerName;
+  }
 
   @override
   void dispose() {
@@ -137,6 +147,25 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (widget.signerNameOptions.any((name) => name.trim().isNotEmpty))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: DropdownButtonFormField<String>(
+                  key: const ValueKey('signature-member-picker'),
+                  decoration: const InputDecoration(labelText: '出勤メンバーから選択'),
+                  items: [
+                    for (final name
+                        in widget.signerNameOptions
+                            .map((name) => name.trim())
+                            .where((name) => name.isNotEmpty)
+                            .toSet())
+                      DropdownMenuItem(value: name, child: Text(name)),
+                  ],
+                  onChanged: (name) {
+                    if (name != null) _signer.text = name;
+                  },
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
               child: TextField(

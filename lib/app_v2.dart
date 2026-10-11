@@ -186,7 +186,8 @@ class _HomePageState extends State<HomePage> {
   HomeRouteActionState _homeRouteActionState = HomeRouteActionState.unavailable;
   int _homeAttendanceGeneration = 0;
   bool _homeOptionalClockInAllowed = false;
-  String? _homePendingRouteSourceId;
+  List<String> _homePendingRouteSourceIds = const [];
+  bool _homeHasPendingRouteReports = false;
 
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
@@ -328,11 +329,42 @@ class _HomePageState extends State<HomePage> {
         _homeAttendanceStatus = const HomeAttendanceStatus(phase: HomeAttendancePhase.unknown);
         _homeOptionalClockInAllowed = false;
         _homeRouteActionState = HomeRouteActionState.unavailable;
-        _homePendingRouteSourceId = null;
+        _homePendingRouteSourceIds = const [];
+        _homeHasPendingRouteReports = false;
       });
     }
     final repository = _attendanceVerificationRepository;
     if (repository == null || requestActor == null) return;
+    final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
+    var recoveryLoaded = false;
+    if (routeRepository != null && routeRepository.userId == requestActor) {
+      var capturesLoaded = false;
+      var reportsLoaded = false;
+      try {
+        final pending = await routeRepository.allPending();
+        if (!acceptsResponse()) return;
+        setState(() => _homePendingRouteSourceIds =
+            pending.map((row) => row.sourceId).toSet().toList());
+        capturesLoaded = true;
+      } catch (_) {
+        // Optional recovery must not prevent the ordinary attendance read.
+      }
+      try {
+        final reports = await routeRepository.allPendingReports();
+        if (!acceptsResponse()) return;
+        setState(() {
+          _homePendingRouteSourceIds = {
+            ..._homePendingRouteSourceIds,
+            ...reports.map((row) => row.sourceId),
+          }.toList();
+          _homeHasPendingRouteReports = reports.isNotEmpty;
+        });
+        reportsLoaded = true;
+      } catch (_) {
+        // Keep any capture recovery that was successfully read above.
+      }
+      recoveryLoaded = capturesLoaded && reportsLoaded;
+    }
     try {
       final value = await repository.loadHomeAttendanceStatus();
       if (!acceptsResponse()) return;
@@ -348,19 +380,15 @@ class _HomePageState extends State<HomePage> {
       if (!acceptsResponse()) return;
       setState(() => _homeOptionalClockInAllowed = optionalAllowed);
 
-      final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
-      if (routeRepository == null || routeRepository.userId != requestActor) return;
-      final pending = await routeRepository.allPending();
-      if (!acceptsResponse()) return;
-      // Recovery remains reachable even after clock-out or when the current
-      // shift differs from the durable command. Never choose between records.
-      setState(() => _homePendingRouteSourceId = pending.length == 1
-          ? pending.single.sourceId : null);
-      if (value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) return;
+      if (!recoveryLoaded || routeRepository == null ||
+          routeRepository.userId != requestActor ||
+          value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) {
+        return;
+      }
       final shift = value.openShifts.single;
       final workspace = await routeRepository.workspace(shift.id);
       if (!acceptsResponse()) return;
-      setState(() => _homeRouteActionState = pending.isNotEmpty
+      setState(() => _homeRouteActionState = _homePendingRouteSourceIds.isNotEmpty
           ? HomeRouteActionState.unavailable
           : homeRouteActionState(workspace, shift.id));
     } catch (_) {
@@ -820,8 +848,33 @@ class _HomePageState extends State<HomePage> {
         );
         break;
       case 'route_visit_recover':
-        final pendingSource = _homePendingRouteSourceId;
-        if (pendingSource == null) return;
+        final pendingActor = SupabaseBackend.isInitialized
+            ? SupabaseBackend.client.auth.currentUser?.id : null;
+        final sources = List<String>.from(_homePendingRouteSourceIds);
+        if (sources.isEmpty) return;
+        final pendingSource = sources.length == 1
+            ? sources.single
+            : await showDialog<String>(
+                context: context,
+                builder: (context) => SimpleDialog(
+                  title: const Text('再開する勤務を選択'),
+                  children: [
+                    for (var index = 0; index < sources.length; index++)
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, sources[index]),
+                        child: Text('保留中の勤務 ${index + 1}'),
+                      ),
+                  ],
+                ),
+              );
+        if (!mounted ||
+            pendingSource == null ||
+            pendingActor == null ||
+            !SupabaseBackend.isInitialized ||
+            SupabaseBackend.client.auth.currentUser?.id != pendingActor ||
+            !_homePendingRouteSourceIds.contains(pendingSource)) {
+          return;
+        }
         page = RouteJourneyCapturePage(sourceId: pendingSource);
         break;
       case 'route_visit':
@@ -1018,6 +1071,7 @@ class _HomePageState extends State<HomePage> {
 
     if (key == 'clock_in' ||
         key == 'clock_out' ||
+        key == 'daily_report' ||
         key == 'attendance_verify' ||
         key == 'attendance_method_vehicle' ||
         key == 'workplace_select' ||
@@ -1467,7 +1521,8 @@ class _HomePageState extends State<HomePage> {
           attendanceStatus: _homeAttendanceStatus,
           optionalClockInAllowed: _homeOptionalClockInAllowed,
           routeActionState: _homeRouteActionState,
-          hasPendingRouteRecord: _homePendingRouteSourceId != null,
+          hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
+          hasPendingRouteReports: _homeHasPendingRouteReports,
           appearance: bodyAppearance,
           contentTopInset: _chromeVisible
               ? MediaQuery.paddingOf(context).top + 72

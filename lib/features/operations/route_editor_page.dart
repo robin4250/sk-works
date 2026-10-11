@@ -29,6 +29,8 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   final _repository = VehicleRouteRepository.maybeCreate();
   late final TextEditingController _name;
   late final TextEditingController _notes;
+  late final TextEditingController _responsibleName;
+  late final TextEditingController _responsiblePhone;
   late List<_StopDraft> _stops;
   bool _saving = false;
 
@@ -80,6 +82,13 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       text: widget.route?['notes']?.toString() ?? '',
     );
 
+    _responsibleName = TextEditingController(
+      text: widget.route?['responsible_name']?.toString() ?? '',
+    );
+    _responsiblePhone = TextEditingController(
+      text: widget.route?['responsible_phone']?.toString() ?? '',
+    );
+
     final raw = widget.route?['route_stops'];
     _stops = raw is List
         ? raw.whereType<Map>().map((row) {
@@ -110,6 +119,8 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   void dispose() {
     _name.dispose();
     _notes.dispose();
+    _responsibleName.dispose();
+    _responsiblePhone.dispose();
     for (final stop in _stops) {
       stop.dispose();
     }
@@ -199,6 +210,8 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         id: widget.route?['id']?.toString(),
         name: _name.text,
         notes: _notes.text,
+        responsibleName: _responsibleName.text,
+        responsiblePhone: _responsiblePhone.text,
         stops: stops,
       );
       if (!mounted) return;
@@ -226,6 +239,26 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             controller: _name,
             decoration: const InputDecoration(
               labelText: 'ルート名',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _responsibleName,
+            maxLength: 120,
+            decoration: const InputDecoration(
+              labelText: '責任者名',
+              helperText: 'ルートの日報サインに初期表示します。未登録の場合は日報で入力できます。',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _responsiblePhone,
+            keyboardType: TextInputType.phone,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: '責任者電話番号',
               border: OutlineInputBorder(),
             ),
           ),

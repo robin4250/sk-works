@@ -46,6 +46,7 @@ class FriendlyHomeContent extends StatelessWidget {
     this.routeActionState = HomeRouteActionState.unavailable,
     this.optionalClockInAllowed = true,
     this.hasPendingRouteRecord = false,
+    this.hasPendingRouteReports = false,
     this.appearance = const HomeAppearance(),
     this.contentTopInset = 10,
     required this.onOpen,
@@ -67,6 +68,7 @@ class FriendlyHomeContent extends StatelessWidget {
   final HomeRouteActionState routeActionState;
   final bool optionalClockInAllowed;
   final bool hasPendingRouteRecord;
+  final bool hasPendingRouteReports;
   final HomeAppearance appearance;
   final double contentTopInset;
   final Future<void> Function(String key) onOpen;
@@ -95,6 +97,22 @@ class FriendlyHomeContent extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (tutorialCard != null) tutorialCard!,
+              if (hasPendingRouteReports ||
+                  (hasPendingRouteRecord && !showAttendanceReport))
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.edit_document),
+                    title: Text(
+                      SkoLanguageController.tr(
+                        hasPendingRouteReports ? '現場別日報を再開' : '保留記録を再確認',
+                      ),
+                    ),
+                    subtitle: Text(
+                      SkoLanguageController.tr('退勤後も記録・サインを仕上げられます'),
+                    ),
+                    onTap: () => onOpen('route_visit_recover'),
+                  ),
+                ),
               if (identity.isAdmin) const InitialCompanyRatesCard(),
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
@@ -261,7 +279,10 @@ class _PersonalAttendanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isWorking = status.phase == HomeAttendancePhase.working;
-    final isFinished = status.phase == HomeAttendancePhase.finished;
+    final canClockIn = optionalClockInAllowed &&
+        status.openShifts.isEmpty &&
+        (status.phase == HomeAttendancePhase.notStarted ||
+            status.phase == HomeAttendancePhase.finished);
     // A selected route is only a future destination. These controls belong to
     // one confirmed, currently open route shift, including when selection has
     // subsequently changed.
@@ -479,7 +500,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: status.phase == HomeAttendancePhase.unknown || isWorking || isFinished || !optionalClockInAllowed
+                        child: !canClockIn
                             ? OutlinedButton.icon(
                                 style: disabledActionStyle,
                                 onPressed: null,

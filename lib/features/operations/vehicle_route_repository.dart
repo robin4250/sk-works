@@ -88,7 +88,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   @override
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
     var query = _client.from('route_assignments').select(
-      'id,route_name,notes,is_active,created_at,updated_at,'
+      'id,route_name,notes,responsible_name,responsible_phone,is_active,created_at,updated_at,'
       'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,latitude,longitude,sites(name,address,latitude,longitude))',
     );
     if (activeOnly) query = query.eq('is_active', true);
@@ -250,6 +250,8 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     String? id,
     required String name,
     required String notes,
+    String? responsibleName,
+    String? responsiblePhone,
     required List<Map<String, Object?>> stops,
   }) async {
     await _requireFeature(vehicle: false);
@@ -259,6 +261,8 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     final data = <String, dynamic>{
       'company_id': companyId,
       'route_name': name.trim(),
+      if (responsibleName != null) 'responsible_name': _nullable(responsibleName),
+      if (responsiblePhone != null) 'responsible_phone': _nullable(responsiblePhone),
       'service_date': null,
       'vehicle_id': null,
       'site_id': null,

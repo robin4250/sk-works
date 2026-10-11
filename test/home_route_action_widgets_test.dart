@@ -14,6 +14,9 @@ void main() {
     List<String> opened, {
     HomeAttendancePhase phase = HomeAttendancePhase.working,
     bool pending = false,
+    bool pendingReports = false,
+    bool showAttendanceReport = true,
+    bool modulesEnabled = true,
     bool optionalClockInAllowed = true,
     String? routeId = 'route',
     String? selectedRouteId,
@@ -34,7 +37,8 @@ void main() {
           needsLicense: false,
           needsQualification: false,
         ),
-        moduleEnabled: (_) => true,
+        moduleEnabled: (_) => modulesEnabled,
+        showAttendanceReport: showAttendanceReport,
         visibleHomeKeys: const {'attendance_verify'},
         showTodayAttendance: false,
         attendanceStatus: HomeAttendanceStatus(
@@ -57,6 +61,7 @@ void main() {
         routeActionState: state,
         optionalClockInAllowed: optionalClockInAllowed,
         hasPendingRouteRecord: pending,
+        hasPendingRouteReports: pendingReports,
         onOpen: (key) async {
           opened.add(key);
         },
@@ -217,17 +222,61 @@ void main() {
           HomeRouteActionState.arrive,
           opened,
           phase: HomeAttendancePhase.finished,
+          shiftCount: 0,
           pending: true,
         ),
       );
       await tester.pumpAndSettle();
       expect(find.text('現場到着'), findsNothing);
       expect(find.text('現場移動'), findsNothing);
+      expect(
+        tester
+            .widget<ButtonStyleButton>(
+              find.ancestor(
+                of: find.text('出勤'),
+                matching: find.byType(FilledButton),
+              ),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<ButtonStyleButton>(
+              find.ancestor(
+                of: find.text('退勤'),
+                matching: find.byType(OutlinedButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
       await tester.ensureVisible(find.text('保留記録を再確認'));
       await tester.tap(find.text('保留記録を再確認'));
       expect(opened, ['route_visit_recover']);
     },
   );
+  testWidgets(
+    'pending visit report survives hidden attendance and disabled module',
+    (tester) async {
+      final opened = <String>[];
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.finished,
+          pendingReports: true,
+          showAttendanceReport: false,
+          modulesEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('現場別日報を再開'), findsOneWidget);
+      await tester.tap(find.text('現場別日報を再開'));
+      expect(opened, ['route_visit_recover']);
+    },
+  );
+
   testWidgets(
     'ordinary, selected-only and ambiguous shifts hide route actions',
     (tester) async {
@@ -306,6 +355,7 @@ void main() {
           opened,
           phase: phase,
           routeId: null,
+          shiftCount: phase == HomeAttendancePhase.working ? 1 : 0,
         ),
       );
       await tester.pumpAndSettle();
@@ -318,7 +368,8 @@ void main() {
         );
         final button = tester.widget<ButtonStyleButton>(finder);
         final enabled = label == '出勤'
-            ? phase == HomeAttendancePhase.notStarted
+            ? phase == HomeAttendancePhase.notStarted ||
+                  phase == HomeAttendancePhase.finished
             : phase == HomeAttendancePhase.working;
         expect(button.onPressed != null, enabled);
         if (!enabled) {
@@ -338,4 +389,51 @@ void main() {
     }
     expect(opened, isEmpty);
   });
+
+  testWidgets('finished status with an open shift cannot start another shift', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    await tester.pumpWidget(
+      home(
+        HomeRouteActionState.unavailable,
+        opened,
+        phase: HomeAttendancePhase.finished,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('出勤'),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ButtonStyleButton,
+        ),
+      ),
+    );
+    expect(button.onPressed, isNull);
+    await tester.tap(find.text('出勤'));
+    expect(opened, isEmpty);
+  });
+
+  testWidgets(
+    'finished shift can start a new shift while pending report remains reachable',
+    (tester) async {
+      final opened = <String>[];
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.finished,
+          shiftCount: 0,
+          pending: true,
+          pendingReports: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('出勤'));
+      await tester.tap(find.text('出勤'));
+      expect(opened, ['clock_in']);
+      expect(find.text('現場別日報を再開'), findsOneWidget);
+    },
+  );
 }
