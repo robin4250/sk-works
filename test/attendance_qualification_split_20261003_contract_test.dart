@@ -16,7 +16,9 @@ void main() {
             .readAsStringSync();
 
     expect(app, contains("key: 'attendance_list'"));
-    expect(app, contains('const AttendanceWorkerListPage()'));
+    expect(app, contains('builder: (_) => AttendanceWorkerListPage('));
+    expect(app, contains("? () => _openHomeAction('attendance_management')"));
+    expect(list, contains('RelatedActionFooter('));
     expect(list, contains("'出勤表一覧'"));
     expect(list, contains("'全社員の出勤表をまとめて印刷'"));
     expect(list, contains('WorkerAttendanceSheetPage('));

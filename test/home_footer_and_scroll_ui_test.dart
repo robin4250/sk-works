@@ -121,11 +121,18 @@ void main() {
           tester.getCenter(find.text(label)),
         );
         await tester.pump(const Duration(milliseconds: 400));
-        await gesture.moveBy(const Offset(0, -170));
-        await tester.pump();
+        // First cross touch slop, then continue the same finger movement.
+        await gesture.moveBy(const Offset(0, -25));
+        await tester.pump(const Duration(milliseconds: 16));
+        await gesture.moveBy(const Offset(0, -145));
+        await tester.pump(const Duration(milliseconds: 16));
         await gesture.up();
         await tester.pump(const Duration(milliseconds: 300));
-        expect(position.pixels, greaterThan(before));
+        expect(
+          position.pixels,
+          greaterThan(before),
+          reason: 'Scroll starting on $label',
+        );
         expect(tester.takeException(), isNull);
       }
       // A deliberate long press continues to provide the existing reorder feedback.
