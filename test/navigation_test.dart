@@ -19,6 +19,8 @@ void main() {
 
     expect(find.text('社員データ'), findsNothing);
     await tester.ensureVisible(find.text('社員資格書類'));
+    await tester.pump();
+    expect(find.text('社員資格書類').hitTestable(), findsOneWidget);
     await tester.tap(find.text('社員資格書類'));
     await tester.pumpAndSettle();
     expect(find.text('社員データ'), findsOneWidget);
