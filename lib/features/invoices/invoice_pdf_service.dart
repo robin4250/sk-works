@@ -1107,8 +1107,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     top: false,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          Text(SkoLanguageController.tr('iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。')),
+                          const SizedBox(height: 6),
+                          Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => Printing.layoutPdf(
@@ -1134,9 +1138,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                                 ),
                               ),
                               icon: const Icon(Icons.ios_share_outlined),
-                              label: const Text('共有'),
+                              label: Text(SkoLanguageController.tr('保存・共有')),
                             ),
                           ),
+                          ]),
                         ],
                       ),
                     ),
