@@ -16,6 +16,8 @@ class TradeCompanyRecord {
     required this.email,
     required this.corporateNumber,
     required this.notes,
+    this.representativeName = '',
+    this.representativePhone = '',
     required this.contractMethod,
     required this.dailyRateYen,
     required this.monthlyRateYen,
@@ -34,6 +36,8 @@ class TradeCompanyRecord {
   final String email;
   final String corporateNumber;
   final String notes;
+  final String representativeName;
+  final String representativePhone;
   final String contractMethod;
   final int dailyRateYen;
   final int monthlyRateYen;
@@ -57,6 +61,8 @@ class TradeCompanyRecord {
       email: row['email']?.toString() ?? '',
       corporateNumber: row['corporate_number']?.toString() ?? '',
       notes: row['notes']?.toString() ?? '',
+      representativeName: row['representative_name']?.toString() ?? '',
+      representativePhone: row['representative_phone']?.toString() ?? '',
       contractMethod: row['contract_method']?.toString() ?? 'none',
       dailyRateYen: (row['daily_rate_yen'] as num?)?.toInt() ?? 0,
       monthlyRateYen: (row['monthly_rate_yen'] as num?)?.toInt() ?? 0,
@@ -93,7 +99,8 @@ class TradeCompanyLinkCandidate {
       phone: row['phone']?.toString() ?? '',
       address: row['address']?.toString() ?? '',
       corporateNumber: row['corporate_number']?.toString() ?? '',
-      matchScore: (row['match_score'] as num?)?.toInt() ??
+      matchScore:
+          (row['match_score'] as num?)?.toInt() ??
           int.tryParse(row['match_score']?.toString() ?? '') ??
           0,
     );
@@ -114,7 +121,7 @@ class TradeCompanyRepository {
 
   Future<List<TradeCompanyRecord>> loadAll() async {
     await _client.rpc('sync_trade_company_directory');
-    final raw = await _client.rpc('trade_company_workspace');
+    final raw = await _client.rpc('trade_company_contact_workspace');
     if (raw is! List) return const [];
     return [
       for (final item in raw)
@@ -133,19 +140,25 @@ class TradeCompanyRepository {
     String? email,
     String? corporateNumber,
     String? notes,
+    String? representativeName,
+    String? representativePhone,
   }) async {
     final value = await _client.rpc(
-      'save_trade_company',
+      'save_trade_company_contact',
       params: {
-        'p_id': id,
-        'p_name': name,
-        'p_trade_role': tradeRole,
-        'p_postal_code': postalCode,
-        'p_address': address,
-        'p_phone': phone,
-        'p_email': email,
-        'p_corporate_number': corporateNumber,
-        'p_notes': notes,
+        'p_data': {
+          'id': id,
+          'name': name,
+          'trade_role': tradeRole,
+          'postal_code': postalCode,
+          'address': address,
+          'phone': phone,
+          'email': email,
+          'corporate_number': corporateNumber,
+          'notes': notes,
+          'representative_name': representativeName,
+          'representative_phone': representativePhone,
+        },
       },
     );
     return value?.toString() ?? '';
@@ -233,7 +246,6 @@ class TradeCompanyRepository {
   }
 }
 
-
 class TradeCompanyCalculationConflict {
   const TradeCompanyCalculationConflict({
     required this.siteId,
@@ -254,15 +266,13 @@ class TradeCompanyCalculationConflict {
   final String? selectedSource;
 
   String get outputLabel => switch (outputType) {
-        'invoice' => '請求書',
-        'payment_certificate' => '支払証明書',
-        'payroll' => '給料明細',
-        _ => outputType,
-      };
+    'invoice' => '請求書',
+    'payment_certificate' => '支払証明書',
+    'payroll' => '給料明細',
+    _ => outputType,
+  };
 
-  factory TradeCompanyCalculationConflict.fromJson(
-    Map<String, dynamic> row,
-  ) {
+  factory TradeCompanyCalculationConflict.fromJson(Map<String, dynamic> row) {
     return TradeCompanyCalculationConflict(
       siteId: row['site_id']?.toString() ?? '',
       siteName: row['site_name']?.toString() ?? '',
