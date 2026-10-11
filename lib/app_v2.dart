@@ -338,7 +338,7 @@ class _HomePageState extends State<HomePage> {
       setState(() => _homeAttendanceStatus = value);
       var optionalAllowed = (value.selectedVehicleId?.trim().isEmpty ?? true) &&
           (value.selectedRouteId?.trim().isEmpty ?? true);
-      if (!optionalAllowed) {
+      if (!optionalAllowed && value.phase != HomeAttendancePhase.working) {
         try {
           final flags = await MasterFeatureControlsRepository.loadForClient(SupabaseBackend.client);
           optionalAllowed = flags.permitsClockIn(vehicleId: value.selectedVehicleId, routeId: value.selectedRouteId);

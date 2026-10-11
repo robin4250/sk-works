@@ -239,10 +239,13 @@ class AttendanceVerificationRepository {
     required double longitude,
     required double accuracyM,
   }) async {
+    final actor = _client.auth.currentUser?.id;
+    _requireMutationActor(actor);
     final selection = await loadHomeAttendanceStatus();
     if (selection.phase != HomeAttendancePhase.working) {
       await _requireNewOptionalWork(vehicleId: selection.selectedVehicleId, routeId: selection.selectedRouteId);
     }
+    _requireMutationActor(actor);
     final raw = await _client.rpc(
       'attempt_gps_auto_attendance',
       params: {
@@ -251,6 +254,7 @@ class AttendanceVerificationRepository {
         'p_accuracy_m': accuracyM,
       },
     );
+    _requireMutationActor(actor);
     return raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{};
@@ -491,12 +495,15 @@ class AttendanceVerificationRepository {
   }
 
   Future<Map<String, dynamic>> submitCaptureDraft(CaptureVerificationDraft draft) async {
-    if (draft.payload['created_by'] != _client.auth.currentUser?.id ||
+    final actor = _client.auth.currentUser?.id;
+    _requireMutationActor(actor);
+    if (draft.payload['created_by'] != actor ||
         draft.payload['company_id'] != await _companyId()) {
       throw StateError('保留中の勤怠の本人・会社が一致しません');
     }
     final preferences = await SharedPreferences.getInstance();
     final key = await _captureDraftKey();
+    _requireMutationActor(actor);
     final previous = preferences.getString(key);
     if (previous != null && previous != draft.encoded) {
       throw StateError('先に保留中の撮影記録を確認してください');
@@ -505,7 +512,10 @@ class AttendanceVerificationRepository {
       throw StateError('再確認用の撮影記録を保存できません');
     }
     final saved = await recoverOrInsertCaptureDraft(draft,
-      readExact: () => _recoverCaptureDraft(draft),
+      readExact: () {
+        _requireMutationActor(actor);
+        return _recoverCaptureDraft(draft);
+      },
       insert: () async {
         if (!draft.canInsertOn(DateTime.now())) {
           throw StateError('勤務日が変わったため新規登録せず、保留中の登録結果だけ確認しています');
@@ -515,10 +525,12 @@ class AttendanceVerificationRepository {
             routeId: draft.payload['route_assignment_id'] as String?);
         }
         if (!await captureEnabled()) { throw StateError('撮影記録の登録設定を確認してください'); }
+        _requireMutationActor(actor);
         final row = await _client.from('attendance_verifications').insert(draft.payload).select().single();
         return Map<String, dynamic>.from(row);
       });
     // A failed preference cleanup keeps the same identity for harmless exact recovery.
+    _requireMutationActor(actor);
     await preferences.remove(key);
     return saved;
   }
@@ -574,6 +586,8 @@ class AttendanceVerificationRepository {
     GpsPhotoCaptureResult? capture,
     void Function(CaptureVerificationDraft)? onCaptureDraftPrepared,
   }) async {
+    final actor = _client.auth.currentUser?.id;
+    _requireMutationActor(actor);
     final companyId = await _companyId();
     if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
       throw StateError('退勤対象の勤務を確認してください');
@@ -607,6 +621,7 @@ class AttendanceVerificationRepository {
     if (eventType == 'clock_in') {
       await _requireNewOptionalWork(vehicleId: selection?['vehicle_id']?.toString(), routeId: routeId);
     }
+    _requireMutationActor(actor);
     if ((siteId == null || siteId.trim().isEmpty) &&
         (routeId == null || routeId.trim().isEmpty)) {
       throw StateError('現場またはルートを選択してください。');
@@ -622,6 +637,7 @@ class AttendanceVerificationRepository {
       throw StateError('撮影対象の勤務を再確認してください');
     }
     String? storagePath = capture?.storagePath;
+    _requireMutationActor(actor);
 
     if (capture == null && photoBytes != null) {
       final extension = _extensionOf(photoFilename ?? 'attendance.jpg');
@@ -637,6 +653,7 @@ class AttendanceVerificationRepository {
     }
 
     try {
+      _requireMutationActor(actor);
       final payload = <String, Object?>{
             'company_id': companyId,
             'worker_id': workerId,
@@ -654,7 +671,7 @@ class AttendanceVerificationRepository {
             'note': _nullable(note),
             'vehicle_id': selection?['vehicle_id'],
             'route_assignment_id': selection?['route_assignment_id'],
-            'created_by': _client.auth.currentUser?.id,
+            'created_by': actor,
       };
       if (capture != null) {
         final draft = CaptureVerificationDraft(payload);
@@ -664,9 +681,10 @@ class AttendanceVerificationRepository {
       final row = await _client.from('attendance_verifications').insert(payload)
           .select('id, confirmed_at, work_date, source_clock_in_id')
           .single();
+      _requireMutationActor(actor);
       return Map<String, dynamic>.from(row);
     } catch (_) {
-      if (capture == null && storagePath != null) {
+      if (capture == null && storagePath != null && _client.auth.currentUser?.id == actor) {
         try {
           await _client.storage.from(_bucket).remove([storagePath]);
         } catch (_) {
