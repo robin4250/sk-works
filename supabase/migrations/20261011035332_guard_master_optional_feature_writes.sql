@@ -3,22 +3,26 @@ set local lock_timeout='5s';
 do $preflight$
 declare r record; v_name text;
 begin
-  if to_regprocedure('auth.uid()') is null then raise exception 'auth.uid baseline missing'; end if;
+  if to_regprocedure('auth.uid()') is null or to_regprocedure('private.account_access_allowed()') is null then raise exception 'auth.uid baseline missing'; end if;
   foreach v_name in array array['anon','authenticated','service_role'] loop
     if not exists(select 1 from pg_roles where rolname=v_name) then raise exception 'role baseline missing: %',v_name; end if;
   end loop;
   if to_regprocedure('private.require_master_optional_feature(text)') is not null
-    or to_regprocedure('private.guard_master_optional_feature_write()') is not null then
+    or to_regprocedure('private.guard_master_optional_feature_write()') is not null
+    or to_regprocedure('private.clear_my_route_attendance_selection()') is not null
+    or to_regprocedure('public.clear_my_route_attendance_selection()') is not null then
     raise exception 'master write guards already exist; inspect migration ledger';
   end if;
   for r in select * from jsonb_to_recordset('[
+    {"schema":"public","table":"workers","columns":["id","company_id","user_id","status"]},
+    {"schema":"public","table":"company_members","columns":["company_id","user_id"]},
     {"schema":"private","table":"master_feature_settings","columns":["feature_key","enabled"]},
     {"schema":"public","table":"vehicles","columns":["id","company_id","odometer_km","updated_by","updated_at"]},
     {"schema":"public","table":"route_assignments","columns":["id","company_id","vehicle_id"]},
     {"schema":"public","table":"route_stops","columns":["id","company_id","route_assignment_id"]},
-    {"schema":"public","table":"work_vehicle_route_selections","columns":["company_id","worker_id","work_date","vehicle_id","route_assignment_id"]},
-    {"schema":"public","table":"work_attendance_selections","columns":["company_id","worker_id","work_date","route_assignment_id"]},
-    {"schema":"public","table":"gps_auto_attendance_schedules","columns":["company_id","worker_id","route_assignment_id","enabled"]},
+    {"schema":"public","table":"work_vehicle_route_selections","columns":["company_id","worker_id","work_date","vehicle_id","route_assignment_id","updated_by","updated_at"]},
+    {"schema":"public","table":"work_attendance_selections","columns":["company_id","worker_id","work_date","route_assignment_id","updated_by","updated_at"]},
+    {"schema":"public","table":"gps_auto_attendance_schedules","columns":["company_id","worker_id","route_assignment_id","enabled","updated_by","updated_at"]},
     {"schema":"public","table":"attendance_verifications","columns":["id","company_id","worker_id","vehicle_id","route_assignment_id","source_clock_in_id","event_type"]}
   ]'::jsonb) as x(schema text,"table" text,columns text[]) loop
     if to_regclass(format('%I.%I',r.schema,r."table")) is null then raise exception 'table baseline missing: %.%',r.schema,r."table"; end if;
@@ -154,5 +158,47 @@ create trigger zz_master_optional_write_guard before insert or update on public.
 for each row execute function private.guard_master_optional_feature_write();
 create trigger zz_master_optional_write_guard before insert or update on public.attendance_verifications
 for each row execute function private.guard_master_optional_feature_write();
+
+-- Clear only the authenticated worker's current choice, never existing shift sources.
+create function private.clear_my_route_attendance_selection()
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_actor uuid:=auth.uid(); v_worker uuid; v_company uuid; v_count integer;
+ v_today date:=(now() at time zone 'Asia/Tokyo')::date;
+begin
+ if v_actor is null or not private.account_access_allowed() then
+   raise exception 'route selection clear not permitted' using errcode='42501';
+ end if;
+ select count(*) into v_count from public.workers w
+ where w.user_id=v_actor and w.status='active' and exists(
+   select 1 from public.company_members m where m.company_id=w.company_id and m.user_id=v_actor);
+ if v_count<>1 then raise exception 'active employee company is ambiguous or unavailable' using errcode='42501'; end if;
+ select w.id,w.company_id into v_worker,v_company from public.workers w
+ where w.user_id=v_actor and w.status='active' and exists(
+   select 1 from public.company_members m where m.company_id=w.company_id and m.user_id=v_actor)
+ for share;
+ if not found then raise exception 'active employee unavailable' using errcode='42501'; end if;
+ -- Match ordinary selection lock order. No insert, inferred site, or history repair.
+ perform 1 from public.work_vehicle_route_selections where company_id=v_company and worker_id=v_worker and work_date=v_today for update;
+ perform 1 from public.work_attendance_selections where company_id=v_company and worker_id=v_worker and work_date=v_today for update;
+ perform 1 from public.gps_auto_attendance_schedules where company_id=v_company and worker_id=v_worker for update;
+ update public.work_vehicle_route_selections set route_assignment_id=null,updated_by=v_actor,updated_at=now()
+ where company_id=v_company and worker_id=v_worker and work_date=v_today and route_assignment_id is not null;
+ update public.work_attendance_selections set route_assignment_id=null,updated_by=v_actor,updated_at=now()
+ where company_id=v_company and worker_id=v_worker and work_date=v_today and route_assignment_id is not null;
+ -- The existing GPS destination XOR constraint requires retaining the old route.
+ -- Disabling the schedule stops execution; workspace selection never derives from it.
+ update public.gps_auto_attendance_schedules set enabled=false,updated_by=v_actor,updated_at=now()
+ where company_id=v_company and worker_id=v_worker and route_assignment_id is not null and enabled;
+ return jsonb_build_object('cleared',true,'work_date',v_today,'route_assignment_id',null);
+end;
+$$;
+revoke all on function private.clear_my_route_attendance_selection() from public,anon,authenticated,service_role;
+grant execute on function private.clear_my_route_attendance_selection() to authenticated;
+create function public.clear_my_route_attendance_selection()
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.clear_my_route_attendance_selection();
+$$;
+revoke all on function public.clear_my_route_attendance_selection() from public,anon,authenticated,service_role;
+grant execute on function public.clear_my_route_attendance_selection() to authenticated;
 
 commit;

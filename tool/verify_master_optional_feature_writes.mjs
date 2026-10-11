@@ -35,18 +35,22 @@ try{
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('fixture.uid',true),'')::uuid$$;
  create table private.master_feature_settings(feature_key text primary key,enabled boolean not null,updated_at timestamptz,updated_by uuid);
  insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',true),('route_assignment',true);
+ create table company_members(company_id uuid,user_id uuid);
  create table workers(id uuid primary key,company_id uuid,user_id uuid,status text);
  insert into workers values('${worker}','${company}','${uid}','active');
+ insert into company_members values('${company}','${uid}');
+ create function private.account_access_allowed() returns boolean language sql stable as $$select auth.uid() is not null$$;
  create table vehicles(id uuid primary key,company_id uuid,odometer_km numeric,name text,updated_by uuid,updated_at timestamptz);
  create table route_assignments(id uuid primary key,company_id uuid,vehicle_id uuid,name text);
  create table route_stops(id uuid primary key,company_id uuid,route_assignment_id uuid,name text);
- create table work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,vehicle_id uuid,route_assignment_id uuid,primary key(company_id,worker_id,work_date));
+ create table work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,vehicle_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz,primary key(company_id,worker_id,work_date));
  create table work_attendance_selections(like work_vehicle_route_selections including all);
- create table gps_auto_attendance_schedules(company_id uuid,worker_id uuid,route_assignment_id uuid,enabled boolean,primary key(company_id,worker_id));
+ alter table work_attendance_selections add column site_id uuid,add column verification_mode text default 'manual';
+ create table gps_auto_attendance_schedules(company_id uuid,worker_id uuid,route_assignment_id uuid,enabled boolean,site_id uuid,updated_by uuid,updated_at timestamptz,primary key(company_id,worker_id));
  create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,vehicle_id uuid,route_assignment_id uuid,event_type text,source_clock_in_id uuid);
  create table vehicle_usage_claims(source_clock_in_id uuid primary key,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date,source_clock_out_id uuid,ended_at timestamptz);
  create table vehicle_meter_events(id uuid primary key,source_clock_in_id uuid,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date,previous_km numeric,current_km numeric,recorded_by uuid);
- grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;
+ grant usage on schema auth,private to authenticated;grant execute on function auth.uid() to authenticated;
  grant select,insert,update on vehicles,route_assignments,route_stops,work_vehicle_route_selections,work_attendance_selections,gps_auto_attendance_schedules,attendance_verifications to authenticated;
  alter table attendance_verifications enable row level security;
  create policy fixture_own on attendance_verifications to authenticated using(worker_id='${worker}'::uuid) with check(worker_id='${worker}'::uuid);
@@ -70,8 +74,8 @@ try{
  assert.deepEqual((await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows,before);
  await exec(`insert into vehicles values('${vehicle}','${company}',100,'Fixture',null,null);
  insert into route_assignments values('${route}','${company}',null,'Fixture');
- insert into work_vehicle_route_selections values('${company}','${worker}','2026-10-11','${vehicle}','${route}');
- insert into gps_auto_attendance_schedules values('${company}','${worker}','${route}',true);
+ insert into work_vehicle_route_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id) values('${company}','${worker}','2026-10-11','${vehicle}','${route}');
+ insert into gps_auto_attendance_schedules(company_id,worker_id,route_assignment_id,enabled) values('${company}','${worker}','${route}',true);
  insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${id()}','${company}','${worker}','${vehicle}','${route}','clock_in');
  update private.master_feature_settings set enabled=false;set role authenticated;`);
  const fail=sql=>assert.rejects(db.query(sql),e=>e.code==='P0001');
@@ -81,10 +85,10 @@ try{
  await fail(`insert into route_assignments values('${id()}','${company}',null,'New')`);
  await fail(`insert into route_stops values('${id()}','${company}','${route}','New')`);
  // UPSERT preserves old selected source; clearing is allowed, reselecting is not.
- await exec(`insert into work_vehicle_route_selections values('${company}','${worker}','2026-10-11','${vehicle}','${route}') on conflict(company_id,worker_id,work_date) do update set vehicle_id=excluded.vehicle_id,route_assignment_id=excluded.route_assignment_id;`);
- await fail(`insert into work_vehicle_route_selections values('${company}','${worker}','2026-10-12',null,'${route}')`);
- await fail(`insert into work_attendance_selections values('${company}','${worker}','2026-10-11',null,'${route}')`);
- await fail(`insert into gps_auto_attendance_schedules values('${company}','${id()}','${route}',true)`);
+ await exec(`insert into work_vehicle_route_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id) values('${company}','${worker}','2026-10-11','${vehicle}','${route}') on conflict(company_id,worker_id,work_date) do update set vehicle_id=excluded.vehicle_id,route_assignment_id=excluded.route_assignment_id;`);
+ await fail(`insert into work_vehicle_route_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id) values('${company}','${worker}','2026-10-12',null,'${route}')`);
+ await fail(`insert into work_attendance_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id) values('${company}','${worker}','2026-10-11',null,'${route}')`);
+ await fail(`insert into gps_auto_attendance_schedules(company_id,worker_id,route_assignment_id,enabled) values('${company}','${id()}','${route}',true)`);
  await exec(`update gps_auto_attendance_schedules set enabled=false;`);
  await fail(`update gps_auto_attendance_schedules set enabled=true`);
  const attendance=(event,v,r,w=worker)=>`insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${id()}','${company}','${w}',${v?`'${v}'`:'null'},${r?`'${r}'`:'null'},'${event}')`;
@@ -124,6 +128,29 @@ try{
  await exec(attendance('clock_in',vehicle,route));
  await exec("reset role;insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',false)");
  for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege('${role}','private.guard_master_optional_feature_write()','execute') allowed`)).rows[0].allowed,false);
+ // OFF escape hatch clears today's choice atomically, preserving all source history.
+ await exec(`update private.master_feature_settings set enabled=true;
+ insert into work_vehicle_route_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id)
+ values('${company}','${worker}',(now() at time zone 'Asia/Tokyo')::date,'${vehicle}','${route}')
+ on conflict(company_id,worker_id,work_date) do update set vehicle_id=excluded.vehicle_id,route_assignment_id=excluded.route_assignment_id;
+ insert into work_attendance_selections(company_id,worker_id,work_date,vehicle_id,route_assignment_id,verification_mode)
+ values('${company}','${worker}',(now() at time zone 'Asia/Tokyo')::date,null,'${route}','gps_auto')
+ on conflict(company_id,worker_id,work_date) do update set route_assignment_id=excluded.route_assignment_id,verification_mode=excluded.verification_mode;
+ update gps_auto_attendance_schedules set enabled=true;update private.master_feature_settings set enabled=false;`);
+ const sourceBefore=(await db.query('select * from attendance_verifications order by id')).rows;
+ await exec('set role authenticated');
+ const proof=(await db.query('select public.clear_my_route_attendance_selection() result')).rows[0].result;
+ assert.equal(proof.cleared,true);assert.equal(proof.route_assignment_id,null);
+ assert.deepEqual((await db.query('select public.clear_my_route_attendance_selection() result')).rows[0].result,proof);
+ await exec('reset role');
+ assert.deepEqual((await db.query('select * from attendance_verifications order by id')).rows,sourceBefore);
+ assert.equal((await db.query("select route_assignment_id,vehicle_id from work_vehicle_route_selections where work_date=(now() at time zone 'Asia/Tokyo')::date")).rows[0].vehicle_id,vehicle);
+ assert.equal((await db.query("select route_assignment_id,verification_mode,site_id from work_attendance_selections where work_date=(now() at time zone 'Asia/Tokyo')::date")).rows[0].verification_mode,'gps_auto');
+ assert.equal((await db.query('select enabled from gps_auto_attendance_schedules')).rows[0].enabled,false);
+ assert.equal((await db.query('select route_assignment_id from gps_auto_attendance_schedules')).rows[0].route_assignment_id,route);
+ await exec(`set fixture.uid='${id()}';set role authenticated`);
+ await assert.rejects(db.query('select public.clear_my_route_attendance_selection()'),e=>e.code==='42501');
+ await exec(`reset role;set fixture.uid='${uid}'`);
  if(pgMode){
   const a=new Client({connectionString}),b=new Client({connectionString});
   await a.connect();await b.connect();
