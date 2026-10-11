@@ -90,8 +90,9 @@ class PeopleCloudRepository {
     if (actor == null || actorId != actor) throw StateError('ログイン情報が変更されました');
     if (path == null) return null;
     final value = path.toString();
-    if (!value.startsWith('${member.companyId}/$workerId/'))
+    if (!value.startsWith('${member.companyId}/$workerId/')) {
       throw StateError('顔写真の所属が一致しません');
+    }
     final url = await _client.storage
         .from('worker-documents')
         .createSignedUrl(value, 600);
