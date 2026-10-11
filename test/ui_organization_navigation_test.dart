@@ -6,17 +6,16 @@ import 'package:sk_works/features/payroll/payroll_review_page.dart';
 import 'package:sk_works/features/people/worker_document_page.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 
+// UI fixtures must not initialize network clients or background JSON isolates.
+// The separate HTTP test exercises the real client and scoped repository writes.
+class UnusedFixtureClient implements SupabaseClient {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected client access in UI fixture');
+}
+
 class DocumentFixture extends WorkerDocumentRepository {
-  DocumentFixture()
-    : this._(
-        SupabaseClient(
-          'http://127.0.0.1',
-          'fixture',
-          authOptions: const AuthClientOptions(autoRefreshToken: false),
-        ),
-      );
-  DocumentFixture._(this.client) : super.forTesting(client);
-  final SupabaseClient client;
+  DocumentFixture() : super.forTesting(UnusedFixtureClient());
   final removed = <String>[];
   @override
   String get actorId => 'actor';
@@ -84,8 +83,7 @@ void main() {
   testWidgets(
     'documents separates employee search from settings and does not select an employee automatically',
     (tester) async {
-      final repo = (await tester.runAsync(() async => DocumentFixture()))!;
-      addTearDown(() => tester.runAsync(repo.client.dispose));
+      final repo = DocumentFixture();
       await tester.pumpWidget(
         MaterialApp(home: WorkerDocumentPage(repositoryOverride: repo)),
       );
@@ -105,8 +103,7 @@ void main() {
   testWidgets(
     'settings shows selected scope; cancelled removal never changes a requirement',
     (tester) async {
-      final repo = (await tester.runAsync(() async => DocumentFixture()))!;
-      addTearDown(() => tester.runAsync(repo.client.dispose));
+      final repo = DocumentFixture();
       await tester.pumpWidget(
         MaterialApp(
           home: WorkerDocumentPage(
