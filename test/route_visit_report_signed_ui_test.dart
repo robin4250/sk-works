@@ -29,7 +29,7 @@ void main() {
             'site_id': 'site', 'site_name': '現場', 'report_date': '2026-10-11',
             'status': 'reporter_signed', 'work_description': '保存済み作業',
             'representative_signer_name': '保存済み報告者',
-            'representative_signature_json': {'strokes': [[[1, 2], [3, 4]]]},
+            'representative_signature_json': {'strokes': [[{'x': 0.1, 'y': 0.2}, {'x': 0.3, 'y': 0.4}]]},
             'workers': [{'worker_id': 'worker', 'worker_name': 'メンバー'}],
           }));
           await request.response.close();
@@ -46,18 +46,29 @@ void main() {
             routeAssignmentId: 'route', routeStopId: 'stop',
             startCaptureId: 'arrival', endCaptureId: 'move'),
         )));
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final deadline = Stopwatch()..start();
+        while (find.text('保存済み作業').evaluate().isEmpty) {
+          if (deadline.elapsed > const Duration(seconds: 5)) {
+            fail('訪問日報の読込が完了しませんでした');
+          }
+          await Future<void>.delayed(Duration.zero);
+          await tester.pump();
+        }
       });
       await tester.pumpAndSettle();
       expect(find.text('保存済み作業'), findsOneWidget);
       for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
         expect(field.enabled, false);
       }
-      await tester.scrollUntilVisible(find.text('報告者サイン'), 250);
+      final reportScrollable = find.descendant(
+        of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text('報告者サイン'), 250,
+        scrollable: reportScrollable);
       final reporter = tester.widget<ListTile>(find.ancestor(
         of: find.text('報告者サイン'), matching: find.byType(ListTile)));
       expect(reporter.onTap, null);
-      await tester.scrollUntilVisible(find.text('責任者サイン'), 250);
+      await tester.scrollUntilVisible(find.text('責任者サイン'), 250,
+        scrollable: reportScrollable);
       final responsible = tester.widget<ListTile>(find.ancestor(
         of: find.text('責任者サイン'), matching: find.byType(ListTile)));
       expect(responsible.onTap, isNotNull);

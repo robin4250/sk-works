@@ -242,7 +242,15 @@ class RouteJourneyCaptureRepository {
     if (result['status'] == 'skipped' || result['status'] == 'completed') {
       return selected.withChoice('skip');
     }
-    return selected;
+    final resumable = selected.withChoice('create');
+    if (!await preferences.setString(
+      _reportKey(resumable),
+      resumable.encoded,
+    )) {
+      throw StateError('日報の再開状態を保存できません');
+    }
+    _requireActor(actor);
+    return resumable;
   }
 
   Future<void> finishReport(RouteVisitReportPending pending) async {

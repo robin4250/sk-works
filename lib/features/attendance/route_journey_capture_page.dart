@@ -146,26 +146,26 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         throw StateError('保留中の本人が一致しません');
       }
       setState(() => _pending = pending);
-      var workspace = await repository.workspace(
+      final workspace = await repository.workspace(
         pending?.sourceId ?? widget.sourceId,
       );
       if (!_active(generation)) return;
       _checkActor();
-      pending ??= await repository.loadPending(
-        workspace['company_id'] as String,
-      );
+      if (pending == null) {
+        final companyPending = await repository.loadPending(
+          workspace['company_id'] as String,
+        );
+        // Recovery is selected by source on home. A later shift from the same
+        // company must never replace the closed visit being resumed here.
+        if (companyPending?.sourceId == widget.sourceId)
+          pending = companyPending;
+      }
       if (!_active(generation)) return;
       _checkActor();
       if (pending != null && pending.userId != _actor) {
         throw StateError('保留中の本人が一致しません');
       }
       setState(() => _pending = pending);
-      if (pending != null &&
-          pending.sourceId != workspace['source_clock_in_id']) {
-        workspace = await repository.workspace(pending.sourceId);
-        if (!_active(generation)) return;
-        _checkActor();
-      }
       if (workspace['visit_contract_version'] != null) {
         final visits = workspace['visits'];
         if (workspace['visit_contract_version'] != 1 ||

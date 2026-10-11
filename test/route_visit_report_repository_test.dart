@@ -25,7 +25,7 @@ void main() {
         if (rpc == 'save_route_visit_report_signature') {
           expect(body['p_report_id'], 'visit-report');
           expect(body['p_role'], anyOf('reporter', 'responsible'));
-          expect(body['p_signature_json'], {'strokes': [[1, 2]]});
+          expect(body['p_signature_json'], {'strokes': [[{'x': 0.1, 'y': 0.2}, {'x': 0.3, 'y': 0.4}]]});
         } else {
           expect(body['p_start_capture_id'], 'arrival');
           expect(body['p_end_capture_id'], 'move');
@@ -56,7 +56,7 @@ void main() {
         workDescription: '作業', workers: report.workers), 'visit-report');
       for (final role in ['reporter', 'responsible']) {
         await repository.signVisit(reportId: report.id, role: role,
-          signerName: '選択名', signatureJson: [[1, 2]]);
+          signerName: '選択名', signatureJson: [[{'x': 0.1, 'y': 0.2}, {'x': 0.3, 'y': 0.4}]]);
       }
       for (final invalid in <Map<String, Object?>>[
         {'status': 'reporter_signed'}, {'status': 'completed'}, {'id': ''},

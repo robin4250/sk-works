@@ -19,3 +19,5 @@ jobs:
         run: node tool/verify_route_visit_reports.mjs "$RUNNER_TEMP/visit-report-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Existing lifecycle integration and retention
         run: node tool/verify_route_visit_reports_integration.mjs "$RUNNER_TEMP/visit-report-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Guarded production apply preservation and rollback
+        run: node tool/verify_route_report_guarded_apply.mjs "$RUNNER_TEMP/visit-report-runtime/node_modules/@electric-sql/pglite/dist/index.js" "$GITHUB_WORKSPACE"
