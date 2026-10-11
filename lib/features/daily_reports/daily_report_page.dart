@@ -1427,10 +1427,10 @@ class DailyReportEvidencePage extends StatelessWidget {
                       Text(item.photoCapturedAt == null
                         ? SkoLanguageController.tr(item.eventType == 'route_stop' ? '撮影日時未取得（表示時刻は途中現場の記録時刻）' : '撮影日時未取得（表示時刻は勤怠登録時刻）')
                         : '${SkoLanguageController.tr('撮影日時')}: ${item.photoCapturedAt!.toIso8601String()}'),
-                    if (!item.isTimeOnly && item.gpsStatus != null && item.capturedAddress?.trim().isNotEmpty != true)
+                    if (!item.isTimeOnly && (item.gpsStatus != null || item.hasLocation) && item.capturedAddress?.trim().isNotEmpty != true)
                       Text(SkoLanguageController.tr('撮影住所未取得')),
                     if (item.capturedAddress?.trim().isNotEmpty == true)
-                      Text(item.capturedAddress!),
+                      Text('${SkoLanguageController.tr('撮影住所')}: ${item.capturedAddress!}'),
                     if (!item.isTimeOnly && item.photoStatus != null)
                       Text(SkoLanguageController.trParams('写真: {photo} / GPS: {gps}', {
                         'photo': _captureStatusLabel(item.photoStatus),

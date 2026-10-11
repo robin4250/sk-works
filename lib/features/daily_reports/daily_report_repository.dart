@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'daily_report_shift_context.dart';
+import 'daily_report_evidence_address.dart';
+import '../attendance/attendance_capture_metadata_service.dart';
 import 'daily_report_pdf_evidence.dart';
 import '../attendance/group_checkout_repository.dart';
 import 'group_daily_report_roster.dart';
@@ -136,6 +138,18 @@ class DailyReportEvidenceRecord {
     this.sourceClockInId, this.routeStopId, this.originKind,
     this.timeOnly = false,
   });
+
+  DailyReportEvidenceRecord withCapturedAddress(String? address) =>
+      DailyReportEvidenceRecord(
+        id: id, workerName: workerName, eventType: eventType,
+        confirmedAt: confirmedAt, storagePath: storagePath,
+        latitude: latitude, longitude: longitude, accuracyM: accuracyM,
+        gpsStatus: gpsStatus, photoStatus: photoStatus, capturedAddress: address,
+        photoCapturedAt: photoCapturedAt, gpsCapturedAt: gpsCapturedAt,
+        photoObservedAt: photoObservedAt, storageBucket: storageBucket,
+        stopLabel: stopLabel, sourceClockInId: sourceClockInId,
+        routeStopId: routeStopId, originKind: originKind, timeOnly: timeOnly,
+      );
 
   final String id;
   final String workerName;
@@ -714,7 +728,19 @@ class DailyReportRepository {
       final byTime = a.confirmedAt.compareTo(b.confirmedAt);
       return byTime != 0 ? byTime : a.id.compareTo(b.id);
     });
-    return evidence;
+    final addresses = DailyReportEvidenceAddressResolver(
+      reverseGeocode: const AttendanceCaptureMetadataService().reverseGeocodeCapturedLocation,
+    );
+    // Enrich display/PDF only; never rewrite stored attendance or substitute
+    // the company/site address for the recorded GPS location.
+    return Future.wait(evidence.map((record) async => record.withCapturedAddress(
+      await addresses.resolve(
+        savedAddress: record.capturedAddress,
+        latitude: record.latitude, longitude: record.longitude,
+        gpsStatus: record.gpsStatus,
+        timeOnly: record.timeOnly || record.isTimeOnly,
+      ),
+    )));
   }
 
   Future<List<DailyReportPdfEvidence>> loadPdfEvidence(List<DailyReportEvidenceRecord> records) async {
