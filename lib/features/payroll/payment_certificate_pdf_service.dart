@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -12,10 +14,12 @@ class PaymentCertificatePdfService {
 
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
+    ExpenseDocumentDetails? expenseDetails,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
@@ -38,6 +42,9 @@ class PaymentCertificatePdfService {
       ),
     );
 
+    if (expenses != null) {
+      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+    }
     return document.save();
   }
 
@@ -120,59 +127,63 @@ class PaymentCertificatePdfService {
             ),
             pw.SizedBox(
               width: 210,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  if (record.payerPostalCode.isNotEmpty)
-                    pw.Text(
-                      '〒${record.payerPostalCode}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                  if (record.payerAddress.isNotEmpty)
-                    pw.Text(
-                      record.payerAddress,
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                  pw.Row(
-                    mainAxisSize: pw.MainAxisSize.max,
-                    crossAxisAlignment: pw.CrossAxisAlignment.center,
-                    children: [
-                      pw.Expanded(
-                        child: pw.Text(
-                          record.companySealSnapshot.registeredName(
-                              record.payerCompanyName),
-                          style: pw.TextStyle(
-                            fontSize: 9,
-                            fontWeight: pw.FontWeight.bold,
+              child: pw.ConstrainedBox(
+                constraints: pw.BoxConstraints(
+                  // Retain the issuer block footprint above the detail table.
+                  minHeight: 55 + 10 * [
+                    record.payerPostalCode,
+                    record.payerAddress,
+                    record.payerPhone,
+                    record.payerFax,
+                  ].where((value) => value.isNotEmpty).length.toDouble(),
+                ),
+                child: pw.Stack(
+                  children: [
+                    pw.Padding(
+                      // One shared edge, outside the unchanged 55pt seal lane.
+                      padding: const pw.EdgeInsets.only(top: 21, right: 60),
+                      child: pw.SizedBox(
+                        width: 150,
+                        child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text(
+                            record.companySealSnapshot.registeredName(
+                                record.payerCompanyName),
+                            textAlign: pw.TextAlign.right,
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
                           ),
+                          if (record.payerPostalCode.isNotEmpty)
+                            _issuerDetail('〒${formatPostalCode(record.payerPostalCode)}'),
+                          if (record.payerAddress.isNotEmpty)
+                            _issuerDetail(record.payerAddress),
+                          if (record.payerPhone.isNotEmpty)
+                            _issuerDetail('TEL　${formatPhone(record.payerPhone)}'),
+                          if (record.payerFax.isNotEmpty)
+                            _issuerDetail('FAX　${formatPhone(record.payerFax)}'),
+                        ],
                         ),
                       ),
-                      // Reserve a separate stamp box so the full registered
-                      // company name stays readable, including wrapped names.
-                      pw.SizedBox(width: 8),
-                      !record.payerCompanySealEnabled
-                          ? pw.SizedBox(width: 55, height: 55)
-                          : CompanySealPdf.build(
-                              record.companySealSnapshot.registeredName(
-                                  record.payerCompanyName),
-                              style: record.companySealSnapshot.style,
-                              size: 55,
-                              font: sealFont,
-                              fallbackFont: fallbackFont,
-                            ),
-                    ],
-                  ),
-                  if (record.payerPhone.isNotEmpty)
-                    pw.Text(
-                      'TEL　${record.payerPhone}',
-                      style: const pw.TextStyle(fontSize: 8),
                     ),
-                  if (record.payerFax.isNotEmpty)
-                    pw.Text(
-                      'FAX　${record.payerFax}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                ],
+                    if (record.payerCompanySealEnabled)
+                      pw.Positioned(
+                        right: 0,
+                        top: 0,
+                        child: CompanySealPdf.build(
+                          record.companySealSnapshot.registeredName(
+                              record.payerCompanyName),
+                          style: record.companySealSnapshot.style,
+                          companyId: record.companySealSnapshot.companyId,
+                          size: 55,
+                          font: sealFont,
+                          fallbackFont: fallbackFont,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -271,6 +282,26 @@ class PaymentCertificatePdfService {
         ),
       ],
     );
+  }
+
+  static pw.Widget _issuerDetail(String value) => pw.Text(
+    value,
+    textAlign: pw.TextAlign.right,
+    style: const pw.TextStyle(fontSize: 8),
+  );
+
+  static String formatPostalCode(String value) {
+    final trimmed = value.trim();
+    return RegExp(r'^\d{7}$').hasMatch(trimmed)
+        ? '${trimmed.substring(0, 3)}-${trimmed.substring(3)}'
+        : value;
+  }
+
+  static String formatPhone(String value) {
+    final trimmed = value.trim();
+    return RegExp(r'^(03|06)\d{8}$').hasMatch(trimmed)
+        ? '${trimmed.substring(0, 2)}-${trimmed.substring(2, 6)}-${trimmed.substring(6)}'
+        : value;
   }
 
   static pw.Widget _cell(

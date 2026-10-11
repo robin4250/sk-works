@@ -1,8 +1,38 @@
 import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
+import '../operations/route_stops_preview.dart';
 import 'attendance_verification_repository.dart';
 import 'gps_auto_schedule_dialog.dart';
+
+/// Fixed sites become available again only after clearing the selected route.
+class WorkDestinationSiteField extends StatelessWidget {
+  const WorkDestinationSiteField({super.key, required this.siteId,
+    required this.routeId, required this.sites, required this.saving,
+    required this.onChanged});
+  final String? siteId;
+  final String? routeId;
+  final List<Map<String, dynamic>> sites;
+  final bool saving;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<String?>(
+    key: ValueKey('fixed-site:${routeId == null ? siteId : null}:$routeId'),
+    initialValue: routeId == null ? siteId : null,
+    decoration: InputDecoration(
+      labelText: '固定の1現場', prefixIcon: const Icon(Icons.business_outlined),
+      border: const OutlineInputBorder(),
+      helperText: routeId == null ? null : 'ルートを選択中です。固定現場に変更する場合は、先にルートを未登録にしてください。',
+    ),
+    items: [
+      const DropdownMenuItem<String?>(value: null, child: Text('未登録')),
+      for (final site in sites) DropdownMenuItem<String?>(
+        value: site['id']?.toString(), child: Text(site['name']?.toString() ?? '現場')),
+    ],
+    onChanged: saving || routeId != null ? null : onChanged,
+  );
+}
 
 class WorkDestinationSelectionPage extends StatefulWidget {
   const WorkDestinationSelectionPage({super.key});
@@ -133,10 +163,11 @@ class _WorkDestinationSelectionPageState
 
     setState(() => _saving = true);
     try {
-      if (_siteId != null) {
+      final siteId = _routeId == null ? _siteId : null;
+      if (siteId != null) {
         await attendanceRepository.saveAttendanceSelection(
           mode: _mode,
-          siteId: _siteId,
+          siteId: siteId,
           weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
           localTime: _mode == 'gps_auto'
               ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
@@ -180,6 +211,7 @@ class _WorkDestinationSelectionPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: const Text(
           '現場の選択',
           style: TextStyle(fontWeight: FontWeight.w900),
@@ -206,41 +238,16 @@ class _WorkDestinationSelectionPageState
                         ),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String?>(
-                        initialValue: _siteId,
-                        decoration: const InputDecoration(
-                          labelText: '固定の1現場',
-                          prefixIcon: Icon(Icons.business_outlined),
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('未登録'),
-                          ),
-                          for (final site in _sites)
-                            DropdownMenuItem<String?>(
-                              value: site['id']?.toString(),
-                              child: Text(site['name']?.toString() ?? '現場'),
-                            ),
-                        ],
-                        onChanged: _saving
-                            ? null
-                            : (value) async {
-                                if (value != null &&
-                                    value != _siteId &&
-                                    _routeId != null) {
-                                  await _showExclusiveGuide(fixedSite: true);
-                                }
-                                if (!mounted) return;
-                                setState(() {
-                                  _siteId = value;
-                                  if (value != null) _routeId = null;
-                                });
-                              },
+                      WorkDestinationSiteField(
+                        siteId: _siteId,
+                        routeId: _routeId,
+                        sites: _sites,
+                        saving: _saving,
+                        onChanged: (value) => setState(() => _siteId = value),
                       ),
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String?>(
+                        key: ValueKey('route:$_routeId'),
                         initialValue: _routeId,
                         decoration: const InputDecoration(
                           labelText: '複数現場のルート',
@@ -281,6 +288,10 @@ class _WorkDestinationSelectionPageState
                         icon: const Icon(Icons.check),
                         label: Text(_saving ? '保存中…' : '確定して保存'),
                       ),
+                      if (_siteId == null)
+                        RouteStopsPreview(
+                          route: _routes.where((row) => row['id'] == _routeId).firstOrNull,
+                        ),
                     ],
                   ),
       ),

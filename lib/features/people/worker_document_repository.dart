@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'worker_document_photos.dart';
 
 class WorkerDocumentRepository {
   WorkerDocumentRepository._(this._client);
@@ -91,6 +92,37 @@ class WorkerDocumentRepository {
     return rows.first['company_id'] as String;
   }
 
+  bool _photoSchemaAvailable = true;
+  bool get photoEditingAvailable => _photoSchemaAvailable;
+  static const photoPreparationMessage = '複数写真の保存準備中です。保存済みの写真は確認できます。';
+  static const _legacyStatusColumns =
+      'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at';
+  static String _statusColumns(bool photos) => photos
+      ? _legacyStatusColumns.replaceFirst(
+          'attachment_path,',
+          'attachment_path, attachment_paths,',
+        )
+      : _legacyStatusColumns;
+
+  Future<List<Map<String, dynamic>>> _readPhotoStatuses(
+    Future<List<Map<String, dynamic>>> Function(bool photos) read,
+  ) async {
+    try {
+      final result = await read(true);
+      _photoSchemaAvailable = true;
+      return result;
+    } on PostgrestException catch (error) {
+      if ((error.code != '42703' && error.code != 'PGRST204') ||
+          !error.message.contains('attachment_paths')) {
+        rethrow;
+      }
+      // Retry only a proven missing new column. Keep the same RLS filters and
+      // propagate permission/network errors instead of hiding them.
+      _photoSchemaAvailable = false;
+      return read(false);
+    }
+  }
+
   Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
@@ -103,7 +135,9 @@ class WorkerDocumentRepository {
 
     final requirements = await _client
         .from('document_requirements')
-        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at')
+        .select(
+          'id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at',
+        )
         .eq('company_id', companyId)
         .eq('is_active', true)
         .order('sort_order')
@@ -126,14 +160,19 @@ class WorkerDocumentRepository {
       workersQuery = workersQuery.eq('id', ownWorkerId);
     }
     final workers = await workersQuery.order('name');
-    var statusesQuery = _client
-        .from('worker_document_statuses')
-        .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at')
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
+    final statuses = await _readPhotoStatuses((photos) async {
+      var statusesQuery = _client
+          .from('worker_document_statuses')
+          .select(_statusColumns(photos))
+          .eq('company_id', companyId);
+      if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+        statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
+      }
+      return await statusesQuery;
+    });
+    for (final row in statuses) {
+      workerDocumentPaths(row);
     }
-    final statuses = await statusesQuery;
 
     return {
       'workers': List<Map<String, dynamic>>.from(workers),
@@ -145,16 +184,30 @@ class WorkerDocumentRepository {
   Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() async {
     final worker = await currentWorker();
     final companyId = await _companyId();
-    final requirements = await _client.from('document_requirements')
-        .select('id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at')
-        .eq('company_id', companyId).eq('is_active', true)
-        .order('sort_order').order('name');
-    final workers = await _client.from('workers')
+    final requirements = await _client
+        .from('document_requirements')
+        .select(
+          'id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at',
+        )
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name');
+    final workers = await _client
+        .from('workers')
         .select('id, name, affiliation, status')
-        .eq('company_id', companyId).eq('id', worker.workerId);
-    final statuses = await _client.from('worker_document_statuses')
-        .select('id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at')
-        .eq('company_id', companyId).eq('worker_id', worker.workerId);
+        .eq('company_id', companyId)
+        .eq('id', worker.workerId);
+    final statuses = await _readPhotoStatuses(
+      (photos) async => await _client
+          .from('worker_document_statuses')
+          .select(_statusColumns(photos))
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId),
+    );
+    for (final row in statuses) {
+      workerDocumentPaths(row);
+    }
     return {
       'workers': List<Map<String, dynamic>>.from(workers),
       'requirements': List<Map<String, dynamic>>.from(requirements),
@@ -219,50 +272,11 @@ class WorkerDocumentRepository {
     required String originalFilename,
   }) async {
     await _requireManagePeople();
-    final companyId = await _companyId();
-    final rows = await _client
-        .from('worker_document_statuses')
-        .select('id, attachment_path')
-        .eq('company_id', companyId)
-        .eq('id', statusId)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('書類情報が見つかりません。');
-
-    final oldPath = rows.first['attachment_path']?.toString();
-    final extension = _extensionOf(originalFilename);
-    final objectName = '${DateTime.now().microsecondsSinceEpoch}$extension';
-    final storagePath =
-        '$companyId/$workerId/$requirementId/$statusId/$objectName';
-
-    await _client.storage.from(_bucket).uploadBinary(
-      storagePath,
-      bytes,
-      fileOptions: const FileOptions(upsert: false),
+    final row = await _attachmentRow(statusId, workerId, requirementId);
+    return saveAttachmentPhotos(
+      row: row,
+      photos: [WorkerDocumentPhoto.pending(bytes, originalFilename)],
     );
-
-    try {
-      final updated = await _client
-          .from('worker_document_statuses')
-          .update({
-            'attachment_path': storagePath,
-            'updated_by': _client.auth.currentUser?.id,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('company_id', companyId)
-          .eq('id', statusId)
-          .select(
-            'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
-          )
-          .single();
-
-      if (oldPath != null && oldPath.isNotEmpty && oldPath != storagePath) {
-        await _client.storage.from(_bucket).remove([oldPath]);
-      }
-      return Map<String, dynamic>.from(updated);
-    } catch (_) {
-      await _client.storage.from(_bucket).remove([storagePath]);
-      rethrow;
-    }
   }
 
   Future<String> createSignedAttachmentUrl(String storagePath) {
@@ -275,21 +289,218 @@ class WorkerDocumentRepository {
   }) async {
     await _requireManagePeople();
     final companyId = await _companyId();
-    final updated = await _client
+    final row = await _client
+        .from('worker_document_statuses')
+        .select()
+        .eq('company_id', companyId)
+        .eq('id', statusId)
+        .single();
+    return saveAttachmentPhotos(
+      row: row,
+      photos: [
+        for (final path in workerDocumentPaths(row))
+          if (path != storagePath) WorkerDocumentPhoto.saved(path),
+      ],
+    );
+  }
+
+  Future<Map<String, dynamic>> _attachmentRow(
+    String statusId,
+    String workerId,
+    String requirementId,
+  ) async {
+    final companyId = await _companyId();
+    return _client
+        .from('worker_document_statuses')
+        .select()
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq('requirement_id', requirementId)
+        .eq('id', statusId)
+        .single();
+  }
+
+  /// Preserve historical and uncertain objects. Removing a photo here only
+  /// removes it from the current list; official document history retains it.
+  Future<Map<String, dynamic>> saveAttachmentPhotos({
+    required Map<String, dynamic> row,
+    required List<WorkerDocumentPhoto> photos,
+    bool own = false,
+  }) async {
+    if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
+    if (own) {
+      final worker = await currentWorker();
+      if (row['worker_id'] != worker.workerId) {
+        throw StateError('本人の書類情報を確認できません。');
+      }
+    } else {
+      await _requireManagePeople();
+    }
+    final companyId = await _companyId();
+    if (row['company_id'] != null && row['company_id'] != companyId) {
+      throw StateError('所属会社の書類情報を確認できません。');
+    }
+    final id = row['id']?.toString() ?? '';
+    final workerId = row['worker_id']?.toString() ?? '';
+    final requirementId = row['requirement_id']?.toString() ?? '';
+    if (id.isEmpty ||
+        workerId.isEmpty ||
+        requirementId.isEmpty ||
+        row['updated_at'] == null) {
+      throw StateError('書類情報が不足しています。');
+    }
+    final paths = await _uploadPhotos(
+      photos,
+      existing: workerDocumentPaths(row),
+      prefix: '$companyId/$workerId/$requirementId/$id',
+    );
+    var query = _client
         .from('worker_document_statuses')
         .update({
-          'attachment_path': null,
+          'attachment_path': paths.isEmpty ? null : paths.first,
+          'attachment_paths': paths,
+          if (own) 'status': 'submitted',
+          if (own) 'original_verified': false,
           'updated_by': _client.auth.currentUser?.id,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('company_id', companyId)
-        .eq('id', statusId)
-        .select(
-          'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
-        )
-        .single();
-    await _client.storage.from(_bucket).remove([storagePath]);
-    return Map<String, dynamic>.from(updated);
+        .eq('worker_id', workerId)
+        .eq('requirement_id', requirementId)
+        .eq('id', id);
+    if (row['updated_at'] != null) {
+      query = query.eq('updated_at', row['updated_at']);
+    }
+    final saved = await query.select().single();
+    _confirmPaths(saved, paths);
+    return saved;
+  }
+
+  Future<List<String>> _uploadPhotos(
+    List<WorkerDocumentPhoto> photos, {
+    required List<String> existing,
+    required String prefix,
+  }) async {
+    if (photos.length > 20) throw ArgumentError('写真は20枚以内で登録してください。');
+    final retained = photos
+        .where((photo) => photo.path != null)
+        .map((photo) => photo.path!)
+        .toList();
+    if (retained.toSet().length != retained.length ||
+        retained.any((path) => !existing.contains(path))) {
+      throw StateError('保存済み写真の情報が変更されています。再読み込みしてください。');
+    }
+    if (photos.any(
+      (photo) =>
+          photo.path == null &&
+          (photo.bytes == null ||
+              photo.bytes!.isEmpty ||
+              photo.filename == null ||
+              photo.filename!.trim().isEmpty),
+    )) {
+      throw ArgumentError('写真データとファイル名を確認してください。');
+    }
+    final paths = <String>[];
+    for (var index = 0; index < photos.length; index++) {
+      final photo = photos[index];
+      if (photo.path != null) {
+        paths.add(photo.path!);
+      } else {
+        final path =
+            '$prefix/${DateTime.now().microsecondsSinceEpoch}_$index${_extensionOf(photo.filename!)}';
+        await _client.storage
+            .from(_bucket)
+            .uploadBinary(
+              path,
+              photo.bytes!,
+              fileOptions: const FileOptions(upsert: false),
+            );
+        paths.add(path);
+      }
+    }
+    return paths;
+  }
+
+  void _confirmPaths(Map<String, dynamic> row, List<String> expected) {
+    final actual = workerDocumentPaths(row);
+    if (actual.length != expected.length ||
+        List.generate(
+          expected.length,
+          (i) => i,
+        ).any((i) => actual[i] != expected[i])) {
+      throw StateError('写真の保存結果が確認できません。再読み込みしてください。');
+    }
+  }
+
+  Future<void> saveOwnDocumentPhotos({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    required List<WorkerDocumentPhoto> photos,
+    required List<String> expectedPaths,
+  }) async {
+    if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
+    final worker = await currentWorker();
+    final companyId = await _companyId();
+    final existing = await _client
+        .from('worker_document_statuses')
+        .select()
+        .eq('company_id', companyId)
+        .eq('worker_id', worker.workerId)
+        .eq('requirement_id', requirementId)
+        .limit(1);
+    final row = existing.isEmpty ? null : existing.first;
+    if (row != null && row['updated_at'] == null) {
+      throw StateError('書類の更新時刻を確認できません。再読み込みしてください。');
+    }
+    final currentPaths = workerDocumentPaths(row);
+    if (currentPaths.length != expectedPaths.length ||
+        List.generate(
+          expectedPaths.length,
+          (i) => i,
+        ).any((i) => currentPaths[i] != expectedPaths[i])) {
+      throw StateError('登録写真が更新されています。再読み込みしてください。');
+    }
+    final id = row?['id']?.toString() ?? 'own-upload';
+    final paths = await _uploadPhotos(
+      photos,
+      existing: workerDocumentPaths(row),
+      prefix: '$companyId/${worker.workerId}/$requirementId/$id',
+    );
+    final payload = {
+      'company_id': companyId,
+      'worker_id': worker.workerId,
+      'requirement_id': requirementId,
+      'status': 'submitted',
+      'attachment_path': paths.isEmpty ? null : paths.first,
+      'attachment_paths': paths,
+      'expires_at': expiresAt?.toIso8601String().split('T').first,
+      'original_verified': false,
+      'notes': notes.trim().isEmpty ? null : notes.trim(),
+      'updated_by': _client.auth.currentUser?.id,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final Map<String, dynamic> saved;
+    if (row == null) {
+      saved = await _client
+          .from('worker_document_statuses')
+          .insert(payload)
+          .select()
+          .single();
+    } else {
+      var query = _client
+          .from('worker_document_statuses')
+          .update(payload)
+          .eq('company_id', companyId)
+          .eq('worker_id', worker.workerId)
+          .eq('requirement_id', requirementId)
+          .eq('id', id);
+      if (row['updated_at'] != null) {
+        query = query.eq('updated_at', row['updated_at']);
+      }
+      saved = await query.select().single();
+    }
+    _confirmPaths(saved, paths);
   }
 
   String _extensionOf(String filename) {
@@ -345,7 +556,11 @@ class WorkerDocumentRepository {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (existing.isEmpty) {
-      await _client.from('worker_document_statuses').insert(payload).select('id').single();
+      await _client
+          .from('worker_document_statuses')
+          .insert(payload)
+          .select('id')
+          .single();
     } else {
       await _client
           .from('worker_document_statuses')
@@ -353,7 +568,9 @@ class WorkerDocumentRepository {
           .eq('company_id', companyId)
           .eq('worker_id', worker.workerId)
           .eq('requirement_id', requirementId)
-          .eq('id', existing.first['id']).select('id').single();
+          .eq('id', existing.first['id'])
+          .select('id')
+          .single();
     }
   }
 
@@ -365,7 +582,16 @@ class WorkerDocumentRepository {
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   }) async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('SKOへのログインが必要です。');
+    void requireActor() {
+      if (_client.auth.currentUser?.id != actor) {
+        throw StateError('ログインが変更されました。書類一覧を開き直してください。');
+      }
+    }
+
     if ((attachmentBytes == null) != (originalFilename == null)) {
       throw ArgumentError('写真データとファイル名を確認してください。');
     }
@@ -375,26 +601,41 @@ class WorkerDocumentRepository {
         expiresAt: expiresAt,
         notes: notes,
       );
+      requireActor();
       return;
     }
     final worker = await currentWorker();
+    requireActor();
     final companyId = await _companyId();
+    requireActor();
     final existing = await _client
         .from('worker_document_statuses')
-        .select('id')
+        .select('id, attachment_path')
         .eq('company_id', companyId)
         .eq('worker_id', worker.workerId)
         .eq('requirement_id', requirementId)
         .limit(1);
-    final slot = existing.isEmpty ? 'own-upload' : existing.first['id'].toString();
+    requireActor();
+    if (requireEmptyAttachment &&
+        existing.isNotEmpty &&
+        (existing.first['attachment_path']?.toString() ?? '').isNotEmpty) {
+      throw StateError('保存済みの写真は保持します。複数写真の準備後に追加してください。');
+    }
+    final slot = existing.isEmpty
+        ? 'own-upload'
+        : existing.first['id'].toString();
     final objectName =
         '${DateTime.now().microsecondsSinceEpoch}${_extensionOf(originalFilename!)}';
-    final path = '$companyId/${worker.workerId}/$requirementId/$slot/$objectName';
-    await _client.storage.from(_bucket).uploadBinary(
+    final path =
+        '$companyId/${worker.workerId}/$requirementId/$slot/$objectName';
+    await _client.storage
+        .from(_bucket)
+        .uploadBinary(
           path,
           attachmentBytes,
           fileOptions: const FileOptions(upsert: false),
         );
+    requireActor();
     final payload = {
       'company_id': companyId,
       'worker_id': worker.workerId,
@@ -404,18 +645,29 @@ class WorkerDocumentRepository {
       'expires_at': expiresAt?.toIso8601String().split('T').first,
       'original_verified': false,
       'notes': notes.trim().isEmpty ? null : notes.trim(),
-      'updated_by': _client.auth.currentUser?.id,
+      'updated_by': actor,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (existing.isEmpty) {
-      await _client.from('worker_document_statuses').insert(payload).select('id').single();
+      await _client
+          .from('worker_document_statuses')
+          .insert(payload)
+          .select('id')
+          .single();
     } else {
-      await _client.from('worker_document_statuses').update(payload)
+      var update = _client
+          .from('worker_document_statuses')
+          .update(payload)
           .eq('company_id', companyId)
           .eq('worker_id', worker.workerId)
           .eq('requirement_id', requirementId)
-          .eq('id', existing.first['id']).select('id').single();
+          .eq('id', existing.first['id']);
+      if (requireEmptyAttachment) {
+        update = update.isFilter('attachment_path', null);
+      }
+      await update.select('id').single();
     }
+    requireActor();
   }
 
   Future<Map<String, dynamic>> uploadOwnAttachment({
@@ -425,53 +677,12 @@ class WorkerDocumentRepository {
     required String originalFilename,
   }) async {
     final worker = await currentWorker();
-    final companyId = await _companyId();
-    final rows = await _client
-        .from('worker_document_statuses')
-        .select('id, attachment_path')
-        .eq('company_id', companyId)
-        .eq('worker_id', worker.workerId)
-        .eq('id', statusId)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('本人の書類情報を確認できません。');
-
-    final oldPath = rows.first['attachment_path']?.toString();
-    final extension = _extensionOf(originalFilename);
-    final objectName = '${DateTime.now().microsecondsSinceEpoch}$extension';
-    final storagePath =
-        '$companyId/${worker.workerId}/$requirementId/$statusId/$objectName';
-
-    await _client.storage.from(_bucket).uploadBinary(
-      storagePath,
-      bytes,
-      fileOptions: const FileOptions(upsert: false),
+    final row = await _attachmentRow(statusId, worker.workerId, requirementId);
+    return saveAttachmentPhotos(
+      row: row,
+      own: true,
+      photos: [WorkerDocumentPhoto.pending(bytes, originalFilename)],
     );
-
-    try {
-      final updated = await _client
-          .from('worker_document_statuses')
-          .update({
-            'attachment_path': storagePath,
-            'status': 'submitted',
-            'original_verified': false,
-            'updated_by': _client.auth.currentUser?.id,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('company_id', companyId)
-          .eq('worker_id', worker.workerId)
-          .eq('id', statusId)
-          .select(
-            'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, updated_at',
-          )
-          .single();
-      if (oldPath != null && oldPath.isNotEmpty && oldPath != storagePath) {
-        await _client.storage.from(_bucket).remove([oldPath]);
-      }
-      return Map<String, dynamic>.from(updated);
-    } catch (_) {
-      await _client.storage.from(_bucket).remove([storagePath]);
-      rethrow;
-    }
   }
 
   Future<void> updateStatus({

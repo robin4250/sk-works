@@ -1,3 +1,5 @@
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ class InvoicePdfService {
 
   static Future<Uint8List> buildPdf(
     List<InvoiceCalculationResult> invoices, {
+    Map<String, ExpenseDocumentDetails>? expenseDetailsByInvoice,
     String? title,
     InvoiceSettingsData? settings,
     PdfPageFormat format = PdfPageFormat.a4,
@@ -36,6 +39,7 @@ class InvoicePdfService {
     );
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
       final sealFont = effectiveSettings?.companySealEnabled == false
           ? regular
           : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);
@@ -75,6 +79,9 @@ class InvoicePdfService {
             ),
           ),
         );
+        if (pageIndex == 0 && expenses != null) {
+          ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+        }
       }
     }
     return document.save();
@@ -656,6 +663,7 @@ class InvoicePdfService {
                 invoice.companySealSnapshot.registeredName(
                     settings?.companyName ?? ''),
                 style: invoice.companySealSnapshot.style,
+                companyId: invoice.companySealSnapshot.companyId,
                 font: sealFont,
                 fallbackFont: fallbackFont,
               ),
@@ -1099,8 +1107,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     top: false,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          Text(SkoLanguageController.tr('iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。')),
+                          const SizedBox(height: 6),
+                          Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => Printing.layoutPdf(
@@ -1126,9 +1138,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                                 ),
                               ),
                               icon: const Icon(Icons.ios_share_outlined),
-                              label: const Text('共有'),
+                              label: Text(SkoLanguageController.tr('保存・共有')),
                             ),
                           ),
+                          ]),
                         ],
                       ),
                     ),

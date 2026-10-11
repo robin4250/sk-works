@@ -437,16 +437,35 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                         if (_canReadPayrollRates && _companyId != null) ...[
                           Card(
-                            child: ListTile(
-                              leading: const Icon(Icons.percent_outlined),
-                              title: const Text('会社共通の税率・保険料率'),
-                              subtitle: Text(_canManageCompany
-                                  ? '社会保険・雇用保険・所得税資料'
-                                  : '料率・適用月・情報元の閲覧'),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => CompanyPayrollRatesPage(companyId: _companyId!),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(23),
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 1.8,
+                              ),
+                            ),
+                            child: Container(
+                              margin: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 1.8,
+                                ),
+                              ),
+                              child: ListTile(
+                                leading: const Icon(Icons.percent_outlined),
+                                title: const Text('会社共通の税率・保険料率'),
+                                subtitle: Text(_canManageCompany
+                                    ? '社会保険・雇用保険・所得税資料'
+                                    : '料率・適用月・情報元の閲覧'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CompanyPayrollRatesPage(
+                                      companyId: _companyId!,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),

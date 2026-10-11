@@ -427,6 +427,9 @@ class _PayrollStatementPreviewPageState
                 ? const Center(child: CircularProgressIndicator())
                 : _statementUnavailable || _finalizationUncertain || _confirmationError != null
                 ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
+                : statement.detail['tax_calculation'] is Map &&
+                    (statement.detail['tax_calculation'] as Map)['blocked'] == true
+                ? Center(child: Text('税計算の条件を確認してください。\n${(statement.detail['tax_calculation'] as Map)['reason']}'))
                 : InteractiveViewer(
                     transformationController: _zoomController,
                     minScale: 1,

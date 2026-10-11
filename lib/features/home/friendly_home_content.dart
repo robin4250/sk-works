@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import '../notifications/notification_settings_button.dart';
+import 'home_route_action_state.dart';
+import 'initial_company_rates_card.dart';
 import 'home_appearance.dart';
 import 'home_membership_repository.dart';
 
@@ -40,6 +43,8 @@ class FriendlyHomeContent extends StatelessWidget {
     this.showAttendanceReport = true,
     this.showTodayAttendance = true,
     this.attendanceStatus = const HomeAttendanceStatus(),
+    this.routeActionState = HomeRouteActionState.unavailable,
+    this.hasPendingRouteRecord = false,
     this.appearance = const HomeAppearance(),
     this.contentTopInset = 10,
     required this.onOpen,
@@ -58,6 +63,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final bool showAttendanceReport;
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final double contentTopInset;
   final Future<void> Function(String key) onOpen;
@@ -86,6 +93,7 @@ class FriendlyHomeContent extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (tutorialCard != null) tutorialCard!,
+              if (identity.isAdmin) const InitialCompanyRatesCard(),
               if (requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
@@ -107,6 +115,8 @@ class FriendlyHomeContent extends StatelessWidget {
                 showAttendanceReport: showAttendanceReport,
                 showTodayAttendance: showTodayAttendance,
                 attendanceStatus: attendanceStatus,
+                routeActionState: routeActionState,
+                hasPendingRouteRecord: hasPendingRouteRecord,
                 appearance: appearance,
                 onOpen: onOpen,
                 onReorderAction: onReorderAction,
@@ -228,12 +238,16 @@ class _RequiredDocumentAttentionCardState
 class _PersonalAttendanceCard extends StatelessWidget {
   const _PersonalAttendanceCard({
     required this.status,
+    required this.routeActionState,
+    required this.hasPendingRouteRecord,
     required this.vehicleRoutesEnabled,
     required this.buttonOpacity,
     required this.onOpen,
   });
 
   final HomeAttendanceStatus status;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final bool vehicleRoutesEnabled;
   final double buttonOpacity;
   final Future<void> Function(String key) onOpen;
@@ -243,6 +257,20 @@ class _PersonalAttendanceCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final isWorking = status.phase == HomeAttendancePhase.working;
     final isFinished = status.phase == HomeAttendancePhase.finished;
+    // A selected route is only a future destination. These controls belong to
+    // one confirmed, currently open route shift, including when selection has
+    // subsequently changed.
+    final hasActiveRouteShift = isWorking &&
+        status.openShifts.length == 1 &&
+        (status.openShifts.single.routeId?.trim().isNotEmpty ?? false);
+    final hasRouteDestination = hasActiveRouteShift ||
+        (status.selectedRouteId?.trim().isNotEmpty ?? false);
+    final routeName = status.selectedRouteName ??
+        (hasActiveRouteShift ? status.openShifts.single.routeName : null);
+    final disabledActionStyle = OutlinedButton.styleFrom(
+      disabledForegroundColor: colors.onSurface.withValues(alpha: 0.38),
+      side: BorderSide(color: colors.onSurface.withValues(alpha: 0.12)),
+    );
 
     return Card(
       child: Padding(
@@ -297,7 +325,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (status.siteName?.trim().isNotEmpty == true) ...[
+            if (!hasRouteDestination && status.siteName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -343,7 +371,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
               ),
             ],
             if (vehicleRoutesEnabled &&
-                status.selectedRouteName?.trim().isNotEmpty == true) ...[
+                routeName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 3),
               InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -354,7 +382,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '選択中のルート：${status.selectedRouteName}',
+                          '選択中のルート：$routeName',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -392,13 +420,64 @@ class _PersonalAttendanceCard extends StatelessWidget {
                     icon: const Icon(Icons.tune_outlined),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
+                  if (vehicleRoutesEnabled && hasActiveRouteShift) ...[
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: routeActionState == HomeRouteActionState.arrive && isWorking
+                              ? FilledButton.icon(
+                                  onPressed: () => onOpen('route_visit_arrive'),
+                                  icon: const Icon(Icons.place_outlined),
+                                  label: Text(SkoLanguageController.tr('現場到着')),
+                                )
+                              : OutlinedButton.icon(
+                                  style: disabledActionStyle,
+                                  onPressed: null,
+                                  icon: const Icon(Icons.place_outlined),
+                                  label: Text(SkoLanguageController.tr('現場到着')),
+                                ),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: routeActionState == HomeRouteActionState.move && isWorking
+                              ? FilledButton.icon(
+                                  onPressed: () => onOpen('route_visit_move'),
+                                  icon: const Icon(Icons.route_outlined),
+                                  label: Text(SkoLanguageController.tr('現場移動')),
+                                )
+                              : OutlinedButton.icon(
+                                  style: disabledActionStyle,
+                                  onPressed: null,
+                                  icon: const Icon(Icons.route_outlined),
+                                  label: Text(SkoLanguageController.tr('現場移動')),
+                                ),
+                        ),
+                      ],
+                    ),
+                    if (routeActionState == HomeRouteActionState.unavailable)
+                      TextButton.icon(
+                        onPressed: () => onOpen('route_visit'),
+                        icon: const Icon(Icons.info_outline),
+                        label: Text(SkoLanguageController.tr('現場記録の状態を確認')),
+                      ),
+                  ],
+                  if (hasPendingRouteRecord) ...[
+                    const SizedBox(height: 9),
+                    TextButton.icon(
+                      onPressed: () => onOpen('route_visit_recover'),
+                      icon: const Icon(Icons.refresh),
+                      label: Text(SkoLanguageController.tr('保留記録を再確認')),
+                    ),
+                  ],
                   const SizedBox(height: 9),
                   Row(
                     children: [
                       Expanded(
                         child: isWorking || isFinished
                             ? OutlinedButton.icon(
-                                onPressed: () => onOpen('clock_in'),
+                                style: disabledActionStyle,
+                                onPressed: null,
                                 icon: const Icon(Icons.login),
                                 label: Text(SkoLanguageController.tr('出勤')),
                               )
@@ -417,7 +496,8 @@ class _PersonalAttendanceCard extends StatelessWidget {
                                 label: Text(SkoLanguageController.tr('退勤')),
                               )
                             : OutlinedButton.icon(
-                                onPressed: () => onOpen('clock_out'),
+                                style: disabledActionStyle,
+                                onPressed: null,
                                 icon: const Icon(Icons.logout),
                                 label: Text(SkoLanguageController.tr('退勤')),
                               ),
@@ -471,6 +551,8 @@ class _OrderedHomeContent extends StatelessWidget {
     required this.showAttendanceReport,
     required this.showTodayAttendance,
     required this.attendanceStatus,
+    required this.routeActionState,
+    required this.hasPendingRouteRecord,
     required this.appearance,
     required this.onOpen,
     required this.onReorderAction,
@@ -485,6 +567,8 @@ class _OrderedHomeContent extends StatelessWidget {
   final bool showAttendanceReport;
   final bool showTodayAttendance;
   final HomeAttendanceStatus attendanceStatus;
+  final HomeRouteActionState routeActionState;
+  final bool hasPendingRouteRecord;
   final HomeAppearance appearance;
   final Future<void> Function(String key) onOpen;
   final Future<void> Function(String draggedKey, String targetKey)?
@@ -534,7 +618,9 @@ class _OrderedHomeContent extends StatelessWidget {
           columns: gridColumns,
           actionOrder: actionOrder,
           opacity: appearance.buttonOpacity,
-          onOpen: onOpen,
+          onOpen: (key) async {
+            await onOpen(key);
+          },
           onReorderAction: onReorderAction,
         ),
       );
@@ -553,6 +639,8 @@ class _OrderedHomeContent extends StatelessWidget {
               opacity: appearance.cardOpacity,
               child: _PersonalAttendanceCard(
                 status: attendanceStatus,
+                routeActionState: routeActionState,
+                hasPendingRouteRecord: hasPendingRouteRecord,
                 vehicleRoutesEnabled: moduleEnabled('vehicle_routes'),
                 buttonOpacity: appearance.cardButtonOpacity,
                 onOpen: onOpen,
@@ -675,11 +763,19 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              SkoLanguageController.tr('本日の出勤'),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    SkoLanguageController.tr('本日の出勤'),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                const NotificationSettingsButton(),
+              ],
             ),
             const SizedBox(height: 6),
             Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),
@@ -865,7 +961,7 @@ class _HomeActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: dragging ? null : () => onOpen(item.key),
           child: Container(
-            padding: EdgeInsets.all(compact ? 8 : 14),
+            padding: EdgeInsets.all(compact ? (isViewer ? 5 : 8) : 14),
             decoration: BoxDecoration(
               border: borderWidth > 0
                   ? Border.all(color: borderColor, width: borderWidth)

@@ -1,3 +1,5 @@
+import '../../domain/company_seal_design.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -7,10 +9,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 /// Generates a company-specific square seal from the registered company name.
-/// No company name or seal bitmap is embedded in the application.
+/// Approved PNG styles are immutable and scoped to their registered company.
 class CompanySealPdf {
   const CompanySealPdf._();
 
+  static final _pngBytes = <String, Uint8List>{};
   static Future<ByteData>? _fontData;
   static Future<ByteData>? _reishoFontData;
   static Future<Set<int>>? _reishoCoverage;
@@ -20,12 +23,28 @@ class CompanySealPdf {
   static const _reishoAssets = 'assets/fonts/company-seal/aoyagi-reisho';
 
   static Future<pw.Font> loadStyleFont(String style) async {
+    if (CompanySealDesign.isPng(style)) {
+      final design = CompanySealDesign.designs[style]!;
+      if (!_pngBytes.containsKey(style)) {
+        final bytes = (await rootBundle.load(
+          design.asset,
+        )).buffer.asUint8List();
+        if (crypto.sha256.convert(bytes).toString() != design.sha256) {
+          throw StateError('The saved PNG seal asset has changed.');
+        }
+        _pngBytes[style] = bytes;
+      }
+      return loadFont();
+    }
     if (style == legacyStyle) return loadFont();
     if (style != reishoStyle) throw StateError('Unknown company seal style.');
     try {
       await unsupportedReishoCharacters('');
-      return pw.Font.ttf(await (_reishoFontData ??=
-          rootBundle.load('$_reishoAssets/AoyagiReisho.ttf')));
+      return pw.Font.ttf(
+        await (_reishoFontData ??= rootBundle.load(
+          '$_reishoAssets/AoyagiReisho.ttf',
+        )),
+      );
     } catch (_) {
       _reishoFontData = null;
       rethrow;
@@ -38,8 +57,9 @@ class CompanySealPdf {
           .loadString('$_reishoAssets/coverage.json')
           .then((value) => (jsonDecode(value) as List).cast<int>().toSet()));
       _loadedReishoCoverage = coverage;
-      return String.fromCharCodes(name.runes
-          .where((rune) => !coverage.contains(rune)).toSet());
+      return String.fromCharCodes(
+        name.runes.where((rune) => !coverage.contains(rune)).toSet(),
+      );
     } catch (_) {
       _reishoCoverage = null;
       rethrow;
@@ -54,7 +74,8 @@ class CompanySealPdf {
     var bestScore = double.infinity;
     for (var columns = 1; columns <= math.min(chars.length, 8); columns++) {
       final rows = (chars.length / columns).ceil();
-      final score = math.max(columns, rows).toDouble() +
+      final score =
+          math.max(columns, rows).toDouble() +
           (columns * rows - chars.length) * 0.001;
       if (score < bestScore) {
         bestScore = score;
@@ -62,26 +83,30 @@ class CompanySealPdf {
       }
     }
     final rows = (chars.length / bestColumns).ceil();
-    return [for (var offset = 0; offset < chars.length; offset += rows)
-      String.fromCharCodes(chars.sublist(offset,
-          math.min(offset + rows, chars.length)))];
+    return [
+      for (var offset = 0; offset < chars.length; offset += rows)
+        String.fromCharCodes(
+          chars.sublist(offset, math.min(offset + rows, chars.length)),
+        ),
+    ];
   }
 
   static double reishoGlyphSize(String name, double size) {
     final columns = balancedColumns(name);
     if (columns.isEmpty) return 0;
-    final rows = columns.map((column) => column.runes.length)
-        .reduce(math.max);
+    final rows = columns.map((column) => column.runes.length).reduce(math.max);
     return size * 0.85 * 0.82 / math.max(columns.length, rows);
   }
 
   static pw.Widget _buildReisho(String name, double size, pw.Font font) {
-    if (name.trim().runes.length > 16 ||
-        reishoGlyphSize(name, size) < 4.5) {
-      throw StateError('The registered company name is too small for this Reisho seal.');
+    if (name.trim().runes.length > 16 || reishoGlyphSize(name, size) < 4.5) {
+      throw StateError(
+        'The registered company name is too small for this Reisho seal.',
+      );
     }
     final coverage = _loadedReishoCoverage;
-    if (coverage == null || name.runes.any((rune) => !coverage.contains(rune))) {
+    if (coverage == null ||
+        name.runes.any((rune) => !coverage.contains(rune))) {
       throw StateError('The registered company name is unsupported by Reisho.');
     }
     final columns = balancedColumns(name);
@@ -95,19 +120,34 @@ class CompanySealPdf {
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.red, width: size * 0.04),
       ),
-      child: pw.Center(child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.center,
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [for (final column in columns.reversed) pw.Column(
-          children: [for (final rune in column.runes) pw.SizedBox(
-            width: cellSize,
-            height: cellSize,
-            child: pw.Center(child: pw.Text(String.fromCharCode(rune),
-              style: pw.TextStyle(font: font, fontSize: cellSize * 0.82,
-                  color: PdfColors.red))),
-          )],
-        )],
-      )),
+      child: pw.Center(
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            for (final column in columns.reversed)
+              pw.Column(
+                children: [
+                  for (final rune in column.runes)
+                    pw.SizedBox(
+                      width: cellSize,
+                      height: cellSize,
+                      child: pw.Center(
+                        child: pw.Text(
+                          String.fromCharCode(rune),
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: cellSize * 0.82,
+                            color: PdfColors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -157,9 +197,27 @@ class CompanySealPdf {
     pw.Font? font,
     pw.Font? fallbackFont,
     String style = legacyStyle,
+    String? companyId,
   }) {
+    if (CompanySealDesign.isPng(style)) {
+      if (!CompanySealDesign.matches(companyId, companyName)) {
+        throw StateError('The PNG seal belongs to another registered company.');
+      }
+      final bytes = _pngBytes[style];
+      if (bytes == null) {
+        throw StateError('PNG seal must be loaded explicitly.');
+      }
+      return pw.Image(
+        pw.MemoryImage(bytes),
+        width: size,
+        height: size,
+        fit: pw.BoxFit.contain,
+      );
+    }
     if (style == reishoStyle) {
-      if (font == null) throw StateError('Reisho font must be loaded explicitly.');
+      if (font == null) {
+        throw StateError('Reisho font must be loaded explicitly.');
+      }
       return _buildReisho(companyName, size, font);
     }
     if (style != legacyStyle) throw StateError('Unknown company seal style.');

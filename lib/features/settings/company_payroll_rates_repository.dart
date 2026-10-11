@@ -150,6 +150,14 @@ abstract class CompanyPayrollRatesRepository {
     required String candidateId, required int expectedVersion, Map<String, dynamic>? expectedValue});
 }
 
+abstract class OfficialCompanyPayrollRateFetcher {
+  String get officialFetchActor;
+  Future<List<String>> fetchOfficial(
+    String companyId,
+    Map<String, String> months,
+  );
+}
+
 bool payrollRateValuesEqual(dynamic left, dynamic right) {
   if (left is Map && right is Map) {
     return left.length == right.length && left.keys.every((key) => right.containsKey(key) && payrollRateValuesEqual(left[key], right[key]));
@@ -201,9 +209,31 @@ class PayrollRatePendingWrite {
   }
 }
 
-class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesRepository {
+class SupabaseCompanyPayrollRatesRepository implements CompanyPayrollRatesRepository, OfficialCompanyPayrollRateFetcher {
   SupabaseCompanyPayrollRatesRepository({CompanyPayrollRateRpc? invoke}) : _invoke = invoke;
   final CompanyPayrollRateRpc? _invoke;
+  @override
+  String get officialFetchActor => SupabaseBackend.client.auth.currentUser?.id ?? '';
+
+  @override
+  Future<List<String>> fetchOfficial(
+    String companyId,
+    Map<String, String> months,
+  ) async {
+    final response = await SupabaseBackend.client.functions.invoke(
+      'fetch-company-payroll-rates',
+      body: {'company_id': companyId, ...months},
+    );
+    final data = response.data;
+    if (response.status != 200 ||
+        data is! Map ||
+        data['ok'] != true ||
+        data['warnings'] is! List) {
+      throw const FormatException('公式料率の取得結果を確認できません');
+    }
+    return (data['warnings'] as List).map((value) => value as String).toList();
+  }
+
   Future<dynamic> _call(String name, Map<String, dynamic> parameters) async {
     final invoke = _invoke;
     if (invoke != null) return invoke(name, parameters);

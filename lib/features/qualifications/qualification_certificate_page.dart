@@ -22,6 +22,7 @@ class _QualificationCertificatePageState
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
   bool _canManage = false;
+  bool _extraPhotosAvailable = false;
   String _query = '';
   String? _busyId;
   String? _error;
@@ -58,10 +59,12 @@ class _QualificationCertificatePageState
       if (!mounted) return;
       setState(() {
         _canManage = values[1] as bool;
+        _extraPhotosAvailable = data['supports_extra_photos'] == true;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
-        _qualifications =
-            List<Map<String, dynamic>>.from(data['qualifications'] as List);
+        _qualifications = List<Map<String, dynamic>>.from(
+          data['qualifications'] as List,
+        );
         _loading = false;
         _error = null;
       });
@@ -83,17 +86,20 @@ class _QualificationCertificatePageState
       for (final row in _workers) row['id']?.toString() ?? '': row,
     };
     final needle = _query.trim().toLowerCase();
-    final filtered = _qualifications.where((row) {
-      final master = masterById[row['qualification_master_id']?.toString() ?? ''];
-      final worker = workerById[row['worker_id']?.toString() ?? ''];
-      if (needle.isEmpty) return true;
-      final haystack = [
-        master?['name'],
-        worker?['name'],
-        row['certificate_number'],
-      ].whereType<Object>().join(' ').toLowerCase();
-      return haystack.contains(needle);
-    }).toList(growable: false);
+    final filtered = _qualifications
+        .where((row) {
+          final master =
+              masterById[row['qualification_master_id']?.toString() ?? ''];
+          final worker = workerById[row['worker_id']?.toString() ?? ''];
+          if (needle.isEmpty) return true;
+          final haystack = [
+            master?['name'],
+            worker?['name'],
+            row['certificate_number'],
+          ].whereType<Object>().join(' ').toLowerCase();
+          return haystack.contains(needle);
+        })
+        .toList(growable: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -129,69 +135,72 @@ class _QualificationCertificatePageState
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                      ? _ErrorState(message: _error!, onRetry: _load)
-                      : filtered.isEmpty
-                          ? const _EmptyState()
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final row = filtered[index];
-                                final master = masterById[
-                                    row['qualification_master_id']?.toString() ?? ''];
-                                final worker = workerById[
-                                    row['worker_id']?.toString() ?? ''];
-                                final attachment =
-                                    row['attachment_path']?.toString() ?? '';
-                                final backAttachment =
-                                    row['attachment_back_path']?.toString() ?? '';
-                                final busy = _busyId == row['id']?.toString();
-                                return Card(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      child: busy
-                                          ? const SizedBox.square(
-                                              dimension: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : Icon(
-                                              attachment.isEmpty
-                                                  ? Icons.document_scanner_outlined
-                                                  : Icons.verified_outlined,
-                                            ),
-                                    ),
-                                    title: Text(
-                                      master?['name']?.toString() ?? '資格',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
+                  ? _ErrorState(message: _error!, onRetry: _load)
+                  : filtered.isEmpty
+                  ? const _EmptyState()
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final row = filtered[index];
+                        final master =
+                            masterById[row['qualification_master_id']
+                                    ?.toString() ??
+                                ''];
+                        final worker =
+                            workerById[row['worker_id']?.toString() ?? ''];
+                        final attachment =
+                            row['attachment_path']?.toString() ?? '';
+                        final backAttachment =
+                            row['attachment_back_path']?.toString() ?? '';
+                        final busy = _busyId == row['id']?.toString();
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: busy
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
+                                    )
+                                  : Icon(
+                                      attachment.isEmpty
+                                          ? Icons.document_scanner_outlined
+                                          : Icons.verified_outlined,
                                     ),
-                                    subtitle: Text(
-                                      [
-                                        worker?['name']?.toString() ?? '保有者不明',
-                                        attachment.isEmpty ? '表面未登録' : '表面登録済み',
-                                        backAttachment.isEmpty
-                                            ? '裏面なし'
-                                            : '裏面登録済み',
-                                      ].join(' / '),
-                                    ),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    enabled: !busy,
-                                    onTap: busy
-                                        ? null
-                                        : () => _showActions(
-                                              row,
-                                              master?['name']?.toString() ?? '資格',
-                                              worker?['name']?.toString() ?? '保有者不明',
-                                            ),
-                                  ),
-                                );
-                              },
                             ),
+                            title: Text(
+                              master?['name']?.toString() ?? '資格',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              [
+                                worker?['name']?.toString() ?? '保有者不明',
+                                attachment.isEmpty ? '表面未登録' : '表面登録済み',
+                                backAttachment.isEmpty ? '裏面なし' : '裏面登録済み',
+                                if (QualificationCertificateRepository.extraPaths(
+                                  row,
+                                ).isNotEmpty)
+                                  '追加${QualificationCertificateRepository.extraPaths(row).length}枚',
+                              ].join(' / '),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            enabled: !busy,
+                            onTap: busy
+                                ? null
+                                : () => _showActions(
+                                    row,
+                                    master?['name']?.toString() ?? '資格',
+                                    worker?['name']?.toString() ?? '保有者不明',
+                                  ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -223,13 +232,13 @@ class _QualificationCertificatePageState
               children: [
                 Text(
                   qualificationName,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 4),
                 Text(workerName),
-                if ((row['certificate_number']?.toString() ?? '').isNotEmpty) ...[
+                if ((row['certificate_number']?.toString() ?? '')
+                    .isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text('証明書番号: ${row['certificate_number']}'),
                 ],
@@ -285,6 +294,65 @@ class _QualificationCertificatePageState
                         }
                       : null,
                 ),
+                for (final path
+                    in QualificationCertificateRepository.extraPaths(row)) ...[
+                  const SizedBox(height: 18),
+                  _sideSection(
+                    title:
+                        '追加写真 ${QualificationCertificateRepository.extraPaths(row).indexOf(path) + 3}',
+                    path: path,
+                    repository: repository,
+                    onCamera: _canManage
+                        ? () {
+                            Navigator.pop(sheetContext);
+                            _uploadExtra(
+                              row,
+                              ImageSource.camera,
+                              replacingPath: path,
+                            );
+                          }
+                        : null,
+                    onGallery: _canManage
+                        ? () {
+                            Navigator.pop(sheetContext);
+                            _uploadExtra(
+                              row,
+                              ImageSource.gallery,
+                              replacingPath: path,
+                            );
+                          }
+                        : null,
+                    onRemove: _canManage
+                        ? () {
+                            Navigator.pop(sheetContext);
+                            _removeExtra(row, path);
+                          }
+                        : null,
+                  ),
+                ],
+                if (!_extraPhotosAvailable) ...[
+                  const SizedBox(height: 18),
+                  const Text('追加写真の保存は準備中です。表面・裏面は引き続き確認できます。'),
+                ],
+                if (_canManage && _extraPhotosAvailable) ...[
+                  const SizedBox(height: 18),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _uploadExtra(row, ImageSource.gallery, multiple: true);
+                    },
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text('追加写真を選ぶ（複数可）'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _uploadExtra(row, ImageSource.camera);
+                    },
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('追加写真を撮影'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -307,10 +375,7 @@ class _QualificationCertificatePageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
             if (path.isNotEmpty)
               FutureBuilder<String>(
@@ -372,6 +437,69 @@ class _QualificationCertificatePageState
     );
   }
 
+  Future<void> _uploadExtra(
+    Map<String, dynamic> row,
+    ImageSource source, {
+    String? replacingPath,
+    bool multiple = false,
+  }) async {
+    final repository = _repository;
+    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
+    final files = multiple
+        ? await _picker.pickMultiImage(imageQuality: 88, maxWidth: 2400)
+        : [if (await _pickExtra(source) case final XFile file) file];
+    if (files.isEmpty || !mounted) return;
+    setState(() => _busyId = row['id'].toString());
+    try {
+      for (final file in files) {
+        final updated = await repository.uploadExtraCertificate(
+          qualificationId: row['id'].toString(),
+          workerId: row['worker_id'].toString(),
+          bytes: await file.readAsBytes(),
+          originalFilename: file.name,
+          replacingPath: replacingPath,
+        );
+        if (!mounted) return;
+        _replaceRow(updated);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('追加写真を保存しました')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('追加写真の保存を確認できません。再読み込みしてください: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  Future<XFile?> _pickExtra(ImageSource source) =>
+      _picker.pickImage(source: source, imageQuality: 88, maxWidth: 2400);
+
+  Future<void> _removeExtra(Map<String, dynamic> row, String path) async {
+    final repository = _repository;
+    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
+    setState(() => _busyId = row['id'].toString());
+    try {
+      final updated = await repository.removeExtraCertificate(
+        qualificationId: row['id'].toString(),
+        storagePath: path,
+      );
+      if (mounted) _replaceRow(updated);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('写真を削除できませんでした: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
   Future<void> _pickAndUpload(
     Map<String, dynamic> row,
     ImageSource source, {
@@ -408,28 +536,23 @@ class _QualificationCertificatePageState
       if (!mounted) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(back ? '資格証の裏面を保存しました' : '資格証の表面を保存しました'),
-        ),
+        SnackBar(content: Text(back ? '資格証の裏面を保存しました' : '資格証の表面を保存しました')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('資格証画像を保存できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('資格証画像を保存できませんでした: $error')));
     } finally {
       if (mounted) setState(() => _busyId = null);
     }
   }
 
-  Future<void> _remove(
-    Map<String, dynamic> row, {
-    required bool back,
-  }) async {
+  Future<void> _remove(Map<String, dynamic> row, {required bool back}) async {
     final repository = _repository;
     if (repository == null) return;
     final id = row['id']?.toString();
-    final path = row[back ? 'attachment_back_path' : 'attachment_path']?.toString();
+    final path = row[back ? 'attachment_back_path' : 'attachment_path']
+        ?.toString();
     if (id == null || path == null || path.isEmpty) return;
 
     if (mounted) setState(() => _busyId = id);
@@ -446,15 +569,12 @@ class _QualificationCertificatePageState
       if (!mounted) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(back ? '資格証の裏面を削除しました' : '資格証の表面を削除しました'),
-        ),
+        SnackBar(content: Text(back ? '資格証の裏面を削除しました' : '資格証の表面を削除しました')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('資格証画像を削除できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('資格証画像を削除できませんでした: $error')));
     } finally {
       if (mounted) setState(() => _busyId = null);
     }

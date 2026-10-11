@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import 'worker_document_photos.dart';
+import 'worker_document_photo_editor.dart';
 
 abstract interface class OwnDocumentRegistrationGateway {
   Future<Map<String, List<Map<String, dynamic>>>> loadAll();
@@ -14,13 +16,61 @@ abstract interface class OwnDocumentRegistrationGateway {
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   });
 }
 
-class _OwnDocumentRepositoryGateway
+abstract interface class OwnDocumentPhotoGateway
     implements OwnDocumentRegistrationGateway {
+  bool get photoEditingAvailable;
+  Future<String> signedUrl(String path);
+  Future<void> savePhotos({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    required List<WorkerDocumentPhoto> photos,
+    required List<String> expectedPaths,
+  });
+  Future<void> editPhotos(
+    Map<String, dynamic> row,
+    List<WorkerDocumentPhoto> photos,
+  );
+}
+
+class _OwnDocumentRepositoryGateway
+    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway {
   const _OwnDocumentRepositoryGateway(this.repository);
   final WorkerDocumentRepository repository;
+
+  @override
+  bool get photoEditingAvailable => repository.photoEditingAvailable;
+
+  @override
+  Future<String> signedUrl(String path) =>
+      repository.createSignedAttachmentUrl(path);
+
+  @override
+  Future<void> savePhotos({
+    required String requirementId,
+    DateTime? expiresAt,
+    required String notes,
+    required List<WorkerDocumentPhoto> photos,
+    required List<String> expectedPaths,
+  }) => repository.saveOwnDocumentPhotos(
+    requirementId: requirementId,
+    expiresAt: expiresAt,
+    notes: notes,
+    photos: photos,
+    expectedPaths: expectedPaths,
+  );
+
+  @override
+  Future<void> editPhotos(
+    Map<String, dynamic> row,
+    List<WorkerDocumentPhoto> photos,
+  ) async {
+    await repository.saveAttachmentPhotos(row: row, photos: photos, own: true);
+  }
 
   @override
   Future<Map<String, List<Map<String, dynamic>>>> loadAll() =>
@@ -33,12 +83,14 @@ class _OwnDocumentRepositoryGateway
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   }) => repository.saveOwnDocument(
     requirementId: requirementId,
     expiresAt: expiresAt,
     notes: notes,
     attachmentBytes: attachmentBytes,
     originalFilename: originalFilename,
+    requireEmptyAttachment: requireEmptyAttachment,
   );
 }
 
@@ -72,7 +124,8 @@ class _OwnDocumentRegistrationPageState
     final repository = widget.gateway == null
         ? WorkerDocumentRepository.maybeCreate()
         : null;
-    _repository = widget.gateway ??
+    _repository =
+        widget.gateway ??
         (repository == null ? null : _OwnDocumentRepositoryGateway(repository));
     _load();
   }
@@ -96,8 +149,7 @@ class _OwnDocumentRegistrationPageState
       if (!mounted) return;
       setState(() {
         _worker = workers.isEmpty ? null : workers.first;
-        _requirements =
-            data['requirements'] ?? const <Map<String, dynamic>>[];
+        _requirements = data['requirements'] ?? const <Map<String, dynamic>>[];
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
         _loading = false;
       });
@@ -117,30 +169,34 @@ class _OwnDocumentRegistrationPageState
     return null;
   }
 
-  Future<void> _registerDocument() async {
+  Future<void> _registerDocument({String? initialRequirementId}) async {
     final repository = _repository;
     if (repository == null || _requirements.isEmpty || _saving) return;
 
     final needle = _query.trim().toLowerCase();
-    final candidates = _requirements.where((row) {
-      if (needle.isEmpty) return true;
-      return [row['name'], row['scope']]
-          .whereType<Object>()
-          .join(' ')
-          .toLowerCase()
-          .contains(needle);
-    }).toList(growable: false);
+    final candidates = _requirements
+        .where((row) {
+          if (needle.isEmpty) return true;
+          return [
+            row['name'],
+            row['scope'],
+          ].whereType<Object>().join(' ').toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('該当する書類種類がありません')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('該当する書類種類がありません')));
       return;
     }
 
-    var requirementId = candidates.first['id']?.toString();
+    var requirementId =
+        initialRequirementId ?? candidates.first['id']?.toString();
     DateTime? expiresAt;
     final notes = TextEditingController();
     var attachPhoto = false;
+    final photoEditingAvailable =
+        repository is! OwnDocumentPhotoGateway ||
+        repository.photoEditingAvailable;
 
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -169,8 +225,10 @@ class _OwnDocumentRegistrationPageState
                         child: Text(row['name']?.toString() ?? '書類'),
                       ),
                   ],
-                  onChanged: (value) =>
-                      setDialogState(() => requirementId = value),
+                  onChanged: (value) => setDialogState(() {
+                    requirementId = value;
+                    attachPhoto = false;
+                  }),
                 ),
                 const SizedBox(height: 8),
                 ListTile(
@@ -200,12 +258,21 @@ class _OwnDocumentRegistrationPageState
                   decoration: const InputDecoration(labelText: '備考'),
                   maxLines: 2,
                 ),
+                if (!photoEditingAvailable)
+                  const Text(
+                    '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
+                  ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('写真を添付する'),
                   value: attachPhoto,
-                  onChanged: (value) =>
-                      setDialogState(() => attachPhoto = value ?? false),
+                  onChanged:
+                      !photoEditingAvailable &&
+                          workerDocumentPaths(_statusFor(requirementId ?? ''))
+                              .isNotEmpty
+                      ? null
+                      : (value) =>
+                            setDialogState(() => attachPhoto = value ?? false),
                 ),
               ],
             ),
@@ -219,11 +286,11 @@ class _OwnDocumentRegistrationPageState
               onPressed: requirementId == null
                   ? null
                   : () => Navigator.pop(dialogContext, {
-                        'requirementId': requirementId,
-                        'expiresAt': expiresAt,
-                        'notes': notes.text.trim(),
-                        'attachPhoto': attachPhoto,
-                      }),
+                      'requirementId': requirementId,
+                      'expiresAt': expiresAt,
+                      'notes': notes.text.trim(),
+                      'attachPhoto': attachPhoto,
+                    }),
               child: const Text('登録'),
             ),
           ],
@@ -236,6 +303,31 @@ class _OwnDocumentRegistrationPageState
     final requirement = draft['requirementId'] as String;
     setState(() => _saving = true);
     try {
+      if (repository is OwnDocumentPhotoGateway &&
+          repository.photoEditingAvailable &&
+          widget.pickPhoto == null &&
+          draft['attachPhoto'] == true) {
+        final photos = await editWorkerDocumentPhotos(
+          context,
+          paths: workerDocumentPaths(_statusFor(requirement)),
+          signedUrl: repository.signedUrl,
+        );
+        if (photos == null || !mounted) return;
+        await repository.savePhotos(
+          requirementId: requirement,
+          expiresAt: draft['expiresAt'] as DateTime?,
+          notes: draft['notes'] as String,
+          photos: photos,
+          expectedPaths: workerDocumentPaths(_statusFor(requirement)),
+        );
+        if (!mounted) return;
+        await _load();
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('自分の書類を登録しました')));
+        }
+        return;
+      }
       Uint8List? attachmentBytes;
       String? originalFilename;
       if (draft['attachPhoto'] == true) {
@@ -278,18 +370,44 @@ class _OwnDocumentRegistrationPageState
         notes: draft['notes'] as String,
         attachmentBytes: attachmentBytes,
         originalFilename: originalFilename,
+        requireEmptyAttachment:
+            repository is OwnDocumentPhotoGateway &&
+            !repository.photoEditingAvailable &&
+            attachmentBytes != null,
       );
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('自分の書類を登録しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('自分の書類を登録しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('書類を登録できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('書類を登録できませんでした: $error')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _editPhotos(Map<String, dynamic> row) async {
+    final gateway = _repository;
+    if (gateway is! OwnDocumentPhotoGateway || _saving) return;
+    final photos = await editWorkerDocumentPhotos(
+      context,
+      paths: workerDocumentPaths(row),
+      signedUrl: gateway.signedUrl,
+      canEdit: gateway.photoEditingAvailable,
+    );
+    if (photos == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await gateway.editPhotos(row, photos);
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('写真を保存できませんでした: $error')));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -301,12 +419,14 @@ class _OwnDocumentRegistrationPageState
       builder: (context) => AlertDialog(
         title: const Text('自分の書類を登録'),
         content: const Text(
-          '写真を添付する場合は、写真を選んでから登録します。'
+          '写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
+          '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
           '写真の選択や撮影をキャンセルした場合は保存しません。'
           '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
           '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
           'すでに保存した写真は、この画面の差し替えで削除しません。'
-          '\n\n保存先の設定によって写真の送信が拒否される場合があります。'
+          '\n\n新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。'
+          'その他の書類は写真の送信停止中です。保存済み写真の確認はできます。'
           '失敗表示が出た場合は登録完了ではありません。',
         ),
         actions: [
@@ -322,14 +442,15 @@ class _OwnDocumentRegistrationPageState
   @override
   Widget build(BuildContext context) {
     final needle = _query.trim().toLowerCase();
-    final requirements = _requirements.where((row) {
-      if (needle.isEmpty) return true;
-      return [row['name'], row['scope']]
-          .whereType<Object>()
-          .join(' ')
-          .toLowerCase()
-          .contains(needle);
-    }).toList(growable: false);
+    final requirements = _requirements
+        .where((row) {
+          if (needle.isEmpty) return true;
+          return [
+            row['name'],
+            row['scope'],
+          ].whereType<Object>().join(' ').toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -361,81 +482,128 @@ class _OwnDocumentRegistrationPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(child: Text(_error!, textAlign: TextAlign.center))
-                : Column(
-                    children: [
-                      Card(
-                        margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.person_outline),
-                          ),
-                          title: Text(
-                            _worker?['name']?.toString() ?? '本人',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          subtitle: const Text('ログイン中の本人の書類だけを表示します'),
-                        ),
+            ? Center(child: Text(_error!, textAlign: TextAlign.center))
+            : Column(
+                children: [
+                  Card(
+                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.person_outline),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                        child: TextField(
-                          decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search),
-                            hintText: '書類種類で検索',
-                          ),
-                          onChanged: (value) => setState(() => _query = value),
-                        ),
+                      title: Text(
+                        _worker?['name']?.toString() ?? '本人',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
-                      Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
-                          itemCount: requirements.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 6),
-                          itemBuilder: (context, index) {
-                            final requirement = requirements[index];
-                            final id = requirement['id']?.toString() ?? '';
-                            final status = _statusFor(id);
-                            final attachmentPath =
-                                status?['attachment_path']?.toString().trim() ?? '';
-                            final label = status?['status']?.toString() ==
-                                        'verified'
-                                    ? '確認済み'
-                                    : status?['status']?.toString() ==
-                                            'submitted'
-                                        ? '提出済み'
-                                        : '未登録';
-                            return Card(
-                              child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.description_outlined),
-                                ),
-                                title: Text(
-                                  requirement['name']?.toString() ?? '書類',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  [
-                                    label,
-                                    if ((status?['expires_at']?.toString() ?? '')
-                                        .isNotEmpty)
-                                      '期限 ${status!['expires_at']}',
-                                    if (attachmentPath.isNotEmpty)
-                                      '画像あり'
-                                    else if (status?['status'] == 'submitted')
-                                      '写真未添付',
-                                  ].join(' / '),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                      subtitle: const Text('ログイン中の本人の書類だけを表示します'),
+                    ),
                   ),
+                  if (_repository is OwnDocumentPhotoGateway &&
+                      !(_repository as OwnDocumentPhotoGateway)
+                          .photoEditingAvailable)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。現在の試験登録は会社が許可した運転免許証に限られます。',
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: '書類種類で検索',
+                      ),
+                      onChanged: (value) => setState(() => _query = value),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                      itemCount: requirements.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 6),
+                      itemBuilder: (context, index) {
+                        final requirement = requirements[index];
+                        final id = requirement['id']?.toString() ?? '';
+                        final status = _statusFor(id);
+                        final paths = workerDocumentPaths(status);
+                        final needsRegistration =
+                            status == null ||
+                            (paths.isEmpty &&
+                                _repository is OwnDocumentPhotoGateway &&
+                                !(_repository as OwnDocumentPhotoGateway)
+                                    .photoEditingAvailable);
+                        final label =
+                            status?['status']?.toString() == 'verified'
+                            ? '確認済み'
+                            : status?['status']?.toString() == 'submitted'
+                            ? '提出済み'
+                            : '未登録';
+                        return Card(
+                          child: ListTile(
+                            onTap: _saving
+                                ? null
+                                : needsRegistration
+                                ? () => _registerDocument(
+                                    initialRequirementId: id,
+                                  )
+                                : _repository is OwnDocumentPhotoGateway
+                                ? () => _editPhotos(status)
+                                : null,
+                            trailing: TextButton(
+                              onPressed: _saving
+                                  ? null
+                                  : needsRegistration
+                                  ? () => _registerDocument(
+                                      initialRequirementId: id,
+                                    )
+                                  : _repository is OwnDocumentPhotoGateway
+                                  ? () => _editPhotos(status)
+                                  : () => _registerDocument(
+                                      initialRequirementId: id,
+                                    ),
+                              child: Text(
+                                needsRegistration
+                                    ? '登録する'
+                                    : _repository is OwnDocumentPhotoGateway &&
+                                          !(_repository
+                                                  as OwnDocumentPhotoGateway)
+                                              .photoEditingAvailable
+                                    ? '写真を確認'
+                                    : '写真を追加・編集',
+                              ),
+                            ),
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.description_outlined),
+                            ),
+                            title: Text(
+                              requirement['name']?.toString() ?? '書類',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              [
+                                label,
+                                if ((status?['expires_at']?.toString() ?? '')
+                                    .isNotEmpty)
+                                  '期限 ${status!['expires_at']}',
+                                if (paths.isNotEmpty)
+                                  '画像あり${paths.length > 1 ? '（${paths.length}枚）' : ''}'
+                                else if (status?['status'] == 'submitted')
+                                  '写真未添付',
+                              ].join(' / '),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
