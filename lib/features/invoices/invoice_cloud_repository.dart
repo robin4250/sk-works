@@ -1,4 +1,5 @@
-import '../../domain/company_seal_snapshot.dart';
+import '../../domain/invoice_document_seal.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -71,11 +72,21 @@ class InvoiceCloudRepository {
         .select(
           'id, customer_id, billing_period_start, billing_period_end, '
           'invoice_number, issue_date, detail_mode, subtotal, tax, '
-          'grand_total, snapshot, updated_at',
+          'grand_total, snapshot, updated_at, status',
         )
         .eq('company_id', companyId)
         .order('billing_period_start', ascending: false)
         .order('created_at', ascending: false);
+
+    Map<String, dynamic>? currentSealCompany;
+    if (invoices.any((row) => row['status'] == 'draft')) {
+      final company = await _client
+          .from('companies')
+          .select('id,name,company_seal_style')
+          .eq('id', companyId)
+          .single();
+      currentSealCompany = Map<String, dynamic>.from(company);
+    }
 
     // Existing read-only RPC is company/admin scoped; never run directory sync
     // while opening reports. Missing optional access leaves snapshots available.
@@ -347,8 +358,12 @@ class InvoiceCloudRepository {
                   ),
             invoiceId: invoiceId,
             documentUpdatedAt: invoice['updated_at']?.toString(),
-            companySealSnapshot: CompanySealSnapshot.fromJson(
-                snapshotMap['company_seal_snapshot']),
+            companySealSnapshot: invoiceDocumentSeal(
+              status: invoice['status'],
+              saved: snapshotMap['company_seal_snapshot'],
+              currentCompany: currentSealCompany,
+              companyId: companyId,
+            ),
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',
             issueDate: issueDate,
             periodStart: periodStart,
