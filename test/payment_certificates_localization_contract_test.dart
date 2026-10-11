@@ -11,7 +11,7 @@ void main() {
     expect(source, contains("SkoLanguageController.isEnglish ? 'Payment Certificates'"));
     expect(source, contains("label: '支払証明書設定'"));
     final footer = File('lib/features/shared/related_action_footer.dart').readAsStringSync();
-    final english = File('lib/features/languages/en/english_language_pack.dart').readAsStringSync();
+    final english = File('lib/international/languages/en/english_language_pack.dart').readAsStringSync();
     expect(footer, contains('SkoLanguageController.tr(label)'));
     expect(english, contains('Payment Certificate Settings'));
     expect(source, contains("'Subcontractor Company'"));
