@@ -4,6 +4,18 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    '受信した社員・書類': 'Received employee records and documents',
+    '社員資格書類': 'Employee records and documents',
+    '従業員データ編集': 'Edit employee documents',
+    '必要書類設定': 'Required document settings',
+    '従業員を検索して選択してください': 'Search for and select an employee',
+    '従業員を追加': 'Add employee',
+    '従業員を検索して、提出済みの書類を確認・編集': 'Search for an employee to review and edit submitted documents',
+    '社内・取引先の書類項目を追加・編集・削除': 'Add, edit or remove internal and customer document requirements',
+    '必要書類を削除': 'Remove document requirement',
+    '必要書類を編集': 'Edit document requirement',
+    '一覧から外します。提出済みデータと写真は保持します。': 'Remove from the list. Submitted documents and photos will be preserved.',
+
     "次の現場へ": "Continue to the next site",
     "この現場の日報": "Daily report for this site",
     "この現場の日報を作成しますか？": "Create a daily report for this site visit?",
