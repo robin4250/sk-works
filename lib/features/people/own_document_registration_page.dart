@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
 
@@ -420,6 +421,7 @@ class _OwnDocumentRegistrationPageState
         title: const Text('自分の書類を登録'),
         content: const Text(
           '写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
+          '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
           '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
           '写真の選択や撮影をキャンセルした場合は保存しません。'
           '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
@@ -588,6 +590,7 @@ class _OwnDocumentRegistrationPageState
                             subtitle: Text(
                               [
                                 label,
+                                workerDocumentScopeLabel(requirement['scope']),
                                 if ((status?['expires_at']?.toString() ?? '')
                                     .isNotEmpty)
                                   '期限 ${status!['expires_at']}',

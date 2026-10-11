@@ -93,6 +93,8 @@ jobs:
 
       - name: Verify trade company representative contacts
         run: node tool/verify_trade_company_contacts.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify shared worker document destinations
+        run: node tool/verify_worker_document_shared_scope.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify initial official company rates
         run: node tool/verify_initial_official_company_rates.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
 
