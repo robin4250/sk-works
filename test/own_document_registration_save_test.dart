@@ -28,7 +28,8 @@ class _UnreadablePhoto extends XFile {
 }
 
 class _Gateway implements OwnDocumentRegistrationGateway {
-  _Gateway({this.statuses = const []});
+  _Gateway({this.statuses = const [], this.scope = 'internal'});
+  final String scope;
   final List<Map<String, dynamic>> statuses;
   final calls = <({String requirement, Uint8List? bytes, String? filename})>[];
   Future<void> Function()? onSave;
@@ -39,7 +40,7 @@ class _Gateway implements OwnDocumentRegistrationGateway {
       {'id': 'worker', 'name': '本人'},
     ],
     'requirements': [
-      {'id': 'license', 'name': '運転免許証', 'scope': 'internal'},
+      {'id': 'license', 'name': '運転免許証', 'scope': scope},
     ],
     'statuses': statuses,
   };
@@ -129,6 +130,27 @@ Future<void> _selectPhoto(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'shared document has one registration and saves the same requirement once',
+    (tester) async {
+      final gateway = _Gateway(scope: 'both');
+      await tester.pumpWidget(
+        MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('運転免許証'), findsOneWidget);
+      expect(find.textContaining('自社・取引会社で共用（登録は1回）'), findsOneWidget);
+      expect(find.text('登録する'), findsOneWidget);
+      await tester.tap(find.text('登録する'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '登録'));
+      await tester.pumpAndSettle();
+      expect(gateway.calls, hasLength(1));
+      expect(gateway.calls.single.requirement, 'license');
+      expect(gateway.calls.single.bytes, isNull);
+    },
+  );
+
   testWidgets(
     'unregistered row opens that document registration with legacy photo option',
     (tester) async {
