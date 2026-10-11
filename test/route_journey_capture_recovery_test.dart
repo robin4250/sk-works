@@ -17,7 +17,7 @@ class _Access implements RouteJourneyCaptureAccess {
   String userId = 'actor';
   bool failAll = false, failWorkspace = false;
   List<Map<String, dynamic>>? visits;
-  bool archived = false;
+  bool archived = false, hasNextStop = false;
   void Function(int)? onWorkspace;
   String mode = 'location_photo';
   int loads = 0, submits = 0, uploads = 0;
@@ -52,6 +52,7 @@ class _Access implements RouteJourneyCaptureAccess {
       'worker_id': 'worker',
       'stops': [
         {'id': 'stop', 'stop_order': 1, 'label': 'Test site'},
+        if (hasNextStop) {'id': 'next', 'stop_order': 2, 'label': 'Next site'},
       ],
     };
   }
@@ -163,6 +164,7 @@ void main() {
     tester,
   ) async {
     final access = _Access()
+      ..hasNextStop = true
       ..visits = [
         {
           'start_capture_id': 'start',
@@ -259,6 +261,7 @@ void main() {
     'moving records current visit time without recapturing evidence',
     (tester) async {
       final access = _Access()
+        ..hasNextStop = true
         ..visits = [
           {
             'start_capture_id': 'start',
