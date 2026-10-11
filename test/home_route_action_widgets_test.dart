@@ -115,7 +115,12 @@ void main() {
           home(homeRouteActionState(ws, 'shift-0'), opened),
         );
         await tester.pumpAndSettle();
-        expect(action('現場移動').onPressed, isNotNull);
+        expect(action('現場移動').onPressed != null, i < 2);
+        if (i == 2) {
+          expect(action('現場到着').onPressed, isNull);
+          expect(action('出勤').onPressed, isNull);
+          expect(action('退勤').onPressed, isNotNull);
+        }
         visit['end_capture_id'] = 'end-$i';
         visit['ended_at'] = '2026-10-11T10:00:00+09:00';
       }
@@ -203,7 +208,8 @@ void main() {
       );
       expect(arrival.onPressed != null, state == HomeRouteActionState.arrive);
       expect(move.onPressed != null, state == HomeRouteActionState.move);
-      if (state != HomeRouteActionState.unavailable) {
+      if (state == HomeRouteActionState.arrive ||
+          state == HomeRouteActionState.move) {
         final label = state == HomeRouteActionState.arrive ? '現場到着' : '現場移動';
         await tester.ensureVisible(find.text(label));
         await tester.tap(find.text(label));

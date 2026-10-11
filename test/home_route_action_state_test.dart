@@ -51,7 +51,10 @@ void main() {
         'start_capture_id': 'start-$i',
       };
       rows.add(row);
-      expect(homeRouteActionState(ws, 'shift'), HomeRouteActionState.move);
+      expect(
+        homeRouteActionState(ws, 'shift'),
+        i == 2 ? HomeRouteActionState.checkout : HomeRouteActionState.move,
+      );
       row['end_capture_id'] = 'end-$i';
       row['ended_at'] = '2026-10-11T10:00:00+09:00';
       expect(

@@ -4,6 +4,10 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    '作業する現場を選び、現場到着のボタンを押してください': 'Select your work site and press Site arrival.',
+    '作業終了して次の現場に向かう時に現場移動ボタン押してください': 'When work is finished and you leave for the next site, press Site move.',
+    '次の現場に到着したら現場到着ボタンを押してください': 'When you reach the next site, press Site arrival.',
+    '最後の現場に到着したらホームから退勤してください。退勤後に日報とサインを登録します。': 'After arriving at the final site, clock out from Home when work is finished, then complete the report and signatures.',
     '受信した社員・書類': 'Received employee records and documents',
     '社員資格書類': 'Employee records and documents',
     '従業員データ編集': 'Edit employee documents',

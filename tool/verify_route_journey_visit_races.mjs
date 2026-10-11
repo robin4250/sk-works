@@ -55,5 +55,16 @@ try {
  // OFF committed while waiting must be observed; recovery is still read-only.
  s=await source(50);await hold(s);const waitingOff=settle(save(a,s,id(51)));await barrier(['visit-a']);await admin.query('update private.route_journey_rollouts set enabled=false');await admin.query('commit');await assert.rejects(waitingOff,/disabled/);
  assert.equal((await a.query('select public.route_journey_visit_exact($1) v',[id(21)])).rows[0].v.id,id(21));
+ // Final checkout owns the same source lock as movement; rollback/retry cannot double-close.
+ await admin.query(await fs.readFile(new URL('../supabase/migrations/20261012010000_route_final_visit_clock_out.sql',import.meta.url),'utf8'));
+ await admin.query('update private.route_journey_rollouts set enabled=true;create unique index fixture_clock_out_once on attendance_verifications(source_clock_in_id) where event_type=\'clock_out\';grant select,insert on attendance_verifications to authenticated');
+ s=await source(80);await save(a,s,id(81));await hold(s);
+ left=settle(close(a,s,id(82)));right=settle(save(b,s,id(83),'end',id(81)));
+ await barrier(['visit-a','visit-b']);await admin.query('commit');
+ results=await Promise.allSettled([left,right]);assert.equal(results[0].status,'fulfilled');
+ assert.equal((await admin.query("select count(*)::int n from private.route_journey_visit_events where start_capture_id=$1 and kind='end'",[id(81)])).rows[0].n,1);
+ assert.equal((await admin.query("select count(*)::int n from attendance_verifications where source_clock_in_id=$1 and event_type='clock_out'",[s])).rows[0].n,1);
+ await assert.rejects(close(a,s,id(84)),/duplicate/);
+ console.log('PASS final clock-out vs movement: source lock, one end, one checkout, duplicate retry rejected');
  console.log(`PASS PostgreSQL ${version}: observed visit Lock schedules; no production access`);
 } finally {await Promise.allSettled(clients.map(async c=>{try{await c.query('rollback');}finally{await c.end();}}));}
