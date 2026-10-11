@@ -21,8 +21,9 @@ void main() {
       'supabase/migrations/20261006142713_payroll_custom_deductions.sql',
     );
 
-    expect(page, containsUi("label: Text(SkoLanguageController.tr('支給項目を追加'))"));
-    expect(page, containsUi("label: Text(SkoLanguageController.tr('控除項目を追加'))"));
+    expect(page, contains('bottomNavigationBar:'));
+    expect(page, containsUi("label: Text(SkoLanguageController.tr('追加'))"));
+    expect(page, containsUi("_showDeductions ? _customDeductions : _customEarnings,"));
     expect(page, contains("values['custom_earnings'] = customEarnings"));
     expect(page, contains("values['custom_deductions'] = customDeductions"));
     expect(page, contains("sectionName: '支給'"));

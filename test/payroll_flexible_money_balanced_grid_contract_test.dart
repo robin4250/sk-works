@@ -41,8 +41,9 @@ void main() {
       expect(page, contains('PayrollConfirmationRepository'));
       expect(page, contains('PayrollConfirmationSettingsPage'));
       expect(page, isNot(contains("values['payment_day']")));
-      expect(page, containsUi("label: Text(SkoLanguageController.tr('支給項目を追加'))"));
-      expect(page, containsUi("label: Text(SkoLanguageController.tr('控除項目を追加'))"));
+      expect(page, contains('bottomNavigationBar:'));
+      expect(page, containsUi("label: Text(SkoLanguageController.tr('追加'))"));
+      expect(page, containsUi("_showDeductions ? _customDeductions : _customEarnings,"));
       expect(migration, contains('payment_day integer not null default 25'));
       expect(migration, contains("'支払日',payment_day"));
     },
