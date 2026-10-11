@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'company_contact_links.dart';
+import 'company_contact_parser.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
@@ -163,6 +166,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         email: draft.email,
         corporateNumber: draft.corporateNumber,
         notes: draft.notes,
+        representativeName: draft.representativeName,
+        representativePhone: draft.representativePhone,
       );
       await _load();
       if (!mounted) return;
@@ -192,6 +197,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                 _detailLine('郵便番号', item.postalCode),
                 _detailLine('住所', item.address),
                 _detailLine('電話番号', item.phone),
+                _detailLine('代表者氏名', item.representativeName),
+                _detailLine('代表者電話番号', item.representativePhone),
                 _detailLine('メール', item.email),
                 _detailLine('法人番号', item.corporateNumber),
                 _detailLine('備考', item.notes),
@@ -259,6 +266,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     }
   }
 
+  Future<void> _launchContact(Uri uri) async {
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('電話・地図を開けませんでした')));
+    }
+  }
+
   Widget _detailLine(String label, String value) {
     final display = value.trim().isEmpty ? '未登録' : value;
     return Padding(
@@ -270,7 +283,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             width: 92,
             child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
-          Expanded(child: SelectableText(display)),
+          Expanded(child: label == '備考'
+            ? CompanyNotesLinks(text: display, onOpen: _launchContact)
+            : CompanyContactValue(text: display, uri: value.trim().isEmpty ? null : label == '住所' ? companyAddressUri(value) : ['電話番号','代表者電話番号'].contains(label) ? companyPhoneUri(value) : null, onOpen: _launchContact)),
         ],
       ),
     );
@@ -293,6 +308,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         email: draft.email,
         corporateNumber: draft.corporateNumber,
         notes: draft.notes,
+        representativeName: draft.representativeName,
+        representativePhone: draft.representativePhone,
       );
       await _load();
       if (!mounted) return;
@@ -558,6 +575,8 @@ class _CompanyDraft {
     required this.email,
     required this.corporateNumber,
     required this.notes,
+    required this.representativeName,
+    required this.representativePhone,
   });
 
   final String name;
@@ -567,6 +586,8 @@ class _CompanyDraft {
   final String email;
   final String corporateNumber;
   final String notes;
+  final String representativeName;
+  final String representativePhone;
 }
 
 class _CompanyRegistrationDialog extends StatefulWidget {
@@ -588,6 +609,8 @@ class _CompanyRegistrationDialogState
   late final TextEditingController _email;
   late final TextEditingController _corporateNumber;
   late final TextEditingController _notes;
+  late final TextEditingController _representativeName;
+  late final TextEditingController _representativePhone;
 
   @override
   void initState() {
@@ -600,6 +623,8 @@ class _CompanyRegistrationDialogState
     _email = TextEditingController(text: item?.email ?? '');
     _corporateNumber = TextEditingController(text: item?.corporateNumber ?? '');
     _notes = TextEditingController(text: item?.notes ?? '');
+    _representativeName = TextEditingController(text: item?.representativeName ?? '');
+    _representativePhone = TextEditingController(text: item?.representativePhone ?? '');
   }
 
   @override
@@ -612,6 +637,8 @@ class _CompanyRegistrationDialogState
       _email,
       _corporateNumber,
       _notes,
+      _representativeName,
+      _representativePhone,
     ]) {
       controller.dispose();
     }
@@ -659,6 +686,10 @@ class _CompanyRegistrationDialogState
                 decoration: const InputDecoration(labelText: '法人番号'),
               ),
               const SizedBox(height: 10),
+              TextField(controller: _representativeName, decoration: const InputDecoration(labelText: '代表者氏名')),
+              const SizedBox(height: 12),
+              TextField(controller: _representativePhone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: '代表者電話番号')),
+              const SizedBox(height: 12),
               TextField(
                 controller: _notes,
                 maxLines: 3,
@@ -689,6 +720,8 @@ class _CompanyRegistrationDialogState
                 email: _email.text.trim(),
                 corporateNumber: _corporateNumber.text.trim(),
                 notes: _notes.text.trim(),
+                representativeName: _representativeName.text.trim(),
+                representativePhone: _representativePhone.text.trim(),
               ),
             );
           },
