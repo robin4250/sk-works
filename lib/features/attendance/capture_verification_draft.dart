@@ -71,8 +71,7 @@ class CaptureVerificationDraft {
         !expected.isFinite)
       return false;
     return actual == expected ||
-        double.parse(actual.toStringAsPrecision(15)) ==
-            double.parse(expected.toStringAsPrecision(15));
+        actual == double.parse(expected.toStringAsPrecision(15));
   }
 
   bool matchesRow(Map<String, dynamic> row) {

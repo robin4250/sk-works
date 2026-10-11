@@ -163,6 +163,9 @@ void main() {
       expect(result, row);
       expect(inserts, 0);
       expect(d.encoded, original);
+      // Only the actual Postgres representation is accepted, not a general
+      // tolerance bucket for a different full-precision coordinate.
+      expect(d.matchesRow({...row, 'latitude': 35.70388335484932}), isFalse);
       for (final key in [
         'latitude',
         'longitude',
