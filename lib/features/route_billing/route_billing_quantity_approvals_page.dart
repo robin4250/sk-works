@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -71,14 +70,14 @@ class _RouteBillingQuantityApprovalsPageState
     }
     setState(() => _busy = true);
     try {
-      final detail = await _repository!.detail(item.id);
+      final detail = await _repository.detail(item.id);
       if (!mounted) {
         return;
       }
       final changed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) =>
-              _QuantityDecisionPage(repository: _repository!, request: detail),
+              _QuantityDecisionPage(repository: _repository, request: detail),
         ),
       );
       if (changed == true && mounted) {
