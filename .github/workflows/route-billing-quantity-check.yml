@@ -1,0 +1,48 @@
+name: Route billing quantity Postgres races
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/route_customer_day_billing_allocations_schema.sql'
+      - 'tool/verify_route_billing_quantity_allocations.mjs'
+      - 'tool/verify_route_billing_quantity_postgres_races.mjs'
+      - '.github/workflows/route-billing-quantity-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/tests/route_customer_day_billing_allocations_schema.sql'
+      - 'tool/verify_route_billing_quantity_allocations.mjs'
+      - 'tool/verify_route_billing_quantity_postgres_races.mjs'
+      - '.github/workflows/route-billing-quantity-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  billing-quantity-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: billing-quantity-fixture
+          POSTGRES_DB: sko_billing_quantity_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_billing_quantity_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_BILLING_RACE_DATABASE_URL: postgres://postgres:billing-quantity-fixture@127.0.0.1:5432/sko_billing_quantity_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated Postgres client
+        run: npm install --prefix "$RUNNER_TEMP/billing-quantity-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify actual allocation and approval races
+        run: node tool/verify_route_billing_quantity_postgres_races.mjs "$RUNNER_TEMP/billing-quantity-runtime/node_modules/pg/lib/index.js"

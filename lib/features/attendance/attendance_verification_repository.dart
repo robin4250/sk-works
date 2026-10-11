@@ -349,14 +349,16 @@ class AttendanceVerificationRepository {
     if (openShifts.isEmpty && (siteName ?? '').isEmpty && scheduledToday) {
       siteName = gpsSchedule['site_name']?.toString();
     }
-    String? latestEventType;
 
     for (final raw in rows) {
       final row = Map<String, dynamic>.from(raw);
       final confirmed =
           DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
       final eventType = row['event_type']?.toString();
-      if (confirmed == null || attendanceEventWorkDate(confirmed, row['daily_reports'], workDate: row['work_date']) != start) continue;
+      if (confirmed == null || confirmed.isAfter(now) ||
+          attendanceEventWorkDate(confirmed, row['daily_reports'], workDate: row['work_date']) != start) {
+        continue;
+      }
       final site = row['sites'];
 
       if (openShifts.isEmpty && (siteName ?? '').isEmpty &&
@@ -368,19 +370,21 @@ class AttendanceVerificationRepository {
         if (eventType == 'clock_in') {
           clockIn ??= confirmed;
         } else if (eventType == 'clock_out') {
-          clockOut = confirmed;
+          if (clockOut == null || confirmed.isAfter(clockOut)) {
+            clockOut = confirmed;
+          }
         }
-      }
-      if (eventType == 'clock_in' || eventType == 'clock_out') {
-        latestEventType = eventType;
       }
     }
 
-    final phase = openShifts.isNotEmpty ? HomeAttendancePhase.working : switch (latestEventType) {
-      'clock_in' => HomeAttendancePhase.working,
-      'clock_out' => HomeAttendancePhase.finished,
-      _ => HomeAttendancePhase.notStarted,
-    };
+    // The source-linked open shifts decide whether checkout is available.
+    // A closed start can sort after its end (manual timestamps or tied times);
+    // the last event type must never reopen that saved shift.
+    final phase = openShifts.isNotEmpty
+        ? HomeAttendancePhase.working
+        : clockOut != null
+        ? HomeAttendancePhase.finished
+        : HomeAttendancePhase.notStarted;
 
     return HomeAttendanceStatus(
       verificationMode: configuredMode,
