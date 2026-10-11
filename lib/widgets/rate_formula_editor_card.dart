@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../domain/rate_formula_settings.dart';
@@ -29,8 +28,7 @@ class RateFormulaDraft {
       'holiday' => formula.holiday(baseRateYen),
       'holiday_overtime' => formula.holidayOvertime(baseRateYen),
       'holiday_night' => formula.holidayNight(baseRateYen),
-      'holiday_night_overtime' =>
-        formula.holidayNightOvertime(baseRateYen),
+      'holiday_night_overtime' => formula.holidayNightOvertime(baseRateYen),
       _ => 0,
     };
   }
@@ -47,6 +45,7 @@ class RateFormulaEditorCard extends StatefulWidget {
     required this.onChanged,
     this.initialPayType = 'daily',
     this.initialMonthlySalaryYen = 0,
+    this.compact = false,
   });
 
   final String title;
@@ -57,6 +56,9 @@ class RateFormulaEditorCard extends StatefulWidget {
   final ValueChanged<RateFormulaDraft> onChanged;
   final String initialPayType;
   final int initialMonthlySalaryYen;
+
+  /// Keeps the existing calculation contract; only the presentation changes.
+  final bool compact;
 
   @override
   State<RateFormulaEditorCard> createState() => _RateFormulaEditorCardState();
@@ -186,12 +188,29 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-            ),
+            if (!widget.compact)
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             const SizedBox(height: 10),
             SegmentedButton<String>(
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : null,
+                ),
+              ),
               segments: const [
                 ButtonSegment(value: 'daily', label: Text('日給')),
                 ButtonSegment(value: 'hourly', label: Text('時給')),
@@ -221,35 +240,64 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
                 ),
               ),
             ],
-            const SizedBox(height: 10),
-            TextField(
-              controller: _base,
-              enabled: widget.enabled,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => _emit(),
-              decoration: InputDecoration(
-                labelText: _payType == 'hourly'
-                    ? '基準時給'
-                    : _payType == 'monthly'
-                        ? '計算用 1日基本ベース'
-                        : '1日単価',
-                suffixText: '円',
-                helperText: _payType == 'monthly'
-                    ? '月固定給とは別です。残業・早出・夜勤・休日系の自動計算だけに使います。'
-                    : null,
-                helperMaxLines: 2,
-                border: const OutlineInputBorder(),
+            if (!widget.compact || _payType != 'monthly') ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _base,
+                enabled: widget.enabled,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => _emit(),
+                decoration: InputDecoration(
+                  labelText: _payType == 'hourly'
+                      ? '基準時給'
+                      : _payType == 'monthly'
+                      ? '計算用 1日基本ベース'
+                      : '1日単価',
+                  suffixText: '円',
+                  helperText: _payType == 'monthly'
+                      ? '月固定給とは別です。残業・早出・夜勤・休日系の自動計算だけに使います。'
+                      : null,
+                  helperMaxLines: 2,
+                  border: const OutlineInputBorder(),
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 8),
             ExpansionTile(
+              maintainState: true,
               tilePadding: EdgeInsets.zero,
-              title: const Text(
-                '計算式を変更',
-                style: TextStyle(fontWeight: FontWeight.w800),
+              title: Text(
+                widget.compact ? '詳細設定' : '計算式を変更',
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
-              subtitle: const Text('式の数字は保存できます。0円の単価は自動計算を使用します。'),
+              subtitle: Text(
+                widget.compact
+                    ? '残業・早出・夜勤・休日の単価と計算式'
+                    : '式の数字は保存できます。0円の単価は自動計算を使用します。',
+              ),
               children: [
+                if (widget.compact && _payType == 'monthly') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _base,
+                    enabled: widget.enabled,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _emit(),
+                    decoration: InputDecoration(
+                      labelText: _payType == 'hourly'
+                          ? '基準時給'
+                          : _payType == 'monthly'
+                          ? '計算用 1日基本ベース'
+                          : '1日単価',
+                      suffixText: '円',
+                      helperText: _payType == 'monthly'
+                          ? '月固定給とは別です。残業・早出・夜勤・休日系の自動計算だけに使います。'
+                          : null,
+                      helperMaxLines: 2,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
                 _factor('hours', '1日時間'),
                 _factor('overtime', '残業倍率'),
                 _factor('early', '早出倍率'),
@@ -259,10 +307,14 @@ class _RateFormulaEditorCardState extends State<RateFormulaEditorCard> {
                 _factor('holiday_overtime', '休日残業倍率'),
                 _factor('holiday_night', '休日夜勤倍率'),
                 _factor('holiday_night_overtime', '休日夜勤残業倍率'),
+                if (widget.compact)
+                  for (final row in rows) _rateRow(row.$1, row.$2, value),
               ],
             ),
-            const SizedBox(height: 8),
-            for (final row in rows) _rateRow(row.$1, row.$2, value),
+            if (!widget.compact) ...[
+              const SizedBox(height: 8),
+              for (final row in rows) _rateRow(row.$1, row.$2, value),
+            ],
           ],
         ),
       ),

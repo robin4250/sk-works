@@ -16,7 +16,10 @@ import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
-  const IndividualPayrollSettingsPage({super.key});
+  const IndividualPayrollSettingsPage({super.key, this.repository});
+
+  @visibleForTesting
+  final IndividualPayrollSettingsRepository? repository;
 
   @override
   State<IndividualPayrollSettingsPage> createState() =>
@@ -48,7 +51,7 @@ class _IndividualPayrollSettingsPageState
     ('social_insurance_monthly', '社会保険・月額'),
   ];
 
-  final _repository = IndividualPayrollSettingsRepository.maybeCreate();
+  late final IndividualPayrollSettingsRepository? _repository;
   final _confirmationRepository = PayrollConfirmationRepository.maybeCreate();
   PayrollConfirmationSettings? _companyPolicy;
   final _controllers = <String, TextEditingController>{};
@@ -59,6 +62,9 @@ class _IndividualPayrollSettingsPageState
   int _loadGeneration = 0;
   bool _loading = true;
   bool _saving = false;
+  bool _showDeductions = false;
+  final _scrollController = ScrollController();
+  final _addedItemKey = GlobalKey();
   bool _paidLeaveWagesAvailable = false;
   ResidentTaxCapability _residentTaxCapability = ResidentTaxCapability.unknown;
   String? _error;
@@ -70,6 +76,7 @@ class _IndividualPayrollSettingsPageState
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? IndividualPayrollSettingsRepository.maybeCreate();
     for (final field in _amountFields) {
       _controllers[field.$1] = TextEditingController();
     }
@@ -89,6 +96,7 @@ class _IndividualPayrollSettingsPageState
     for (final item in [..._customEarnings, ..._customDeductions]) {
       item.dispose();
     }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -426,7 +434,66 @@ class _IndividualPayrollSettingsPageState
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: const [SkoNotificationBell()],
+        bottom: _updatedAt == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(24),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      SkoLanguageController.trParams('最終更新日：{date}', {
+                        'date': _dateTime(_updatedAt!),
+                      }),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+              ),
       ),
+      bottomNavigationBar:
+          _loading || _error != null || workspace?.canView != true
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            workspace?.canEdit == true && !_saving && _workerId != null
+                            ? () => _addCustomMoney(
+                                _showDeductions
+                                    ? _customDeductions
+                                    : _customEarnings,
+                              )
+                            : null,
+                        icon: const Icon(Icons.add),
+                        label: Text(SkoLanguageController.tr('追加')),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed:
+                            workspace?.canEdit == true && !_saving && _workerId != null
+                            ? _save
+                            : null,
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(
+                          _saving
+                              ? SkoLanguageController.tr('保存中…')
+                              : SkoLanguageController.tr('登録'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
       body: SafeArea(
         child: _loading
             ? Center(child: CircularProgressIndicator())
@@ -437,14 +504,21 @@ class _IndividualPayrollSettingsPageState
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(SkoLanguageController.tr(_error!), textAlign: TextAlign.center),
+                      Text(
+                        SkoLanguageController.tr(_error!),
+                        textAlign: TextAlign.center,
+                      ),
                       SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: () {
                           final workerId = _workerId;
-                          if (_workspace != null && _workspace!.canView && workerId != null) {
+                          if (_workspace != null &&
+                              _workspace!.canView &&
+                              workerId != null) {
                             _loadWorker(workerId);
-                          } else { _load(); }
+                          } else {
+                            _load();
+                          }
                         },
                         icon: Icon(Icons.refresh),
                         label: Text(SkoLanguageController.tr('再読み込み')),
@@ -453,9 +527,12 @@ class _IndividualPayrollSettingsPageState
                   ),
                 ),
               )
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                children: [
+            : SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   DropdownButtonFormField<String>(
                     initialValue: _workerId,
                     decoration: InputDecoration(
@@ -473,20 +550,11 @@ class _IndividualPayrollSettingsPageState
                       if (value != null) _loadWorker(value);
                     },
                   ),
-                  if (_updatedAt != null) ...[
-                    SizedBox(height: 6),
-                    Text(
-                      SkoLanguageController.trParams('最終更新日：{date}', {'date': _dateTime(_updatedAt!)}),
-                      textAlign: TextAlign.right,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                  SizedBox(height: 16),
-                  Text(SkoLanguageController.tr('給与単価：選択した社員の個別設定／給料日・締め日：会社設定')),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   PayrollDraftKeepAlive(
                     key: ValueKey('payroll-rate-${_workerId ?? ''}'),
                     child: RateFormulaEditorCard(
+                      compact: true,
                       title: SkoLanguageController.tr('勤務単価 自動計算'),
                       initialBaseRateYen:
                           _rateDraft?.baseRateYen ??
@@ -494,22 +562,27 @@ class _IndividualPayrollSettingsPageState
                               ? (_settingValues['calculation_daily_base_yen']
                                         as num?)
                                     ?.toInt()
-                              : (_settingValues['day_daily'] as num?)?.toInt()) ??
+                              : (_settingValues['day_daily'] as num?)
+                                    ?.toInt()) ??
                           0,
-                      initialFormula: _rateDraft?.formula.toMap(
-                        hourlyRateYen: _rateDraft!.formula.hourlyBase
-                            ? _rateDraft!.baseRateYen
-                            : 0,
-                      ) ?? _settingValues['rate_formula'],
+                      initialFormula:
+                          _rateDraft?.formula.toMap(
+                            hourlyRateYen: _rateDraft!.formula.hourlyBase
+                                ? _rateDraft!.baseRateYen
+                                : 0,
+                          ) ??
+                          _settingValues['rate_formula'],
                       initialPayType:
                           _rateDraft?.payType ??
-                          _settingValues['pay_type']?.toString() ?? 'daily',
+                          _settingValues['pay_type']?.toString() ??
+                          'daily',
                       initialMonthlySalaryYen:
                           _rateDraft?.monthlySalaryYen ??
                           (_settingValues['monthly_salary_yen'] as num?)
                               ?.toInt() ??
                           0,
-                      initialOverrides: _rateDraft?.overrides ??
+                      initialOverrides:
+                          _rateDraft?.overrides ??
                           _settingValues['rate_overrides'],
                       enabled: workspace.canEdit,
                       onChanged: (value) {
@@ -519,48 +592,177 @@ class _IndividualPayrollSettingsPageState
                     ),
                   ),
                   SizedBox(height: 12),
-                  _moneySection(
-                    title: '支給',
-                    icon: Icons.add_circle_outline,
-                    children: [
-                      _sectionTitle(SkoLanguageController.tr('手当')),
-                      for (var i = 1; i <= 3; i++) ...[
-                        TextFormField(
-                          controller: _controllers['allowance_name_$i'],
-                          enabled: workspace.canEdit,
-                          maxLength: 100,
-                          decoration: InputDecoration(
-                            labelText: SkoLanguageController.trParams('手当{number} 名称', {'number': i}),
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        _amountField('allowance_$i', SkoLanguageController.trParams('手当{number} 金額', {'number': i})),
-                      ],
-                      _amountField('family_monthly', SkoLanguageController.tr('家族手当・月額（既存設定）')),
-                      Text(SkoLanguageController.tr('この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。')),
-                      _amountField('transport_monthly', SkoLanguageController.tr('交通費・月額')),
-                      SizedBox(height: 12),
-                      _sectionTitle(SkoLanguageController.tr('追加支給')),
-                      for (var i = 0; i < _customEarnings.length; i++)
-                        _customMoneyField(
-                          _customEarnings,
-                          i,
-                          workspace.canEdit,
-                          sectionName: '支給',
-                        ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: workspace.canEdit
-                              ? () => _addCustomMoney(_customEarnings)
-                              : null,
-                          icon: Icon(Icons.add),
-                          label: Text(SkoLanguageController.tr('支給項目を追加')),
-                        ),
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(
+                        value: false,
+                        label: Text(SkoLanguageController.tr('支給')),
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        label: Text(SkoLanguageController.tr('控除')),
+                        icon: const Icon(Icons.remove_circle_outline),
                       ),
                     ],
+                    selected: {_showDeductions},
+                    style: ButtonStyle(
+                      backgroundColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                      foregroundColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : null,
+                      ),
+                    ),
+                    onSelectionChanged: (values) =>
+                        setState(() => _showDeductions = values.first),
+                  ),
+                  const SizedBox(height: 12),
+                  PayrollDraftKeepAlive(
+                    key: ValueKey('payroll-earnings-$_workerId'),
+                    child: Offstage(
+                      offstage: _showDeductions,
+                      child: _moneySection(
+                        title: '支給',
+                        icon: Icons.add_circle_outline,
+                        children: [
+                          _sectionTitle(SkoLanguageController.tr('手当')),
+                          for (var i = 1; i <= 3; i++) ...[
+                            TextFormField(
+                              controller: _controllers['allowance_name_$i'],
+                              enabled: workspace.canEdit,
+                              maxLength: 100,
+                              decoration: InputDecoration(
+                                labelText: SkoLanguageController.trParams(
+                                  '手当{number} 名称',
+                                  {'number': i},
+                                ),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            _amountField(
+                              'allowance_$i',
+                              SkoLanguageController.trParams('手当{number} 金額', {
+                                'number': i,
+                              }),
+                            ),
+                          ],
+                          _amountField(
+                            'family_monthly',
+                            SkoLanguageController.tr('家族手当・月額（既存設定）'),
+                          ),
+                          Text(
+                            SkoLanguageController.tr(
+                              'この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。',
+                            ),
+                          ),
+                          _amountField(
+                            'transport_monthly',
+                            SkoLanguageController.tr('交通費・月額'),
+                          ),
+                          SizedBox(height: 12),
+                          _sectionTitle(SkoLanguageController.tr('追加支給')),
+                          for (var i = 0; i < _customEarnings.length; i++)
+                            _customMoneyField(
+                              _customEarnings,
+                              i,
+                              workspace.canEdit,
+                              sectionName: '支給',
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                   SizedBox(height: 12),
+                  PayrollDraftKeepAlive(
+                    key: ValueKey('payroll-deductions-$_workerId'),
+                    child: Offstage(
+                      offstage: !_showDeductions,
+                      child: _moneySection(
+                        title: '控除',
+                        icon: Icons.remove_circle_outline,
+                        children: [
+                          if (_workerId != null &&
+                              companyId != null &&
+                              companyId.isNotEmpty)
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.calculate_outlined),
+                              label: const Text('給与の税計算・自動反映'),
+                              onPressed: _saving
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            PayrollTaxConditionsPage(
+                                              companyId: companyId,
+                                              workerId: _workerId!,
+                                            ),
+                                      ),
+                                    ),
+                            ),
+                          _sectionTitle(
+                            SkoLanguageController.tr('税・社会保険の月額設定'),
+                          ),
+                          _amountField(
+                            'income_tax_monthly',
+                            SkoLanguageController.tr('所得税・月額'),
+                          ),
+                          _amountField(
+                            'social_insurance_monthly',
+                            SkoLanguageController.tr('社会保険・月額'),
+                          ),
+                          SizedBox(height: 12),
+                          _sectionTitle(SkoLanguageController.tr('住民税')),
+                          if (_residentTaxCapability ==
+                              ResidentTaxCapability.legacy)
+                            _amountField(
+                              'resident_tax_monthly',
+                              SkoLanguageController.tr('住民税・月額'),
+                            )
+                          else if (_residentTaxCapability ==
+                              ResidentTaxCapability.unknown) ...[
+                            const Text(
+                              '住民税の設定方式を確認できません。住民税は変更せず、他の給与設定を保存できます。',
+                            ),
+                            TextButton(
+                              onPressed: _saving
+                                  ? null
+                                  : _retryResidentTaxCapability,
+                              child: const Text('再確認'),
+                            ),
+                          ] else if (_workerId != null)
+                            ResidentTaxSection(
+                              key: ValueKey('resident-tax-$_workerId'),
+                              workerId: _workerId!,
+                              companyId: _settingValues['company_id'] is String
+                                  ? _settingValues['company_id'] as String
+                                  : workspace.companyId,
+                              canEdit: workspace.canEdit && !_saving,
+                              legacyAmount:
+                                  num.tryParse(
+                                    _controllers['resident_tax_monthly']!.text,
+                                  ) ??
+                                  0,
+                            ),
+                          SizedBox(height: 12),
+                          _sectionTitle(SkoLanguageController.tr('その他の控除')),
+                          for (var i = 0; i < _customDeductions.length; i++)
+                            _customMoneyField(
+                              _customDeductions,
+                              i,
+                              workspace.canEdit,
+                              sectionName: '控除',
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _sectionTitle(SkoLanguageController.tr('会社共通の給料日')),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -568,22 +770,31 @@ class _IndividualPayrollSettingsPageState
                       _companyPolicy == null
                           ? SkoLanguageController.tr('会社データで設定します')
                           : SkoLanguageController.trParams(
-                              '{month}{day}払い・末締め', {
+                              '{month}{day}払い・末締め',
+                              {
                                 'month': SkoLanguageController.tr(
-                                  _companyPolicy!.paymentMonthOffset == 2 ? '翌々月'
-                                    : _companyPolicy!.paymentMonthOffset == 1 ? '翌月' : '当月'),
+                                  _companyPolicy!.paymentMonthOffset == 2
+                                      ? '翌々月'
+                                      : _companyPolicy!.paymentMonthOffset == 1
+                                      ? '翌月'
+                                      : '当月',
+                                ),
                                 'day': _companyPolicy!.paymentDay == 31
-                                  ? SkoLanguageController.tr('末日')
-                                  : SkoLanguageController.trParams('{day}日', {'day': _companyPolicy!.paymentDay}),
-                              }),
+                                    ? SkoLanguageController.tr('末日')
+                                    : SkoLanguageController.trParams('{day}日', {
+                                        'day': _companyPolicy!.paymentDay,
+                                      }),
+                              },
+                            ),
                     ),
-                    subtitle: Text(SkoLanguageController.tr('全社員共通。会社データの設定を使用します。')),
+                    subtitle: Text(
+                      SkoLanguageController.tr('全社員共通。会社データの設定を使用します。'),
+                    ),
                     trailing: Icon(Icons.chevron_right),
                     onTap: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) =>
-                              PayrollConfirmationSettingsPage(),
+                          builder: (_) => PayrollConfirmationSettingsPage(),
                         ),
                       );
                       final policy = await _confirmationRepository
@@ -600,76 +811,37 @@ class _IndividualPayrollSettingsPageState
                     SkoLanguageController.tr('有給付与日数'),
                     suffixText: SkoLanguageController.tr('日'),
                   ),
-                  Text(SkoLanguageController.tr('承認済みの有給申請から使用日数と残日数を自動計算します。')),
+                  Text(
+                    SkoLanguageController.tr('承認済みの有給申請から使用日数と残日数を自動計算します。'),
+                  ),
                   if (!_paidLeaveWagesAvailable)
-                    Text(SkoLanguageController.tr('有給額の自動計算はサーバー準備待ちです。現在の給与条件の警告を確認してください。'))
+                    Text(
+                      SkoLanguageController.tr(
+                        '有給額の自動計算はサーバー準備待ちです。現在の給与条件の警告を確認してください。',
+                      ),
+                    )
                   else ...[
                     if (_rateDraft?.payType == 'hourly' ||
-                        (_rateDraft == null && _settingValues['pay_type'] == 'hourly'))
-                      _amountField('paid_leave_daily_yen',
-                        SkoLanguageController.tr('有給1日分（空欄は時給×8時間）')),
-                    Text(SkoLanguageController.trParams('有給1日分：{amount}円',
-                      {'amount': _currentPaidLeavePay().dailyAmountYen})),
-                    Text(SkoLanguageController.tr('日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。')),
+                        (_rateDraft == null &&
+                            _settingValues['pay_type'] == 'hourly'))
+                      _amountField(
+                        'paid_leave_daily_yen',
+                        SkoLanguageController.tr('有給1日分（空欄は時給×8時間）'),
+                      ),
+                    Text(
+                      SkoLanguageController.trParams('有給1日分：{amount}円', {
+                        'amount': _currentPaidLeavePay().dailyAmountYen,
+                      }),
+                    ),
+                    Text(
+                      SkoLanguageController.tr(
+                        '日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。',
+                      ),
+                    ),
                   ],
                   SizedBox(height: 12),
-                  _moneySection(
-                    title: '控除',
-                    icon: Icons.remove_circle_outline,
-                    children: [
-                      if (_workerId != null && companyId != null && companyId.isNotEmpty)
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.calculate_outlined),
-                          label: const Text('給与の税計算・自動反映'),
-                          onPressed: _saving ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(
-                            builder: (_) => PayrollTaxConditionsPage(companyId: companyId, workerId: _workerId!),
-                          )),
-                        ),
-                      _sectionTitle(SkoLanguageController.tr('税・社会保険の月額設定')),
-                      _amountField('income_tax_monthly', SkoLanguageController.tr('所得税・月額')),
-                      _amountField('social_insurance_monthly', SkoLanguageController.tr('社会保険・月額')),
-                      SizedBox(height: 12),
-                      _sectionTitle(SkoLanguageController.tr('住民税')),
-                      if (_residentTaxCapability == ResidentTaxCapability.legacy)
-                        _amountField('resident_tax_monthly', SkoLanguageController.tr('住民税・月額'))
-                      else if (_residentTaxCapability == ResidentTaxCapability.unknown) ...[
-                        const Text('住民税の設定方式を確認できません。住民税は変更せず、他の給与設定を保存できます。'),
-                        TextButton(onPressed: _saving ? null : _retryResidentTaxCapability, child: const Text('再確認')),
-                      ] else if (_workerId != null) ResidentTaxSection(
-                        key: ValueKey('resident-tax-$_workerId'),
-                        workerId: _workerId!,
-                        companyId: _settingValues['company_id'] is String ? _settingValues['company_id'] as String : workspace.companyId,
-                        canEdit: workspace.canEdit && !_saving,
-                        legacyAmount: num.tryParse(_controllers['resident_tax_monthly']!.text) ?? 0,
-                      ),
-                      SizedBox(height: 12),
-                      _sectionTitle(SkoLanguageController.tr('その他の控除')),
-                      for (var i = 0; i < _customDeductions.length; i++)
-                        _customMoneyField(
-                          _customDeductions,
-                          i,
-                          workspace.canEdit,
-                          sectionName: '控除',
-                        ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: workspace.canEdit
-                              ? () => _addCustomMoney(_customDeductions)
-                              : null,
-                          icon: Icon(Icons.add),
-                          label: Text(SkoLanguageController.tr('控除項目を追加')),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: workspace.canEdit && !_saving ? _save : null,
-                    icon: Icon(Icons.save_outlined),
-                    label: Text(_saving ? SkoLanguageController.tr('保存中…') : SkoLanguageController.tr('個別給与設定を保存')),
-                  ),
                 ],
+                ),
               ),
       ),
     );
@@ -697,6 +869,16 @@ class _IndividualPayrollSettingsPageState
 
   void _addCustomMoney(List<_CustomMoneyDraft> items) {
     setState(() => items.add(_CustomMoneyDraft()));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _addedItemKey.currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.2,
+        );
+      }
+    });
   }
 
   void _removeCustomMoney(List<_CustomMoneyDraft> items, int index) {
@@ -777,6 +959,14 @@ class _IndividualPayrollSettingsPageState
   }) {
     final item = items[index];
     return Card(
+      key:
+          index == items.length - 1 &&
+              identical(
+                items,
+                _showDeductions ? _customDeductions : _customEarnings,
+              )
+          ? _addedItemKey
+          : null,
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -787,7 +977,11 @@ class _IndividualPayrollSettingsPageState
               enabled: enabled,
               maxLength: 100,
               decoration: InputDecoration(
-                labelText: SkoLanguageController.trParams('{section}{number} 名称', {'section': SkoLanguageController.tr(sectionName), 'number': index + 1}),
+                labelText:
+                    SkoLanguageController.trParams('{section}{number} 名称', {
+                      'section': SkoLanguageController.tr(sectionName),
+                      'number': index + 1,
+                    }),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -796,7 +990,11 @@ class _IndividualPayrollSettingsPageState
               enabled: enabled,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: SkoLanguageController.trParams('{section}{number} 金額', {'section': SkoLanguageController.tr(sectionName), 'number': index + 1}),
+                labelText:
+                    SkoLanguageController.trParams('{section}{number} 金額', {
+                      'section': SkoLanguageController.tr(sectionName),
+                      'number': index + 1,
+                    }),
                 suffixText: SkoLanguageController.tr('円'),
                 border: OutlineInputBorder(),
               ),
@@ -807,7 +1005,11 @@ class _IndividualPayrollSettingsPageState
                 child: TextButton.icon(
                   onPressed: () => _removeCustomMoney(items, index),
                   icon: Icon(Icons.delete_outline),
-                  label: Text(SkoLanguageController.trParams('この{section}を削除', {'section': SkoLanguageController.tr(sectionName)})),
+                  label: Text(
+                    SkoLanguageController.trParams('この{section}を削除', {
+                      'section': SkoLanguageController.tr(sectionName),
+                    }),
+                  ),
                 ),
               ),
           ],
@@ -823,7 +1025,10 @@ class _IndividualPayrollSettingsPageState
   }) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
+      border: Border.all(
+        color: Theme.of(context).colorScheme.primary,
+        width: 2,
+      ),
       borderRadius: BorderRadius.circular(12),
       color: Theme.of(context).colorScheme.surface,
     ),
@@ -834,8 +1039,10 @@ class _IndividualPayrollSettingsPageState
           children: [
             Icon(icon, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
-            Text(SkoLanguageController.tr(title),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              SkoLanguageController.tr(title),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         const Divider(height: 24),
