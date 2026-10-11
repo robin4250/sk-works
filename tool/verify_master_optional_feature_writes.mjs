@@ -6,9 +6,26 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const runtime=await import(pathToFileURL(resolve(process.argv[2])).href);
 const pgMode=process.argv.includes('--postgres');
+function fixtureUrl(value){
+ let u;try{u=new URL(value);}catch{throw Error('Only a local disposable master_gate_fixture URL is permitted');}
+ if(!['postgres:','postgresql:'].includes(u.protocol)||!['localhost','127.0.0.1','[::1]'].includes(u.hostname)||
+  u.pathname!='/master_gate_fixture'||u.port!=='5432'||u.username!=='postgres'||u.password!=='fixture'||u.search||u.hash)
+  throw Error('Only a local disposable master_gate_fixture URL is permitted');
+ return u.href;
+}
+for(const invalid of ['postgres://postgres:fixture@production:5432/master_gate_fixture','postgres://postgres:fixture@localhost:5432/postgres','postgres://postgres:fixture@localhost:5432/master_gate_fixture?host=production'])assert.throws(()=>fixtureUrl(invalid));
+const connectionString=pgMode?fixtureUrl(process.env.FIXTURE_DATABASE_URL):undefined;
 const Client=runtime.Client??runtime.default?.Client;
-const db=pgMode?new Client({connectionString:process.env.FIXTURE_DATABASE_URL}):new runtime.PGlite();
-if(pgMode)await db.connect();
+const db=pgMode?new Client({connectionString}):new runtime.PGlite();
+if(pgMode){
+ await db.connect();
+ try{
+  const v=Number((await db.query("show server_version_num")).rows[0].server_version_num);
+  assert.ok(v>=170000&&v<180000,'Only PostgreSQL 17 fixture is permitted');
+  const objects=(await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private','auth')")).rows[0].n;
+  assert.equal(objects,0,'Fixture must have no existing public/private/auth relations before any DDL');
+ }catch(e){await db.end();throw e;}
+}
 const exec=sql=>pgMode?db.query(sql):db.exec(sql);
 const uid='10000000-0000-0000-0000-000000000001',company='10000000-0000-0000-0000-000000000002',worker='10000000-0000-0000-0000-000000000003',vehicle='10000000-0000-0000-0000-000000000004',route='10000000-0000-0000-0000-000000000005';
 let counter=100;
@@ -37,6 +54,7 @@ try{
  await exec(`create function public.is_current_user_master_admin() returns boolean language sql stable as $$select auth.uid()='${uid}'::uuid$$`);
  const masterBaseline=await readFile(resolve(root,'supabase/migrations/20260930065000_add_master_feature_controls.sql'),'utf8');
  await exec(masterBaseline.slice(masterBaseline.indexOf('create or replace function public.current_master_feature_flags')));
+ await exec(await readFile(resolve(root,'supabase/migrations/20260930065500_fix_master_feature_control_authorization.sql'),'utf8'));
  const routineBefore=(await db.query("select oid,md5(pg_get_functiondef(oid)) hash,proacl::text from pg_proc where proname in ('current_master_feature_flags','set_master_feature_enabled') order by oid")).rows;
  const before=(await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows;
  const migration=(await readdir(resolve(root,'supabase/migrations'))).find(f=>f.endsWith('_guard_master_optional_feature_writes.sql'));
@@ -107,7 +125,7 @@ try{
  await exec("reset role;insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',false)");
  for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege('${role}','private.guard_master_optional_feature_write()','execute') allowed`)).rows[0].allowed,false);
  if(pgMode){
-  const a=new Client({connectionString:process.env.FIXTURE_DATABASE_URL}),b=new Client({connectionString:process.env.FIXTURE_DATABASE_URL});
+  const a=new Client({connectionString}),b=new Client({connectionString});
   await a.connect();await b.connect();
   try{
    await db.query("update private.master_feature_settings set enabled=true where feature_key='route_assignment'");
