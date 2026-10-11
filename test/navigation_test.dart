@@ -54,7 +54,8 @@ void main() {
     await tester.tap(find.text('設定'));
     await tester.pumpAndSettle();
 
-    expect(find.text('設定を保存'), findsOneWidget);
+    expect(find.text('フローティングヘルプ'), findsOneWidget);
+    expect(find.text('設定を保存'), findsNothing);
   });
 
   testWidgets('footer exposes five primary destinations', (tester) async {
