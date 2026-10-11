@@ -1,10 +1,20 @@
+// ignore_for_file: depend_on_referenced_packages
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 
 import 'package:sk_works/features/daily_reports/daily_report_month_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 
 void main() {
+  setUp(() {
+    final previous = SharedPreferencesAsyncPlatform.instance;
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = previous);
+  });
   testWidgets(
     'daily report opens the monthly list through its calendar action',
     (tester) async {
