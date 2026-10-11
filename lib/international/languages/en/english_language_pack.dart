@@ -4,6 +4,9 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+  '以前の出勤は履歴化されています': 'This clock-in is archived',
+  'この出勤は削除・修正後の履歴に保存されています。同じ記録では再出勤できません。記録と写真を保持して、新しい出勤を始めます。': 'This clock-in was removed or corrected and is preserved in history. It cannot be reused. Keep the record and photo, then begin a new clock-in.',
+  '新しい出勤を始める': 'Begin a new clock-in',
     '作業する現場を選び、現場到着のボタンを押してください': 'Select your work site and press Site arrival.',
     '作業終了して次の現場に向かう時に現場移動ボタン押してください': 'When work is finished and you leave for the next site, press Site move.',
     '次の現場に到着したら現場到着ボタンを押してください': 'When you reach the next site, press Site arrival.',

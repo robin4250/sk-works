@@ -1,3 +1,5 @@
+import '../shared/related_action_footer.dart';
+
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -6,7 +8,8 @@ import 'worker_attendance_sheet_page.dart';
 import 'worker_attendance_sheet_repository.dart';
 
 class AttendanceWorkerListPage extends StatefulWidget {
-  const AttendanceWorkerListPage({super.key});
+  const AttendanceWorkerListPage({super.key, this.onOpenManagement});
+  final Future<void> Function()? onOpenManagement;
 
   @override
   State<AttendanceWorkerListPage> createState() =>
@@ -106,6 +109,13 @@ class _AttendanceWorkerListPageState extends State<AttendanceWorkerListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: widget.onOpenManagement == null
+          ? null
+          : RelatedActionFooter(
+              label: '勤怠管理',
+              icon: Icons.manage_history_outlined,
+              onPressed: widget.onOpenManagement!,
+            ),
       appBar: AppBar(
         title: const Text(
           '出勤表一覧',

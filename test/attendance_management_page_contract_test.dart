@@ -18,8 +18,10 @@ void main() {
   test('attendance management is management-only and uses force RPC', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
     final repo = File('lib/features/attendance/attendance_management_repository.dart').readAsStringSync();
-    expect(app, contains("key: 'attendance_management'"));
-    expect(app, contains("_identity.isManagement && _identity.can('can_manage_attendance')"));
+    expect(app, isNot(contains("key: 'attendance_management'")));
+    expect(app, contains("case 'attendance_management':"));
+    expect(app, contains("onOpenManagement:"));
+    expect(app.replaceAll(RegExp(r'\s+'), ' '), contains("_identity.isManagement && _identity.can('can_manage_attendance') && _subAdminFeatureEnabled('attendance_management')"));
     expect(app, contains("page = const AttendanceManagementPage()"));
     expect(repo, contains("rpc('force_manage_attendance'"));
     expect(repo, contains("const {'owner', 'admin', 'manager'}"));

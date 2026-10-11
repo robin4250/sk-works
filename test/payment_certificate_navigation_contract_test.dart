@@ -8,9 +8,12 @@ void main() {
   test('payment certificates are reachable from the management menu', () {
     final app = read('lib/app_v2.dart');
     expect(app, contains("key: 'payment_certificates'"));
-    expect(app, contains("key: 'payment_certificate_settings'"));
+    expect(app, contains("case 'payment_certificate_settings':"));
     expect(app, contains('PaymentCertificatesPage'));
     expect(app, contains('PartnerPaymentSettingsPage'));
+    expect(app, contains("_nestedActionKeys.contains('payment_certificate_settings')"));
+    expect(app, isNot(contains("key: 'payment_certificate_settings'")));
+    expect(read('lib/features/payroll/payment_certificates_page.dart'), contains('bottomNavigationBar:'));
   });
 
   test('missing-setting notifications open the related settings pages', () {

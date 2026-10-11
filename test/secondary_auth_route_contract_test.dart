@@ -15,7 +15,7 @@ void main() {
     expect(
       source,
       contains(
-        "const SecondaryProtectedPage(\n          title: '管理者用現場データ',\n          child: AdminSiteFinancialPage(),",
+        "SecondaryProtectedPage(\n          title: '現場管理',\n          child: AdminSiteFinancialPage(",
       ),
     );
     expect(
@@ -41,6 +41,8 @@ void main() {
         ),
       ),
     );
+
+    expect(source, contains("onOpenMap: _nestedActionKeys.contains('site_map')"));
 
     final secondary =
         File('lib/features/auth/secondary_protected_page.dart').readAsStringSync();

@@ -1,3 +1,4 @@
+import '../shared/related_action_footer.dart';
 import 'site_payment_certificates_repository.dart';
 import 'site_payment_agreement_page.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +13,8 @@ import 'payment_certificate_pdf_service.dart';
 import 'payment_certificate_repository.dart';
 
 class PaymentCertificatesPage extends StatefulWidget {
-  const PaymentCertificatesPage({super.key});
+  const PaymentCertificatesPage({super.key, this.onOpenSettings});
+  final Future<void> Function()? onOpenSettings;
 
   @override
   State<PaymentCertificatesPage> createState() =>
@@ -126,27 +128,22 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     return Scaffold(
+      bottomNavigationBar: widget.onOpenSettings == null
+          ? null
+          : RelatedActionFooter(
+              label: '支払証明書設定',
+              icon: Icons.tune_outlined,
+              onPressed: () async {
+                await widget.onOpenSettings!();
+                if (mounted) await _load();
+              },
+            ),
       appBar: AppBar(
         title: Text(
           SkoLanguageController.isEnglish ? 'Payment Certificates' : '支払証明書',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: [
-          IconButton(
-            tooltip: SkoLanguageController.isEnglish
-                ? 'Payment Certificate Settings'
-                : '支払証明書設定',
-            onPressed: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const PartnerPaymentSettingsPage(),
-                ),
-              );
-              if (mounted) await _load();
-            },
-            icon: const Icon(Icons.tune_outlined),
-          ),
-          const SkoNotificationBell(),
+        actions: [const SkoNotificationBell(),
         ],
       ),
       body: SafeArea(

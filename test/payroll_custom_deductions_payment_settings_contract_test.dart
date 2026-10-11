@@ -84,11 +84,9 @@ void main() {
       '20261006143007_payment_certificate_settings_management_access.sql',
     );
 
-    final keyIndex = app.indexOf("key: 'payment_certificate_settings'");
-    expect(keyIndex, greaterThan(0));
-    final nearby = app.substring(keyIndex - 180, keyIndex + 420);
-    expect(nearby, contains('_identity.isManagement'));
-    expect(nearby, contains('管理者・サブ管理者'));
+    expect(app.replaceAll(RegExp(r"\s+"), " "), contains("_identity.isManagement && _subAdminFeatureEnabled('payment_certificate_settings')"));
+    expect(app, contains("_nestedActionKeys.contains('payment_certificate_settings')"));
+    expect(app, contains("case 'payment_certificate_settings':"));
     expect(migration, contains("'owner','admin','manager'"));
   });
 }

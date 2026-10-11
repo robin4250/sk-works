@@ -11,8 +11,10 @@ void main() {
       'lib/features/settings/company_module_settings_repository.dart',
     ).readAsStringSync();
 
-    expect(app, contains("key: 'approvals'"));
-    expect(app, contains("label: SkoLanguageController.tr('承認待ち')"));
+    expect(app, contains("case 'approvals':"));
+    expect(app, contains("_identity.can('can_approve_daily_report_edits')"));
+    expect(app, isNot(contains("key: 'approvals'")));
+    expect(app, contains('ApprovalsHubPage'));
     expect(app, isNot(contains("label: SkoLanguageController.tr('本登録承認')")));
     expect(hub, contains('日報の承認待ち'));
     expect(hub, contains('従業員の本登録承認'));

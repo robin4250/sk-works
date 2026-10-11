@@ -1,6 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 
+/// A verified historical record is not an active clock-in or an unknown result.
+class ArchivedCaptureVerification implements Exception {
+  const ArchivedCaptureVerification(this.verification);
+  final Map<String, dynamic> verification;
+}
+
 /// One immutable INSERT identity. Server-owned time and work_date are excluded.
 class CaptureVerificationDraft {
   CaptureVerificationDraft(Map<String, Object?> payload, {DateTime? preparedAt})
