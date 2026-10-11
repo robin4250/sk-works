@@ -187,7 +187,7 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 画像あり（3枚）'), findsOneWidget);
+      expect(find.text('提出済み / 自社用 / 画像あり（3枚）'), findsOneWidget);
       await tester.tap(find.text('運転免許証'));
       await tester.pumpAndSettle();
       expect(find.text('複数写真の保存準備中です。保存済みの写真は確認できます。'), findsOneWidget);
@@ -213,7 +213,7 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 画像あり（3枚）'), findsOneWidget);
+      expect(find.text('提出済み / 自社用 / 画像あり（3枚）'), findsOneWidget);
       await tester.tap(find.text('運転免許証'));
       await tester.pumpAndSettle();
       expect(find.text('登録写真 3枚'), findsOneWidget);
@@ -264,7 +264,7 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 写真未添付'), findsOneWidget);
+      expect(find.text('提出済み / 自社用 / 写真未添付'), findsOneWidget);
       expect(find.text('未登録'), findsNothing);
       expect(gateway.calls, isEmpty);
     },
