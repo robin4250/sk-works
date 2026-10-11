@@ -27,6 +27,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   bool _canManageStatuses = false;
   String? _error;
   String? _selectedWorkerId;
+  String? _loadedActorId;
   String _scope = 'all';
   String _workerQuery = '';
 
@@ -46,12 +47,17 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       });
       return;
     }
+    final actor = repository.actorId;
     try {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageRequirements(),
         repository.canManageStatuses(),
       ]);
+      if (actor == null || repository.actorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+      _loadedActorId = actor;
       final data = values[0] as Map<String, List<Map<String, dynamic>>>;
       if (!mounted) return;
       final workers = data['workers'] ?? const <Map<String, dynamic>>[];
@@ -469,8 +475,22 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final workerId = _selectedWorkerId;
     final requirementId = requirement['id']?.toString();
     if (repository == null || workerId == null || requirementId == null) return;
+    final actor = _loadedActorId;
+    void requireActor() {
+      if (actor == null || repository.actorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+    }
+
+    if (actor == null || repository.actorId != actor) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログイン情報が変更されました。再読み込みしてください。')),
+      );
+      return;
+    }
 
     var savingPhotos = false;
+    List<WorkerDocumentPhoto>? selectedPhotos;
     var status = current?['status']?.toString() ?? 'not_submitted';
     var originalVerified = current?['original_verified'] == true;
     DateTime? expiresAt = _parseDate(current?['expires_at']);
@@ -488,6 +508,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
+                  key: ValueKey('status:$status'),
                   initialValue: status,
                   decoration: const InputDecoration(labelText: '状態'),
                   items: const [
@@ -545,49 +566,55 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             ),
           ),
           actions: [
-            if (current == null)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: Text('まず状態を保存すると、写真の登録・確認を開けます。'),
-              ),
-            if (current != null)
-              TextButton.icon(
-                onPressed: savingPhotos
-                    ? null
-                    : () async {
+            TextButton.icon(
+              onPressed: savingPhotos
+                  ? null
+                  : () async {
+                      setDialogState(() => savingPhotos = true);
+                      try {
+                        requireActor();
                         final photos = await editWorkerDocumentPhotos(
                           dialogContext,
                           paths: workerDocumentPaths(current),
-                          signedUrl: repository.createSignedAttachmentUrl,
+                          signedUrl: (path) async {
+                            requireActor();
+                            final url = await repository
+                                .createSignedAttachmentUrl(path);
+                            requireActor();
+                            return url;
+                          },
                           canEdit: repository.photoEditingAvailable,
+                          initialPhotos: selectedPhotos,
                         );
                         if (photos == null || !dialogContext.mounted) return;
-                        setDialogState(() => savingPhotos = true);
-                        try {
-                          await repository.saveAttachmentPhotos(
-                            row: current,
-                            photos: photos,
+                        requireActor();
+                        setDialogState(() {
+                          selectedPhotos = photos;
+                          if (current == null &&
+                              photos.isNotEmpty &&
+                              status == 'not_submitted') {
+                            status = 'submitted';
+                          }
+                        });
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text('写真を選択できませんでした: $error')),
                           );
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext, true);
-                          }
-                        } catch (error) {
-                          if (dialogContext.mounted) {
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              SnackBar(content: Text('写真を保存できませんでした: $error')),
-                            );
-                          }
-                        } finally {
-                          if (dialogContext.mounted) {
-                            setDialogState(() => savingPhotos = false);
-                          }
                         }
-                      },
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(
-                  repository.photoEditingAvailable ? '写真の追加・編集' : '写真を確認',
-                ),
+                      } finally {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => savingPhotos = false);
+                        }
+                      }
+                    },
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text(
+                repository.photoEditingAvailable
+                    ? '写真を登録・編集${selectedPhotos == null ? '' : ' (${selectedPhotos!.length}枚・保存前)'}'
+                    : '写真を確認',
               ),
+            ),
             TextButton(
               onPressed: savingPhotos
                   ? null
@@ -609,14 +636,29 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     if (save != true) return;
 
     try {
-      await repository.updateStatus(
-        workerId: workerId,
-        requirementId: requirementId,
-        status: status,
-        expiresAt: expiresAt,
-        originalVerified: originalVerified,
-        notes: notes,
-      );
+      requireActor();
+      if (selectedPhotos != null && repository.photoEditingAvailable) {
+        await repository.saveManagedDocumentPhotos(
+          workerId: workerId,
+          requirementId: requirementId,
+          status: status,
+          expiresAt: expiresAt,
+          originalVerified: originalVerified,
+          notes: notes,
+          photos: selectedPhotos!,
+          expectedRow: current,
+        );
+      } else {
+        await repository.updateStatus(
+          workerId: workerId,
+          requirementId: requirementId,
+          status: status,
+          expiresAt: expiresAt,
+          originalVerified: originalVerified,
+          notes: notes,
+        );
+      }
+      requireActor();
       _reload();
     } catch (error) {
       if (!mounted) return;
@@ -749,7 +791,12 @@ class _RequirementTile extends StatelessWidget {
             ),
           ].join(' / '),
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: onTap == null
+            ? null
+            : OutlinedButton(
+                onPressed: onTap,
+                child: Text(status == null ? '登録する' : '登録・編集'),
+              ),
         onTap: onTap,
       ),
     );
@@ -835,7 +882,7 @@ class WorkerDocumentRegistrationActions extends StatelessWidget {
             icon: const Icon(Icons.add),
             label: const Text('必要書類の項目を追加'),
           ),
-        if (canManage) const Text('各項目を開いて状態を保存後、写真を登録・確認できます。'),
+        if (canManage) const Text('各項目の登録ボタンから、状態と写真をまとめて登録できます。'),
         if (!photoEditingAvailable)
           const Text(WorkerDocumentRepository.photoPreparationMessage),
       ],

@@ -12,6 +12,7 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   bool canEdit = true,
   bool allowNewPhotos = true,
   String? uploadNotice,
+  List<WorkerDocumentPhoto>? initialPhotos,
 }) => showDialog<List<WorkerDocumentPhoto>>(
   context: context,
   builder: (_) => _PhotoEditor(
@@ -20,6 +21,7 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
     canEdit: canEdit,
     allowNewPhotos: allowNewPhotos,
     uploadNotice: uploadNotice,
+    initialPhotos: initialPhotos,
   ),
 );
 
@@ -30,8 +32,10 @@ class _PhotoEditor extends StatefulWidget {
     required this.canEdit,
     required this.allowNewPhotos,
     required this.uploadNotice,
+    required this.initialPhotos,
   });
   final List<String> paths;
+  final List<WorkerDocumentPhoto>? initialPhotos;
   final bool canEdit;
   final bool allowNewPhotos;
   final String? uploadNotice;
@@ -41,7 +45,9 @@ class _PhotoEditor extends StatefulWidget {
 }
 
 class _PhotoEditorState extends State<_PhotoEditor> {
-  late final _photos = widget.paths.map(WorkerDocumentPhoto.saved).toList();
+  late final _photos = List<WorkerDocumentPhoto>.of(
+    widget.initialPhotos ?? widget.paths.map(WorkerDocumentPhoto.saved),
+  );
   final _picker = ImagePicker();
   final _urls = <String, Future<String>>{};
   bool _busy = false;
