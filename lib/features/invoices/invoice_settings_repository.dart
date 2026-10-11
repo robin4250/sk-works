@@ -50,6 +50,7 @@ class InvoiceSettingsData {
 
 class InvoiceSettingsRepository {
   InvoiceSettingsRepository._(this._client);
+  InvoiceSettingsRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 
