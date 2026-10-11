@@ -37,7 +37,7 @@ void main() {
         } else if (request.uri.path.endsWith(
           '/clear_my_route_attendance_selection',
         )) {
-          expect(jsonDecode(await utf8.decoder.bind(request).join()), {});
+          expect(jsonDecode(await utf8.decoder.bind(request).join()), isNull);
           final today = DateTime.now().toUtc().add(const Duration(hours: 9));
           final date =
               '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
