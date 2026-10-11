@@ -180,6 +180,15 @@ print(json.dumps({'text':p.get_text(),'red_count':len(red),'lines':lines,'red_bo
               reason:
                   'Issuer details must stay above the unchanged detail table',
             );
+            if (png) {
+              final image = (report['image_boxes'] as List).single as List;
+              expect(
+                (image[0] as num) - box[2],
+                closeTo(5, 0.5),
+                reason:
+                    'Short company names must use the full shared issuer lane',
+              );
+            }
             for (final sealBox in [
               ...(report['red_boxes'] as List).cast<List>(),
               ...(report['image_boxes'] as List).cast<List>(),

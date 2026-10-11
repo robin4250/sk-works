@@ -142,7 +142,9 @@ class PaymentCertificatePdfService {
                     pw.Padding(
                       // One shared edge, outside the unchanged 55pt seal lane.
                       padding: const pw.EdgeInsets.only(top: 21, right: 60),
-                      child: pw.Column(
+                      child: pw.SizedBox(
+                        width: 150,
+                        child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.end,
                         children: [
                           pw.Text(
@@ -163,6 +165,7 @@ class PaymentCertificatePdfService {
                           if (record.payerFax.isNotEmpty)
                             _issuerDetail('FAX　${formatPhone(record.payerFax)}'),
                         ],
+                        ),
                       ),
                     ),
                     if (record.payerCompanySealEnabled)
