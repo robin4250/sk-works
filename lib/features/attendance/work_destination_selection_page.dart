@@ -55,6 +55,12 @@ class _WorkDestinationSelectionPageState
   String _mode = 'manual';
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  String? _loadedActorId;
+  void _requireLoadedActor() {
+    if (_loadedActorId == null || _vehicleRouteRepository?.selectionActorId != _loadedActorId) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
   MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
@@ -78,6 +84,7 @@ class _WorkDestinationSelectionPageState
     }
 
     try {
+      final actor = vehicleRouteRepository.selectionActorId;
       final values = await Future.wait([
         attendanceRepository.loadSites(),
         attendanceRepository.loadAttendanceSelectionWorkspace(),
@@ -112,7 +119,11 @@ class _WorkDestinationSelectionPageState
           routeSelection['route_assignment_id']?.toString();
 
       if (!mounted) return;
+      if (actor == null || vehicleRouteRepository.selectionActorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       setState(() {
+        _loadedActorId = actor;
         _availability = values[4] as MasterFeatureAvailability;
         _sites = sites
             .where((row) => row['status']?.toString() != 'completed')
@@ -167,9 +178,11 @@ class _WorkDestinationSelectionPageState
 
     setState(() => _saving = true);
     try {
+      _requireLoadedActor();
       final siteId = _routeId == null ? _siteId : null;
       if (siteId != null) {
-        await attendanceRepository.saveAttendanceSelection(
+        _requireLoadedActor();
+      await attendanceRepository.saveAttendanceSelection(
           mode: _mode,
           siteId: siteId,
           weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
@@ -177,10 +190,13 @@ class _WorkDestinationSelectionPageState
               ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
               : null,
         );
-        await vehicleRouteRepository.saveTodayRouteSelection(null);
+        _requireLoadedActor();
+      await vehicleRouteRepository.saveTodayRouteSelection(null);
       } else if (_routeId != null) {
-        await vehicleRouteRepository.saveTodayRouteSelection(_routeId);
-        await attendanceRepository.saveAttendanceSelection(
+        _requireLoadedActor();
+      await vehicleRouteRepository.saveTodayRouteSelection(_routeId);
+        _requireLoadedActor();
+      await attendanceRepository.saveAttendanceSelection(
           mode: _mode,
           siteId: null,
           weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
@@ -189,8 +205,10 @@ class _WorkDestinationSelectionPageState
               : null,
         );
       } else {
-        await vehicleRouteRepository.saveTodayRouteSelection(null);
-        await attendanceRepository.saveAttendanceSelection(
+        _requireLoadedActor();
+      await vehicleRouteRepository.saveTodayRouteSelection(null);
+        _requireLoadedActor();
+      await attendanceRepository.saveAttendanceSelection(
           mode: _mode,
           siteId: null,
           weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
@@ -200,6 +218,7 @@ class _WorkDestinationSelectionPageState
         );
       }
       if (!mounted) return;
+      _requireLoadedActor();
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;

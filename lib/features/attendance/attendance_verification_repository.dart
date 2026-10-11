@@ -107,12 +107,20 @@ class AttendanceVerificationRepository {
         : const <String, dynamic>{};
   }
 
+  void _requireMutationActor(String? actor) {
+    if (actor == null || _client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
+
   Future<void> saveAttendanceSelection({
     required String mode,
     String? siteId,
     List<int>? weekdays,
     String? localTime,
   }) async {
+    final actor = _client.auth.currentUser?.id;
+    _requireMutationActor(actor);
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
     if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
@@ -125,6 +133,7 @@ class AttendanceVerificationRepository {
         DateTime.now().day.toString().padLeft(2, '0');
 
     if (siteId != null && siteId.trim().isNotEmpty) {
+      _requireMutationActor(actor);
       await _client
           .from('work_attendance_selections')
           .update({
@@ -136,6 +145,7 @@ class AttendanceVerificationRepository {
           .eq('worker_id', workerId)
           .eq('work_date', workDate);
 
+      _requireMutationActor(actor);
       await _client.rpc(
         'save_my_attendance_selection',
         params: {
@@ -147,6 +157,7 @@ class AttendanceVerificationRepository {
         },
       );
 
+      _requireMutationActor(actor);
       await _client
           .from('work_vehicle_route_selections')
           .update({
@@ -173,6 +184,7 @@ class AttendanceVerificationRepository {
       if (mode == 'gps_auto') {
         await _requireNewOptionalWork(routeId: routeId);
       }
+      _requireMutationActor(actor);
       await _client.rpc(
         'save_my_route_attendance_selection',
         params: {
@@ -190,6 +202,7 @@ class AttendanceVerificationRepository {
       throw StateError('GPS自動出勤は現場またはルートの選択が必要です。');
     }
 
+    _requireMutationActor(actor);
     await _client.from('work_attendance_selections').upsert(
       {
         'company_id': companyId,
@@ -212,7 +225,9 @@ class AttendanceVerificationRepository {
 
   Future<void> _requireNewOptionalWork({String? vehicleId, String? routeId}) async {
     if ((vehicleId == null || vehicleId.trim().isEmpty) &&
-        (routeId == null || routeId.trim().isEmpty)) return;
+        (routeId == null || routeId.trim().isEmpty)) {
+      return;
+    }
     final flags = await MasterFeatureControlsRepository.loadForClient(_client);
     if (!flags.permitsClockIn(vehicleId: vehicleId, routeId: routeId)) {
       throw StateError('選択中の車両またはルートの新しい利用は一時停止中です。通常出勤へ変更してください。');

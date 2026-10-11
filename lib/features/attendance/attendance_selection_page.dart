@@ -25,6 +25,12 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
   String? _vehicleId;
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  String? _loadedActorId;
+  void _requireLoadedActor() {
+    if (_loadedActorId == null || _vehicleRouteRepository?.selectionActorId != _loadedActorId) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
   MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
@@ -48,6 +54,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
     }
 
     try {
+      final actor = vehicleRouteRepository.selectionActorId;
       final values = await Future.wait([
         attendanceRepository.loadAttendanceSelectionWorkspace(),
         vehicleRouteRepository.vehicles(activeOnly: true),
@@ -76,7 +83,11 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
       if (mode == 'location') mode = 'gps_auto';
 
       if (!mounted) return;
+      if (actor == null || vehicleRouteRepository.selectionActorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       setState(() {
+        _loadedActorId = actor;
         _availability = values[3] as MasterFeatureAvailability;
         _vehicles = vehicles;
         _mode = mode;
@@ -152,6 +163,8 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
 
     setState(() => _saving = true);
     try {
+      _requireLoadedActor();
+      _requireLoadedActor();
       await attendanceRepository.saveAttendanceSelection(
         mode: _mode,
         siteId: _siteId,
@@ -160,9 +173,11 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
             ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
+      _requireLoadedActor();
       await vehicleRouteRepository.saveTodayVehicleSelection(_vehicleId);
       await GpsAutoAttendanceService.instance.refresh();
       if (!mounted) return;
+      _requireLoadedActor();
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;

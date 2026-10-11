@@ -20,6 +20,8 @@ abstract class VehicleRouteSelectionAccess {
 class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   VehicleRouteRepository._(this._client);
 
+  VehicleRouteRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   @override
@@ -36,6 +38,12 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   @override
   Future<MasterFeatureAvailability> featureAvailability() =>
       MasterFeatureControlsRepository.loadForClient(_client);
+
+  void _requireSelectionActor(String? actor) {
+    if (actor == null || _client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
 
   Future<void> _requireFeature({required bool vehicle}) async {
     final flags = await featureAvailability();
@@ -329,6 +337,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayVehicleSelection(String? vehicleId) async {
+    final actor = selectionActorId;
     if (vehicleId != null && vehicleId.trim().isNotEmpty) {
       await _requireFeature(vehicle: true);
     }
@@ -339,6 +348,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     final workDate = _date(DateTime.now());
 
     final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
@@ -355,7 +365,22 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayRouteSelection(String? routeId) async {
-    if (routeId != null && routeId.trim().isNotEmpty) {
+    final actor = selectionActorId;
+    if (routeId == null || routeId.trim().isEmpty) {
+      _requireSelectionActor(actor);
+      final workDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      final result = await _client.rpc('clear_my_route_attendance_selection');
+      _requireSelectionActor(actor);
+      final responseDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      if (result is! Map || result['cleared'] != true ||
+          !result.containsKey('route_assignment_id') ||
+          result['route_assignment_id'] != null ||
+          (result['work_date'] != workDate && result['work_date'] != responseDate)) {
+        throw StateError('ルート選択の解除を確認できません。再読み込みしてください。');
+      }
+      return;
+    }
+    if (routeId.trim().isNotEmpty) {
       await _requireFeature(vehicle: false);
     }
     final companyId = await _membership();
@@ -365,6 +390,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     final workDate = _date(DateTime.now());
 
     final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
     await _client.from('work_vehicle_route_selections').upsert(
       {
         'company_id': companyId,
@@ -378,7 +404,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
       onConflict: 'company_id,worker_id,work_date',
     );
 
-    if (routeId != null && routeId.trim().isNotEmpty) {
+    if (routeId.trim().isNotEmpty) {
       final currentAttendance = await _client
           .from('work_attendance_selections')
           .select('verification_mode')
@@ -388,6 +414,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
           .maybeSingle();
       final mode =
           currentAttendance?['verification_mode']?.toString() ?? 'manual';
+      _requireSelectionActor(actor);
       await _client.from('work_attendance_selections').upsert(
         {
           'company_id': companyId,

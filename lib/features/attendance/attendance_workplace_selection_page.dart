@@ -26,6 +26,12 @@ class _AttendanceWorkplaceSelectionPageState
   String _mode = 'manual';
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  String? _loadedActorId;
+  void _requireLoadedActor() {
+    if (_loadedActorId == null || _routeRepository?.selectionActorId != _loadedActorId) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
   MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
@@ -49,6 +55,7 @@ class _AttendanceWorkplaceSelectionPageState
     }
 
     try {
+      final actor = routes.selectionActorId;
       final values = await Future.wait([
         attendance.loadSites(),
         attendance.loadAttendanceSelectionWorkspace(),
@@ -68,7 +75,11 @@ class _AttendanceWorkplaceSelectionPageState
           routeSelection['route_assignment_id']?.toString();
 
       if (!mounted) return;
+      if (actor == null || routes.selectionActorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
       setState(() {
+        _loadedActorId = actor;
         _availability = values[4] as MasterFeatureAvailability;
         _sites = (values[0] as List<Map<String, dynamic>>)
             .where((row) => row['status']?.toString() != 'completed')
@@ -103,8 +114,11 @@ class _AttendanceWorkplaceSelectionPageState
 
     setState(() => _saving = true);
     try {
+      _requireLoadedActor();
       if (_kind == 'route') {
+        _requireLoadedActor();
         await routes.saveTodayRouteSelection(_routeId);
+        _requireLoadedActor();
         await attendance.saveAttendanceSelection(
           mode: _mode,
           siteId: null,
@@ -114,6 +128,7 @@ class _AttendanceWorkplaceSelectionPageState
               : null,
         );
       } else {
+        _requireLoadedActor();
         await attendance.saveAttendanceSelection(
           mode: _mode,
           siteId: _siteId,
@@ -124,6 +139,7 @@ class _AttendanceWorkplaceSelectionPageState
         );
       }
       if (!mounted) return;
+      _requireLoadedActor();
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;

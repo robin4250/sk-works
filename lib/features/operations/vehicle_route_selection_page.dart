@@ -125,7 +125,7 @@ class _VehicleRouteSelectionPageState extends State<VehicleRouteSelectionPage> {
       } else {
         await repository.saveTodayRouteSelection(_routeId);
       }
-      if (!mounted) return;
+      if (!mounted || repository.selectionActorId != _loadedActorId) return;
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
