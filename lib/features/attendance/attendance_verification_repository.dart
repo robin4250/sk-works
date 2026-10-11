@@ -2,6 +2,8 @@
 
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import 'gps_photo_capture_result.dart';
 import 'capture_verification_draft.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,6 +66,10 @@ class HomeAttendanceStatus {
 
 class AttendanceVerificationRepository {
   AttendanceVerificationRepository._(this._client);
+
+  @visibleForTesting
+  factory AttendanceVerificationRepository.forTesting(SupabaseClient client) =>
+      AttendanceVerificationRepository._(client);
 
   final SupabaseClient _client;
   static const _bucket = 'attendance-evidence';
