@@ -382,7 +382,9 @@ class _HomePageState extends State<HomePage> {
 
       if (!recoveryLoaded || routeRepository == null ||
           routeRepository.userId != requestActor ||
-          value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) return;
+          value.phase != HomeAttendancePhase.working || value.openShifts.length != 1 || value.openShifts.single.routeId == null) {
+        return;
+      }
       final shift = value.openShifts.single;
       final workspace = await routeRepository.workspace(shift.id);
       if (!acceptsResponse()) return;
@@ -870,8 +872,9 @@ class _HomePageState extends State<HomePage> {
             pendingActor == null ||
             !SupabaseBackend.isInitialized ||
             SupabaseBackend.client.auth.currentUser?.id != pendingActor ||
-            !_homePendingRouteSourceIds.contains(pendingSource))
+            !_homePendingRouteSourceIds.contains(pendingSource)) {
           return;
+        }
         page = RouteJourneyCapturePage(sourceId: pendingSource);
         break;
       case 'route_visit':

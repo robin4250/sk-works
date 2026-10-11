@@ -245,8 +245,9 @@ class RouteVisitReportPending {
     'choice': choice,
   });
   RouteVisitReportPending withChoice(String value) {
-    if (!['create', 'skip'].contains(value))
+    if (!['create', 'skip'].contains(value)) {
       throw ArgumentError.value(value, 'choice');
+    }
     return RouteVisitReportPending._(
       move: move,
       workDate: workDate,

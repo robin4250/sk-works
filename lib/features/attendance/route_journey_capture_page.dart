@@ -157,8 +157,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
         );
         // Recovery is selected by source on home. A later shift from the same
         // company must never replace the closed visit being resumed here.
-        if (companyPending?.sourceId == widget.sourceId)
+        if (companyPending?.sourceId == widget.sourceId) {
           pending = companyPending;
+        }
       }
       if (!_active(generation)) return;
       _checkActor();
@@ -277,8 +278,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
   }
 
   Future<void> _captureOrRetry() async {
-    if (_busy || _loading || _loadFailed || _left || _pendingReport != null)
+    if (_busy || _loading || _loadFailed || _left || _pendingReport != null) {
       return;
+    }
     final repository = _repository;
     final generation = _generation;
     setState(() => _busy = true);
@@ -488,8 +490,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
     if (initialPending == null ||
         access is! RouteVisitReportAccess ||
         _left ||
-        _reportBusy)
+        _reportBusy) {
       return;
+    }
     final reportAccess = access as RouteVisitReportAccess;
     RouteVisitReportPending pending = initialPending;
     setState(() => _reportBusy = true);
@@ -556,10 +559,11 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
       _checkActor();
       await _load();
     } catch (error) {
-      if (mounted && !_left)
+      if (mounted && !_left) {
         setState(
           () => _error = '${SkoLanguageController.tr('現場日報を再開してください')}: $error',
         );
+      }
     } finally {
       if (mounted && !_left) setState(() => _reportBusy = false);
     }

@@ -509,8 +509,9 @@ class DailyReportRepository {
     required String signerName,
     required Object signatureJson,
   }) async {
-    if (role != 'reporter' && role != 'responsible')
+    if (role != 'reporter' && role != 'responsible') {
       throw ArgumentError.value(role);
+    }
     final row = await _visitRpc('save_route_visit_report_signature', {
       'p_report_id': reportId,
       'p_role': role,
