@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../shared/pdf_bytes_cache.dart';
 import 'daily_report_pdf_evidence.dart';
+import 'daily_report_photo_pages.dart';
+import 'daily_report_photo_preview.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1499,6 +1501,9 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
 
 class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPage> {
   final _pdfBytes = PdfBytesCache();
+  final _photoPdfBytes = PdfBytesCache();
+  Future<List<DailyReportPdfEvidence>>? _resolvedEvidence;
+  bool _printingPhotos = false;
   String? _fingerprint;
 
   Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
@@ -1508,6 +1513,34 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
         DailyReportPdfEvidence(record: record, downloadFailed: record.storagePath.isNotEmpty)];
     }
     return repository.loadPdfEvidence(widget.evidence);
+  }
+
+  Future<List<DailyReportPdfEvidence>> _savedEvidence() =>
+      _resolvedEvidence ??= _loadEvidence();
+
+  Future<void> _printPhotoPages() async {
+    if (_printingPhotos) return;
+    setState(() => _printingPhotos = true);
+    try {
+      final photos = dailyReportPhotoRecords(await _savedEvidence());
+      if (photos.isEmpty) return;
+      final bytes = await _photoPdfBytes.get(() => DailyReportPdfService.buildPdf(
+        date: widget.date, siteName: widget.siteName, workers: widget.workers,
+        workDescription: widget.workDescription, report: widget.report,
+        evidence: photos, photoPagesOnly: true,
+      ));
+      await Printing.layoutPdf(
+        name: '${widget.date.toIso8601String().substring(0, 10)}_日報写真.pdf',
+        format: PdfPageFormat.a4, onLayout: (_) async => bytes,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.tr('写真ページを印刷できませんでした'))));
+      }
+    } finally {
+      if (mounted) setState(() => _printingPhotos = false);
+    }
   }
 
   @override
@@ -1520,18 +1553,42 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     if (_fingerprint != fingerprint) {
       _fingerprint = fingerprint;
       _pdfBytes.invalidate();
+      _photoPdfBytes.invalidate();
+      _resolvedEvidence = null;
     }
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
         actions: const [SkoNotificationBell()]),
-      body: PdfPreview(initialPageFormat: PdfPageFormat.a4,
-        canChangePageFormat: false, canChangeOrientation: false,
-        allowPrinting: true, allowSharing: true,
-        pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
-        build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
-          date: widget.date, siteName: widget.siteName, workers: widget.workers,
-          workDescription: widget.workDescription, report: widget.report,
-          evidence: await _loadEvidence()))),
+      body: Column(children: [
+        FutureBuilder<List<DailyReportPdfEvidence>>(
+          future: _savedEvidence(),
+          builder: (context, snapshot) {
+            final photos = dailyReportPhotoRecords(snapshot.data ?? const []);
+            return Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(children: [
+                Expanded(child: photos.isNotEmpty
+                  ? Align(alignment: Alignment.centerLeft,
+                      child: DailyReportPhotoPreview(photos: photos))
+                  : Text(SkoLanguageController.tr(snapshot.connectionState == ConnectionState.done
+                      ? '写真の記録がありません' : '読込中...'))),
+                TextButton.icon(
+                  key: const ValueKey('print-daily-report-photo-pages'),
+                  onPressed: photos.isEmpty || _printingPhotos ? null : _printPhotoPages,
+                  icon: const Icon(Icons.print_outlined),
+                  label: Text(SkoLanguageController.tr('写真ページのみ印刷')),
+                ),
+              ]));
+          },
+        ),
+        Expanded(child: PdfPreview(initialPageFormat: PdfPageFormat.a4,
+          canChangePageFormat: false, canChangeOrientation: false,
+          allowPrinting: true, allowSharing: true,
+          pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
+          build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
+            date: widget.date, siteName: widget.siteName, workers: widget.workers,
+            workDescription: widget.workDescription, report: widget.report,
+            evidence: await _savedEvidence())))),
+      ]),
     );
   }
 }
