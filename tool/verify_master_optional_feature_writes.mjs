@@ -26,7 +26,7 @@ try{
  create table work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,vehicle_id uuid,route_assignment_id uuid,primary key(company_id,worker_id,work_date));
  create table work_attendance_selections(like work_vehicle_route_selections including all);
  create table gps_auto_attendance_schedules(company_id uuid,worker_id uuid,route_assignment_id uuid,enabled boolean,primary key(company_id,worker_id));
- create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,vehicle_id uuid,route_assignment_id uuid,event_type text);
+ create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,vehicle_id uuid,route_assignment_id uuid,event_type text,source_clock_in_id uuid);
  create table vehicle_usage_claims(source_clock_in_id uuid primary key,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date,source_clock_out_id uuid,ended_at timestamptz);
  create table vehicle_meter_events(id uuid primary key,source_clock_in_id uuid,company_id uuid,vehicle_id uuid,driver_worker_id uuid,work_date date,previous_km numeric,current_km numeric,recorded_by uuid);
  grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;
@@ -40,14 +40,21 @@ try{
  const routineBefore=(await db.query("select oid,md5(pg_get_functiondef(oid)) hash,proacl::text from pg_proc where proname in ('current_master_feature_flags','set_master_feature_enabled') order by oid")).rows;
  const before=(await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows;
  const migration=(await readdir(resolve(root,'supabase/migrations'))).find(f=>f.endsWith('_guard_master_optional_feature_writes.sql'));
- await exec(await readFile(resolve(root,'supabase/migrations',migration),'utf8'));
+ const migrationSql=await readFile(resolve(root,'supabase/migrations',migration),'utf8');
+ // Inject a failure at the final CREATE TRIGGER; the preceding guards must roll back.
+ const lateFailure=migrationSql.replace('before insert or update on public.attendance_verifications\nfor each row execute','before insert or update on public.vehicles\nfor each row execute');
+ await assert.rejects(exec(lateFailure),e=>e.code==='42710');
+ await exec('rollback');
+ assert.equal((await db.query("select to_regprocedure('private.require_master_optional_feature(text)') missing")).rows[0].missing,null);
+ assert.equal((await db.query("select count(*)::int n from pg_trigger where tgname='zz_master_optional_write_guard'")).rows[0].n,0);
+ await exec(migrationSql);
  assert.deepEqual((await db.query("select oid,md5(pg_get_functiondef(oid)) hash,proacl::text from pg_proc where proname in ('current_master_feature_flags','set_master_feature_enabled') order by oid")).rows,routineBefore);
  assert.deepEqual((await db.query("select oid,relacl::text,relrowsecurity from pg_class where relnamespace='public'::regnamespace order by oid")).rows,before);
  await exec(`insert into vehicles values('${vehicle}','${company}',100,'Fixture',null,null);
  insert into route_assignments values('${route}','${company}',null,'Fixture');
  insert into work_vehicle_route_selections values('${company}','${worker}','2026-10-11','${vehicle}','${route}');
  insert into gps_auto_attendance_schedules values('${company}','${worker}','${route}',true);
- insert into attendance_verifications values('${id()}','${company}','${worker}','${vehicle}','${route}','clock_in');
+ insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${id()}','${company}','${worker}','${vehicle}','${route}','clock_in');
  update private.master_feature_settings set enabled=false;set role authenticated;`);
  const fail=sql=>assert.rejects(db.query(sql),e=>e.code==='P0001');
  await fail(`insert into vehicles values('${id()}','${company}',0,'New',null,null)`);
@@ -62,7 +69,14 @@ try{
  await fail(`insert into gps_auto_attendance_schedules values('${company}','${id()}','${route}',true)`);
  await exec(`update gps_auto_attendance_schedules set enabled=false;`);
  await fail(`update gps_auto_attendance_schedules set enabled=true`);
- const attendance=(event,v,r,w=worker)=>`insert into attendance_verifications values('${id()}','${company}','${w}',${v?`'${v}'`:'null'},${r?`'${r}'`:'null'},'${event}')`;
+ const attendance=(event,v,r,w=worker)=>`insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${id()}','${company}','${w}',${v?`'${v}'`:'null'},${r?`'${r}'`:'null'},'${event}')`;
+ await exec(`reset role;create function private.fixture_normalize_destination() returns trigger language plpgsql as $$begin
+ if current_setting('fixture.normalize_route',true)='on' then NEW.route_assignment_id:='${route}'; end if;
+ return NEW;end$$;
+ create trigger attendance_fixture_normalizer before insert on attendance_verifications for each row execute function private.fixture_normalize_destination();
+ set fixture.normalize_route='on';set role authenticated;`);
+ await fail(attendance('clock_in',null,null)); // Final gate sees an earlier trigger's normalized route.
+ await exec("set fixture.normalize_route='off'");
  await fail(attendance('clock_in',null,route)); // manual OR previously scheduled GPS start
  await fail(attendance('clock_in',vehicle,null));
  await exec(attendance('clock_out',vehicle,route)); // active source continuation
@@ -76,9 +90,10 @@ try{
  // Completed-driver meter finalization: exact same transaction signed snapshot only.
  const source=id(),checkout=id(),event=id();
  await exec(`reset role;update private.master_feature_settings set enabled=true where feature_key='vehicle_management';
- insert into attendance_verifications values('${source}','${company}','${worker}','${vehicle}','${route}','clock_in');
+ insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${source}','${company}','${worker}','${vehicle}','${route}','clock_in');
  update private.master_feature_settings set enabled=false where feature_key='vehicle_management';`);
- await exec(`insert into attendance_verifications values('${checkout}','${company}','${worker}','${vehicle}','${route}','clock_out');
+ await exec(`insert into attendance_verifications(id,company_id,worker_id,vehicle_id,route_assignment_id,event_type) values('${checkout}','${company}','${worker}','${vehicle}','${route}','clock_out');
+ update attendance_verifications set source_clock_in_id='${source}' where id='${checkout}';
  insert into vehicle_usage_claims values('${source}','${company}','${vehicle}','${worker}','2026-10-11','${checkout}',now());
  begin;insert into vehicle_meter_events values('${event}','${source}','${company}','${vehicle}','${worker}','2026-10-11',100,105,'${uid}');
  set role authenticated;update vehicles set odometer_km=105,updated_by='${uid}',updated_at=now() where id='${vehicle}';commit;reset role;`);

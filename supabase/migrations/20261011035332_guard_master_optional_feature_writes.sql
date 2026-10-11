@@ -1,3 +1,39 @@
+begin;
+set local lock_timeout='5s';
+do $preflight$
+declare r record; v_name text;
+begin
+  if to_regprocedure('auth.uid()') is null then raise exception 'auth.uid baseline missing'; end if;
+  foreach v_name in array array['anon','authenticated','service_role'] loop
+    if not exists(select 1 from pg_roles where rolname=v_name) then raise exception 'role baseline missing: %',v_name; end if;
+  end loop;
+  if to_regprocedure('private.require_master_optional_feature(text)') is not null
+    or to_regprocedure('private.guard_master_optional_feature_write()') is not null then
+    raise exception 'master write guards already exist; inspect migration ledger';
+  end if;
+  for r in select * from jsonb_to_recordset('[
+    {"schema":"private","table":"master_feature_settings","columns":["feature_key","enabled"]},
+    {"schema":"public","table":"vehicles","columns":["id","company_id","odometer_km","updated_by","updated_at"]},
+    {"schema":"public","table":"route_assignments","columns":["id","company_id","vehicle_id"]},
+    {"schema":"public","table":"route_stops","columns":["id","company_id","route_assignment_id"]},
+    {"schema":"public","table":"work_vehicle_route_selections","columns":["company_id","worker_id","work_date","vehicle_id","route_assignment_id"]},
+    {"schema":"public","table":"work_attendance_selections","columns":["company_id","worker_id","work_date","route_assignment_id"]},
+    {"schema":"public","table":"gps_auto_attendance_schedules","columns":["company_id","worker_id","route_assignment_id","enabled"]},
+    {"schema":"public","table":"attendance_verifications","columns":["id","company_id","worker_id","vehicle_id","route_assignment_id","source_clock_in_id","event_type"]}
+  ]'::jsonb) as x(schema text,"table" text,columns text[]) loop
+    if to_regclass(format('%I.%I',r.schema,r."table")) is null then raise exception 'table baseline missing: %.%',r.schema,r."table"; end if;
+    foreach v_name in array r.columns loop
+      if not exists(select 1 from pg_attribute where attrelid=to_regclass(format('%I.%I',r.schema,r."table")) and attname=v_name and not attisdropped) then
+        raise exception 'column baseline missing: %.%.%',r.schema,r."table",v_name;
+      end if;
+    end loop;
+    if exists(select 1 from pg_trigger where tgrelid=to_regclass(format('%I.%I',r.schema,r."table")) and tgname='zz_master_optional_write_guard') then
+      raise exception 'trigger already exists: %',r."table";
+    end if;
+  end loop;
+end;
+$preflight$;
+
 -- Additive write gates only. Existing RPCs, ACLs, RLS and historical data remain intact.
 -- Row locks serialize a new optional write with the existing master setter.
 create function private.require_master_optional_feature(p_key text)
@@ -55,7 +91,7 @@ begin
             and c.ended_at is not null and c.source_clock_out_id is not null
             and a.event_type='clock_in' and a.company_id=c.company_id
             and a.vehicle_id=c.vehicle_id and a.worker_id=c.driver_worker_id
-            and z.event_type='clock_out' and z.company_id=c.company_id
+            and z.source_clock_in_id=c.source_clock_in_id and z.event_type='clock_out' and z.company_id=c.company_id
             and z.vehicle_id=c.vehicle_id and z.worker_id=c.driver_worker_id
             and e.previous_km=($2->>'odometer_km')::numeric
             and e.current_km=($1->>'odometer_km')::numeric
@@ -104,17 +140,19 @@ end;
 $$;
 revoke all on function private.guard_master_optional_feature_write() from public,anon,authenticated,service_role;
 
-create trigger aa_master_optional_write_guard before insert or update on public.vehicles
+create trigger zz_master_optional_write_guard before insert or update on public.vehicles
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.route_assignments
+create trigger zz_master_optional_write_guard before insert or update on public.route_assignments
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.route_stops
+create trigger zz_master_optional_write_guard before insert or update on public.route_stops
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.work_vehicle_route_selections
+create trigger zz_master_optional_write_guard before insert or update on public.work_vehicle_route_selections
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.work_attendance_selections
+create trigger zz_master_optional_write_guard before insert or update on public.work_attendance_selections
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.gps_auto_attendance_schedules
+create trigger zz_master_optional_write_guard before insert or update on public.gps_auto_attendance_schedules
 for each row execute function private.guard_master_optional_feature_write();
-create trigger aa_master_optional_write_guard before insert or update on public.attendance_verifications
+create trigger zz_master_optional_write_guard before insert or update on public.attendance_verifications
 for each row execute function private.guard_master_optional_feature_write();
+
+commit;
