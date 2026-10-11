@@ -68,6 +68,8 @@ void main() {
               'created_at': '2026-01-01T00:00:00Z',
             },
           };
+        } else if (path == '/auth/v1/logout') {
+          response = {};
         } else if (path.endsWith('/company_members')) {
           if (scenario == 'actor-company-read') {
             await client.auth.signOut(scope: SignOutScope.local);
