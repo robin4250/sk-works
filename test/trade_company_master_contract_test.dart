@@ -14,7 +14,7 @@ void main() {
     expect(page, contains('TradeCompanyPageMode.customer'));
     expect(repo, contains('TradeCompanyPageMode { customer, subcontractor }'));
     expect(page, contains('SKO連携なしでも登録できます'));
-    expect(repo, contains("rpc('trade_company_workspace')"));
+    expect(repo, contains("rpc('trade_company_contact_workspace')"));
     expect(repo, contains("rpc('sync_trade_company_directory')"));
     expect(app, contains("key: 'trade_companies'"));
     expect(app, contains("key: 'subcontractors'"));
