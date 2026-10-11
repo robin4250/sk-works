@@ -68,8 +68,9 @@ class CaptureVerificationDraft {
     if (actual is! num ||
         expected is! num ||
         !actual.isFinite ||
-        !expected.isFinite)
+        !expected.isFinite) {
       return false;
+    }
     return actual == expected ||
         actual == double.parse(expected.toStringAsPrecision(15));
   }
@@ -81,7 +82,9 @@ class CaptureVerificationDraft {
       if (_floatEvidenceFields.contains(entry.key) &&
           actual is num &&
           expected is num) {
-        if (!_sameFloatEvidence(actual, expected)) return false;
+        if (!_sameFloatEvidence(actual, expected)) {
+          return false;
+        }
       } else if (entry.key.endsWith('_at') &&
           expected is String &&
           actual is String) {
