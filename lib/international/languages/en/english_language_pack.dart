@@ -4,7 +4,6 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
-  '現場管理': 'Site management',
   '以前の出勤は履歴化されています': 'This clock-in is archived',
   'この出勤は削除・修正後の履歴に保存されています。同じ記録では再出勤できません。記録と写真を保持して、新しい出勤を始めます。': 'This clock-in was removed or corrected and is preserved in history. It cannot be reused. Keep the record and photo, then begin a new clock-in.',
   '新しい出勤を始める': 'Begin a new clock-in',

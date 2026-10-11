@@ -66,7 +66,7 @@ void main() {
         if (unavailable) {
           request.response.statusCode = 503;
           response = {'message': 'offline', 'code': 'fixture'};
-        } else
+        } else {
           response = {
             'version': 1,
             'archived': true,
@@ -75,6 +75,7 @@ void main() {
               if (mismatch) 'photo_storage_path': 'different',
             },
           };
+        }
       } else {
         request.response.statusCode = 500;
         response = {'message': 'Unexpected request'};

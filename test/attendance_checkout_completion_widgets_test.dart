@@ -159,10 +159,14 @@ void main() {
     final repository=ArchivedRepository()..open=false;
     await tester.pumpWidget(MaterialApp(home:AttendanceVerificationPage(initialEventType:'clock_in',repository:repository)));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('同じ撮影記録で再確認'));await tester.pump();
+    expect(find.text('同じ撮影記録で再確認').hitTestable(),findsOneWidget);
     await tester.tap(find.text('同じ撮影記録で再確認'));await tester.pumpAndSettle();
     expect(find.text('以前の出勤は履歴化されています'),findsOneWidget);
     await tester.tap(find.text('戻る'));await tester.pumpAndSettle();
     expect(repository.acknowledged,isFalse);expect(repository.inserts,0);
+    await tester.ensureVisible(find.text('同じ撮影記録で再確認'));await tester.pump();
+    expect(find.text('同じ撮影記録で再確認').hitTestable(),findsOneWidget);
     await tester.tap(find.text('同じ撮影記録で再確認'));await tester.pumpAndSettle();
     await tester.tap(find.text('新しい出勤を始める'));await tester.pumpAndSettle();
     expect(repository.acknowledged,isTrue);expect(repository.inserts,0);
