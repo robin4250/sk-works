@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../attendance/attendance_verification_repository.dart';
 import '../../international/language_controller.dart';
 import 'home_attention_repository.dart';
+import '../notifications/notification_settings_button.dart';
 import 'home_route_action_state.dart';
 import 'initial_company_rates_card.dart';
 import 'home_appearance.dart';
@@ -762,11 +763,19 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              SkoLanguageController.tr('本日の出勤'),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    SkoLanguageController.tr('本日の出勤'),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                const NotificationSettingsButton(),
+              ],
             ),
             const SizedBox(height: 6),
             Text(SkoLanguageController.isEnglish ? 'View attendance counts by site, separated between your company and partner companies.' : '自社と下請けを分けて、現場ごとの出勤人数を確認できます。'),

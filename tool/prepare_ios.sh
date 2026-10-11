@@ -304,11 +304,13 @@ import UIKit
 import MapKit
 import CoreLocation
 import ImageIO
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var skoMapChannel: FlutterMethodChannel?
   private var skoCaptureChannel: FlutterMethodChannel?
+  private var skoNotificationChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -351,6 +353,59 @@ import ImageIO
         }
       }
       skoMapChannel = channel
+    }
+
+    if let registrar = self.registrar(forPlugin: "SkoNotificationSettings") {
+      let channel = FlutterMethodChannel(name: "sko.notification_settings", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        switch call.method {
+        case "authorizationStatus":
+          UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized: status = "authorized"
+            case .denied: status = "denied"
+            case .notDetermined: status = "notDetermined"
+            case .provisional: status = "provisional"
+            case .ephemeral: status = "ephemeral"
+            @unknown default: status = "unknown"
+            }
+            DispatchQueue.main.async { result(status) }
+          }
+        case "openSettings":
+          let openSettings = {
+            DispatchQueue.main.async {
+              let setting: String
+              if #available(iOS 15.4, *) {
+                setting = UIApplication.openNotificationSettingsURLString
+              } else {
+                setting = UIApplication.openSettingsURLString
+              }
+              guard let url = URL(string: setting) else { result(false); return }
+              UIApplication.shared.open(url, options: [:]) { opened in result(opened) }
+            }
+          }
+          let center = UNUserNotificationCenter.current()
+          center.getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined {
+              center.requestAuthorization(options: [.alert, .badge, .sound]) { _, error in
+                if let error = error {
+                  DispatchQueue.main.async {
+                    result(FlutterError(code: "permission_request_failed", message: error.localizedDescription, details: nil))
+                  }
+                  return
+                }
+                openSettings()
+              }
+            } else {
+              openSettings()
+            }
+          }
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+      skoNotificationChannel = channel
     }
 
     if let registrar = self.registrar(forPlugin: "SkoCaptureMetadata") {

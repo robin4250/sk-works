@@ -1,3 +1,4 @@
+import 'package:sk_works/features/attendance/today_attendance_page.dart';
 import 'dart:io';
 
 import 'package:sk_works/features/attendance/attendance_correction_approvals_page.dart';
@@ -63,6 +64,10 @@ void main() {
       expect(find.text(SkoLanguageController.tr(item.$2)), findsOneWidget);
     });
   }
+
+  test('saved attendance notice opens the existing permissioned attendance page', () {
+    expect(notificationDestination(notice('attendance_today')), isA<TodayAttendancePage>());
+  });
 
   test('payroll notice resolves its older month and retains secondary protection', () async {
     final month = await resolvePayrollNotificationMonth(targetId, (id) async {
