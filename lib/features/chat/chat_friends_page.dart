@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
+import 'chat_friends_strings.dart';
 
 class ChatFriendsPage extends StatefulWidget {
   const ChatFriendsPage({
     super.key,
+    this.repository,
     this.selectForChat = false,
     this.selectForGroupInvite = false,
   });
 
+  final ChatCloudRepository? repository;
   final bool selectForChat;
   final bool selectForGroupInvite;
 
@@ -17,7 +21,8 @@ class ChatFriendsPage extends StatefulWidget {
 }
 
 class _ChatFriendsPageState extends State<ChatFriendsPage> {
-  final _repository = ChatCloudRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? ChatCloudRepository.maybeCreate();
   final _search = TextEditingController();
 
   Map<String, dynamic> _workspace = const {};
@@ -90,13 +95,17 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       setState(() => _searchResult = result);
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('該当するSKO IDが見つかりません')),
+          SnackBar(content: Text(ChatFriendsStrings.tr('該当するSKO IDが見つかりません'))),
         );
       }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('検索できませんでした: $error')),
+        SnackBar(
+          content: Text(
+            ChatFriendsStrings.format('検索できませんでした: {error}', {'error': error}),
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -108,25 +117,32 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final result = _searchResult;
     if (repository == null || result == null || _busy) return;
 
-    final name = result['display_name']?.toString() ?? 'SKOユーザー';
+    final name = result['display_name']?.toString();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('友達申請を送りますか？'),
-        content: Text('$name さんへ友達申請を送信します。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+      builder: (context) {
+        SkoLanguageController.watch(context);
+        return AlertDialog(
+          title: Text(ChatFriendsStrings.tr('友達申請を送りますか？')),
+          content: Text(
+            ChatFriendsStrings.format('{name} さんへ友達申請を送信します。', {
+              'name': name ?? ChatFriendsStrings.tr('SKOユーザー'),
+            }),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('申請する'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(ChatFriendsStrings.tr('戻る')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(ChatFriendsStrings.tr('申請する')),
+            ),
+          ],
+        );
+      },
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
 
     setState(() => _busy = true);
     try {
@@ -136,12 +152,18 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('友達申請を送信しました')),
+        SnackBar(content: Text(ChatFriendsStrings.tr('友達申請を送信しました'))),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('友達申請を送信できませんでした: $error')),
+        SnackBar(
+          content: Text(
+            ChatFriendsStrings.format('友達申請を送信できませんでした: {error}', {
+              'error': error,
+            }),
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -156,32 +178,52 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(accept ? '友達申請を承認しますか？' : '友達申請を拒否しますか？'),
-        content: Text(
-          request['display_name']?.toString() ?? 'SKOユーザー',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+      builder: (context) {
+        SkoLanguageController.watch(context);
+        return AlertDialog(
+          title: Text(
+            accept
+                ? ChatFriendsStrings.tr('友達申請を承認しますか？')
+                : ChatFriendsStrings.tr('友達申請を拒否しますか？'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(accept ? '承認する' : '拒否する'),
+          content: Text(
+            request['display_name']?.toString() ??
+                ChatFriendsStrings.tr('SKOユーザー'),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(ChatFriendsStrings.tr('戻る')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                accept
+                    ? ChatFriendsStrings.tr('承認する')
+                    : ChatFriendsStrings.tr('拒否する'),
+              ),
+            ),
+          ],
+        );
+      },
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
 
     setState(() => _busy = true);
     try {
-      await repository.respondFriendRequest(
-        requestId: id,
-        accept: accept,
-      );
+      await repository.respondFriendRequest(requestId: id, accept: accept);
       await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ChatFriendsStrings.format('友達申請を更新できませんでした: {error}', {
+              'error': error,
+            }),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -195,29 +237,44 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('友達から削除しますか？'),
-        content: Text(
-          friend['display_name']?.toString() ?? 'SKOユーザー',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+      builder: (context) {
+        SkoLanguageController.watch(context);
+        return AlertDialog(
+          title: Text(ChatFriendsStrings.tr('友達から削除しますか？')),
+          content: Text(
+            friend['display_name']?.toString() ??
+                ChatFriendsStrings.tr('SKOユーザー'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('削除する'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(ChatFriendsStrings.tr('戻る')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(ChatFriendsStrings.tr('削除する')),
+            ),
+          ],
+        );
+      },
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
 
     setState(() => _busy = true);
     try {
       await repository.removeFriend(userId);
       await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ChatFriendsStrings.format('友達から削除できませんでした: {error}', {
+              'error': error,
+            }),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -225,6 +282,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final incoming = _rows('incoming');
     final outgoing = _rows('outgoing');
     final friends = _rows('friends');
@@ -233,210 +291,215 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       appBar: AppBar(
         title: Text(
           widget.selectForChat
-              ? '友達一覧'
+              ? ChatFriendsStrings.tr('友達一覧')
               : widget.selectForGroupInvite
-                  ? '友達を招待'
-                  : '友達',
-          style: TextStyle(fontWeight: FontWeight.w900),
+              ? ChatFriendsStrings.tr('友達を招待')
+              : ChatFriendsStrings.tr('友達'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _repository == null
+                        ? ChatFriendsStrings.tr('友達機能を利用できません。')
+                        : ChatFriendsStrings.format(
+                            '友達一覧を読み込めませんでした: {error}',
+                            {'error': _error},
+                          ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            : (widget.selectForChat || widget.selectForGroupInvite)
+            ? (friends.isEmpty
+                  ? Center(child: Text(ChatFriendsStrings.tr('友達はまだいません')))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: friends.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 6),
+                      itemBuilder: (context, index) {
+                        final friend = friends[index];
+                        return Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person_outline),
+                            ),
+                            title: Text(
+                              friend['display_name']?.toString() ??
+                                  ChatFriendsStrings.tr('SKOユーザー'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => Navigator.of(context).pop(friend),
+                          ),
+                        );
+                      },
+                    ))
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+                children: [
+                  Card(
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_error!, textAlign: TextAlign.center),
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            ChatFriendsStrings.tr('自分のSKO ID'),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 4),
+                          SelectableText(
+                            _workspace['my_sko_id']?.toString() ?? '',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _search,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: InputDecoration(
+                              labelText: ChatFriendsStrings.tr('SKO ID検索'),
+                              hintText: 'SKO-XXXXXXXXXX',
+                              prefixIcon: const Icon(Icons.search),
+                              border: const OutlineInputBorder(),
+                            ),
+                            onSubmitted: (_) => _find(),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: _busy ? null : _find,
+                            icon: const Icon(Icons.person_search_outlined),
+                            label: Text(ChatFriendsStrings.tr('検索')),
+                          ),
+                          if (_searchResult != null) ...[
+                            const Divider(height: 24),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.person_add_alt_1),
+                              ),
+                              title: Text(
+                                _searchResult!['display_name']?.toString() ??
+                                    ChatFriendsStrings.tr('SKOユーザー'),
+                              ),
+                              subtitle: Text(
+                                _searchResult!['sko_id']?.toString() ?? '',
+                              ),
+                              trailing: FilledButton(
+                                onPressed: _busy ? null : _sendRequest,
+                                child: Text(ChatFriendsStrings.tr('申請')),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  )
-                : (widget.selectForChat || widget.selectForGroupInvite)
-                    ? (friends.isEmpty
-                        ? const Center(child: Text('友達はまだいません'))
-                        : ListView.separated(
-                            padding: const EdgeInsets.all(12),
-                            itemCount: friends.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 6),
-                            itemBuilder: (context, index) {
-                              final friend = friends[index];
-                              return Card(
-                                child: ListTile(
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.person_outline),
-                                  ),
-                                  title: Text(
-                                    friend['display_name']?.toString() ??
-                                        'SKOユーザー',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () =>
-                                      Navigator.of(context).pop(friend),
-                                ),
-                              );
-                            },
-                          ))
-                    : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-                    children: [
+                  ),
+                  if (incoming.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      ChatFriendsStrings.tr('届いた申請'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    for (final request in incoming)
                       Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                        child: ListTile(
+                          title: Text(
+                            request['display_name']?.toString() ??
+                                ChatFriendsStrings.tr('SKOユーザー'),
+                          ),
+                          subtitle: Text(request['sko_id']?.toString() ?? ''),
+                          trailing: Wrap(
                             children: [
-                              const Text(
-                                '自分のSKO ID',
-                                style: TextStyle(fontWeight: FontWeight.w900),
+                              IconButton(
+                                tooltip: ChatFriendsStrings.tr('拒否'),
+                                onPressed: _busy
+                                    ? null
+                                    : () => _respond(request, false),
+                                icon: const Icon(Icons.close),
                               ),
-                              const SizedBox(height: 4),
-                              SelectableText(
-                                _workspace['my_sko_id']?.toString() ?? '',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w900),
+                              IconButton(
+                                tooltip: ChatFriendsStrings.tr('承認'),
+                                onPressed: _busy
+                                    ? null
+                                    : () => _respond(request, true),
+                                icon: const Icon(Icons.check_circle_outline),
                               ),
-                              const SizedBox(height: 14),
-                              TextField(
-                                controller: _search,
-                                textCapitalization:
-                                    TextCapitalization.characters,
-                                decoration: const InputDecoration(
-                                  labelText: 'SKO ID検索',
-                                  hintText: 'SKO-XXXXXXXXXX',
-                                  prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
-                                ),
-                                onSubmitted: (_) => _find(),
-                              ),
-                              const SizedBox(height: 8),
-                              FilledButton.icon(
-                                onPressed: _busy ? null : _find,
-                                icon: const Icon(Icons.person_search_outlined),
-                                label: const Text('検索'),
-                              ),
-                              if (_searchResult != null) ...[
-                                const Divider(height: 24),
-                                ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.person_add_alt_1),
-                                  ),
-                                  title: Text(
-                                    _searchResult!['display_name']?.toString() ??
-                                        'SKOユーザー',
-                                  ),
-                                  subtitle: Text(
-                                    _searchResult!['sko_id']?.toString() ?? '',
-                                  ),
-                                  trailing: FilledButton(
-                                    onPressed: _busy ? null : _sendRequest,
-                                    child: const Text('申請'),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                         ),
                       ),
-                      if (incoming.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          '届いた申請',
-                          style: TextStyle(fontWeight: FontWeight.w900),
+                  ],
+                  if (outgoing.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      ChatFriendsStrings.tr('申請中'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    for (final request in outgoing)
+                      ListTile(
+                        title: Text(
+                          request['display_name']?.toString() ??
+                              ChatFriendsStrings.tr('SKOユーザー'),
                         ),
-                        for (final request in incoming)
-                          Card(
-                            child: ListTile(
-                              title: Text(
-                                request['display_name']?.toString() ??
-                                    'SKOユーザー',
-                              ),
-                              subtitle:
-                                  Text(request['sko_id']?.toString() ?? ''),
-                              trailing: Wrap(
-                                children: [
-                                  IconButton(
-                                    tooltip: '拒否',
-                                    onPressed: _busy
-                                        ? null
-                                        : () => _respond(request, false),
-                                    icon: const Icon(Icons.close),
-                                  ),
-                                  IconButton(
-                                    tooltip: '承認',
-                                    onPressed: _busy
-                                        ? null
-                                        : () => _respond(request, true),
-                                    icon: const Icon(Icons.check_circle_outline),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                      if (outgoing.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          '申請中',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        for (final request in outgoing)
-                          ListTile(
-                            title: Text(
-                              request['display_name']?.toString() ??
-                                  'SKOユーザー',
-                            ),
-                            subtitle: const Text('承認待ち'),
-                          ),
-                      ],
-                      const SizedBox(height: 16),
-                      const Text(
-                        '友達一覧',
-                        style: TextStyle(fontWeight: FontWeight.w900),
+                        subtitle: Text(ChatFriendsStrings.tr('承認待ち')),
                       ),
-                      if (friends.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Center(child: Text('友達はまだいません')),
-                        )
-                      else
-                        for (final friend in friends)
-                          Card(
-                            child: ListTile(
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.person_outline),
-                              ),
-                              title: Text(
-                                friend['display_name']?.toString() ??
-                                    'SKOユーザー',
-                              ),
-                              subtitle:
-                                  Text(friend['sko_id']?.toString() ?? ''),
-                              trailing: widget.selectForChat ||
-                                      widget.selectForGroupInvite
-                                  ? const Icon(Icons.chevron_right)
-                                  : IconButton(
-                                      tooltip: '友達から削除',
-                                      onPressed: _busy
-                                          ? null
-                                          : () => _removeFriend(friend),
-                                      icon: const Icon(
-                                        Icons.person_remove_outlined,
-                                      ),
-                                    ),
-                              onTap: widget.selectForChat ||
-                                      widget.selectForGroupInvite
-                                  ? () => Navigator.of(context).pop(friend)
-                                  : null,
-                            ),
-                          ),
-                    ],
+                  ],
+                  const SizedBox(height: 16),
+                  Text(
+                    ChatFriendsStrings.tr('友達一覧'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
+                  if (friends.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: Text(ChatFriendsStrings.tr('友達はまだいません')),
+                      ),
+                    )
+                  else
+                    for (final friend in friends)
+                      Card(
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.person_outline),
+                          ),
+                          title: Text(
+                            friend['display_name']?.toString() ??
+                                ChatFriendsStrings.tr('SKOユーザー'),
+                          ),
+                          subtitle: Text(friend['sko_id']?.toString() ?? ''),
+                          trailing:
+                              widget.selectForChat ||
+                                  widget.selectForGroupInvite
+                              ? const Icon(Icons.chevron_right)
+                              : IconButton(
+                                  tooltip: ChatFriendsStrings.tr('友達から削除'),
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _removeFriend(friend),
+                                  icon: const Icon(
+                                    Icons.person_remove_outlined,
+                                  ),
+                                ),
+                          onTap:
+                              widget.selectForChat ||
+                                  widget.selectForGroupInvite
+                              ? () => Navigator.of(context).pop(friend)
+                              : null,
+                        ),
+                      ),
+                ],
+              ),
       ),
     );
   }
