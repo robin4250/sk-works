@@ -376,7 +376,7 @@ import UserNotifications
           let openSettings = {
             DispatchQueue.main.async {
               let setting: String
-              if #available(iOS 15.4, *) {
+              if #available(iOS 16.0, *) {
                 setting = UIApplication.openNotificationSettingsURLString
               } else {
                 setting = UIApplication.openSettingsURLString

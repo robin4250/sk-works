@@ -18,7 +18,7 @@ void main() {
     expect(native, contains('settings.authorizationStatus'));
     expect(native, contains('UIApplication.openNotificationSettingsURLString'));
     expect(native, contains('UIApplication.openSettingsURLString'));
-    expect(native, contains('if #available(iOS 15.4, *)'));
+    expect(native, contains('if #available(iOS 16.0, *)'));
     expect(
       native.substring(
         native.indexOf('case "authorizationStatus":'),
