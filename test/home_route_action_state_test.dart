@@ -24,6 +24,10 @@ void main() {
   };
   test('arrival, move and next arrival follow confirmed visit lifecycle', () {
     final ws = workspace();
+    ws['stops'] = [
+      {'id': 'site'},
+      {'id': 'next'},
+    ];
     expect(homeRouteActionState(ws, 'shift'), HomeRouteActionState.arrive);
     final row = visit();
     ws['visits'] = [row];
@@ -31,6 +35,30 @@ void main() {
     row['end_capture_id'] = 'departure';
     row['ended_at'] = '2026-10-11T10:00:00+09:00';
     expect(homeRouteActionState(ws, 'shift'), HomeRouteActionState.arrive);
+  });
+  test('three distinct stops finish exactly once, even when sites repeat', () {
+    final ws = workspace();
+    ws['stops'] = [
+      for (var i = 0; i < 3; i++) {'id': 'stop-$i', 'site_id': 'same-site'},
+    ];
+    final rows = <Map<String, dynamic>>[];
+    ws['visits'] = rows;
+    for (var i = 0; i < 3; i++) {
+      expect(homeRouteActionState(ws, 'shift'), HomeRouteActionState.arrive);
+      final row = {
+        ...visit(),
+        'route_stop_id': 'stop-$i',
+        'start_capture_id': 'start-$i',
+      };
+      rows.add(row);
+      expect(homeRouteActionState(ws, 'shift'), HomeRouteActionState.move);
+      row['end_capture_id'] = 'end-$i';
+      row['ended_at'] = '2026-10-11T10:00:00+09:00';
+      expect(
+        homeRouteActionState(ws, 'shift'),
+        i == 2 ? HomeRouteActionState.unavailable : HomeRouteActionState.arrive,
+      );
+    }
   });
   test('closed, disabled, unrelated or incomplete contracts stay disabled', () {
     for (final patch in [
@@ -40,6 +68,16 @@ void main() {
       {'source_clock_in_id': 'other'},
       {'visits': null},
       {'stops': []},
+      {
+        'stops': [
+          {'id': ''},
+        ],
+      },
+      {
+        'visits': [
+          {...visit(), 'start_capture_id': ''},
+        ],
+      },
       {
         'visits': [visit(), visit()],
       },

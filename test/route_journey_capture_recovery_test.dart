@@ -18,6 +18,7 @@ class _Access implements RouteJourneyCaptureAccess {
   bool failAll = false, failWorkspace = false;
   List<Map<String, dynamic>>? visits;
   bool archived = false;
+  void Function(int)? onWorkspace;
   String mode = 'location_photo';
   int loads = 0, submits = 0, uploads = 0;
   final sources = <String>[];
@@ -34,6 +35,7 @@ class _Access implements RouteJourneyCaptureAccess {
   @override
   Future<Map<String, dynamic>> workspace(String sourceId) async {
     sources.add(sourceId);
+    onWorkspace?.call(sources.length);
     if (failWorkspace) throw StateError('offline');
     return {
       if (visits != null) 'visit_contract_version': 1,
@@ -192,6 +194,42 @@ void main() {
     );
     expect(access.submits, 0);
   });
+  testWidgets(
+    'fresh completed visit prevents stale arrival before capture or save',
+    (tester) async {
+      final access = _Access()
+        ..visits = []
+        ..mode = 'manual';
+      access.onWorkspace = (count) {
+        if (count > 1)
+          access.visits = [
+            {
+              'start_capture_id': 'existing-start',
+              'route_stop_id': 'stop',
+              'work_date': '2026-10-10',
+              'started_at': '2026-10-10T09:00:00Z',
+              'end_capture_id': 'existing-end',
+              'ended_at': '2026-10-10T10:00:00Z',
+            },
+          ];
+      };
+      await _open(tester, access);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1. Test site').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '現場到着'));
+      await tester.pumpAndSettle();
+      expect(access.submits, 0);
+      expect(access.uploads, 0);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '現場到着'))
+            .onPressed,
+        isNull,
+      );
+    },
+  );
   testWidgets('manual arrival records time without camera GPS or upload', (
     tester,
   ) async {

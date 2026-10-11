@@ -66,6 +66,72 @@ void main() {
   );
 
   testWidgets(
+    'completed route disables arrival but keeps intermediate checkout',
+    (tester) async {
+      final ws = <String, dynamic>{
+        'source_clock_in_id': 'shift-0',
+        'visit_contract_version': 1,
+        'enabled': true,
+        'is_open': true,
+        'work_date': '2026-10-11',
+        'stops': [
+          for (var i = 0; i < 3; i++) {'id': 'stop-$i'},
+        ],
+        'visits': <Map<String, dynamic>>[],
+      };
+      final opened = <String>[];
+      ButtonStyleButton action(String text) => tester.widget<ButtonStyleButton>(
+        find.ancestor(
+          of: find.text(text),
+          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        await tester.pumpWidget(
+          home(homeRouteActionState(ws, 'shift-0'), opened),
+        );
+        await tester.pumpAndSettle();
+        expect(action('現場到着').onPressed, isNotNull);
+        expect(action('退勤').onPressed, isNotNull);
+        final visit = <String, dynamic>{
+          'start_capture_id': 'start-$i',
+          'route_stop_id': 'stop-$i',
+          'work_date': '2026-10-11',
+          'started_at': '2026-10-11T09:00:00+09:00',
+          'end_capture_id': null,
+          'ended_at': null,
+        };
+        (ws['visits'] as List).add(visit);
+        await tester.pumpWidget(
+          home(homeRouteActionState(ws, 'shift-0'), opened),
+        );
+        await tester.pumpAndSettle();
+        expect(action('現場移動').onPressed, isNotNull);
+        visit['end_capture_id'] = 'end-$i';
+        visit['ended_at'] = '2026-10-11T10:00:00+09:00';
+      }
+      await tester.pumpWidget(
+        home(homeRouteActionState(ws, 'shift-0'), opened),
+      );
+      await tester.pumpAndSettle();
+      expect(action('現場到着').onPressed, isNull);
+      expect(action('現場移動').onPressed, isNull);
+      expect(action('退勤').onPressed, isNotNull);
+      await tester.pumpWidget(
+        home(
+          HomeRouteActionState.unavailable,
+          opened,
+          phase: HomeAttendancePhase.unknown,
+          optionalClockInAllowed: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(action('出勤').onPressed, isNull);
+      expect(action('退勤').onPressed, isNull);
+    },
+  );
+
+  testWidgets(
     'Master OFF prevents new optional clock-in but preserves the active route',
     (tester) async {
       final opened = <String>[];

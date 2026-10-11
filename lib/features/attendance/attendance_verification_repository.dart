@@ -15,6 +15,7 @@ import 'attendance_shift_context.dart';
 import 'attendance_work_date.dart';
 
 enum HomeAttendancePhase {
+  unknown,
   notStarted,
   working,
   finished,
@@ -58,6 +59,7 @@ class HomeAttendanceStatus {
       };
 
   String get phaseLabel => switch (phase) {
+        HomeAttendancePhase.unknown => '確認中',
         HomeAttendancePhase.working => '出勤中',
         HomeAttendancePhase.finished => '本日は退勤済',
         HomeAttendancePhase.notStarted => '未出勤',
@@ -569,6 +571,30 @@ class AttendanceVerificationRepository {
     return path;
   }
 
+  String? get userId => _client.auth.currentUser?.id;
+
+  /// Read an already saved end without changing its time or evidence.
+  Future<Map<String, dynamic>?> recoverClockOut(AttendanceShiftContext shift) async {
+    final actor = userId;
+    _requireMutationActor(actor);
+    final companyId = await _companyId();
+    final row = await _client.from('attendance_verifications').select()
+        .eq('company_id', companyId).eq('worker_id', shift.workerId)
+        .eq('source_clock_in_id', shift.id).eq('event_type', 'clock_out').maybeSingle();
+    _requireMutationActor(actor);
+    if (row == null) return null;
+    if (row['company_id'] != companyId || row['worker_id'] != shift.workerId ||
+        row['source_clock_in_id'] != shift.id || row['event_type'] != 'clock_out' ||
+        row['site_id'] != shift.siteId || row['route_assignment_id'] != shift.routeId ||
+        row['vehicle_id'] != shift.vehicleId ||
+        row['work_date'] != shift.workDate.toIso8601String().substring(0, 10) ||
+        (row['id']?.toString().isEmpty ?? true) ||
+        DateTime.tryParse(row['confirmed_at']?.toString() ?? '') == null) {
+      throw StateError('退勤済みの勤務情報を確認できませんでした');
+    }
+    return Map<String, dynamic>.from(row);
+  }
+
   Future<Map<String, dynamic>> createVerification({
     required String workerId,
     String? siteId,
@@ -591,6 +617,14 @@ class AttendanceVerificationRepository {
     final companyId = await _companyId();
     if (shift != null && (eventType != 'clock_out' || shift.workerId != workerId || shift.siteId != siteId)) {
       throw StateError('退勤対象の勤務を確認してください');
+    }
+
+    if (eventType == 'clock_out' && shift == null) {
+      throw StateError('退勤対象の勤務を確認してください');
+    }
+    if (shift != null && capture == null) {
+      final existing = await recoverClockOut(shift);
+      if (existing != null) return existing;
     }
 
     Map<String, dynamic>? selection;
@@ -679,11 +713,17 @@ class AttendanceVerificationRepository {
         return await submitCaptureDraft(draft);
       }
       final row = await _client.from('attendance_verifications').insert(payload)
-          .select('id, confirmed_at, work_date, source_clock_in_id')
+          .select()
           .single();
       _requireMutationActor(actor);
       return Map<String, dynamic>.from(row);
     } catch (_) {
+      if (capture == null && shift != null) {
+        final existing = await recoverClockOut(shift);
+        if (existing != null) return existing;
+        // An unknown insert result must never delete potentially saved evidence.
+        rethrow;
+      }
       if (capture == null && storagePath != null && _client.auth.currentUser?.id == actor) {
         try {
           await _client.storage.from(_bucket).remove([storagePath]);

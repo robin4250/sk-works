@@ -69,9 +69,13 @@ class AttendanceVerificationPage extends StatefulWidget {
   const AttendanceVerificationPage({
     super.key,
     this.initialEventType,
+    @visibleForTesting this.repository,
+    @visibleForTesting this.openSavedReport,
   });
 
   final String? initialEventType;
+  final AttendanceVerificationRepository? repository;
+  final Future<void> Function(BuildContext, Map<String, dynamic>)? openSavedReport;
 
   @override
   State<AttendanceVerificationPage> createState() =>
@@ -80,7 +84,7 @@ class AttendanceVerificationPage extends StatefulWidget {
 
 class _AttendanceVerificationPageState
     extends State<AttendanceVerificationPage> {
-  final _repository = AttendanceVerificationRepository.maybeCreate();
+  late final _repository = widget.repository ?? AttendanceVerificationRepository.maybeCreate();
   final _bulkAttendanceRepository = AttendanceCloudRepository.maybeCreate();
   final _picker = ImagePicker();
   final _journeyRepository = RouteJourneyCaptureRepository.maybeCreate();
@@ -111,6 +115,8 @@ class _AttendanceVerificationPageState
   bool _saving = false;
   CaptureVerificationDraft? _pendingCaptureDraft;
   Map<String, dynamic>? _savedCaptureVerification;
+  String? _savedVerificationActor;
+  AttendanceShiftContext? _unconfirmedCheckout;
   bool get _editingLocked => _saving || _pendingCaptureDraft != null || _savedCaptureVerification != null;
   bool _canManageAttendance = false;
   String? _error;
@@ -479,7 +485,7 @@ class _AttendanceVerificationPageState
                     onPressed: _saving || (_pendingCaptureDraft == null && _savedCaptureVerification == null && (
                             _workerId == null ||
                             (_siteId == null && _routeId == null) ||
-                            (isClockOut && _openShifts.length > 1 && _shift == null)))
+                            (isClockOut && _shift == null)))
                         ? null
                         : _confirm,
                     icon: _saving
@@ -625,7 +631,7 @@ class _AttendanceVerificationPageState
     final siteId = _siteId;
     if (_saving || repository == null ||
         (_pendingCaptureDraft == null && _savedCaptureVerification == null &&
-          ((_openShifts.length > 1 && _eventType == 'clock_out' && _shift == null) ||
+          ((_eventType == 'clock_out' && _shift == null) ||
            workerId == null || (siteId == null && _routeId == null)))) {
       return;
     }
@@ -639,6 +645,16 @@ class _AttendanceVerificationPageState
 
     setState(() => _saving = true);
     try {
+      if (_savedVerificationActor != null && repository.userId != _savedVerificationActor) {
+        throw StateError('操作したアカウントを再確認してください');
+      }
+      final uncertain = _unconfirmedCheckout;
+      if (uncertain != null) {
+        final recovered = await repository.recoverClockOut(uncertain);
+        if (recovered == null) throw StateError('退勤の保存結果を確認できませんでした。再読み込みしてください');
+        _savedCaptureVerification = recovered;
+        _unconfirmedCheckout = null;
+      }
       final completed = _savedCaptureVerification;
       if (completed != null) {
         await _finishSavedVerification(completed);
@@ -650,6 +666,7 @@ class _AttendanceVerificationPageState
         if (mounted) { setState(() {
           _pendingCaptureDraft = null;
           _savedCaptureVerification = saved;
+          _savedVerificationActor = repository.userId;
         }); }
         await _finishSavedVerification(saved);
         return;
@@ -794,6 +811,10 @@ class _AttendanceVerificationPageState
         photoFilename = photo.name;
       }
 
+      if (_eventType == 'clock_out') {
+        _unconfirmedCheckout = capture == null ? _shift : null;
+        _savedVerificationActor = repository.userId;
+      }
       final saved = await repository.createVerification(
         workerId: workerId,
         siteId: siteId,
@@ -816,13 +837,17 @@ class _AttendanceVerificationPageState
 
       if (mounted) { setState(() {
         _pendingCaptureDraft = null;
-        if (capture != null) { _savedCaptureVerification = saved; }
+        _savedCaptureVerification = saved;
+        _savedVerificationActor = repository.userId;
+        _unconfirmedCheckout = null;
       }); }
       await _finishSavedVerification(saved);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('確認を登録できませんでした: $error')),
+        SnackBar(content: Text(_savedCaptureVerification != null
+            ? '勤怠は登録済みです。日報を開けませんでした: $error'
+            : '確認を登録できませんでした: $error')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -840,6 +865,12 @@ class _AttendanceVerificationPageState
       );
 
       if (_eventType == 'clock_out') {
+        final reportOverride = widget.openSavedReport;
+        if (reportOverride != null) {
+          await reportOverride(context, saved);
+          if (mounted) Navigator.of(context).pop(true);
+          return;
+        }
         final sourceId = saved['source_clock_in_id']?.toString() ?? _shift?.id;
         final date = DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate;
         final siteId = saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId;
@@ -857,6 +888,7 @@ class _AttendanceVerificationPageState
             groupClockInAnchorId: saved['source_clock_in_id']?.toString() ?? _shift?.id,
           )),
         );
+        if (mounted) Navigator.of(context).pop(true);
       } else {
         Navigator.of(context).pop(true);
       }

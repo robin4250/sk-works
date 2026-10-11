@@ -325,6 +325,7 @@ class _HomePageState extends State<HomePage> {
         SupabaseBackend.client.auth.currentUser?.id == requestActor;
     if (mounted) {
       setState(() {
+        _homeAttendanceStatus = const HomeAttendanceStatus(phase: HomeAttendancePhase.unknown);
         _homeOptionalClockInAllowed = false;
         _homeRouteActionState = HomeRouteActionState.unavailable;
         _homePendingRouteSourceId = null;

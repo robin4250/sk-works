@@ -479,7 +479,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: isWorking || isFinished || !optionalClockInAllowed
+                        child: status.phase == HomeAttendancePhase.unknown || isWorking || isFinished || !optionalClockInAllowed
                             ? OutlinedButton.icon(
                                 style: disabledActionStyle,
                                 onPressed: null,
