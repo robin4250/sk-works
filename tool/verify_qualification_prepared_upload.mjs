@@ -15,13 +15,23 @@ for (const workerFirst of [true,false]) {
  await db.exec(`alter table workers add column status text default 'active';
  create function private.account_access_allowed() returns boolean language sql stable as $$select coalesce(current_setting('test.active',true),'true')='true'$$;
  create function private.license_document_upload_allowed(text) returns boolean language sql stable as $$select false$$;
- create function private.try_uuid(text) returns uuid language sql immutable as $$select $1::uuid$$;
+ create function private.try_uuid(text) returns uuid language sql immutable as $$select case when $1 ~ '^[0-9a-f-]{36}$' then $1::uuid else null end$$;
  create function private.has_company_feature(uuid,text) returns boolean language sql stable as $$select false$$;
  create table document_requirements(id uuid,company_id uuid,is_active boolean);
  create table worker_document_statuses(id uuid,company_id uuid,worker_id uuid,requirement_id uuid,attachment_paths text[]);
  create table worker_document_status_history(attachment_paths text[]);
  grant select on document_requirements,worker_document_statuses,company_members to authenticated;
- create policy base_insert on storage.objects for insert to authenticated with check(true);
+ create schema income_tax_private;
+ create function income_tax_private.pdf_object_access(text) returns boolean language sql stable as $$select false$$;
+ create function storage.allow_any_operation(text[]) returns boolean language sql stable as $$select false$$;
+ create function private.company_content_review_enabled(uuid) returns boolean language sql stable as $$select true$$;
+ create function private.content_file_unreferenced(text,text) returns boolean language sql stable as $$select false$$;
+ create policy qualification_submission_upload on storage.objects for insert to authenticated with check(bucket_id='qualification-certificates' and private.qualification_submission_access(name,true));
+ create policy worker_submission_upload on storage.objects for insert to authenticated with check(bucket_id='worker-documents');
+ create policy account_deletion_access_guard on storage.objects as restrictive for all to authenticated using((select private.account_access_allowed())) with check((select private.account_access_allowed()));
+ create policy income_tax_pdf_insert_guard on storage.objects as restrictive for insert to authenticated with check(bucket_id <> 'company-income-tax-tables' or (income_tax_private.pdf_object_access(name) and storage.allow_any_operation(array['object.upload'])));
+ create policy \"review no media replacement insert\" on storage.objects as restrictive for insert to authenticated with check(not private.company_content_review_enabled(private.try_uuid(split_part(name,'/',1))) or bucket_id not in ('chat-attachments','communication-notes','communication-albums') or private.content_file_unreferenced(bucket_id,name));
+ create policy income_tax_pdf_no_anon on storage.objects as restrictive for all to anon using(false) with check(false);
  create policy initial_beta_official_documents_insert_pause on storage.objects as restrictive for insert to public
  with check(bucket_id not in ('worker-documents','qualification-certificates','employee-onboarding-documents') or current_user='authenticated');
  create policy license_document_pilot_insert_scope on storage.objects as restrictive for insert to authenticated
@@ -56,6 +66,14 @@ for (const workerFirst of [true,false]) {
   await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['worker-documents',`${company}/${worker}/${master}/own-upload/photo.jpg`]);
  } else await db.query("insert into storage.objects(bucket_id,name) values('worker-documents','worker-prepared')");
  await assert.rejects(db.query("insert into storage.objects(bucket_id,name) values('employee-onboarding-documents','blocked')"),e=>e.code==='42501');
+ await db.exec('reset role');
+ await db.exec('alter policy income_tax_pdf_insert_guard on storage.objects with check(false)');
+ await db.exec('set role authenticated');
+ assert.equal((await rpc('photo_capability')).photo_upload_allowed,false);
+ await db.exec('reset role');
+ await db.exec("alter policy income_tax_pdf_insert_guard on storage.objects with check(bucket_id <> 'company-income-tax-tables' or (income_tax_private.pdf_object_access(name) and storage.allow_any_operation(array['object.upload'])))");
+ await db.exec('set role authenticated');
+ assert.equal((await rpc('photo_capability')).photo_upload_allowed,true);
  await db.exec('reset role');
  await db.exec("create policy unknown_pause on storage.objects as restrictive for insert to authenticated with check(false)");
  await db.exec(`set role authenticated`);
