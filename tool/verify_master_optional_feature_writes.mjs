@@ -6,7 +6,8 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const runtime=await import(pathToFileURL(resolve(process.argv[2])).href);
 const pgMode=process.argv.includes('--postgres');
-const db=pgMode?new runtime.Client({connectionString:process.env.FIXTURE_DATABASE_URL}):new runtime.PGlite();
+const Client=runtime.Client??runtime.default?.Client;
+const db=pgMode?new Client({connectionString:process.env.FIXTURE_DATABASE_URL}):new runtime.PGlite();
 if(pgMode)await db.connect();
 const exec=sql=>pgMode?db.query(sql):db.exec(sql);
 const uid='10000000-0000-0000-0000-000000000001',company='10000000-0000-0000-0000-000000000002',worker='10000000-0000-0000-0000-000000000003',vehicle='10000000-0000-0000-0000-000000000004',route='10000000-0000-0000-0000-000000000005';
@@ -91,7 +92,7 @@ try{
  await exec("reset role;insert into private.master_feature_settings (feature_key,enabled) values('vehicle_management',false)");
  for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege('${role}','private.guard_master_optional_feature_write()','execute') allowed`)).rows[0].allowed,false);
  if(pgMode){
-  const a=new runtime.Client({connectionString:process.env.FIXTURE_DATABASE_URL}),b=new runtime.Client({connectionString:process.env.FIXTURE_DATABASE_URL});
+  const a=new Client({connectionString:process.env.FIXTURE_DATABASE_URL}),b=new Client({connectionString:process.env.FIXTURE_DATABASE_URL});
   await a.connect();await b.connect();
   try{
    await db.query("update private.master_feature_settings set enabled=true where feature_key='route_assignment'");
