@@ -804,6 +804,7 @@ const englishLanguagePack = LanguagePack(
     '報告者サイン済み': 'Reporter Signed',
     '責任者サイン済み': 'Supervisor Signed',
     '登録': 'Save',
+    '追加': 'Add',
     '編集・修正を申請': 'Request Edit / Correction',
     'メンバー別 残業・早出・手当': 'Overtime / Early / Allowances by Member',
     '退勤時の走行距離': 'Odometer at Clock-out',
