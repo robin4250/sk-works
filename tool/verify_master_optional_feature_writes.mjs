@@ -138,6 +138,15 @@ try{
  on conflict(company_id,worker_id,work_date) do update set route_assignment_id=excluded.route_assignment_id,verification_mode=excluded.verification_mode;
  update gps_auto_attendance_schedules set enabled=true;update private.master_feature_settings set enabled=false;`);
  const sourceBefore=(await db.query('select * from attendance_verifications order by id')).rows;
+ const choicesBefore=(await db.query('select to_jsonb(s) row from work_vehicle_route_selections s order by work_date')).rows;
+ await exec(`create function private.fixture_fail_route_clear() returns trigger language plpgsql as $$begin
+ if current_setting('fixture.fail_clear',true)='on' and NEW.route_assignment_id is null then raise exception 'fixture last-row failure';end if;return NEW;end$$;
+ create trigger zzz_fixture_clear_failure before update on work_attendance_selections for each row execute function private.fixture_fail_route_clear();
+ set fixture.fail_clear='on';set role authenticated;`);
+ await assert.rejects(db.query('select public.clear_my_route_attendance_selection()'),e=>e.code==='P0001');
+ await exec("reset role;set fixture.fail_clear='off'");
+ assert.deepEqual((await db.query('select to_jsonb(s) row from work_vehicle_route_selections s order by work_date')).rows,choicesBefore);
+ assert.equal((await db.query('select enabled from gps_auto_attendance_schedules')).rows[0].enabled,true);
  await exec('set role authenticated');
  const proof=(await db.query('select public.clear_my_route_attendance_selection() result')).rows[0].result;
  assert.equal(proof.cleared,true);assert.equal(proof.route_assignment_id,null);
