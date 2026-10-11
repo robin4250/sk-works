@@ -582,7 +582,16 @@ class WorkerDocumentRepository {
     required String notes,
     Uint8List? attachmentBytes,
     String? originalFilename,
+    bool requireEmptyAttachment = false,
   }) async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('SKOへのログインが必要です。');
+    void requireActor() {
+      if (_client.auth.currentUser?.id != actor) {
+        throw StateError('ログインが変更されました。書類一覧を開き直してください。');
+      }
+    }
+
     if ((attachmentBytes == null) != (originalFilename == null)) {
       throw ArgumentError('写真データとファイル名を確認してください。');
     }
@@ -592,17 +601,26 @@ class WorkerDocumentRepository {
         expiresAt: expiresAt,
         notes: notes,
       );
+      requireActor();
       return;
     }
     final worker = await currentWorker();
+    requireActor();
     final companyId = await _companyId();
+    requireActor();
     final existing = await _client
         .from('worker_document_statuses')
-        .select('id')
+        .select('id, attachment_path')
         .eq('company_id', companyId)
         .eq('worker_id', worker.workerId)
         .eq('requirement_id', requirementId)
         .limit(1);
+    requireActor();
+    if (requireEmptyAttachment &&
+        existing.isNotEmpty &&
+        (existing.first['attachment_path']?.toString() ?? '').isNotEmpty) {
+      throw StateError('保存済みの写真は保持します。複数写真の準備後に追加してください。');
+    }
     final slot = existing.isEmpty
         ? 'own-upload'
         : existing.first['id'].toString();
@@ -617,6 +635,7 @@ class WorkerDocumentRepository {
           attachmentBytes,
           fileOptions: const FileOptions(upsert: false),
         );
+    requireActor();
     final payload = {
       'company_id': companyId,
       'worker_id': worker.workerId,
@@ -626,7 +645,7 @@ class WorkerDocumentRepository {
       'expires_at': expiresAt?.toIso8601String().split('T').first,
       'original_verified': false,
       'notes': notes.trim().isEmpty ? null : notes.trim(),
-      'updated_by': _client.auth.currentUser?.id,
+      'updated_by': actor,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (existing.isEmpty) {
@@ -636,16 +655,19 @@ class WorkerDocumentRepository {
           .select('id')
           .single();
     } else {
-      await _client
+      var update = _client
           .from('worker_document_statuses')
           .update(payload)
           .eq('company_id', companyId)
           .eq('worker_id', worker.workerId)
           .eq('requirement_id', requirementId)
-          .eq('id', existing.first['id'])
-          .select('id')
-          .single();
+          .eq('id', existing.first['id']);
+      if (requireEmptyAttachment) {
+        update = update.isFilter('attachment_path', null);
+      }
+      await update.select('id').single();
     }
+    requireActor();
   }
 
   Future<Map<String, dynamic>> uploadOwnAttachment({

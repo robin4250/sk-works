@@ -18,6 +18,7 @@ class _Fixture {
   late SupabaseClient client;
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool existingStatus = true;
+  String? existingPath = 'synthetic/old.jpg';
   bool rejectUpload = false;
   bool loseStatusResponse = false;
   bool noStatusRow = false;
@@ -113,7 +114,7 @@ class _Fixture {
                     'id': _status,
                     'worker_id': _worker,
                     'requirement_id': _requirement,
-                    'attachment_path': 'synthetic/old.jpg',
+                    'attachment_path': existingPath,
                     'updated_at': '2026-10-11T00:00:00Z',
                     ...?savedPhotos,
                   },
@@ -176,12 +177,13 @@ class _Fixture {
       )
       .toList();
 
-  Future<void> savePhoto() =>
+  Future<void> savePhoto({bool guarded = false}) =>
       WorkerDocumentRepository.forTesting(client).saveOwnDocument(
         requirementId: _requirement,
         notes: 'synthetic note',
         attachmentBytes: Uint8List.fromList([1, 2, 3]),
         originalFilename: 'license.jpg',
+        requireEmptyAttachment: guarded,
       );
 }
 
@@ -195,6 +197,57 @@ void main() {
   tearDown(() async {
     await fixture.close();
   });
+
+  test(
+    'legacy initial photo uses empty attachment CAS without new columns',
+    () async {
+      fixture.existingPath = null;
+      await fixture.savePhoto(guarded: true);
+      expect(fixture.uploads, 1);
+      expect(
+        fixture.writes.single.uri.queryParameters['attachment_path'],
+        'is.null',
+      );
+      final payload =
+          jsonDecode(utf8.decode(fixture.writes.single.body)) as Map;
+      expect(payload.containsKey('attachment_paths'), false);
+      expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    },
+  );
+  test('existing legacy photo is protected before upload', () async {
+    await expectLater(fixture.savePhoto(guarded: true), throwsStateError);
+    expect(fixture.uploads, 0);
+    expect(fixture.writes, isEmpty);
+  });
+  test(
+    'concurrent photo CAS rejection keeps objects and reports failure',
+    () async {
+      fixture.existingPath = null;
+      fixture.noStatusRow = true;
+      await expectLater(
+        fixture.savePhoto(guarded: true),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(
+        fixture.writes.single.uri.queryParameters['attachment_path'],
+        'is.null',
+      );
+      expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    },
+  );
+  test(
+    'legacy upload denial makes no status write or object deletion',
+    () async {
+      fixture.existingPath = null;
+      fixture.rejectUpload = true;
+      await expectLater(
+        fixture.savePhoto(guarded: true),
+        throwsA(isA<StorageException>()),
+      );
+      expect(fixture.writes, isEmpty);
+      expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    },
+  );
 
   test('missing photo column alone retries legacy read and disables new photo edits', () async {
     fixture.missingPhotoColumn = true;
