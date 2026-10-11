@@ -127,69 +127,60 @@ class PaymentCertificatePdfService {
             ),
             pw.SizedBox(
               width: 210,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  if (record.payerPostalCode.isNotEmpty)
-                    pw.Text(
-                      '〒${record.payerPostalCode}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                  if (record.payerAddress.isNotEmpty)
-                    pw.Text(
-                      record.payerAddress,
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                  // Right-align the company name and overlay the registered seal.
-                  pw.SizedBox(
-                    height: 55,
-                    child: pw.Stack(
-                      children: [
-                        pw.Positioned(
-                          left: 0,
-                          right: 18,
-                          top: 21,
-                          child: pw.Align(
-                            alignment: pw.Alignment.centerRight,
-                            child: pw.Text(
-                              record.companySealSnapshot.registeredName(
-                                  record.payerCompanyName),
-                              textAlign: pw.TextAlign.right,
-                              style: pw.TextStyle(
-                                fontSize: 9,
-                                fontWeight: pw.FontWeight.bold,
-                              ),
+              child: pw.ConstrainedBox(
+                constraints: pw.BoxConstraints(
+                  // Retain the issuer block footprint above the detail table.
+                  minHeight: 55 + 10 * [
+                    record.payerPostalCode,
+                    record.payerAddress,
+                    record.payerPhone,
+                    record.payerFax,
+                  ].where((value) => value.isNotEmpty).length.toDouble(),
+                ),
+                child: pw.Stack(
+                  children: [
+                    pw.Padding(
+                      // One shared edge, outside the unchanged 55pt seal lane.
+                      padding: const pw.EdgeInsets.only(top: 21, right: 60),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text(
+                            record.companySealSnapshot.registeredName(
+                                record.payerCompanyName),
+                            textAlign: pw.TextAlign.right,
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              fontWeight: pw.FontWeight.bold,
                             ),
                           ),
+                          if (record.payerPostalCode.isNotEmpty)
+                            _issuerDetail('〒${formatPostalCode(record.payerPostalCode)}'),
+                          if (record.payerAddress.isNotEmpty)
+                            _issuerDetail(record.payerAddress),
+                          if (record.payerPhone.isNotEmpty)
+                            _issuerDetail('TEL　${formatPhone(record.payerPhone)}'),
+                          if (record.payerFax.isNotEmpty)
+                            _issuerDetail('FAX　${formatPhone(record.payerFax)}'),
+                        ],
+                      ),
+                    ),
+                    if (record.payerCompanySealEnabled)
+                      pw.Positioned(
+                        right: 0,
+                        top: 0,
+                        child: CompanySealPdf.build(
+                          record.companySealSnapshot.registeredName(
+                              record.payerCompanyName),
+                          style: record.companySealSnapshot.style,
+                          companyId: record.companySealSnapshot.companyId,
+                          size: 55,
+                          font: sealFont,
+                          fallbackFont: fallbackFont,
                         ),
-                        if (record.payerCompanySealEnabled)
-                          pw.Positioned(
-                            right: 0,
-                            top: 0,
-                            child: CompanySealPdf.build(
-                              record.companySealSnapshot.registeredName(
-                                  record.payerCompanyName),
-                              style: record.companySealSnapshot.style,
-                              companyId: record.companySealSnapshot.companyId,
-                              size: 55,
-                              font: sealFont,
-                              fallbackFont: fallbackFont,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (record.payerPhone.isNotEmpty)
-                    pw.Text(
-                      'TEL　${record.payerPhone}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                  if (record.payerFax.isNotEmpty)
-                    pw.Text(
-                      'FAX　${record.payerFax}',
-                      style: const pw.TextStyle(fontSize: 8),
-                    ),
-                ],
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -288,6 +279,26 @@ class PaymentCertificatePdfService {
         ),
       ],
     );
+  }
+
+  static pw.Widget _issuerDetail(String value) => pw.Text(
+    value,
+    textAlign: pw.TextAlign.right,
+    style: const pw.TextStyle(fontSize: 8),
+  );
+
+  static String formatPostalCode(String value) {
+    final trimmed = value.trim();
+    return RegExp(r'^\d{7}$').hasMatch(trimmed)
+        ? '${trimmed.substring(0, 3)}-${trimmed.substring(3)}'
+        : value;
+  }
+
+  static String formatPhone(String value) {
+    final trimmed = value.trim();
+    return RegExp(r'^(03|06)\d{8}$').hasMatch(trimmed)
+        ? '${trimmed.substring(0, 2)}-${trimmed.substring(2, 6)}-${trimmed.substring(6)}'
+        : value;
   }
 
   static pw.Widget _cell(
