@@ -318,15 +318,14 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  TextButton.icon(
+                  TextButton(
                     onPressed:
                         !canDecide ||
                             onApprove == null ||
                             claim.approval == ExpenseApproval.approved
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('承認'),
+                    child: const Text('承認'),
                   ),
                   TextButton(
                     onPressed:
@@ -337,7 +336,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         : () => _request(generation, () => onReject(claim)),
                     child: const Text('却下'),
                   ),
-                  OutlinedButton.icon(
+                  OutlinedButton(
                     onPressed:
                         _busy ||
                             !approved ||
@@ -345,8 +344,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                             widget.destinations.isEmpty
                         ? null
                         : () => _allocate(claim, generation),
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('振り分け'),
+                    child: const Text('振り分け'),
                   ),
                 ],
               ),

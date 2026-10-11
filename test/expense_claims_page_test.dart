@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/expenses/expense_claim.dart';
 import 'package:sk_works/features/expenses/expense_claims_page.dart';
+import 'package:sk_works/features/help/menu_help_catalog.dart';
+import 'package:sk_works/features/help/manual_content.dart';
 import 'expense_fixture.dart';
 
 Future<void> reveal(WidgetTester tester, Finder target) async {
@@ -21,6 +23,16 @@ Future<void> reveal(WidgetTester tester, Finder target) async {
 }
 
 void main() {
+  test('expense help is reachable from the existing home feature key', () {
+    final entries = MenuHelpCatalog.visibleFor(
+      role: ManualRole.general,
+      visibleKeys: const {'expense_claims'},
+    );
+    expect(entries, hasLength(1));
+    expect(entries.single.key, 'expense_claims');
+    expect(entries.single.details, contains('確認して保存'));
+  });
+
   testWidgets(
     'all history, readable status and applicant link retain ID scope',
     (tester) async {
@@ -211,6 +223,58 @@ void main() {
       await tester.pumpAndSettle();
       expect(sent.single.category, ExpenseCategory.ownCompany);
       expect(find.text('費用の負担先：自社'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'an open allocation confirmation cannot write after company data changes',
+    (tester) async {
+      final data = ValueNotifier(
+        ExpenseClaims(
+          companyId: 'company',
+          claims: [expenseFixture('old').approve()],
+        ),
+      );
+      addTearDown(data.dispose);
+      var calls = 0;
+      final destinations = [ExpenseAllocation(ExpenseCategory.ownCompany)];
+      Future<void> allocate(
+        ExpenseClaim claim,
+        ExpenseAllocation destination,
+      ) async {
+        calls++;
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ValueListenableBuilder<ExpenseClaims>(
+            valueListenable: data,
+            builder: (context, claims, _) => ExpenseClaimsPage(
+              claims: claims,
+              destinations: destinations,
+              onAllocate: allocate,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.widgetWithText(OutlinedButton, '振り分け'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '振り分け'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<ExpenseCategory>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('自社').last);
+      await tester.pumpAndSettle();
+      data.value = ExpenseClaims(
+        companyId: 'other',
+        claims: [expenseFixture('new', company: 'other').approve()],
+      );
+      await tester.pump();
+      await tester.tap(find.text('確認して保存'));
+      await tester.pumpAndSettle();
+      expect(calls, 0);
+      await reveal(tester, find.byKey(const ValueKey('new')));
+      expect(find.byKey(const ValueKey('old')), findsNothing);
     },
   );
 

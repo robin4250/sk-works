@@ -29,7 +29,7 @@ class MenuHelpCatalog {
 
   static const items = <MenuHelpItem>[
     MenuHelpItem(
-      key: 'expenses',
+      key: 'expense_claims',
       label: '経費申請',
       purpose: '本人の経費申請と担当者による承認・費用の振り分けを行います。',
       destination: '自分の経費申請、または全員の経費一覧へ移動します。',
