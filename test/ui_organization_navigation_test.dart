@@ -84,7 +84,7 @@ void main() {
   testWidgets(
     'documents separates employee search from settings and does not select an employee automatically',
     (tester) async {
-      final repo = DocumentFixture();
+      final repo = (await tester.runAsync(() async => DocumentFixture()))!;
       addTearDown(() => tester.runAsync(repo.client.dispose));
       await tester.pumpWidget(
         MaterialApp(home: WorkerDocumentPage(repositoryOverride: repo)),
@@ -105,7 +105,7 @@ void main() {
   testWidgets(
     'settings shows selected scope; cancelled removal never changes a requirement',
     (tester) async {
-      final repo = DocumentFixture();
+      final repo = (await tester.runAsync(() async => DocumentFixture()))!;
       addTearDown(() => tester.runAsync(repo.client.dispose));
       await tester.pumpWidget(
         MaterialApp(
