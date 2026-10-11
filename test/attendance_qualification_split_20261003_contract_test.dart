@@ -45,7 +45,8 @@ void main() {
 
     expect(app, contains("key: 'qualification_register'"));
     expect(app, contains("SkoLanguageController.tr('資格登録')"));
-    expect(app, contains("key: 'employee_qualifications'"));
+    expect(app, contains("case 'employee_qualifications':"));
+    expect(app, contains("key: 'employee_resources'"));
     expect(app, contains("SkoLanguageController.tr('従業員資格')"));
     expect(own, contains("'ログイン中の本人の資格だけを表示します'"));
     expect(own, contains('loadOwnQualificationWorkspace'));

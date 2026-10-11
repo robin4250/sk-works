@@ -7,7 +7,9 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key, this.initialMonth});
+  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings});
+
+  final VoidCallback? onOpenSettings;
 
   final DateTime? initialMonth;
 
@@ -158,6 +160,8 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                           children: [
+                            if (widget.onOpenSettings != null)
+                              OutlinedButton.icon(onPressed: widget.onOpenSettings, icon: const Icon(Icons.manage_accounts_outlined), label: Text(SkoLanguageController.tr('個別給与設定'))),
                             PayrollConditionWarning(warnings: [
                               for (final item in items)
                                 for (final warning in payrollConditionWarnings(item.statement.detail))

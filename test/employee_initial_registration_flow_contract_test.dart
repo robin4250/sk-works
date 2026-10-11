@@ -5,14 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 String read(String path) => File(path).readAsStringSync();
 
 void main() {
-  test('top exposes separate employee registration and initial registration', () {
+  test('home exposes one registration entry and retains the old route alias', () {
     final app = read('lib/app_v2.dart');
 
     expect(app, contains("key: 'employee_register'"));
     expect(app, contains("SkoLanguageController.tr('従業員登録')"));
     expect(app, contains('EmployeeRegistrationPage'));
-    expect(app, contains("key: 'initial_registration'"));
-    expect(app, contains("SkoLanguageController.tr('初回登録')"));
+    expect(app, isNot(contains("key: 'initial_registration'")));
+    expect(app, contains("case 'initial_registration':"));
+
     expect(app, contains('EmployeeInitialRegistrationPage'));
     expect(app, contains("accessLabel: SkoLanguageController.tr('管理者')"));
   });

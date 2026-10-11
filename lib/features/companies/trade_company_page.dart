@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'trade_company_repository.dart';
 
 class TradeCompanyPage extends StatefulWidget {
-  const TradeCompanyPage({super.key, required this.mode});
+  const TradeCompanyPage({super.key, required this.mode, this.onOpenDeliveries});
+  final VoidCallback? onOpenDeliveries;
   final TradeCompanyPageMode mode;
 
   @override
@@ -67,7 +69,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_title, style: const TextStyle(fontWeight: FontWeight.w900)),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          if (widget.onOpenDeliveries != null)
+            IconButton(tooltip: SkoLanguageController.tr('受信した社員・書類'), icon: const Icon(Icons.folder_shared_outlined), onPressed: widget.onOpenDeliveries),
+          const SkoNotificationBell(),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loading ? null : _register,
