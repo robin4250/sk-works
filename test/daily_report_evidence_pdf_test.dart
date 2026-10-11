@@ -192,7 +192,9 @@ void main() {
         reason: 'all nine photos continue across photograph pages',
       );
       final manyText = (output[2]['texts'] as List).join('\n');
-      for (var i = 0; i < 9; i++) expect(manyText, contains('写真本人-$i'));
+      for (var i = 0; i < 9; i++) {
+        expect(manyText, contains('写真本人-$i'));
+      }
       for (final size in output[1]['sizes']) {
         expect(size[2], closeTo(595.28, 1));
         expect(size[3], closeTo(841.89, 1));
