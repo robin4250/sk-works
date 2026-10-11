@@ -603,11 +603,6 @@ class _AttendanceVerificationPageState
     final siteId = _siteId;
     if (repository == null || siteId == null) return;
 
-    final operationActor = repository.userId;
-    if (operationActor == null) return;
-    void requireActor() {
-      if (repository.userId != operationActor) throw StateError('操作したアカウントを再確認してください');
-    }
     setState(() => _saving = true);
     try {
       final position = await _currentPosition();
@@ -649,6 +644,11 @@ class _AttendanceVerificationPageState
       return;
     }
 
+    final operationActor = repository.userId;
+    if (operationActor == null) return;
+    void requireActor() {
+      if (repository.userId != operationActor) throw StateError('操作したアカウントを再確認してください');
+    }
     setState(() => _saving = true);
     try {
       if (_savedVerificationActor != null && repository.userId != _savedVerificationActor) {
@@ -860,6 +860,7 @@ class _AttendanceVerificationPageState
           SkoLanguageController.tr('作業中の現場があります。現場移動を記録してから退勤してください。'))));
         return;
       }
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_savedCaptureVerification != null
             ? '勤怠は登録済みです。日報を開けませんでした: $error'
