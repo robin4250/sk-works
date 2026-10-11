@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/*qualification*photo*.sql'
       - 'tool/verify_personal_qualification_photo_submission.mjs'
+      - 'tool/verify_qualification_prepared_upload.mjs'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'tool/verify_qualification_multi_photo_sql.mjs'
       - 'tool/verify_multi_photo_exchange_sql.mjs'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'supabase/migrations/*qualification*photo*.sql'
       - 'tool/verify_personal_qualification_photo_submission.mjs'
+      - 'tool/verify_qualification_prepared_upload.mjs'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'tool/verify_qualification_multi_photo_sql.mjs'
       - 'tool/verify_multi_photo_exchange_sql.mjs'
@@ -35,3 +37,5 @@ jobs:
         run: node tool/verify_multi_photo_exchange_sql.mjs "$RUNNER_TEMP/photo-sql/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify personal multi-photo submission and legacy approval compatibility
         run: node tool/verify_personal_qualification_photo_submission.mjs "$RUNNER_TEMP/photo-sql/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify prepared qualification upload scope and composed bucket gates
+        run: node tool/verify_qualification_prepared_upload.mjs "$RUNNER_TEMP/photo-sql/node_modules/@electric-sql/pglite/dist/index.js"
