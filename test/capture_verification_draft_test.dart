@@ -165,7 +165,9 @@ void main() {
       expect(d.encoded, original);
       // Only the actual Postgres representation is accepted, not a general
       // tolerance bucket for a different full-precision coordinate.
-      expect(d.matchesRow({...row, 'latitude': 35.70388335484932}), isFalse);
+      const differentCoordinate = 35.70388335484933;
+      expect(differentCoordinate, isNot(d.payload['latitude']));
+      expect(d.matchesRow({...row, 'latitude': differentCoordinate}), isFalse);
       for (final key in [
         'latitude',
         'longitude',
