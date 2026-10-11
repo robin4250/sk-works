@@ -311,9 +311,22 @@ class OwnQualificationPhotoSubmissionRepository {
     _check(userId);
   }
 
-  Future<OwnQualificationPreparedPhotos> cancelDraft() => _exclusive(() async {
+  void _checkExpectedRequest(
+    Map<String, dynamic> command,
+    String? expectedRequestId,
+  ) {
+    if (expectedRequestId != null &&
+        command['request_id'] != expectedRequestId) {
+      throw StateError('表示中の写真申請が変わりました。画面を再読み込みしてください。');
+    }
+  }
+
+  Future<OwnQualificationPreparedPhotos> cancelDraft({
+    String? expectedRequestId,
+  }) => _exclusive(() async {
     final command = await pending();
     if (command == null) throw StateError('保留中の写真申請はありません。');
+    _checkExpectedRequest(command, expectedRequestId);
     return _cancelCommand(command);
   });
 
@@ -354,10 +367,14 @@ class OwnQualificationPhotoSubmissionRepository {
     return saved;
   }
 
-  Future<OwnQualificationPreparedPhotos> recover() => _exclusive(_recover);
-  Future<OwnQualificationPreparedPhotos> _recover() async {
+  Future<OwnQualificationPreparedPhotos> recover({String? expectedRequestId}) =>
+      _exclusive(() => _recover(expectedRequestId));
+  Future<OwnQualificationPreparedPhotos> _recover(
+    String? expectedRequestId,
+  ) async {
     final command = await pending();
     if (command == null) throw StateError('保留中の写真申請はありません。');
+    _checkExpectedRequest(command, expectedRequestId);
     final userId = command['user_id'] as String;
     if (command['stage'] == 'cancel') return _cancelCommand(command);
     // Repeating prepare is safe only for the original fixed command and does

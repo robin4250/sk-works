@@ -11,6 +11,28 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('displayed request mismatch refuses cancellation and recovery before any RPC', () async {
+    final fixture = PhotoFixture()..failUploadAt = 1;
+    await expectLater(
+      fixture.repository.submitSelection(
+        row: fixture.row,
+        photos: fixture.photos,
+      ),
+      throwsStateError,
+    );
+    final before = fixture.actions.length;
+    await expectLater(
+      fixture.repository.cancelDraft(expectedRequestId: 'another-request'),
+      throwsStateError,
+    );
+    await expectLater(
+      fixture.repository.recover(expectedRequestId: 'another-request'),
+      throwsStateError,
+    );
+    expect(fixture.actions.length, before);
+    expect(await fixture.repository.pending(), isNotNull);
+  });
+
   test('confirmed pending recovery does not submit or upload again', () async {
     final fixture = PhotoFixture()..loseGetPending = true;
     await expectLater(

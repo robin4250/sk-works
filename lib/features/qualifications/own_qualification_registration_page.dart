@@ -199,9 +199,11 @@ class _OwnQualificationRegistrationPageState
     final repository = _photoRepository;
     if (repository == null || _photoBusy || !_photoCapability.available) return;
     final actor = repository.actor;
+    final requestId = _pendingPhotos?['request_id'] as String?;
+    if (requestId == null) return;
     setState(() => _photoBusy = true);
     try {
-      final result = await repository.recover();
+      final result = await repository.recover(expectedRequestId: requestId);
       if (!mounted || actor == null || repository.actor != actor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -234,6 +236,8 @@ class _OwnQualificationRegistrationPageState
     final repository = _photoRepository;
     if (repository == null || _photoBusy || !_photoCapability.available) return;
     final actor = repository.actor;
+    final requestId = _pendingPhotos?['request_id'] as String?;
+    if (requestId == null) return;
     if (actor == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -257,7 +261,7 @@ class _OwnQualificationRegistrationPageState
     if (confirmed != true || !mounted || actor != repository.actor) return;
     setState(() => _photoBusy = true);
     try {
-      await repository.cancelDraft();
+      await repository.cancelDraft(expectedRequestId: requestId);
       if (!mounted || actor != repository.actor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('未送信の写真申請を取り消しました。新しい申請を作成できます。')),
