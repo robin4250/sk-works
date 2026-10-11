@@ -8,7 +8,8 @@ import 'daily_report_month_zip.dart';
 import 'daily_report_month_repository.dart';
 
 class DailyReportMonthPage extends StatefulWidget {
-  const DailyReportMonthPage({super.key});
+  const DailyReportMonthPage({super.key, this.initialMonth});
+  final DateTime? initialMonth;
   @override
   State<DailyReportMonthPage> createState() => _DailyReportMonthPageState();
 }
@@ -23,6 +24,8 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialMonth ?? DateTime.now();
+    _month = DateTime(initial.year, initial.month);
     _actor = _repository?.client.auth.currentUser?.id;
     _load();
   }

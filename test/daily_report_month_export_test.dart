@@ -5,11 +5,24 @@ import 'package:archive/archive.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_zip.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:sk_works/features/daily_reports/daily_report_month_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_pdf_evidence.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 
 void main() {
+  testWidgets('selected report day opens its month instead of current month', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DailyReportMonthPage(initialMonth: DateTime(2024, 2, 29)),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('2024年2月'), findsOneWidget);
+  });
   DailyReportEvidenceRecord record(String path) => DailyReportEvidenceRecord(
     id: 'record',
     workerName: '',

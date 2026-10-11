@@ -766,6 +766,7 @@ const englishLanguagePack = LanguagePack(
     'この日の出勤メンバーがまだありません': 'No attendance members for this date yet',
     '日付を変更': 'Change Date',
     '出勤確認写真一覧': 'Attendance Photos',
+    '月の日報一覧': 'Monthly daily reports',
     '位置を地図で確認': 'View Location on Map',
     '日報 A4プレビュー': 'Daily Report A4 Preview',
     '日報機能を利用できません。': 'Daily Reports are unavailable.',

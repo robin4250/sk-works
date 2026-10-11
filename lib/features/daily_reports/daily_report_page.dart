@@ -16,6 +16,7 @@ import '../notifications/saved_report_notification_retry_store.dart';
 import '../../international/language_controller.dart';
 import '../operations/odometer_text_recognition_engine.dart';
 import 'daily_report_pdf_service.dart';
+import 'daily_report_month_page.dart';
 import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
@@ -816,7 +817,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
           SkoLanguageController.tr('日報'),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          IconButton(
+            key: const Key('daily-report-month-list'),
+            tooltip: SkoLanguageController.tr('月の日報一覧'),
+            onPressed: _saving ? null : () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DailyReportMonthPage(initialMonth: _date)),
+            ),
+            icon: const Icon(Icons.calendar_month_outlined),
+          ),
+          const SkoNotificationBell(),
+        ],
       ),
       bottomNavigationBar: _notificationRetryReportId == null ? null : SafeArea(
         child: Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(
