@@ -1,3 +1,4 @@
+import '../settings/master_feature_availability.dart';
 import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
@@ -25,6 +26,7 @@ class _AttendanceWorkplaceSelectionPageState
   String _mode = 'manual';
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -52,6 +54,7 @@ class _AttendanceWorkplaceSelectionPageState
         attendance.loadAttendanceSelectionWorkspace(),
         routes.routes(activeOnly: true),
         routes.loadTodaySelection(),
+        routes.featureAvailability(),
       ]);
       final workspace = values[1] as Map<String, dynamic>;
       final selection = workspace['selection'] is Map
@@ -66,6 +69,7 @@ class _AttendanceWorkplaceSelectionPageState
 
       if (!mounted) return;
       setState(() {
+        _availability = values[4] as MasterFeatureAvailability;
         _sites = (values[0] as List<Map<String, dynamic>>)
             .where((row) => row['status']?.toString() != 'completed')
             .toList(growable: false);
@@ -179,6 +183,8 @@ class _AttendanceWorkplaceSelectionPageState
                                 }),
                       ),
                       const SizedBox(height: 16),
+                      if (!_availability.routeAssignment)
+                        const Text('新しいルートの利用は一時停止中です。出勤中の勤務記録は継続できます。'),
                       if (_kind == 'site')
                         DropdownButtonFormField<String?>(
                           initialValue: _siteId,
@@ -218,6 +224,7 @@ class _AttendanceWorkplaceSelectionPageState
                             for (final route in _routes)
                               DropdownMenuItem<String?>(
                                 value: route['id']?.toString(),
+                              enabled: _availability.routeAssignment,
                                 child: Text(
                                   route['route_name']?.toString() ?? 'ルート',
                                 ),

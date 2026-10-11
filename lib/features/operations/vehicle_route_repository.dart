@@ -5,9 +5,11 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../settings/master_feature_controls_repository.dart';
 
 abstract class VehicleRouteSelectionAccess {
   String? get selectionActorId;
+  Future<MasterFeatureAvailability> featureAvailability();
   Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false});
   Future<List<Map<String, dynamic>>> routes({bool activeOnly = false});
   Future<Map<String, dynamic>> loadTodaySelection();
@@ -31,6 +33,17 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     return VehicleRouteRepository._(client);
   }
 
+  @override
+  Future<MasterFeatureAvailability> featureAvailability() =>
+      MasterFeatureControlsRepository.loadForClient(_client);
+
+  Future<void> _requireFeature({required bool vehicle}) async {
+    final flags = await featureAvailability();
+    if (vehicle ? !flags.vehicleManagement : !flags.routeAssignment) {
+      throw StateError(vehicle ? '車両の新しい利用は一時停止中です。' : 'ルート・配車の新しい利用は一時停止中です。');
+    }
+  }
+
   Future<Map<String, dynamic>> permissions() async {
     final user = _client.auth.currentUser;
     if (user == null) return const {};
@@ -40,10 +53,13 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
         .eq('user_id', user.id)
         .limit(1);
     final role = rows.isEmpty ? '' : rows.first['role']?.toString() ?? '';
+    MasterFeatureAvailability flags;
+    try { flags = await featureAvailability(); }
+    catch (_) { flags = MasterFeatureAvailability.unavailable; }
     final canManage = role == 'owner' || role == 'admin' || role == 'manager';
     return {
-      'can_manage_vehicles': canManage,
-      'can_manage_routes': canManage,
+      'can_manage_vehicles': canManage && flags.vehicleManagement,
+      'can_manage_routes': canManage && flags.routeAssignment,
     };
   }
 
@@ -118,6 +134,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required double odometerKm,
     required String storageAddress,
   }) async {
+    await _requireFeature(vehicle: true);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     final companyId = await _membership();
@@ -151,6 +168,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required String filename,
     required String contentType,
   }) async {
+    await _requireFeature(vehicle: true);
     final column = switch (kind) {
       'registration' => 'registration_document_path',
       'compulsory' => 'compulsory_insurance_path',
@@ -211,6 +229,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   }
 
   Future<void> setVehicleActive(String id, bool active) async {
+    await _requireFeature(vehicle: true);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     await _client.from('vehicles').update({
@@ -225,6 +244,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
     required String notes,
     required List<Map<String, Object?>> stops,
   }) async {
+    await _requireFeature(vehicle: false);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     final companyId = await _membership();
@@ -277,6 +297,7 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
   }
 
   Future<void> setRouteActive(String id, bool active) async {
+    await _requireFeature(vehicle: false);
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
     await _client.from('route_assignments').update({
@@ -308,6 +329,9 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayVehicleSelection(String? vehicleId) async {
+    if (vehicleId != null && vehicleId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: true);
+    }
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';
@@ -331,6 +355,9 @@ class VehicleRouteRepository implements VehicleRouteSelectionAccess {
 
   @override
   Future<void> saveTodayRouteSelection(String? routeId) async {
+    if (routeId != null && routeId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: false);
+    }
     final companyId = await _membership();
     final workerValue = await _client.rpc('ensure_current_user_worker');
     final workerId = workerValue?.toString() ?? '';

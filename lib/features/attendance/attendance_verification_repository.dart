@@ -1,3 +1,4 @@
+import '../settings/master_feature_controls_repository.dart';
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 
@@ -169,6 +170,9 @@ class AttendanceVerificationRepository {
     final routeId = routeRow?['route_assignment_id']?.toString();
 
     if (routeId != null && routeId.isNotEmpty) {
+      if (mode == 'gps_auto') {
+        await _requireNewOptionalWork(routeId: routeId);
+      }
       await _client.rpc(
         'save_my_route_attendance_selection',
         params: {
@@ -201,11 +205,24 @@ class AttendanceVerificationRepository {
     );
   }
 
+  Future<void> _requireNewOptionalWork({String? vehicleId, String? routeId}) async {
+    if ((vehicleId == null || vehicleId.trim().isEmpty) &&
+        (routeId == null || routeId.trim().isEmpty)) return;
+    final flags = await MasterFeatureControlsRepository.loadForClient(_client);
+    if (!flags.permitsClockIn(vehicleId: vehicleId, routeId: routeId)) {
+      throw StateError('選択中の車両またはルートの新しい利用は一時停止中です。通常出勤へ変更してください。');
+    }
+  }
+
   Future<Map<String, dynamic>> attemptGpsAutoAttendance({
     required double latitude,
     required double longitude,
     required double accuracyM,
   }) async {
+    final selection = await loadHomeAttendanceStatus();
+    if (selection.phase != HomeAttendancePhase.working) {
+      await _requireNewOptionalWork(vehicleId: selection.selectedVehicleId, routeId: selection.selectedRouteId);
+    }
     final raw = await _client.rpc(
       'attempt_gps_auto_attendance',
       params: {
@@ -473,6 +490,10 @@ class AttendanceVerificationRepository {
         if (!draft.canInsertOn(DateTime.now())) {
           throw StateError('勤務日が変わったため新規登録せず、保留中の登録結果だけ確認しています');
         }
+        if (draft.payload['event_type'] == 'clock_in') {
+          await _requireNewOptionalWork(vehicleId: draft.payload['vehicle_id'] as String?,
+            routeId: draft.payload['route_assignment_id'] as String?);
+        }
         if (!await captureEnabled()) { throw StateError('撮影記録の登録設定を確認してください'); }
         final row = await _client.from('attendance_verifications').insert(draft.payload).select().single();
         return Map<String, dynamic>.from(row);
@@ -554,6 +575,9 @@ class AttendanceVerificationRepository {
       selection = {'vehicle_id': shift.vehicleId, 'route_assignment_id': shift.routeId};
     }
     final routeId = selection?['route_assignment_id']?.toString();
+    if (eventType == 'clock_in') {
+      await _requireNewOptionalWork(vehicleId: selection?['vehicle_id']?.toString(), routeId: routeId);
+    }
     if ((siteId == null || siteId.trim().isEmpty) &&
         (routeId == null || routeId.trim().isEmpty)) {
       throw StateError('現場またはルートを選択してください。');

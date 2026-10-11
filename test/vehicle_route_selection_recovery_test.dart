@@ -1,13 +1,22 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/operations/vehicle_route_repository.dart';
 import 'package:sk_works/features/operations/vehicle_route_selection_page.dart';
+import 'package:sk_works/features/settings/master_feature_availability.dart';
 
 class Access implements VehicleRouteSelectionAccess {
   @override
   String? selectionActorId = 'actor';
   bool fail = false;
+  bool routeEnabled = true;
+  @override
+  Future<MasterFeatureAvailability> featureAvailability() async =>
+      MasterFeatureAvailability(
+        vehicleManagement: false,
+        routeAssignment: routeEnabled,
+      );
   String? selected;
   int loads = 0, saves = 0, unrelatedLoads = 0;
   List<Map<String, dynamic>>? routeRows;
@@ -59,6 +68,33 @@ Future<void> open(WidgetTester tester, Access access) async {
 }
 
 void main() {
+  testWidgets('OFF preserves the selected route and refuses another new use', (
+    tester,
+  ) async {
+    final access = Access()
+      ..selected = 'route'
+      ..routeEnabled = false;
+    await open(tester, access);
+    expect(access.selected, 'route');
+    expect(find.textContaining('新しい利用は一時停止中'), findsOneWidget);
+    final save = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '確定して保存'),
+    );
+    expect(save.onPressed, isNull);
+    expect(access.saves, 0);
+    final field = tester.widget<DropdownButton<String?>>(
+      find.byType(DropdownButton<String?>),
+    );
+    expect(
+      field.items!.singleWhere((item) => item.value == 'route').enabled,
+      isFalse,
+    );
+    expect(
+      field.items!.singleWhere((item) => item.value == null).enabled,
+      isTrue,
+    );
+  });
+
   testWidgets(
     'selected route shows ordered destinations and clears without writes',
     (tester) async {

@@ -1,3 +1,4 @@
+import 'features/settings/master_feature_controls_repository.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -184,6 +185,7 @@ class _HomePageState extends State<HomePage> {
   HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
   HomeRouteActionState _homeRouteActionState = HomeRouteActionState.unavailable;
   int _homeAttendanceGeneration = 0;
+  bool _homeOptionalClockInAllowed = false;
   String? _homePendingRouteSourceId;
 
   bool get _isAdmin => _identity.isAdmin;
@@ -323,6 +325,7 @@ class _HomePageState extends State<HomePage> {
         SupabaseBackend.client.auth.currentUser?.id == requestActor;
     if (mounted) {
       setState(() {
+        _homeOptionalClockInAllowed = false;
         _homeRouteActionState = HomeRouteActionState.unavailable;
         _homePendingRouteSourceId = null;
       });
@@ -333,6 +336,17 @@ class _HomePageState extends State<HomePage> {
       final value = await repository.loadHomeAttendanceStatus();
       if (!acceptsResponse()) return;
       setState(() => _homeAttendanceStatus = value);
+      var optionalAllowed = (value.selectedVehicleId?.trim().isEmpty ?? true) &&
+          (value.selectedRouteId?.trim().isEmpty ?? true);
+      if (!optionalAllowed) {
+        try {
+          final flags = await MasterFeatureControlsRepository.loadForClient(SupabaseBackend.client);
+          optionalAllowed = flags.permitsClockIn(vehicleId: value.selectedVehicleId, routeId: value.selectedRouteId);
+        } catch (_) { optionalAllowed = false; }
+      }
+      if (!acceptsResponse()) return;
+      setState(() => _homeOptionalClockInAllowed = optionalAllowed);
+
       final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
       if (routeRepository == null || routeRepository.userId != requestActor) return;
       final pending = await routeRepository.allPending();
@@ -1450,6 +1464,7 @@ class _HomePageState extends State<HomePage> {
           showTodayAttendance:
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
+          optionalClockInAllowed: _homeOptionalClockInAllowed,
           routeActionState: _homeRouteActionState,
           hasPendingRouteRecord: _homePendingRouteSourceId != null,
           appearance: bodyAppearance,

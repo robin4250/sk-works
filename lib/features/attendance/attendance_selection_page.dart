@@ -1,3 +1,4 @@
+import '../settings/master_feature_availability.dart';
 import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
@@ -24,6 +25,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
   String? _vehicleId;
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  MasterFeatureAvailability _availability = MasterFeatureAvailability.unavailable;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -50,6 +52,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
         attendanceRepository.loadAttendanceSelectionWorkspace(),
         vehicleRouteRepository.vehicles(activeOnly: true),
         vehicleRouteRepository.loadTodaySelection(),
+        vehicleRouteRepository.featureAvailability(),
       ]);
       final workspace = values[0] as Map<String, dynamic>;
       final vehicles = values[1] as List<Map<String, dynamic>>;
@@ -74,6 +77,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
 
       if (!mounted) return;
       setState(() {
+        _availability = values[3] as MasterFeatureAvailability;
         _vehicles = vehicles;
         _mode = mode;
         _siteId = selection['site_id']?.toString();
@@ -265,6 +269,8 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                         ),
                       ],
                       const SizedBox(height: 14),
+                      if (!_availability.vehicleManagement)
+                        const Text('新しい車両の利用は一時停止中です。車両を使わない現場・ルート出勤は利用できます。出勤中の勤務記録は継続できます。'),
                       DropdownButtonFormField<String?>(
                         initialValue: _vehicleId,
                         decoration: const InputDecoration(
@@ -280,6 +286,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                           for (final vehicle in _vehicles)
                             DropdownMenuItem<String?>(
                               value: vehicle['id']?.toString(),
+                              enabled: _availability.vehicleManagement,
                               child: Text(
                                 vehicle['display_name']?.toString() ?? '車両',
                               ),
