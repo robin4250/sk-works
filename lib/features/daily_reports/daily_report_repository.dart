@@ -187,6 +187,8 @@ class DailyReportEvidenceRecord {
 class DailyReportRepository {
   DailyReportRepository._(this._client);
 
+  DailyReportRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   static DailyReportRepository? maybeCreate() {
@@ -194,6 +196,33 @@ class DailyReportRepository {
     final client = SupabaseBackend.client;
     if (client.auth.currentUser == null) return null;
     return DailyReportRepository._(client);
+  }
+
+  /// Only reads the selected destination; never substitutes another site's name.
+  Future<String> loadResponsibleName({
+    String? siteId,
+    String? routeAssignmentId,
+  }) async {
+    if (siteId != null) {
+      final rows = await _client.rpc('site_directory_rows_v2');
+      if (rows is List) {
+        for (final row in rows) {
+          if (row is Map && row['id'] == siteId) {
+            return row['manager_name']?.toString().trim() ?? '';
+          }
+        }
+      }
+      return '';
+    }
+    if (routeAssignmentId != null) {
+      final row = await _client
+          .from('route_assignments')
+          .select('responsible_name')
+          .eq('id', routeAssignmentId)
+          .maybeSingle();
+      return row?['responsible_name']?.toString().trim() ?? '';
+    }
+    return '';
   }
 
   Future<bool> vehicleMeterEnabled(String companyId) async {

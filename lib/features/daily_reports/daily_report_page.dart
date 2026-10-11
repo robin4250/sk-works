@@ -652,6 +652,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
           submitLabel: SkoLanguageController.tr('報告者サインを保存'),
+          initialSignerName: _report?.reporterSignerName ?? '',
+          signerNameOptions: [for (final worker in _workers) worker.workerName],
         )),
       );
       if (result == null || !mounted) return;
@@ -690,8 +692,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ));
         return;
       }
+      // Existing saved names take precedence over current registration defaults.
+      var responsibleName =
+          _report?.responsibleSignerName ?? _report?.signerName ?? '';
+      if (responsibleName.trim().isEmpty) {
+        try {
+          responsibleName = await _repository!.loadResponsibleName(
+            siteId: _siteId,
+            routeAssignmentId: _routeAssignmentId,
+          );
+        } catch (_) {
+          // Missing registration or unavailable lookup still allows manual entry.
+        }
+      }
+      if (!mounted) return;
       final result = await Navigator.of(context).push<SignatureResult>(
         MaterialPageRoute(builder: (_) => SignatureCapturePage(
+          initialSignerName: responsibleName,
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           submitLabel: SkoLanguageController.tr('責任者サインで確定'),
