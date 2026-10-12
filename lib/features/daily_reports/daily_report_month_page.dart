@@ -182,11 +182,15 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           resolvedEvidence: document.evidence,
         )));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'),
-      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'),
+        ));
+      }
     } finally {
-      if (mounted) setState(() => _openingEntryId = null);
+      if (mounted) {
+        setState(() => _openingEntryId = null);
+      }
     }
   }
 
