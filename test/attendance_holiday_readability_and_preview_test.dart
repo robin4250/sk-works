@@ -58,7 +58,10 @@ void main() {
     final data = WorkerAttendanceMonth(year: 2026, month: 11, days: {
       date: WorkerAttendanceDay(date: date, siteName: '登録現場', clockIn: DateTime(2026, 11, 23, 8), clockOut: DateTime(2026, 11, 23, 17), manDays: 1),
     });
-    await tester.pumpWidget(MaterialApp(home: WorkerAttendanceMonthPage(month: date, data: data, workerName: '社員A')));
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)), child: child!),
+      home: WorkerAttendanceMonthPage(month: date, data: data, workerName: '社員A'),
+    ));
     await tester.pumpAndSettle();
     expect(find.text('勤労感謝の日'), findsNothing);
     final headerButton = find.byTooltip('A4印刷プレビュー');

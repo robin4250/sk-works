@@ -561,20 +561,28 @@ class _AttendanceDayCard extends StatelessWidget {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
                             SkoLanguageController.isEnglish ? 'In ${_time(day?.clockIn)}' : '出 ${_time(day?.clockIn)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
                             ),
                           ),
+                          ),
                           const SizedBox(height: 2),
-                          Text(
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
                             SkoLanguageController.isEnglish ? 'Out ${_time(day?.clockOut)}' : '退 ${_time(day?.clockOut)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
                             ),
+                          ),
                           ),
                         ],
                       )
@@ -883,24 +891,29 @@ class _MonthCalendar extends StatelessWidget {
               ],
             ),
             const Divider(height: 1),
-            GridView.count(
-              crossAxisCount: 7,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 0.78,
-              children: [
-                for (final date in days)
-                  _MonthCalendarCell(
-                    date: date,
-                    inMonth: date.month == month.month,
-                    day: data.days[DateTime(date.year, date.month, date.day)],
-                    onTap: data.days[DateTime(date.year, date.month, date.day)]
-                                ?.paidLeave ==
-                            true
-                        ? () {}
-                        : () => onDateTap(date),
-                  ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final cellHeight =
+                    MediaQuery.textScalerOf(context).scale(11) * 5 + 18;
+                return GridView.count(
+                  crossAxisCount: 7,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: (constraints.maxWidth / 7) / cellHeight,
+                  children: [
+                    for (final date in days)
+                      _MonthCalendarCell(
+                        date: date,
+                        inMonth: date.month == month.month,
+                        day: data.days[DateTime(date.year, date.month, date.day)],
+                        onTap: data.days[DateTime(date.year, date.month, date.day)]
+                                    ?.paidLeave == true
+                            ? () {}
+                            : () => onDateTap(date),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
