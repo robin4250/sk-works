@@ -27,7 +27,8 @@ void main() {
       pagesStart,
       app.indexOf('return Scaffold(', pagesStart),
     );
-    expect(pagesBlock, contains('const WorkerAttendanceSheetPage()'));
+    expect(pagesBlock,
+        contains('WorkerAttendanceSheetPage(isActive: _selectedIndex == 1)'));
     expect(
       pagesBlock,
       isNot(contains(

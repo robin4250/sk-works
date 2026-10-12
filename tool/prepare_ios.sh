@@ -436,6 +436,24 @@ import UserNotifications
           return
         }
         switch call.method {
+        case "weatherGeocode":
+          guard let address = args["address"] as? String, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, address.count <= 1000 else { result(nil); return }
+          let geocoder = CLGeocoder()
+          var finished = false
+          let finish: ([String: Any]?) -> Void = { value in
+            guard !finished else { return }
+            finished = true
+            result(value)
+          }
+          DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+            guard !finished else { return }
+            geocoder.cancelGeocode()
+            finish(nil)
+          }
+          geocoder.geocodeAddressString(address) { places, error in
+            guard error == nil, let places = places, places.count == 1, let place = places.first, let coordinate = place.location?.coordinate, CLLocationCoordinate2DIsValid(coordinate), let zone = place.timeZone?.identifier, let country = place.isoCountryCode, place.locality != nil else { finish(nil); return }
+            finish(["latitude": coordinate.latitude, "longitude": coordinate.longitude, "time_zone": zone, "country_code": country, "source": "apple_native"])
+          }
         case "photoCapturedAt":
           guard let path = args["path"] as? String, path.hasPrefix("/") else {
             result(nil)
