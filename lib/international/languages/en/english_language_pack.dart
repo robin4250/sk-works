@@ -4,6 +4,8 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "日報の使い方": "Daily report help",
+    "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n退勤から開いたルート日報は、確定後に請求数量の画面へ進みます。取引会社ごとに数量を選んで申請し、管理者が根拠現場・数量・単価を承認すると請求書の下書きへ反映します。訪問日報の確定だけでは請求数量は申請されません。\n\n後から申請する場合は、出勤表の日付→日報一覧→「請求数量を申請」を開いてください。未退勤の勤務に属する訪問日報は、数量申請の対象になりません。給与や出勤表の人工は変更しません。": "Finalize the report with the supervisor signature after the reporter signs. Open Saved reports to view or print each saved report.\n\nA route report opened after checkout proceeds to billing quantities once finalized. Choose and submit a quantity for each customer. The invoice draft reflects it after a manager reviews the source site, quantity and rate. Finalizing a visit report does not submit billing quantities.\n\nTo submit later, open the date in Attendance, then the report list and Submit billing quantities. Visit reports belonging to shifts without checkout are excluded. Payroll and attendance man-days are unchanged.",
     "追加する項目": "Add a shortcut",
     "対応アプリのうち、この端末で開けるものを表示します。Webサイトも登録できます。": "Supported apps that can open on this device are listed. You can also register a website.",
     "Googleマップ": "Google Maps",
