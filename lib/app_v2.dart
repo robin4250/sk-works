@@ -29,7 +29,7 @@ import 'features/approvals/approvals_hub_page.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
-import 'features/chat/line_talk_page.dart';
+import 'features/chat/line_talk_hub_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
@@ -1231,7 +1231,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = const AttendanceManagementPage();
         break;
       case 'line_talk':
-        page = const LineTalkPage();
+        page = const LineTalkHubPage();
         break;
       case 'today_line':
         page = const TodayLineAttendancePage();

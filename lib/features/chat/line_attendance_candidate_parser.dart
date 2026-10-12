@@ -162,6 +162,8 @@ class LineAttendanceCandidateParser {
         line.contains('夜勤') ||
         line.contains('早出') ||
         line.contains('鉄骨') ||
+        line.contains('休日') ||
+        RegExp(r'\bPC\b', caseSensitive: false).hasMatch(line) ||
         line.startsWith('訂正');
   }
 
