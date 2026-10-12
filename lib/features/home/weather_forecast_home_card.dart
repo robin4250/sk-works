@@ -210,7 +210,7 @@ class _WeatherCompactInformation extends StatelessWidget {
     final matching = forecast?.hours.where((value) => value.hour == hour).toList();
     final chance = matching != null && matching.length == 1 ? matching.single.rainProbability : null;
     final precipitation = chance == null
-        ? SkoLanguageController.tr('降水確率') + ' ' + SkoLanguageController.tr('未取得')
+        ? '${SkoLanguageController.tr('降水確率')} ${SkoLanguageController.tr('未取得')}'
         : '$hour${SkoLanguageController.tr('時')} $chance%';
     final rain = data.rainApproachMessage;
     return Column(

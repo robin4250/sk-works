@@ -81,4 +81,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('employee resources uses one viewer border and keeps its action', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: FriendlyHomeContent(
+      identity: const HomeIdentity(role: 'worker', companyName: '会社', displayName: '本人'),
+      requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
+      moduleEnabled: (_) => true, showAttendanceReport: false, showTodayAttendance: false,
+      visibleHomeKeys: const {'employee_resources'},
+      shortcuts: const [HomeShortcut('employee_resources', '社員資格書類', Icons.folder, access: HomeShortcutAccess.viewer)],
+      onOpen: (key) async { opened.add(key); }, onRefresh: () async {},
+    ))));
+    await tester.pump();
+    final button = find.byKey(const ValueKey('home-button-employee_resources'));
+    bool bordered(Widget widget) => widget is Container && widget.decoration is BoxDecoration &&
+      (widget.decoration! as BoxDecoration).border != null;
+    expect(find.descendant(of: button, matching: find.byWidgetPredicate(bordered)), findsOneWidget);
+    expect(find.ancestor(of: button, matching: find.byWidgetPredicate(bordered)), findsNothing);
+    await tester.tap(button);
+    expect(opened, ['employee_resources']);
+    expect(tester.takeException(), isNull);
+  });
+
 }

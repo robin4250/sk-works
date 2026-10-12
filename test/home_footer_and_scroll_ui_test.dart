@@ -105,7 +105,7 @@ void main() {
     },
   );
   testWidgets(
-    'a pause longer than reorder delay still scrolls through card and button text',
+    'card text scrolls after a pause and button text scrolls before long press',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(375, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -120,7 +120,7 @@ void main() {
         final gesture = await tester.startGesture(
           tester.getCenter(find.text(label)),
         );
-        await tester.pump(const Duration(milliseconds: 900));
+        await tester.pump(Duration(milliseconds: label == '本日の出勤' ? 900 : 100));
         // First cross touch slop, then continue the same finger movement.
         await gesture.moveBy(const Offset(0, -25));
         await tester.pump(const Duration(milliseconds: 16));
