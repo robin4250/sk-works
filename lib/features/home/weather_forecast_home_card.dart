@@ -213,7 +213,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
       }
       return Icons.help_outline;
     }
-    return at(value.forecastSummaryHour ?? 12)?.icon ?? Icons.help_outline;
+    return weatherForecastHourIcon(at(value.forecastSummaryHour ?? 12));
   }
   @override
   Widget build(BuildContext context) {
@@ -265,7 +265,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
         return Expanded(child: Semantics(label: '$hour${SkoLanguageController.tr('時')} ${value?.summary ?? SkoLanguageController.tr('未取得')}',
           child: FittedBox(fit: BoxFit.scaleDown, child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('$hour${SkoLanguageController.tr('時')}', style: const TextStyle(fontSize: 9, height: 1.1)),
-            Icon(value?.icon ?? Icons.help_outline, key: ValueKey('weather-home-hour-$hour'), size: 16, color: weatherConditionIconColor(value?.icon ?? Icons.help_outline, colors)),
+            Icon(weatherForecastHourIcon(value), key: ValueKey('weather-home-hour-$hour'), size: 16, color: weatherConditionIconColor(weatherForecastHourIcon(value), colors)),
             Text(value?.rainProbability == null ? '—' : '${value?.rainProbability}%', style: const TextStyle(fontSize: 9, height: 1.1)),
           ]))));
       }))),

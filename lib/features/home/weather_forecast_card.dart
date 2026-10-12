@@ -35,6 +35,14 @@ class WeatherForecastHour {
   final int? rainProbability;
 }
 
+/// A default icon on an unavailable source condition is not a cloudy forecast.
+IconData weatherForecastHourIcon(WeatherForecastHour? hour) {
+  final summary = hour?.summary.trim() ?? '';
+  return summary.isEmpty || summary == SkoLanguageController.tr('未取得')
+      ? Icons.help_outline
+      : hour!.icon;
+}
+
 /// A reusable card; it never invents a location or fetches weather itself.
 class WeatherForecastCard extends StatelessWidget {
   const WeatherForecastCard({
@@ -167,9 +175,9 @@ class WeatherForecastCard extends StatelessWidget {
                             Text('$hour${SkoLanguageController.tr('時')}'),
                             const SizedBox(height: 6),
                             Icon(
-                              _at(hour)?.icon ?? Icons.cloud_outlined,
+                              weatherForecastHourIcon(_at(hour)),
                               color: weatherConditionIconColor(
-                                _at(hour)?.icon ?? Icons.cloud_outlined,
+                                weatherForecastHourIcon(_at(hour)),
                                 colors,
                               ),
                             ),

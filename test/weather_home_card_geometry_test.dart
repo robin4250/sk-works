@@ -13,6 +13,31 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  testWidgets('unavailable conditions use a question mark while sourced cloud survives missing numbers', (tester) async {
+    final date = DateTime(2026, 10, 12);
+    final state = ValueNotifier(WeatherForecastViewData(baseDate: date,
+      snapshot: WeatherForecastSnapshot(locationLabel: '会社周辺', updatedAt: date,
+        forecastDate: date, sourceLabel: 'OpenWeather',
+        hours: [
+          WeatherForecastHour(hour: 0, summary: SkoLanguageController.tr('未取得'), icon: Icons.cloud_outlined),
+          WeatherForecastHour(hour: 3, summary: SkoLanguageController.tr('曇り'), icon: Icons.cloud_outlined),
+        ],
+      ),
+    ));
+    addTearDown(state.dispose);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: WeatherForecastHomeCard(state: state))));
+    expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-0'))).icon, Icons.help_outline);
+    expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-3'))).icon, Icons.cloud_outlined);
+    await tester.tap(find.byKey(const ValueKey('weather-home-frame')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WeatherForecastDetailPage), findsOneWidget);
+    // The detail header is a generic cloud; only the 3h sourced forecast adds a second.
+    expect(find.byIcon(Icons.cloud_outlined), findsNWidgets(2));
+    expect(find.byIcon(Icons.help_outline), findsNWidgets(9));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('home and detail share orange sun and blue umbrella in both languages', (tester) async {
     final original = SkoLanguageController.pack.value;
     addTearDown(() => SkoLanguageController.pack.value = original);
