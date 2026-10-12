@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../../international/language_controller.dart';
 
 import 'daily_report_calendar_model.dart';
@@ -9,13 +10,16 @@ import 'daily_report_page.dart';
 class DailyReportSavedPreviewPager extends StatefulWidget {
   const DailyReportSavedPreviewPager({super.key, required this.repository,
     required this.actor, required this.entries, required this.initialEntryId,
-    this.previewBuilderForTesting, this.editBuilderForTesting});
+    this.previewBuilderForTesting, this.editBuilderForTesting,
+    this.previewWithZoomBuilderForTesting});
   final DailyReportMonthRepository repository;
   final String actor;
   final List<DailyReportMonthEntry> entries;
   final String initialEntryId;
   final Widget Function(DailyReportMonthDocument)? previewBuilderForTesting;
   final Widget Function(DailyReportMonthEntry)? editBuilderForTesting;
+  @visibleForTesting
+  final Widget Function(DailyReportMonthDocument, ValueChanged<bool>)? previewWithZoomBuilderForTesting;
 
   @override
   State<DailyReportSavedPreviewPager> createState() => _DailyReportSavedPreviewPagerState();
@@ -28,6 +32,8 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
   String? _error;
   bool _loading = true;
   int _generation = 0;
+  bool _zoomed = false;
+  double _horizontalDistance = 0;
 
   @override
   void initState() {
@@ -37,7 +43,7 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
 
   Future<void> _load() async {
     final generation = ++_generation;
-    setState(() { _loading = true; _error = null; _document = null; });
+    setState(() { _loading = true; _error = null; _document = null; _zoomed = false; _horizontalDistance = 0; });
     try {
       if (_index < 0 || _index >= _entries.length) throw StateError('Missing report');
       final document = await widget.repository.loadOne(_entries[_index], expectedActor: widget.actor);
@@ -78,6 +84,17 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
     }
   }
 
+  void _zoomChanged(bool zoomed) {
+    if (!mounted || _zoomed == zoomed) return;
+    // Printing can notify a reset from didUpdateWidget; never rebuild an
+    // ancestor while the child is being rebuilt.
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _zoomChanged(zoomed));
+      return;
+    }
+    setState(() { _zoomed = zoomed; _horizontalDistance = 0; });
+  }
+
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
@@ -96,18 +113,27 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
           ]))));
     } else {
       final report = document.report;
-      preview = widget.previewBuilderForTesting?.call(document) ?? DailyReportPrintPreviewPage(
+      preview = widget.previewWithZoomBuilderForTesting?.call(document, _zoomChanged) ??
+        widget.previewBuilderForTesting?.call(document) ?? DailyReportPrintPreviewPage(
         key: ValueKey(report.id), date: report.date, siteName: report.siteName,
         workers: report.workers, workDescription: report.workDescription, report: report,
         evidence: document.evidence.map((photo) => photo.record).toList(),
-        resolvedEvidence: document.evidence, onEdit: _edit);
+        resolvedEvidence: document.evidence, onEdit: _edit, onZoomChanged: _zoomChanged);
     }
     return GestureDetector(
       key: const ValueKey('daily-report-preview-swipe'),
-      onHorizontalDragEnd: (details) {
+      // The PDF viewer owns horizontal pan while zoomed. Do not register a
+      // competing horizontal recognizer until it returns to normal preview.
+      onHorizontalDragStart: _zoomed ? null : (_) => _horizontalDistance = 0,
+      onHorizontalDragUpdate: _zoomed ? null : (details) => _horizontalDistance += details.delta.dx,
+      onHorizontalDragCancel: _zoomed ? null : () => _horizontalDistance = 0,
+      onHorizontalDragEnd: _zoomed ? null : (details) {
         final velocity = details.primaryVelocity ?? 0;
-        if (velocity > 200) _select(next); // User-requested right swipe: next report day.
-        if (velocity < -200) _select(_index - 1); // Left swipe: previous older record.
+        final direction = _horizontalDistance.abs() >= 40 ? _horizontalDistance :
+          velocity.abs() > 200 ? velocity : 0.0;
+        _horizontalDistance = 0;
+        if (direction > 0) { _select(next); } // Right: next saved report day.
+        if (direction < 0) { _select(_index - 1); } // Left: older report ID.
       },
       child: Column(children: [
         Expanded(child: preview),

@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../shared/pdf_bytes_cache.dart';
@@ -1766,7 +1767,7 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
   const DailyReportPrintPreviewPage({super.key, required this.date,
     required this.siteName, required this.workers, required this.workDescription,
     required this.report, this.evidence = const [], this.resolvedEvidence,
-    this.includePhotos = true, this.onEdit,
+    this.includePhotos = true, this.onEdit, this.onZoomChanged,
   });
 
   final DateTime date;
@@ -1778,6 +1779,7 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
   final List<DailyReportPdfEvidence>? resolvedEvidence;
   final bool includePhotos;
   final VoidCallback? onEdit;
+  final ValueChanged<bool>? onZoomChanged;
 
   @override
   State<DailyReportPrintPreviewPage> createState() => _DailyReportPrintPreviewPageState();
@@ -1805,6 +1807,13 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
 
   Future<List<DailyReportPdfEvidence>> _savedEvidence() =>
       _resolvedEvidence ??= _loadEvidence();
+
+  // Keep the LayoutCallback identity stable across zoom state updates. Printing
+  // resets its InteractiveViewer mode whenever the callback changes.
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) => _pdfBytes.get(() async =>
+    DailyReportPdfService.buildPdf(date: widget.date, siteName: widget.siteName,
+      workers: widget.workers, workDescription: widget.workDescription,
+      report: widget.report, evidence: await _savedEvidence()));
 
   Future<void> _printReport() async {
     try {
@@ -1903,15 +1912,11 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
           },
         ),
         Expanded(child: PdfPreview(initialPageFormat: PdfPageFormat.a4,
+          onZoomChanged: widget.onZoomChanged,
           canChangePageFormat: false, canChangeOrientation: false,
           allowPrinting: true, allowSharing: true,
           pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_${widget.report?.id ?? 'preview'}_日報.pdf',
-          build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
-            date: widget.date, siteName: widget.siteName, workers: widget.workers,
-            workDescription: widget.workDescription, report: widget.report,
-            evidence: await _savedEvidence(),
-                ),
-              ),
+          build: _buildPreviewPdf,
             ),
           ),
         ],

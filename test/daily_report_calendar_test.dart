@@ -185,6 +185,42 @@ void main() {
     expect(tester.takeException(),isNull);
   });
 
+  testWidgets('slow deliberate drags navigate while zoomed PDF pan keeps the same report', (tester) async {
+    final reports=Reports(client);
+    final controller=TransformationController();
+    addTearDown(controller.dispose);
+    final entries=[entry('old',12,1),entry('tomorrow',13,1)];
+    await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:reports,actor:'actor',
+      entries:entries,initialEntryId:'old',previewWithZoomBuilderForTesting:(doc,onZoomChanged)=>Scaffold(
+        appBar:AppBar(actions:[
+          IconButton(tooltip:'zoom in',onPressed:(){
+            controller.value=Matrix4.diagonal3Values(2,2,1); onZoomChanged(true);
+          },icon:const Icon(Icons.zoom_in)),
+          IconButton(tooltip:'zoom out',onPressed:()=>onZoomChanged(false),icon:const Icon(Icons.zoom_out)),
+        ]),
+        body:InteractiveViewer(key:const ValueKey('zoomed-report-fixture'),
+          transformationController:controller,constrained:false,
+          child:SizedBox(width:1200,height:800,child:Text(doc.report.id)))))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('zoom in')); await tester.pumpAndSettle();
+    final before=controller.value.clone();
+    await tester.timedDrag(find.byKey(const ValueKey('zoomed-report-fixture')),const Offset(-100,0),const Duration(seconds:2));
+    await tester.pumpAndSettle();
+    expect(controller.value == before,isFalse);
+    expect(reports.opened,['old']);
+    await tester.tap(find.byTooltip('zoom out')); await tester.pumpAndSettle();
+    // Use the navigation strip, which remains separate from the PDF's pan area.
+    final surface=find.byKey(const ValueKey('daily-report-preview-swipe'));
+    final start=tester.getBottomLeft(surface)+const Offset(300,-30);
+    final gesture=await tester.startGesture(start);
+    await gesture.moveBy(const Offset(30,0),timeStamp:const Duration(seconds:1));
+    await gesture.moveBy(const Offset(80,0),timeStamp:const Duration(seconds:2));
+    await gesture.up(timeStamp:const Duration(seconds:3));
+    await tester.pumpAndSettle();
+    expect(reports.opened,['old','tomorrow']);
+    expect(tester.takeException(),isNull);
+  });
+
   testWidgets('right swipe opens next saved day, left swipe opens older same-day ID', (tester) async {
     final reports=Reports(client);
     final entries=[entry('new',12,2),entry('old',12,1),entry('tomorrow',13,1)];
