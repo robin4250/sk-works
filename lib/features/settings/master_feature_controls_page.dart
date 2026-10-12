@@ -142,7 +142,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                           if (_weatherProviderRepository != null)
                             WeatherProviderSettingsPanel(
                               isMaster: true,
-                              repository: _weatherProviderRepository!,
+                              repository: _weatherProviderRepository,
                             ),
                           const Card(
                             child: Padding(

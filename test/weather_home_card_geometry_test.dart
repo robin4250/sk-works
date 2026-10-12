@@ -25,7 +25,7 @@ void main() {
     expect(future.rainApproachMessageAt(now), isNull);
   });
 
-  test('future summary uses the selected forecast hour and never today's current value', () {
+  test('future summary uses the selected forecast hour and never the current-day value', () {
     final data = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), selectedDay: 1,
       snapshot: WeatherForecastSnapshot(locationLabel: '現場', updatedAt: DateTime(2026, 10, 12),
         forecastDate: DateTime(2026, 10, 13), sourceLabel: 'OpenWeather',
