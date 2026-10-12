@@ -14,11 +14,11 @@ import 'package:sk_works/features/settings/master_feature_availability.dart';
 
 void main() {
   const enabled = TrafficAvailability(nearestStation: true, trainTransfer: true, busStop: true);
-  Future<void> pump(WidgetTester tester, {TrafficAvailability availability = enabled, TrafficLinkLauncher? launcher}) async {
+  Future<void> pump(WidgetTester tester, {TrafficAvailability availability = enabled, TrafficLinkLauncher? launcher, double scale = 1.6}) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: MediaQuery(
-      data: const MediaQueryData(size: Size(320, 640), textScaler: TextScaler.linear(1.6)),
+      data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
       child: TrafficHomeCard(availability: availability, launcher: launcher),
     ))));
   }
@@ -47,6 +47,28 @@ void main() {
     expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
     expect(tester.takeException(), isNull);
   });
+  testWidgets('compact traffic has right-hand labels and private help at 1.3 scale', (tester) async {
+    await pump(tester, scale: 1.3);
+    expect(find.text('交通案内'), findsNothing);
+    expect(tester.getSize(find.byType(TrafficHomeCard)).height, lessThanOrEqualTo(56));
+    final iconTypes = [Icons.apartment_rounded, Icons.train_rounded, Icons.directions_bus_rounded];
+    final labels = ['最寄駅', '電車乗換', 'バス停'];
+    for (var index = 0; index < 3; index++) {
+      final button = find.byKey(ValueKey('traffic-${TrafficDestination.values[index].name}'));
+      final rect = tester.getRect(button);
+      expect(rect.width, greaterThanOrEqualTo(44));
+      expect(rect.height, greaterThanOrEqualTo(44));
+      expect(tester.getRect(find.text(labels[index])).left,
+          greaterThan(tester.getRect(find.byIcon(iconTypes[index])).right));
+    }
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('交通案内のヘルプ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('マスター'), findsNothing);
+    expect(find.textContaining('権限'), findsNothing);
+    expect(find.textContaining('Googleマップ'), findsOneWidget);
+  });
+
   testWidgets('OFF cannot launch and other slots do not move', (tester) async {
     var calls = 0;
     await pump(tester, availability: const TrafficAvailability(nearestStation: false, trainTransfer: true, busStop: false), launcher: (_) async { calls++; return true; });

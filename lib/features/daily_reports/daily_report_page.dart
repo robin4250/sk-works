@@ -1016,14 +1016,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          IconButton(
+          TextButton.icon(
             key: const Key('daily-report-month-list'),
-            tooltip: SkoLanguageController.tr('月の日報一覧'),
+            label: Text(SkoLanguageController.tr('保存済み一覧')),
             onPressed: _saving ? null : () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => DailyReportMonthPage(initialMonth: _date),
                     ),
             ),
-            icon: const Icon(Icons.calendar_month_outlined),
+            icon: const Icon(Icons.list_alt_outlined),
           ),
           const SkoNotificationBell(),
         ],

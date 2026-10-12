@@ -107,6 +107,17 @@ class FriendlyHomeContent extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, contentTopInset, 16, 100),
             children: [
               if (tutorialCard != null) tutorialCard!,
+              if (requiredDocumentAttention.hasMissing) ...[
+                const SizedBox(height: 12),
+                Opacity(
+                  opacity: appearance.cardOpacity,
+                  child: _RequiredDocumentAttentionCard(
+                    key: const ValueKey('home-attention-card'),
+                    attention: requiredDocumentAttention,
+                    onOpen: onOpen,
+                  ),
+                ),
+              ],
               if (hasPendingRouteReports ||
                   (hasPendingRouteRecord && !showAttendanceReport))
                 Card(
@@ -124,23 +135,11 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               if (identity.isAdmin) const InitialCompanyRatesCard(),
-              if (weatherCard == null && trafficCard == null && requiredDocumentAttention.hasMissing) ...[
-                const SizedBox(height: 12),
-                Opacity(
-                  opacity: appearance.cardOpacity,
-                  child: _RequiredDocumentAttentionCard(
-                    attention: requiredDocumentAttention,
-                    onOpen: onOpen,
-                  ),
-                ),
-              ],
               const SizedBox(height: 14),
               _OrderedHomeContent(
                 weatherCard: showWeatherForecast ? weatherCard : null,
                 trafficCard: showTrafficGuidance ? trafficCard : null,
-                attentionCard: (weatherCard != null || trafficCard != null) && requiredDocumentAttention.hasMissing
-                    ? _RequiredDocumentAttentionCard(key: const ValueKey('home-attention-card'), attention: requiredDocumentAttention, onOpen: onOpen)
-                    : null,
+                attentionCard: null,
                 identity: identity,
                 moduleEnabled: moduleEnabled,
                 gridColumns: gridColumns,
@@ -758,8 +757,7 @@ class _DraggableHomeCard extends StatelessWidget {
   }
 }
 
-// Only the handle competes for a long press. A stationary finger on card text
-// must remain available to the vertical scroll recognizer, regardless of delay.
+// Menu buttons support body long presses; information-card text stays scrollable.
 class _HomeReorderSurface extends StatelessWidget {
   const _HomeReorderSurface({
     required this.data,
@@ -767,11 +765,13 @@ class _HomeReorderSurface extends StatelessWidget {
     required this.child,
     this.lowerLeadingHandle = false,
     this.upperLeadingHandle = false,
+    this.bodyLongPress = false,
   });
   final String data;
   final double feedbackWidth;
   final bool lowerLeadingHandle;
   final bool upperLeadingHandle;
+  final bool bodyLongPress;
   final Widget child;
 
   @override
@@ -780,7 +780,17 @@ class _HomeReorderSurface extends StatelessWidget {
     // to its icon/label while the positioned handle stays at the cell edge.
     fit: StackFit.passthrough,
     children: [
-      child,
+      if (bodyLongPress)
+        LongPressDraggable<String>(
+          data: data,
+          delay: const Duration(milliseconds: 600),
+          feedback: SizedBox(width: feedbackWidth,
+            child: Material(color: Colors.transparent, child: child)),
+          childWhenDragging: Opacity(opacity: 0.35, child: child),
+          child: child,
+        )
+      else
+        child,
       Positioned(
         top: lowerLeadingHandle ? HomeInformationCard.heightFor(context) - 36 : upperLeadingHandle ? 10 : 0,
         right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
@@ -1047,7 +1057,7 @@ class _HomeActionTile extends StatelessWidget {
         ),
       );
 
-      if (isViewer) {
+      if (isViewer && item.key != 'employee_resources') {
         core = Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
@@ -1075,6 +1085,7 @@ class _HomeActionTile extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           child: _HomeReorderSurface(
             data: item.key,
+            bodyLongPress: true,
             feedbackWidth: fourColumns ? 92 : (compact ? 120 : 220),
             child: tile(),
           ),

@@ -53,7 +53,7 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(SkoLanguageController.tr('交通案内')),
-        content: Text(SkoLanguageController.tr('最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。利用できる項目はマスター設定で管理します。')),
+        content: Text(SkoLanguageController.tr('最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。')),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる')))],
       ),
     );
@@ -72,45 +72,44 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
         side: BorderSide(color: colors.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 44, right: 4),
-            child: Row(children: [
-              Expanded(child: Text(SkoLanguageController.tr('交通案内'), style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold))),
-              IconButton(tooltip: SkoLanguageController.tr('交通案内のヘルプ'), onPressed: _help, icon: const Icon(Icons.help_outline)),
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var index = 0; index < 3; index++)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: TextButton(
-                      key: ValueKey('traffic-${TrafficDestination.values[index].name}'),
-                      onPressed: widget.availability.permits(TrafficDestination.values[index]) && !_opening
-                          ? () => _open(TrafficDestination.values[index])
-                          : null,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(44, 76),
-                        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(icons[index], size: 28),
-                        const SizedBox(height: 6),
-                        Text(SkoLanguageController.tr(labels[index]), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, height: 1.2)),
-                      ]),
-                    ),
-                  ),
+      child: Padding(
+        // Keep the existing reorder handle clear of the three destinations.
+        padding: const EdgeInsets.fromLTRB(44, 2, 4, 2),
+        child: Row(children: [
+          for (var index = 0; index < 3; index++)
+            Expanded(
+              child: TextButton(
+                key: ValueKey('traffic-${TrafficDestination.values[index].name}'),
+                onPressed: widget.availability.permits(TrafficDestination.values[index]) && !_opening
+                    ? () => _open(TrafficDestination.values[index])
+                    : null,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-              const Expanded(child: SizedBox(key: ValueKey('traffic-future-slot'))),
-            ]),
+                child: Row(children: [
+                  Icon(icons[index], size: 16),
+                  const SizedBox(width: 2),
+                  Expanded(child: Text(
+                    SkoLanguageController.tr(labels[index]),
+                    style: const TextStyle(fontSize: 10, height: 1.15),
+                  )),
+                ]),
+              ),
+            ),
+          const Expanded(child: SizedBox(key: ValueKey('traffic-future-slot'))),
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: IconButton(
+              tooltip: SkoLanguageController.tr('交通案内のヘルプ'),
+              onPressed: _help,
+              iconSize: 18,
+              icon: const Icon(Icons.help_outline),
+            ),
           ),
-        ],
+        ]),
       ),
     );
   }

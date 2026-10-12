@@ -28,7 +28,7 @@ void main() {
     expect(home, contains('HomeShortcutAccess.admin'));
     expect(home, contains('isAdmin ? 4.0'));
     expect(home, contains('isSubAdmin || isViewer ? 1.8 : 0.0'));
-    expect(home, contains('if (isViewer)'));
+    expect(home, contains("if (isViewer && item.key != 'employee_resources')"));
     expect(home, isNot(contains('_ProfessionalAccessMark')));
   });
 
