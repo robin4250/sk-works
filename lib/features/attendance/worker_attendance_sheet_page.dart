@@ -7,6 +7,7 @@ import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'bulk_attendance_correction_page.dart';
 import 'japan_holiday.dart';
+import 'attendance_week_date_label.dart';
 import 'paid_leave_page.dart';
 import 'worker_attendance_sheet_repository.dart';
 
@@ -446,7 +447,6 @@ class _AttendanceDayCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final faded = !inMonth;
     final holidayName = JapanHoliday.name(date);
-    final isHoliday = holidayName != null;
     final now = DateTime.now();
     final isToday = date.year == now.year &&
         date.month == now.month &&
@@ -481,50 +481,10 @@ class _AttendanceDayCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(
-                width: 46,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${date.day}',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: isHoliday || date.weekday == DateTime.sunday
-                                ? colors.error
-                                : date.weekday == DateTime.saturday
-                                    ? Colors.blue.shade700
-                                    : null,
-                          ),
-                    ),
-                    Text(
-                      weekday,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: isHoliday || weekday == '日'
-                            ? colors.error
-                            : weekday == '土'
-                                ? Colors.blue.shade700
-                                : colors.onSurfaceVariant,
-                      ),
-                    ),
-                    if (holidayName != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        holidayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: colors.error,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          height: 1.05,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+              AttendanceWeekDateLabel(
+                date: date,
+                weekday: weekday,
+                holidayName: holidayName,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -768,6 +728,20 @@ class _WorkerAttendanceMonthPageState
     }
   }
 
+  Future<void> _openPrintPreview() async {
+    if (_loading || _error != null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WorkerAttendancePrintPreviewPage(
+          month: _month,
+          data: _data,
+          workerName: widget.workerName,
+        ),
+      ),
+    );
+    if (mounted) SkoScrollChromeController.visible.value = true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -780,6 +754,11 @@ class _WorkerAttendanceMonthPageState
                   : '${_month.year}年${_month.month}月'),
         ),
         actions: [
+          IconButton(
+            tooltip: SkoLanguageController.tr('A4印刷プレビュー'),
+            onPressed: _loading || _error != null ? null : _openPrintPreview,
+            icon: const Icon(Icons.print_outlined),
+          ),
           const SkoNotificationBell(),
         ],
       ),
@@ -816,17 +795,7 @@ class _WorkerAttendanceMonthPageState
             _MonthlySummary(data: _data),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _loading
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => WorkerAttendancePrintPreviewPage(
-                            month: _month,
-                            data: _data,
-                            workerName: widget.workerName,
-                          ),
-                        ),
-                      ),
+              onPressed: _loading || _error != null ? null : _openPrintPreview,
               icon: const Icon(Icons.print_outlined),
               label: Text(SkoLanguageController.tr('A4印刷プレビュー')),
             ),
@@ -988,19 +957,6 @@ class _MonthCalendarCell extends StatelessWidget {
                 ),
               ),
             ),
-            if (holidayName != null)
-              Text(
-                holidayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                ),
-              ),
             const Spacer(),
             Text(
               paidLeave ? '有給' : worked ? shortSite : '休',

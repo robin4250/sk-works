@@ -18,8 +18,8 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains('JapanHoliday.name(date)'));
-    expect(page, contains('if (holidayName != null)'));
-    expect(page, contains('fontSize: 9'));
+    expect(page, contains('holidayName: holidayName'));
+    expect(page, contains('AttendanceWeekDateLabel('));
     expect(page, contains('color: colors.error'));
     expect(page, contains('isHoliday || date.weekday == DateTime.sunday'));
   });
