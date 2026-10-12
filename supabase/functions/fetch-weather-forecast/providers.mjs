@@ -72,6 +72,7 @@ export async function fetchWeatherKit({location,date,env,fetcher=fetch,now=new D
   const token=await tokenFactory(env,now);
   const url=new URL(`https://weatherkit.apple.com/api/v1/weather/ja/${location.latitude}/${location.longitude}`);
   url.searchParams.set('dataSets','currentWeather,forecastHourly');url.searchParams.set('timezone',location.timeZone);
+  url.searchParams.set('hourlyEnd',new Date(now.getTime()+96*3600000).toISOString());
   const data=await json(fetcher,url,{Authorization:`Bearer ${token}`});
   const hours=(Array.isArray(data.forecastHourly?.hours)?data.forecastHourly.hours:[]).filter(row=>Number.isFinite(Date.parse(row.forecastStart))).map(row=>({epoch:Date.parse(row.forecastStart)/1000,temperature:row.temperature,probability:row.precipitationChance,condition:typeof row.conditionCode==='string'?`weatherkit:${row.conditionCode}`:null}));
   const current=data.currentWeather;
