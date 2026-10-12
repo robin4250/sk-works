@@ -68,6 +68,9 @@ begin
  perform 1 from private.expense_approval_settings where company_id=claim.company_id for share;
  if not coalesce((private.expense_review_access(claim.company_id)->>'can_review')::boolean,false) then
   raise exception 'selected expense approver required' using errcode='42501';end if;
+ if not exists(select 1 from public.company_members m where m.company_id=claim.company_id
+  and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager')) then
+  raise exception '帳票への振り分けは管理者・サブ管理者が行ってください。' using errcode='42501';end if;
  select * into claim from private.expense_claims where id=p_claim for update;
  select * into receipt from private.expense_cost_allocation_events where command_id=p_command_id;
  if found then
@@ -115,6 +118,11 @@ language plpgsql security definer set search_path='' as $$
 declare scope record;
 begin
  if not exists(select 1 from private.expense_settlement_choices where claim_id=old.id) then return new;end if;
+ if new.approval='approved' and (new.allocation,new.counterparty_id) is distinct from (old.allocation,old.counterparty_id)
+  and exists(select 1 from private.expense_settlement_choices where claim_id=old.id and cost_allocation_current)
+  and not exists(select 1 from public.company_members m where m.company_id=old.company_id
+   and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager')) then
+  raise exception '帳票への振り分けは管理者・サブ管理者が行ってください。' using errcode='42501';end if;
  -- The row is already locked by UPDATE. Try, never wait on a finalizer holding its document.
  for scope in select * from (values(old.company_id,old.allocation,old.counterparty_id,old.incurred_on),
   (new.company_id,new.allocation,new.counterparty_id,new.incurred_on)) x(cid,category,party,day)

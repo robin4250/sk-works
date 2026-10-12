@@ -348,7 +348,8 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       allowSettlementSetup: data.settlementChoiceEnabled && data.canSettle,
       costAllocationEnabled: data.costAllocationEnabled,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
-      onAllocate: enabled ? (c, d) => _act(c, 'allocate', d) : null,
+      onAllocate: enabled && (!data.costAllocationEnabled || data.canSettle)
+          ? (c, d) => _act(c, 'allocate', d) : null,
       destinations: data.destinations,
     );
   }

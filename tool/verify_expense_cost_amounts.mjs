@@ -140,6 +140,21 @@ try {
   assert.equal(oldPaymentDetails.cost_recovery_amount_yen,null);
   await db.exec(`update invoices set snapshot=jsonb_set(snapshot,'{expense_extra_amount_yen}','1') where id='${opted.id}'`);
   await assert.rejects(db.exec(`select public.read_expense_document('invoice','${opted.id}')`),/内訳と帳票金額/,'mismatched monetary snapshots never render an inconsistent detail page');
+  const staff=id(90), financialClaim=id(91), pendingClaim=id(92);
+  await db.exec(`insert into company_members values('${company}','${staff}','viewer');
+    insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
+     values('${financialClaim}','${company}','${worker}','本人','${actor}','2026-12-01','役割確認経費',555,'approved','customer','${oldCustomer}',2),
+      ('${pendingClaim}','${company}','${worker}','本人','${actor}','2026-12-01','一般承認の継続',100,'pending','ownCompany',null,1);
+    insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by,approval_current,cost_allocation_current)
+     values('${financialClaim}','${company}','cash','2026-12-01',2,'${actor}',true,true);
+    update private.expense_approval_settings set approver_ids=array['${staff}']::uuid[] where company_id='${company}';
+    set test.uid='${staff}';`);
+  assert.equal((await db.query(`select private.expense_review_access('${company}') as value`)).rows[0].value.can_review,true);
+  await assert.rejects(db.exec(`select public.expense_allocate_with_cost('${id(93)}','${financialClaim}',2,'ownCompany',null)`),/管理者・サブ管理者/);
+  await assert.rejects(db.exec(`select private.expense_review_command('${id(94)}','${financialClaim}',2,'allocate','ownCompany',null)`),/管理者・サブ管理者/,'legacy API cannot bypass monetary allocation authority');
+  const staffApproval=(await db.query(`select private.expense_review_command('${id(95)}','${pendingClaim}',1,'approve',null,null) as value`)).rows[0].value;
+  assert.equal(staffApproval.approval,'approved','selected ordinary approvers keep their existing approval authority');
+  await db.exec(`update private.expense_approval_settings set approver_ids=array['${actor}']::uuid[] where company_id='${company}';set test.uid='${actor}';`);
   console.log('PASS charged detail IDs, revisions and original amounts agree for draft/finalized documents; unselected legacy claims stay excluded');
   console.log('PASS expense-only invoice has no fabricated attendance, no tax/welfare; rejection preserves draft; frozen method/allocation and original amount retained');
   console.log('PASS original expense once, unchanged tax/welfare, customer-to-subcontractor move, frozen recovery and original claim retained');
