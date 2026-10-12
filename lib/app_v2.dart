@@ -202,6 +202,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WeatherForecastViewData(loading: true, baseDate: DateTime.now()),
   );
   int _homeWeatherGeneration = 0;
+  String? _weatherSnapshotActor;
 
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
@@ -256,6 +257,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _loadWeatherLocation() async {
     final generation = ++_homeWeatherGeneration;
     final previous = _weatherViewState.value;
+    final previousActor = _weatherSnapshotActor;
     final now = DateTime.now();
     final baseDate = previous.baseDate ?? DateTime(now.year, now.month, now.day);
     final actor = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentUser?.id : null;
@@ -293,6 +295,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       try {
         final forecast = await WeatherForecastGateway(SupabaseBackend.client).fetchDay(requestedDay);
         if (!current()) return;
+        _weatherSnapshotActor = actor;
         _weatherViewState.value = WeatherForecastViewData(
           snapshot: forecast.snapshot, attribution: forecast.attribution,
           radarUri: forecast.radarUri,
@@ -303,7 +306,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       } catch (_) {
         if (!current()) return;
         final pending = _weatherViewState.value;
-        final keepPrevious = previous.locationLabel == pending.locationLabel &&
+        final keepPrevious = previousActor == actor &&
+            previous.locationLabel == pending.locationLabel &&
             previous.selectedDay == pending.selectedDay && previous.forecast != null;
         _weatherViewState.value = WeatherForecastViewData(
           failed: true, locationLabel: pending.locationLabel,

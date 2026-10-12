@@ -15,16 +15,16 @@ import 'weather_forecast_controller.dart';
   } else if ((id != null && id >= 801 && id <= 804) ||
       ['weatherkit:Cloudy', 'weatherkit:MostlyCloudy', 'weatherkit:PartlyCloudy'].contains(text)) {
     label = '曇り';
-  } else if ((id != null && id >= 200 && id < 300) ||
+  } else if ([200, 201, 202, 210, 211, 212, 221, 230, 231, 232].contains(id) ||
       ['weatherkit:Thunderstorms', 'weatherkit:ScatteredThunderstorms', 'weatherkit:StrongStorms'].contains(text)) {
     label = '雷'; icon = Icons.thunderstorm_outlined;
-  } else if ((id != null && id >= 300 && id < 600) ||
+  } else if ([300, 301, 302, 310, 311, 312, 313, 314, 321, 500, 501, 502, 503, 504, 511, 520, 521, 522, 531].contains(id) ||
       ['weatherkit:Rain', 'weatherkit:Drizzle', 'weatherkit:HeavyRain', 'weatherkit:SunShowers'].contains(text)) {
     label = '雨'; icon = Icons.water_drop_outlined;
-  } else if ((id != null && id >= 600 && id < 700) ||
+  } else if ([600, 601, 602, 611, 612, 613, 615, 616, 620, 621, 622].contains(id) ||
       ['weatherkit:Snow', 'weatherkit:Flurries', 'weatherkit:HeavySnow', 'weatherkit:Blizzard', 'weatherkit:Sleet', 'weatherkit:SunFlurries'].contains(text)) {
     label = '雪'; icon = Icons.ac_unit;
-  } else if ((id != null && id >= 700 && id < 800) ||
+  } else if ([701, 711, 721, 741].contains(id) ||
       ['weatherkit:Foggy', 'weatherkit:Haze', 'weatherkit:Smoky'].contains(text)) {
     label = '霧'; icon = Icons.blur_on;
   }

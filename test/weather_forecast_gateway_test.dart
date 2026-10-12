@@ -28,6 +28,10 @@ void main() {
     expect(result.snapshot.currentTemperatureCelsius, isNull);
     expect(weatherCondition('openweather:800').label, '晴れ');
     expect(weatherCondition('weatherkit:Snow').label, '雪');
+    expect(weatherCondition('openweather:741').label, '霧');
+    expect(weatherCondition('openweather:781').label, '未取得');
+    expect(weatherCondition('openweather:751').label, '未取得');
+    expect(weatherCondition('openweather:450').label, '未取得');
     data['summary_hour'] = 24;
     expect(() => WeatherGatewayResult.parse(data, 2), throwsFormatException);
     data['summary_hour'] = 0; data['attribution'] = {'name': 'Apple Weather', 'url': 'https://untrusted.invalid/'};
