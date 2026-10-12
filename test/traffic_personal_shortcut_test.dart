@@ -11,6 +11,7 @@ class _MemoryStore implements TrafficShortcutStore {
   final values = <TrafficShortcutScope, TrafficShortcut>{};
   Completer<TrafficShortcut?>? pending;
   bool failSave = false;
+  Completer<void>? pendingSave;
   @override
   Future<TrafficShortcut?> load(TrafficShortcutScope scope) async {
     if (pending != null) return await pending!.future;
@@ -18,6 +19,7 @@ class _MemoryStore implements TrafficShortcutStore {
   }
   @override
   Future<void> save(TrafficShortcutScope scope, TrafficShortcut? shortcut) async {
+    if (pendingSave != null) await pendingSave!.future;
     if (failSave) throw StateError('fixture');
     if (shortcut == null) { values.remove(scope); } else { values[scope] = shortcut; }
   }
@@ -120,6 +122,33 @@ void main() {
     expect(find.text('個人のリンク'), findsNothing);
     expect(store.values, isEmpty);
   });
+  testWidgets('scope switch ignores a delayed old-account launch failure', (tester) async {
+    final store = _MemoryStore()..values[alice] = const TrafficShortcut.googleMaps();
+    final pending = Completer<bool>();
+    await pump(tester, store, open: (_) => pending.future);
+    await tester.tap(find.byKey(const ValueKey('traffic-personal-shortcut'))); await tester.pump();
+    await pump(tester, store, scope: bob);
+    pending.complete(false); await tester.pumpAndSettle();
+    expect(find.text('追加'), findsOneWidget);
+    expect(find.text('登録した項目を開けませんでした。編集して選び直してください。'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('save started by old account cannot replace new-account shortcut', (tester) async {
+    final store = _MemoryStore();
+    store.values[bob] = TrafficShortcut.web('別アカウント', 'https://example.com/bob')!;
+    store.pendingSave = Completer<void>();
+    await pump(tester, store);
+    await tester.tap(find.byKey(const ValueKey('traffic-personal-shortcut'))); await tester.pumpAndSettle();
+    await tester.tap(find.text('Googleマップ')); await tester.pumpAndSettle();
+    await pump(tester, store, scope: bob);
+    store.pendingSave!.complete(); await tester.pumpAndSettle();
+    expect(store.values[alice]!.kind, TrafficShortcutKind.googleMaps);
+    expect(store.values[bob]!.label, '別アカウント');
+    expect(find.text('別アカウント'), findsOneWidget);
+    expect(find.text('Googleマップ'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('failed save preserves prior choice; absent scope cannot register', (tester) async {
     final store = _MemoryStore();
     store.values[alice] = const TrafficShortcut.googleMaps();

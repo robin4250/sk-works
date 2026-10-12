@@ -168,10 +168,10 @@ class WeatherForecastHomeCard extends StatelessWidget {
           state: state, initial: data, onRefresh: onRefresh, onOpenRadar: onOpenRadar,
           onOpenAttribution: onOpenAttribution, onSelectDay: onSelectDay))),
         child: SizedBox(height: HomeInformationCard.heightFor(context),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Padding(padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(children: [
               SizedBox(height: 44, child: Stack(clipBehavior: Clip.none, children: [
-                Positioned(left: -6, top: 0, width: 44, height: 44, child: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: true)),
+                Positioned(left: 0, top: 0, width: 44, height: 44, child: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: true)),
                 Align(alignment: Alignment.centerRight, child: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: false)),
                 Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 72), child: FittedBox(fit: BoxFit.scaleDown,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -181,7 +181,7 @@ class WeatherForecastHomeCard extends StatelessWidget {
                     else Text(SkoLanguageController.tr('天気予報'), style: const TextStyle(fontSize: 9, height: 1.1)),
                   ])))),
               ])),
-              Expanded(child: _WeatherReferenceInformation(data: data, onOpenRadar: onOpenRadar)),
+              Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: _WeatherReferenceInformation(data: data, onOpenRadar: onOpenRadar))),
             ])),
         )),
     );
