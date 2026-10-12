@@ -83,6 +83,8 @@ void main() {
     final live = WeatherForecastSnapshot(locationLabel: '会社周辺',
       forecastDate: DateTime(2026, 10, 12), updatedAt: DateTime(2026, 10, 12),
       sourceLabel: 'OpenWeather', currentSummary: '晴れ', currentTemperatureCelsius: 20,
+      radarSupported: true, rainForecastAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+      rainReferenceAt: DateTime.now().toUtc(), rainLocalHour: 9, rainLocalMinute: 5,
       hours: const [WeatherForecastHour(hour: 12, summary: '晴れ', rainProbability: 20)]);
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
@@ -101,7 +103,7 @@ void main() {
             child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
               HomeInformationCard(key: const ValueKey('attention-baseline'), icon: Icons.info_outline,
                 title: '要対応', details: '必要書類を登録してください', onTap: () {}),
-              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}),
+              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () {}),
             ])),
           ))));
           await tester.pump();

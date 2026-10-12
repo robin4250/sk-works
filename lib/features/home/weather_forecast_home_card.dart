@@ -227,13 +227,15 @@ class _WeatherReferenceInformation extends StatelessWidget {
       Expanded(flex: 4, child: Row(children: [
         Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: colors.primary),
         const SizedBox(width: 4),
-        Expanded(flex: 4, child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(flex: 4, child: LayoutBuilder(builder: (context, constraints) => FittedBox(
+          fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+          child: SizedBox(width: constraints.maxWidth, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(region, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, height: 1.1)),
           FittedBox(fit: BoxFit.scaleDown, child: Text('${SkoLanguageController.tr('最高')} — / ${SkoLanguageController.tr('最低')} —',
             key: const ValueKey('weather-daily-extrema'), style: const TextStyle(fontSize: 9, height: 1.1))),
           Text(forecast == null ? data.status : '${data.summaryLabel ?? SkoLanguageController.tr('未取得')} ${data.temperatureLabel}',
             key: const ValueKey('weather-summary-temperature'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 8, height: 1.1)),
-        ])),
+        ]))))),
         Expanded(flex: 3, child: FittedBox(fit: BoxFit.scaleDown, child: Column(children: [
           Text(SkoLanguageController.tr('降水確率'), style: const TextStyle(fontSize: 9, height: 1.1)),
           Text(chance == null ? '—' : '$summaryHour${SkoLanguageController.tr('時')} $chance%',
