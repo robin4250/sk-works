@@ -40,16 +40,18 @@ const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const pending=p=>{p.catch(()=>{});return p;};
 try{
  const admin=await connect('expense-cost-admin'),a=await connect('expense-cost-a'),
-  b=await connect('expense-cost-b'),observer=await connect('expense-cost-observer');
+  b=await connect('expense-cost-b'),observer=await connect('expense-cost-observer'),
+  finalizer=await connect('expense-cost-finalizer');
+ for(const c of [admin,finalizer])await c.query(`set test.uid='${id(3)}'`);
  for(const c of [a,b])await c.query(`set role authenticated;set test.uid='${id(3)}'`);
  await admin.query(`insert into customers values('${id(100)}','${id(1)}','競合検証取引先','');
   insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
    values('${id(101)}','${id(1)}','${id(2)}','本人','${id(3)}','2026-11-01','競合検証経費',1234,'approved','customer','${id(100)}',2);
   insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by,approval_current)
    values('${id(101)}','${id(1)}','cash','2026-11-01',2,'${id(3)}',true);`);
- async function waitForLocks(count){const deadline=Date.now()+8000;while(Date.now()<deadline){
+ async function waitForLocks(count,names=['expense-cost-a','expense-cost-b']){const deadline=Date.now()+8000;while(Date.now()<deadline){
   await observer.query('select pg_stat_clear_snapshot()');
-  const r=await observer.query("select count(*)::int n from pg_stat_activity where application_name in ('expense-cost-a','expense-cost-b') and wait_event_type='Lock'");
+  const r=await observer.query("select count(*)::int n from pg_stat_activity where application_name=any($1::text[]) and wait_event_type='Lock'",[names]);
   if(r.rows[0].n===count)return;await new Promise(resolve=>setTimeout(resolve,25));
  }throw Error(`Expected ${count} blocked expense cost connections`);}
  const allocate=(c,command,revision,category='customer',party=id(100))=>c.query(
@@ -74,5 +76,23 @@ try{
  assert.equal((await admin.query('select allocation from private.expense_claims where id=$1',[id(101)])).rows[0].allocation,'customer');
  const replay=await allocate(b,110,2);assert.deepEqual(replay.rows[0].value,receipts[0].rows[0].value);
  assert.deepEqual((await admin.query('select * from invoices where id=$1',[invoice.id])).rows[0],frozen);
+ // Reverse order: a claim lock precedes a finalizer's document/scope lock.
+ // The allocator must fail without waiting on that document, preventing a
+ // claim -> document -> claim deadlock and leaving the finalizer's original sum.
+ await admin.query(`insert into customers values('${id(120)}','${id(1)}','逆順競合検証','');
+  insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
+   values('${id(121)}','${id(1)}','${id(2)}','本人','${id(3)}','2026-11-01','逆順競合経費',1234,'approved','customer','${id(120)}',2);
+  insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by,approval_current,cost_allocation_current)
+   values('${id(121)}','${id(1)}','cash','2026-11-01',2,'${id(3)}',true,true);`);
+ const reversed=(await admin.query('select * from invoices where customer_id=$1',[id(120)])).rows[0];
+ await admin.query('begin');await admin.query('select id from private.expense_claims where id=$1 for update',[id(121)]);
+ const finishing=pending(finalizer.query("update invoices set status='finalized' where id=$1",[reversed.id]));
+ await waitForLocks(1,['expense-cost-finalizer']);
+ await assert.rejects(admin.query("select public.expense_allocate_with_cost($1,$2,2,'ownCompany',null)",[id(122),id(121)]),error=>error.code==='40001');
+ await admin.query('rollback');await finishing;
+ assert.equal((await admin.query('select grand_total,status from invoices where id=$1',[reversed.id])).rows[0].grand_total,1234);
+ assert.equal((await admin.query('select count(*)::int n from private.expense_cost_allocation_events where command_id=$1',[id(122)])).rows[0].n,0);
+ assert.equal((await admin.query("select count(*)::int n from private.expense_amount_consumptions where claim_id=$1 and purpose='cost_recovery'",[id(121)])).rows[0].n,1);
  console.log('PASS PostgreSQL 17 dual-connection allocation retries and allocation/finalization race: one receipt, one consumption, original frozen amount and snapshot');
+ console.log('PASS reverse-order finalizer/claim lock rejects allocation with retryable 40001, without deadlock or extra receipt');
 }finally{await Promise.allSettled(clients.map(async c=>{try{await c.query('rollback');}finally{await c.end();}}));}
