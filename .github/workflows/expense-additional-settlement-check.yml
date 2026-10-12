@@ -1,0 +1,44 @@
+name: Additional expense settlement contracts
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/expense_settlement_choice.sql'
+      - 'supabase/tests/fixtures/expense_foundation_20261012.json'
+      - 'tool/verify_expense_settlement*.mjs'
+      - 'tool/fixtures/expense_settlement_choice_assertions.mjs'
+      - '.github/workflows/expense-additional-settlement-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  settlement-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: expense-settlement-fixture
+          POSTGRES_DB: sko_expense_settlement_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_expense_settlement_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_EXPENSE_SETTLEMENT_RACE_DATABASE_URL: postgres://postgres:expense-settlement-fixture@127.0.0.1:5432/sko_expense_settlement_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated database runtimes
+        run: npm install --prefix "$RUNNER_TEMP/expense-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3 @electric-sql/pglite@0.3.14
+      - name: Verify settlement choice and existing expense contracts
+        run: node tool/verify_expense_settlement_choices.mjs "$RUNNER_TEMP/expense-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify real fixed command and revision races
+        run: node tool/verify_expense_settlement_postgres_races.mjs "$RUNNER_TEMP/expense-runtime/node_modules/pg/lib/index.js"

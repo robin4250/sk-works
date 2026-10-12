@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import '../../data/supabase_backend.dart';
 import 'expense_claim.dart';
+import 'expense_settlement_choice.dart';
 
 class ExpenseSubmission {
   static String _uuid() {
@@ -153,7 +154,7 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
     final expected = actor;
     _check(expected);
     final rows = await _client.rpc(
-      'expense_personal_history',
+      'expense_personal_settlement_history',
       params: {
         'p_company': company,
         'p_worker': worker,
@@ -181,6 +182,8 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         approval: ExpenseApproval.values.byName(r['approval']),
         revision: r['revision'] as int? ?? 1,
         withdrawn: r['withdrawn'] == true,
+        settlement: r['settlement_method'] == null && r['settlement_month'] == null
+          ? null : ExpenseSettlementChoice.decode(r['settlement_method'], r['settlement_month']),
         allocation: ExpenseAllocation(
           ExpenseCategory.values.byName(r['allocation']),
           counterpartyId: r['counterparty_id'],

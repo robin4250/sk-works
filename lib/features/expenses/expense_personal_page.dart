@@ -413,7 +413,8 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                     ListTile(
                       title: Text(claim.description),
                       subtitle: Text(
-                        '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}',
+                        '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}'
+                        '${claim.settlement == null ? '' : '\n${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,

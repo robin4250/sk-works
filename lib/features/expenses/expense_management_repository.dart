@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'expense_claim.dart';
+import 'expense_settlement_choice.dart';
 
 class ExpenseReviewCommand {
   ExpenseReviewCommand(
@@ -13,16 +14,18 @@ class ExpenseReviewCommand {
     this.claim,
     this.revision,
     this.action,
-    this.destination,
-  );
+    this.destination, {
+    this.settlement,
+  });
   factory ExpenseReviewCommand.create(
     String actor,
     String company,
     String claim,
     int revision,
     String action,
-    ExpenseAllocation? destination,
-  ) {
+    ExpenseAllocation? destination, {
+    ExpenseSettlementChoice? settlement,
+  }) {
     final random = Random.secure();
     final bytes = List.generate(16, (_) => random.nextInt(256));
     bytes[6] = (bytes[6] & 15) | 64;
@@ -36,11 +39,13 @@ class ExpenseReviewCommand {
       revision,
       action,
       destination,
+      settlement: settlement,
     );
   }
   final String id, actor, company, claim, action;
   final int revision;
   final ExpenseAllocation? destination;
+  final ExpenseSettlementChoice? settlement;
   Map<String, dynamic> get params => {
     'p_command_id': id,
     'p_claim': claim,
@@ -48,6 +53,8 @@ class ExpenseReviewCommand {
     'p_action': action,
     'p_allocation': destination?.category.name,
     'p_counterparty': destination?.counterpartyId,
+    if (settlement != null) 'p_method': settlement!.method.name,
+    if (settlement != null) 'p_settlement_month': settlement!.monthKey,
   };
   String get encoded =>
       jsonEncode({'actor': actor, 'company': company, ...params});
@@ -74,6 +81,9 @@ class ExpenseReviewCommand {
         (d == null && v['p_counterparty'] != null)) {
       throw StateError('保留操作を確認できません。');
     }
+    final choice = v.containsKey('p_method') || v.containsKey('p_settlement_month')
+        ? ExpenseSettlementChoice.decode(v['p_method'], v['p_settlement_month']) : null;
+    if (choice != null && v['p_action'] != 'approve') throw StateError('精算方法は承認時に選択してください。');
     return ExpenseReviewCommand(
       v['p_command_id'],
       v['actor'],
@@ -82,6 +92,7 @@ class ExpenseReviewCommand {
       v['p_revision'],
       v['p_action'],
       d,
+      settlement: choice,
     );
   }
 }
@@ -95,6 +106,8 @@ class ExpenseReviewWorkspace {
     if (data['company_id'] != company) throw StateError('会社が一致しません。');
     canReview = data['can_review'] == true;
     canConfigure = data['can_configure'] == true;
+    settlementChoiceEnabled = data['settlement_choice_enabled'] == true;
+    canSettle = data['can_settle'] == true;
     settingsRevision = data['settings_revision'] as int;
     approvers = List<String>.from(data['approver_ids']);
     candidates = (data['candidates'] as List)
@@ -125,6 +138,8 @@ class ExpenseReviewWorkspace {
           approval: ExpenseApproval.values.byName(r['approval']),
         revision: r['revision'] as int? ?? 1,
         withdrawn: r['withdrawn'] == true,
+          settlement: r['settlement_method'] == null && r['settlement_month'] == null
+              ? null : ExpenseSettlementChoice.decode(r['settlement_method'], r['settlement_month']),
           allocation: ExpenseAllocation(
             ExpenseCategory.values.byName(r['allocation']),
             counterpartyId: r['counterparty_id'],
@@ -146,6 +161,7 @@ class ExpenseReviewWorkspace {
   }
   late final ExpenseClaims claims;
   late final bool canReview, canConfigure;
+  late final bool settlementChoiceEnabled, canSettle;
   late final int settingsRevision;
   late final List<String> approvers;
   late final List<Map<String, dynamic>> candidates;
@@ -203,7 +219,7 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
     DateTime month,
   ) async => ExpenseReviewWorkspace(
     Map<String, dynamic>.from(
-      await _read('expense_review_workspace', {
+      await _read('expense_settlement_workspace', {
         'p_company': company,
         'p_month':
             '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01',
@@ -258,8 +274,15 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
     }
     _check(c.actor);
     try {
+      final params = Map<String, dynamic>.from(c.params);
+      if (c.settlement != null) {
+        params.remove('p_action');
+        params.remove('p_allocation');
+        params.remove('p_counterparty');
+      }
       final result = Map<String, dynamic>.from(
-        await _rpc('expense_review_command', c.params),
+        await _rpc(c.settlement == null ? 'expense_review_command' : 'expense_approve_with_settlement',
+          params),
       );
       _check(c.actor);
       if (result['id'] != c.claim ||
@@ -267,6 +290,9 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
           result['revision'] is! int ||
           result['revision'] < c.revision) {
         throw StateError('操作結果が一致しません。');
+      }
+      if (c.settlement != null && (result['settlement_method'] != c.settlement!.method.name || result['settlement_month'] != c.settlement!.monthKey)) {
+        throw StateError('精算方法・対象月の保存結果が一致しません。');
       }
       if (!await prefs.remove(key)) throw StateError('操作結果を再確認してください。');
     } on PostgrestException catch (e) {
