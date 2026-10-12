@@ -11,7 +11,6 @@ const englishLanguagePack = LanguagePack(
     "Yahoo!乗換案内への入口": "Open Yahoo! Transit",
     "Googleマップの近くのバス停検索への入口": "Open the Google Maps bus stop search",
     "交通案内": "Travel",
-    "最寄駅": "Station",
     "電車乗換": "Transfer",
     "バス停": "Bus stop",
     "交通案内のヘルプ": "Travel help",

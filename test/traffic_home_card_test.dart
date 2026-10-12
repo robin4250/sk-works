@@ -96,7 +96,7 @@ void main() {
     SkoLanguageController.pack.value = LanguagePackRegistry.resolve('en');
     addTearDown(() => SkoLanguageController.pack.value = LanguagePackRegistry.resolve('ja'));
     await pump(tester);
-    expect(find.text('Station'), findsOneWidget);
+    expect(find.text('Nearest Station'), findsOneWidget);
     expect(find.text('Transfer'), findsOneWidget);
     expect(find.text('Bus stop'), findsOneWidget);
     expect(tester.takeException(), isNull);
