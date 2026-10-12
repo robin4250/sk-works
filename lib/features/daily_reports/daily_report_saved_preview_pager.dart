@@ -71,8 +71,10 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
       widget.repository.checkActor(widget.actor);
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('日報を編集できませんでした。ログイン状態を確認してください。'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.tr('日報を編集できませんでした。ログイン状態を確認してください。'))));
+      }
     }
   }
 

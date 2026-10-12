@@ -1,5 +1,9 @@
+// ignore_for_file: depend_on_referenced_packages
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:sk_works/features/daily_reports/daily_report_calendar_model.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_repository.dart';
@@ -48,7 +52,7 @@ class Reports extends DailyReportMonthRepository {
 }
 
 class SavedReports extends DailyReportRepository {
-  SavedReports(SupabaseClient client) : super.forTesting(client);
+  SavedReports(super.client) : super.forTesting();
   String? requestedId;
   bool missing = false;
   @override
@@ -68,7 +72,11 @@ class SavedReports extends DailyReportRepository {
 
 void main() {
   late SupabaseClient client;
-  setUp(() { client = SupabaseClient('https://example.invalid','synthetic-public',
+  setUp(() {
+    final previous=SharedPreferencesAsyncPlatform.instance;
+    SharedPreferencesAsyncPlatform.instance=InMemorySharedPreferencesAsync.empty();
+    addTearDown(()=>SharedPreferencesAsyncPlatform.instance=previous);
+    client = SupabaseClient('https://example.invalid','synthetic-public',
     authOptions:const AuthClientOptions(autoRefreshToken:false)); });
   tearDown(() async { await client.dispose(); });
 
@@ -152,7 +160,8 @@ void main() {
       repositoryForTesting:reports)));
     await tester.pumpAndSettle(); reports.changed=true;
     await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('写真情報を再読み込み').first,400); await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('daily-report-date-12')),400); await tester.pumpAndSettle();
+    expect(find.text('写真情報を再読み込み'),findsWidgets);
     expect(find.byKey(const ValueKey('daily-report-day-12-no-photos')),findsNothing);
     expect(find.byKey(const ValueKey('daily-report-day-12-photos')),findsNothing);
     expect(tester.takeException(),isNull);

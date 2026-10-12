@@ -80,7 +80,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
         entry.date.day == selectedDate.day).toList();
       repository.checkActor(actor);
       if (!mounted || generation != _generation) return;
-      setState(() => _entries = chronologicalDailyReports(entries));
+      setState(() => _entries = selectedDate == null ? chronologicalDailyReports(entries) : entries);
     } catch (_) {
       if (!mounted || generation != _generation) return;
       setState(() => _error = '日報一覧を取得できません。ログイン状態を確認して再読み込みしてください。');
@@ -252,8 +252,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       repository.checkActor(actor);
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'))));
+      }
     }
   }
 
@@ -357,7 +359,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     const weekdays = ['月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日', '日曜日'];
     final today = DateTime.now();
     final isToday = today.year == date.year && today.month == date.month && today.day == date.day;
-    return Card(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8),
+    return Card(key: ValueKey('daily-report-date-${date.day}'), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8),
       side: BorderSide(color: isToday ? Theme.of(context).colorScheme.primary :
         Theme.of(context).colorScheme.outlineVariant, width: isToday ? 2 : 1)),
       child: Padding(padding: const EdgeInsets.all(12), child: Column(
@@ -367,14 +369,18 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           if (entries.isEmpty) Text(SkoLanguageController.tr('日報なし'), style: TextStyle(fontSize: 16))
           else FutureBuilder<List<(DailyReportMonthEntry, bool)>>(
             future: _dayPresence.putIfAbsent(entries.map((entry) => entry.id).join('|'), () => _classify(entries)), builder: (context, snapshot) {
-              if (snapshot.hasError) return TextButton(onPressed: () {
+              if (snapshot.hasError) {
+                return TextButton(onPressed: () {
                 for (final entry in entries) { _photoPresence.remove(entry.id); }
                 _dayPresence.remove(entries.map((entry) => entry.id).join('|'));
                 setState(() {});
-              }, child: Text(SkoLanguageController.tr('写真情報を再読み込み')));
+                }, child: Text(SkoLanguageController.tr('写真情報を再読み込み')));
+              }
               final records = snapshot.data;
-              if (records == null) return Padding(padding: EdgeInsets.symmetric(vertical: 10),
-                child: Text(SkoLanguageController.tr('日報を確認中…'), style: TextStyle(fontSize: 17)));
+              if (records == null) {
+                return Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(SkoLanguageController.tr('日報を確認中…'), style: const TextStyle(fontSize: 17)));
+              }
               return Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final photos in [false, true])
                   if (records.any((record) => record.$2 == photos)) OutlinedButton.icon(

@@ -27,7 +27,8 @@ void main() {
       await tester.tap(find.byKey(const Key('daily-report-month-list')));
       await tester.pumpAndSettle();
       expect(find.byType(DailyReportMonthPage), findsOneWidget);
-      expect(find.text('日報一覧・保存'), findsOneWidget);
+      expect(find.text('日報'), findsOneWidget);
+      expect(find.byKey(const ValueKey('daily-report-month-share')), findsOneWidget);
       expect(find.text('2024年2月'), findsOneWidget);
       // An unauthenticated test still reaches the page and safely keeps export
       // unavailable; navigation never performs a write or invents report data.
@@ -36,3 +37,4 @@ void main() {
     },
   );
 }
+

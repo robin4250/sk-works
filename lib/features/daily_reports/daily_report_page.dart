@@ -1815,8 +1815,10 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
       await Printing.layoutPdf(name: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
         format: PdfPageFormat.a4, onLayout: (_) async => bytes);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('日報を印刷できませんでした'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.tr('日報を印刷できませんでした'))));
+      }
     }
   }
 
