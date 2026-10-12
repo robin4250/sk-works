@@ -74,6 +74,7 @@ void main() {
     final rejected = ExpenseClaim(
       id: 'claim', companyId: 'company', applicantId: 'worker',
       applicantName: '本人', incurredOn: DateTime(2026, 9, 30),
+      submittedAt: DateTime.utc(2026, 9, 30, 15),
       description: '領収書の交通費', amountYen: 1234,
       approval: ExpenseApproval.rejected,
       allocation: ExpenseAllocation(ExpenseCategory.unallocated),
