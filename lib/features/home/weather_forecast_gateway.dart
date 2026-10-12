@@ -34,10 +34,11 @@ import 'weather_forecast_controller.dart';
 /// Offset requests avoid substituting the device calendar for the region's day.
 class WeatherGatewayResult {
   const WeatherGatewayResult({required this.baseDate, required this.dayOffset,
-    required this.timeZone, required this.snapshot, required this.attribution});
+    required this.timeZone, required this.snapshot, required this.attribution, this.radarUri});
   final DateTime baseDate;
   final int dayOffset;
   final String timeZone;
+  final Uri? radarUri;
   final WeatherForecastSnapshot snapshot;
   final Map<String, dynamic> attribution;
 
@@ -56,6 +57,11 @@ class WeatherGatewayResult {
         throw const FormatException('Weather calendar unavailable');
       }
       return parsed;
+    }
+    final radarUri = raw['radar_url'] == null ? null : Uri.tryParse(raw['radar_url'].toString());
+    if (radarUri != null && (raw['country_code'] != 'JP' || radarUri.scheme != 'https' ||
+        radarUri.host != 'weather.yahoo.co.jp' || radarUri.userInfo.isNotEmpty)) {
+      throw const FormatException('Weather radar unavailable');
     }
     final attribution = Map<String, dynamic>.from(raw['attribution']);
     for (final key in ['url', 'logo_light_url', 'logo_dark_url']) {
@@ -107,10 +113,10 @@ class WeatherGatewayResult {
     if (checked == null) { throw const FormatException('Weather timestamp unavailable'); }
     // Unknown source conditions stay unavailable; provider codes are not UI text.
     return WeatherGatewayResult(baseDate: base, dayOffset: expectedOffset,
-      timeZone: raw['time_zone'] as String, attribution: attribution,
+      timeZone: raw['time_zone'] as String, attribution: attribution, radarUri: radarUri,
       snapshot: WeatherForecastSnapshot(locationLabel: raw['location_label'] as String,
         updatedAt: checked, forecastDate: forecast, sourceLabel: raw['source'] as String,
-        hours: hours,
+        hours: hours, radarSupported: radarUri != null,
         forecastSummaryHour: kind == 'forecast_hour' ? summaryHour as int : null,
         forecastSummaryTemperatureCelsius: kind == 'forecast_hour' ? summaryTemperature : null,
         forecastSummary: kind == 'forecast_hour' ? weatherCondition(raw['summary_condition']).label : null,

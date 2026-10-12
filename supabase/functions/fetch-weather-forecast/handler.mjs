@@ -35,7 +35,8 @@ export function createWeatherForecastHandler(deps) {
       if(!adapter)throw new Error('Provider unavailable');
       const result=await adapter({location,date:forecastDate,env:deps.env,fetcher,now});
       if(result.forecast_date!==forecastDate||result.time_zone!==location.timeZone)throw new Error('Response mismatch');
-      return reply({...result,base_date:today,day_offset:body.day_offset,region_kind:region.kind,location_label:region.label});
+      const radar=location.countryCode==='JP'?new URL('https://weather.yahoo.co.jp/weather/zoomradar/'):null;
+      return reply({...result,base_date:today,day_offset:body.day_offset,region_kind:region.kind,location_label:region.label,country_code:location.countryCode??null,radar_url:radar?.href??null});
     }catch{
       // Never leak an API key, private key, personal address or upstream body.
       return reply({error:'Weather unavailable'},422);

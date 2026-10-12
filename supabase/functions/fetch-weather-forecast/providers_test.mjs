@@ -40,3 +40,6 @@ test('selected-day sourced summary distinguishes forecast from stale current',()
  assert.equal(r.summary_kind,'forecast_hour');assert.equal(r.summary_hour,12);assert.equal(r.summary_temperature_celsius,17);assert.equal(r.current_temperature_celsius,null);
  const stale=normalizeForecast({date:'2026-10-12',timeZone:'Asia/Tokyo',source:'test',now,hours:[],current:{epoch:epoch('2026-10-11T00:00:00Z'),temperature:23}});assert.equal(stale.current_temperature_celsius,null);assert.equal(stale.summary_kind,'unavailable');
 });
+test('Yahoo radar appears only for a sourced Japanese address country',async()=>{
+ for(const countryCode of ['JP','US',null]){const r=await createWeatherForecastHandler({...base,geocode:async()=>({...location,countryCode})})(request({day_offset:0}));const data=await r.json();assert.equal(data.radar_url,countryCode==='JP'?'https://weather.yahoo.co.jp/weather/zoomradar/':null);}
+});

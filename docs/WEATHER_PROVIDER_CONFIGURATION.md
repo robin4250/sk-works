@@ -23,11 +23,11 @@
 | WEATHER_GEOCODING_PROVIDER | `google` を明示した時だけ住所lookup有効 |
 | WEATHER_GEOCODING_API_KEY | Google Geocoding＋Time Zone権限を持つserver key。利用契約/課金/制限設定は所有者確認が必要 |
 
-Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須にし、曖昧な住所や市中心を推測しません。外部契約未確認のため勝手にAPIを契約・購入・secret登録しません。住所建物情報等で正確照合しない場合は未取得。外部提供先への住所送信とattribution/契約は本番導入前の確認事項です。Yahoo radarは独立系統でcountryCode判定へ接続が残ります。
+Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須にし、曖昧な住所や市中心を推測しません。外部契約未確認のため勝手にAPIを契約・購入・secret登録しません。住所建物情報等で正確照合しない場合は未取得。外部提供先への住所送信とattribution/契約は本番導入前の確認事項です。Yahoo radarは独立系統、serverのcountryCode=JPのみ公開ページURLを返します。位置中心指定の公式URL契約は未確認のため推測のqueryを付けません。詳細ボタン接続と実機での開き方確認が残ります。
 
 ## 検証と残る作業
 
-Node24の13テストで両HTTPprovider、WeatherKit実ES256署名verify、地域日付・24時・48h欠損、4dayfixture、actor scoped住所、曖昧geocode、認証、入力override拒否、secret非露出を検証。PGlite0.3.14の実SQLで通常社員の更新拒否、MASTER変更、直接テーブル拒否、匿名拒否、無効値拒否、migration replayでprovider保持、既存traffic値保持を確認。本物APIは呼びません。
+Node24の14テストで両HTTPprovider、WeatherKit実ES256署名verify、地域日付・24時・48h欠損、4dayfixture、actor scoped住所、曖昧geocode、認証、入力override拒否、secret非露出を検証。PGlite0.3.14の実SQLで通常社員の更新拒否、MASTER変更、直接テーブル拒否、匿名拒否、無効値拒否、migration replayでprovider保持、既存traffic値保持を確認。本物APIは呼びません。
 
 Flutter新gateway2テストはCI対象、ローカルFlutterは未実行。HOME/controllerへregion baseDate/取得状態を接続、MASTER provider選択UI、Apple returned trademark画像＋legalリンク部品とOpenWeather attribution部品は実装済み、詳細への挿入・実画像表示確認が残ります。Yahoo国判定/ボタン、rain approach説明、未来日代表値のHOME表示接続が残ります。server function/migration未導入。API契約・秘密設定確認→本番導入→両provider実API→iPhone Release確認が必要です。
 
