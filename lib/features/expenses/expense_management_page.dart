@@ -106,7 +106,9 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       choice = await showDialog<ExpenseSettlementChoice>(context: context,
         builder: (_) => ExpenseSettlementDialog(claim: claim));
       if (choice == null || !_current(generation) || actor != _actor || company != _company ||
-          _pending != null || _busy || _data?.revisions[claim.id] != revision) return;
+          _pending != null || _busy || _data?.revisions[claim.id] != revision) {
+        return;
+      }
     }
     final command = ExpenseReviewCommand.create(
       _actor!,
