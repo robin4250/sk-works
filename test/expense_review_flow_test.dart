@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/expenses/expense_claim.dart';
 import 'package:sk_works/features/expenses/expense_management_repository.dart';
 import 'package:sk_works/features/expenses/expense_review_flow_dialog.dart';
+import 'package:sk_works/features/expenses/expense_review_detail_page.dart';
 import 'package:sk_works/features/expenses/expense_settlement_choice.dart';
 
 ExpenseClaim claim() => ExpenseClaim(id: 'claim', companyId: 'company', applicantId: 'worker',
@@ -64,4 +65,37 @@ void main() {
     expect(result!.approve,isFalse);expect(result!.destination,isNull);expect(result!.settlement,isNull);expect(result!.memo,'要確認');
     result=null;await tap('開く');await tap('キャンセル');expect(result,isNull);expect(tester.takeException(),isNull);
   });
+  testWidgets('rejected detail keeps its memo and edit history actions accessible on narrow screens', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var edited = false, openedHistory = false;
+    final rejected = ExpenseClaim(
+      id: 'claim', companyId: 'company', applicantId: 'worker',
+      applicantName: '本人', incurredOn: DateTime(2026, 9, 30),
+      description: '領収書の交通費', amountYen: 1234,
+      approval: ExpenseApproval.rejected,
+      allocation: ExpenseAllocation(ExpenseCategory.unallocated),
+      reviewMemo: '領収書の内容を確認してください。',
+    );
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)), child: child!),
+      home: ExpenseReviewDetailPage(claim: rejected,
+        onEdit: () async { edited = true; },
+        onHistory: () async { openedHistory = true; }),
+    ));
+    expect(find.text('メモ（却下理由）：領収書の内容を確認してください。'), findsOneWidget);
+    expect(find.textContaining('精算方法：'), findsNothing);
+    await tester.ensureVisible(find.text('内容を修正する'));
+    await tester.tap(find.text('内容を修正する')); await tester.pump();
+    await tester.ensureVisible(find.text('履歴を確認'));
+    await tester.tap(find.text('履歴を確認')); await tester.pump();
+    expect(edited, isTrue); expect(openedHistory, isTrue);
+    await tester.tap(find.byTooltip('ヘルプ')); await tester.pumpAndSettle();
+    expect(find.text('閉じる'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
 }
