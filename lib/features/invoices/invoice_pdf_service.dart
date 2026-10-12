@@ -40,6 +40,14 @@ class InvoicePdfService {
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
+      if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
+        throw StateError('別途経費の内訳と請求書金額が一致しません。再読み込みしてください。');
+      }
+      if (expenses != null) {
+        invoice.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
+          'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+        }));
+      }
       final sealFont = effectiveSettings?.companySealEnabled == false
           ? regular
           : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);
@@ -80,7 +88,7 @@ class InvoicePdfService {
           ),
         );
         if (pageIndex == 0 && expenses != null) {
-          ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+          ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
         }
       }
     }
@@ -163,8 +171,11 @@ class InvoicePdfService {
           buffer.writeln('値引き・調整 ${_yen(site.manualAdjustmentYen)}');
         }
       }
+      if (invoice.expenseExtraAmountYen != 0) {
+        buffer.writeln('別途経費（原額） ${_yen(invoice.expenseExtraAmountYen)}');
+      }
       buffer
-        ..writeln('計 ${_visibleYen(invoice.subtotalYen)}')
+        ..writeln('${invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）'} ${_visibleYen(invoice.subtotalYen)}')
         ..writeln('消費税 ${_visibleYen(invoice.taxYen)}')
         ..writeln('合計(税込) ${_visibleYen(invoice.grandTotalYen)}')
         ..writeln('請求合計 ${_visibleYen(invoice.grandTotalYen)}');
@@ -231,6 +242,15 @@ class InvoicePdfService {
           ),
         );
       }
+    }
+    if (invoice.expenseExtraAmountYen != 0) {
+      rows.add(_InvoiceFormRow(
+        siteName: '経費',
+        content: '別途経費（原額）',
+        quantity: '',
+        unitPrice: '',
+        amount: _number(invoice.expenseExtraAmountYen),
+      ));
     }
     return rows;
   }
@@ -570,7 +590,7 @@ class InvoicePdfService {
     box(344, 674.8898, right - 344, 63);
     final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
     final labels = [
-      '小計（税抜）',
+      invoice.expenseExtraAmountYen == 0 ? '小計（税抜）' : '小計（経費除く）',
       invoice.taxRateBps == 0
           ? '消費税'
           : '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
@@ -1639,8 +1659,10 @@ class _ExactInvoiceScreen extends StatelessWidget {
                     width: 315,
                     child: Column(
                       children: [
-                        _summary('計', invoice.subtotalYen),
+                        _summary(invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）', invoice.subtotalYen),
                         _summary('消費税', invoice.taxYen),
+                        if (invoice.expenseExtraAmountYen != 0)
+                          _summary('別途経費（原額）', invoice.expenseExtraAmountYen),
                         _summary('合計(税込)', invoice.grandTotalYen, strong: true),
                       ],
                     ),

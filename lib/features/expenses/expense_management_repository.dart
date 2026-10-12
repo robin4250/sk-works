@@ -16,6 +16,7 @@ class ExpenseReviewCommand {
     this.action,
     this.destination, {
     this.settlement,
+    this.costRecoveryOptIn = false,
   });
   factory ExpenseReviewCommand.create(
     String actor,
@@ -25,6 +26,7 @@ class ExpenseReviewCommand {
     String action,
     ExpenseAllocation? destination, {
     ExpenseSettlementChoice? settlement,
+    bool costRecoveryOptIn = false,
   }) {
     final random = Random.secure();
     final bytes = List.generate(16, (_) => random.nextInt(256));
@@ -40,12 +42,14 @@ class ExpenseReviewCommand {
       action,
       destination,
       settlement: settlement,
+      costRecoveryOptIn: costRecoveryOptIn,
     );
   }
   final String id, actor, company, claim, action;
   final int revision;
   final ExpenseAllocation? destination;
   final ExpenseSettlementChoice? settlement;
+  final bool costRecoveryOptIn;
   Map<String, dynamic> get params => {
     'p_command_id': id,
     'p_claim': claim,
@@ -57,7 +61,7 @@ class ExpenseReviewCommand {
     if (settlement != null) 'p_settlement_month': settlement!.monthKey,
   };
   String get encoded =>
-      jsonEncode({'actor': actor, 'company': company, ...params});
+      jsonEncode({'actor': actor, 'company': company, ...params, if (costRecoveryOptIn) 'cost_recovery_opt_in': true});
   factory ExpenseReviewCommand.decode(String text) {
     final v = jsonDecode(text) as Map<String, dynamic>;
     for (final k in ['actor', 'company', 'p_command_id', 'p_claim']) {
@@ -84,6 +88,10 @@ class ExpenseReviewCommand {
     final choice = v.containsKey('p_method') || v.containsKey('p_settlement_month')
         ? ExpenseSettlementChoice.decode(v['p_method'], v['p_settlement_month']) : null;
     if (choice != null && v['p_action'] != 'approve') throw StateError('精算方法は承認時に選択してください。');
+    if (v.containsKey('cost_recovery_opt_in') &&
+        (v['cost_recovery_opt_in'] != true || v['p_action'] != 'allocate')) {
+      throw StateError('保留操作を確認できません。');
+    }
     return ExpenseReviewCommand(
       v['p_command_id'],
       v['actor'],
@@ -93,6 +101,7 @@ class ExpenseReviewCommand {
       v['p_action'],
       d,
       settlement: choice,
+      costRecoveryOptIn: v['cost_recovery_opt_in'] == true,
     );
   }
 }
@@ -107,6 +116,7 @@ class ExpenseReviewWorkspace {
     canReview = data['can_review'] == true;
     canConfigure = data['can_configure'] == true;
     settlementChoiceEnabled = data['settlement_choice_enabled'] == true;
+    costAllocationEnabled = data['cost_allocation_enabled'] == true;
     canSettle = data['can_settle'] == true;
     settingsRevision = data['settings_revision'] as int;
     approvers = List<String>.from(data['approver_ids']);
@@ -161,7 +171,7 @@ class ExpenseReviewWorkspace {
   }
   late final ExpenseClaims claims;
   late final bool canReview, canConfigure;
-  late final bool settlementChoiceEnabled, canSettle;
+  late final bool settlementChoiceEnabled, canSettle, costAllocationEnabled;
   late final int settingsRevision;
   late final List<String> approvers;
   late final List<Map<String, dynamic>> candidates;
@@ -280,8 +290,9 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
         params.remove('p_allocation');
         params.remove('p_counterparty');
       }
+      if (c.costRecoveryOptIn) params.remove('p_action');
       final result = Map<String, dynamic>.from(
-        await _rpc(c.settlement == null ? 'expense_review_command' : 'expense_approve_with_settlement',
+        await _rpc(c.costRecoveryOptIn ? 'expense_allocate_with_cost' : c.settlement == null ? 'expense_review_command' : 'expense_approve_with_settlement',
           params),
       );
       _check(c.actor);
@@ -293,6 +304,10 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
       }
       if (c.settlement != null && (result['settlement_method'] != c.settlement!.method.name || result['settlement_month'] != c.settlement!.monthKey)) {
         throw StateError('精算方法・対象月の保存結果が一致しません。');
+      }
+      if (c.costRecoveryOptIn && result['cost_allocation_current'] !=
+          (c.destination?.category != ExpenseCategory.ownCompany)) {
+        throw StateError('振り分けの帳票反映結果が一致しません。');
       }
       if (!await prefs.remove(key)) throw StateError('操作結果を再確認してください。');
     } on PostgrestException catch (e) {

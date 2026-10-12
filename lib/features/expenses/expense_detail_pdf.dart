@@ -16,6 +16,7 @@ class ExpenseDetailPdf {
     required String subjectId,
     required pw.Font regularFont,
     required pw.Font boldFont,
+    int? costRecoveryAmountYen,
   }) {
     final selected = switch (kind) {
       ExpenseDocument.payroll => claims.forApplicant(subjectId),
@@ -28,6 +29,11 @@ class ExpenseDetailPdf {
         subjectId,
       ),
     };
+    if (costRecoveryAmountYen != null && (kind == ExpenseDocument.payroll ||
+        selected.entries.any((claim) => claim.approval != ExpenseApproval.approved || claim.withdrawn) ||
+        selected.entries.fold<int>(0, (sum, claim) => sum + claim.amountYen) != costRecoveryAmountYen)) {
+      throw StateError('別途経費の内訳と帳票金額が一致しません。');
+    }
     if (selected.entries.isEmpty) return;
     final rows = <pw.TableRow>[];
     pw.Widget cell(String text, {bool header = false}) => pw.Padding(
@@ -89,11 +95,15 @@ class ExpenseDetailPdf {
                 style: pw.TextStyle(font: boldFont, fontSize: 17),
               ),
               pw.Text(
-                '承認・未承認・却下の履歴を表示。却下は精算対象外です。',
+                costRecoveryAmountYen == null
+                    ? '承認・未承認・却下の履歴を表示。却下は精算対象外です。'
+                    : '帳票に加算した別途経費の内訳です。税・福利厚生費の加算対象外です。',
                 style: const pw.TextStyle(fontSize: 9),
               ),
               pw.Text(
-                '申請額の一覧です。支給・請求・支払額は表紙をご確認ください。',
+                costRecoveryAmountYen == null
+                    ? '申請額の一覧です。支給・請求・支払額は表紙をご確認ください。'
+                    : '別途経費合計：$costRecoveryAmountYen円。表紙の合計に含まれています。',
                 style: const pw.TextStyle(fontSize: 9),
               ),
             ],

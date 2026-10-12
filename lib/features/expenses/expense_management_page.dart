@@ -117,6 +117,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       action,
       destination,
       settlement: choice,
+      costRecoveryOptIn: action == 'allocate' && _data!.costAllocationEnabled,
     );
     await _execute(command);
   }
@@ -345,8 +346,10 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       canDecide: (c) => data.canDecide(c, _actor!),
       onApprove: enabled ? (c) => _act(c, 'approve') : null,
       allowSettlementSetup: data.settlementChoiceEnabled && data.canSettle,
+      costAllocationEnabled: data.costAllocationEnabled,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
-      onAllocate: enabled ? (c, d) => _act(c, 'allocate', d) : null,
+      onAllocate: enabled && (!data.costAllocationEnabled || data.canSettle)
+          ? (c, d) => _act(c, 'allocate', d) : null,
       destinations: data.destinations,
     );
   }
