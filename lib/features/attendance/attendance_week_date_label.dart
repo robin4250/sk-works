@@ -24,8 +24,14 @@ class AttendanceWeekDateLabel extends StatelessWidget {
           ),
           const SizedBox(height: 1),
           // Reserve the holiday line on every day so the date stays aligned.
-          Text(holidayName ?? '', textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, height: 1.05, fontWeight: FontWeight.w400, color: colors.error)),
+          Visibility(
+            visible: holidayName != null,
+            maintainSize: true,
+            maintainState: true,
+            maintainAnimation: true,
+            child: Text(holidayName ?? '祝日', textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10, height: 1.05, fontWeight: FontWeight.w400, color: colors.error)),
+          ),
         ],
       ),
     );
