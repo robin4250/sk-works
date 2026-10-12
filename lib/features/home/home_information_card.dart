@@ -95,7 +95,7 @@ class HomeInformationCard extends StatelessWidget {
                               ),
                             ),
                             if (trailing != null) trailing!,
-                            const SizedBox(width: 4),
+                            if (headerCenter == null) const SizedBox(width: 4),
                             if (showChevron) const Icon(Icons.chevron_right),
                           ],
                         ),
