@@ -5,6 +5,8 @@ import 'package:sk_works/features/home/home_attention_repository.dart';
 import 'package:sk_works/features/home/home_information_card.dart';
 import 'package:sk_works/features/home/home_membership_repository.dart';
 import 'package:sk_works/features/home/weather_forecast_home_card.dart';
+import 'package:sk_works/features/home/weather_forecast_card.dart';
+import 'package:flutter/rendering.dart';
 import 'package:sk_works/features/home/home_action_order_policy.dart';
 import 'package:sk_works/features/home/weather_forecast_controller.dart';
 import 'package:sk_works/international/language_controller.dart';
@@ -35,7 +37,7 @@ void main() {
     expect(data.summaryLabel, '12時の予報：雨');
     expect(data.status, isNot(contains('現在晴れ')));
   });
-  testWidgets('live attribution stays outside the frame and clear of its reorder handle', (tester) async {
+  testWidgets('live attribution stays inside the frame and clear of its reorder handle', (tester) async {
     tester.view.physicalSize = const Size(320, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -59,13 +61,66 @@ void main() {
     await tester.pump();
     final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-weather_forecast')));
     final frame = tester.getRect(find.byType(HomeInformationCard));
-    final source = tester.getRect(find.widgetWithText(TextButton, '天気データの出典'));
+    final source = tester.getRect(find.widgetWithText(TextButton, 'OpenWeather'));
     expect(frame.contains(handle.topLeft), isTrue);
     expect(frame.contains(handle.bottomRight), isTrue);
     expect(handle.overlaps(source), isFalse);
-    await tester.tap(find.text('天気データの出典')); await tester.pump();
+    expect(frame.contains(source.topLeft), isTrue);
+    expect(frame.contains(source.bottomRight), isTrue);
+    expect(tester.getSize(find.byType(WeatherForecastHomeCard)).height, frame.height);
+    await tester.tap(find.text('OpenWeather')); await tester.pump();
     expect(opened.single.toString(), 'https://openweathermap.org/');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('weather keeps attention height with branding and readable footer in every state', (tester) async {
+    tester.view.physicalSize = const Size(320, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final original = SkoLanguageController.pack.value;
+    addTearDown(() => SkoLanguageController.pack.value = original);
+    final live = WeatherForecastSnapshot(locationLabel: '会社周辺',
+      forecastDate: DateTime(2026, 10, 12), updatedAt: DateTime(2026, 10, 12),
+      sourceLabel: 'OpenWeather', currentSummary: '晴れ', currentTemperatureCelsius: 20,
+      hours: const [WeatherForecastHour(hour: 12, summary: '晴れ', rainProbability: 20)]);
+    for (final language in ['ja', 'en']) {
+      SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
+      for (final scale in [1.0, 1.3, 1.6]) {
+        for (final data in [
+          WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), companyAddressMissing: true),
+          WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), loading: true),
+          WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), addressFailed: true),
+          WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), failed: true),
+          WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), snapshot: live,
+            attribution: const {'name': 'OpenWeather', 'url': 'https://openweathermap.org/'}),
+        ]) {
+          final state = ValueNotifier(data);
+          await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+            data: MediaQueryData(size: const Size(320, 1400), textScaler: TextScaler.linear(scale)),
+            child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+              HomeInformationCard(key: const ValueKey('attention-baseline'), icon: Icons.info_outline,
+                title: '要対応', details: '必要書類を登録してください', onTap: () {}),
+              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}),
+            ])),
+          ))));
+          await tester.pump();
+          expect(tester.getSize(find.byType(WeatherForecastHomeCard)).height,
+            tester.getSize(find.byKey(const ValueKey('attention-baseline'))).height);
+          final footer = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('weather-location-explanation')));
+          expect(footer.didExceedMaxLines, isFalse, reason: '$language / $scale');
+          final info = tester.getRect(find.byKey(const ValueKey('weather-summary-precipitation')));
+          expect(tester.getRect(find.byKey(const ValueKey('weather-location-explanation'))).top, greaterThanOrEqualTo(info.bottom));
+          if (data.snapshot != null && language == 'ja') {
+            expect(find.text('12時 20%'), findsOneWidget);
+            expect(find.text('20℃'), findsOneWidget);
+          }
+          expect(tester.takeException(), isNull, reason: '$language / $scale');
+          await tester.pumpWidget(const SizedBox.shrink());
+          state.dispose();
+        }
+      }
+    }
   });
 
   testWidgets('weather reorder handle does not steal the next-day button', (
@@ -394,8 +449,8 @@ void main() {
         lessThan(tester.getTopLeft(weather).dy),
       );
       expect(
-        tester.getTopLeft(weather).dy,
-        lessThan(tester.getTopLeft(attention).dy),
+        tester.getTopLeft(attention).dy,
+        lessThan(tester.getTopLeft(find.text('本日の出勤')).dy),
       );
       expect(find.text('申請の確認が必要です\n期限がある書類\n未対応の通知'), findsOneWidget);
       expect(tester.takeException(), isNull);

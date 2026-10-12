@@ -51,4 +51,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('button body long press reorders without opening its action', (tester) async {
+    final moves = <String>[];
+    final opened = <String>[];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: FriendlyHomeContent(
+      identity: const HomeIdentity(role: 'owner', companyName: '会社', displayName: '本人'),
+      requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
+      moduleEnabled: (_) => true, gridColumns: 2,
+      showAttendanceReport: false, showTodayAttendance: false,
+      visibleHomeKeys: const {'first', 'second'},
+      shortcuts: const [HomeShortcut('first', '一番', Icons.edit), HomeShortcut('second', '二番', Icons.folder)],
+      onOpen: (key) async { opened.add(key); }, onRefresh: () async {},
+      onReorderAction: (source, target) async { moves.add('$source->$target'); },
+    ))));
+    await tester.pump();
+    final first = find.byKey(const ValueKey('home-button-first'));
+    final second = find.byKey(const ValueKey('home-button-second'));
+    await tester.tap(first);
+    expect(opened, ['first']);
+    opened.clear();
+    final gesture = await tester.startGesture(tester.getCenter(first));
+    await tester.pump(const Duration(milliseconds: 650));
+    await gesture.moveTo(tester.getCenter(second));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(moves, ['first->second']);
+    expect(opened, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
 }

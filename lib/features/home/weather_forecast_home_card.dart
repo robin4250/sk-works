@@ -160,27 +160,12 @@ class WeatherForecastHomeCard extends StatelessWidget {
   Widget _card(
     BuildContext context,
     WeatherForecastViewData data,
-  ) => Column(mainAxisSize: MainAxisSize.min, children: [HomeInformationCard(
+  ) => HomeInformationCard(
     icon: Icons.cloud_outlined,
     title: SkoLanguageController.tr('天気予報'),
     showChevron: false,
-    details:
-        '${data.regionLabel ?? data.locationLabel ?? ''}${data.regionLabel == null && data.locationLabel == null ? '' : ' ／ '}${data.status}',
-    footer: SkoLanguageController.tr('出勤前：自宅周辺 ／ 出勤後：現場周辺の天気を表示'),
-    detailsTrailing: data.forecast == null
-        ? null
-        : SizedBox(
-            width: 64,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(
-                data.temperatureLabel,
-                key: const ValueKey('weather-summary-temperature'),
-                style: const TextStyle(fontSize: 11, height: 1.25),
-              ),
-            ),
-          ),
+    details: data.status,
+    detailsContent: _WeatherCompactInformation(data: data),
     leadingAtTop: true,
     leading: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: true, onPrimary: true),
     trailing: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: false),
@@ -189,6 +174,10 @@ class WeatherForecastHomeCard extends StatelessWidget {
         Icon(Icons.cloud_outlined, size: 14, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 4),
         Text(SkoLanguageController.tr('天気予報'), style: const TextStyle(fontSize: 12, height: 1.1)),
+        if (data.forecast != null && data.attribution.isNotEmpty && onOpenAttribution != null) ...[
+          const SizedBox(width: 4),
+          WeatherAttribution(metadata: data.attribution, onOpen: onOpenAttribution!, compact: true),
+        ],
       ])),
       FittedBox(fit: BoxFit.scaleDown, child: Text('${data.compactDayLabel} ${data.date.month}/${data.date.day}', maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 10, height: 1.1))),
     ]),
@@ -204,10 +193,71 @@ class WeatherForecastHomeCard extends StatelessWidget {
         ),
       ),
     ),
-  ),
-    if (data.forecast != null && data.attribution.isNotEmpty && onOpenAttribution != null)
-      WeatherAttribution(metadata: data.attribution, onOpen: onOpenAttribution!),
-  ]);
+  );
+}
+
+class _WeatherCompactInformation extends StatelessWidget {
+  const _WeatherCompactInformation({required this.data});
+  final WeatherForecastViewData data;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final forecast = data.forecast;
+    final region = data.regionLabel ?? forecast?.locationLabel ?? data.locationLabel;
+    final summary = data.failed || data.loading || forecast == null
+        ? data.status : data.summaryLabel ?? SkoLanguageController.tr('未取得');
+    final hour = forecast?.forecastSummaryHour ?? 12;
+    final matching = forecast?.hours.where((value) => value.hour == hour).toList();
+    final chance = matching != null && matching.length == 1 ? matching.single.rainProbability : null;
+    final precipitation = chance == null
+        ? SkoLanguageController.tr('降水確率') + ' ' + SkoLanguageController.tr('未取得')
+        : '$hour${SkoLanguageController.tr('時')} $chance%';
+    final rain = data.rainApproachMessage;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(children: [
+          Expanded(child: Text('${region == null ? '' : '$region ／ '}$summary',
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10.5, height: 1.1))),
+          if (forecast != null) ...[
+            const SizedBox(width: 4),
+            Text(data.temperatureLabel, key: const ValueKey('weather-summary-temperature'),
+              style: TextStyle(fontSize: 10.5, height: 1.1, fontWeight: FontWeight.w700, color: colors.primary)),
+          ],
+        ]),
+        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.water_drop_outlined, size: 12, color: colors.primary,
+              semanticLabel: SkoLanguageController.tr('降水確率')),
+            const SizedBox(width: 4),
+            Text(rain == null ? precipitation : '$precipitation ／ $rain',
+              key: const ValueKey('weather-summary-precipitation'),
+              style: const TextStyle(fontSize: 9.5, height: 1.1)),
+          ])),
+        LayoutBuilder(builder: (context, constraints) {
+          final explanation = SkoLanguageController.tr('出勤前：自宅周辺 ／ 出勤後：現場周辺の天気を表示');
+          final baseStyle = Theme.of(context).textTheme.bodySmall ?? const TextStyle();
+          var fontSize = 8.5;
+          TextStyle style() => baseStyle.copyWith(fontSize: fontSize, height: 1.1);
+          while (fontSize > 4) {
+            final painter = TextPainter(text: TextSpan(text: explanation, style: style()),
+              textDirection: Directionality.of(context), textScaler: MediaQuery.textScalerOf(context), maxLines: 2)
+              ..layout(maxWidth: constraints.maxWidth);
+            final fits = !painter.didExceedMaxLines;
+            painter.dispose();
+            if (fits) {
+              break;
+            }
+            fontSize -= 0.25;
+          }
+          return Text(explanation, key: const ValueKey('weather-location-explanation'),
+            maxLines: 2, style: style());
+        }),
+      ],
+    );
+  }
 }
 
 class _WeatherHomeDayArrow extends StatelessWidget {

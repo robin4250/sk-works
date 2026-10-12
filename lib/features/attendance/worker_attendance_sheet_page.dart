@@ -498,7 +498,7 @@ class _AttendanceDayCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    if (paidLeave || worked) Text(
                       paidLeave
                           ? '有給 ${day!.paidLeaveOrdinal}日目'
                           : worked

@@ -17,6 +17,7 @@ class HomeInformationCard extends StatelessWidget {
     this.leading,
     this.leadingAtTop = false,
     this.headerCenter,
+    this.detailsContent,
   });
   final IconData icon;
   final String title;
@@ -29,6 +30,8 @@ class HomeInformationCard extends StatelessWidget {
   final Widget? leading;
   final bool leadingAtTop;
   final Widget? headerCenter;
+  /// Optional compact content inside the existing information/footer bounds.
+  final Widget? detailsContent;
 
   static ({double titleFont, double titleHeight, double height}) _layoutFor(BuildContext context) {
     final scale = MediaQuery.textScalerOf(context);
@@ -39,7 +42,7 @@ class HomeInformationCard extends StatelessWidget {
     return (titleFont: titleFont, titleHeight: titleHeight, height: titleHeight + detailsHeight + 24);
   }
 
-  /// Lets an outside handle stay inside this frame when legal attribution follows.
+  /// Shared frame height, including compact weather information and legal branding.
   static double heightFor(BuildContext context) => _layoutFor(context).height;
 
   @override
@@ -109,7 +112,9 @@ class HomeInformationCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      if (detailsTrailing == null)
+                      if (detailsContent != null)
+                        SizedBox(height: layout.height - titleHeight - 24, child: detailsContent)
+                      else if (detailsTrailing == null)
                         Text(
                           details,
                           maxLines: footer == null ? 3 : 1,
@@ -136,7 +141,7 @@ class HomeInformationCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                      if (footer != null)
+                      if (detailsContent == null && footer != null)
                         Text(
                           footer!,
                           maxLines: 2,
