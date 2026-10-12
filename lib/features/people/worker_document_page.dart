@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/company_data_transfer.dart';
@@ -578,7 +580,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     var expiryRequired = current?['expiry_required'] == true;
     String? nameError;
 
-    final draft = await showDialog<Map<String, dynamic>>(
+    final route = DialogRoute<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -653,7 +655,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         ),
       ),
     );
-    nameController.dispose();
+    final draft = await Navigator.of(context, rootNavigator: true).push(route);
+    // The dialog result arrives before its reverse transition is finished.
+    unawaited(route.completed.then((_) => nameController.dispose()));
     if (draft == null || !mounted) return;
 
     try {
