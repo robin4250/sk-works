@@ -152,7 +152,8 @@ begin
  if not private.account_access_allowed() or auth.uid() is null or not exists(
   select 1 from public.company_members where company_id=claim.company_id and user_id=auth.uid())
   or (claim.created_by is distinct from auth.uid() and not coalesce(
-   (private.expense_review_access(claim.company_id)->>'can_review')::boolean,false)) then
+   (private.expense_review_access(claim.company_id)->>'can_review')::boolean,false) and not coalesce(
+   (private.expense_review_access(claim.company_id)->>'can_configure')::boolean,false)) then
   raise exception 'expense history unavailable' using errcode='42501';end if;
  return jsonb_build_object('claim_id',claim.id,'company_id',claim.company_id,'events',(
   select coalesce(jsonb_agg(v order by occurred_at,command_id),'[]') from (

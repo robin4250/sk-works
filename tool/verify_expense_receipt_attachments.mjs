@@ -17,9 +17,9 @@ try {
   grant select,insert,update,delete on storage.objects to authenticated,anon;
   create policy prior_broad_policy on storage.objects for all to public using(true) with check(true);`);
  await db.exec(fs.readFileSync('supabase/migrations/20261012171205_expense_receipt_camera_attachments.sql','utf8'));
- const company=id(1),worker=id(2),actor=id(3),claim=id(4),reviewer=id(5),sha='a'.repeat(64);
+ const company=id(1),worker=id(2),actor=id(3),claim=id(4),reviewer=id(5),owner=id(6),sha='a'.repeat(64);
  await db.exec(`insert into companies(id) values('${company}');
-  insert into company_members values('${company}','${actor}','owner'),('${company}','${reviewer}','manager');
+  insert into company_members values('${company}','${actor}','owner'),('${company}','${reviewer}','manager'),('${company}','${owner}','owner');
   insert into workers(id,company_id,name,user_id) values('${worker}','${company}','本人','${actor}');
   insert into private.expense_approval_settings(company_id,approver_ids,revision) values('${company}',array['${reviewer}']::uuid[],1);
   set role authenticated;set test.uid='${actor}';`);
@@ -41,6 +41,10 @@ try {
  await db.exec(`set test.uid='${reviewer}';`);
  assert.equal((await db.query(`select count(*)::int n from storage.objects where bucket_id='expense-receipts'`)).rows[0].n,1,'selected reviewer can read attached receipt');
  await assert.rejects(prepare(),/own active worker required/);
+ await db.exec(`set test.uid='${owner}';`);
+ assert.equal((await db.query(`select count(*)::int n from storage.objects where bucket_id='expense-receipts'`)).rows[0].n,1,'unassigned administrator keeps existing workspace viewing access');
+ const oldHistory=(await db.query(`select public.expense_review_flow_history('${claim}') value`)).rows[0].value;
+ assert.equal(oldHistory.claim_id,claim);
  await db.exec(`set test.uid='${id(999)}';`);
  assert.equal((await db.query(`select count(*)::int n from storage.objects where bucket_id='expense-receipts'`)).rows[0].n,0,'other actor cannot read despite broad policy');
  await db.exec('reset role');

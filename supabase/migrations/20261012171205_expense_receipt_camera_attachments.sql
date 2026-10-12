@@ -21,7 +21,8 @@ begin
  if p_write then return receipt.created_by=auth.uid() and not receipt.attached;end if;
  if receipt.created_by=auth.uid() then return true;end if;
  return receipt.attached and exists(select 1 from private.expense_claims where id=receipt.claim_id and company_id=receipt.company_id)
-  and coalesce((private.expense_review_access(receipt.company_id)->>'can_review')::boolean,false);
+  and (coalesce((private.expense_review_access(receipt.company_id)->>'can_review')::boolean,false)
+   or coalesce((private.expense_review_access(receipt.company_id)->>'can_configure')::boolean,false));
 end $$;
 create function public.expense_receipt_access(p_path text,p_write boolean) returns boolean
 language sql stable security invoker set search_path='' as $$select private.expense_receipt_access(p_path,p_write)$$;
