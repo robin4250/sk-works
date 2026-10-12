@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../daily_reports/daily_report_page.dart';
+import '../route_billing/route_customer_day_quantity_page.dart';
 import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'attendance_cloud_repository.dart';
@@ -941,6 +942,7 @@ class _AttendanceVerificationPageState
         final date = DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate;
         final siteId = saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId;
         final routeId = saved['route_assignment_id']?.toString() ?? _shift?.routeId ?? _routeId;
+        final reportWorkerId = _workerId;
         if (sourceId != null && date != null && siteId != null && routeId == null) {
           await showGroupCheckoutAfterPersonalSave(context, anchorId: sourceId, workDate: date);
           if (!mounted) return;
@@ -954,6 +956,14 @@ class _AttendanceVerificationPageState
             groupClockInAnchorId: saved['source_clock_in_id']?.toString() ?? _shift?.id,
           )),
         );
+        if (!mounted) return;
+        if (_repository?.userId != _savedVerificationActor) {
+          throw StateError('操作したアカウントを再確認してください');
+        }
+        if (routeId != null && date != null && reportWorkerId != null) {
+          await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+            RouteCustomerDayQuantityPage(workerId: reportWorkerId, workDate: date)));
+        }
         if (mounted) Navigator.of(context).pop(true);
       } else {
         Navigator.of(context).pop(true);

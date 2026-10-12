@@ -447,12 +447,14 @@ class DailyReportPdfService {
       );
 
   static String? signatureSvg(Object? value) {
-    if (value is! List) return null;
+    // Saved signatures use {strokes: [...]}; older records contain the list.
+    final strokes = value is Map ? value['strokes'] : value;
+    if (strokes is! List) return null;
     const width = 400.0;
     const height = 120.0;
     final elements = <String>[];
 
-    for (final rawStroke in value) {
+    for (final rawStroke in strokes) {
       if (rawStroke is! List || rawStroke.isEmpty) continue;
       final points = <String>[];
       for (final rawPoint in rawStroke) {
@@ -462,6 +464,7 @@ class DailyReportPdfService {
         if (rawX is! num || rawY is! num) continue;
         final x = rawX.toDouble();
         final y = rawY.toDouble();
+        if (!x.isFinite || !y.isFinite) continue;
         final px = (x.clamp(0, 1) * width).toStringAsFixed(1);
         final py = (y.clamp(0, 1) * height).toStringAsFixed(1);
         points.add('$px,$py');

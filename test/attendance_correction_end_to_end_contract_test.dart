@@ -10,7 +10,7 @@ void main() {
 
     expect(page, contains('_weekIndexContaining(_month, initial)'));
     expect(page, contains('SkoScrollChromeController.visible.value = true'));
-    expect(page, contains('DailyReportPage('));
+    expect(page, contains('DailyReportMonthPage('));
     expect(page, contains('BulkAttendanceCorrectionPage()'));
     expect(page, contains('PaidLeavePage()'));
   });
