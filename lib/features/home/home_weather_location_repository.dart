@@ -83,10 +83,12 @@ class HomeWeatherLocationRepository {
         throw StateError('Personnel unavailable');
       }
       home = personnel is Map ? personnel['address']?.toString() : null;
-      if (status.phase == HomeAttendancePhase.unknown) {
+      final hasHome = home?.trim().isNotEmpty ?? false;
+      if (hasHome && status.phase == HomeAttendancePhase.unknown) {
         throw StateError('Attendance unavailable');
       }
-      if (status.phase == HomeAttendancePhase.working &&
+      if (hasHome &&
+          status.phase == HomeAttendancePhase.working &&
           status.openShifts.length == 1) {
         final shift = status.openShifts.single;
         // A route's clock-in site is not proof of the current visit destination.

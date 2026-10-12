@@ -8,7 +8,7 @@
 
 クライアントの入力は `day_offset: 0|1|2` のみ。住所／緯度経度／provider／actorの指定は受け付けません。server住所のIANA timezoneから `base_date` と `forecast_date` を決定。24時は選択日の翌日0時。同じ時刻が重複・欠損なら値はnull。source値と％以外の平均・補完をしません。未来日は現在気温を借用せず、選択日の12時（欠損時は実取得済み0〜21時の最初の枠）をsummary_hourと共に返します。現在データもsource timestampが地域の今日に属する時だけ使用します。Flutter `WeatherForecastGateway` は本人変更／レスポンス日付／9枠／数値範囲を検証し、sourceconditionを晴曇雨雪等の既存翻訳経路とアイコンへ変換します。
 
-新規private `weather_provider_settings` は既存traffic等のmaster flagsと別テーブル。初期OpenWeather。本人認証済み読取、変更は既存 `is_current_user_master_admin` だけ。public RPCはsecurity invoker、private実装が認証/MASTER確認を行い、テーブルの直接アクセスは許可しません。migrationはSupabase CLI `migration new` で生成。production未適用。MASTER選択部品 WeatherProviderSettingsPanel は実装済み、HOME fetch hookと既存マスター画面への挿入は共有file担当との直列接続が残ります。
+新規private `weather_provider_settings` は既存traffic等のmaster flagsと別テーブル。初期OpenWeather。本人認証済み読取、変更は既存 `is_current_user_master_admin` だけ。public RPCはsecurity invoker、private実装が認証/MASTER確認を行い、テーブルの直接アクセスは許可しません。migrationはSupabase CLI `migration new` で生成。production未適用。MASTER選択部品 WeatherProviderSettingsPanel を既存の保護されたマスター画面へ挿入、HOME fetch hookは共有file担当が直列接続しました。traffic3項目と既存車両/ルート設定は保持。
 
 ## 本番で必要な設定（未確認）
 
@@ -23,7 +23,7 @@
 | WEATHER_GEOCODING_PROVIDER | `google` を明示した時だけ住所lookup有効 |
 | WEATHER_GEOCODING_API_KEY | Google Geocoding＋Time Zone権限を持つserver key。利用契約/課金/制限設定は所有者確認が必要 |
 
-Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須にし、曖昧な住所や市中心を推測しません。外部契約未確認のため勝手にAPIを契約・購入・secret登録しません。住所建物情報等で正確照合しない場合は未取得。外部提供先への住所送信とattribution/契約は本番導入前の確認事項です。Yahoo radarは独立系統、serverのcountryCode=JPのみ公開ページURLを返します。位置中心指定の公式URL契約は未確認のため推測のqueryを付けません。詳細ボタン接続と実機での開き方確認が残ります。
+Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須にし、曖昧な住所や市中心を推測しません。外部契約未確認のため勝手にAPIを契約・購入・secret登録しません。住所建物情報等で正確照合しない場合は未取得。外部提供先への住所送信とattribution/契約は本番導入前の確認事項です。Yahoo radarは独立系統、serverのcountryCode=JPのみ公開ページURLを返します。位置中心指定の公式URL契約は未確認のため推測のqueryを付けません。詳細ボタンはnativeアプリ内ブラウザーへ接続済み（url_launcher inAppBrowserView）。実機での開き方確認は未実行。
 
 ## 検証と残る作業
 
@@ -53,3 +53,5 @@ server `rain_approach` はnull、または `forecast_at` UTC ISO／`reference_at
 - https://developer.apple.com/documentation/weatherkitrestapi/forecastminute （startTime、precipitationIntensity）
 - https://developer.apple.com/documentation/weatherkitrestapi/unitssystem （metric=m）
 - https://developer.apple.com/documentation/weatherkitrestapi/get-attribution-_language_ （https://weatherkit.apple.com/attribution/{language}）
+
+共有UI接続：分単位の降水予報を取得できた時だけ、実予報時刻を「HH:mmの降水予報」と表示。雨/雪種別や到着ETAは推測しない。TODAY限定・60分内・source参照15分内をclientでも検証し、cached予報時刻を過ぎた表示は破棄。更新日時はUTC instantを端末のlocal時刻へ変換して表示し、予報の日付/時刻はserver地域calendarを保持する。実APIと実機での取得/表示は未検証。

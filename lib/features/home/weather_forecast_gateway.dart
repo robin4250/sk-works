@@ -15,16 +15,16 @@ import 'weather_forecast_controller.dart';
   } else if ((id != null && id >= 801 && id <= 804) ||
       ['weatherkit:Cloudy', 'weatherkit:MostlyCloudy', 'weatherkit:PartlyCloudy'].contains(text)) {
     label = '曇り';
-  } else if ((id != null && id >= 200 && id < 300) ||
+  } else if ([200, 201, 202, 210, 211, 212, 221, 230, 231, 232].contains(id) ||
       ['weatherkit:Thunderstorms', 'weatherkit:ScatteredThunderstorms', 'weatherkit:StrongStorms'].contains(text)) {
     label = '雷'; icon = Icons.thunderstorm_outlined;
-  } else if ((id != null && id >= 300 && id < 600) ||
+  } else if ([300, 301, 302, 310, 311, 312, 313, 314, 321, 500, 501, 502, 503, 504, 511, 520, 521, 522, 531].contains(id) ||
       ['weatherkit:Rain', 'weatherkit:Drizzle', 'weatherkit:HeavyRain', 'weatherkit:SunShowers'].contains(text)) {
     label = '雨'; icon = Icons.water_drop_outlined;
-  } else if ((id != null && id >= 600 && id < 700) ||
+  } else if ([600, 601, 602, 611, 612, 613, 615, 616, 620, 621, 622].contains(id) ||
       ['weatherkit:Snow', 'weatherkit:Flurries', 'weatherkit:HeavySnow', 'weatherkit:Blizzard', 'weatherkit:Sleet', 'weatherkit:SunFlurries'].contains(text)) {
     label = '雪'; icon = Icons.ac_unit;
-  } else if ((id != null && id >= 700 && id < 800) ||
+  } else if ([701, 711, 721, 741].contains(id) ||
       ['weatherkit:Foggy', 'weatherkit:Haze', 'weatherkit:Smoky'].contains(text)) {
     label = '霧'; icon = Icons.blur_on;
   }
@@ -34,10 +34,11 @@ import 'weather_forecast_controller.dart';
 /// Offset requests avoid substituting the device calendar for the region's day.
 class WeatherGatewayResult {
   const WeatherGatewayResult({required this.baseDate, required this.dayOffset,
-    required this.timeZone, required this.snapshot, required this.attribution, this.radarUri});
+    required this.timeZone, required this.regionKind, required this.snapshot, required this.attribution, this.radarUri});
   final DateTime baseDate;
   final int dayOffset;
   final String timeZone;
+  final String regionKind;
   final Uri? radarUri;
   final WeatherForecastSnapshot snapshot;
   final Map<String, dynamic> attribution;
@@ -45,7 +46,8 @@ class WeatherGatewayResult {
   factory WeatherGatewayResult.parse(dynamic raw, int expectedOffset) {
     if (raw is! Map || raw['contract_version'] != 1 || raw['day_offset'] != expectedOffset ||
         raw['time_zone'] is! String || (raw['time_zone'] as String).isEmpty ||
-        raw['source'] is! String || raw['location_label'] is! String || raw['attribution'] is! Map) {
+        raw['source'] is! String || raw['location_label'] is! String || raw['attribution'] is! Map ||
+        !['company', 'home', 'site'].contains(raw['region_kind'])) {
       throw const FormatException('Weather contract unavailable');
     }
     DateTime date(dynamic value) {
@@ -109,14 +111,46 @@ class WeatherGatewayResult {
         hours[summaryHour ~/ 3].temperatureCelsius != summaryTemperature)) {
       throw const FormatException('Weather summary mismatch');
     }
+    if (expectedOffset > 0 && (kind == 'current' || raw['current_temperature_celsius'] != null || raw['condition'] != null)) {
+      throw const FormatException('Future weather cannot contain current conditions');
+    }
     final checked = DateTime.tryParse(raw['checked_at']?.toString() ?? '');
     if (checked == null) { throw const FormatException('Weather timestamp unavailable'); }
+    DateTime? rainAt, rainReference;
+    int? rainHour, rainMinute;
+    final rain = raw['rain_approach'];
+    if (rain != null) {
+      DateTime? utc(dynamic value) => value is String && value.endsWith('Z')
+          ? DateTime.tryParse(value) : null;
+      if (rain is! Map || expectedOffset != 0 || rain['source'] != raw['source'] ||
+          !['OpenWeather', 'Apple Weather'].contains(rain['source'])) {
+        throw const FormatException('Precipitation forecast unavailable');
+      }
+      rainAt = utc(rain['forecast_at']);
+      rainReference = utc(rain['reference_at']);
+      final amount = numeric(rain['precipitation_mm_per_hour']);
+      if (rainAt == null || rainReference == null || amount == null || amount <= 0 ||
+          rainAt.isBefore(checked) || rainAt.isAfter(checked.add(const Duration(minutes: 60))) ||
+          rainReference.isBefore(checked.subtract(const Duration(minutes: 15))) ||
+          rainReference.isAfter(checked.add(const Duration(minutes: 1))) ||
+          rain['local_hour'] is! int || rain['local_minute'] is! int ||
+          rain['local_hour'] < 0 || rain['local_hour'] > 23 ||
+          rain['local_minute'] < 0 || rain['local_minute'] > 59) {
+        throw const FormatException('Precipitation forecast timestamp unavailable');
+      }
+      rainHour = rain['local_hour'] as int;
+      rainMinute = rain['local_minute'] as int;
+    }
     // Unknown source conditions stay unavailable; provider codes are not UI text.
     return WeatherGatewayResult(baseDate: base, dayOffset: expectedOffset,
-      timeZone: raw['time_zone'] as String, attribution: attribution, radarUri: radarUri,
-      snapshot: WeatherForecastSnapshot(locationLabel: raw['location_label'] as String,
-        updatedAt: checked, forecastDate: forecast, sourceLabel: raw['source'] as String,
+      timeZone: raw['time_zone'] as String, regionKind: raw['region_kind'] as String, attribution: attribution, radarUri: radarUri,
+      snapshot: WeatherForecastSnapshot(locationLabel: SkoLanguageController.tr(switch (raw['region_kind']) {
+        'company' => '会社周辺', 'home' => '自宅周辺', 'site' => '現場周辺', _ => '地域未設定',
+      }),
+        updatedAt: checked.toLocal(), forecastDate: forecast, sourceLabel: raw['source'] as String,
         hours: hours, radarSupported: radarUri != null,
+        rainForecastAt: rainAt, rainReferenceAt: rainReference,
+        rainLocalHour: rainHour, rainLocalMinute: rainMinute,
         forecastSummaryHour: kind == 'forecast_hour' ? summaryHour as int : null,
         forecastSummaryTemperatureCelsius: kind == 'forecast_hour' ? summaryTemperature : null,
         forecastSummary: kind == 'forecast_hour' ? weatherCondition(raw['summary_condition']).label : null,

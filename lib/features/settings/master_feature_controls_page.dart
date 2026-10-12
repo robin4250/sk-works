@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
+import '../../data/supabase_backend.dart';
+import '../home/weather_provider_settings_panel.dart';
 import 'master_feature_controls_repository.dart';
 
 class MasterFeatureControlsPage extends StatefulWidget {
@@ -13,6 +16,8 @@ class MasterFeatureControlsPage extends StatefulWidget {
 
 class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
   final _repository = MasterFeatureControlsRepository.maybeCreate();
+  final _weatherProviderRepository = SupabaseBackend.isInitialized
+      ? WeatherProviderSettingsRepository(SupabaseBackend.client) : null;
 
   MasterFeatureAvailability? _availability;
   bool _loading = true;
@@ -134,6 +139,11 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          if (_weatherProviderRepository != null)
+                            WeatherProviderSettingsPanel(
+                              isMaster: true,
+                              repository: _weatherProviderRepository,
+                            ),
                           const Card(
                             child: Padding(
                               padding: EdgeInsets.all(16),
@@ -157,6 +167,27 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                             label: 'ルート・配車',
                             description: '新しいルートの登録・選択・出勤を停止。出勤中のルートは継続',
                             enabled: availability.routeAssignment,
+                          ),
+                          const SizedBox(height: 10),
+                          _featureTile(
+                            featureKey: 'traffic_nearest_station',
+                            label: '交通案内：最寄駅',
+                            description: 'Googleマップの最寄駅検索への入口',
+                            enabled: availability.trafficNearestStation,
+                          ),
+                          const SizedBox(height: 10),
+                          _featureTile(
+                            featureKey: 'traffic_train_transfer',
+                            label: '交通案内：電車乗換',
+                            description: 'Yahoo!乗換案内への入口',
+                            enabled: availability.trafficTrainTransfer,
+                          ),
+                          const SizedBox(height: 10),
+                          _featureTile(
+                            featureKey: 'traffic_bus_stop',
+                            label: '交通案内：バス停',
+                            description: 'Googleマップの近くのバス停検索への入口',
+                            enabled: availability.trafficBusStop,
                           ),
                         ],
                       ),
@@ -182,11 +213,11 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                   current: enabled,
                 ),
         title: Text(
-          label,
+          SkoLanguageController.tr(label),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          '$description\n現在: ${enabled ? '利用可能' : '一時停止中'}',
+          '${SkoLanguageController.tr(description)}\n現在: ${enabled ? '利用可能' : '一時停止中'}',
         ),
         secondary: busy
             ? const SizedBox.square(

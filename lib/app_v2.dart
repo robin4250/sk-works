@@ -46,6 +46,10 @@ import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_weather_location_repository.dart';
 import 'features/home/weather_forecast_home_card.dart';
+import 'features/home/weather_forecast_gateway.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'features/traffic/traffic_home_card.dart';
+import 'features/traffic/traffic_link_policy.dart';
 import 'features/home/home_action_order_policy.dart';
 import 'features/home/weather_forecast_policy.dart';
 import 'features/home/home_appearance.dart';
@@ -191,12 +195,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   HomeRouteActionState _homeRouteActionState = HomeRouteActionState.unavailable;
   int _homeAttendanceGeneration = 0;
   bool _homeOptionalClockInAllowed = false;
+  TrafficAvailability _homeTrafficAvailability = TrafficAvailability.unavailable;
   List<String> _homePendingRouteSourceIds = const [];
   bool _homeHasPendingRouteReports = false;
   final _weatherViewState = ValueNotifier<WeatherForecastViewData>(
     WeatherForecastViewData(loading: true, baseDate: DateTime.now()),
   );
   int _homeWeatherGeneration = 0;
+  String? _weatherSnapshotActor;
 
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
@@ -229,11 +235,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed || !mounted) return;
-    final now = DateTime.now();
-    final previous = _weatherViewState.value.baseDate;
-    if (previous == null || previous.year != now.year || previous.month != now.month || previous.day != now.day) {
-      _loadWeatherLocation();
-    }
+    // The gateway owns the registered region's calendar, including day changes.
+    _loadWeatherLocation();
   }
 
   Future<void> _loadHomeData() async {
@@ -254,8 +257,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _loadWeatherLocation() async {
     final generation = ++_homeWeatherGeneration;
     final previous = _weatherViewState.value;
+    final previousActor = _weatherSnapshotActor;
     final now = DateTime.now();
-    final baseDate = DateTime(now.year, now.month, now.day);
+    final baseDate = previous.baseDate ?? DateTime(now.year, now.month, now.day);
     final actor = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentUser?.id : null;
     final repository = HomeWeatherLocationRepository.maybeCreate();
     bool current() => mounted && generation == _homeWeatherGeneration &&
@@ -282,7 +286,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }),
         companyAddressMissing: result.companyAddressMissing,
         selectedDay: latest.selectedDay, baseDate: latest.baseDate,
+        loading: result.selection.kind != WeatherAddressKind.unavailable,
       );
+      if (result.selection.kind == WeatherAddressKind.unavailable) {
+        return;
+      }
+      final requestedDay = latest.selectedDay;
+      try {
+        final forecast = await WeatherForecastGateway(SupabaseBackend.client).fetchDay(requestedDay);
+        if (!current()) return;
+        _weatherSnapshotActor = actor;
+        _weatherViewState.value = WeatherForecastViewData(
+          snapshot: forecast.snapshot, attribution: forecast.attribution,
+          radarUri: forecast.radarUri,
+          locationLabel: result.selection.address,
+          regionLabel: forecast.snapshot.locationLabel,
+          selectedDay: requestedDay, baseDate: forecast.baseDate,
+        );
+      } catch (_) {
+        if (!current()) return;
+        final pending = _weatherViewState.value;
+        final keepPrevious = previousActor == actor &&
+            previous.locationLabel == pending.locationLabel &&
+            previous.selectedDay == pending.selectedDay && previous.forecast != null;
+        _weatherViewState.value = WeatherForecastViewData(
+          failed: true, locationLabel: pending.locationLabel,
+          regionLabel: pending.regionLabel,
+          snapshot: keepPrevious ? previous.snapshot : null,
+          attribution: keepPrevious ? previous.attribution : const {},
+          radarUri: keepPrevious ? previous.radarUri : null,
+          selectedDay: pending.selectedDay, baseDate: pending.baseDate,
+        );
+      }
     } catch (_) {
       if (!current()) return;
       final latest = _weatherViewState.value;
@@ -294,18 +329,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _selectWeatherDay(int day) {
     if (day < 0 || day > 2) return;
     final previous = _weatherViewState.value;
-    final now = DateTime.now();
     _weatherViewState.value = WeatherForecastViewData(
-      selectedDay: day, baseDate: DateTime(now.year, now.month, now.day), locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
+      selectedDay: day, baseDate: previous.baseDate, locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
       addressFailed: previous.addressFailed, companyAddressMissing: previous.companyAddressMissing,
-      loading: previous.loading,
+      loading: true,
     );
+    _loadWeatherLocation();
+  }
+
+  Future<void> _openWeatherReference(Uri uri) async {
+    if (uri.scheme != 'https' || uri.userInfo.isNotEmpty ||
+        !{'weather.yahoo.co.jp', 'weatherkit.apple.com', 'openweathermap.org'}.contains(uri.host)) {
+      return;
+    }
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('外部サービスを開けませんでした。もう一度お試しください。'),
+      )));
+    }
+  }
+
+  void _openWeatherRadar() {
+    final data = _weatherViewState.value;
+    if (data.forecast?.radarSupported != true || data.radarUri == null) {
+      return;
+    }
+    _openWeatherReference(data.radarUri!);
   }
 
   Widget _weatherHomeCard() => WeatherForecastHomeCard(
     state: _weatherViewState,
     onRefresh: _loadWeatherLocation,
     onSelectDay: _selectWeatherDay,
+    onOpenRadar: _openWeatherRadar,
+    onOpenAttribution: _openWeatherReference,
   );
 
   Future<void> _syncLanguage() async {
@@ -408,13 +471,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _homeAttendanceStatus = const HomeAttendanceStatus(phase: HomeAttendancePhase.unknown);
         _homeOptionalClockInAllowed = false;
+        _homeTrafficAvailability = TrafficAvailability.unavailable;
         _homeRouteActionState = HomeRouteActionState.unavailable;
         _homePendingRouteSourceIds = const [];
         _homeHasPendingRouteReports = false;
       });
     }
+    final masterFlags = requestActor == null
+        ? Future<MasterFeatureAvailability?>.value(null)
+        : loadTrafficMasterFlags(
+            fetch: () => MasterFeatureControlsRepository.loadForClient(SupabaseBackend.client),
+            isCurrent: acceptsResponse,
+            onLoaded: (availability) => setState(() => _homeTrafficAvailability = availability),
+          );
     final repository = _attendanceVerificationRepository;
-    if (repository == null || requestActor == null) return;
+    if (repository == null || requestActor == null) {
+      return;
+    }
     final routeRepository = RouteJourneyCaptureRepository.maybeCreate();
     var recoveryLoaded = false;
     if (routeRepository != null && routeRepository.userId == requestActor) {
@@ -452,12 +525,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       var optionalAllowed = (value.selectedVehicleId?.trim().isEmpty ?? true) &&
           (value.selectedRouteId?.trim().isEmpty ?? true);
       if (!optionalAllowed && value.phase != HomeAttendancePhase.working) {
-        try {
-          final flags = await MasterFeatureControlsRepository.loadForClient(SupabaseBackend.client);
-          optionalAllowed = flags.permitsClockIn(vehicleId: value.selectedVehicleId, routeId: value.selectedRouteId);
-        } catch (_) { optionalAllowed = false; }
+        final flags = await masterFlags;
+        if (!acceptsResponse()) return;
+        optionalAllowed = flags?.permitsClockIn(
+          vehicleId: value.selectedVehicleId, routeId: value.selectedRouteId,
+        ) ?? false;
       }
-      if (!acceptsResponse()) return;
       setState(() => _homeOptionalClockInAllowed = optionalAllowed);
 
       if (!recoveryLoaded || routeRepository == null ||
@@ -1059,9 +1132,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           child: PartnerPaymentSettingsPage(),
         );
         break;
+      case 'traffic_guidance':
+        page = Scaffold(
+          appBar: AppBar(title: Text(SkoLanguageController.tr('交通案内'))),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(alignment: Alignment.topCenter,
+              child: TrafficHomeCard(availability: _homeTrafficAvailability)),
+          ),
+        );
+        break;
       case 'weather_forecast':
         page = WeatherForecastDetailPage(state: _weatherViewState,
-          onRefresh: _loadWeatherLocation, onSelectDay: _selectWeatherDay);
+          onRefresh: _loadWeatherLocation, onSelectDay: _selectWeatherDay,
+          onOpenRadar: _openWeatherRadar, onOpenAttribution: _openWeatherReference);
         break;
       case 'notifications':
         page = const NotificationsPage();
@@ -1196,6 +1280,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
       await _loadModuleSettings();
+      await _loadHomeAttendanceStatus();
       await _loadWeatherLocation();
     }
     if (key == 'profile') {
@@ -1242,6 +1327,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      _MenuAction(key: 'traffic_guidance', label: SkoLanguageController.tr('交通案内'),
+        icon: Icons.train_rounded, homeEligible: false,
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       _MenuAction(key: 'weather_forecast', label: SkoLanguageController.tr('天気予報'),
         icon: Icons.cloud_outlined, homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
@@ -1570,6 +1658,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           weatherCard: _weatherHomeCard(),
+          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability),
+          showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
           showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
               ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,

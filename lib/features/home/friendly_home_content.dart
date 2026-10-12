@@ -39,7 +39,9 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.moduleEnabled,
     this.tutorialCard,
     this.weatherCard,
+    this.trafficCard,
     this.showWeatherForecast = true,
+    this.showTrafficGuidance = true,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
     this.visibleHomeKeys = const <String>{},
@@ -62,7 +64,9 @@ class FriendlyHomeContent extends StatelessWidget {
   final RequiredDocumentAttention requiredDocumentAttention;
   final Widget? tutorialCard;
   final Widget? weatherCard;
+  final Widget? trafficCard;
   final bool showWeatherForecast;
+  final bool showTrafficGuidance;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
@@ -120,7 +124,7 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               if (identity.isAdmin) const InitialCompanyRatesCard(),
-              if (weatherCard == null && requiredDocumentAttention.hasMissing) ...[
+              if (weatherCard == null && trafficCard == null && requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
                   opacity: appearance.cardOpacity,
@@ -133,7 +137,8 @@ class FriendlyHomeContent extends StatelessWidget {
               const SizedBox(height: 14),
               _OrderedHomeContent(
                 weatherCard: showWeatherForecast ? weatherCard : null,
-                attentionCard: weatherCard != null && requiredDocumentAttention.hasMissing
+                trafficCard: showTrafficGuidance ? trafficCard : null,
+                attentionCard: (weatherCard != null || trafficCard != null) && requiredDocumentAttention.hasMissing
                     ? _RequiredDocumentAttentionCard(key: const ValueKey('home-attention-card'), attention: requiredDocumentAttention, onOpen: onOpen)
                     : null,
                 identity: identity,
@@ -535,6 +540,7 @@ class _OrderedHomeContent extends StatelessWidget {
   const _OrderedHomeContent({
     required this.identity,
     this.weatherCard,
+    this.trafficCard,
     this.attentionCard,
     required this.moduleEnabled,
     required this.gridColumns,
@@ -554,6 +560,7 @@ class _OrderedHomeContent extends StatelessWidget {
 
   final HomeIdentity identity;
   final Widget? weatherCard;
+  final Widget? trafficCard;
   final Widget? attentionCard;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
@@ -583,12 +590,14 @@ class _OrderedHomeContent extends StatelessWidget {
           visibleHomeKeys.contains('attendance_today'))
         'attendance_today',
       if (weatherCard != null) 'weather_forecast',
+      if (trafficCard != null) 'traffic_guidance',
       if (attentionCard != null) 'home_attention',
       for (final shortcut in shortcuts)
         if (visibleHomeKeys.contains(shortcut.key) &&
             shortcut.key != 'attendance_verify' &&
             shortcut.key != 'attendance_today' &&
             shortcut.key != 'weather_forecast' &&
+            shortcut.key != 'traffic_guidance' &&
             shortcut.key != 'home_attention')
           shortcut.key,
     ];
@@ -629,13 +638,13 @@ class _OrderedHomeContent extends StatelessWidget {
     }
 
     for (final key in keys) {
-      if (key == 'weather_forecast' || key == 'home_attention') {
+      if (key == 'weather_forecast' || key == 'traffic_guidance' || key == 'home_attention') {
         flushGrid();
         children.add(_DraggableHomeCard(
           keyName: key,
           onReorderAction: onReorderAction,
           child: Opacity(opacity: appearance.cardOpacity,
-            child: key == 'weather_forecast' ? weatherCard! : attentionCard!),
+            child: key == 'weather_forecast' ? weatherCard! : key == 'traffic_guidance' ? trafficCard! : attentionCard!),
         ));
         children.add(const SizedBox(height: 12));
         continue;
@@ -739,6 +748,7 @@ class _DraggableHomeCard extends StatelessWidget {
           child: _HomeReorderSurface(
             data: keyName,
             lowerLeadingHandle: keyName == 'weather_forecast',
+            upperLeadingHandle: keyName == 'traffic_guidance',
             feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
@@ -756,10 +766,12 @@ class _HomeReorderSurface extends StatelessWidget {
     required this.feedbackWidth,
     required this.child,
     this.lowerLeadingHandle = false,
+    this.upperLeadingHandle = false,
   });
   final String data;
   final double feedbackWidth;
   final bool lowerLeadingHandle;
+  final bool upperLeadingHandle;
   final Widget child;
 
   @override
@@ -770,10 +782,10 @@ class _HomeReorderSurface extends StatelessWidget {
     children: [
       child,
       Positioned(
-        top: lowerLeadingHandle ? null : 0,
-        right: lowerLeadingHandle ? null : 0,
-        left: lowerLeadingHandle ? 11 : null,
-        bottom: lowerLeadingHandle ? 8 : null,
+        top: lowerLeadingHandle ? HomeInformationCard.heightFor(context) - 36 : upperLeadingHandle ? 10 : 0,
+        right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
+        left: lowerLeadingHandle ? 11 : upperLeadingHandle ? 10 : null,
+        bottom: null,
         child: LongPressDraggable<String>(
           data: data,
           delay: const Duration(milliseconds: 600),

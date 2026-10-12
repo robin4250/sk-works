@@ -30,17 +30,25 @@ class HomeInformationCard extends StatelessWidget {
   final bool leadingAtTop;
   final Widget? headerCenter;
 
+  static ({double titleFont, double titleHeight, double height}) _layoutFor(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context);
+    final titleFont = (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 1.25;
+    final navigationHeight = (scale.scale(11) + scale.scale(10)) * 1.1 + 4;
+    final titleHeight = math.max(48, math.max(scale.scale(titleFont) * 1.25, navigationHeight)).ceilToDouble();
+    final detailsHeight = (scale.scale(11) * 1.25).ceilToDouble() * 3 + 2;
+    return (titleFont: titleFont, titleHeight: titleHeight, height: titleHeight + detailsHeight + 24);
+  }
+
+  /// Lets an outside handle stay inside this frame when legal attribution follows.
+  static double heightFor(BuildContext context) => _layoutFor(context).height;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final scale = MediaQuery.textScalerOf(context);
-    final titleFont =
-        (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 1.25;
-    final navigationHeight = (scale.scale(11) + scale.scale(10)) * 1.1 + 4;
-    final titleHeight = math
-        .max(48, math.max(scale.scale(titleFont) * 1.25, navigationHeight))
-        .ceilToDouble();
-    final detailsHeight = (scale.scale(11) * 1.25).ceilToDouble() * 3 + 2;
+    final layout = _layoutFor(context);
+    final titleFont = layout.titleFont;
+    final titleHeight = layout.titleHeight;
     return Card(
       margin: EdgeInsets.zero,
       color: colors.surface,
@@ -52,7 +60,7 @@ class HomeInformationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: SizedBox(
-          height: titleHeight + detailsHeight + 24,
+          height: layout.height,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

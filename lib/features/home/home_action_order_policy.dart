@@ -9,6 +9,7 @@ List<String> normalizeHomeActionOrder(
     for (final key in available)
       if (!saved.contains(key) &&
           key != 'weather_forecast' &&
+          key != 'traffic_guidance' &&
           key != 'home_attention')
         key,
   ];
@@ -17,12 +18,21 @@ List<String> normalizeHomeActionOrder(
     final today = result.indexOf('attendance_today');
     result.insert(today < 0 ? 0 : today + 1, 'weather_forecast');
   }
+  if (available.contains('traffic_guidance') &&
+      !result.contains('traffic_guidance')) {
+    final weather = result.indexOf('weather_forecast');
+    final today = result.indexOf('attendance_today');
+    result.insert(weather >= 0 ? weather + 1 : today >= 0 ? today + 1 : 0, 'traffic_guidance');
+  }
   if (available.contains('home_attention') &&
       !result.contains('home_attention')) {
+    final traffic = result.indexOf('traffic_guidance');
     final weather = result.indexOf('weather_forecast');
     final today = result.indexOf('attendance_today');
     result.insert(
-      weather >= 0
+      traffic >= 0
+          ? traffic + 1
+          : weather >= 0
           ? weather + 1
           : today >= 0
           ? today + 1
