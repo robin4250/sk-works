@@ -82,6 +82,7 @@ void main() {
       final payment = PaymentCertificateRecord(id: 'doc', partnerCompanyName: '検証下請け', partnerCompanyId: 'party',
         periodStart: DateTime(2026, 10), periodEnd: DateTime(2026, 11, 0), grossAmount: total,
         deductions: 0, netAmount: total, status: 'draft', revision: 1, payerCompanySealEnabled: false,
+        payerCompanyName: '検証会社',
         expenseCost: cost, lines: expenseOnly ? [] : [
           const PaymentCertificateLine(siteName: '検証現場', workContent: '通常作業', quantityLabel: '1', unitPriceYen: 20000, amountYen: 20000),
           const PaymentCertificateLine(siteName: '検証現場', workContent: '福利厚生費', quantityLabel: '', unitPriceYen: 0, amountYen: 1600),

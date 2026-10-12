@@ -173,7 +173,7 @@ class InvoicePdfService {
         buffer.writeln('別途経費（原額） ${_yen(invoice.expenseExtraAmountYen)}');
       }
       buffer
-        ..writeln('計 ${_visibleYen(invoice.subtotalYen)}')
+        ..writeln('${invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）'} ${_visibleYen(invoice.subtotalYen)}')
         ..writeln('消費税 ${_visibleYen(invoice.taxYen)}')
         ..writeln('合計(税込) ${_visibleYen(invoice.grandTotalYen)}')
         ..writeln('請求合計 ${_visibleYen(invoice.grandTotalYen)}');
@@ -245,8 +245,8 @@ class InvoicePdfService {
       rows.add(_InvoiceFormRow(
         siteName: '経費',
         content: '別途経費（原額）',
-        quantity: '1',
-        unitPrice: _number(invoice.expenseExtraAmountYen),
+        quantity: '',
+        unitPrice: '',
         amount: _number(invoice.expenseExtraAmountYen),
       ));
     }
@@ -588,7 +588,7 @@ class InvoicePdfService {
     box(344, 674.8898, right - 344, 63);
     final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
     final labels = [
-      '小計（税抜）',
+      invoice.expenseExtraAmountYen == 0 ? '小計（税抜）' : '小計（経費除く）',
       invoice.taxRateBps == 0
           ? '消費税'
           : '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
@@ -1657,7 +1657,7 @@ class _ExactInvoiceScreen extends StatelessWidget {
                     width: 315,
                     child: Column(
                       children: [
-                        _summary('計', invoice.subtotalYen),
+                        _summary(invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）', invoice.subtotalYen),
                         _summary('消費税', invoice.taxYen),
                         if (invoice.expenseExtraAmountYen != 0)
                           _summary('別途経費（原額）', invoice.expenseExtraAmountYen),

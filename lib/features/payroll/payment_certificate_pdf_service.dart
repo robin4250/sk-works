@@ -80,7 +80,7 @@ class PaymentCertificatePdfService {
       ...record.lines,
       if (record.expenseExtraAmountYen != 0)
         PaymentCertificateLine(
-          siteName: '経費', workContent: '別途経費（原額）', quantityLabel: '1',
+          siteName: '経費', workContent: '別途経費（原額）', quantityLabel: '一式',
           unitPriceYen: record.expenseExtraAmountYen,
           amountYen: record.expenseExtraAmountYen,
         ),
