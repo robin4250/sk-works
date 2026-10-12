@@ -40,7 +40,7 @@ void main() {
       builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
         textScaler: const TextScaler.linear(1.3)), child: child!),
       home: Scaffold(body: Builder(builder: (context) => TextButton(
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+        onPressed: () => Navigator.of(context).push<bool>(MaterialPageRoute<bool>(builder: (_) =>
           RouteCustomerDayQuantityPage(workerId: 'worker', workDate: DateTime(2026,10,12), accessOverride: access))),
         child: const Text('開く'))))));
     await tester.tap(find.text('開く'));await tester.pumpAndSettle();return access;

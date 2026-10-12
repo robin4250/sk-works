@@ -62,7 +62,7 @@ class _RouteCustomerDayQuantityPageState extends State<RouteCustomerDayQuantityP
   void _help() {
     showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('ルートの請求数量'),
-      content: const Text('退勤済みの訪問日報を取引会社ごとにまとめています。各社について1人工または0.5人工を選び、申請してください。別々の取引会社の合計を1人工に制限しません。管理者が根拠現場・数量・単価を確認して承認した後、請求書の下書きへ反映します。給与や出勤表の人工は変更しません。戻るだけでは申請しません。'),
+      content: const SingleChildScrollView(child: Text('退勤済みの訪問日報を取引会社ごとにまとめています。各社について1人工または0.5人工を選び、申請してください。別々の取引会社の合計を1人工に制限しません。管理者が根拠現場・数量・単価を確認して承認した後、請求書の下書きへ反映します。給与や出勤表の人工は変更しません。戻るだけでは申請しません。')),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
   }
   @override

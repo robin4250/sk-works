@@ -18,7 +18,7 @@ const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const [company,worker,user,manager,foreign,customerA,customerB,siteA,siteB,reportA,reportB]=Array.from({length:11},(_,i)=>id(i+1));
 const json=x=>`'${JSON.stringify(x)}'::jsonb`;
 await db.exec(`insert into companies values('${company}',10);
- insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','manager');
+ insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','admin');
  insert into workers values('${worker}','${company}','本人');
  insert into customers values('${customerA}','${company}','会社A',''),('${customerB}','${company}','会社B','');
  insert into sites(id,company_id,customer_id,name) values('${siteA}','${company}','${customerA}','現場A'),('${siteB}','${company}','${customerB}','現場B');
@@ -53,5 +53,6 @@ await db.exec(`set test.uid='${foreign}'`);await assert.rejects(candidates(),/wo
 await db.exec('reset role');await db.exec(`update sites set customer_id=null where id='${siteB}';set test.uid='${user}';set role authenticated`);
 assert.equal((await candidates()).unresolved_count,1);await assert.rejects(submit({[customerA]:2,[customerB]:1}),/取引会社未設定/);
 await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from attendance_entries')).rows[0].n,0);
+const sentHistory=(await db.query("select version,snapshot->>'requested_quantity' quantity from private.route_billing_quantity_audit where request_id='"+a.id+"' and action='submit' order by version")).rows;assert.deepEqual(sentHistory,[{version:1,quantity:'1'},{version:2,quantity:'0.5'}]);
 await db.exec('set role anon');await assert.rejects(candidates(),/permission denied/);
 console.log('PASS checked-out owned evidence, complete customer day, explicit version and stale rejection, approved retry, legacy wrapper rejection, unresolved customer and foreign/anonymous isolation');await db.close();

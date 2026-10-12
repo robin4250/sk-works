@@ -3,19 +3,25 @@ const {PGlite}=await import(process.argv[2]);const db=new PGlite();
 await db.exec(`create schema private;create schema auth;create role anon;create role authenticated;grant usage on schema public,private,auth to authenticated,anon;
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
 create function private.account_access_allowed() returns boolean language sql as $$select coalesce(current_setting('test.allowed',true),'true')='true'$$;
-create table company_members(company_id uuid,user_id uuid,role text);create table workers(id uuid,company_id uuid,name text);
+create table company_members(company_id uuid,user_id uuid,role text);
+create function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$
+ select p_feature='can_manage_invoices' and coalesce(current_setting('test.invoice_manage',true),'true')='true'
+ and exists(select 1 from public.company_members m where m.company_id=p_company and m.user_id=auth.uid() and m.role in ('owner','admin'))$$;
+create table workers(id uuid,company_id uuid,name text);
 create table customers(id uuid,company_id uuid,name text);create table sites(id uuid,company_id uuid,name text,customer_id uuid);
-create table site_financial_settings(company_id uuid,site_id uuid,billing_unit_price_yen integer,billing_square_meter_unit_price_yen integer,billing_contract_amount_yen integer);
+create table site_financial_settings(company_id uuid,site_id uuid,billing_unit_price_yen integer,billing_square_meter_unit_price_yen integer,billing_contract_amount_yen integer,billing_monthly_rate_yen integer default 0,billing_square_meter_quantity numeric default 0,billing_rate_formula jsonb default '{}',billing_rate_overrides jsonb default '{}');
 create table site_calculation_source_preferences(company_id uuid,site_id uuid,output_type text,source text,trade_company_id uuid);
 create table trade_companies(id uuid,company_id uuid);
 create table trade_company_contracts(company_id uuid,trade_company_id uuid,contract_method text,daily_rate_yen integer);
 create table private.route_visit_reports(id uuid,company_id uuid,created_by uuid,report_date date,status text,roster_workers jsonb,site_id uuid,site_name text,source_clock_in_id uuid,start_capture_id uuid,end_capture_id uuid);
 create table attendance_entries(id uuid,base_man_days numeric);create table invoices(id uuid,status text,snapshot jsonb);`);
+const rateSource=await fs.readFile(new URL('../supabase/migrations/20261006180455_fix_rate_formula_combined_multipliers.sql',import.meta.url),'utf8');
+await db.exec(rateSource);
 await db.exec(await fs.readFile(new URL('../supabase/tests/route_customer_day_billing_allocations_schema.sql',import.meta.url),'utf8'));
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const [company,worker,user,manager,employee,foreign,custA,custB,siteA,siteB,siteA2,reportA,reportB,reportA2]=Array.from({length:14},(_,i)=>id(i+1));
 const json=x=>`'${JSON.stringify(x)}'::jsonb`;
-await db.exec(`insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','manager'),('${company}','${employee}','employee'),('${id(99)}','${foreign}','manager');insert into workers values('${worker}','${company}','本人');insert into customers values('${custA}','${company}','会社A'),('${custB}','${company}','会社B');insert into sites values('${siteA}','${company}','現場A','${custA}'),('${siteB}','${company}','現場B','${custB}'),('${siteA2}','${company}','現場A2','${custA}');insert into site_financial_settings values('${company}','${siteA}',20000,0,0),('${company}','${siteB}',25000,0,0),('${company}','${siteA2}',30000,0,0);insert into attendance_entries values('${id(90)}',1);insert into invoices values('${id(91)}','finalized','{"amount":12345}');`);
+await db.exec(`insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','admin'),('${company}','${employee}','employee'),('${id(99)}','${foreign}','manager');insert into workers values('${worker}','${company}','本人');insert into customers values('${custA}','${company}','会社A'),('${custB}','${company}','会社B');insert into sites values('${siteA}','${company}','現場A','${custA}'),('${siteB}','${company}','現場B','${custB}'),('${siteA2}','${company}','現場A2','${custA}');insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,billing_square_meter_unit_price_yen,billing_contract_amount_yen) values('${company}','${siteA}',20000,0,0),('${company}','${siteB}',25000,0,0),('${company}','${siteA2}',30000,0,0);insert into attendance_entries values('${id(90)}',1);insert into invoices values('${id(91)}','finalized','{"amount":12345}');`);
 const insertReport=async(report,site,name,seed)=>db.exec(`insert into private.route_visit_reports values('${report}','${company}','${user}','2026-10-11','completed',${json([{worker_id:worker,worker_name:'本人'}])},'${site}','${name}','${id(seed)}','${id(seed+1)}','${id(seed+2)}')`);
 await insertReport(reportA,siteA,'現場A',20);await insertReport(reportB,siteB,'現場B',30);await insertReport(reportA2,siteA2,'現場A2',40);
 const rpc=async(sql)=>(await db.query(`select ${sql} v`)).rows[0].v;
@@ -30,6 +36,7 @@ await assert.rejects(decide(a),/manager approval required/);
 await db.exec(`set test.uid='${employee}'`);await assert.rejects(detail(a),/unavailable/);
 await db.exec(`set test.uid='${foreign}'`);await assert.rejects(decide(a),/manager approval required/);
 await db.exec(`set test.uid='${manager}'`);assert.equal((await rpc('public.pending_route_billing_quantity_rows()')).length,2);
+await db.exec("set test.invoice_manage='false'");assert.deepEqual(await rpc('public.pending_route_billing_quantity_rows()'),[]);await assert.rejects(detail(a),/unavailable/);await assert.rejects(decide(a),/manager approval required/);await db.exec("set test.invoice_manage='true'");
 await assert.rejects(decide(a,1,siteB,25000),/evidenced/);await assert.rejects(decide(a,0.2),/explicit quantity/);
 // Invoice-selected trade company rate overrides site rate; fixed contracts cannot be approved as days.
 await db.exec('reset role');await db.exec(`insert into trade_companies values('${id(80)}','${company}');insert into trade_company_contracts values('${company}','${id(80)}','daily',42000);insert into site_calculation_source_preferences values('${company}','${siteA}','invoice','trade_company','${id(80)}');set role authenticated`);
@@ -44,6 +51,12 @@ assert.equal((await detail(a)).site_options[0].man_day_method,false);await asser
 await db.exec('reset role');await db.exec(`update site_calculation_source_preferences set source='site';update site_financial_settings set billing_contract_amount_yen=99999 where site_id='${siteA}';set role authenticated`);
 assert.equal((await detail(a)).site_options[0].unit_price_yen,20000);assert.equal((await detail(a)).site_options[0].man_day_method,true);
 await assert.rejects(db.query(`select * from private.route_billing_site_daily_rate('${company}','${siteA}')`),/permission denied/);
+// Defaults must follow the same hourly/daily formula and positive override as the invoice.
+await db.exec('reset role');await db.exec(`update site_financial_settings set billing_rate_formula='{"base_mode":"hourly","hourly_rate_yen":1500,"hours_per_day":7}' where site_id='${siteA}';set role authenticated`);
+assert.equal((await detail(a)).site_options[0].unit_price_yen,10500);
+await db.exec('reset role');await db.exec(`update site_financial_settings set billing_rate_overrides='{"daily":26000}' where site_id='${siteA}';set role authenticated`);
+assert.equal((await detail(a)).site_options[0].unit_price_yen,26000);
+await db.exec('reset role');await db.exec(`update site_financial_settings set billing_rate_formula='{}',billing_rate_overrides='{}' where site_id='${siteA}';set role authenticated`);
 const approved=await decide(a);assert.equal(approved.status,'approved');assert.equal((await decide(a)).status,'approved');
 const approvedB=await decide(b,0.5,siteB,25000);
 // An unchanged submission retry must retain the reviewer-adjusted quantity.

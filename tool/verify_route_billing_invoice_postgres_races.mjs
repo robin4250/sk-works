@@ -43,7 +43,7 @@ try{
  await admin.query(await read('supabase/tests/route_customer_day_billing_allocations_schema.sql'));
  await admin.query(await read('supabase/tests/route_billing_invoice_integration.sql'));
  await admin.query('insert into companies values($1,10)',[company]);
- await admin.query("insert into company_members values($1,$2,'employee'),($1,$3,'manager')",[company,user,manager]);
+ await admin.query("insert into company_members values($1,$2,'employee'),($1,$3,'admin')",[company,user,manager]);
  await admin.query("insert into workers values($1,$2,'本人')",[worker,company]);
  await admin.query("insert into customers values($1,$2,'会社A','')",[customer,company]);
  await admin.query("insert into sites(id,company_id,customer_id,name) values($1,$2,$3,'現場A')",[site,company,customer]);

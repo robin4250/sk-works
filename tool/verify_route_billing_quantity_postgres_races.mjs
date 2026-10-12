@@ -40,12 +40,13 @@ try {
   const fixture = verifier.match(/await db\.exec\(`([\s\S]*?)`\);/)[1];
   assert.ok(!fixture.includes('${'), 'fixture must remain literal SQL');
   await admin.query(fixture);
+  await admin.query(await fs.readFile(new URL('../supabase/migrations/20261006180455_fix_rate_formula_combined_multipliers.sql', import.meta.url),'utf8'));
   await admin.query(await fs.readFile(new URL('../supabase/tests/route_customer_day_billing_allocations_schema.sql', import.meta.url), 'utf8'));
-  await admin.query('insert into company_members values($1,$2,\'employee\'),($1,$3,\'manager\')', [company, user, manager]);
+  await admin.query('insert into company_members values($1,$2,\'employee\'),($1,$3,\'admin\')', [company, user, manager]);
   await admin.query('insert into workers values($1,$2,\'本人\')', [worker, company]);
   await admin.query('insert into customers values($1,$2,\'会社A\'),($3,$2,\'会社B\')', [customerA, company, customerB]);
   await admin.query('insert into sites values($1,$2,\'現場A\',$3),($4,$2,\'現場B\',$5)', [siteA, company, customerA, siteB, customerB]);
-  await admin.query('insert into site_financial_settings values($1,$2,20000,0,0),($1,$3,25000,0,0)', [company, siteA, siteB]);
+  await admin.query('insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,billing_square_meter_unit_price_yen,billing_contract_amount_yen) values($1,$2,20000,0,0),($1,$3,25000,0,0)', [company, siteA, siteB]);
   for (const [report, site, seed] of [[reportA, siteA, 20], [reportB, siteB, 30], [reportB2, siteB, 40]]) {
     await admin.query("insert into private.route_visit_reports values($1,$2,$3,'2026-10-11','completed',$4,$5,'現場',$6,$7,$8)", [report, company, user, JSON.stringify([{worker_id: worker, worker_name: '本人'}]), site, id(seed), id(seed + 1), id(seed + 2)]);
   }
@@ -89,7 +90,7 @@ try {
   const approvals = await Promise.all([x, y]);
   assert.equal(approvals[0].rows[0].v.status, 'approved');
   assert.deepEqual(approvals[0].rows[0].v, approvals[1].rows[0].v);
-  assert.equal((await admin.query('select count(*)::int n from private.route_billing_quantity_audit where request_id=$1', [requestA.id])).rows[0].n, 1);
+  assert.equal((await admin.query("select count(*)::int n from private.route_billing_quantity_audit where action in ('approve','reject') and request_id=$1", [requestA.id])).rows[0].n, 1);
   // Replaying the original quantity 1 retains the reviewer's approved 0.5.
   await actor(b, user);
   const retried = (await submit(b, [reportA], [{customer_id: customerA, quantity: 1}])).rows[0].v[0];
@@ -101,7 +102,7 @@ try {
   const savedApproval = (await admin.query('select * from private.route_billing_quantity_requests where id=$1', [requestA.id])).rows[0];
   assert.equal(savedApproval.representative_site_id, siteA);
   assert.equal(savedApproval.unit_price_yen, 20000);
-  assert.equal((await admin.query('select count(*)::int n from private.route_billing_quantity_audit where request_id=$1', [requestA.id])).rows[0].n, 1);
+  assert.equal((await admin.query("select count(*)::int n from private.route_billing_quantity_audit where action in ('approve','reject') and request_id=$1", [requestA.id])).rows[0].n, 1);
   // Evidence/quantity revision and old approval compete on the same request.
   await actor(b, user);
   await admin.query('begin'); await admin.query('select id from private.route_billing_quantity_requests where id=$1 for update', [requestB.id]);

@@ -1,4 +1,4 @@
--- DRAFT schema awaiting CLI-generated migration and invoice integration review.
+-- Reference contract for the CLI-generated migration and isolated tests.
 -- Dedicated billing quantity only; never writes canonical attendance or payroll.
 create table private.route_billing_quantity_requests(
  id uuid primary key default gen_random_uuid(),company_id uuid not null,worker_id uuid not null,worker_name text not null,
@@ -25,9 +25,24 @@ alter table private.route_billing_quantity_evidence enable row level security;
 alter table private.route_billing_quantity_audit enable row level security;
 revoke all on private.route_billing_quantity_requests,private.route_billing_quantity_evidence,private.route_billing_quantity_audit from public,anon,authenticated;
 
+-- Retain every sent revision, including requests revised before first approval.
+create function private.route_billing_submission_audit() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if tg_op='INSERT' or new.version is distinct from old.version then
+  insert into private.route_billing_quantity_audit(request_id,version,actor_id,action,snapshot)
+  values(new.id,new.version,auth.uid(),'submit',to_jsonb(new));
+ end if;
+ return new;
+end $$;
+revoke all on function private.route_billing_submission_audit() from public,anon,authenticated;
+create trigger route_billing_submission_history after insert or update on private.route_billing_quantity_requests
+for each row execute function private.route_billing_submission_audit();
+
 create function private.route_billing_actor_can_review(p_company_id uuid) returns boolean
 language sql security definer set search_path='' as $$
- select auth.uid() is not null and private.account_access_allowed() and exists(
+ select auth.uid() is not null and private.account_access_allowed()
+ and private.has_company_feature(p_company_id,'can_manage_invoices') and exists(
  select 1 from public.company_members m where m.company_id=p_company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager'))
 $$;
 -- Match the current invoice calculation source and daily-before-fixed precedence.
@@ -35,10 +50,12 @@ $$;
 create function private.route_billing_site_daily_rate(p_company_id uuid,p_site_id uuid)
 returns table(unit_price_yen integer,man_day_method boolean)
 language sql stable security definer set search_path='' as $$
- select case when pref.source='trade_company' then coalesce(pref.daily_rate_yen,0)
- else coalesce(f.billing_unit_price_yen,0) end,
- case when pref.source='trade_company' then pref.contract_method='daily' and coalesce(pref.daily_rate_yen,0)>0
- else coalesce(f.billing_unit_price_yen,0)>0 end
+ select rate.value::integer,
+ case when pref.source='trade_company' then pref.contract_method='daily' and rate.value>0
+ else rate.value>0 and (coalesce(f.billing_unit_price_yen,0)>0 or
+  (coalesce(f.billing_monthly_rate_yen,0)<=0 and
+   not (coalesce(f.billing_square_meter_unit_price_yen,0)>0 and coalesce(f.billing_square_meter_quantity,0)>0)
+   and coalesce(f.billing_contract_amount_yen,0)<=0)) end
  from public.sites s
  left join public.site_financial_settings f on f.company_id=s.company_id and f.site_id=s.id
  left join lateral (
@@ -49,6 +66,9 @@ language sql stable security definer set search_path='' as $$
   where p.company_id=p_company_id and p.site_id=p_site_id and p.output_type='invoice' and p.source='trade_company'
   limit 1
  ) pref on true
+ cross join lateral(select private.resolve_rate_formula(
+  case when pref.source='trade_company' then coalesce(pref.daily_rate_yen,0) else coalesce(f.billing_unit_price_yen,0) end,
+  coalesce(f.billing_rate_formula,'{}'),coalesce(f.billing_rate_overrides,'{}'),'daily') value) rate
  where s.company_id=p_company_id and s.id=p_site_id
 $$;
 revoke all on function private.route_billing_site_daily_rate(uuid,uuid) from public,anon,authenticated;

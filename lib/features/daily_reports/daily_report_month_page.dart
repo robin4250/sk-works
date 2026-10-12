@@ -7,17 +7,21 @@ import 'daily_report_month_zip.dart';
 
 import 'daily_report_month_repository.dart';
 import 'daily_report_page.dart';
+import '../route_billing/route_customer_day_quantity_page.dart';
 
 class DailyReportMonthPage extends StatefulWidget {
   const DailyReportMonthPage({super.key, this.initialMonth, this.initialDate, this.workerId,
     @visibleForTesting this.repositoryForTesting,
     @visibleForTesting this.previewBuilderForTesting,
+    @visibleForTesting this.quantityBuilderForTesting,
   });
   final DateTime? initialMonth;
   final DateTime? initialDate;
   final String? workerId;
   final DailyReportMonthRepository? repositoryForTesting;
   final Widget Function(DailyReportMonthDocument)? previewBuilderForTesting;
+  @visibleForTesting
+  final Widget Function(String workerId, DateTime date)? quantityBuilderForTesting;
   @override
   State<DailyReportMonthPage> createState() => _DailyReportMonthPageState();
 }
@@ -194,9 +198,27 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     }
   }
 
+  Future<void> _openQuantities() async {
+    final repository = _repository, actor = _actor;
+    final workerId = widget.workerId, date = _selectedDate;
+    if (repository == null || actor == null || workerId == null || date == null) return;
+    try {
+      repository.checkActor(actor);
+      await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(builder: (_) =>
+        widget.quantityBuilderForTesting?.call(workerId, date) ??
+        RouteCustomerDayQuantityPage(workerId: workerId, workDate: date)));
+      repository.checkActor(actor);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('請求数量を開けませんでした。ログインを確認して再読み込みしてください。')));
+      }
+    }
+  }
+
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: const Text('日報一覧の使い方'),
-    content: const Text('訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。まとめて保存はZIP形式です。'),
+    content: const SingleChildScrollView(child: Text('訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
   ));
 
@@ -242,6 +264,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                       : '${_selectedDate == null ? 'この月' : 'この日'}をまとめて保存・共有 (${_entries.length}件)',
                 ),
               ),
+              if (_selectedDate != null && widget.workerId != null && _entries.any((entry) => entry.routeId != null))
+                OutlinedButton.icon(onPressed: _loading || _exporting || _openingEntryId != null ? null : _openQuantities,
+                  icon: const Icon(Icons.request_quote_outlined), label: const Text('請求数量を申請')),
             ],
           ),
         ),

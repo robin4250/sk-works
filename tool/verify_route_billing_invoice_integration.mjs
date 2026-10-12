@@ -18,6 +18,10 @@ create table trade_company_contracts(company_id uuid,trade_company_id uuid,contr
 create role anon;create role authenticated;grant usage on schema public,private,auth to authenticated,anon;
 create function private.account_access_allowed() returns boolean language sql as $$select true$$;
 create table company_members(company_id uuid,user_id uuid,role text);
+create function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$
+ select p_feature='can_manage_invoices' and coalesce(current_setting('test.invoice_manage',true),'true')='true'
+ and exists(select 1 from public.company_members m where m.company_id=p_company and m.user_id=auth.uid() and m.role in ('owner','admin'))$$;
+
 create table workers(id uuid,company_id uuid,name text);
 create table private.route_visit_reports(id uuid,company_id uuid,created_by uuid,report_date date,status text,workers jsonb,roster_workers jsonb,site_id uuid,site_name text,source_clock_in_id uuid,start_capture_id uuid,end_capture_id uuid);
 alter table invoices add column approval_finalized_at timestamptz;
@@ -32,7 +36,7 @@ const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const [company,worker,user,manager,custA,custB,siteA,siteB,reportA,reportB]=Array.from({length:10},(_,i)=>id(i+1));
 const json=x=>`'${JSON.stringify(x)}'::jsonb`;
 await db.exec(`insert into companies values('${company}',10);
- insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','manager');
+ insert into company_members values('${company}','${user}','employee'),('${company}','${manager}','admin');
  insert into workers values('${worker}','${company}','本人');
  insert into customers values('${custA}','${company}','会社A',''),('${custB}','${company}','会社B','');
  insert into sites(id,company_id,customer_id,name) values('${siteA}','${company}','${custA}','現場A'),('${siteB}','${company}','${custB}','現場B');
