@@ -45,6 +45,7 @@ try {
  assert.equal(new Date(invoice.billing_period_start).toISOString().slice(0,10),'2026-09-01','cost recovery still uses incurred month');
  await db.exec(`update invoices set status='finalized' where id='${invoice.id}'`);
  await assert.rejects(confirm(42,40,'reject',null,null,null,'変更',2),/帳票確定済み/);
+ await assert.rejects(confirm(43,40,'approve','customer','paid',customer,'立替済み',2),/帳票確定済み/,'new confirmation never bumps frozen revision');
  assert.deepEqual(await confirm(41,40,'approve','customer','paid',customer,'立替済み'),billed,'frozen original receipt replays unchanged');
  assert.equal((await db.query(`select count(*)::int n from private.expense_review_confirmations where command_id='${id(42)}'`)).rows[0].n,0);
  const workspace=(await db.query(`select public.expense_review_flow_workspace('${company}','2026-09-01') value`)).rows[0].value;

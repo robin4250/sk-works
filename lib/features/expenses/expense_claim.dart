@@ -149,7 +149,9 @@ class ExpenseClaim {
       revision == other.revision &&
       withdrawn == other.withdrawn &&
       (settlement == null ? other.settlement == null : other.settlement != null && settlement!.sameAs(other.settlement!)) &&
-      allocation.sameAs(other.allocation);
+      reviewedAt == other.reviewedAt && reviewedBy == other.reviewedBy &&
+      reviewedByName == other.reviewedByName && reviewMemo == other.reviewMemo &&
+      receiptObjectPath == other.receiptObjectPath && allocation.sameAs(other.allocation);
 }
 
 /// Drafts cannot be supplied to submitted-claim lists or PDF details.
@@ -253,6 +255,7 @@ String expenseCategoryLabel(ExpenseCategory category) => switch (category) {
   ExpenseCategory.ownCompany => '自社',
   ExpenseCategory.subcontractor => '下請け・協力会社',
   ExpenseCategory.customer => '取引先',
+  ExpenseCategory.other => 'その他（承認のみ）',
 };
 
 String expenseClaimStatusLabel(ExpenseClaim claim) => claim.withdrawn ? '取り下げ（削除済み）' : expenseApprovalLabel(claim.approval);

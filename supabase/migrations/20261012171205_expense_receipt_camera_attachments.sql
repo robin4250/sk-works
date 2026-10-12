@@ -52,6 +52,9 @@ begin
   raise exception 'own active worker required' using errcode='42501';end if;
  if p_claim is null or p_sha256 is null or p_sha256 !~ '^[a-f0-9]{64}$' or p_size is null or p_size not between 1 and 10485760
   or p_mime is null or p_mime not in ('image/jpeg','image/png') then raise exception 'invalid receipt' using errcode='22023';end if;
+ if not exists(select 1 from private.expense_receipts where claim_id=p_claim)
+  and exists(select 1 from private.expense_claims where id=p_claim) then
+  raise exception '既存申請へ領収書を追加できません。新しい申請で登録してください。' using errcode='22023';end if;
  object_path:=p_company::text||'/'||auth.uid()::text||'/'||p_claim::text||case when p_mime='image/png' then '.png' else '.jpg' end;
  insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
  values(p_claim,p_company,p_worker,auth.uid(),object_path,p_sha256,p_size,p_mime) on conflict(claim_id) do nothing;

@@ -58,6 +58,8 @@ begin
   raise exception 'new expense confirmation command required' using errcode='23505';end if;
  if claim.revision is distinct from p_revision then raise exception 'expense changed; reload' using errcode='40001';end if;
  if claim.withdrawn then raise exception 'withdrawn expense unavailable' using errcode='22023';end if;
+ if exists(select 1 from private.expense_amount_consumptions where claim_id=p_claim) then
+  raise exception '経費は帳票確定済みです。新しい確認操作で変更できません。' using errcode='22023';end if;
  if claim.created_by=auth.uid() and cardinality(setting.approver_ids)>1 then
   raise exception 'another selected approver must review own claim' using errcode='42501';end if;
  if p_action='reject' then
@@ -190,8 +192,14 @@ begin
  if p_command_id is null or p_date is null or p_date < date '1900-01-01' or p_date > (clock_timestamp() at time zone 'Asia/Tokyo')::date
   or p_description is null or length(btrim(p_description)) not between 1 and 1000 or p_amount is null or p_amount not between 1 and 999999999 then
   raise exception 'invalid expense edit' using errcode='22023';end if;
+ if exists(select 1 from private.expense_claim_events where command_id=p_command_id)
+  or exists(select 1 from private.expense_settlement_events where command_id=p_command_id)
+  or exists(select 1 from private.expense_cost_allocation_events where command_id=p_command_id) then
+  raise exception 'new expense edit command required' using errcode='23505';end if;
  if claim.revision is distinct from p_revision then raise exception 'expense changed; reload' using errcode='40001';end if;
  if claim.withdrawn then raise exception 'withdrawn expense unavailable' using errcode='22023';end if;
+ if exists(select 1 from private.expense_amount_consumptions where claim_id=p_claim) then
+  raise exception '経費は帳票確定済みです。新しい確認操作で変更できません。' using errcode='22023';end if;
  update private.expense_claims set incurred_on=p_date,description=btrim(p_description),amount_yen=p_amount,
   approval='pending',allocation='unallocated',counterparty_id=null,counterparty_name=null,revision=revision+1 where id=p_claim;
  select to_jsonb(e) into result from private.expense_claims e where id=p_claim;
