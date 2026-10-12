@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
 
 import 'daily_report_calendar_model.dart';
 import 'daily_report_month_repository.dart';
@@ -70,13 +71,14 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
       widget.repository.checkActor(widget.actor);
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('日報を編集できませんでした。ログイン状態を確認してください。')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(SkoLanguageController.tr('日報を編集できませんでした。ログイン状態を確認してください。'))));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final entry = _index >= 0 && _index < _entries.length ? _entries[_index] : null;
     final next = nextDailyReportDay(_entries, _index);
     final document = _document;
@@ -84,11 +86,11 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
     if (_loading) {
       preview = const Scaffold(body: Center(child: CircularProgressIndicator()));
     } else if (_error != null || document == null) {
-      preview = Scaffold(appBar: AppBar(title: const Text('日報プレビュー')),
+      preview = Scaffold(appBar: AppBar(title: Text(SkoLanguageController.tr('日報プレビュー'))),
         body: Center(child: Padding(padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_error ?? '日報を取得できませんでした。'),
-            TextButton(onPressed: _load, child: const Text('再読み込み')),
+            Text(SkoLanguageController.tr(_error ?? '日報を取得できませんでした。')),
+            TextButton(onPressed: _load, child: Text(SkoLanguageController.tr('再読み込み'))),
           ]))));
     } else {
       final report = document.report;
@@ -110,14 +112,14 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
         Material(color: Theme.of(context).colorScheme.surface,
           child: SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(8),
             child: Row(children: [
-              IconButton(tooltip: '古い日報へ（左スライド）',
+              IconButton(tooltip: SkoLanguageController.tr('古い日報へ（左スライド）'),
                 onPressed: _loading || _index <= 0 ? null : () => _select(_index - 1),
                 icon: const Icon(Icons.chevron_left)),
               Expanded(child: Text(entry == null ? '' :
                 '${DailyReportMonthRepository.dateKey(entry.date)}\n${entry.name}',
                 textAlign: TextAlign.center, maxLines: 3,
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
-              IconButton(tooltip: '次の日へ（右スライド）',
+              IconButton(tooltip: SkoLanguageController.tr('次の日へ（右スライド）'),
                 onPressed: _loading || next == null ? null : () => _select(next),
                 icon: const Icon(Icons.chevron_right)),
             ])))),
