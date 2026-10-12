@@ -241,9 +241,10 @@ class _WeatherReferenceInformation extends StatelessWidget {
             ],
           )),
         ))),
+        if (forecast != null) ...[
         const SizedBox(width: 6),
         SizedBox(width: 52, child: FittedBox(fit: BoxFit.scaleDown, child: Text(
-          forecast == null ? '—' : data.temperatureLabel,
+          data.temperatureLabel,
           key: const ValueKey('weather-summary-temperature'),
           style: const TextStyle(fontSize: 18, height: 1.1, fontWeight: FontWeight.w700),
         ))),
@@ -256,6 +257,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
         if (radarAvailable) SizedBox(width: 44, child: TextButton(onPressed: onOpenRadar,
           style: TextButton.styleFrom(padding: const EdgeInsets.all(2), minimumSize: const Size(44, 32)),
           child: FittedBox(fit: BoxFit.scaleDown, child: Text(SkoLanguageController.tr('雨雲レーダー'), style: const TextStyle(fontSize: 9))))),
+        ],
       ])),
       Expanded(flex: 5, child: Row(children: List.generate(9, (index) {
         final hour = index * 3;

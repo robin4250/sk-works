@@ -158,7 +158,8 @@ void main() {
             tester.getSize(find.byKey(const ValueKey('attention-baseline'))).height);
           final footer = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('weather-location-explanation')));
           expect(footer.didExceedMaxLines, isFalse, reason: '$language / $scale');
-          final info = tester.getRect(find.byKey(const ValueKey('weather-summary-precipitation')));
+          final info = tester.getRect(find.byKey(ValueKey(data.snapshot != null
+              ? 'weather-summary-precipitation' : 'weather-summary-condition')));
           expect(tester.getRect(find.byKey(const ValueKey('weather-location-explanation'))).top, greaterThanOrEqualTo(info.bottom));
           if (data.snapshot != null && language == 'ja') {
             expect(find.text('12時 20%'), findsOneWidget);
