@@ -19,11 +19,13 @@ class WorkerAttendanceSheetPage extends StatefulWidget {
     this.workerId,
     this.workerName,
     this.initialMonth,
+    this.isActive = true,
   });
 
   final String? workerId;
   final String? workerName;
   final DateTime? initialMonth;
+  final bool isActive;
 
   @override
   State<WorkerAttendanceSheetPage> createState() =>
@@ -46,6 +48,14 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     _month = DateTime(initial.year, initial.month);
     _selectedWeek = _weekIndexContaining(_month, initial);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkerAttendanceSheetPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _load();
+    }
   }
 
   Future<void> _load() async {

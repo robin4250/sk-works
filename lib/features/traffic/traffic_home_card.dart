@@ -82,6 +82,8 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
         child: Row(children: [
           for (var index = 0; index < 3; index++)
             Expanded(
+              child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
               child: TextButton(
                 key: ValueKey('traffic-${TrafficDestination.values[index].name}'),
                 onPressed: widget.availability.permits(TrafficDestination.values[index]) && !_opening
@@ -89,6 +91,9 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
                     : null,
                 style: TextButton.styleFrom(
                   minimumSize: const Size(44, 44),
+                  backgroundColor: colors.primaryContainer.withValues(alpha: 0.55),
+                  disabledBackgroundColor: colors.surfaceContainerHighest,
+                  side: BorderSide(color: colors.outlineVariant),
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -98,11 +103,17 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
                     destination: TrafficDestination.values[index],
                   ),
                   const SizedBox(width: 2),
-                  Expanded(child: Text(
-                    SkoLanguageController.tr(labels[index]),
-                    style: const TextStyle(fontSize: 10, height: 1.15),
+                  Expanded(child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      SkoLanguageController.tr(labels[index]),
+                      maxLines: 1, softWrap: false,
+                      style: const TextStyle(fontSize: 10, height: 1.15),
+                    ),
                   )),
                 ]),
+              ),
               ),
             ),
           Expanded(child: TrafficPersonalShortcut(

@@ -48,25 +48,26 @@ export function normalizeRainApproach({date,timeZone,minutes,referenceEpoch,expi
 }
 export async function fetchOpenWeather({location,date,env,fetcher=fetch,now=new Date()}) {
   coordinates(location);
-  const key=env('OPENWEATHER_API_KEY'); if(!key)throw new Error('Weather configuration unavailable');
-  const url=new URL('https://api.openweathermap.org/data/3.0/onecall');
-  for(const [k,v]of Object.entries({lat:location.latitude,lon:location.longitude,appid:key,units:'metric',lang:'ja',exclude:'daily,alerts'}))url.searchParams.set(k,String(v));
-  const data=await json(fetcher,url);
-  // Trust location's reviewed IANA zone, not a device timezone or guessed offset.
-  if(data.timezone!==location.timeZone)throw new Error('Weather timezone mismatch');
+  const key=env("OPENWEATHER_API_KEY");
+  if(!key)throw new Error("Weather configuration unavailable");
+  const makeUrl=path=>{
+    const url=new URL("https://api.openweathermap.org/data/2.5/"+path);
+    for(const [k,v]of Object.entries({lat:location.latitude,lon:location.longitude,appid:key,units:"metric",lang:"ja"}))url.searchParams.set(k,String(v));
+    return url;
+  };
+  const forecast=await json(fetcher,makeUrl("forecast"));
+  if(String(forecast.cod)!=="200"||!Array.isArray(forecast.list))throw new Error("Weather provider unavailable");
   const condition=row=>Number.isInteger(row?.weather?.[0]?.id)?`openweather:${row.weather[0].id}`:null;
-  let hourly=data.hourly;
-  if(env('OPENWEATHER_HOURLY_PRODUCT')==='4day') {
-    const hourlyUrl=new URL('https://pro.openweathermap.org/data/2.5/forecast/hourly');
-    for(const [k,v]of Object.entries({lat:location.latitude,lon:location.longitude,appid:key,units:'metric',lang:'ja'}))hourlyUrl.searchParams.set(k,String(v));
-    const extended=await json(fetcher,hourlyUrl);
-    hourly=(Array.isArray(extended.list)?extended.list:[]).map(row=>({...row,temp:row.main?.temp}));
+  const hours=forecast.list.filter(row=>Number.isFinite(row.dt)).map(row=>({epoch:row.dt,temperature:row.main?.temp,probability:row.pop,condition:condition(row)}));
+  let current=null;
+  if(date===localParts(now.getTime()/1000,location.timeZone).date) {
+    try {
+      const data=await json(fetcher,makeUrl("weather"));
+      if(Number(data.cod)===200&&Number.isFinite(data.dt))current={epoch:data.dt,temperature:data.main?.temp,condition:condition(data)};
+    } catch { /* Preserve available forecast if current weather fails. */ }
   }
-  const hours=(Array.isArray(hourly)?hourly:[]).filter(row=>Number.isFinite(row.dt)).map(row=>({epoch:row.dt,temperature:row.temp,probability:row.pop,condition:condition(row)}));
-  const result=normalizeForecast({date,timeZone:location.timeZone,hours,current:data.current?{epoch:data.current.dt,temperature:data.current.temp,condition:condition(data.current)}:null,source:'OpenWeather',now,attribution:{name:'OpenWeather',url:'https://openweathermap.org/'}});
-  // Minute precipitation is a sourced series, not a fabricated rain approach ETA.
-  const minutes=(Array.isArray(data.minutely)?data.minutely:[]).filter(row=>Number.isFinite(row.dt)).map(row=>({epoch:row.dt,precipitation:row.precipitation}));
-  result.rain_approach=normalizeRainApproach({date,timeZone:location.timeZone,minutes,referenceEpoch:minutes[0]?.epoch,source:'OpenWeather',now});
+  const result=normalizeForecast({date,timeZone:location.timeZone,hours,current,source:"OpenWeather",now,attribution:{name:"OpenWeather",url:"https://openweathermap.org/"}});
+  result.rain_approach=null;
   return result;
 }
 const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
