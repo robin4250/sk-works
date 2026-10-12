@@ -3,6 +3,17 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'weather_forecast_policy.dart';
 
+/// Clear and rain symbols use fixed colors in both compact and detailed forecasts.
+Color weatherConditionIconColor(IconData icon, ColorScheme colors) {
+  if (icon == Icons.wb_sunny || icon == Icons.wb_sunny_outlined) {
+    return Colors.orange;
+  }
+  if (icon == Icons.umbrella || icon == Icons.umbrella_outlined) {
+    return Colors.blue;
+  }
+  return colors.primary;
+}
+
 /// Display-only forecast data. Its source and location are supplied by the caller.
 class WeatherForecastHour {
   const WeatherForecastHour({
@@ -59,6 +70,7 @@ class WeatherForecastCard extends StatelessWidget {
       '出勤前は登録済みの自宅周辺、出勤後は登録済みの現場周辺を表示します。自宅住所の登録前は会社周辺です。'
       '表示地域と更新日時を確認してください。選択日0〜24時の3時間ごとの天気・気温・降水確率を表示します。'
       '左右の矢印で今日・明日・明後日を切り替えられます。最高・最低気温は未取得のため「—」です。'
+      '晴れはオレンジ色の太陽、雨は青色の傘で表示します。'
       '降水確率は表示時刻の予報です。時間の列は横にスクロールできます。未取得の値は「未取得」または「—」と表示します。'
       '取得に失敗した場合、表示済みの予報は更新日時とともに残ります。更新ボタンで再取得できます。';
 
@@ -156,7 +168,10 @@ class WeatherForecastCard extends StatelessWidget {
                             const SizedBox(height: 6),
                             Icon(
                               _at(hour)?.icon ?? Icons.cloud_outlined,
-                              color: colors.primary,
+                              color: weatherConditionIconColor(
+                                _at(hour)?.icon ?? Icons.cloud_outlined,
+                                colors,
+                              ),
                             ),
                             Text(
                               _at(hour)?.summary.trim().isNotEmpty == true

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('LINE webhook requires a valid LINE HMAC signature', () {
     final source =
-        File('supabase/functions/line-webhook/index.ts').readAsStringSync();
+        File('supabase/functions/line-webhook/handler.mjs').readAsStringSync();
 
     expect(source, contains('x-line-signature'));
     expect(source, contains('HMAC'));

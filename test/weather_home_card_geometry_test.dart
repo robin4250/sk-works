@@ -13,6 +13,52 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  testWidgets('home and detail share orange sun and blue umbrella in both languages', (tester) async {
+    final original = SkoLanguageController.pack.value;
+    addTearDown(() => SkoLanguageController.pack.value = original);
+    final date = DateTime(2026, 10, 12);
+    for (final language in ['ja', 'en']) {
+      SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
+      for (final symbol in [
+        (label: '晴れ', icon: Icons.wb_sunny, color: Colors.orange),
+        (label: '雨', icon: Icons.umbrella, color: Colors.blue),
+      ]) {
+        final snapshot = WeatherForecastSnapshot(
+          locationLabel: '会社周辺', updatedAt: date, forecastDate: date,
+          sourceLabel: 'OpenWeather',
+          currentSummary: SkoLanguageController.tr(symbol.label),
+          currentTemperatureCelsius: 20,
+          hours: [WeatherForecastHour(hour: 12, summary: SkoLanguageController.tr(symbol.label), icon: symbol.icon)],
+        );
+        final state = ValueNotifier(WeatherForecastViewData(baseDate: date, snapshot: snapshot));
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body: WeatherForecastHomeCard(
+          snapshot: snapshot,
+          state: state,
+        ))));
+        final summary = tester.widget<Icon>(find.byKey(const ValueKey('weather-summary-icon')));
+        expect(summary.icon, symbol.icon);
+        expect(summary.color, symbol.color);
+        final hour = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-12')));
+        expect(hour.icon, symbol.icon);
+        expect(hour.color, symbol.color);
+        final missing = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-0')));
+        expect(missing.icon, Icons.help_outline);
+        expect(missing.color, isNot(symbol.color));
+        await tester.tap(find.byKey(const ValueKey('weather-home-frame')));
+        await tester.pumpAndSettle();
+        expect(find.byType(WeatherForecastDetailPage), findsOneWidget);
+        expect(find.byIcon(symbol.icon), findsOneWidget);
+        // The supplied 12h slot can be outside the horizontal viewport.
+        for (final icon in tester.widgetList<Icon>(find.byIcon(symbol.icon))) {
+          expect(icon.color, symbol.color);
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        state.dispose();
+      }
+    }
+  });
+
   test('cached minute forecast hides past or stale notices and never appears on future days', () {
     final now = DateTime.utc(2026, 10, 12, 0, 1);
     final snapshot = WeatherForecastSnapshot(locationLabel: '会社周辺', updatedAt: now,
