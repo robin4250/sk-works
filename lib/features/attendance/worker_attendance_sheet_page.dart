@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../../widgets/sko_scroll_chrome.dart';
-import '../daily_reports/daily_report_page.dart';
+import '../daily_reports/daily_report_month_page.dart';
 import 'attendance_pdf_service.dart';
 import 'bulk_attendance_correction_page.dart';
 import 'japan_holiday.dart';
@@ -87,17 +87,13 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
   Future<void> _openDailyReport(DateTime date) async {
     final repository = _repository;
     if (repository == null) return;
-    final target = await repository.findDailyReportForDate(
-      date,
-      workerId: widget.workerId,
-    );
-    if (target == null || !mounted) return;
+    final workerId = widget.workerId ?? await repository.ensureCurrentWorkerId();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => DailyReportPage(
+        builder: (_) => DailyReportMonthPage(
           initialDate: date,
-          initialSiteId: target.siteId,
-          initialRouteAssignmentId: target.routeAssignmentId,
+          workerId: workerId,
         ),
       ),
     );
@@ -506,7 +502,9 @@ class _AttendanceDayCard extends StatelessWidget {
                       paidLeave
                           ? '有給 ${day!.paidLeaveOrdinal}日目'
                           : worked
-                              ? (day?.siteName ?? SkoLanguageController.tr('現場'))
+                              ? (day?.destinationLabel.isNotEmpty == true
+                                  ? day!.destinationLabel
+                                  : SkoLanguageController.tr('現場'))
                               : SkoLanguageController.tr('休み'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -693,16 +691,13 @@ class _WorkerAttendanceMonthPageState
   Future<void> _openDailyReport(DateTime date) async {
     final repository = _repository;
     if (repository == null) return;
-    final target = await repository.findDailyReportForDate(
-      date,
-      workerId: widget.workerId,
-    );
-    if (target == null || !mounted) return;
+    final workerId = widget.workerId ?? await repository.ensureCurrentWorkerId();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => DailyReportPage(
+        builder: (_) => DailyReportMonthPage(
           initialDate: date,
-          initialSiteId: target.siteId,
+          workerId: workerId,
         ),
       ),
     );
@@ -941,10 +936,12 @@ class _MonthCalendarCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final worked = day?.worked == true;
     final paidLeave = day?.paidLeave == true;
-    final siteName = day?.siteName?.trim() ?? '';
+    final siteName = day?.destinationLabel.trim() ?? '';
     final shortSite = siteName.isEmpty
         ? ''
-        : siteName.characters.take(2).toString();
+        : day?.routeNames.isNotEmpty == true
+            ? siteName
+            : siteName.characters.take(2).toString();
     final holidayName = JapanHoliday.name(date);
     final isHoliday = holidayName != null;
     final now = DateTime.now();

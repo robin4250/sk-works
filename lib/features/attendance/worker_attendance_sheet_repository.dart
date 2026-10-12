@@ -14,6 +14,7 @@ class WorkerAttendanceDay {
   const WorkerAttendanceDay({
     required this.date,
     this.siteName,
+    this.routeNames = const <String>[],
     this.clockIn,
     this.clockOut,
     this.overtimeHours = 0,
@@ -31,6 +32,10 @@ class WorkerAttendanceDay {
 
   final DateTime date;
   final String? siteName;
+  final List<String> routeNames;
+  String get destinationLabel => routeNames.isEmpty
+      ? siteName ?? ''
+      : routeNames.join('／');
   final DateTime? clockIn;
   final DateTime? clockOut;
   final double overtimeHours;
@@ -219,7 +224,7 @@ class WorkerAttendanceSheetRepository {
     final verificationRows = await _client
         .from('attendance_verifications')
         .select(
-          'event_type, confirmed_at, work_date, site_id, sites(name), daily_reports(report_date)',
+          'event_type, confirmed_at, work_date, site_id, sites(name), route_assignment_id, route_assignments(route_name), daily_reports(report_date)',
         )
         .eq('worker_id', targetWorkerId)
         .or('and(work_date.gte.$startText,work_date.lt.$endText),and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.add(const Duration(days: 1)).toUtc().toIso8601String()})')
@@ -266,6 +271,14 @@ class WorkerAttendanceSheetRepository {
       final key = attendanceEventWorkDate(confirmed, row['daily_reports'], workDate: row['work_date']);
       if (key.isBefore(start) || !key.isBefore(end)) continue;
       final draft = drafts.putIfAbsent(key, () => _DayDraft(key));
+
+      final route = row['route_assignments'];
+      final routeName = route is Map
+          ? route['route_name']?.toString().trim() ?? ''
+          : '';
+      if (routeName.isNotEmpty && !draft.routeNames.contains(routeName)) {
+        draft.routeNames.add(routeName);
+      }
 
       final site = row['sites'];
       if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
@@ -364,6 +377,7 @@ class _DayDraft {
 
   final DateTime date;
   String? siteName;
+  final List<String> routeNames = <String>[];
   DateTime? clockIn;
   DateTime? clockOut;
   double overtimeHours = 0;
@@ -391,6 +405,7 @@ class _DayDraft {
       WorkerAttendanceDay(
         date: date,
         siteName: siteName,
+        routeNames: List<String>.unmodifiable(routeNames),
         clockIn: clockIn,
         clockOut: clockOut,
         overtimeHours: overtimeHours,
