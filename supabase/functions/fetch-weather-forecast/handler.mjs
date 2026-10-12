@@ -17,16 +17,32 @@ export function createWeatherForecastHandler(deps) {
       const actor=await auth.json();if(typeof actor.id!=='string')return reply({error:'Authentication required'},401);
       const reader=req.body?.getReader();if(!reader)return reply({error:'Invalid request'},400);
       let length=0;const chunks=[];
-      for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>512){await reader.cancel();return reply({error:'Invalid request'},400);}chunks.push(value);}
+      for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>4096){await reader.cancel();return reply({error:'Invalid request'},400);}chunks.push(value);}
       const bytes=new Uint8Array(length);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
       let body;try{body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{return reply({error:'Invalid request'},400);}
-      if(!body||Array.isArray(body)||Object.keys(body).some(k=>k!=='day_offset')||!Number.isInteger(body.day_offset)||body.day_offset<0||body.day_offset>2)return reply({error:'Invalid request'},400);
+      if(!body||Array.isArray(body)||Object.keys(body).some(k=>!["day_offset","prepare_location","native_location","region_token"].includes(k))||!Number.isInteger(body.day_offset)||body.day_offset<0||body.day_offset>2)return reply({error:'Invalid request'},400);
       // These adapters must enforce user-scoped RLS and master-only persistence.
       if(!deps.resolveLocation||!deps.geocode||!deps.readProvider)throw new Error('Configuration unavailable');
       const region=await deps.resolveLocation({actorId:actor.id,authorization});
       if(!region||typeof region.address!=='string'||!region.address.trim())return reply({error:'Weather region unavailable'},422);
-      const location=await deps.geocode(region.address);
-      if(!location||location.match!=='exact'||!location.timeZone)throw new Error('Location unavailable');
+      const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(actor.id+"\n"+region.kind+"\n"+region.address));
+      const regionToken=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+      if(body.prepare_location!==undefined&&body.prepare_location!==true)return reply({error:"Invalid request"},400);
+      if(body.prepare_location===true) {
+        if(body.native_location!==undefined||body.region_token!==undefined)return reply({error:"Invalid request"},400);
+        return reply({address:region.address,region_kind:region.kind,region_token:regionToken});
+      }
+      let location;
+      if(body.native_location!==undefined) {
+        const native=body.native_location;
+        if(body.region_token!==regionToken||!native||typeof native!=="object"||Array.isArray(native)||Object.keys(native).some(k=>!["latitude","longitude","time_zone","country_code","source"].includes(k))||native.source!=="apple_native"||!Number.isFinite(native.latitude)||Math.abs(native.latitude)>90||!Number.isFinite(native.longitude)||Math.abs(native.longitude)>180||typeof native.time_zone!=="string"||native.time_zone.length>100||typeof native.country_code!=="string"||!/^[A-Z]{2}$/.test(native.country_code))return reply({error:"Invalid location"},400);
+        new Intl.DateTimeFormat("en",{timeZone:native.time_zone});
+        location={latitude:native.latitude,longitude:native.longitude,timeZone:native.time_zone,countryCode:native.country_code,match:"native"};
+      } else {
+        if(body.region_token!==undefined)return reply({error:"Invalid request"},400);
+        location=await deps.geocode(region.address);
+      }
+      if(!location||!["exact","native"].includes(location.match)||!location.timeZone)throw new Error('Location unavailable');
       const now=deps.now?.()??new Date(),today=localParts(now.getTime()/1000,location.timeZone).date;
       const dates=[today,nextDate(today),nextDate(nextDate(today))];
       const forecastDate=dates[body.day_offset];

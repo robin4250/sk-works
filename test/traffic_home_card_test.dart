@@ -44,6 +44,14 @@ void main() {
     expect(positions[1].width, positions[2].width);
     expect(positions[0].top, positions[2].top);
     expect(find.byKey(const ValueKey('traffic-future-slot')), findsOneWidget);
+    for (final button in buttons) {
+      final style = tester.widget<TextButton>(button).style!;
+      expect(style.side?.resolve({}), isNotNull);
+      expect(style.backgroundColor?.resolve({}), isNotNull);
+    }
+    final trainLabel = tester.widget<Text>(find.text('電車乗換'));
+    expect(trainLabel.maxLines, 1);
+    expect(trainLabel.softWrap, isFalse);
     for (final button in buttons) { await tester.tap(button); await tester.pumpAndSettle(); }
     expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
     expect(tester.takeException(), isNull);

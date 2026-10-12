@@ -55,3 +55,7 @@ server `rain_approach` はnull、または `forecast_at` UTC ISO／`reference_at
 - https://developer.apple.com/documentation/weatherkitrestapi/get-attribution-_language_ （https://weatherkit.apple.com/attribution/{language}）
 
 共有UI接続：分単位の降水予報を取得できた時だけ、実予報時刻を「HH:mmの降水予報」と表示。雨/雪種別や到着ETAは推測しない。TODAY限定・60分内・source参照15分内をclientでも検証し、cached予報時刻を過ぎた表示は破棄。更新日時はUTC instantを端末のlocal時刻へ変換して表示し、予報の日付/時刻はserver地域calendarを保持する。実APIと実機での取得/表示は未検証。
+
+
+## 2026-10-13 更新（最新仕様）
+追加契約・請求先登録は行わない。OpenWeatherは無料のdata/2.5/weatherとdata/2.5/forecastへ変更。One Call・有料4dayを呼ばず、分単位雨接近はnull。iOS標準CLGeocoderで登録住所を検索する。サーバーが本人の住所を準備し、本人・住所種別・住所のSHA256を再確認して検索結果を受け取る。座標・国・タイムゾーンは端末の検索結果であり、サーバーでの独立した地理検証ではない。Google APIキーは不要。iOS以外は現時点で未対応。prepare_ios.shにも検索処理を追加。Node18件・Flutter24件成功、Dart解析とSwift構文成功。関数は本番へ反映済み。実APIは401のため未成功、Releaseビルド・実機確認は未完了。
