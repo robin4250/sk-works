@@ -1,0 +1,19 @@
+name: LINE historical quote contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*line_historical_quote*'
+      - 'tool/verify_line_historical_quote.mjs'
+      - 'lib/features/chat/line_historical_invoice*'
+      - 'test/line_historical_invoice_model_test.dart'
+      - '.github/workflows/line-historical-quote-contract.yml'
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/line-history-contract @electric-sql/pglite@0.3.14
+      - run: node tool/verify_line_historical_quote.mjs /tmp/line-history-contract/node_modules/@electric-sql/pglite/dist/index.js
