@@ -43,6 +43,7 @@ void main() {
     expect(positions[0].width, positions[1].width);
     expect(positions[1].width, positions[2].width);
     expect(positions[0].top, positions[2].top);
+    expect(positions[0].width, greaterThan(60), reason: 'Removed handle space is shared by the four destinations');
     expect(find.byKey(const ValueKey('traffic-future-slot')), findsOneWidget);
     for (final button in buttons) {
       final style = tester.widget<TextButton>(button).style!;
@@ -145,9 +146,11 @@ void main() {
     expect(find.text('Bus stop'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('home traffic follows weather; handle avoids links/help; visibility and saved order survive', (tester) async {
+  testWidgets('home traffic has no dots; body tap and long press work; visibility and saved order survive', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final moves = <String>[];
+    final opened = <Uri>[];
     Future<void> home(bool show) => tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: FriendlyHomeContent(
       identity: const HomeIdentity(role: 'worker', companyName: '会社', displayName: '本人'),
       requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
@@ -155,17 +158,33 @@ void main() {
       showAttendanceReport: false,
       showTodayAttendance: false,
       weatherCard: const SizedBox(key: ValueKey('test-weather'), height: 80),
-      trafficCard: const TrafficHomeCard(key: ValueKey('test-traffic'), availability: enabled),
+      trafficCard: TrafficHomeCard(key: const ValueKey('test-traffic'), availability: enabled,
+        launcher: (uri) async { opened.add(uri); return true; }),
       showTrafficGuidance: show,
-      onOpen: (_) async {}, onRefresh: () async {}, onReorderAction: (_, _) async {},
+      onOpen: (_) async {}, onRefresh: () async {},
+      onReorderAction: (source, target) async { moves.add('$source->$target'); },
     ))));
     await home(true); await tester.pump();
     expect(tester.getTopLeft(find.byKey(const ValueKey('test-weather'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('test-traffic'))).dy));
-    final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-traffic_guidance')));
-    expect(handle.overlaps(tester.getRect(find.byTooltip('交通案内のヘルプ'))), isFalse);
+    expect(find.byKey(const ValueKey('home-reorder-traffic_guidance')), findsNothing);
+    expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
+    final first = find.byKey(const ValueKey('traffic-nearestStation'));
+    expect(tester.getRect(first).left - tester.getRect(find.byKey(const ValueKey('test-traffic'))).left,
+      lessThan(12), reason: 'No leading handle gutter remains');
     for (final destination in TrafficDestination.values) {
-      expect(handle.overlaps(tester.getRect(find.byKey(ValueKey('traffic-${destination.name}')))), isFalse);
+      await tester.tap(find.byKey(ValueKey('traffic-${destination.name}')));
+      await tester.pumpAndSettle();
     }
+    expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
+    opened.clear();
+    final gesture = await tester.startGesture(tester.getCenter(first));
+    await tester.pump(const Duration(milliseconds: 650));
+    await gesture.moveTo(tester.getCenter(find.byKey(const ValueKey('test-weather'))));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(moves, ['traffic_guidance->weather_forecast']);
+    expect(opened, isEmpty);
     await home(false); await tester.pump();
     expect(find.byKey(const ValueKey('test-traffic')), findsNothing);
     expect(tester.takeException(), isNull);

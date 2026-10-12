@@ -80,10 +80,14 @@ void main() {
         currentTemperatureCelsius: 99, currentSummary: '現在晴れ',
         forecastSummaryTemperatureCelsius: 18, forecastSummaryHour: 12, forecastSummary: '雨'));
     expect(data.temperatureLabel, '18℃');
+    final precise = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12),
+      snapshot: WeatherForecastSnapshot(locationLabel: '現場', updatedAt: DateTime(2026, 10, 12),
+        forecastDate: DateTime(2026, 10, 12), sourceLabel: 'OpenWeather', currentTemperatureCelsius: 22.08));
+    expect(precise.temperatureLabel, '22.1℃');
     expect(data.summaryLabel, '12時の予報：雨');
     expect(data.status, isNot(contains('現在晴れ')));
   });
-  testWidgets('live attribution stays inside the frame and clear of its reorder handle', (tester) async {
+  testWidgets('live attribution stays inside the frame without a dotted handle', (tester) async {
     tester.view.physicalSize = const Size(320, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -105,12 +109,9 @@ void main() {
       ),
     ))));
     await tester.pump();
-    final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-weather_forecast')));
+    expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
     final frame = tester.getRect(find.byKey(const ValueKey('weather-home-frame')));
     final source = tester.getRect(find.widgetWithText(TextButton, 'OpenWeather'));
-    expect(frame.contains(handle.topLeft), isTrue);
-    expect(frame.contains(handle.bottomRight), isTrue);
-    expect(handle.overlaps(source), isFalse);
     expect(frame.contains(source.topLeft), isTrue);
     expect(frame.contains(source.bottomRight), isTrue);
     expect(tester.getSize(find.byType(WeatherForecastHomeCard)).height, frame.height);
@@ -162,7 +163,17 @@ void main() {
           if (data.snapshot != null && language == 'ja') {
             expect(find.text('12時 20%'), findsOneWidget);
             expect(find.textContaining('20℃'), findsOneWidget);
-            expect(find.text('最高 — / 最低 —'), findsOneWidget);
+            expect(find.text('最高 — / 最低 —'), findsNothing);
+            final temperature = tester.widget<Text>(find.byKey(const ValueKey('weather-summary-temperature')));
+            expect(temperature.style!.fontSize, 18);
+            final regionRect = tester.getRect(find.byKey(const ValueKey('weather-summary-region')));
+            final temperatureRect = tester.getRect(find.byKey(const ValueKey('weather-summary-temperature')));
+            expect(regionRect.overlaps(temperatureRect), isFalse);
+            final centers = [for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24])
+              tester.getCenter(find.byKey(ValueKey('weather-home-hour-$hour'))).dx];
+            for (var i = 2; i < centers.length; i++) {
+              expect(centers[i] - centers[i - 1], closeTo(centers[1] - centers[0], 0.1));
+            }
             for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24]) {
               expect(find.byKey(ValueKey('weather-home-hour-$hour')), findsOneWidget);
             }
@@ -179,7 +190,7 @@ void main() {
     }
   });
 
-  testWidgets('weather reorder handle does not steal the next-day button', (
+  testWidgets('weather arrows stay tappable and the body long press reorders without opening detail', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 1000);
@@ -227,15 +238,13 @@ void main() {
       ),
     );
     await tester.pump();
-    final handle = find.byKey(const ValueKey('home-reorder-weather_forecast'));
+    expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
     final next = find.byTooltip('次の日の天気');
-    expect(tester.getRect(handle).overlaps(tester.getRect(next)), isFalse);
     final frame = find.byKey(const ValueKey('weather-home-frame'));
     final previous = find.byTooltip('前の日の天気');
     final cardRect = tester.getRect(frame);
     expect(tester.getRect(previous).left - cardRect.left, lessThanOrEqualTo(6));
     expect(cardRect.right - tester.getRect(next).right, lessThanOrEqualTo(16));
-    expect(tester.getRect(previous).overlaps(tester.getRect(handle)), isFalse);
     expect((tester.getCenter(find.text('今日 10/12')).dx - cardRect.center.dx).abs(), lessThanOrEqualTo(16));
 
     await tester.tap(next);
@@ -248,13 +257,14 @@ void main() {
         (widget) => widget is DragTarget<String>,
       ),
     );
-    final gesture = await tester.startGesture(tester.getCenter(handle));
+    final gesture = await tester.startGesture(tester.getCenter(frame));
     await tester.pump(const Duration(milliseconds: 650));
     await gesture.moveTo(tester.getCenter(target));
     await tester.pump(const Duration(milliseconds: 150));
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 150));
     expect(reordered, ['weather_forecast:attendance_today']);
+    expect(find.byType(WeatherForecastDetailPage), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

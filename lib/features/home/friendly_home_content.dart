@@ -748,6 +748,7 @@ class _DraggableHomeCard extends StatelessWidget {
             data: keyName,
             lowerLeadingHandle: keyName == 'weather_forecast',
             upperLeadingHandle: keyName == 'traffic_guidance',
+            bodyLongPress: keyName == 'weather_forecast' || keyName == 'traffic_guidance',
             feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
