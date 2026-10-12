@@ -44,6 +44,10 @@ import 'features/home/home_route_action_state.dart';
 import 'features/home/employee_resources_page.dart';
 import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
+import 'features/home/home_weather_location_repository.dart';
+import 'features/home/weather_forecast_home_card.dart';
+import 'features/home/home_action_order_policy.dart';
+import 'features/home/weather_forecast_policy.dart';
 import 'features/home/home_appearance.dart';
 import 'features/home/home_membership_repository.dart';
 import 'features/invoices/invoice_cloud_page.dart';
@@ -189,6 +193,10 @@ class _HomePageState extends State<HomePage> {
   bool _homeOptionalClockInAllowed = false;
   List<String> _homePendingRouteSourceIds = const [];
   bool _homeHasPendingRouteReports = false;
+  final _weatherViewState = ValueNotifier<WeatherForecastViewData>(
+    WeatherForecastViewData(loading: true, baseDate: DateTime.now()),
+  );
+  int _homeWeatherGeneration = 0;
 
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
@@ -211,6 +219,7 @@ class _HomePageState extends State<HomePage> {
     if (_chromeListener != null) {
       SkoScrollChromeController.visible.removeListener(_chromeListener!);
     }
+    _weatherViewState.dispose();
     GpsAutoAttendanceService.instance.stop();
     super.dispose();
   }
@@ -227,7 +236,64 @@ class _HomePageState extends State<HomePage> {
       _loadPayrollAdjustmentAccess(),
       _syncLanguage(),
     ]);
+    await _loadWeatherLocation();
   }
+
+  Future<void> _loadWeatherLocation() async {
+    final generation = ++_homeWeatherGeneration;
+    final previous = _weatherViewState.value;
+    final now = DateTime.now();
+    final baseDate = DateTime(now.year, now.month, now.day);
+    final actor = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentUser?.id : null;
+    final repository = HomeWeatherLocationRepository.maybeCreate();
+    bool current() => mounted && generation == _homeWeatherGeneration &&
+        SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser?.id == actor;
+    if (!mounted) return;
+    _weatherViewState.value = WeatherForecastViewData(loading: true,
+      selectedDay: previous.selectedDay, baseDate: baseDate);
+    if (repository == null) {
+      _weatherViewState.value = WeatherForecastViewData(addressFailed: true,
+        selectedDay: previous.selectedDay, baseDate: baseDate);
+      return;
+    }
+    try {
+      final result = await repository.load(_homeAttendanceStatus);
+      if (!current()) return;
+      final latest = _weatherViewState.value;
+      _weatherViewState.value = WeatherForecastViewData(
+        locationLabel: result.selection.address,
+        regionLabel: SkoLanguageController.tr(switch (result.selection.kind) {
+          WeatherAddressKind.company => '会社周辺',
+          WeatherAddressKind.home => '自宅周辺',
+          WeatherAddressKind.site => '現場周辺',
+          WeatherAddressKind.unavailable => '地域未設定',
+        }),
+        companyAddressMissing: result.companyAddressMissing,
+        selectedDay: latest.selectedDay, baseDate: latest.baseDate,
+      );
+    } catch (_) {
+      if (!current()) return;
+      final latest = _weatherViewState.value;
+      _weatherViewState.value = WeatherForecastViewData(addressFailed: true,
+        selectedDay: latest.selectedDay, baseDate: latest.baseDate);
+    }
+  }
+
+  void _selectWeatherDay(int day) {
+    if (day < 0 || day > 2) return;
+    final previous = _weatherViewState.value;
+    _weatherViewState.value = WeatherForecastViewData(
+      selectedDay: day, baseDate: previous.baseDate, locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
+      addressFailed: previous.addressFailed, companyAddressMissing: previous.companyAddressMissing,
+      loading: previous.loading,
+    );
+  }
+
+  Widget _weatherHomeCard() => WeatherForecastHomeCard(
+    state: _weatherViewState,
+    onRefresh: _loadWeatherLocation,
+    onSelectDay: _selectWeatherDay,
+  );
 
   Future<void> _syncLanguage() async {
     try {
@@ -585,17 +651,16 @@ class _HomePageState extends State<HomePage> {
   ) async {
     if (draggedKey == targetKey) return;
 
-    final available = _menuItems.map((item) => item.key).toList();
+    final available = [..._menuItems.map((item) => item.key), 'home_attention'];
     if (!available.contains(draggedKey) || !available.contains(targetKey)) {
       return;
     }
 
-    final ordered = <String>[
-      for (final key in _homeActionOrder)
-        if (available.contains(key)) key,
-      for (final key in available)
-        if (!_homeActionOrder.contains(key)) key,
-    ];
+    final ordered = normalizeHomeActionOrder(_homeActionOrder, [
+      if (available.contains('attendance_verify')) 'attendance_verify',
+      if (available.contains('attendance_today')) 'attendance_today',
+      ...available,
+    ]);
 
     final oldIndex = ordered.indexOf(draggedKey);
     final targetIndex = ordered.indexOf(targetKey);
@@ -984,6 +1049,10 @@ class _HomePageState extends State<HomePage> {
           child: PartnerPaymentSettingsPage(),
         );
         break;
+      case 'weather_forecast':
+        page = WeatherForecastDetailPage(state: _weatherViewState,
+          onRefresh: _loadWeatherLocation, onSelectDay: _selectWeatherDay);
+        break;
       case 'notifications':
         page = const NotificationsPage();
         break;
@@ -1113,12 +1182,15 @@ class _HomePageState extends State<HomePage> {
         key == 'route_visit_move' ||
         key == 'route_visit_recover') {
       await _loadHomeAttendanceStatus();
+      await _loadWeatherLocation();
     }
     if (key == 'settings' || key == 'company_documents' || key == 'company_modules') {
       await _loadModuleSettings();
+      await _loadWeatherLocation();
     }
     if (key == 'profile') {
       await _loadIdentity();
+      await _loadWeatherLocation();
     }
     if (key == 'payroll_adjustments') {
       await _loadPayrollAdjustmentAccess();
@@ -1160,6 +1232,9 @@ class _HomePageState extends State<HomePage> {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      _MenuAction(key: 'weather_forecast', label: SkoLanguageController.tr('天気予報'),
+        icon: Icons.cloud_outlined, homeEligible: false,
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       if (_identity.isAdmin || _isViewer)
         _MenuAction(key: 'company_tax_rates', label: SkoLanguageController.tr('税率設定'), icon: Icons.percent_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・閲覧権限')),
       _MenuAction(key: 'expense_claims', label: SkoLanguageController.tr('経費申請'), icon: Icons.receipt_long_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
@@ -1479,6 +1554,8 @@ class _HomePageState extends State<HomePage> {
           body: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
+          weatherCard: _weatherHomeCard(),
+          showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
               ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
                   availableActionKeys: _availableActionKeys,
