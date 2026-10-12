@@ -88,7 +88,7 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
     setState(() => _busy = true);
     var googleAvailable = false;
     try { googleAvailable = await (widget.canOpen?.call(Uri.parse('comgooglemaps://')) ?? canLaunchUrl(Uri.parse('comgooglemaps://'))); } catch (_) { /* Unavailable candidates stay hidden. */ }
-    if (!_current(scope, generation)) return;
+    if (!mounted || !_current(scope, generation)) return;
     final selection = await showDialog<String>(context: context, builder: (context) {
       _dialogContext = context;
       return SimpleDialog(
@@ -102,7 +102,7 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
       ],
     ); });
     _dialogContext = null;
-    if (!_current(scope, generation)) return;
+    if (!mounted || !_current(scope, generation)) return;
     TrafficShortcut? next;
     if (selection == 'googleMaps') next = const TrafficShortcut.googleMaps();
     if (selection == 'web') {

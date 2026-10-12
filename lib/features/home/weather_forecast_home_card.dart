@@ -219,7 +219,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final forecast = data.forecast;
-    final region = data.regionLabel ?? forecast?.locationLabel ?? data.locationLabel ?? data.status;
+    final region = data.regionLabel ?? forecast?.locationLabel ?? data.locationLabel ?? SkoLanguageController.tr('地域未設定');
     final summaryHour = forecast?.forecastSummaryHour ?? 12;
     final chance = at(summaryHour)?.rainProbability;
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
