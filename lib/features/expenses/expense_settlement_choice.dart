@@ -7,6 +7,12 @@ class ExpenseSettlementChoice {
       throw ArgumentError('精算対象月を確認してください。');
     }
   }
+  /// Application month is the civil month in Japan, never the expense date.
+  static DateTime applicationMonth(DateTime submittedAt) {
+    final japan = submittedAt.toUtc().add(const Duration(hours: 9));
+    return DateTime.utc(japan.year, japan.month);
+  }
+
   final ExpenseSettlementMethod method;
   final DateTime month;
   String get monthKey => '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01';

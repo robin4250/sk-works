@@ -13,6 +13,11 @@ ExpenseClaim claim() => ExpenseClaim(id: 'claim', companyId: 'company', applican
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('application month uses Japan across UTC month and year boundaries', () {
+    expect(ExpenseSettlementChoice.applicationMonth(DateTime.parse('2026-09-30T14:59:59Z')), DateTime.utc(2026, 9));
+    expect(ExpenseSettlementChoice.applicationMonth(DateTime.parse('2026-09-30T15:00:00Z')), DateTime.utc(2026, 10));
+    expect(ExpenseSettlementChoice.applicationMonth(DateTime.parse('2026-12-31T15:00:00Z')), DateTime.utc(2027, 1));
+  });
   test('civil month and method reject malformed receipts and preserve old pending commands', () {
     final choice = ExpenseSettlementChoice.decode('payroll', '2026-10-01');
     expect(choice.month, DateTime.utc(2026, 10));
@@ -77,7 +82,7 @@ void main() {
     await expectLater(repository.execute(command), throwsA(isA<StateError>()));
     expect((await repository.pending('company'))!.encoded, command.encoded);
   });
-  testWidgets('320px and enlarged text require explicit method/month and cancel without approval', (tester) async {
+  testWidgets('320px and enlarged text show fixed application month and cancel without approval', (tester) async {
     tester.view.physicalSize = const Size(320, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -92,16 +97,13 @@ void main() {
     await tester.tap(find.text('開く')); await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認して保存')).onPressed, isNull);
     await tester.tap(find.text('給料精算')); await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認して保存')).onPressed, isNull);
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<int>).first);
-    await tester.tap(find.byType(DropdownButtonFormField<int>).first); await tester.pumpAndSettle();
-    await tester.tap(find.text('2026年').last); await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<int>).last);
-    await tester.tap(find.byType(DropdownButtonFormField<int>).last); await tester.pumpAndSettle();
-    await tester.tap(find.text('2月').last); await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認して保存')).onPressed, isNotNull);
+    expect(find.byType(DropdownButtonFormField<int>), findsNothing);
+    expect(find.text('精算対象月（申請月）'), findsOneWidget);
+    expect(find.text('2026年10月'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('承認して保存')); await tester.pumpAndSettle();
-    expect(result!.method, ExpenseSettlementMethod.payroll); expect(result!.monthKey, '2026-02-01');
+    expect(result!.method, ExpenseSettlementMethod.payroll); expect(result!.monthKey, '2026-10-01');
     result = null;
     await tester.tap(find.text('開く')); await tester.pumpAndSettle();
     await tester.tap(find.text('戻る')); await tester.pumpAndSettle();

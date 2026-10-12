@@ -1,0 +1,57 @@
+name: Expense application month contracts
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*expense_settlement_application_month.sql'
+      - 'tool/verify_expense_application_month*.mjs'
+      - 'lib/features/expenses/expense_settlement*.dart'
+      - 'test/expense_settlement_choice_test.dart'
+      - '.github/workflows/expense-application-month-check.yml'
+permissions:
+  contents: read
+jobs:
+  application-month-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: expense-application-fixture
+          POSTGRES_DB: sko_expense_application_month_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_expense_application_month_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_EXPENSE_APPLICATION_MONTH_DATABASE_URL: postgres://postgres:expense-application-fixture@127.0.0.1:5432/sko_expense_application_month_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated database runtime
+        run: npm install --prefix "$RUNNER_TEMP/expense-application-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - name: Verify application month and preserved historical receipts
+        run: node tool/verify_expense_application_month.mjs "$RUNNER_TEMP/expense-application-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify actual PostgreSQL application month contract
+        run: node tool/verify_expense_application_month_postgres.mjs "$RUNNER_TEMP/expense-application-runtime/node_modules/pg/lib/index.js"
+  approval-dialog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/expense_settlement_choice_test.dart
