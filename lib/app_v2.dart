@@ -147,7 +147,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static const _usagePrefix = 'sko_menu_usage_';
 
   final _moduleSettingsRepository =
@@ -204,6 +204,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadHomeData();
     _chromeListener = () {
       if (!mounted) return;
@@ -216,12 +217,23 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_chromeListener != null) {
       SkoScrollChromeController.visible.removeListener(_chromeListener!);
     }
     _weatherViewState.dispose();
     GpsAutoAttendanceService.instance.stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    final now = DateTime.now();
+    final previous = _weatherViewState.value.baseDate;
+    if (previous == null || previous.year != now.year || previous.month != now.month || previous.day != now.day) {
+      _loadWeatherLocation();
+    }
   }
 
   Future<void> _loadHomeData() async {
@@ -282,8 +294,9 @@ class _HomePageState extends State<HomePage> {
   void _selectWeatherDay(int day) {
     if (day < 0 || day > 2) return;
     final previous = _weatherViewState.value;
+    final now = DateTime.now();
     _weatherViewState.value = WeatherForecastViewData(
-      selectedDay: day, baseDate: previous.baseDate, locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
+      selectedDay: day, baseDate: DateTime(now.year, now.month, now.day), locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
       addressFailed: previous.addressFailed, companyAddressMissing: previous.companyAddressMissing,
       loading: previous.loading,
     );

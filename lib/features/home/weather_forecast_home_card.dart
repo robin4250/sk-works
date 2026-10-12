@@ -44,8 +44,9 @@ class WeatherForecastViewData {
 
   String get temperatureLabel {
     final temperature = forecast?.currentTemperatureCelsius;
-    if (temperature == null || !temperature.isFinite)
+    if (temperature == null || !temperature.isFinite) {
       return SkoLanguageController.tr('未取得');
+    }
     return '${temperature == temperature.roundToDouble() ? temperature.toStringAsFixed(0) : temperature}℃';
   }
 
@@ -169,12 +170,12 @@ class WeatherDayNavigation extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 child: Text(
                   data.compactDayLabel,
-                  style: const TextStyle(fontSize: 11),
+                  style: const TextStyle(fontSize: 11, height: 1.1),
                 ),
               ),
               Text(
                 '${data.date.month}/${data.date.day}',
-                style: const TextStyle(fontSize: 10),
+                style: const TextStyle(fontSize: 10, height: 1.1),
               ),
             ],
           ),

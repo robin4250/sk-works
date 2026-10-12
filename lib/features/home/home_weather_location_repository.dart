@@ -88,7 +88,11 @@ class HomeWeatherLocationRepository {
       }
       if (status.phase == HomeAttendancePhase.working &&
           status.openShifts.length == 1) {
-        final siteId = status.openShifts.single.siteId;
+        final shift = status.openShifts.single;
+        // A route's clock-in site is not proof of the current visit destination.
+        final siteId = (shift.routeId?.trim().isNotEmpty ?? false)
+            ? null
+            : shift.siteId;
         if (siteId != null && siteId.isNotEmpty) {
           final sites = await _client
               .from('sites')
@@ -111,11 +115,11 @@ class HomeWeatherLocationRepository {
       working: status.phase == HomeAttendancePhase.working,
       isAdministrator: admin,
     );
+    final companyRequired = admin || home == null || home.trim().isEmpty;
     return HomeWeatherLocation(
       selection: selection,
       companyAddressMissing:
-          selection.kind == WeatherAddressKind.unavailable &&
-          (company == null || company.trim().isEmpty),
+          companyRequired && (company == null || company.trim().isEmpty),
     );
   }
 }

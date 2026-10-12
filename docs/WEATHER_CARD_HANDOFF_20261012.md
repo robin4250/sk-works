@@ -23,8 +23,8 @@ Issue #273本文/全432コメントとrepo検索には天気の仕様が無か�
 ヘッダー、既存給与、帳票、DB schema/保存/データは変更しない。
 
 `HomeWeatherLocationRepository`は既存のcompany_members/companies/sitesのSELECTとcurrent_worker_personnel_profile RPCを読み取るだけ。
-actor/会社で範囲を限定し、会社住所の空文字と会社行の取得不可を区別。複数の勤務開始/現場不明の場合は現場を推測せず未取得。
-ホーム読み込み、勤務/プロフィール/会社設定から戻った際に住所sourceを更新する。
+actor/会社で範囲を限定し、会社住所の空文字と会社行の取得不可を区別。複数の勤務開始/現場不明の場合は現場を推測せず未取得。ルート勤務のclock_in.site_idは現在visitの証拠ではないため利用しない。現在visit住所のadapterは未完了。
+ホーム読み込み、勤務/プロフィール/会社設定から戻った際に住所sourceを更新する。日付が変わった後のアプリ復帰・矢印操作・更新でも日付を更新し旧日の予報を消す。
 読み込み失敗を「会社未登録」と誤表示しない。
 
 `WeatherForecastController`は登録済み住所とサーバーfetch callbackの境界。

@@ -14,9 +14,11 @@ void main() {
   late List<Uri> requests;
   var role = 'worker';
   var companyVisible = true;
+  var siteAddress = '現場';
   setUp(() async {
     role = 'worker';
     companyVisible = true;
+    siteAddress = '現場';
     requests = [];
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
@@ -35,7 +37,7 @@ void main() {
               : [],
         'current_worker_personnel_profile' => {'address': '自宅'},
         'sites' => [
-          {'address': '現場'},
+          {'address': siteAddress},
         ],
         _ => [],
       };
@@ -69,6 +71,61 @@ void main() {
     await client.dispose();
     await server.close(force: true);
   });
+
+  for (final multiple in [false, true]) {
+    test(
+      'registered home with unavailable site is not a missing company address (multiple=$multiple)',
+      () async {
+        siteAddress = '';
+        final shift = AttendanceShiftContext(
+          id: 'shift',
+          workerId: 'worker',
+          workDate: DateTime(2026, 10, 12),
+          clockIn: DateTime(2026, 10, 12, 8),
+          verificationMode: 'manual',
+          siteId: 'site',
+        );
+        final result = await HomeWeatherLocationRepository.forTesting(client)
+            .load(
+              HomeAttendanceStatus(
+                phase: HomeAttendancePhase.working,
+                openShifts: [shift, if (multiple) shift],
+              ),
+            );
+        expect(result.selection.kind, WeatherAddressKind.unavailable);
+        expect(result.selection.address, isNull);
+        expect(result.companyAddressMissing, isFalse);
+        if (multiple) {
+          expect(requests.where((uri) => uri.path.endsWith('sites')), isEmpty);
+        }
+      },
+    );
+  }
+
+  test(
+    'route clock-in site does not masquerade as the current visit',
+    () async {
+      final shift = AttendanceShiftContext(
+        id: 'route-shift',
+        workerId: 'worker',
+        workDate: DateTime(2026, 10, 12),
+        clockIn: DateTime(2026, 10, 12, 8),
+        verificationMode: 'manual',
+        siteId: 'old-site',
+        routeId: 'route',
+      );
+      final result = await HomeWeatherLocationRepository.forTesting(client)
+          .load(
+            HomeAttendanceStatus(
+              phase: HomeAttendancePhase.working,
+              openShifts: [shift],
+            ),
+          );
+      expect(result.selection.kind, WeatherAddressKind.unavailable);
+      expect(result.companyAddressMissing, isFalse);
+      expect(requests.where((uri) => uri.path.endsWith('sites')), isEmpty);
+    },
+  );
 
   test(
     'employee uses only current company and active registered site',

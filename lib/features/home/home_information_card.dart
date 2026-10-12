@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Shared geometry for attention and weather cards. Text scale changes both.
@@ -26,10 +28,11 @@ class HomeInformationCard extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context);
     final titleFont =
         (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * 1.25;
-    final titleHeight = (scale.scale(titleFont) * 1.25)
-        .clamp(44.0, double.infinity)
-        .toDouble();
-    final detailsHeight = scale.scale(11) * 1.25 * 3;
+    final navigationHeight = (scale.scale(11) + scale.scale(10)) * 1.1 + 4;
+    final titleHeight = math
+        .max(48, math.max(scale.scale(titleFont) * 1.25, navigationHeight))
+        .ceilToDouble();
+    final detailsHeight = (scale.scale(11) * 1.25).ceilToDouble() * 3 + 2;
     return Card(
       margin: EdgeInsets.zero,
       color: colors.surface,
