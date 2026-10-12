@@ -600,7 +600,7 @@ create function private.line_invoice_preview(p_draft_id uuid,p_revision integer)
 declare draft private.line_import_drafts; rows jsonb; customer record; quote jsonb; quotes jsonb:='[]'; data jsonb;
 begin
  draft:=private.require_current_line_import_draft(p_draft_id,p_revision,'invoice');
- begin lock table public.companies,public.site_financial_settings,public.site_calculation_source_preferences,public.trade_companies,public.trade_company_contracts in share mode nowait;
+ begin lock table public.companies,public.sites,public.customers,public.site_financial_settings,public.site_calculation_source_preferences,public.trade_companies,public.trade_company_contracts in share mode nowait;
  exception when lock_not_available then raise exception '請求設定を変更中です。再確認してお試しください。' using errcode='40001';end;
  select jsonb_agg(jsonb_build_object('company_id',draft.company_id,'site_id',(r->>'site_id')::uuid,'work_date',(r->>'work_date')::date,
  'work_category',coalesce(r->>'work_category',case when r->>'night_work'='true' then 'night' else 'day' end),
