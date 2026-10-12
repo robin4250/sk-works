@@ -1,4 +1,5 @@
 import 'company_seal_snapshot.dart';
+import 'expense_cost_snapshot.dart';
 
 enum InvoiceDetailMode {
   consolidatedOnly,
@@ -128,6 +129,7 @@ class InvoiceCalculationResult {
     this.subtotalYenOverride,
     this.taxYenOverride,
     this.grandTotalYenOverride,
+    this.expenseCost = const ExpenseCostSnapshot.none(),
   });
 
   final String customerId;
@@ -150,6 +152,8 @@ class InvoiceCalculationResult {
   final int? subtotalYenOverride;
   final int? taxYenOverride;
   final int? grandTotalYenOverride;
+  final ExpenseCostSnapshot expenseCost;
+  int get expenseExtraAmountYen => expenseCost.amountYen;
 
   int get subtotalYen =>
       subtotalYenOverride ??
@@ -158,7 +162,8 @@ class InvoiceCalculationResult {
   int get taxYen =>
       taxYenOverride ?? (subtotalYen * taxRateBps / 10000).round();
 
-  int get grandTotalYen => grandTotalYenOverride ?? subtotalYen + taxYen;
+  int get grandTotalYen =>
+      grandTotalYenOverride ?? subtotalYen + taxYen + expenseExtraAmountYen;
 }
 
 class InvoiceEngine {
@@ -183,6 +188,7 @@ class InvoiceEngine {
     int? subtotalYenOverride,
     int? taxYenOverride,
     int? grandTotalYenOverride,
+    ExpenseCostSnapshot expenseCost = const ExpenseCostSnapshot.none(),
   }) {
     if (customerId.trim().isEmpty) {
       throw ArgumentError.value(customerId, 'customerId', 'must not be empty');
@@ -244,6 +250,7 @@ class InvoiceEngine {
       subtotalYenOverride: subtotalYenOverride,
       taxYenOverride: taxYenOverride,
       grandTotalYenOverride: grandTotalYenOverride,
+      expenseCost: expenseCost,
     );
   }
 }

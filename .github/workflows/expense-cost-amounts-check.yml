@@ -1,0 +1,80 @@
+name: Staged additional expense amount contracts
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/expense_cost_amounts.sql'
+      - 'supabase/migrations/*expense_document_original_costs.sql'
+      - 'supabase/tests/expense_settlement_choice_cost_extension.sql'
+      - 'supabase/tests/fixtures/expense_cost_foundation_20261012.json'
+      - 'tool/verify_expense_cost_amounts.mjs'
+      - 'tool/verify_expense_cost_postgres_races.mjs'
+      - 'tool/fixtures/expense_cost_fixture.mjs'
+      - 'lib/domain/expense_cost_snapshot.dart'
+      - 'lib/features/expenses/expense_detail_pdf.dart'
+      - 'test/expense_cost_document_test.dart'
+      - 'tool/verify_expense_cost_pdfs.py'
+      - '.github/workflows/expense-cost-amounts-check.yml'
+permissions:
+  contents: read
+jobs:
+  staged-amount-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: expense-cost-fixture
+          POSTGRES_DB: sko_expense_cost_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_expense_cost_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_EXPENSE_COST_RACE_DATABASE_URL: postgres://postgres:expense-cost-fixture@127.0.0.1:5432/sko_expense_cost_race_fixture
+      SKO_EXPENSE_COST_MIGRATION_PATH: supabase/migrations/20261012142138_expense_document_original_costs.sql
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated database runtime
+        run: npm install --prefix "$RUNNER_TEMP/expense-cost-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - name: Verify explicit expense amount and detail consistency
+        run: node tool/verify_expense_cost_amounts.mjs "$RUNNER_TEMP/expense-cost-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify real PostgreSQL allocation and finalization races
+        run: node tool/verify_expense_cost_postgres_races.mjs "$RUNNER_TEMP/expense-cost-runtime/node_modules/pg/lib/index.js"
+  document-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install pinned Flutter dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Generate actual charged-expense PDFs
+        run: flutter test test/expense_cost_document_test.dart
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify totals and detail pages in actual PDFs
+        run: |
+          python -m pip install pypdf==6.10.0 PyMuPDF==1.26.6
+          python tool/verify_expense_cost_pdfs.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: expense-cost-document-proof
+          path: build/expense-cost-documents-proof/*
+          if-no-files-found: ignore

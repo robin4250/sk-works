@@ -48,6 +48,35 @@ void main() {
     await expectLater(repository.execute(c), throwsA(isA<StateError>()));
     expect((await repository.pending('company'))!.encoded, c.encoded);
   });
+  test('only an explicit cost allocation uses the new contract; legacy retry is unchanged', () async {
+    final destination = ExpenseAllocation(ExpenseCategory.customer, counterpartyId: 'customer');
+    final names = <String>[];
+    final repository = ExpenseManagementRepository(actor: () => 'actor', rpc: (name, params) async {
+      names.add(name);
+      expect(params['p_allocation'], 'customer');
+      if (name == 'expense_allocate_with_cost') expect(params.containsKey('p_action'), isFalse);
+      return {'id': 'claim', 'company_id': 'company', 'revision': 2,
+        if (name == 'expense_allocate_with_cost') 'cost_allocation_current': true};
+    });
+    final legacy = ExpenseReviewCommand.create('actor', 'company', 'claim', 1, 'allocate', destination);
+    expect(ExpenseReviewCommand.decode(legacy.encoded).encoded, legacy.encoded);
+    expect(ExpenseReviewCommand.decode(legacy.encoded).costRecoveryOptIn, isFalse);
+    await repository.execute(legacy);
+    final explicit = ExpenseReviewCommand.create('actor', 'company', 'claim', 1, 'allocate', destination,
+      costRecoveryOptIn: true);
+    expect(ExpenseReviewCommand.decode(explicit.encoded).encoded, explicit.encoded);
+    await repository.execute(explicit);
+    expect(names, ['expense_review_command', 'expense_allocate_with_cost']);
+    expect(await repository.pending('company'), isNull);
+  });
+  test('missing financial allocation receipt preserves the explicit pending command', () async {
+    final repository = ExpenseManagementRepository(actor: () => 'actor', rpc: (_, params) async => {
+      'id': 'claim', 'company_id': 'company', 'revision': 2});
+    final command = ExpenseReviewCommand.create('actor', 'company', 'claim', 1, 'allocate',
+      ExpenseAllocation(ExpenseCategory.customer, counterpartyId: 'customer'), costRecoveryOptIn: true);
+    await expectLater(repository.execute(command), throwsA(isA<StateError>()));
+    expect((await repository.pending('company'))!.encoded, command.encoded);
+  });
   testWidgets('320px and enlarged text require explicit method/month and cancel without approval', (tester) async {
     tester.view.physicalSize = const Size(320, 720);
     tester.view.devicePixelRatio = 1;

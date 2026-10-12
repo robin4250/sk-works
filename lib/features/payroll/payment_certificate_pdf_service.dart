@@ -20,6 +20,14 @@ class PaymentCertificatePdfService {
     pw.Font? boldFont,
   }) async {
     final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
+    if (record.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
+      throw StateError('別途経費の内訳と支払証明書金額が一致しません。再読み込みしてください。');
+    }
+    if (expenses != null) {
+      record.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
+        'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+      }));
+    }
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
@@ -43,7 +51,7 @@ class PaymentCertificatePdfService {
     );
 
     if (expenses != null) {
-      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
     }
     return document.save();
   }
@@ -61,17 +69,24 @@ class PaymentCertificatePdfService {
     pw.Font sealFont,
     pw.Font fallbackFont,
   ) {
-    final lines = record.lines.isEmpty
-        ? [
+    final baseAmount = record.grossAmount - record.expenseExtraAmountYen;
+    final lines = [
+      if (record.lines.isEmpty && (!record.expenseCost.isCurrent || baseAmount != 0))
             PaymentCertificateLine(
               siteName: '工事代金',
               workContent: '',
               quantityLabel: '1',
-              unitPriceYen: record.grossAmount,
-              amountYen: record.grossAmount,
+              unitPriceYen: baseAmount,
+              amountYen: baseAmount,
             ),
-          ]
-        : record.lines;
+      ...record.lines,
+      if (record.expenseExtraAmountYen != 0)
+        PaymentCertificateLine(
+          siteName: '経費', workContent: '別途経費（原額）', quantityLabel: '一式',
+          unitPriceYen: record.expenseExtraAmountYen,
+          amountYen: record.expenseExtraAmountYen,
+        ),
+    ];
 
     final gross = record.grossAmount;
     final balance = record.netAmount;
