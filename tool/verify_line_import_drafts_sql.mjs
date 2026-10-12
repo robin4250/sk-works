@@ -29,7 +29,7 @@ await db.exec(`alter table public.companies add column tax_rate numeric default 
 alter table public.sites add column customer_id uuid,add column formal_name text,add column created_at timestamptz default now();
 create table public.customers(id uuid primary key,company_id uuid,name text,notes text,billing_address text);
 create table public.invoices(id uuid primary key default gen_random_uuid(),company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,status text,finalized_at timestamptz,automatic_calculation boolean,calculation_blocked boolean,subtotal integer,tax integer,welfare_amount integer,grand_total integer,snapshot jsonb,updated_at timestamptz,adjustments integer,detail_mode text);
-create table public.attendance_entries(company_id uuid,worker_id uuid,site_id uuid,work_date date,work_category text,base_man_days numeric,overtime_hours numeric,early_hours numeric,allowance_names text[]);
+create table public.attendance_entries(id uuid primary key default gen_random_uuid(),company_id uuid,worker_id uuid,site_id uuid,work_date date,work_category text,base_man_days numeric,overtime_hours numeric,early_hours numeric,allowance_names text[]);
 create table public.attendance_correction_requests(id uuid primary key default gen_random_uuid(),company_id uuid,requested_by uuid,status text,request_kind text,signer_name text,signature_json jsonb,signed_at timestamptz,submitted_at timestamptz);
 create table public.attendance_correction_items(id uuid primary key default gen_random_uuid(),request_id uuid references public.attendance_correction_requests(id) on delete cascade,company_id uuid,attendance_entry_id uuid,original_snapshot jsonb,proposed_snapshot jsonb,change_summary text);
 create table public.company_approval_assignees(company_id uuid,user_id uuid);
@@ -125,6 +125,19 @@ const resubmitted=await q('select public.submit_line_attendance($1,$2,2,$3,$4::j
 assert.notEqual(resubmitted.request_id,submitted.request_id);
 assert.equal((await db.query('select count(*)::int n from private.line_attendance_submissions where active')).rows[0].n,2);
 assert.equal((await db.query('select count(*)::int n from private.line_attendance_submissions where not active')).rows[0].n,2);
+// The ordinary past RPC after a LINE submission is blocked by the scoped item
+// guard. The same command on a non-LINE day keeps its ordinary contract.
+const ordinaryItems=[{date:'2026-10-01',workerName:'本人',siteName:'現場A',manDays:1}];
+await rejected(()=>q('select public.submit_past_attendance_request($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(ordinaryItems),'確認者',submitParams[4]]),/LINEから同日の出勤/);
+const ordinary=await q('select public.submit_past_attendance_request($1::jsonb,$2,$3::jsonb) value',[JSON.stringify([{...ordinaryItems[0],date:'2026-10-02'}]),'確認者',submitParams[4]]);
+assert.ok(ordinary);
+// Every registration input (including an ordinary approval INSERT) receives the
+// enrolled-day guard. The first insert works; the second does not duplicate it.
+const entryParams=[id(10),id(30),id(40),'2026-10-01'];
+await db.query('insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days) values($1,$2,$3,$4,1)',entryParams);
+await rejected(()=>db.query('insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days) values($1,$2,$3,$4,1)',entryParams),/LINE取込日の出勤/);
+assert.equal((await db.query('select count(*)::int n from attendance_entries')).rows[0].n,1);
+await db.exec('delete from attendance_entries');
 const missingAllowance=await save(88,1,[{...row(0,'本人'),allowance_names:['未登録手当']}],[source],'invoice',true);
 await rejected(()=>q('select public.line_invoice_preview($1,2) value',[missingAllowance.draft_id]),/手当の名称/);
 await db.close();console.log('LINE imports: reversible Master flags, own-worker privacy, source/revision/duplicate guards, signature to ordinary approval, exact general invoice math, drift rejection and atomic draft receipts passed.');

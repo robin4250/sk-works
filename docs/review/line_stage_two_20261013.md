@@ -16,9 +16,9 @@
 - flagsは既存`is_current_user_master_admin()`でMasterだけ変更可能。draft編集は既存勤怠管理権限、請求は管理者＋既存請求管理権限。一般閲覧は本人worker IDの確認済み行だけ。元のトーク全文や他社員の候補/LINEノート本文は返さない。
 - 受信元は実在する同会社/同グループのLINE message ID/body/timeを確認。過去履歴はユーザー提供の手動資料として区別。異なるsource kindを混在保存可能。
 - command UUIDは内容に結び付け、同じ再送は同じ結果。期待revisionで編集競合を拒否。ログイン変更後の古い画面からの書込みも拒否。
-- 正式出勤は既存requests/entriesとLINE receiptを確認し、table locksで既存手動申請との隙間を閉じて通常RPCを呼ぶ。同日登録は拒否し、勤務修正で既存データを確認する。却下された申請は古いreceipt履歴を保持して再申請できる。
+- 正式出勤は既存requests/entriesとLINE receiptを確認し、NOWAIT table locksで既存手動申請との隙間を閉じて通常RPCを呼ぶ。既存writerと循環待ちにしない。LINE申請済みの日に限定した入力guardで、後続の通常申請・実績INSERTによる二重登録も拒否する（給与計算/既存approval bodyは不変更）。同日登録は拒否し、勤務修正で既存データを確認する。却下された申請は古いreceipt履歴を保持して再申請できる。
 - LINE請求の入力根拠をprivateで保存し、一般invoice計算の登録方法・共通rate helper・単価overrides・会社税率・現場福利率・登録手当を使う。旧一般計算ブロックのbody部分hashを移行時に確認。未登録・ゼロ単価の手当は金額作成前に要確認として拒否する。初期15%/10%を全社へ固定しない。
-- ルート請求の実日報証拠を偽造しない。invoice lockを取得して全体を原子的に生成、同月の既存請求書を拒否。確認した金額fingerprintが設定変更で変わった場合は再確認。確定請求書/過去給与を書き換えない。
+- ルート請求の実日報証拠を偽造しない。invoice lockを取得して全体を原子的に生成、同月の既存請求書を拒否。確認した金額fingerprintが設定変更で変わった場合は再確認。会社/現場/取引会社設定はquote中SHARE NOWAITで保護し、invoice scopeもtry-lockにする。確定請求書/過去給与を書き換えない。
 
 ## 検証
 
@@ -26,7 +26,7 @@
 
 請求は合成2人工、現場単価20,000円、福利8%、会社税10%で47,520円。実際の現在`refresh_automatic_invoice`で同じ数量を計算したsitesと金額に一致。単価変更後の未確認生成を拒否。普通のdraft、再送1件、同取引先/月の二重作成拒否を確認。
 
-専用CIでPG17二接続の同command待機/同receipt、独立二重作成拒否、Master OFF待機を検証する。Flutter候補・再取込・月集計・公開トーク/追加ボタン・時間ラベルのテストと解析、通常Flutter/iOS/Secret CIを最新headで確認する。
+専用CIでPG17二接続の同command待機/同receipt、独立二重作成拒否、Master OFF待機、既存請求/出勤writerの逆順lockと同日二接続INSERTを検証する。Flutter候補・再取込・月集計・公開トーク/追加ボタン・時間ラベルのテストと解析、通常Flutter/iOS/Secret CIを最新headで確認する。
 
 ## 未実施と本番導入
 

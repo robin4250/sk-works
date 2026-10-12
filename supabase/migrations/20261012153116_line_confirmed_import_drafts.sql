@@ -542,6 +542,35 @@ create table private.line_invoice_submissions (
 alter table private.line_attendance_submissions enable row level security;
 alter table private.line_invoice_submissions enable row level security;
 revoke all on private.line_attendance_submissions,private.line_invoice_submissions from public,anon,authenticated;
+-- Scope these input guards only to days already enrolled by LINE. Ordinary
+-- payroll, correction amounts and all non-LINE worker days keep their contract.
+create function private.guard_line_enrolled_attendance_day() returns trigger language plpgsql security definer set search_path='' as $$
+declare cid uuid;wid uuid;day date;request public.attendance_correction_requests;
+begin
+ if tg_table_name='attendance_correction_items' then
+  select * into request from public.attendance_correction_requests where id=new.request_id;
+  if request.request_kind<>'past_attendance' then return new;end if;
+  cid:=request.company_id;wid:=nullif(new.proposed_snapshot->>'workerId','')::uuid;day:=replace(new.proposed_snapshot->>'date','/','-')::date;
+  if exists(select 1 from private.line_attendance_submissions sub join public.attendance_correction_requests req on req.id=sub.request_id
+   where sub.company_id=cid and sub.worker_id=wid and sub.work_date=day and sub.active and req.status in ('submitted','approved') and sub.request_id<>request.id) then
+   raise exception 'LINEから同日の出勤を申請済みです。既存の申請または勤務修正を確認してください。' using errcode='22023';
+  end if;
+  return new;
+ end if;
+ cid:=new.company_id;wid:=new.worker_id;day:=new.work_date;
+ if tg_op='UPDATE' and (new.company_id,new.worker_id,new.work_date) is not distinct from (old.company_id,old.worker_id,old.work_date) then return new;end if;
+ if not exists(select 1 from private.line_attendance_submissions sub join public.attendance_correction_requests req on req.id=sub.request_id
+   where sub.company_id=cid and sub.worker_id=wid and sub.work_date=day and sub.active and req.status in ('submitted','approved')) then return new;end if;
+ if not pg_try_advisory_xact_lock(hashtextextended('line-attendance-day:'||cid::text||wid::text||day::text,0)) then raise exception '同日の出勤登録を処理中です。再確認してください。' using errcode='40001';end if;
+ if exists(select 1 from public.attendance_entries where company_id=cid and worker_id=wid and work_date=day and id is distinct from new.id) then
+  raise exception 'LINE取込日の出勤は登録済みです。勤務修正から確認してください。' using errcode='22023';
+ end if;
+ return new;
+end $$;
+revoke all on function private.guard_line_enrolled_attendance_day() from public,anon,authenticated,service_role;
+create trigger line_enrolled_past_request_guard before insert on public.attendance_correction_items for each row execute function private.guard_line_enrolled_attendance_day();
+create trigger line_enrolled_attendance_day_guard before insert or update of company_id,worker_id,work_date on public.attendance_entries for each row execute function private.guard_line_enrolled_attendance_day();
+
 create function private.require_current_line_import_draft(p_draft_id uuid,p_revision integer,p_target text) returns private.line_import_drafts
 language plpgsql security definer set search_path='' as $$
 declare draft private.line_import_drafts; access jsonb; source jsonb; r jsonb;
@@ -571,6 +600,8 @@ create function private.line_invoice_preview(p_draft_id uuid,p_revision integer)
 declare draft private.line_import_drafts; rows jsonb; customer record; quote jsonb; quotes jsonb:='[]'; data jsonb;
 begin
  draft:=private.require_current_line_import_draft(p_draft_id,p_revision,'invoice');
+ begin lock table public.companies,public.site_financial_settings,public.site_calculation_source_preferences,public.trade_companies,public.trade_company_contracts in share mode nowait;
+ exception when lock_not_available then raise exception '請求設定を変更中です。再確認してお試しください。' using errcode='40001';end;
  select jsonb_agg(jsonb_build_object('company_id',draft.company_id,'site_id',(r->>'site_id')::uuid,'work_date',(r->>'work_date')::date,
  'work_category',coalesce(r->>'work_category',case when r->>'night_work'='true' then 'night' else 'day' end),
  'base_man_days',(r->>'man_days')::numeric,'overtime_hours',(r->>'overtime_hours')::numeric,'early_hours',(r->>'early_hours')::numeric,
@@ -612,9 +643,10 @@ begin
  -- Serialize with every invoice INSERT/UPDATE, including existing manual and automatic inputs.
  -- No existing invoice is ever overwritten by a LINE import.
  for quote in select value from jsonb_array_elements(preview->'quotes') order by value->>'customer_id' loop
-  perform pg_advisory_xact_lock(hashtextextended('invoice:'||cid::text||(quote->>'customer_id')||draft.work_month::text,0));
+  if not pg_try_advisory_xact_lock(hashtextextended('invoice:'||cid::text||(quote->>'customer_id')||draft.work_month::text,0)) then raise exception '別の請求処理中です。再確認してお試しください。' using errcode='40001';end if;
  end loop;
- lock table public.invoices in share row exclusive mode;
+ begin lock table public.invoices in share row exclusive mode nowait;
+ exception when lock_not_available then raise exception '別の請求処理中です。再確認してお試しください。' using errcode='40001';end;
  for quote in select value from jsonb_array_elements(preview->'quotes') loop
   if exists(select 1 from public.invoices where company_id=cid and customer_id=(quote->>'customer_id')::uuid and billing_period_start<=((draft.work_month+interval '1 month - 1 day')::date) and billing_period_end>=draft.work_month)
     or exists(select 1 from private.line_invoice_submissions where company_id=cid and customer_id=(quote->>'customer_id')::uuid and work_month=draft.work_month) then raise exception '同じ取引会社・月の請求書があります。既存の請求書を確認してください。' using errcode='22023';end if;
@@ -645,7 +677,8 @@ begin
  if nullif(trim(p_signer_name),'') is null or p_signature_json is null then raise exception '申請の署名を入力してください。' using errcode='22023';end if;
  -- Existing manual submissions do not take a LINE lock; table locks close the
  -- gap while this wrapper checks duplicates and creates its ordinary request.
- lock table public.attendance_correction_requests,public.attendance_entries in share row exclusive mode;
+ begin lock table public.attendance_correction_requests,public.attendance_entries in share row exclusive mode nowait;
+ exception when lock_not_available then raise exception '別の出勤処理中です。再確認してお試しください。' using errcode='40001';end;
  for r in select value from jsonb_array_elements(draft.candidate_rows) where coalesce(value->>'excluded','false')<>'true' and (p_worker_ids is null or (value->>'worker_id')::uuid=any(p_worker_ids)) order by value->>'worker_id',value->>'work_date' loop
   if (r->>'work_date')::date >= (now() at time zone 'Asia/Tokyo')::date then raise exception '過去の日付だけをまとめて申請できます。' using errcode='22023';end if;
   update private.line_attendance_submissions sub set active=false where sub.company_id=cid and sub.worker_id=(r->>'worker_id')::uuid and sub.work_date=(r->>'work_date')::date and sub.active

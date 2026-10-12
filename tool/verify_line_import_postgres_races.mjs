@@ -44,5 +44,30 @@ try{
  }
  assert.equal(switched,false);await a.query('commit');assert.equal((await off).attendance,false);
  assert.equal((await a.query('select count(*)::int n from private.line_import_drafts')).rows[0].n,3);
- console.log('Postgres 17: duplicate invoice command waits and reuses one receipt, independent duplicate refused, OFF waits and preserves drafts.');
+ // Legacy invoice writers take a table lock before a scope lock. LINE must
+ // fail immediately, release its advisory scope and leave the legacy writer free.
+ await b.query('begin');await b.query('lock table invoices in row exclusive mode');
+ await assert.rejects(()=>q(a,'select public.create_line_invoices($1,$2,1,$3) value',[id(104),data.draft_id,preview.fingerprint]),error=>error.code==='40001');
+ const scope='invoice:'+id(10)+id(70)+'2026-09-01';
+ assert.equal((await b.query('select pg_try_advisory_xact_lock(hashtextextended($1,0)) value',[scope])).rows[0].value,true);
+ await b.query('rollback');
+ await b.query('begin');await b.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[scope]);
+ await assert.rejects(()=>q(a,'select public.create_line_invoices($1,$2,1,$3) value',[id(105),data.draft_id,preview.fingerprint]),error=>error.code==='40001');
+ await b.query("update invoices set status=status where billing_period_start='2026-09-01'");await b.query('rollback');
+ // A legacy attendance approval can hold RowShare on requests and RowExclusive
+ // on entries. A LINE request never leaves a lock blocking its later promotion.
+ const attendance=(await a.query("select id from private.line_import_drafts where target='attendance'")).rows[0].id;
+ await a.query("select public.set_line_import_feature('attendance',true)");
+ await b.query('begin');await b.query('lock table attendance_correction_requests in row share mode');await b.query('lock table attendance_entries in row exclusive mode');
+ await assert.rejects(()=>q(a,'select public.submit_line_attendance($1,$2,2,$3,$4::jsonb,null) value',[id(106),attendance,'確認者',JSON.stringify({strokes:[[0,0],[1,1]]})]),error=>error.code==='40001');
+ await b.query('update attendance_correction_requests set status=status');await b.query('rollback');
+ // Two ordinary registration/approval inputs on a LINE-enrolled worker-day
+ // cannot both pass the first-insert test, even from privileged RPC code.
+ const entry=[id(10),id(30),id(40),'2026-10-01'];
+ const insert=client=>client.query('insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days) values($1,$2,$3,$4,1)',entry);
+ await a.query('begin');await insert(a);
+ await assert.rejects(()=>insert(b),error=>error.code==='40001');await a.query('commit');
+ await assert.rejects(()=>insert(b),error=>error.code==='22023');
+ assert.equal((await a.query('select count(*)::int n from attendance_entries where company_id=$1 and worker_id=$2 and work_date=$3',[entry[0],entry[1],entry[3]])).rows[0].n,1);
+ console.log('Postgres 17: immutable concurrent receipt, duplicate refusal, OFF preservation, nonblocking legacy lock orders and one enrolled worker-day insert passed.');
 }finally{await Promise.allSettled([a.query('rollback'),b.query('rollback')]);await Promise.allSettled([a.end(),b.end()]);}
