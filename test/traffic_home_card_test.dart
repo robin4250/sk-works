@@ -9,6 +9,7 @@ import 'package:sk_works/features/home/home_attention_repository.dart';
 import 'package:sk_works/features/home/home_membership_repository.dart';
 import 'package:sk_works/features/home/home_action_order_policy.dart';
 import 'package:sk_works/features/traffic/traffic_home_card.dart';
+import 'package:sk_works/features/traffic/traffic_destination_icon.dart';
 import 'package:sk_works/features/traffic/traffic_link_policy.dart';
 import 'package:sk_works/features/settings/master_feature_availability.dart';
 
@@ -51,7 +52,6 @@ void main() {
     await pump(tester, scale: 1.3);
     expect(find.text('交通案内'), findsNothing);
     expect(tester.getSize(find.byType(TrafficHomeCard)).height, lessThanOrEqualTo(56));
-    final iconTypes = [Icons.apartment_rounded, Icons.train_rounded, Icons.directions_bus_rounded];
     final labels = ['最寄駅', '電車乗換', 'バス停'];
     for (var index = 0; index < 3; index++) {
       final button = find.byKey(ValueKey('traffic-${TrafficDestination.values[index].name}'));
@@ -59,7 +59,7 @@ void main() {
       expect(rect.width, greaterThanOrEqualTo(44));
       expect(rect.height, greaterThanOrEqualTo(44));
       expect(tester.getRect(find.text(labels[index])).left,
-          greaterThan(tester.getRect(find.byIcon(iconTypes[index])).right));
+          greaterThan(tester.getRect(find.byKey(ValueKey('traffic-icon-${TrafficDestination.values[index].name}'))).right));
     }
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('交通案内のヘルプ'));
@@ -67,6 +67,20 @@ void main() {
     expect(find.textContaining('マスター'), findsNothing);
     expect(find.textContaining('権限'), findsNothing);
     expect(find.textContaining('Googleマップ'), findsOneWidget);
+  });
+
+  testWidgets('three native signs preserve compact size and destination identities', (tester) async {
+    await pump(tester, scale: 1.3);
+    final icons = tester.widgetList<TrafficDestinationIcon>(find.byType(TrafficDestinationIcon)).toList();
+    expect(icons.map((icon) => icon.destination), TrafficDestination.values);
+    for (final destination in TrafficDestination.values) {
+      final icon = find.byKey(ValueKey('traffic-icon-${destination.name}'));
+      expect(tester.getSize(icon), const Size(20, 20));
+      expect(find.descendant(of: icon, matching: find.byType(CustomPaint)), findsOneWidget);
+    }
+    expect(find.byIcon(Icons.apartment_rounded), findsNothing);
+    expect(find.byIcon(Icons.directions_bus_rounded), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('OFF cannot launch and other slots do not move', (tester) async {

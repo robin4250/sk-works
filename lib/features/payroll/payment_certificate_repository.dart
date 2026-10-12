@@ -1,4 +1,5 @@
 import '../../domain/company_seal_snapshot.dart';
+import '../../domain/expense_cost_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -41,6 +42,7 @@ class PaymentCertificateRecord {
     this.payerFax = '',
     this.partnerCompanyId = '',
     this.lines = const [],
+    this.expenseCost = const ExpenseCostSnapshot.none(),
   });
 
   final String id;
@@ -63,6 +65,8 @@ class PaymentCertificateRecord {
   final String payerFax;
   final String partnerCompanyId;
   final List<PaymentCertificateLine> lines;
+  final ExpenseCostSnapshot expenseCost;
+  int get expenseExtraAmountYen => expenseCost.amountYen;
 
   String get monthLabel => '${periodStart.year}年${periodStart.month}月';
   bool get isPreview => status == 'preview';
@@ -244,6 +248,8 @@ class PaymentCertificateRepository {
           payerPhone: company['phone']?.toString() ?? '',
           payerFax: company['fax']?.toString() ?? '',
           lines: List.unmodifiable(lines),
+          expenseCost: ExpenseCostSnapshot.parse(raw['snapshot'] is Map
+              ? Map<String, dynamic>.from(raw['snapshot']) : const {}),
         ),
       );
     }

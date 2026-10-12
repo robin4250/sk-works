@@ -9,11 +9,13 @@ class ExpenseDocumentDetails {
     required this.subjectId,
     required this.month,
     required this.claims,
+    this.costRecoveryAmountYen,
   });
   final ExpenseDocument kind;
   final String documentId, subjectId;
   final DateTime month;
   final ExpenseClaims claims;
+  final int? costRecoveryAmountYen;
   factory ExpenseDocumentDetails.parse(
     Map<String, dynamic> v,
     ExpenseDocument kind,
@@ -70,12 +72,18 @@ class ExpenseDocumentDetails {
       }
       return c;
     });
+    final costAmount = v['cost_recovery_amount_yen'];
+    if (costAmount != null && (kind == ExpenseDocument.payroll ||
+        costAmount is! int || costAmount < 0)) {
+      throw StateError('別途経費の帳票金額を確認できません。');
+    }
     return ExpenseDocumentDetails(
       kind: kind,
       documentId: documentId,
       subjectId: subject,
       month: date,
       claims: ExpenseClaims(companyId: company, claims: entries),
+      costRecoveryAmountYen: costAmount as int?,
     );
   }
 }

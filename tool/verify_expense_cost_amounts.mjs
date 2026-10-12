@@ -12,8 +12,12 @@ try {
     and exists(select 1 from public.company_members m where m.company_id=p_company
       and m.user_id=auth.uid() and m.role in ('owner','admin'))$$`);
   // The extension is staged separately from the deployed metadata contract.
-  await db.exec(fs.readFileSync('supabase/tests/expense_settlement_choice_cost_extension.sql','utf8'));
-  await db.exec(fs.readFileSync('supabase/tests/expense_cost_amounts.sql', 'utf8'));
+  if (process.env.SKO_EXPENSE_COST_MIGRATION_PATH) {
+    await db.exec(fs.readFileSync(process.env.SKO_EXPENSE_COST_MIGRATION_PATH, 'utf8'));
+  } else {
+    await db.exec(fs.readFileSync('supabase/tests/expense_settlement_choice_cost_extension.sql','utf8'));
+    await db.exec(fs.readFileSync('supabase/tests/expense_cost_amounts.sql', 'utf8'));
+  }
   const id = n => `00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
   const [company, worker, actor, customer, partner, site, claim] = [1,2,3,4,5,6,7].map(id);
   await db.exec(`insert into companies(id,tax_rate) values('${company}',10);
@@ -54,6 +58,7 @@ try {
   const frozenDetail=(await db.query(`select public.read_expense_document('paymentCertificate','${certificate.id}') as value`)).rows[0].value;
   assert.deepEqual(frozenDetail.claims.map(row=>row.id),[claim],'finalized payment details retain the charged claim');
   assert.equal(frozenDetail.claims.reduce((sum,row)=>sum+row.amount_yen,0),1234);
+  assert.equal(frozenDetail.cost_recovery_amount_yen,1234);
   assert.equal((await db.query('select count(*)::int n from private.expense_amount_consumptions')).rows[0].n,1);
   await assert.rejects(db.exec(`update private.expense_claims set amount_yen=2234,revision=4 where id='${claim}'`),/確定済み/);
   await assert.rejects(db.exec(`update private.expense_claims set allocation='customer',counterparty_id='${customer}',revision=4 where id='${claim}'`),/確定済み/);
@@ -80,6 +85,7 @@ try {
   const detail=(await db.query(`select public.read_expense_document('invoice','${opted.id}') as value`)).rows[0].value;
   assert.deepEqual(detail.claims.map(row=>row.id),[legacyClaim],'detail lists only the expense actually charged');
   assert.equal(detail.claims.reduce((sum,row)=>sum+row.amount_yen,0),999,'detail total equals the extra amount');
+  assert.equal(detail.cost_recovery_amount_yen,999);
   await db.exec(`select private.expense_review_command('${id(34)}','${legacyClaim}',3,'allocate','ownCompany',null)`);
   assert.equal((await db.query(`select grand_total from invoices where id='${opted.id}'`)).rows[0].grand_total,0);
   assert.equal((await db.query(`select cost_allocation_current from private.expense_settlement_choices where claim_id='${legacyClaim}'`)).rows[0].cost_allocation_current,false);

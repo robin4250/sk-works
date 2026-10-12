@@ -17,6 +17,7 @@ class ExpenseClaimsPage extends StatefulWidget {
     this.onAllocate,
     this.destinations = const [],
     this.allowSettlementSetup = false,
+    this.costAllocationEnabled = false,
   });
   final ExpenseClaims claims;
   final String? applicantId;
@@ -31,6 +32,7 @@ class ExpenseClaimsPage extends StatefulWidget {
   onAllocate;
   final List<ExpenseAllocation> destinations;
   final bool allowSettlementSetup;
+  final bool costAllocationEnabled;
   @override
   State<ExpenseClaimsPage> createState() => _ExpenseClaimsPageState();
 }
@@ -115,7 +117,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('経費の承認・振り分け'),
-      content: const SingleChildScrollView(
+      content: SingleChildScrollView(
         child: Text(
           '1. 利用月と申請者・内容・金額を確認し、担当者が承認または却下します。\n\n'
           '管理者・サブ管理者は承認時に現金精算／給料精算と対象月を選び、「承認して保存」を押します。'
@@ -126,8 +128,8 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
           '3. 「すべて」は全状態の履歴です。負担先と承認状態を組み合わせて絞り込めます。'
           '申請者名を押すと、その人の申請一覧を閲覧できます。\n\n'
           '承認済みの表示金額は経費の合計で、支払済額ではありません。'
-          '現在の帳票連携は経費明細の表示です。'
-          '支給・請求・支払額への追加は準備中です。確定済み帳票は変更しません。\n\n'
+          '${widget.costAllocationEnabled ? '取引会社・下請け会社へ確認して振り分けた経費は、利用月の請求書・支払証明書へ原額で別途加算します。税・福利厚生費は加算しません。内訳は2ページ目で確認できます。給料精算の給与支給への接続は準備中です。' : '現在の帳票連携は経費明細の表示です。支給・請求・支払額への追加は準備中です。'}'
+          '確定済み帳票は変更しません。\n\n'
           '通信結果が不明なときは、別の操作をせず「同じ操作を再確認」を使ってください。',
         ),
       ),
@@ -227,8 +229,12 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         '${destination!.counterpartyName == null ? '' : ' / ${destination!.counterpartyName}'}',
                       ),
                       Text(switch (destination!.category) {
-                        ExpenseCategory.customer => '経費明細の表示先：取引会社の請求書',
-                        ExpenseCategory.subcontractor => '経費明細の表示先：下請け会社の支払証明書',
+                        ExpenseCategory.customer => widget.costAllocationEnabled
+                            ? '原額を別途加算：取引会社の請求書（税・福利厚生費の対象外）'
+                            : '経費明細の表示先：取引会社の請求書',
+                        ExpenseCategory.subcontractor => widget.costAllocationEnabled
+                            ? '原額を別途加算：下請け会社の支払証明書（税・福利厚生費の対象外）'
+                            : '経費明細の表示先：下請け会社の支払証明書',
                         _ => '自社が負担する経費として管理します。',
                       }),
                     ],
@@ -353,6 +359,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         _busy ||
                             !approved ||
                             widget.onAllocate == null ||
+                            (widget.costAllocationEnabled && claim.settlement == null) ||
                             widget.destinations.isEmpty
                         ? null
                         : () => _allocate(claim, generation),
@@ -360,7 +367,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                   ),
                 ],
               ),
-              if (approved) const Text('費用の負担先を変える場合は「振り分け」を押します。'),
+              if (approved) Text(widget.costAllocationEnabled && claim.settlement == null
+                  ? '先に管理者・サブ管理者が精算方法を設定してください。'
+                  : '費用の負担先を変える場合は「振り分け」を押します。'),
             ],
           ],
         ),

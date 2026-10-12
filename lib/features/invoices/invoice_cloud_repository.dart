@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../../domain/invoice_engine.dart';
+import '../../domain/expense_cost_snapshot.dart';
 
 class InvoiceCloudRepository {
   InvoiceCloudRepository._(this._client);
@@ -384,6 +385,7 @@ class InvoiceCloudRepository {
             subtotalYenOverride: _toInt(invoice['subtotal']),
             taxYenOverride: _toInt(invoice['tax']),
             grandTotalYenOverride: _toInt(invoice['grand_total']),
+            expenseCost: ExpenseCostSnapshot.parse(snapshotMap),
           ),
         );
       } catch (_) {
@@ -546,6 +548,7 @@ class InvoiceCloudRepository {
     'subtotal': invoice.subtotalYen,
     'tax': invoice.taxYen,
     'grand_total': invoice.grandTotalYen,
+    ...invoice.expenseCost.fields,
     'sites': invoice.siteCalculations
         .map(
           (site) => {

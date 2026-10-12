@@ -314,5 +314,7 @@ begin
  end if;
  return jsonb_build_object('kind'
  $detail$);
+ definition:=replace(definition,'''claims'',coalesce(claims,''[]''::jsonb)',
+  '''cost_recovery_amount_yen'',case when p_kind in (''invoice'',''paymentCertificate'') and row_data->''snapshot''->>''expense_extra_source_version''=''1'' then (row_data->''snapshot''->>''expense_extra_amount_yen'')::integer else null end,''claims'',coalesce(claims,''[]''::jsonb)');
  execute definition;
 end $detail_patch$;
