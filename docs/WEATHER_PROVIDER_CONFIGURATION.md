@@ -27,9 +27,9 @@ Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須に�
 
 ## 検証と残る作業
 
-Node24の14テストで両HTTPprovider、WeatherKit実ES256署名verify、地域日付・24時・48h欠損、4dayfixture、actor scoped住所、曖昧geocode、認証、入力override拒否、secret非露出を検証。PGlite0.3.14の実SQLで通常社員の更新拒否、MASTER変更、直接テーブル拒否、匿名拒否、無効値拒否、migration replayでprovider保持、既存traffic値保持を確認。本物APIは呼びません。
+Node24の17テストで両HTTPprovider、WeatherKit実ES256署名verify、地域日付・24時・48h欠損、4dayfixture、actor scoped住所、曖昧geocode、認証、入力override拒否、secret非露出を検証。PGlite0.3.14の実SQLで通常社員の更新拒否、MASTER変更、直接テーブル拒否、匿名拒否、無効値拒否、migration replayでprovider保持、既存traffic値保持を確認。本物APIは呼びません。
 
-Flutter新gateway2テストはCI対象、ローカルFlutterは未実行。HOME/controllerへregion baseDate/取得状態を接続、MASTER provider選択UI、Apple returned trademark画像＋legalリンク部品とOpenWeather attribution部品は実装済み、詳細への挿入・実画像表示確認が残ります。Yahoo国判定/ボタン、rain approach説明、未来日代表値のHOME表示接続が残ります。server function/migration未導入。API契約・秘密設定確認→本番導入→両provider実API→iPhone Release確認が必要です。
+Flutter新gateway2テストはCI対象、ローカルFlutterは未実行。HOME/controllerへregion baseDate/取得状態を接続、MASTER provider選択UI、Apple returned trademark画像＋legalリンク部品とOpenWeather attribution部品は実装済み、詳細への挿入・実画像表示確認が残ります。Yahoo国判定/ボタン、rain approachのclient表示接続、未来日代表値のHOME表示接続が残ります。server function/migration未導入。API契約・秘密設定確認→本番導入→両provider実API→iPhone Release確認が必要です。
 
 ## 確認した一次資料
 
@@ -43,3 +43,13 @@ Flutter新gateway2テストはCI対象、ローカルFlutterは未実行。HOME/
 - https://supabase.com/docs/guides/functions/auth
 
 API利用料・アカウント登録・購読操作は行っていません。
+
+## 雨接近の取得契約
+
+server `rain_approach` はnull、または `forecast_at` UTC ISO／`reference_at` UTC ISO／`local_hour`／`local_minute`／`precipitation_mm_per_hour`（正の実値）／`source` を返します。今日の選択だけ、実予報時刻が現在以降60分以内かつ地域の同じ日付、referenceが15分以内（未来1分を超えない）で表示候補になります。stale／明日選択／翌日の時刻／欠損／全0／非対応はnull。ETAを作らず、『雨なし』も推測しません。OpenWeatherは実minutely.dt/precipitation。WeatherKitは公式availabilityの応答がforecastNextHourを含む場合だけ別NextHour requestを行い、失敗してもcurrent/hourlyは保持。ForecastMinute.startTime/precipitationIntensity、metadata.readTime/expireTime、units=mを確認。clientは取得後時刻経過時も過去の雨接近表示を残さない確認が必要です。
+
+追加一次資料（Apple一次DocC JSONも直接確認）:
+- https://developer.apple.com/documentation/weatherkitrestapi/get-api-v1-availability-_latitude_-_longitude_ （country必須、応答はDataSet配列）
+- https://developer.apple.com/documentation/weatherkitrestapi/forecastminute （startTime、precipitationIntensity）
+- https://developer.apple.com/documentation/weatherkitrestapi/unitssystem （metric=m）
+- https://developer.apple.com/documentation/weatherkitrestapi/get-attribution-_language_ （https://weatherkit.apple.com/attribution/{language}）
