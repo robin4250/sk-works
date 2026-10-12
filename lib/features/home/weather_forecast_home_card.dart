@@ -196,6 +196,25 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final matches = data.forecast?.hours.where((value) => value.hour == hour).toList();
     return matches != null && matches.length == 1 ? matches.single : null;
   }
+  IconData get summaryIcon {
+    final value = data.forecast;
+    if (value == null) return Icons.help_outline;
+    if (data.selectedDay == 0 && value.currentSummary != null) {
+      final currentIcons = <String, IconData>{
+        '晴れ': Icons.wb_sunny_outlined,
+        '曇り': Icons.cloud_outlined,
+        '雷': Icons.thunderstorm_outlined,
+        '雨': Icons.water_drop_outlined,
+        '雪': Icons.ac_unit,
+        '霧': Icons.blur_on,
+      };
+      for (final entry in currentIcons.entries) {
+        if (SkoLanguageController.tr(entry.key) == value.currentSummary) return entry.value;
+      }
+      return Icons.help_outline;
+    }
+    return at(value.forecastSummaryHour ?? 12)?.icon ?? Icons.help_outline;
+  }
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -206,7 +225,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
     return Column(children: [
       Expanded(flex: 4, child: Row(children: [
-        Icon(at(forecast?.forecastSummaryHour ?? 12)?.icon ?? Icons.cloud_outlined, size: 25, color: colors.primary),
+        Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: colors.primary),
         const SizedBox(width: 4),
         Expanded(flex: 4, child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(region, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, height: 1.1)),

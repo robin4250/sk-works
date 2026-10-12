@@ -120,6 +120,9 @@ void main() {
             }
             expect(find.text('20%'), findsOneWidget);
           }
+          if (data.snapshot == null) {
+            expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-summary-icon'))).icon, Icons.help_outline);
+          }
           expect(tester.takeException(), isNull, reason: '$language / $scale');
           await tester.pumpWidget(const SizedBox.shrink());
           state.dispose();
