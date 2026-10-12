@@ -162,6 +162,7 @@ class FriendlyHomeContent extends StatelessWidget {
 
 class _RequiredDocumentAttentionCard extends StatefulWidget {
   const _RequiredDocumentAttentionCard({
+    super.key,
     required this.attention,
     required this.onOpen,
   });

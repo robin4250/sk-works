@@ -32,8 +32,9 @@ class HomeWeatherLocationRepository {
     final actor = _client.auth.currentUser?.id;
     if (actor == null) throw StateError('Weather location unavailable');
     void checkActor() {
-      if (_client.auth.currentUser?.id != actor)
+      if (_client.auth.currentUser?.id != actor) {
         throw StateError('Session changed');
+      }
     }
 
     final memberships = await _client
@@ -51,11 +52,13 @@ class HomeWeatherLocationRepository {
         companyAddressMissing: true,
       );
     }
-    if (memberships.length != 1)
+    if (memberships.length != 1) {
       throw StateError('Company selection unavailable');
+    }
     final companyId = memberships.single['company_id']?.toString();
-    if (companyId == null || companyId.isEmpty)
+    if (companyId == null || companyId.isEmpty) {
       throw StateError('Company selection unavailable');
+    }
     final companies = await _client
         .from('companies')
         .select('address')
@@ -72,11 +75,13 @@ class HomeWeatherLocationRepository {
     if (!admin) {
       final personnel = await _client.rpc('current_worker_personnel_profile');
       checkActor();
-      if (personnel != null && personnel is! Map)
+      if (personnel != null && personnel is! Map) {
         throw StateError('Personnel unavailable');
+      }
       home = personnel is Map ? personnel['address']?.toString() : null;
-      if (status.phase == HomeAttendancePhase.unknown)
+      if (status.phase == HomeAttendancePhase.unknown) {
         throw StateError('Attendance unavailable');
+      }
       if (status.phase == HomeAttendancePhase.working &&
           status.openShifts.length == 1) {
         final siteId = status.openShifts.single.siteId;

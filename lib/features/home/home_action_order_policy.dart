@@ -32,3 +32,30 @@ List<String> normalizeHomeActionOrder(
   }
   return result.toSet().toList();
 }
+
+/// Reorders menu entries without dropping or moving a special non-menu slot.
+List<String> reorderHomeMenuActions(
+  List<String> saved,
+  List<String> menuOrder,
+  int oldIndex,
+  int newIndex,
+) {
+  final full = normalizeHomeActionOrder(saved, [
+    ...menuOrder,
+    'home_attention',
+  ]);
+  final ordered = full.where(menuOrder.contains).toList();
+  if (oldIndex < 0 ||
+      oldIndex >= ordered.length ||
+      newIndex < 0 ||
+      newIndex > ordered.length) {
+    return full;
+  }
+  if (newIndex > oldIndex) newIndex--;
+  final moved = ordered.removeAt(oldIndex);
+  ordered.insert(newIndex, moved);
+  var index = 0;
+  return [
+    for (final key in full) menuOrder.contains(key) ? ordered[index++] : key,
+  ];
+}

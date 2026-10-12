@@ -12,6 +12,41 @@ import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
   test(
+    'settings menu reorder retains weather defaults and the attention slot',
+    () {
+      final saved = [
+        'attendance_verify',
+        'attendance_today',
+        'profile',
+        'documents',
+      ];
+      final menu = [
+        'attendance_verify',
+        'attendance_today',
+        'weather_forecast',
+        'profile',
+        'documents',
+      ];
+      final reordered = reorderHomeMenuActions(saved, menu, 4, 3);
+      expect(reordered, [
+        'attendance_verify',
+        'attendance_today',
+        'weather_forecast',
+        'home_attention',
+        'documents',
+        'profile',
+      ]);
+      final custom = ['home_attention', ...saved, 'weather_forecast'];
+      final customMenu = normalizeHomeActionOrder(custom, [
+        ...menu,
+        'home_attention',
+      ]).where(menu.contains).toList();
+      final customReordered = reorderHomeMenuActions(custom, customMenu, 3, 2);
+      expect(customReordered.first, 'home_attention');
+      expect(customReordered.last, 'weather_forecast');
+    },
+  );
+  test(
     'first unrelated reorder preserves inserted weather and attention positions',
     () {
       final available = [
@@ -115,7 +150,7 @@ void main() {
       await tester.tap(find.byTooltip('Next day weather'));
       await tester.pump();
       expect(state.value.selectedDay, 1);
-      expect(find.text('Today only'), findsNothing);
+      expect(find.textContaining('Today only'), findsNothing);
       expect(find.text('Tomorrow'), findsOneWidget);
       await tester.tap(find.text('Forecast'));
       await tester.pumpAndSettle();

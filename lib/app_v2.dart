@@ -635,11 +635,8 @@ class _HomePageState extends State<HomePage> {
         newIndex > items.length) {
       return;
     }
-    final ordered = items.map((item) => item.key).toList();
-    if (newIndex > oldIndex) newIndex -= 1;
-    final moved = ordered.removeAt(oldIndex);
-    final insertIndex = newIndex.clamp(0, ordered.length);
-    ordered.insert(insertIndex, moved);
+    final ordered = reorderHomeMenuActions(_homeActionOrder,
+      items.map((item) => item.key).toList(), oldIndex, newIndex);
     setState(() => _homeActionOrder = ordered);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('sko_home_action_order', ordered);
@@ -1445,10 +1442,15 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    final rank = <String, int>{
-      for (var i = 0; i < _homeActionOrder.length; i++)
-        _homeActionOrder[i]: i,
-    };
+    final defaults = List<_MenuAction>.from(items)..sort((a, b) => a.label.compareTo(b.label));
+    final keys = items.map((item) => item.key).toSet();
+    final normalized = normalizeHomeActionOrder(_homeActionOrder, [
+      if (keys.contains('attendance_verify')) 'attendance_verify',
+      if (keys.contains('attendance_today')) 'attendance_today',
+      ...defaults.map((item) => item.key),
+      'home_attention',
+    ]);
+    final rank = <String, int>{for (var i = 0; i < normalized.length; i++) normalized[i]: i};
     items.sort((a, b) {
       final ai = rank[a.key] ?? 100000;
       final bi = rank[b.key] ?? 100000;
