@@ -14,7 +14,7 @@ class AttendanceWeekDateLabel extends StatelessWidget {
         ? colors.error
         : date.weekday == DateTime.saturday ? Colors.blue.shade700 : colors.onSurfaceVariant;
     return SizedBox(
-      width: holidayName == null ? 58 : 110,
+      width: 110,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -22,11 +22,16 @@ class AttendanceWeekDateLabel extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child: Text('${date.day} $weekday', style: TextStyle(fontSize: 14, height: 1.05, fontWeight: FontWeight.w700, color: color)),
           ),
-          if (holidayName != null) ...[
-            const SizedBox(height: 1),
-            Text(holidayName!, textAlign: TextAlign.center,
+          const SizedBox(height: 1),
+          // Reserve the holiday line on every day so the date stays aligned.
+          Visibility(
+            visible: holidayName != null,
+            maintainSize: true,
+            maintainState: true,
+            maintainAnimation: true,
+            child: Text(holidayName ?? '祝日', textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 10, height: 1.05, fontWeight: FontWeight.w400, color: colors.error)),
-          ],
+          ),
         ],
       ),
     );
