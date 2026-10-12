@@ -39,10 +39,37 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
     final month = ExpenseSettlementChoice.applicationMonth(widget.claim.submittedAt);
     final ready = switch (_step) { 1 => _destination != null, 2 => _method != null, _ => true };
     final companies = widget.destinations.where((v) => v.category == _category && v.counterpartyId != null).toList();
-    Widget choose(String label, bool selected, VoidCallback onTap) => ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-      title: Text(label), onTap: onTap);
+    final colors = Theme.of(context).colorScheme;
+    IconData choiceIcon(String label) {
+      if (label.startsWith('承認')) return Icons.check_circle_outline;
+      if (label.startsWith('却下')) return Icons.cancel_outlined;
+      if (label.startsWith('自社') || label.startsWith('取引')) return Icons.business;
+      if (label.startsWith('下請け')) return Icons.groups_outlined;
+      if (label.startsWith('支払済み')) return Icons.credit_card;
+      if (label.startsWith('現金')) return Icons.payments_outlined;
+      if (label.startsWith('給与')) return Icons.currency_yen;
+      if (label.startsWith('立替')) return Icons.receipt_long_outlined;
+      return Icons.more_horiz;
+    }
+    Widget choose(String label, bool selected, VoidCallback onTap) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(selected: selected, child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          backgroundColor: selected ? colors.primaryContainer : colors.surface,
+          foregroundColor: selected ? colors.onPrimaryContainer : colors.onSurface,
+          side: BorderSide(color: selected ? colors.primary : colors.outlineVariant, width: selected ? 2 : 1),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onPressed: onTap,
+        child: Row(children: [
+          Icon(choiceIcon(label)), const SizedBox(width: 10),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          if (selected) ...[const SizedBox(width: 8), const Icon(Icons.check_circle)],
+        ]),
+      )),
+    );
     return AlertDialog(
       title: Text(['① 承認・却下', '② 費用の負担先', '③ 精算方法', '④ メモ', '⑤ 最終確認'][_step]),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
