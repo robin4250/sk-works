@@ -226,7 +226,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
           widget.routeVisitContext!,
         );
         if (!mounted || generation != _loadGeneration) return;
-        if (existing == null) throw StateError('現場訪問の日報を確認できません');
+        if (existing == null || (widget.initialReportId != null && existing.id != widget.initialReportId)) {
+          throw StateError('現場訪問の日報を確認できません');
+        }
         setState(() {
           _report = existing;
           _siteId = existing.siteId;
@@ -258,6 +260,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         vehicleClockInAnchorId: _currentVehicleAnchor,
         reportId: widget.initialReportId,
       );
+      if (widget.initialReportId != null && existing?.id != widget.initialReportId) {
+        throw StateError('選んだ保存済み日報を確認できません。日報一覧を再読み込みしてください。');
+      }
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
         date: date,
@@ -301,6 +306,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _error = null;
         _report = existing;
         _siteName = existing?.siteName ?? group?.siteName ?? '';
+        if (widget.initialReportId != null && existing != null) {
+          _groups = [DailyReportSiteGroup(siteId: existing.siteId,
+            routeAssignmentId: existing.routeAssignmentId, siteName: existing.siteName,
+            workers: existing.workers)];
+        }
         _workers = workers;
         _evidence = evidence;
         _workDescription.text = existing?.workDescription ?? '';
@@ -1078,7 +1088,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             label: SkoLanguageController.tr('日付'),
                             value:
                                 '${_date.year}/${_two(_date.month)}/${_two(_date.day)}',
-                            onTap: _saving || _visitReport ? null : _pickDate,
+                            onTap: _saving || _visitReport || widget.initialReportId != null ? null : _pickDate,
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
@@ -1107,7 +1117,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   ),
                                 ),
                             ],
-                            onChanged: _saving || _visitReport ? null : _selectSite,
+                            onChanged: _saving || _visitReport || widget.initialReportId != null ? null : _selectSite,
                           ),
                           const SizedBox(height: 16),
                           _MemberSummary(workers: _workers),

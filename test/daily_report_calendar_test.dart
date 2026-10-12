@@ -4,6 +4,7 @@ import 'package:sk_works/features/daily_reports/daily_report_calendar_model.dart
 import 'package:sk_works/features/daily_reports/daily_report_month_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
+import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_saved_preview_pager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/international/language_controller.dart';
@@ -44,6 +45,25 @@ class Reports extends DailyReportMonthRepository {
     return DailyReportMonthDocument(DailyReportRecord(id: entry.id, date: entry.date, siteId: entry.siteId,
       siteName: entry.name, workDescription: '作業:${entry.id}', status:'signed', workers:[]), const []);
   }
+}
+
+class SavedReports extends DailyReportRepository {
+  SavedReports(SupabaseClient client) : super.forTesting(client);
+  String? requestedId;
+  bool missing = false;
+  @override
+  Future<List<DailyReportSiteGroup>> loadClockedInGroups(DateTime date) async =>
+    throw StateError('Editing a saved ID must not select current attendance');
+  @override
+  Future<DailyReportRecord?> loadReport({required DateTime date, String? siteId,
+    String? routeAssignmentId, String? vehicleClockInAnchorId, String? reportId}) async {
+    requestedId=reportId;
+    return missing ? null : DailyReportRecord(id:reportId!,date:date,siteId:siteId,
+      siteName:'保存済み現場',workDescription:'選択した古い日報の作業',status:'draft',workers:[]);
+  }
+  @override
+  Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
+    required DateTime date,String? siteId,String? routeAssignmentId}) async => [];
 }
 
 void main() {
@@ -135,6 +155,24 @@ void main() {
     await tester.scrollUntilVisible(find.text('写真情報を再読み込み').first,400); await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('daily-report-day-12-no-photos')),findsNothing);
     expect(find.byKey(const ValueKey('daily-report-day-12-photos')),findsNothing);
+    expect(tester.takeException(),isNull);
+  });
+
+  testWidgets('editing an old saved ID reads that ID and cannot create a replacement when it is missing', (tester) async {
+    final reports=SavedReports(client);
+    await tester.pumpWidget(MaterialApp(home:DailyReportPage(initialDate:DateTime(2026,10,12),
+      initialSiteId:'site-a',initialReportId:'older-id',repositoryForTesting:reports)));
+    await tester.pumpAndSettle();
+    expect(reports.requestedId,'older-id');
+    expect(find.text('選択した古い日報の作業'),findsOneWidget);
+    expect(tester.takeException(),isNull);
+    reports.missing=true;
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(MaterialApp(home:DailyReportPage(initialDate:DateTime(2026,10,12),
+      initialSiteId:'site-a',initialReportId:'older-id',repositoryForTesting:reports)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('選んだ保存済み日報を確認できません。日報一覧を再読み込みしてください。'),findsOneWidget);
+    expect(find.byType(TextField),findsNothing);
     expect(tester.takeException(),isNull);
   });
 
