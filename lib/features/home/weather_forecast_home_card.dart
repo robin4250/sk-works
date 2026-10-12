@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 
 import '../../international/language_controller.dart';
 import 'home_information_card.dart';
+import 'weather_attribution.dart';
 import 'weather_forecast_card.dart';
 import 'weather_forecast_controller.dart';
 
 class WeatherForecastViewData {
   const WeatherForecastViewData({
     this.snapshot,
+    this.attribution = const {},
+    this.radarUri,
     this.loading = false,
     this.failed = false,
     this.addressFailed = false,
@@ -19,6 +22,8 @@ class WeatherForecastViewData {
     this.baseDate,
   }) : assert(selectedDay >= 0 && selectedDay <= 2);
   final WeatherForecastSnapshot? snapshot;
+  final Map<String, dynamic> attribution;
+  final Uri? radarUri;
   final bool loading;
   final bool failed;
   final bool addressFailed;
@@ -43,11 +48,27 @@ class WeatherForecastViewData {
   }
 
   String get temperatureLabel {
-    final temperature = forecast?.currentTemperatureCelsius;
+    final temperature = summaryTemperature;
     if (temperature == null || !temperature.isFinite) {
       return SkoLanguageController.tr('未取得');
     }
     return '${temperature == temperature.roundToDouble() ? temperature.toStringAsFixed(0) : temperature}℃';
+  }
+
+  double? get summaryTemperature => selectedDay == 0 && forecast?.currentTemperatureCelsius != null
+      ? forecast?.currentTemperatureCelsius : forecast?.forecastSummaryTemperatureCelsius;
+  String? get summaryLabel {
+    final value = forecast;
+    if (value == null) {
+      return null;
+    }
+    if (selectedDay == 0 && value.currentSummary != null) {
+      return value.currentSummary;
+    }
+    if (value.forecastSummaryHour != null && value.forecastSummary != null) {
+      return '${SkoLanguageController.trParams('{hour}時の予報', {'hour': value.forecastSummaryHour})}：${value.forecastSummary}';
+    }
+    return null;
   }
 
   String get compactDayLabel =>
@@ -62,7 +83,7 @@ class WeatherForecastViewData {
       ? SkoLanguageController.tr('天気予報を取得中')
       : failed
       ? SkoLanguageController.tr('最新の天気予報を取得できませんでした。')
-      : forecast?.currentSummary ?? SkoLanguageController.tr('天気予報は未取得です。');
+      : summaryLabel ?? SkoLanguageController.tr('天気予報は未取得です。');
 }
 
 class WeatherForecastHomeCard extends StatelessWidget {
@@ -76,6 +97,7 @@ class WeatherForecastHomeCard extends StatelessWidget {
     this.addressFailed = false,
     this.onRefresh,
     this.onOpenRadar,
+    this.onOpenAttribution,
     this.state,
     this.onSelectDay,
   });
@@ -87,6 +109,7 @@ class WeatherForecastHomeCard extends StatelessWidget {
   final bool addressFailed;
   final VoidCallback? onRefresh;
   final VoidCallback? onOpenRadar;
+  final ValueChanged<Uri>? onOpenAttribution;
   final ValueListenable<WeatherForecastViewData>? state;
   final ValueChanged<int>? onSelectDay;
 
@@ -110,7 +133,7 @@ class WeatherForecastHomeCard extends StatelessWidget {
   Widget _card(
     BuildContext context,
     WeatherForecastViewData data,
-  ) => HomeInformationCard(
+  ) => Column(mainAxisSize: MainAxisSize.min, children: [HomeInformationCard(
     icon: Icons.cloud_outlined,
     title: SkoLanguageController.tr('天気予報'),
     showChevron: false,
@@ -149,11 +172,15 @@ class WeatherForecastHomeCard extends StatelessWidget {
           initial: data,
           onRefresh: onRefresh,
           onOpenRadar: onOpenRadar,
+          onOpenAttribution: onOpenAttribution,
           onSelectDay: onSelectDay,
         ),
       ),
     ),
-  );
+  ),
+    if (data.forecast != null && data.attribution.isNotEmpty && onOpenAttribution != null)
+      WeatherAttribution(metadata: data.attribution, onOpen: onOpenAttribution!),
+  ]);
 }
 
 class _WeatherHomeDayArrow extends StatelessWidget {
@@ -258,12 +285,14 @@ class WeatherForecastDetailPage extends StatelessWidget {
     this.initial = const WeatherForecastViewData(),
     this.onRefresh,
     this.onOpenRadar,
+    this.onOpenAttribution,
     this.onSelectDay,
   });
   final ValueListenable<WeatherForecastViewData>? state;
   final WeatherForecastViewData initial;
   final VoidCallback? onRefresh;
   final VoidCallback? onOpenRadar;
+  final ValueChanged<Uri>? onOpenAttribution;
   final ValueChanged<int>? onSelectDay;
   @override
   Widget build(BuildContext context) => state == null
@@ -284,8 +313,8 @@ class WeatherForecastDetailPage extends StatelessWidget {
               locationLabel:
                   forecast?.locationLabel ?? data.locationLabel ?? data.status,
               hours: forecast?.hours ?? const [],
-              currentSummary: forecast?.currentSummary,
-              currentTemperatureCelsius: forecast?.currentTemperatureCelsius,
+              currentSummary: data.summaryLabel,
+              currentTemperatureCelsius: data.summaryTemperature,
               rainApproachMessage: forecast?.rainApproachMessage,
               updatedAt: forecast?.updatedAt,
               sourceLabel: forecast?.sourceLabel,
@@ -295,6 +324,8 @@ class WeatherForecastDetailPage extends StatelessWidget {
               loading: data.loading,
               failed: data.failed,
             ),
+            if (forecast != null && data.attribution.isNotEmpty && onOpenAttribution != null)
+              WeatherAttribution(metadata: data.attribution, onOpen: onOpenAttribution!),
           ],
         ),
       ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
+import '../../data/supabase_backend.dart';
+import '../home/weather_provider_settings_panel.dart';
 import 'master_feature_controls_repository.dart';
 
 class MasterFeatureControlsPage extends StatefulWidget {
@@ -14,6 +16,8 @@ class MasterFeatureControlsPage extends StatefulWidget {
 
 class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
   final _repository = MasterFeatureControlsRepository.maybeCreate();
+  final _weatherProviderRepository = SupabaseBackend.isInitialized
+      ? WeatherProviderSettingsRepository(SupabaseBackend.client) : null;
 
   MasterFeatureAvailability? _availability;
   bool _loading = true;
@@ -135,6 +139,11 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          if (_weatherProviderRepository != null)
+                            WeatherProviderSettingsPanel(
+                              isMaster: true,
+                              repository: _weatherProviderRepository!,
+                            ),
                           const Card(
                             child: Padding(
                               padding: EdgeInsets.all(16),

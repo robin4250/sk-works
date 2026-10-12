@@ -782,10 +782,10 @@ class _HomeReorderSurface extends StatelessWidget {
     children: [
       child,
       Positioned(
-        top: lowerLeadingHandle ? null : upperLeadingHandle ? 10 : 0,
+        top: lowerLeadingHandle ? HomeInformationCard.heightFor(context) - 36 : upperLeadingHandle ? 10 : 0,
         right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
         left: lowerLeadingHandle ? 11 : upperLeadingHandle ? 10 : null,
-        bottom: lowerLeadingHandle ? 8 : null,
+        bottom: null,
         child: LongPressDraggable<String>(
           data: data,
           delay: const Duration(milliseconds: 600),

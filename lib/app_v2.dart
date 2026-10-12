@@ -46,6 +46,8 @@ import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
 import 'features/home/home_weather_location_repository.dart';
 import 'features/home/weather_forecast_home_card.dart';
+import 'features/home/weather_forecast_gateway.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'features/traffic/traffic_home_card.dart';
 import 'features/traffic/traffic_link_policy.dart';
 import 'features/home/home_action_order_policy.dart';
@@ -232,11 +234,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed || !mounted) return;
-    final now = DateTime.now();
-    final previous = _weatherViewState.value.baseDate;
-    if (previous == null || previous.year != now.year || previous.month != now.month || previous.day != now.day) {
-      _loadWeatherLocation();
-    }
+    // The gateway owns the registered region's calendar, including day changes.
+    _loadWeatherLocation();
   }
 
   Future<void> _loadHomeData() async {
@@ -258,7 +257,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final generation = ++_homeWeatherGeneration;
     final previous = _weatherViewState.value;
     final now = DateTime.now();
-    final baseDate = DateTime(now.year, now.month, now.day);
+    final baseDate = previous.baseDate ?? DateTime(now.year, now.month, now.day);
     final actor = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentUser?.id : null;
     final repository = HomeWeatherLocationRepository.maybeCreate();
     bool current() => mounted && generation == _homeWeatherGeneration &&
@@ -285,7 +284,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }),
         companyAddressMissing: result.companyAddressMissing,
         selectedDay: latest.selectedDay, baseDate: latest.baseDate,
+        loading: result.selection.kind != WeatherAddressKind.unavailable,
       );
+      if (result.selection.kind == WeatherAddressKind.unavailable) {
+        return;
+      }
+      final requestedDay = latest.selectedDay;
+      try {
+        final forecast = await WeatherForecastGateway(SupabaseBackend.client).fetchDay(requestedDay);
+        if (!current()) return;
+        _weatherViewState.value = WeatherForecastViewData(
+          snapshot: forecast.snapshot, attribution: forecast.attribution,
+          radarUri: forecast.radarUri,
+          locationLabel: result.selection.address,
+          regionLabel: forecast.snapshot.locationLabel,
+          selectedDay: requestedDay, baseDate: forecast.baseDate,
+        );
+      } catch (_) {
+        if (!current()) return;
+        final pending = _weatherViewState.value;
+        final keepPrevious = previous.locationLabel == pending.locationLabel &&
+            previous.selectedDay == pending.selectedDay && previous.forecast != null;
+        _weatherViewState.value = WeatherForecastViewData(
+          failed: true, locationLabel: pending.locationLabel,
+          regionLabel: pending.regionLabel,
+          snapshot: keepPrevious ? previous.snapshot : null,
+          attribution: keepPrevious ? previous.attribution : const {},
+          radarUri: keepPrevious ? previous.radarUri : null,
+          selectedDay: pending.selectedDay, baseDate: pending.baseDate,
+        );
+      }
     } catch (_) {
       if (!current()) return;
       final latest = _weatherViewState.value;
@@ -297,18 +325,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _selectWeatherDay(int day) {
     if (day < 0 || day > 2) return;
     final previous = _weatherViewState.value;
-    final now = DateTime.now();
     _weatherViewState.value = WeatherForecastViewData(
-      selectedDay: day, baseDate: DateTime(now.year, now.month, now.day), locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
+      selectedDay: day, baseDate: previous.baseDate, locationLabel: previous.locationLabel, regionLabel: previous.regionLabel,
       addressFailed: previous.addressFailed, companyAddressMissing: previous.companyAddressMissing,
-      loading: previous.loading,
+      loading: true,
     );
+    _loadWeatherLocation();
+  }
+
+  Future<void> _openWeatherReference(Uri uri) async {
+    if (uri.scheme != 'https' || uri.userInfo.isNotEmpty ||
+        !{'weather.yahoo.co.jp', 'weatherkit.apple.com', 'openweathermap.org'}.contains(uri.host)) {
+      return;
+    }
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('外部サービスを開けませんでした。もう一度お試しください。'),
+      )));
+    }
+  }
+
+  void _openWeatherRadar() {
+    final data = _weatherViewState.value;
+    if (data.forecast?.radarSupported != true || data.radarUri == null) {
+      return;
+    }
+    _openWeatherReference(data.radarUri!);
   }
 
   Widget _weatherHomeCard() => WeatherForecastHomeCard(
     state: _weatherViewState,
     onRefresh: _loadWeatherLocation,
     onSelectDay: _selectWeatherDay,
+    onOpenRadar: _openWeatherRadar,
+    onOpenAttribution: _openWeatherReference,
   );
 
   Future<void> _syncLanguage() async {
@@ -1084,7 +1140,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         break;
       case 'weather_forecast':
         page = WeatherForecastDetailPage(state: _weatherViewState,
-          onRefresh: _loadWeatherLocation, onSelectDay: _selectWeatherDay);
+          onRefresh: _loadWeatherLocation, onSelectDay: _selectWeatherDay,
+          onOpenRadar: _openWeatherRadar, onOpenAttribution: _openWeatherReference);
         break;
       case 'notifications':
         page = const NotificationsPage();

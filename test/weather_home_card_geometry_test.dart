@@ -11,6 +11,49 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  test('future summary uses the selected forecast hour and never today's current value', () {
+    final data = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), selectedDay: 1,
+      snapshot: WeatherForecastSnapshot(locationLabel: '現場', updatedAt: DateTime(2026, 10, 12),
+        forecastDate: DateTime(2026, 10, 13), sourceLabel: 'OpenWeather',
+        currentTemperatureCelsius: 99, currentSummary: '現在晴れ',
+        forecastSummaryTemperatureCelsius: 18, forecastSummaryHour: 12, forecastSummary: '雨'));
+    expect(data.temperatureLabel, '18℃');
+    expect(data.summaryLabel, '12時の予報：雨');
+    expect(data.status, isNot(contains('現在晴れ')));
+  });
+  testWidgets('live attribution stays outside the frame and clear of its reorder handle', (tester) async {
+    tester.view.physicalSize = const Size(320, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final state = ValueNotifier(WeatherForecastViewData(baseDate: DateTime(2026, 10, 12),
+      snapshot: WeatherForecastSnapshot(locationLabel: '会社周辺', updatedAt: DateTime(2026, 10, 12),
+        forecastDate: DateTime(2026, 10, 12), sourceLabel: 'OpenWeather', currentTemperatureCelsius: 20),
+      attribution: const {'name': 'OpenWeather', 'url': 'https://openweathermap.org/'}));
+    addTearDown(state.dispose);
+    final opened = <Uri>[];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+      data: const MediaQueryData(size: Size(320, 1000), textScaler: TextScaler.linear(1.3)),
+      child: FriendlyHomeContent(
+        identity: const HomeIdentity(role: 'worker', companyName: '会社', displayName: '本人'),
+        requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
+        moduleEnabled: (_) => true, showAttendanceReport: false, showTodayAttendance: false,
+        weatherCard: WeatherForecastHomeCard(state: state, onOpenAttribution: opened.add, onSelectDay: (_) {}),
+        onOpen: (_) async {}, onRefresh: () async {}, onReorderAction: (_, _) async {},
+      ),
+    ))));
+    await tester.pump();
+    final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-weather_forecast')));
+    final frame = tester.getRect(find.byType(HomeInformationCard));
+    final source = tester.getRect(find.widgetWithText(TextButton, '天気データの出典'));
+    expect(frame.contains(handle.topLeft), isTrue);
+    expect(frame.contains(handle.bottomRight), isTrue);
+    expect(handle.overlaps(source), isFalse);
+    await tester.tap(find.text('天気データの出典')); await tester.pump();
+    expect(opened.single.toString(), 'https://openweathermap.org/');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('weather reorder handle does not steal the next-day button', (
     tester,
   ) async {

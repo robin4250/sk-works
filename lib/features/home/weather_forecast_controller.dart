@@ -14,6 +14,9 @@ class WeatherForecastSnapshot {
     this.currentTemperatureCelsius,
     this.rainApproachMessage,
     this.radarSupported = false,
+    this.forecastSummaryTemperatureCelsius,
+    this.forecastSummaryHour,
+    this.forecastSummary,
   });
   final String locationLabel;
   final DateTime updatedAt;
@@ -24,6 +27,9 @@ class WeatherForecastSnapshot {
   final double? currentTemperatureCelsius;
   final String? rainApproachMessage;
   final bool radarSupported;
+  final double? forecastSummaryTemperatureCelsius;
+  final int? forecastSummaryHour;
+  final String? forecastSummary;
 }
 
 /// Server adapter boundary. Clients do not own API keys or choose a provider.
