@@ -33,6 +33,12 @@ for key in required:
 if data.get("CFBundleDisplayName") != "SKO":
     raise SystemExit("unexpected CFBundleDisplayName")
 
+if data.get("CFBundleDevelopmentRegion") != "ja":
+    raise SystemExit("native iOS fallback language must be Japanese")
+localizations = data.get("CFBundleLocalizations", [])
+if not isinstance(localizations, list) or not {"ja", "en"}.issubset(localizations):
+    raise SystemExit("native iOS localization must declare Japanese and English")
+
 if "NSLocationAlwaysUsageDescription" in data:
     raise SystemExit("legacy Always location permission key must not exist")
 if "NSLocationAlwaysAndWhenInUseUsageDescription" not in data:

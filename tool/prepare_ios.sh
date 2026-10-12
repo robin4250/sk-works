@@ -218,6 +218,7 @@ with plist_path.open("rb") as f:
 entries = {
     "CFBundleDisplayName": "SKO",
     "CFBundleName": "SKO",
+    "CFBundleDevelopmentRegion": "ja",
     "NSFaceIDUsageDescription": "SKOの請求書や管理者用データなど重要情報を保護するため、Face IDを使用します。",
     "NSLocationWhenInUseUsageDescription": "SKOで出勤・退勤を登録する際、現場付近にいることを確認するため位置情報を使用します。GPS自動出勤を使わない場合はバックグラウンドで位置取得しません。",
     "NSLocationAlwaysAndWhenInUseUsageDescription": "GPS自動出勤を本人が有効にした場合、指定した曜日と時刻の前後に現場付近にいるか確認するため、バックグラウンドでも位置情報を使用します。",
@@ -228,6 +229,16 @@ entries = {
 
 for key, value in entries.items():
     data[key] = value
+
+# Flutter manages translations without .lproj resources. Declare supported
+# languages so UIImagePickerController and other system UI can use Japanese.
+localizations = data.get("CFBundleLocalizations", [])
+if not isinstance(localizations, list):
+    localizations = []
+for language in ["ja", "en"]:
+    if language not in localizations:
+        localizations.append(language)
+data["CFBundleLocalizations"] = localizations
 
 # SKO's iPhone UI is designed and acceptance-tested in portrait.
 # Keep the iPad-specific orientation key untouched.
