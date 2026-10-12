@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:sk_works/features/invoices/invoice_cloud_repository.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -104,7 +103,6 @@ class _Fixture {
 }
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
   late _Fixture fixture;
   setUp(() async { fixture = _Fixture(); await fixture.start(); });
   tearDown(() async { await fixture.close(); });
@@ -132,10 +130,4 @@ void main() {
     expect((await repository.loadAll()).single.outputReadinessError, isNull);
   });
 
-  test('body fonts preserve successful fetch and fallback to bundled Japanese offline', () async {
-    final supplied = pw.Font.helvetica();
-    expect(await InvoicePdfService.loadBodyFont(() async => supplied), same(supplied));
-    final fallback = await InvoicePdfService.loadBodyFont(() async => throw const SocketException('offline'));
-    expect(fallback, isA<pw.Font>());
-  });
 }

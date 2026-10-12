@@ -6,6 +6,7 @@ on:
       - 'lib/features/invoices/invoice_cloud_repository.dart'
       - 'lib/features/invoices/invoice_pdf_service.dart'
       - 'test/invoice_runtime_read_test.dart'
+      - 'test/invoice_offline_font_test.dart'
       - '.github/workflows/invoice-runtime-read-check.yml'
 permissions:
   contents: read
@@ -20,4 +21,4 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/invoice_runtime_read_test.dart test/invoice_draft_current_seal_test.dart test/invoice_registered_contact_test.dart
+      - run: flutter test test/invoice_runtime_read_test.dart test/invoice_offline_font_test.dart test/invoice_draft_current_seal_test.dart test/invoice_registered_contact_test.dart
