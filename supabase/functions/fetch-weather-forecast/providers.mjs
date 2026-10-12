@@ -1,3 +1,4 @@
+import {WeatherConfigurationError} from './diagnostics.mjs';
 // Provider secrets remain on the server. No SDK or network is required by tests.
 export function localParts(epochSeconds, timeZone) {
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(new Date(epochSeconds*1000));
@@ -48,7 +49,7 @@ export function normalizeRainApproach({date,timeZone,minutes,referenceEpoch,expi
 }
 export async function fetchOpenWeather({location,date,env,fetcher=fetch,now=new Date()}) {
   coordinates(location);
-  const key=env('OPENWEATHER_API_KEY'); if(!key)throw new Error('Weather configuration unavailable');
+  const key=env('OPENWEATHER_API_KEY'); if(!key)throw new WeatherConfigurationError('openweather_key_missing');
   const url=new URL('https://api.openweathermap.org/data/3.0/onecall');
   for(const [k,v]of Object.entries({lat:location.latitude,lon:location.longitude,appid:key,units:'metric',lang:'ja',exclude:'daily,alerts'}))url.searchParams.set(k,String(v));
   const data=await json(fetcher,url);
@@ -72,7 +73,7 @@ export async function fetchOpenWeather({location,date,env,fetcher=fetch,now=new 
 const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 export async function createWeatherKitToken(env,now=new Date(),cryptoImpl=crypto) {
   const team=env('WEATHERKIT_TEAM_ID'),service=env('WEATHERKIT_SERVICE_ID'),kid=env('WEATHERKIT_KEY_ID'),pem=env('WEATHERKIT_PRIVATE_KEY');
-  if(!team||!service||!kid||!pem)throw new Error('Weather configuration unavailable');
+  if(!team||!service||!kid||!pem)throw new WeatherConfigurationError('weatherkit_configuration_missing');
   const seconds=Math.floor(now.getTime()/1000), encoder=new TextEncoder();
   const head=b64(encoder.encode(JSON.stringify({alg:'ES256',kid,id:`${team}.${service}`})));
   const claims=b64(encoder.encode(JSON.stringify({iss:team,sub:service,iat:seconds,exp:seconds+300})));
