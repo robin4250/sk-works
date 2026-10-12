@@ -167,6 +167,46 @@ class ChatCloudRepository {
     return groups;
   }
 
+  Future<({List<Map<String, dynamic>> groups, List<Map<String, dynamic>> linkable, bool canManage})> loadLineTalkGroups() async {
+    final member = await membership();
+    final canManage = member.role == 'owner' || member.role == 'admin';
+    final groups = await loadGroups();
+    // Query through existing chat RLS: workers need no new binding permissions.
+    final receivedIds = <String>{};
+    for (var offset = 0; ; offset += 1000) {
+      final received = await _client.from('chat_messages')
+          .select('id, communication_group_id').eq('origin', 'line')
+          .order('id').range(offset, offset + 999);
+      receivedIds.addAll(received.map((row) => row['communication_group_id'].toString()));
+      if (received.length < 1000) break;
+    }
+    return (
+      groups: groups.where((group) => receivedIds.contains(group['id']?.toString()) || group['line_binding_enabled'] == true).toList(growable: false),
+      linkable: canManage ? groups.where((group) => group['group_type'] != 'direct' && group['line_binding_enabled'] != true).toList(growable: false) : const <Map<String, dynamic>>[],
+      canManage: canManage,
+    );
+  }
+
+  Stream<List<Map<String, dynamic>>> watchLineTalkMessages(String groupId) {
+    return _client.from('chat_messages').stream(primaryKey: ['id'])
+        .eq('communication_group_id', groupId).asyncMap((_) async {
+      final messages = <String, Map<String, dynamic>>{};
+      // Stream notifications trigger a paged read so the REST default row cap
+      // cannot silently truncate a long saved LINE conversation.
+      for (var offset = 0; ; offset += 1000) {
+        final rows = await _client.from('chat_messages')
+            .select('id, body, sender_display_name, sent_at, origin')
+            .eq('communication_group_id', groupId).eq('origin', 'line')
+            .order('sent_at').order('id').range(offset, offset + 999);
+        for (final row in rows) {
+          messages[row['id'].toString()] = Map<String, dynamic>.from(row);
+        }
+        if (rows.length < 1000) break;
+      }
+      return messages.values.toList(growable: false);
+    });
+  }
+
   Future<List<Map<String, dynamic>>> loadSites() async {
     final companyId = await _companyId();
     final rows = await _client

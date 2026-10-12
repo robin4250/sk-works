@@ -302,6 +302,15 @@ class MenuHelpCatalog {
       roles: {ManualRole.subAdmin, ManualRole.admin},
     ),
     MenuHelpItem(
+      key: 'line_talk',
+      label: 'LINEトーク',
+      purpose: 'LINEグループから受信・保存したテキストをグループごとに閲覧します。',
+      destination: 'LINEトーク一覧からグループを選んで受信内容を開きます。',
+      access: '既存チャットで閲覧できるメンバー。連携・停止は管理者のみ。',
+      details: '管理者はLINEグループを連携からSKOトークを選び、連携文をコピーして公式アカウントが参加したLINEグループへ15分以内に送信します。送信後に再読み込みし、投稿したテキスト・投稿者・日時を確認します。保存済みトークは連携停止後も残ります。停止中・連携前の過去投稿や画像・動画・スタンプは取得しません。LINEへの返信、出勤表・請求書への取込はまだ行いません。',
+      roles: {ManualRole.general, ManualRole.subAdmin, ManualRole.admin},
+    ),
+    MenuHelpItem(
       key: 'today_line',
       label: '本日のLINE出勤候補',
       purpose: 'LINE連携から取り込んだ出勤候補を確認します。',
