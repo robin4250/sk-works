@@ -5,6 +5,8 @@ on:
       - 'supabase/functions/fetch-weather-forecast/**'
       - 'supabase/migrations/*weather_provider_settings.sql'
       - 'tool/verify_weather_provider_sql.mjs'
+      - 'tool/configure_weather_secrets.sh'
+      - 'tool/verify_weather_secret_setup.py'
       - '.github/workflows/weather-forecast-contract.yml'
   push:
     branches: [main]
@@ -12,6 +14,8 @@ on:
       - 'supabase/functions/fetch-weather-forecast/**'
       - 'supabase/migrations/*weather_provider_settings.sql'
       - 'tool/verify_weather_provider_sql.mjs'
+      - 'tool/configure_weather_secrets.sh'
+      - 'tool/verify_weather_secret_setup.py'
       - '.github/workflows/weather-forecast-contract.yml'
 permissions:
   contents: read
@@ -23,6 +27,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify private terminal secret setup
+        run: |
+          bash -n tool/configure_weather_secrets.sh
+          python3 tool/verify_weather_secret_setup.py
       - name: Verify both weather provider adapters and actor address policy
         run: node --test supabase/functions/fetch-weather-forecast/*_test.mjs
       - name: Install isolated SQL test runtime

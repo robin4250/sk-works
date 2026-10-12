@@ -55,3 +55,13 @@ server `rain_approach` はnull、または `forecast_at` UTC ISO／`reference_at
 - https://developer.apple.com/documentation/weatherkitrestapi/get-attribution-_language_ （https://weatherkit.apple.com/attribution/{language}）
 
 共有UI接続：分単位の降水予報を取得できた時だけ、実予報時刻を「HH:mmの降水予報」と表示。雨/雪種別や到着ETAは推測しない。TODAY限定・60分内・source参照15分内をclientでも検証し、cached予報時刻を過ぎた表示は破棄。更新日時はUTC instantを端末のlocal時刻へ変換して表示し、予報の日付/時刻はserver地域calendarを保持する。実APIと実機での取得/表示は未検証。
+
+## MacからOpenWeatherの接続設定を登録する
+
+`bash tool/configure_weather_secrets.sh` は既存Supabase CLIのログインを利用し、対象をSK WORKS (`ztktgquxvcxcjxtluspu`) に固定します。CLI未導入・未ログイン・対象アクセス不可は登録せず終了します。未ログインの場合は先に `supabase login` を実行してください。
+
+Google Geocoding / Time Zone APIとOpenWeather One Call 3.0に使用可能なAPIキーを、Macターミナルの非表示入力で指定します。キーをチャットへ貼らないでください。`WEATHER_GEOCODING_PROVIDER=google` と両キーを、権限0600の一時envファイルから `supabase secrets set --env-file` で登録し、終了・失敗・中断時に削除します。端末echo状態も復元し、CLIの出力を画面へ流しません。キー値をコマンド引数・gitファイルに保存しません。
+
+この処理は既存資格情報を接続するだけで、外部サービスの契約・課金・キー発行は行いません。登録成功後も実際の天気取得成功は別に確認してください。Google Geocoding / Time ZoneとOpenWeather One Call 3.0の利用権限・API制限が必要です。
+
+疑似CLIと疑似キーを使うPTYテストで、非表示入力、引数への非露出、ファイル権限、一時ファイル削除、エラー出力の非露出、入力エラー時の未登録、認証前の入力抑止を確認します。実API資格情報はテストしません。
