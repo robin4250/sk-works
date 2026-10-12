@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -377,6 +379,10 @@ class _WeekTabs extends StatelessWidget {
   }
 }
 
+@visibleForTesting
+Widget attendanceWeekForTesting({required DateTime month, required List<DateTime> week, required WorkerAttendanceMonth data}) =>
+    _WeekList(month: month, week: week, data: data, onDateTap: (_) {});
+
 class _WeekList extends StatelessWidget {
   const _WeekList({
     required this.month,
@@ -398,11 +404,15 @@ class _WeekList extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final verticalPadding = 4.0;
-        final itemHeight =
-            (constraints.maxHeight - verticalPadding) / week.length;
+        final minimumHeight = 54.0 *
+            (MediaQuery.textScalerOf(context).scale(12) / 12).clamp(1.0, double.infinity);
+        final itemHeight = math.max(
+            (constraints.maxHeight - verticalPadding) / week.length, minimumHeight);
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-          physics: const NeverScrollableScrollPhysics(),
+          physics: itemHeight * week.length > constraints.maxHeight - verticalPadding
+              ? const ClampingScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
           itemExtent: itemHeight,
           itemCount: week.length,
           itemBuilder: (context, index) {
@@ -522,10 +532,14 @@ class _AttendanceDayCard extends StatelessWidget {
                       ),
                     ] else if (worked) ...[
                       const SizedBox(height: 2),
-                      Wrap(
-                        spacing: 4,
-                        runSpacing: 2,
-                        children: _tags(day!),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final tag in _tags(day!))
+                              Padding(padding: const EdgeInsets.only(right: 4), child: tag),
+                          ],
+                        ),
                       ),
                     ],
                   ],

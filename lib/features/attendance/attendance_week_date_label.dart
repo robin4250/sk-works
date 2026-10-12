@@ -24,7 +24,7 @@ class AttendanceWeekDateLabel extends StatelessWidget {
           ),
           if (holidayName != null) ...[
             const SizedBox(height: 1),
-            Text(holidayName!, maxLines: 2, textAlign: TextAlign.center,
+            Text(holidayName!, textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, height: 1.05, fontWeight: FontWeight.w700, color: colors.error)),
           ],
         ],

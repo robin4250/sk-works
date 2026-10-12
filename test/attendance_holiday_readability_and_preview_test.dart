@@ -26,6 +26,27 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+  testWidgets('short weekly viewport keeps holiday and work data readable without overflow', (tester) async {
+    final date = DateTime(2026, 11, 23);
+    final week = [for (var i = 0; i < 7; i++) date.add(Duration(days: i))];
+    final data = WorkerAttendanceMonth(year: 2026, month: 11, days: {
+      date: WorkerAttendanceDay(date: date, siteName: '登録現場', manDays: 1, overtimeHours: 2,
+          allowanceNames: const ['長い名称の手当', '追加手当']),
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+      child: Center(child: SizedBox(width: 320, height: 200,
+          child: attendanceWeekForTesting(month: date, week: week, data: data))),
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('勤労感謝の日').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final scroll = find.byType(ListView).first;
+    await tester.drag(scroll, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('29 日').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('calendar hides holiday names and header preview opens with current month data', (tester) async {
     tester.view.physicalSize = const Size(320, 720);
     tester.view.devicePixelRatio = 1;
