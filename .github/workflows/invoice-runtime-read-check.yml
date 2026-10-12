@@ -8,6 +8,9 @@ on:
       - 'test/invoice_runtime_read_test.dart'
       - 'test/invoice_offline_font_test.dart'
       - '.github/workflows/invoice-runtime-read-check.yml'
+      - 'supabase/migrations/*invoice_draft_seal_read_settings.sql'
+      - 'supabase/tests/fixtures/invoice_document_settings_20261013.json'
+      - 'tool/verify_invoice_draft_seal_read_settings.mjs'
 permissions:
   contents: read
 jobs:
@@ -22,3 +25,12 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter test test/invoice_runtime_read_test.dart test/invoice_offline_font_test.dart test/invoice_draft_current_seal_test.dart test/invoice_registered_contact_test.dart
+  existing-invoice-rpc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/invoice-read-runtime" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tool/verify_invoice_draft_seal_read_settings.mjs "$RUNNER_TEMP/invoice-read-runtime/node_modules/@electric-sql/pglite/dist/index.js"

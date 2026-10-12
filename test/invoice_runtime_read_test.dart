@@ -73,13 +73,13 @@ class _Fixture {
       response = denyPermissions
           ? {'code': '42501', 'message': 'unavailable permission lookup'}
           : {'can_manage_invoices': true};
-    } else if (path == '/rest/v1/companies') {
+    } else if (path == '/rest/v1/rpc/invoice_document_settings') {
       if (denySeal) {
         request.response.statusCode = 403;
       }
       response = denySeal
           ? {'code': '42501', 'message': 'unavailable company lookup'}
-          : {'id': _company, 'name': '検証会社', 'company_seal_style': 'legacy'};
+          : {'company_id': _company, 'company_name': '検証会社', 'company_seal_style': 'legacy'};
     } else if (path == '/rest/v1/invoices') {
       response = [{
         'id': _invoice, 'customer_id': '', 'billing_period_start': '2026-09-01',
@@ -116,6 +116,7 @@ void main() {
     expect(rows.single.billingPeriod, '2026年9月');
     expect(await repository.canManageFinancials(), isFalse);
     expect(rows.single.outputReadinessError, isNull);
+    expect(fixture.requests.any((request) => request.uri.path == '/rest/v1/companies'), isFalse);
   });
 
   test('unavailable current seal keeps saved invoice visible and blocks stale output', () async {

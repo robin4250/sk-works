@@ -103,12 +103,18 @@ class InvoiceCloudRepository {
     Map<String, dynamic>? currentSealCompany;
     if (invoices.any(invoiceUsesCurrentSeal)) {
       try {
-        final company = await _client
-            .from('companies')
-            .select('id,name,company_seal_style')
-            .eq('id', companyId)
-            .single();
-        currentSealCompany = Map<String, dynamic>.from(company);
+        // companies is intentionally not directly readable by authenticated
+        // clients. Use the existing invoice-view scoped document settings RPC.
+        final raw = await _client.rpc('invoice_document_settings');
+        if (raw is! Map || raw['company_id'] != companyId ||
+            raw['company_seal_style'] is! String) {
+          throw StateError('請求書の角印設定の更新を確認できません。');
+        }
+        currentSealCompany = {
+          'id': raw['company_id'],
+          'name': raw['company_name'],
+          'company_seal_style': raw['company_seal_style'],
+        };
       } catch (_) {
         // Keep the list readable; output remains blocked until current seal
         // settings are available, rather than silently using an old draft seal.
