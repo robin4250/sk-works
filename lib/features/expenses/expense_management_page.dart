@@ -4,6 +4,10 @@ import 'expense_claims_page.dart';
 import 'expense_management_repository.dart';
 import 'expense_settlement_choice.dart';
 import 'expense_settlement_dialog.dart';
+import 'expense_review_flow_dialog.dart';
+import 'expense_review_detail_page.dart';
+import 'expense_edit_dialog.dart';
+import 'expense_submission_repository.dart';
 
 class ExpenseManagementPage extends StatefulWidget {
   const ExpenseManagementPage({super.key, this.access});
@@ -100,6 +104,22 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final actor = _actor;
     final company = _company;
     final revision = _data!.revisions[claim.id]!;
+    if (_data!.reviewFlowEnabled && _data!.canSettle && ['approve', 'reject'].contains(action)) {
+      final decision = await showDialog<ExpenseReviewDecision>(context: context,
+        builder: (_) => ExpenseReviewFlowDialog(claim: claim, destinations: _data!.destinations));
+      if (decision == null || !_current(generation) || actor != _actor || company != _company ||
+          _pending != null || _busy || _data?.revisions[claim.id] != revision) {
+        return;
+      }
+      await _execute(ExpenseReviewCommand.create(_actor!, _company!, claim.id, revision,
+        decision.approve ? 'approve' : 'reject', decision.destination,
+        settlement: decision.settlement, confirmReview: true, memo: decision.memo));
+      if (mounted && !_busy && _pending == null && _error == null) {
+        final matches = _data?.claims.entries.where((c) => c.id == claim.id).toList();
+        if (matches != null && matches.length == 1) await _openDetail(matches.single);
+      }
+      return;
+    }
     ExpenseSettlementChoice? choice;
     if (action == 'approve' && _data!.settlementChoiceEnabled && _data!.canSettle) {
       choice = await showDialog<ExpenseSettlementChoice>(context: context,
@@ -120,6 +140,35 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       costRecoveryOptIn: action == 'allocate' && _data!.costAllocationEnabled,
     );
     await _execute(command);
+  }
+
+  Future<void> _openDetail(ExpenseClaim claim) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
+      claim: claim,
+      onEdit: _data?.canSettle != true || _access is! ExpenseManagementRepository ? null : () async {
+        final generation = _generation;
+        final edit = await showDialog<ExpenseSubmission>(context: detailContext,
+          builder: (_) => ExpenseEditDialog(claim: claim, actor: _actor!));
+        if (edit == null || !_current(generation) || _busy || _pending != null) return;
+        await _execute(ExpenseReviewCommand.create(_actor!, _company!, claim.id, claim.revision, 'edit', null,
+          confirmReview: true, memo: '', edit: edit));
+        if (detailContext.mounted && _pending == null && _error == null) Navigator.pop(detailContext);
+      },
+      onHistory: _access is! ExpenseManagementRepository ? null : () async {
+        try {
+          final value = await (_access as ExpenseManagementRepository).reviewHistory(claim);
+          if (!detailContext.mounted) return;
+          await showDialog<void>(context: detailContext, builder: (dialogContext) => AlertDialog(
+            title: const Text('経費の履歴'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (final event in value['events'] as List) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(
+                  '${event['occurred_at']}\n${event['result']['review_action'] == 'edit' ? '内容を修正' : event['result']['approval'] == 'approved' ? '承認済み' : event['result']['approval'] == 'rejected' ? '却下済み' : '申請を変更'}\n${event['result']['review_memo'] ?? ''}')),
+              ])), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('閉じる'))]));
+        } catch (_) {
+          if (detailContext.mounted) ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
+        }
+      },
+    )));
   }
 
   Future<void> _execute(ExpenseReviewCommand command) async {
@@ -347,6 +396,8 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       onApprove: enabled ? (c) => _act(c, 'approve') : null,
       allowSettlementSetup: data.settlementChoiceEnabled && data.canSettle,
       costAllocationEnabled: data.costAllocationEnabled,
+      reviewFlowEnabled: data.reviewFlowEnabled && data.canSettle,
+      onOpenDetail: data.reviewFlowEnabled ? (c) => _openDetail(c) : null,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
       onAllocate: enabled && (!data.costAllocationEnabled || data.canSettle)
           ? (c, d) => _act(c, 'allocate', d) : null,

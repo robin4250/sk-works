@@ -4,7 +4,7 @@ import 'expense_settlement_choice.dart';
 /// not save, approve, reimburse or change any payroll/invoice amount.
 enum ExpenseApproval { pending, approved, rejected }
 
-enum ExpenseCategory { unallocated, ownCompany, subcontractor, customer }
+enum ExpenseCategory { unallocated, ownCompany, subcontractor, customer, other }
 
 enum ExpenseList { allocation, ownCompany, subcontractor, customer }
 
@@ -51,6 +51,7 @@ class ExpenseClaim {
     this.revision = 1,
     this.withdrawn = false,
     this.settlement,
+    this.reviewedAt, this.reviewedBy, this.reviewMemo, this.receiptObjectPath, this.reviewedByName,
   }) : incurredOn = DateTime.utc(
          incurredOn.year,
          incurredOn.month,
@@ -86,6 +87,8 @@ class ExpenseClaim {
   final bool withdrawn;
   final ExpenseAllocation allocation;
   final ExpenseSettlementChoice? settlement;
+  final DateTime? reviewedAt;
+  final String? reviewedBy, reviewMemo, receiptObjectPath, reviewedByName;
 
   /// A candidate only. Period, payment and immutable snapshot rules belong to
   /// the future persistence contract, not to this display model.
@@ -106,6 +109,7 @@ class ExpenseClaim {
         revision: revision,
         withdrawn: withdrawn,
         settlement: settlement,
+        reviewedAt: reviewedAt, reviewedBy: reviewedBy, reviewedByName: reviewedByName, reviewMemo: reviewMemo, receiptObjectPath: receiptObjectPath,
       );
 
   /// An already approved claim is not silently reassigned by a duplicate event.

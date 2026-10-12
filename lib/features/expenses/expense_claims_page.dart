@@ -18,6 +18,7 @@ class ExpenseClaimsPage extends StatefulWidget {
     this.destinations = const [],
     this.allowSettlementSetup = false,
     this.costAllocationEnabled = false,
+    this.reviewFlowEnabled = false, this.onOpenDetail,
   });
   final ExpenseClaims claims;
   final String? applicantId;
@@ -33,6 +34,8 @@ class ExpenseClaimsPage extends StatefulWidget {
   final List<ExpenseAllocation> destinations;
   final bool allowSettlementSetup;
   final bool costAllocationEnabled;
+  final bool reviewFlowEnabled;
+  final Future<void> Function(ExpenseClaim claim)? onOpenDetail;
   @override
   State<ExpenseClaimsPage> createState() => _ExpenseClaimsPageState();
 }
@@ -92,6 +95,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     ExpenseCategory.ownCompany => '自社',
     ExpenseCategory.customer => '取引会社',
     ExpenseCategory.subcontractor => '下請け会社',
+    ExpenseCategory.other => 'その他（承認のみ）',
   };
 
   String _filterLabel(_ReviewFilter filter) => switch (filter) {
@@ -119,12 +123,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
       title: const Text('経費の承認・振り分け'),
       content: SingleChildScrollView(
         child: Text(
-          '1. 利用月と申請者・内容・金額を確認し、担当者が承認または却下します。\n\n'
-          '管理者・サブ管理者は承認時に現金精算／給料精算と対象月を選び、「承認して保存」を押します。'
-          '承認済みで未設定の申請は「精算方法を設定」から選択します。\n\n'
-          '2. 承認済みの申請で「振り分け」を押し、費用の負担先を選びます。'
-          '取引会社・下請け会社は、登録済みの会社を選び、確認して保存します。'
-          '初回承認時の負担先は自社です。\n\n'
+          '${widget.reviewFlowEnabled ? '承認・却下→負担先→精算方法→メモ→最終確認の順に進みます。却下はメモから最終確認へ進みます。「確定」まで保存しません。精算対象月は申請月です。支払済み・現金精算・給与精算・立替精算を区別して保存します。\n\n' : ''}'
+          '一覧では利用月と申請者・内容・金額を確認します。\n\n'
+          '${widget.reviewFlowEnabled ? '' : '管理者・サブ管理者は承認時に現金精算／給料精算を選び、「承認して保存」を押します。精算対象月は申請月です。承認済みで未設定の申請は「精算方法を設定」から選択します。承認後に「振り分け」で負担先と会社を選びます。\n\n'}'
           '3. 「すべて」は全状態の履歴です。負担先と承認状態を組み合わせて絞り込めます。'
           '申請者名を押すと、その人の申請一覧を閲覧できます。\n\n'
           '承認済みの表示金額は経費の合計で、支払済額ではありません。'
@@ -343,9 +344,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               !(widget.allowSettlementSetup && claim.settlement == null))
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    child: Text(claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
+                    child: Text(widget.reviewFlowEnabled ? '承認・却下を選ぶ' : claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
                   ),
-                  TextButton(
+                  if (!widget.reviewFlowEnabled) TextButton(
                     onPressed:
                         !canDecide ||
                             onReject == null ||
@@ -354,7 +355,8 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         : () => _request(generation, () => onReject(claim)),
                     child: const Text('却下'),
                   ),
-                  if (approved) OutlinedButton(
+                  if (widget.onOpenDetail != null) OutlinedButton(onPressed: _busy ? null : () => widget.onOpenDetail!(claim), child: const Text('詳細・履歴')),
+                  if (approved && !widget.reviewFlowEnabled) OutlinedButton(
                     onPressed:
                         _busy ||
                             !approved ||
@@ -367,7 +369,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                   ),
                 ],
               ),
-              if (approved) Text(widget.costAllocationEnabled && claim.settlement == null
+              if (approved && !widget.reviewFlowEnabled) Text(widget.costAllocationEnabled && claim.settlement == null
                   ? '先に管理者・サブ管理者が精算方法を設定してください。'
                   : '費用の負担先を変える場合は「振り分け」を押します。'),
             ],
