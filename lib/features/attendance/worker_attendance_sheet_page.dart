@@ -880,6 +880,8 @@ class _MonthCalendar extends StatelessWidget {
                       label,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                        height: 1.05,
                         color: label == '日'
                             ? Theme.of(context).colorScheme.error
                             : label == '土'
