@@ -27,7 +27,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            data: const MediaQueryData(size: Size(320, 1000), textScaler: TextScaler.linear(1.3)),
             child: FriendlyHomeContent(
               identity: const HomeIdentity(
                 role: 'worker',
@@ -217,7 +217,7 @@ void main() {
       )..layout(maxWidth: tester.getSize(description).width);
       expect(painter.didExceedMaxLines, isFalse);
       final previous = tester.widget<IconButton>(
-        find.byTooltip('Previous day weather'),
+        find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'Previous day weather'),
       );
       expect(previous.onPressed, isNull);
       await tester.tap(find.byTooltip('Next day weather'));
@@ -253,7 +253,7 @@ void main() {
       expect(
         tester
             .widget<IconButton>(
-              find.byTooltip('Next day weather').hitTestable(),
+              find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'Next day weather').hitTestable(),
             )
             .onPressed,
         isNull,

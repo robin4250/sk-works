@@ -187,9 +187,14 @@ class WeatherDayNavigation extends StatelessWidget {
                   style: const TextStyle(fontSize: 11, height: 1.1),
                 ),
               ),
-              Text(
-                '${data.date.month}/${data.date.day}',
-                style: const TextStyle(fontSize: 10, height: 1.1),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${data.date.month}/${data.date.day}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const TextStyle(fontSize: 10, height: 1.1),
+                ),
               ),
             ],
           ),
