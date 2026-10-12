@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'expense_claim.dart';
 import 'expense_claims_page.dart';
 import 'expense_management_repository.dart';
+import 'expense_settlement_choice.dart';
+import 'expense_settlement_dialog.dart';
 
 class ExpenseManagementPage extends StatefulWidget {
   const ExpenseManagementPage({super.key, this.access});
@@ -94,13 +96,27 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     if (_busy || _pending != null || _data == null || _access.actor != _actor) {
       return;
     }
+    final generation = _generation;
+    final actor = _actor;
+    final company = _company;
+    final revision = _data!.revisions[claim.id]!;
+    ExpenseSettlementChoice? choice;
+    if (action == 'approve' && _data!.settlementChoiceEnabled && _data!.canSettle) {
+      choice = await showDialog<ExpenseSettlementChoice>(context: context,
+        builder: (_) => ExpenseSettlementDialog(claim: claim));
+      if (choice == null || !_current(generation) || actor != _actor || company != _company ||
+          _pending != null || _busy || _data?.revisions[claim.id] != revision) {
+        return;
+      }
+    }
     final command = ExpenseReviewCommand.create(
       _actor!,
       _company!,
       claim.id,
-      _data!.revisions[claim.id]!,
+      revision,
       action,
       destination,
+      settlement: choice,
     );
     await _execute(command);
   }
@@ -328,6 +344,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       header: _header(),
       canDecide: (c) => data.canDecide(c, _actor!),
       onApprove: enabled ? (c) => _act(c, 'approve') : null,
+      allowSettlementSetup: data.settlementChoiceEnabled && data.canSettle,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
       onAllocate: enabled ? (c, d) => _act(c, 'allocate', d) : null,
       destinations: data.destinations,

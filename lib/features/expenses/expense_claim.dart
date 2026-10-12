@@ -1,3 +1,5 @@
+import 'expense_settlement_choice.dart';
+
 /// Approval, allocation and submission are distinct concepts. These objects do
 /// not save, approve, reimburse or change any payroll/invoice amount.
 enum ExpenseApproval { pending, approved, rejected }
@@ -48,6 +50,7 @@ class ExpenseClaim {
     required this.allocation,
     this.revision = 1,
     this.withdrawn = false,
+    this.settlement,
   }) : incurredOn = DateTime.utc(
          incurredOn.year,
          incurredOn.month,
@@ -82,6 +85,7 @@ class ExpenseClaim {
   final int revision;
   final bool withdrawn;
   final ExpenseAllocation allocation;
+  final ExpenseSettlementChoice? settlement;
 
   /// A candidate only. Period, payment and immutable snapshot rules belong to
   /// the future persistence contract, not to this display model.
@@ -101,6 +105,7 @@ class ExpenseClaim {
         allocation: destination,
         revision: revision,
         withdrawn: withdrawn,
+        settlement: settlement,
       );
 
   /// An already approved claim is not silently reassigned by a duplicate event.
@@ -139,6 +144,7 @@ class ExpenseClaim {
       approval == other.approval &&
       revision == other.revision &&
       withdrawn == other.withdrawn &&
+      (settlement == null ? other.settlement == null : other.settlement != null && settlement!.sameAs(other.settlement!)) &&
       allocation.sameAs(other.allocation);
 }
 

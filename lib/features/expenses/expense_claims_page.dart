@@ -16,6 +16,7 @@ class ExpenseClaimsPage extends StatefulWidget {
     this.onReject,
     this.onAllocate,
     this.destinations = const [],
+    this.allowSettlementSetup = false,
   });
   final ExpenseClaims claims;
   final String? applicantId;
@@ -29,6 +30,7 @@ class ExpenseClaimsPage extends StatefulWidget {
   )?
   onAllocate;
   final List<ExpenseAllocation> destinations;
+  final bool allowSettlementSetup;
   @override
   State<ExpenseClaimsPage> createState() => _ExpenseClaimsPageState();
 }
@@ -116,13 +118,15 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
       content: const SingleChildScrollView(
         child: Text(
           '1. 利用月と申請者・内容・金額を確認し、担当者が承認または却下します。\n\n'
+          '管理者・サブ管理者は承認時に現金精算／給料精算と対象月を選び、「承認して保存」を押します。'
+          '承認済みで未設定の申請は「精算方法を設定」から選択します。\n\n'
           '2. 承認済みの申請で「振り分け」を押し、費用の負担先を選びます。'
           '取引会社・下請け会社は、登録済みの会社を選び、確認して保存します。'
           '初回承認時の負担先は自社です。\n\n'
           '3. 「すべて」は全状態の履歴です。負担先と承認状態を組み合わせて絞り込めます。'
           '申請者名を押すと、その人の申請一覧を閲覧できます。\n\n'
           '承認済みの表示金額は経費の合計で、支払済額ではありません。'
-          '現在の帳票連携は経費明細の表示です。現金／給料精算の選択と'
+          '現在の帳票連携は経費明細の表示です。'
           '支給・請求・支払額への追加は準備中です。確定済み帳票は変更しません。\n\n'
           '通信結果が不明なときは、別の操作をせず「同じ操作を再確認」を使ってください。',
         ),
@@ -286,6 +290,8 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
             Text(
               '利用日：${claim.incurredOn.year}/${claim.incurredOn.month}/${claim.incurredOn.day}',
             ),
+            if (claim.settlement != null)
+              Text('${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'),
             const SizedBox(height: 8),
             Text(
               claim.description,
@@ -327,10 +333,11 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                     onPressed:
                         !canDecide ||
                             onApprove == null ||
-                            claim.approval == ExpenseApproval.approved
+                            (claim.approval == ExpenseApproval.approved &&
+                              !(widget.allowSettlementSetup && claim.settlement == null))
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    child: const Text('承認'),
+                    child: Text(claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
                   ),
                   TextButton(
                     onPressed:
