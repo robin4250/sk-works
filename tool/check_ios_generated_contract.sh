@@ -39,6 +39,9 @@ localizations = data.get("CFBundleLocalizations", [])
 if not isinstance(localizations, list) or not {"ja", "en"}.issubset(localizations):
     raise SystemExit("native iOS localization must declare Japanese and English")
 
+if "comgooglemaps" not in data.get("LSApplicationQueriesSchemes", []):
+    raise SystemExit("supported Google Maps shortcut query scheme is missing")
+
 if "NSLocationAlwaysUsageDescription" in data:
     raise SystemExit("legacy Always location permission key must not exist")
 if "NSLocationAlwaysAndWhenInUseUsageDescription" not in data:
