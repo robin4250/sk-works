@@ -1896,7 +1896,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final pages = <Widget>[
       _homeDashboard(),
       _moduleEnabled('attendance')
-          ? const WorkerAttendanceSheetPage()
+          ? WorkerAttendanceSheetPage(isActive: _selectedIndex == 1)
           : _ModuleDisabledPage(label: SkoLanguageController.tr('出勤表')),
       _moduleEnabled('sites')
           ? const SiteCloudPage()

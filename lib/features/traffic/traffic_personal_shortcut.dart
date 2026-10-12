@@ -127,7 +127,14 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
         key: const ValueKey('traffic-personal-shortcut'),
         onPressed: ready ? _launch : null,
         onLongPress: ready && _shortcut != null ? _edit : null,
-        style: TextButton.styleFrom(minimumSize: const Size(44, 44), padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4)),
+        style: TextButton.styleFrom(
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.55),
+          disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
         child: Row(children: [
           Icon(_shortcut == null ? Icons.add : _shortcut!.kind == TrafficShortcutKind.web ? Icons.link : Icons.map_outlined, size: 16),
           const SizedBox(width: 2),
