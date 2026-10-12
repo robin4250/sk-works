@@ -1345,6 +1345,16 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
                                 fit: BoxFit.fitWidth,
                                 gaplessPlayback: true,
                                 filterQuality: FilterQuality.high,
+                                errorBuilder: (context, error, stack) => Column(
+                                  children: [
+                                    const Text('PDFのページ画像を表示できませんでした。'),
+                                    TextButton.icon(
+                                      onPressed: _retryRaster,
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('再試行'),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                         ],
