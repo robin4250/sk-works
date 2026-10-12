@@ -910,7 +910,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'documents' || 'document_register' => 'documents',
       'notes' => 'notes',
       'albums' => 'albums',
-      'line_talk' || 'today_line' || 'line_history' => 'line_bridge',
+      'today_line' || 'line_history' => 'line_bridge',
       'vehicle_routes' || 'vehicle_select' || 'route_select' => 'vehicle_routes',
       _ => null,
     };
@@ -1468,8 +1468,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           icon: Icons.photo_album_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_moduleEnabled('line_bridge'))
-        _MenuAction(
+      _MenuAction(
           key: 'line_talk',
           label: SkoLanguageController.tr('LINEトーク'),
           icon: Icons.chat_bubble_outline,
