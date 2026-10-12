@@ -6,6 +6,33 @@ import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.
 import 'package:sk_works/widgets/sko_scroll_chrome.dart';
 
 void main() {
+  testWidgets('holiday and ordinary weekly dates share the same position', (tester) async {
+    for (final scale in [1.0, 1.3]) {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+        child: Center(child: SizedBox(height: 34, child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AttendanceWeekDateLabel(key: const ValueKey('holiday'), date: DateTime(2026, 11, 23), weekday: '月', holidayName: '勤労感謝の日'),
+            AttendanceWeekDateLabel(key: const ValueKey('ordinary'), date: DateTime(2026, 11, 24), weekday: '火'),
+          ],
+        ))),
+      ))));
+      await tester.pump();
+      final holidayOrigin = tester.getTopLeft(find.byKey(const ValueKey('holiday')));
+      final ordinaryOrigin = tester.getTopLeft(find.byKey(const ValueKey('ordinary')));
+      final holidayDate = tester.getTopLeft(find.text('23 月')) - holidayOrigin;
+      final ordinaryDate = tester.getTopLeft(find.text('24 火')) - ordinaryOrigin;
+      expect(holidayDate.dx, closeTo(ordinaryDate.dx, 0.01));
+      expect(holidayDate.dy, closeTo(ordinaryDate.dy, 0.01));
+      expect(tester.getSize(find.byKey(const ValueKey('holiday'))),
+          tester.getSize(find.byKey(const ValueKey('ordinary'))));
+      expect(find.text('勤労感謝の日'), findsOneWidget);
+      expect(tester.widget<Text>(find.text('23 月')).style!.color,
+          Theme.of(tester.element(find.text('23 月'))).colorScheme.error);
+      expect(tester.takeException(), isNull);
+    }
+  });
   testWidgets('full long holiday name fits a compact weekly row at large text size', (tester) async {
     for (final name in ['建国記念の日', '勤労感謝の日', 'スポーツの日']) {
       await tester.pumpWidget(MaterialApp(
