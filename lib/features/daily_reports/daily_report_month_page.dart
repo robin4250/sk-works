@@ -218,12 +218,42 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: const Text('日報一覧の使い方'),
-    content: const SingleChildScrollView(child: Text('訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。')),
+    content: const SingleChildScrollView(child: Text('訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
   ));
 
+  (String, String, String) _entryGroup(DailyReportMonthEntry entry) =>
+      (DailyReportMonthRepository.dateKey(entry.date),
+       entry.siteId ?? entry.routeId ?? entry.name, entry.kindLabel);
+
+  String _entrySubtitle(DailyReportMonthEntry entry, int ordinal, int count) {
+    final parts = <String>[
+      DailyReportMonthRepository.dateKey(entry.date),
+      entry.kindLabel,
+      if (count > 1) '$ordinal／$count件目',
+      if (entry.createdAt != null) _createdTime(entry.createdAt!),
+      const ['signed', 'completed'].contains(entry.status) ? '署名済み' : '保存済み',
+    ];
+    return parts.join(' / ');
+  }
+
+  String _createdTime(DateTime value) {
+    final japan = value.toUtc().add(const Duration(hours: 9));
+    return '作成 ${japan.hour.toString().padLeft(2, '0')}:${japan.minute.toString().padLeft(2, '0')}';
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final counts = <(String, String, String), int>{};
+    final ordinals = <(String, String, String), int>{};
+    final entryOrdinals = <int>[];
+    for (final entry in _entries) {
+      final group = _entryGroup(entry);
+      counts[group] = (counts[group] ?? 0) + 1;
+      ordinals[group] = (ordinals[group] ?? 0) + 1;
+      entryOrdinals.add(ordinals[group]!);
+    }
+    return Scaffold(
     appBar: AppBar(title: const Text('日報一覧・保存'), actions: [
       IconButton(tooltip: '日報一覧のヘルプ', onPressed: _help, icon: const Icon(Icons.help_outline)),
     ]),
@@ -249,8 +279,8 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const Text(
-                'この月に閲覧できる保存済み日報と写真証跡を、日別PDFを1つのZIPにまとめます。共有画面から「ファイルに保存」も選べます。',
+              Text(
+                '${_selectedDate == null ? 'この月' : 'この日'}に閲覧できる保存済み日報と写真証跡を、日報ごとのPDFを1つのZIPにまとめます。共有画面から「ファイルに保存」も選べます。',
               ),
               const SizedBox(height: 8),
               FilledButton.icon(
@@ -284,7 +314,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                   ),
                 )
               : _entries.isEmpty
-              ? const Center(child: Text('この月の保存済み日報はありません。'))
+              ? Center(child: Text('${_selectedDate == null ? 'この月' : 'この日'}の保存済み日報はありません。'))
               : RefreshIndicator(
                   onRefresh: _exporting ? () async {} : _load,
                   child: ListView.builder(
@@ -295,7 +325,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                         title: Text(item.name),
                         onTap: _exporting || _openingEntryId != null ? null : () => _openEntry(item),
                         subtitle: Text(
-                          '${DailyReportMonthRepository.dateKey(item.date)} / ${item.kindLabel} / ${const ['signed', 'completed'].contains(item.status) ? '署名済み' : '保存済み'}',
+                          _entrySubtitle(item, entryOrdinals[index], counts[_entryGroup(item)]!),
                         ),
                         trailing: _openingEntryId == item.id
                             ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
@@ -309,4 +339,5 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       ],
     ),
   );
+  }
 }
