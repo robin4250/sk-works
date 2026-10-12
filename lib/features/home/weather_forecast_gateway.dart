@@ -18,7 +18,7 @@ import 'weather_forecast_controller.dart';
       text == 'weatherkit:Clear' ||
       text == 'weatherkit:MostlyClear') {
     label = '晴れ';
-    icon = Icons.wb_sunny_outlined;
+    icon = Icons.wb_sunny;
   } else if ((id != null && id >= 801 && id <= 804) ||
       [
         'weatherkit:Cloudy',
@@ -62,7 +62,7 @@ import 'weather_forecast_controller.dart';
         'weatherkit:SunShowers',
       ].contains(text)) {
     label = '雨';
-    icon = Icons.water_drop_outlined;
+    icon = Icons.umbrella;
   } else if ([
         600,
         601,
