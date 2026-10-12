@@ -117,6 +117,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       action,
       destination,
       settlement: choice,
+      costRecoveryOptIn: action == 'allocate' && _data!.costAllocationEnabled,
     );
     await _execute(command);
   }
