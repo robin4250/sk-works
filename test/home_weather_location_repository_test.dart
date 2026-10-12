@@ -15,10 +15,14 @@ void main() {
   var role = 'worker';
   var companyVisible = true;
   var siteAddress = '現場';
+  var homeAddress = '自宅';
+  var companyAddress = '';
   setUp(() async {
     role = 'worker';
     companyVisible = true;
     siteAddress = '現場';
+    homeAddress = '自宅';
+    companyAddress = '';
     requests = [];
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
@@ -32,10 +36,10 @@ void main() {
         'companies' =>
           companyVisible
               ? [
-                  {'address': ''},
+                  {'address': companyAddress},
                 ]
               : [],
-        'current_worker_personnel_profile' => {'address': '自宅'},
+        'current_worker_personnel_profile' => {'address': homeAddress},
         'sites' => [
           {'address': siteAddress},
         ],
@@ -70,6 +74,26 @@ void main() {
   tearDown(() async {
     await client.dispose();
     await server.close(force: true);
+  });
+
+  test('blank employee home uses company despite unknown attendance', () async {
+    homeAddress = '  ';
+    companyAddress = '会社';
+    final result = await HomeWeatherLocationRepository.forTesting(client)
+        .load(const HomeAttendanceStatus());
+    expect(result.selection.kind, WeatherAddressKind.company);
+    expect(result.selection.address, '会社');
+    expect(result.companyAddressMissing, isFalse);
+    expect(requests.where((uri) => uri.path.endsWith('sites')), isEmpty);
+  });
+
+  test('registered employee home still rejects unknown attendance', () async {
+    companyAddress = '会社';
+    await expectLater(
+      HomeWeatherLocationRepository.forTesting(client)
+          .load(const HomeAttendanceStatus()),
+      throwsStateError,
+    );
   });
 
   for (final multiple in [false, true]) {
