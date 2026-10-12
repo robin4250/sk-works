@@ -49,6 +49,7 @@ import 'features/home/weather_forecast_home_card.dart';
 import 'features/home/weather_forecast_gateway.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'features/traffic/traffic_home_card.dart';
+import 'features/traffic/traffic_shortcut_store.dart';
 import 'features/traffic/traffic_link_policy.dart';
 import 'features/home/home_action_order_policy.dart';
 import 'features/home/weather_forecast_policy.dart';
@@ -397,6 +398,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final latest = value ?? await HomeAppearanceRepository.load();
     if (!mounted) return;
     setState(() => _homeAppearance = latest);
+  }
+
+  TrafficShortcutScope? get _trafficShortcutScope {
+    final actor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    final company = _tutorialCompanyId;
+    if (actor == null || actor != _tutorialUserId || company == null) return null;
+    return TrafficShortcutScope(actorId: actor, companyId: company);
   }
 
   Future<void> _loadIdentity() async {
@@ -1138,7 +1147,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: Align(alignment: Alignment.topCenter,
-              child: TrafficHomeCard(availability: _homeTrafficAvailability)),
+              child: TrafficHomeCard(availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope)),
           ),
         );
         break;
@@ -1658,7 +1667,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           weatherCard: _weatherHomeCard(),
-          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability),
+          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope),
           showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
           showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null

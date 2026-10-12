@@ -60,7 +60,7 @@ void main() {
     ))));
     await tester.pump();
     final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-weather_forecast')));
-    final frame = tester.getRect(find.byType(HomeInformationCard));
+    final frame = tester.getRect(find.byKey(const ValueKey('weather-home-frame')));
     final source = tester.getRect(find.widgetWithText(TextButton, 'OpenWeather'));
     expect(frame.contains(handle.topLeft), isTrue);
     expect(frame.contains(handle.bottomRight), isTrue);
@@ -83,6 +83,8 @@ void main() {
     final live = WeatherForecastSnapshot(locationLabel: '会社周辺',
       forecastDate: DateTime(2026, 10, 12), updatedAt: DateTime(2026, 10, 12),
       sourceLabel: 'OpenWeather', currentSummary: '晴れ', currentTemperatureCelsius: 20,
+      radarSupported: true, rainForecastAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+      rainReferenceAt: DateTime.now().toUtc(), rainLocalHour: 9, rainLocalMinute: 5,
       hours: const [WeatherForecastHour(hour: 12, summary: '晴れ', rainProbability: 20)]);
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
@@ -101,7 +103,7 @@ void main() {
             child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
               HomeInformationCard(key: const ValueKey('attention-baseline'), icon: Icons.info_outline,
                 title: '要対応', details: '必要書類を登録してください', onTap: () {}),
-              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}),
+              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () {}),
             ])),
           ))));
           await tester.pump();
@@ -113,7 +115,15 @@ void main() {
           expect(tester.getRect(find.byKey(const ValueKey('weather-location-explanation'))).top, greaterThanOrEqualTo(info.bottom));
           if (data.snapshot != null && language == 'ja') {
             expect(find.text('12時 20%'), findsOneWidget);
-            expect(find.text('20℃'), findsOneWidget);
+            expect(find.textContaining('20℃'), findsOneWidget);
+            expect(find.text('最高 — / 最低 —'), findsOneWidget);
+            for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24]) {
+              expect(find.byKey(ValueKey('weather-home-hour-$hour')), findsOneWidget);
+            }
+            expect(find.text('20%'), findsOneWidget);
+          }
+          if (data.snapshot == null) {
+            expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-summary-icon'))).icon, Icons.help_outline);
           }
           expect(tester.takeException(), isNull, reason: '$language / $scale');
           await tester.pumpWidget(const SizedBox.shrink());
@@ -174,7 +184,7 @@ void main() {
     final handle = find.byKey(const ValueKey('home-reorder-weather_forecast'));
     final next = find.byTooltip('次の日の天気');
     expect(tester.getRect(handle).overlaps(tester.getRect(next)), isFalse);
-    final frame = find.ancestor(of: find.text('天気予報'), matching: find.byType(HomeInformationCard));
+    final frame = find.byKey(const ValueKey('weather-home-frame'));
     final previous = find.byTooltip('前の日の天気');
     final cardRect = tester.getRect(frame);
     expect(tester.getRect(previous).left - cardRect.left, lessThanOrEqualTo(6));
@@ -436,7 +446,7 @@ void main() {
         await tester.pump();
       }
 
-      Finder frame(String text) => find.ancestor(
+      Finder frame(String text) => text == '天気予報' ? find.byKey(const ValueKey('weather-home-frame')) : find.ancestor(
         of: find.text(text),
         matching: find.byType(HomeInformationCard),
       );

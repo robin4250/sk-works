@@ -240,6 +240,15 @@ for language in ["ja", "en"]:
         localizations.append(language)
 data["CFBundleLocalizations"] = localizations
 
+# Only the explicit supported personal shortcut is queried; preserve other entries.
+query_schemes = data.get("LSApplicationQueriesSchemes", [])
+if not isinstance(query_schemes, list):
+    query_schemes = []
+if "comgooglemaps" not in query_schemes:
+    query_schemes.append("comgooglemaps")
+data["LSApplicationQueriesSchemes"] = query_schemes
+
+
 # SKO's iPhone UI is designed and acceptance-tested in portrait.
 # Keep the iPad-specific orientation key untouched.
 data["UISupportedInterfaceOrientations"] = [
