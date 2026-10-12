@@ -17,6 +17,16 @@ import 'invoice_settings_repository.dart';
 class InvoicePdfService {
   const InvoicePdfService._();
 
+  /// Preserve the approved body fonts when available; offline output uses the
+  /// bundled Japanese font instead of failing the entire invoice preview.
+  static Future<pw.Font> loadBodyFont(Future<pw.Font> Function() fetch) async {
+    try {
+      return await fetch().timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return CompanySealPdf.loadFont();
+    }
+  }
+
   static Future<Uint8List> buildPdf(
     List<InvoiceCalculationResult> invoices, {
     Map<String, ExpenseDocumentDetails>? expenseDetailsByInvoice,
@@ -30,10 +40,15 @@ class InvoicePdfService {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
+    for (final invoice in invoices) {
+      if (invoice.outputReadinessError != null) {
+        throw StateError(invoice.outputReadinessError!);
+      }
+    }
     final effectiveSettings = settings ?? await _loadSettings();
 
-    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
-    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await loadBodyFont(PdfGoogleFonts.notoSansJPRegular);
+    final bold = boldFont ?? await loadBodyFont(PdfGoogleFonts.notoSansJPBold);
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );

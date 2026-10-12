@@ -1,0 +1,23 @@
+name: Invoice runtime read check
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/invoice_engine.dart'
+      - 'lib/features/invoices/invoice_cloud_repository.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'test/invoice_runtime_read_test.dart'
+      - '.github/workflows/invoice-runtime-read-check.yml'
+permissions:
+  contents: read
+jobs:
+  saved-invoice-read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/invoice_runtime_read_test.dart test/invoice_draft_current_seal_test.dart test/invoice_registered_contact_test.dart

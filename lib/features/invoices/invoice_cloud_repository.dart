@@ -1,4 +1,5 @@
 import '../../domain/invoice_document_seal.dart';
+import '../../domain/company_seal_snapshot.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,6 +9,8 @@ import '../../domain/expense_cost_snapshot.dart';
 
 class InvoiceCloudRepository {
   InvoiceCloudRepository._(this._client);
+
+  InvoiceCloudRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 
@@ -35,10 +38,15 @@ class InvoiceCloudRepository {
 
   Future<bool> canManageFinancials() async {
     await membership();
-    final value = await _client.rpc('current_feature_permissions');
-    if (value is! Map) return false;
-    final permissions = Map<String, dynamic>.from(value);
-    return permissions['can_manage_invoices'] == true;
+    try {
+      final value = await _client.rpc('current_feature_permissions');
+      if (value is! Map) return false;
+      final permissions = Map<String, dynamic>.from(value);
+      return permissions['can_manage_invoices'] == true;
+    } catch (_) {
+      // Optional editing controls must not hide invoices already allowed by RLS.
+      return false;
+    }
   }
 
   Future<String> _companyId() async {
@@ -94,12 +102,17 @@ class InvoiceCloudRepository {
 
     Map<String, dynamic>? currentSealCompany;
     if (invoices.any(invoiceUsesCurrentSeal)) {
-      final company = await _client
-          .from('companies')
-          .select('id,name,company_seal_style')
-          .eq('id', companyId)
-          .single();
-      currentSealCompany = Map<String, dynamic>.from(company);
+      try {
+        final company = await _client
+            .from('companies')
+            .select('id,name,company_seal_style')
+            .eq('id', companyId)
+            .single();
+        currentSealCompany = Map<String, dynamic>.from(company);
+      } catch (_) {
+        // Keep the list readable; output remains blocked until current seal
+        // settings are available, rather than silently using an old draft seal.
+      }
     }
 
     // Existing read-only RPC is company/admin scoped; never run directory sync
@@ -353,6 +366,8 @@ class InvoiceCloudRepository {
             : '${periodStart.year}年${periodStart.month}月';
         if (billingPeriod.isEmpty) continue;
 
+        final sealUnavailable = invoiceUsesCurrentSeal(invoice) &&
+            (currentSealCompany == null || currentSealCompany['id'] != companyId);
         results.add(
           InvoiceEngine.calculate(
             customerId: customerName,
@@ -372,12 +387,17 @@ class InvoiceCloudRepository {
                   ),
             invoiceId: invoiceId,
             documentUpdatedAt: invoice['updated_at']?.toString(),
-            companySealSnapshot: invoiceDocumentSeal(
-              document: invoice,
-              saved: snapshotMap['company_seal_snapshot'],
-              currentCompany: currentSealCompany,
-              companyId: companyId,
-            ),
+            outputReadinessError: sealUnavailable
+                ? '請求書の現在の角印設定を確認できません。再読み込みしてください。'
+                : null,
+            companySealSnapshot: sealUnavailable
+                ? CompanySealSnapshot.fromJson(snapshotMap['company_seal_snapshot'])
+                : invoiceDocumentSeal(
+                    document: invoice,
+                    saved: snapshotMap['company_seal_snapshot'],
+                    currentCompany: currentSealCompany,
+                    companyId: companyId,
+                  ),
             invoiceNumber: invoice['invoice_number']?.toString() ?? '',
             issueDate: issueDate,
             periodStart: periodStart,

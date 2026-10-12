@@ -121,6 +121,7 @@ class InvoiceCalculationResult {
     this.customerPhone = '',
     this.invoiceId = '',
     this.documentUpdatedAt,
+    this.outputReadinessError,
     this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.invoiceNumber = '',
     this.issueDate,
@@ -144,6 +145,8 @@ class InvoiceCalculationResult {
   final int taxRateBps;
   final String invoiceId;
   final String? documentUpdatedAt;
+  /// A readable saved invoice can still require current settings before output.
+  final String? outputReadinessError;
   final CompanySealSnapshot companySealSnapshot;
   final String invoiceNumber;
   final DateTime? issueDate;
@@ -180,6 +183,7 @@ class InvoiceEngine {
     String customerPhone = '',
     String invoiceId = '',
     String? documentUpdatedAt,
+    String? outputReadinessError,
     CompanySealSnapshot companySealSnapshot = CompanySealSnapshot.legacy,
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -242,6 +246,7 @@ class InvoiceEngine {
       taxRateBps: taxRateBps,
       invoiceId: invoiceId,
       documentUpdatedAt: documentUpdatedAt,
+      outputReadinessError: outputReadinessError,
       companySealSnapshot: companySealSnapshot,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,
