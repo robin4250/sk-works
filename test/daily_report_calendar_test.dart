@@ -6,6 +6,8 @@ import 'package:sk_works/features/daily_reports/daily_report_month_repository.da
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_saved_preview_pager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/international/language_controller.dart';
+import 'package:sk_works/international/languages/en/english_language_pack.dart';
 
 DailyReportMonthEntry entry(String id, int day, int hour, {String site = 'site-a', String name = '現場A'}) =>
   DailyReportMonthEntry(id: id, date: DateTime(2026,10,day), createdAt: DateTime.utc(2026,10,day,hour),
@@ -102,6 +104,37 @@ void main() {
     await tester.tap(old); await tester.pumpAndSettle();
     expect(find.text('作業:old'),findsOneWidget);
     expect(reports.opened,['old']);
+    expect(tester.takeException(),isNull);
+  });
+
+  testWidgets('English month header and calendar fit 320px with enlarged text', (tester) async {
+    final before=SkoLanguageController.pack.value;
+    SkoLanguageController.pack.value=englishLanguagePack;
+    addTearDown(()=>SkoLanguageController.pack.value=before);
+    tester.view.physicalSize=const Size(320,720); tester.view.devicePixelRatio=1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+    final reports=Reports(client);
+    await tester.pumpWidget(MaterialApp(builder:(context,child)=>MediaQuery(
+      data:MediaQuery.of(context).copyWith(textScaler:const TextScaler.linear(1.6)),child:child!),
+      home:DailyReportMonthPage(initialMonth:DateTime(2026,10),repositoryForTesting:reports)));
+    await tester.pumpAndSettle();
+    expect(find.text('Share / save month'),findsOneWidget);
+    await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
+    final noPhotos=find.byKey(const ValueKey('daily-report-day-12-no-photos'));
+    await tester.scrollUntilVisible(noPhotos,400); await tester.pumpAndSettle();
+    expect(find.descendant(of:noPhotos,matching:find.text('Without photos: 1')),findsOneWidget);
+    expect(tester.takeException(),isNull);
+  });
+
+  testWidgets('failed photo metadata is not classified as a report without photos', (tester) async {
+    final reports=Reports(client);
+    await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),
+      repositoryForTesting:reports)));
+    await tester.pumpAndSettle(); reports.changed=true;
+    await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('写真情報を再読み込み').first,400); await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('daily-report-day-12-no-photos')),findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-day-12-photos')),findsNothing);
     expect(tester.takeException(),isNull);
   });
 
