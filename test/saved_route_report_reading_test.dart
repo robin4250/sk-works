@@ -17,6 +17,7 @@ final _signature = {'strokes': [[{'x': 0.2, 'y': 0.3}, {'x': 0.8, 'y': 0.6}]]};
 class _Reports extends DailyReportMonthRepository {
   _Reports(SupabaseClient client) : super(client, DailyReportRepository.forTesting(client));
   bool actorChanged = false;
+  bool sameSite = false;
   String? subject;
   final opened = <String>[];
   @override
@@ -30,7 +31,7 @@ class _Reports extends DailyReportMonthRepository {
     subject = workerId;
     return [
       for (var i=0;i<3;i++) DailyReportMonthEntry(
-        id: 'visit-$i', date: _date, name: '訪問先${i+1}', status: 'completed', routeId: 'route',
+        id: 'visit-$i', date: _date, name: sameSite ? '同じ現場' : '訪問先${i+1}', siteId: sameSite ? 'same-site' : null, createdAt: DateTime.utc(2026,10,12,1,i), status: 'completed', routeId: 'route',
         visitContext: RouteVisitReportContext(sourceClockInId: 'source', routeAssignmentId: 'route',
           routeStopId: 'stop-$i', startCaptureId: 'start-$i', endCaptureId: 'end-$i')),
       DailyReportMonthEntry(id: 'checkout', date: _date, name: '退勤ルート', status: 'signed', routeId: 'route'),
@@ -67,12 +68,12 @@ void main() {
     expect(DailyReportPdfService.signatureSvg({'strokes': [[{'x': double.nan, 'y': 0.1}]]}), isNull);
   });
 
-  Future<_Reports> pumpList(WidgetTester tester, List<String> previews) async {
+  Future<_Reports> pumpList(WidgetTester tester, List<String> previews, {bool sameSite = false}) async {
     tester.view.physicalSize = const Size(320, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final repository = _Reports(client);
+    final repository = _Reports(client)..sameSite = sameSite;
     await tester.pumpWidget(MaterialApp(
       theme: SkoTheme.light(SkoTheme.palettes.first),
       builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
@@ -104,6 +105,26 @@ void main() {
     }
     expect(previews, ['visit-0','visit-1','visit-2','checkout']);
     expect(repository.opened, previews);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('same-site reports show Japanese time and separate numbers and open their own IDs', (tester) async {
+    final previews = <String>[];
+    final repository = await pumpList(tester, previews, sameSite: true);
+    expect(find.textContaining('この日をまとめて保存・共有 (4件)'), findsOneWidget);
+    expect(find.textContaining('この日に閲覧できる'), findsOneWidget);
+    for (var i = 0; i < 3; i++) {
+      final subtitle = find.text('2026-10-12 / 訪問日報 / ${i + 1}／3件目 / 作成 10:0$i / 署名済み');
+      await tester.ensureVisible(subtitle);
+      await tester.tap(subtitle);
+      await tester.pumpAndSettle();
+      expect(find.text('preview:visit-$i'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+    expect(repository.opened, ['visit-0', 'visit-1', 'visit-2']);
+    expect(previews, repository.opened);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
