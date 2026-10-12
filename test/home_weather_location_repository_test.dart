@@ -80,7 +80,7 @@ void main() {
     homeAddress = '  ';
     companyAddress = '会社';
     final result = await HomeWeatherLocationRepository.forTesting(client)
-        .load(const HomeAttendanceStatus());
+        .load(const HomeAttendanceStatus(phase: HomeAttendancePhase.unknown));
     expect(result.selection.kind, WeatherAddressKind.company);
     expect(result.selection.address, '会社');
     expect(result.companyAddressMissing, isFalse);
@@ -91,7 +91,7 @@ void main() {
     companyAddress = '会社';
     await expectLater(
       HomeWeatherLocationRepository.forTesting(client)
-          .load(const HomeAttendanceStatus()),
+          .load(const HomeAttendanceStatus(phase: HomeAttendancePhase.unknown)),
       throwsStateError,
     );
   });
