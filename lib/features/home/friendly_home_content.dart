@@ -791,7 +791,7 @@ class _HomeReorderSurface extends StatelessWidget {
         )
       else
         child,
-      Positioned(
+      if (!bodyLongPress) Positioned(
         top: lowerLeadingHandle ? 8 : upperLeadingHandle ? 10 : 0,
         right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
         left: lowerLeadingHandle ? 44 : upperLeadingHandle ? 10 : null,
