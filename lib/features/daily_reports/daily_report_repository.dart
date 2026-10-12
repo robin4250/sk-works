@@ -526,6 +526,7 @@ class DailyReportRepository {
     String? siteId,
     String? routeAssignmentId,
     String? vehicleClockInAnchorId,
+    String? reportId,
   }) async {
     var query = _client
         .from('daily_reports')
@@ -536,6 +537,7 @@ class DailyReportRepository {
     query = siteId != null
         ? query.eq('site_id', siteId)
         : query.eq('route_assignment_id', routeAssignmentId!);
+    if (reportId != null) query = query.eq('id', reportId);
     final rows = await query.limit(1);
 
     if (rows.isEmpty) return null;
@@ -813,6 +815,47 @@ class DailyReportRepository {
         'p_signature_json': {'strokes': signatureJson},
       },
     );
+  }
+
+  Future<List<DailyReportEvidenceRecord>> loadVisitEvidence(
+    RouteVisitReportContext context, {required DateTime date}
+  ) async {
+    final records = <DailyReportEvidenceRecord>[];
+    for (final capture in [(context.startCaptureId, 'start'), (context.endCaptureId, 'end')]) {
+      final row = await _client.rpc('route_journey_visit_exact', params: {'p_id': capture.$1});
+      if (row is! Map || row['id'] != capture.$1 || row['visit_kind'] != capture.$2 ||
+          row['source_clock_in_id'] != context.sourceClockInId ||
+          row['route_assignment_id'] != context.routeAssignmentId ||
+          row['route_stop_id'] != context.routeStopId ||
+          row['start_capture_id'] != context.startCaptureId ||
+          row['work_date'] != _dbDate(date) || row['payload'] is! Map) {
+        throw StateError('選んだ訪問日報の写真・時刻を確認できません');
+      }
+      final payload = row['payload'] as Map;
+      final recorded = DateTime.tryParse(payload['attempted_at']?.toString() ?? '') ??
+          DateTime.tryParse(row['recorded_at']?.toString() ?? '');
+      if (recorded == null) throw StateError('現場訪問の時刻を確認できません');
+      records.add(DailyReportEvidenceRecord(
+        id: capture.$1, workerName: row['worker_name']?.toString() ?? '',
+        eventType: capture.$2 == 'start' ? 'route_arrival' : 'route_move',
+        confirmedAt: recorded.toLocal(),
+        storagePath: payload['photo_storage_path']?.toString() ?? '',
+        storageBucket: 'attendance-route-evidence',
+        timeOnly: capture.$2 == 'end' || row['verification_mode'] == 'manual',
+        stopLabel: row['stop_label']?.toString(), sourceClockInId: context.sourceClockInId,
+        routeStopId: context.routeStopId, originKind: row['origin_kind']?.toString(),
+        gpsStatus: payload['gps_capture_status']?.toString(),
+        photoStatus: payload['photo_capture_status']?.toString(),
+        capturedAddress: payload['captured_address']?.toString(),
+        gpsCapturedAt: DateTime.tryParse(payload['gps_captured_at']?.toString() ?? '')?.toLocal(),
+        photoCapturedAt: DateTime.tryParse(payload['photo_captured_at']?.toString() ?? '')?.toLocal(),
+        photoObservedAt: DateTime.tryParse(payload['photo_observed_at']?.toString() ?? '')?.toLocal(),
+        latitude: (payload['latitude'] as num?)?.toDouble(),
+        longitude: (payload['longitude'] as num?)?.toDouble(),
+        accuracyM: (payload['accuracy_m'] as num?)?.toDouble(),
+      ));
+    }
+    return records;
   }
 
   Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({

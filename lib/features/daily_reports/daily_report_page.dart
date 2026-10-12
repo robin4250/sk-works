@@ -1728,7 +1728,7 @@ class DailyReportEvidencePage extends StatelessWidget {
 class DailyReportPrintPreviewPage extends StatefulWidget {
   const DailyReportPrintPreviewPage({super.key, required this.date,
     required this.siteName, required this.workers, required this.workDescription,
-    required this.report, this.evidence = const [],
+    required this.report, this.evidence = const [], this.resolvedEvidence,
   });
 
   final DateTime date;
@@ -1737,6 +1737,7 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
   final String workDescription;
   final DailyReportRecord? report;
   final List<DailyReportEvidenceRecord> evidence;
+  final List<DailyReportPdfEvidence>? resolvedEvidence;
 
   @override
   State<DailyReportPrintPreviewPage> createState() => _DailyReportPrintPreviewPageState();
@@ -1750,6 +1751,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
   String? _fingerprint;
 
   Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
+    if (widget.resolvedEvidence != null) return widget.resolvedEvidence!;
     final repository = DailyReportRepository.maybeCreate();
     if (repository == null) {
       return [for (final record in widget.evidence)
@@ -1840,7 +1842,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
         Expanded(child: PdfPreview(initialPageFormat: PdfPageFormat.a4,
           canChangePageFormat: false, canChangeOrientation: false,
           allowPrinting: true, allowSharing: true,
-          pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
+          pdfFileName: '${widget.date.toIso8601String().substring(0, 10)}_${widget.report?.id ?? 'preview'}_日報.pdf',
           build: (_) => _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
             date: widget.date, siteName: widget.siteName, workers: widget.workers,
             workDescription: widget.workDescription, report: widget.report,
