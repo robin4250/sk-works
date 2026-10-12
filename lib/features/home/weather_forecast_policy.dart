@@ -38,7 +38,9 @@ WeatherAddressSelection selectWeatherAddress({
       company,
     );
   }
-  if (!working) return WeatherAddressSelection(WeatherAddressKind.home, home);
+  if (!working) {
+    return WeatherAddressSelection(WeatherAddressKind.home, home);
+  }
   // Missing site data must not silently display the weather at home or company.
   return WeatherAddressSelection(
     site == null ? WeatherAddressKind.unavailable : WeatherAddressKind.site,

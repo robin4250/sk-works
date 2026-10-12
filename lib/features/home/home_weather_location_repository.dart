@@ -30,7 +30,9 @@ class HomeWeatherLocationRepository {
 
   Future<HomeWeatherLocation> load(HomeAttendanceStatus status) async {
     final actor = _client.auth.currentUser?.id;
-    if (actor == null) throw StateError('Weather location unavailable');
+    if (actor == null) {
+      throw StateError('Weather location unavailable');
+    }
     void checkActor() {
       if (_client.auth.currentUser?.id != actor) {
         throw StateError('Session changed');
@@ -66,7 +68,9 @@ class HomeWeatherLocationRepository {
         .limit(1);
     checkActor();
     // An inaccessible row is not evidence that the company has no address.
-    if (companies.length != 1) throw StateError('Company address unavailable');
+    if (companies.length != 1) {
+      throw StateError('Company address unavailable');
+    }
     final company = companies.single['address']?.toString();
     final role = memberships.single['role'];
     final admin = role == 'owner' || role == 'admin';
@@ -93,7 +97,9 @@ class HomeWeatherLocationRepository {
               .eq('id', siteId)
               .limit(1);
           checkActor();
-          if (sites.length != 1) throw StateError('Site address unavailable');
+          if (sites.length != 1) {
+            throw StateError('Site address unavailable');
+          }
           site = sites.single['address']?.toString();
         }
       }

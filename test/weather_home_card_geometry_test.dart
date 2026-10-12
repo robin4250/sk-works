@@ -103,6 +103,7 @@ void main() {
             forecastDate: base,
             sourceLabel: 'Fixture',
             currentSummary: 'Today only',
+            currentTemperatureCelsius: 21.5,
           ),
         ),
       );
@@ -133,6 +134,7 @@ void main() {
           ),
         ),
       );
+      expect(find.textContaining('21.5℃'), findsOneWidget);
       final description = find.text('Before: home / During: site');
       expect(description.hitTestable(), findsOneWidget);
       final text = tester.widget<Text>(description);
@@ -150,8 +152,26 @@ void main() {
       await tester.tap(find.byTooltip('Next day weather'));
       await tester.pump();
       expect(state.value.selectedDay, 1);
+      expect(find.textContaining('21.5℃'), findsNothing);
       expect(find.textContaining('Today only'), findsNothing);
       expect(find.text('Tomorrow'), findsOneWidget);
+      state.value = WeatherForecastViewData(
+        baseDate: base,
+        selectedDay: 1,
+        locationLabel: 'New area',
+        snapshot: WeatherForecastSnapshot(
+          locationLabel: 'Wrong day area',
+          updatedAt: base,
+          forecastDate: base,
+          sourceLabel: 'Fixture',
+          currentSummary: 'Wrong day weather',
+          currentTemperatureCelsius: 99,
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('99℃'), findsNothing);
+      expect(find.textContaining('Wrong day weather'), findsNothing);
+
       await tester.tap(find.text('Forecast'));
       await tester.pumpAndSettle();
       expect(find.text('Tomorrow 10/13'), findsOneWidget);

@@ -42,6 +42,13 @@ class WeatherForecastViewData {
         : null;
   }
 
+  String get temperatureLabel {
+    final temperature = forecast?.currentTemperatureCelsius;
+    if (temperature == null || !temperature.isFinite)
+      return SkoLanguageController.tr('未取得');
+    return '${temperature == temperature.roundToDouble() ? temperature.toStringAsFixed(0) : temperature}℃';
+  }
+
   String get compactDayLabel =>
       selectedDay == 2 ? SkoLanguageController.tr('2日後') : dayLabel;
   String get dayLabel =>
@@ -107,7 +114,7 @@ class WeatherForecastHomeCard extends StatelessWidget {
     title: SkoLanguageController.tr('天気予報'),
     showChevron: false,
     details:
-        '${data.regionLabel ?? data.locationLabel ?? ''}${data.regionLabel == null && data.locationLabel == null ? '' : ' ／ '}${data.status}',
+        '${data.regionLabel ?? data.locationLabel ?? ''}${data.regionLabel == null && data.locationLabel == null ? '' : ' ／ '}${data.status}${data.forecast == null ? '' : ' ／ ${data.temperatureLabel}'}',
     footer: SkoLanguageController.tr('出勤前：自宅周辺 ／ 出勤後：現場周辺の天気を表示'),
     trailing: WeatherDayNavigation(
       data: data,

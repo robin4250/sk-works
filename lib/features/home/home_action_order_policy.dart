@@ -51,7 +51,9 @@ List<String> reorderHomeMenuActions(
       newIndex > ordered.length) {
     return full;
   }
-  if (newIndex > oldIndex) newIndex--;
+  if (newIndex > oldIndex) {
+    newIndex--;
+  }
   final moved = ordered.removeAt(oldIndex);
   ordered.insert(newIndex, moved);
   var index = 0;

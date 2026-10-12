@@ -48,7 +48,9 @@ class WeatherForecastController extends ChangeNotifier {
   bool _disposed = false;
 
   Future<void> refresh(WeatherAddressSelection next, {DateTime? date}) async {
-    if (_disposed) return;
+    if (_disposed) {
+      return;
+    }
     final requested = date ?? DateTime.now();
     final day = DateTime(requested.year, requested.month, requested.day);
     final generation = ++_generation;
@@ -62,7 +64,9 @@ class WeatherForecastController extends ChangeNotifier {
     failed = false;
     loading = next.address != null;
     notifyListeners();
-    if (!loading) return;
+    if (!loading) {
+      return;
+    }
     try {
       final result = await fetch(next, day);
       if (DateTime(
@@ -73,13 +77,19 @@ class WeatherForecastController extends ChangeNotifier {
           day) {
         throw const FormatException('Forecast day mismatch');
       }
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _generation) {
+        return;
+      }
       snapshot = result;
     } catch (_) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _generation) {
+        return;
+      }
       failed = true;
     }
-    if (_disposed || generation != _generation) return;
+    if (_disposed || generation != _generation) {
+      return;
+    }
     loading = false;
     notifyListeners();
   }
