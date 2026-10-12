@@ -1,4 +1,4 @@
-import {logWeatherFailure} from './diagnostics.mjs';
+import {logWeatherFailure,logWeatherConfigurationGaps} from './diagnostics.mjs';
 import {publicApiKey} from './location.mjs';
 import {fetchOpenWeather,fetchWeatherKit,localParts,nextDate} from './providers.mjs';
 // Resolve the actor's address and geocode on the server. The request accepts no
@@ -31,6 +31,9 @@ export function createWeatherForecastHandler(deps) {
       stage='region_lookup';
       const region=await deps.resolveLocation({actorId:actor.id,authorization});
       if(!region||typeof region.address!=='string'||!region.address.trim()){logWeatherFailure('region_missing',null,deps.logger);return reply({error:'Weather region unavailable'},422);}
+      if(deps.geocodeConfigurationDiagnostics && deps.env('WEATHER_GEOCODING_PROVIDER')!=='google') {
+        logWeatherConfigurationGaps(deps.env,deps.logger);
+      }
       stage='geocoding';
       const location=await deps.geocode(region.address);
       if(!location||location.match!=='exact'||!location.timeZone)throw new Error('Location unavailable');

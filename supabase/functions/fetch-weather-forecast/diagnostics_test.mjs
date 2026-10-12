@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWeatherForecastHandler} from './handler.mjs';
-import {logWeatherFailure, WeatherConfigurationError} from './diagnostics.mjs';
+import {logWeatherFailure, logWeatherConfigurationGaps, WeatherConfigurationError} from './diagnostics.mjs';
 import {geocodeRegisteredAddress} from './location.mjs';
 import {fetchOpenWeather, createWeatherKitToken} from './providers.mjs';
 const request = () => new Request('https://example.invalid', {method:'POST',headers:{Authorization:'Bearer PRIVATE-token'},body:'{"day_offset":0}'});
@@ -48,4 +48,25 @@ test('authentication and request rejection preserve existing contracts without d
  assert.equal((await handle(new Request('https://example.invalid',{method:'POST',body:'{}'}))).status,401);
  assert.equal((await handle(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer PRIVATE-token'},body:'{"address":"PRIVATE-address"}'}))).status,400);
  assert.deepEqual(logs,[]);
+});
+
+test('configuration presence logs only fixed missing names and never existing values', () => {
+ const logs=[];
+ logWeatherConfigurationGaps(k=>k==='OPENWEATHER_API_KEY'?'PRIVATE-existing-secret':undefined,line=>logs.push(line));
+ assert.deepEqual(logs,[
+  'weather_configuration_missing:geocoding_key',
+  'weather_configuration_missing:weatherkit_team',
+  'weather_configuration_missing:weatherkit_service',
+  'weather_configuration_missing:weatherkit_key_id',
+  'weather_configuration_missing:weatherkit_private_key',
+ ]);
+ assert.ok(logs.every(line=>!line.includes('PRIVATE')));
+ const present=[];logWeatherConfigurationGaps(()=> 'PRIVATE-value',line=>present.push(line));
+ assert.deepEqual(present,[]);
+});
+test('presence checks wait for authenticated actor region and preserve error response',async()=>{
+ const logs=[];const handler=createWeatherForecastHandler({...base,geocodeConfigurationDiagnostics:true,
+  resolveLocation:async()=>{throw Error('PRIVATE-user');},logger:line=>logs.push(line)});
+ assert.equal((await handler(request())).status,422);
+ assert.deepEqual(logs,['weather_failure:region_lookup']);
 });
