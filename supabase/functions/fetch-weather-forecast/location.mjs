@@ -1,3 +1,4 @@
+import {WeatherConfigurationError} from './diagnostics.mjs';
 export function publicApiKey(env) {
  const raw=env('SUPABASE_PUBLISHABLE_KEYS');
  if(raw){const value=JSON.parse(raw).default;if(typeof value==='string'&&value)return value;}
@@ -40,7 +41,8 @@ export async function resolveWeatherAddress({actorId,read,now=new Date()}) {
 export async function geocodeRegisteredAddress(address,{env,fetcher=fetch,now=new Date()}) {
  // This adapter is explicitly opt-in. No account/product is enrolled by code.
  const key=env('WEATHER_GEOCODING_API_KEY');
- if(env('WEATHER_GEOCODING_PROVIDER')!=='google'||!key)throw Error('Weather geocoding configuration unavailable');
+ if(env('WEATHER_GEOCODING_PROVIDER')!=='google')throw new WeatherConfigurationError('geocoding_provider_missing');
+ if(!key)throw new WeatherConfigurationError('geocoding_key_missing');
  const get=async url=>{const r=await fetcher(url,{signal:AbortSignal.timeout(10000),redirect:'error'});if(!r.ok)throw Error('Weather geocoding unavailable');return await r.json();};
  const url=new URL('https://maps.googleapis.com/maps/api/geocode/json');url.searchParams.set('address',address);url.searchParams.set('key',key);
  const data=await get(url);
