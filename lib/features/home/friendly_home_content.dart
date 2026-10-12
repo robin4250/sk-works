@@ -807,6 +807,9 @@ class _HomeReorderSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
+    // Keep the grid cell constraints; loosening them shrinks the button
+    // to its icon/label while the positioned handle stays at the cell edge.
+    fit: StackFit.passthrough,
     children: [
       child,
       Positioned(
@@ -1053,6 +1056,7 @@ class _HomeActionTile extends StatelessWidget {
 
     Widget tile({bool dragging = false}) {
       Widget core = Material(
+        key: ValueKey('home-button-${item.key}'),
         color: background.withValues(alpha: dragging ? 0.88 : 1),
         elevation: dragging ? 8 : 0,
         borderRadius: BorderRadius.circular(20),
