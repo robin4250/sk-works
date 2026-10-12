@@ -45,6 +45,19 @@ void main() {
       expect(result[1].isNightWork, isTrue);
     });
 
+    test('a missing overtime amount never steals a number from the early label', () {
+      final result = parser.parse('現場A 残業なし 早出2');
+      expect(result.single.overtimeHours, 0);
+      expect(result.single.earlyHours, 2);
+    });
+
+    test('holiday and PC markers are status and require the configured allowance name', () {
+      final result = parser.parse('現場A 休日夜勤 PC');
+      expect(result.single.isHolidayWork, isTrue);
+      expect(result.single.isNightWork, isTrue);
+      expect(result.single.hasSteelAllowance, isTrue);
+    });
+
     test('ignores non-attendance text', () {
       final result = parser.parse(
         '9月18日(金)\n東京海上　三嶋、三上\nおはようございます',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../chat/line_import_feature_settings_panel.dart';
 import '../../international/language_controller.dart';
 import '../../data/supabase_backend.dart';
 import '../home/weather_provider_settings_panel.dart';
@@ -139,6 +140,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          const LineImportFeatureSettingsPanel(),
                           if (_weatherProviderRepository != null)
                             WeatherProviderSettingsPanel(
                               isMaster: true,

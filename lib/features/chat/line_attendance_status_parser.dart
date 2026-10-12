@@ -6,6 +6,7 @@ class LineAttendanceStatus {
     required this.earlyHours,
     required this.isNightWork,
     required this.hasSteelAllowance,
+    this.isHolidayWork = false,
   });
 
   final String siteName;
@@ -14,6 +15,7 @@ class LineAttendanceStatus {
   final double earlyHours;
   final bool isNightWork;
   final bool hasSteelAllowance;
+  final bool isHolidayWork;
 }
 
 class LineAttendanceStatusParser {
@@ -45,7 +47,8 @@ class LineAttendanceStatusParser {
           overtimeHours: _hoursAfter(detail, '残業'),
           earlyHours: _hoursAfter(detail, '早出'),
           isNightWork: detail.contains('夜勤'),
-          hasSteelAllowance: detail.contains('鉄骨'),
+          hasSteelAllowance: detail.contains('鉄骨') || RegExp(r'\bPC\b', caseSensitive: false).hasMatch(detail),
+          isHolidayWork: detail.contains('休日'),
         ),
       );
     }
@@ -58,7 +61,7 @@ class LineAttendanceStatusParser {
         value.contains('残業') ||
         value.contains('早出') ||
         value.contains('夜勤') ||
-        value.contains('鉄骨');
+        value.contains('鉄骨') || value.contains('休日') || RegExp(r'\bPC\b', caseSensitive: false).hasMatch(value);
   }
 
   double _hoursAfter(String value, String label) {
@@ -66,7 +69,7 @@ class LineAttendanceStatusParser {
     if (index < 0) return 0;
 
     final tail = value.substring(index + label.length);
-    final match = RegExp(r'([0-9]+(?:\.[0-9]+)?)').firstMatch(tail);
+    final match = RegExp(r'^[\s:：]*([0-9]+(?:\.[0-9]+)?)').firstMatch(tail);
     if (match == null) return 0;
     return double.tryParse(match.group(1)!) ?? 0;
   }
