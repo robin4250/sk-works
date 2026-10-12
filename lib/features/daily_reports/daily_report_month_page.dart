@@ -7,6 +7,8 @@ import 'daily_report_month_zip.dart';
 
 import 'daily_report_month_repository.dart';
 import 'daily_report_page.dart';
+import 'daily_report_calendar_model.dart';
+import 'daily_report_saved_preview_pager.dart';
 import '../route_billing/route_customer_day_quantity_page.dart';
 
 class DailyReportMonthPage extends StatefulWidget {
@@ -35,6 +37,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   String? _openingEntryId;
   bool _loading = true, _exporting = false;
   int _generation = 0;
+  String? _siteKey, _siteName;
+  final Map<String, Future<bool>> _photoPresence = {};
+  List<DailyReportMonthEntry> get _visibleEntries => _siteKey == null ? _entries :
+      _entries.where((entry) => dailyReportDestinationKey(entry) == _siteKey).toList();
   @override
   void initState() {
     super.initState();
@@ -55,6 +61,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       _loading = true;
       _error = null;
       _entries = [];
+      _photoPresence.clear();
     });
     try {
       final repository = _repository;
@@ -70,7 +77,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
         entry.date.day == selectedDate.day).toList();
       repository.checkActor(actor);
       if (!mounted || generation != _generation) return;
-      setState(() => _entries = entries);
+      setState(() => _entries = chronologicalDailyReports(entries));
     } catch (_) {
       if (!mounted || generation != _generation) return;
       setState(() => _error = '日報一覧を取得できません。ログイン状態を確認して再読み込みしてください。');
@@ -89,11 +96,11 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
         _loading ||
         _exporting ||
         _openingEntryId != null ||
-        _entries.isEmpty) {
+        _visibleEntries.isEmpty) {
       return;
     }
     final month = _month;
-    final entries = List<DailyReportMonthEntry>.of(_entries);
+    final entries = List<DailyReportMonthEntry>.of(_visibleEntries);
     setState(() => _exporting = true);
     try {
       repository.checkActor(actor);
@@ -218,9 +225,186 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: const Text('日報一覧の使い方'),
-    content: const SingleChildScrollView(child: Text('訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。')),
+    content: const SingleChildScrollView(child: Text('現場名一覧から現場を選ぶと、上下にスクロールする月の日付一覧を開きます。◀・▶で月を切り替え、ヘッダーの「月まとめて共有・保存」で全現場または開いている現場の保存済み日報をZIPにまとめます。各日の「写真無し」「写真付き」は実際に保存した日報の枚数です。同じ日が複数枚なら古い順に選べます。プレビューは右スライドで次の日、左スライドで古い日報へ進み、矢印でも切り替えできます。「編集」から選択した日報を開きます。署名済み日報の変更制限はそのままです。「＋」で新規日報を作成します。訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
   ));
+
+  Future<void> _newReport() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
+      initialDate: DateTime(_month.year, _month.month, DateTime.now().day.clamp(1,
+        DateTime(_month.year, _month.month + 1, 0).day).toInt()),
+    )));
+    if (mounted) await _load();
+  }
+
+  Future<void> _openCalendarEntry(DailyReportMonthEntry entry) async {
+    final repository = _repository, actor = _actor;
+    if (repository == null || actor == null || _loading || _exporting) return;
+    try {
+      repository.checkActor(actor);
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+        DailyReportSavedPreviewPager(repository: repository, actor: actor,
+          entries: _visibleEntries, initialEntryId: entry.id,
+          previewBuilderForTesting: widget.previewBuilderForTesting)));
+      repository.checkActor(actor);
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('選んだ日報を取得できませんでした。一覧を再読み込みしてください。')));
+    }
+  }
+
+  Future<List<(DailyReportMonthEntry, bool)>> _classify(List<DailyReportMonthEntry> entries) async {
+    final repository = _repository, actor = _actor;
+    if (repository == null || actor == null) throw StateError('Report unavailable');
+    final classified = <(DailyReportMonthEntry, bool)>[];
+    for (final entry in entries) {
+      final future = _photoPresence.putIfAbsent(entry.id,
+        () => repository.hasPhotos(entry, expectedActor: actor));
+      classified.add((entry, await future));
+    }
+    repository.checkActor(actor);
+    return classified;
+  }
+
+  Widget _monthBuild(BuildContext context) {
+    final busy = _loading || _exporting;
+    final destinations = <String, List<DailyReportMonthEntry>>{};
+    for (final entry in _entries) {
+      destinations.putIfAbsent(dailyReportDestinationKey(entry), () => []).add(entry);
+    }
+    final visible = _visibleEntries;
+    final byDate = <String, List<DailyReportMonthEntry>>{};
+    for (final entry in visible) {
+      byDate.putIfAbsent(DailyReportMonthRepository.dateKey(entry.date), () => []).add(entry);
+    }
+    return PopScope<void>(canPop: _siteKey == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !busy) setState(() { _siteKey = null; _siteName = null; });
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_siteName ?? '日報', maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          leading: _siteKey == null ? null : IconButton(tooltip: '現場一覧へ',
+            onPressed: busy ? null : () => setState(() { _siteKey = null; _siteName = null; }),
+            icon: const Icon(Icons.arrow_back)),
+          actions: [
+            IconButton(tooltip: '新規日報', onPressed: busy ? null : _newReport,
+              icon: const Icon(Icons.add)),
+            IconButton(tooltip: '日報一覧のヘルプ', onPressed: _help,
+              icon: const Icon(Icons.help_outline)),
+          ],
+          bottom: PreferredSize(preferredSize: const Size.fromHeight(114),
+            child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Column(children: [
+                Row(children: [
+                  IconButton(tooltip: '前の月', onPressed: busy ? null : () => _move(-1),
+                    icon: const Icon(Icons.chevron_left)),
+                  Expanded(child: Text('${_month.year}年${_month.month}月', textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  IconButton(tooltip: '次の月', onPressed: busy ? null : () => _move(1),
+                    icon: const Icon(Icons.chevron_right)),
+                ]),
+                SizedBox(width: double.infinity, child: FilledButton.icon(
+                  key: const ValueKey('daily-report-month-share'),
+                  onPressed: busy || visible.isEmpty ? null : _export,
+                  icon: const Icon(Icons.ios_share),
+                  label: Text(_exporting ? '日報・写真を読み込み中…' : '月まとめて共有・保存',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)))),
+              ]))),
+        ),
+        body: _loading ? const Center(child: CircularProgressIndicator()) : _error != null
+          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(
+              mainAxisSize: MainAxisSize.min, children: [Text(_error!),
+                TextButton(onPressed: _load, child: const Text('再読み込み'))])))
+          : RefreshIndicator(onRefresh: _exporting ? () async {} : _load,
+            child: _siteKey == null ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12), children: [
+                const Padding(padding: EdgeInsets.all(8), child: Text('現場名一覧',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                if (destinations.isEmpty) const Padding(padding: EdgeInsets.all(24),
+                  child: Text('この月の保存済み日報はありません。', style: TextStyle(fontSize: 18))),
+                for (final destination in destinations.entries) Card(child: ListTile(
+                  key: ValueKey('daily-report-site-${destination.key}'),
+                  title: Text(destination.value.first.name,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  subtitle: Text('保存済み日報 ${destination.value.length}枚',
+                    style: const TextStyle(fontSize: 17)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _exporting ? null : () => setState(() {
+                    _siteKey = destination.key; _siteName = destination.value.first.name;
+                  }),
+                )),
+              ]) : ListView.builder(
+                key: ValueKey('daily-report-calendar-${_siteKey!}-${_month.year}-${_month.month}'),
+                physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(12),
+                itemCount: DateTime(_month.year, _month.month + 1, 0).day,
+                itemBuilder: (context, index) {
+                  final date = DateTime(_month.year, _month.month, index + 1);
+                  final entries = byDate[DailyReportMonthRepository.dateKey(date)] ?? const <DailyReportMonthEntry>[];
+                  return _calendarDay(date, entries);
+                },
+              )),
+      ));
+  }
+
+  Widget _calendarDay(DateTime date, List<DailyReportMonthEntry> entries) {
+    const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+    final today = DateTime.now();
+    final isToday = today.year == date.year && today.month == date.month && today.day == date.day;
+    return Card(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8),
+      side: BorderSide(color: isToday ? Theme.of(context).colorScheme.primary :
+        Theme.of(context).colorScheme.outlineVariant, width: isToday ? 2 : 1)),
+      child: Padding(padding: const EdgeInsets.all(12), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${date.day}日（${weekdays[date.weekday - 1]}）',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          if (entries.isEmpty) const Text('日報なし', style: TextStyle(fontSize: 16))
+          else FutureBuilder<List<(DailyReportMonthEntry, bool)>>(
+            future: _classify(entries), builder: (context, snapshot) {
+              if (snapshot.hasError) return TextButton(onPressed: () {
+                for (final entry in entries) { _photoPresence.remove(entry.id); }
+                setState(() {});
+              }, child: const Text('写真情報を再読み込み'));
+              final records = snapshot.data;
+              if (records == null) return const Padding(padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('日報を確認中…', style: TextStyle(fontSize: 17)));
+              return Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final photos in [false, true])
+                  if (records.any((record) => record.$2 == photos)) OutlinedButton.icon(
+                    key: ValueKey('daily-report-day-${date.day}-${photos ? 'photos' : 'no-photos'}'),
+                    onPressed: _exporting ? null : () => _chooseReport(records
+                      .where((record) => record.$2 == photos).map((record) => record.$1).toList()),
+                    icon: Icon(photos ? Icons.photo_outlined : Icons.description_outlined),
+                    label: Text('${photos ? '写真付き' : '写真無し'} ${records.where((record) => record.$2 == photos).length}枚',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
+              ]);
+            }),
+        ])));
+  }
+
+  Future<void> _chooseReport(List<DailyReportMonthEntry> entries) async {
+    if (entries.length == 1) { await _openCalendarEntry(entries.single); return; }
+    final selected = await showModalBottomSheet<DailyReportMonthEntry>(context: context,
+      isScrollControlled: true, builder: (sheetContext) => SafeArea(child: Column(
+        mainAxisSize: MainAxisSize.min, children: [
+          const Padding(padding: EdgeInsets.all(16), child: Text('日報を選択（古い順）',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+          Flexible(child: ListView(shrinkWrap: true, children: [
+            for (var i = 0; i < entries.length; i++) ListTile(
+              key: ValueKey('daily-report-select-${entries[i].id}'),
+              title: Text('${i + 1}枚目 / ${entries[i].kindLabel}', style: const TextStyle(fontSize: 18)),
+              subtitle: Text(entries[i].createdAt == null ? '作成時刻未取得' : _createdTime(entries[i].createdAt!),
+                style: const TextStyle(fontSize: 17)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pop(sheetContext, entries[i]),
+            ),
+          ])),
+        ])));
+    if (selected != null && mounted) await _openCalendarEntry(selected);
+  }
 
   (String, String, String) _entryGroup(DailyReportMonthEntry entry) =>
       (DailyReportMonthRepository.dateKey(entry.date),
@@ -243,7 +427,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _selectedDate != null ? _legacyBuild(context) : _monthBuild(context);
+
+  Widget _legacyBuild(BuildContext context) {
     final counts = <(String, String, String), int>{};
     final ordinals = <(String, String, String), int>{};
     final entryOrdinals = <int>[];
@@ -341,3 +527,4 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   );
   }
 }
+

@@ -155,6 +155,17 @@ class DailyReportMonthRepository {
     return result;
   }
 
+  /// Classifies actual saved reports using evidence metadata, without downloading photos.
+  Future<bool> hasPhotos(DailyReportMonthEntry entry, {required String expectedActor}) async {
+    checkActor(expectedActor);
+    final records = entry.isVisit
+        ? await reports.loadVisitEvidence(entry.visitContext!, date: entry.date)
+        : await reports.loadAttendanceEvidence(reportId: entry.id, date: entry.date,
+            siteId: entry.siteId, routeAssignmentId: entry.routeId);
+    checkActor(expectedActor);
+    return records.any((record) => record.storagePath.isNotEmpty);
+  }
+
   static void requireCompletePhotos(List<DailyReportPdfEvidence> photos) {
     if (photos.any(
       (photo) =>
@@ -195,3 +206,4 @@ class DailyReportMonthRepository {
     return DailyReportMonthDocument(report, photos);
   }
 }
+

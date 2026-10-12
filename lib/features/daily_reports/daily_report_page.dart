@@ -31,6 +31,7 @@ class DailyReportPage extends StatefulWidget {
     super.key,
     this.initialDate,
     this.initialSiteId,
+    this.initialReportId,
     this.initialRouteAssignmentId,
     this.vehicleClockInId,
     this.groupClockInAnchorId,
@@ -44,6 +45,8 @@ class DailyReportPage extends StatefulWidget {
 
   final DateTime? initialDate;
   final String? initialSiteId;
+  /// Saved report selection is pinned to its own identity, including same-day records.
+  final String? initialReportId;
   final String? initialRouteAssignmentId;
   final String? vehicleClockInId;
   final String? groupClockInAnchorId;
@@ -144,7 +147,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _loadDay() async {
-    if (_visitReport) {
+    if (_visitReport || widget.initialReportId != null) {
       await _loadSelectedSite();
       return;
     }
@@ -253,6 +256,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         siteId: siteId,
         routeAssignmentId: routeAssignmentId,
         vehicleClockInAnchorId: _currentVehicleAnchor,
+        reportId: widget.initialReportId,
       );
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
@@ -335,7 +339,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _pickDate() async {
-    if (_saving) return;
+    if (_saving || widget.initialReportId != null) return;
     final selected = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -352,7 +356,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _selectSite(String? destinationKey) async {
-    if (destinationKey == null || _saving || !mounted) return;
+    if (destinationKey == null || _saving || !mounted || widget.initialReportId != null) return;
     final group = _groups
         .where((item) => item.destinationKey == destinationKey)
         .firstOrNull;
@@ -1752,6 +1756,7 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
   const DailyReportPrintPreviewPage({super.key, required this.date,
     required this.siteName, required this.workers, required this.workDescription,
     required this.report, this.evidence = const [], this.resolvedEvidence,
+    this.includePhotos = true, this.onEdit,
   });
 
   final DateTime date;
@@ -1761,6 +1766,8 @@ class DailyReportPrintPreviewPage extends StatefulWidget {
   final DailyReportRecord? report;
   final List<DailyReportEvidenceRecord> evidence;
   final List<DailyReportPdfEvidence>? resolvedEvidence;
+  final bool includePhotos;
+  final VoidCallback? onEdit;
 
   @override
   State<DailyReportPrintPreviewPage> createState() => _DailyReportPrintPreviewPageState();
@@ -1774,6 +1781,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
   String? _fingerprint;
 
   Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
+    if (!widget.includePhotos) return const [];
     if (widget.resolvedEvidence != null) return widget.resolvedEvidence!;
     final repository = DailyReportRepository.maybeCreate();
     if (repository == null) {
@@ -1787,6 +1795,20 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
 
   Future<List<DailyReportPdfEvidence>> _savedEvidence() =>
       _resolvedEvidence ??= _loadEvidence();
+
+  Future<void> _printReport() async {
+    try {
+      final bytes = await _pdfBytes.get(() async => DailyReportPdfService.buildPdf(
+        date: widget.date, siteName: widget.siteName, workers: widget.workers,
+        workDescription: widget.workDescription, report: widget.report,
+        evidence: await _savedEvidence()));
+      await Printing.layoutPdf(name: '${widget.date.toIso8601String().substring(0, 10)}_日報.pdf',
+        format: PdfPageFormat.a4, onLayout: (_) async => bytes);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(SkoLanguageController.tr('日報を印刷できませんでした'))));
+    }
+  }
 
   Future<void> _printPhotoPages() async {
     if (_printingPhotos) return;
@@ -1832,10 +1854,16 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     }
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr('日報 A4プレビュー')),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          IconButton(tooltip: SkoLanguageController.tr('印刷'),
+            onPressed: _printReport, icon: const Icon(Icons.print_outlined)),
+          if (widget.onEdit != null) IconButton(tooltip: SkoLanguageController.tr('編集'),
+            onPressed: widget.onEdit, icon: const Icon(Icons.edit_outlined)),
+          const SkoNotificationBell(),
+        ],
       ),
       body: Column(children: [
-        FutureBuilder<List<DailyReportPdfEvidence>>(
+        if (widget.includePhotos) FutureBuilder<List<DailyReportPdfEvidence>>(
           future: _savedEvidence(),
           builder: (context, snapshot) {
             final photos = dailyReportPhotoRecords(snapshot.data ?? const []);
@@ -1919,3 +1947,4 @@ String _captureStatusLabel(String? status) => SkoLanguageController.tr(switch (s
   'failed' => '取得失敗',
   _ => '未登録',
 });
+
