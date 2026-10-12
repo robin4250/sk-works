@@ -108,6 +108,36 @@ try {
   assert.deepEqual((await db.query(`select * from invoices where id='${expenseOnly.id}'`)).rows[0],protectedInvoice,'new recovery cannot mutate finalized historical document');
   await db.exec(`select private.expense_review_command('${id(36)}','${legacyClaim}',4,'allocate','customer','${emptyCustomer}')`);
   assert.deepEqual((await db.query(`select * from invoices where id='${expenseOnly.id}'`)).rows[0],protectedInvoice,'legacy allocation stays metadata and leaves finalized document byte-identical');
+  // Ordinary recalculation must not opt old detail-only expenses into the new
+  // monetary snapshot contract or hide their existing detail page.
+  const oldCustomer=id(70), oldSite=id(71), oldDetailClaim=id(72);
+  await db.exec(`insert into customers values('${oldCustomer}','${company}','従来明細の取引先','');
+    insert into sites(id,company_id,customer_id,name) values('${oldSite}','${company}','${oldCustomer}','従来現場');
+    insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values('${company}','${oldSite}',20000,8);
+    insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days) values('${company}','${worker}','${oldSite}','2026-12-01',1);
+    insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
+      values('${oldDetailClaim}','${company}','${worker}','本人','${actor}','2026-12-01','従来の明細のみ経費',888,'approved','customer','${oldCustomer}',2);
+    insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by)
+      values('${oldDetailClaim}','${company}','cash','2026-12-01',2,'${actor}');
+    select private.refresh_automatic_invoice('${company}','${oldCustomer}','2026-12-01');`);
+  const legacyDocument=(await db.query(`select * from invoices where customer_id='${oldCustomer}'`)).rows[0];
+  assert.equal(legacyDocument.grand_total,23760);
+  assert.equal('expense_extra_source_version' in legacyDocument.snapshot,false,'ordinary refresh does not opt in legacy monetary details');
+  const oldDetail=(await db.query(`select public.read_expense_document('invoice','${legacyDocument.id}') as value`)).rows[0].value;
+  assert.deepEqual(oldDetail.claims.map(row=>row.id),[oldDetailClaim],'old detail-only expenses remain visible');
+  assert.equal(oldDetail.cost_recovery_amount_yen,null);
+  const oldPartnerClaim=id(73);
+  await db.exec(`insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
+    values('${oldPartnerClaim}','${company}','${worker}','本人','${actor}','2026-12-01','従来の支払明細のみ経費',777,'approved','subcontractor','${partner}',2);
+    insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by)
+      values('${oldPartnerClaim}','${company}','cash','2026-12-01',2,'${actor}');
+    select private.refresh_automatic_payment_certificate('${company}','${partner}','2026-12-01');`);
+  const oldPayment=(await db.query(`select * from payment_certificates where partner_company_id='${partner}' and period_start='2026-12-01'`)).rows[0];
+  assert.equal(oldPayment.gross_amount,23760);
+  assert.equal('expense_extra_source_version' in oldPayment.snapshot,false);
+  const oldPaymentDetails=(await db.query(`select public.read_expense_document('paymentCertificate','${oldPayment.id}') as value`)).rows[0].value;
+  assert.deepEqual(oldPaymentDetails.claims.map(row=>row.id),[oldPartnerClaim]);
+  assert.equal(oldPaymentDetails.cost_recovery_amount_yen,null);
   await db.exec(`update invoices set snapshot=jsonb_set(snapshot,'{expense_extra_amount_yen}','1') where id='${opted.id}'`);
   await assert.rejects(db.exec(`select public.read_expense_document('invoice','${opted.id}')`),/内訳と帳票金額/,'mismatched monetary snapshots never render an inconsistent detail page');
   console.log('PASS charged detail IDs, revisions and original amounts agree for draft/finalized documents; unselected legacy claims stay excluded');

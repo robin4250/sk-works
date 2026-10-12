@@ -379,8 +379,10 @@ begin
  $invoice$);
  definition:=replace(definition,'total_pre_tax+total_tax','total_pre_tax+total_tax+expense_amount');
  definition:=replace(definition,'snapshot_value:=snapshot_value||private.document_company_seal_snapshot',$invoice$
- snapshot_value:=snapshot_value||jsonb_build_object('expense_extra_amount_yen',expense_amount,
-  'expense_extra_claims',expense_component->'claims','expense_extra_source_version',1);
+ if coalesce((expense_component->>'has_choices')::boolean,false) or existing.snapshot?'expense_extra_source_version' then
+  snapshot_value:=snapshot_value||jsonb_build_object('expense_extra_amount_yen',expense_amount,
+   'expense_extra_claims',expense_component->'claims','expense_extra_source_version',1);
+ end if;
  snapshot_value:=snapshot_value||private.document_company_seal_snapshot
  $invoice$);
  execute definition;
@@ -406,8 +408,10 @@ begin
  $certificate$);
  definition:=replace(definition,'snapshot_value:=jsonb_build_object(',E'gross:=gross+expense_amount;\n snapshot_value:=jsonb_build_object(');
  definition:=replace(definition,'snapshot_value:=snapshot_value||private.document_company_seal_snapshot',$certificate$
- snapshot_value:=snapshot_value||jsonb_build_object('expense_extra_amount_yen',expense_amount,
-  'expense_extra_claims',expense_component->'claims','expense_extra_source_version',1);
+ if coalesce((expense_component->>'has_choices')::boolean,false) or existing.snapshot?'expense_extra_source_version' then
+  snapshot_value:=snapshot_value||jsonb_build_object('expense_extra_amount_yen',expense_amount,
+   'expense_extra_claims',expense_component->'claims','expense_extra_source_version',1);
+ end if;
  snapshot_value:=snapshot_value||private.document_company_seal_snapshot
  $certificate$);
  execute definition;
