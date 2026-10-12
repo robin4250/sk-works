@@ -76,7 +76,7 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 16, right: 4),
+            padding: const EdgeInsets.only(left: 44, right: 4),
             child: Row(children: [
               Expanded(child: Text(SkoLanguageController.tr('交通案内'), style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold))),
               IconButton(tooltip: SkoLanguageController.tr('交通案内のヘルプ'), onPressed: _help, icon: const Icon(Icons.help_outline)),

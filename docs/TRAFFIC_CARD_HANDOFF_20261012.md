@@ -12,6 +12,6 @@
 
 ローカルPGliteで本物のSQLを実行し、既存2キー値/更新者/更新日時不変、3キーON/OFF、一般ユーザー拒否・匿名拒否・private直接参照拒否・無効キー拒否・RLSとマスター判定body保持を確認。Flutterはローカル未実行、CIで320px文字1.6倍・4枠・3リンク・OFF・連打・失敗・ヘルプを検証する。
 
-共有ホーム/英語辞書は天気担当と同時編集しない。初回独立commit段階ではホーム接続、英語辞書、CI結果、本番migration適用、iPhone Release実機の外部アプリ遷移は未完了。コード/隔離SQL成功を本番導入成功とは扱わない。
+天気担当の共有ファイル解放後、天気→交通→要対応へホーム接続、メニュー表示ON/OFFと持ち手並べ替え、英語辞書と？ヘルプを追加。LINE独立カードは現在未実装なので、将来交通の直下へ追加する。master flagsは既存の出勤状態読取フロー内で同じactor/generation照合を再利用して読み取り、失敗時は交通だけOFF、既存の車両/ルート出勤判定は保持。設定から戻る時に再読取。CI結果、本番migration適用、iPhone Release実機の外部アプリ遷移は未完了。コード/隔離SQL成功を本番導入成功とは扱わない。
 
 参照：Google公式 [Maps URLs](https://developers.google.com/maps/documentation/urls/get-started)、Yahoo公式 [乗換案内](https://transit.yahoo.co.jp/)。GoogleMaps検索URLは `api=1` / `query` のみ。最寄り検索の順位/実際の現在地結果は外部サービスに依存する。

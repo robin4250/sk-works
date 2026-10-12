@@ -37,8 +37,14 @@ void main() {
     expect(app, contains("key: 'attendance_today'"));
     expect(app, contains('_reorderHomeActionByKey'));
     expect(app, contains('newIndex > items.length'));
-    expect(app, contains('if (newIndex > oldIndex) newIndex -= 1'));
-    expect(app, contains('newIndex.clamp(0, ordered.length)'));
+    expect(app, contains('reorderHomeMenuActions(_homeActionOrder'));
+    final policy = File(
+      'lib/features/home/home_action_order_policy.dart',
+    ).readAsStringSync();
+    expect(policy, contains('if (newIndex > oldIndex)'));
+    expect(policy, contains('newIndex--;'));
+    expect(policy, contains('newIndex > ordered.length'));
+    expect(app, contains('normalizeHomeActionOrder(_homeActionOrder'));
     expect(app, contains("prefs.setStringList('sko_home_action_order'"));
   });
 }

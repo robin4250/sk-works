@@ -46,6 +46,9 @@ try {
  await assert.rejects(db.exec('select current_master_feature_flags()'),/permission denied/);
  await assert.rejects(db.exec("select set_master_feature_enabled('traffic_bus_stop',true)"),/permission denied/);
  await db.exec('reset role');
+ const beforeRepeat=await rows();
+ await db.exec(read('supabase/migrations/'+file));
+ assert.deepEqual(await rows(),beforeRepeat,'Migration rerun must preserve every setting and update history');
  assert.deepEqual((await rows()).filter(r=>!r.feature_key.startsWith('traffic_')),old);
  const acl=(await db.query("select relrowsecurity,relacl from pg_class where oid='private.master_feature_settings'::regclass")).rows[0];
  assert.equal(acl.relrowsecurity,true);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../../international/language_controller.dart';
 import 'master_feature_controls_repository.dart';
 
 class MasterFeatureControlsPage extends StatefulWidget {
@@ -203,11 +204,11 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                   current: enabled,
                 ),
         title: Text(
-          label,
+          SkoLanguageController.tr(label),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          '$description\n現在: ${enabled ? '利用可能' : '一時停止中'}',
+          '${SkoLanguageController.tr(description)}\n現在: ${enabled ? '利用可能' : '一時停止中'}',
         ),
         secondary: busy
             ? const SizedBox.square(
