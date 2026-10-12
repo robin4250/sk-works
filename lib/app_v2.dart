@@ -32,7 +32,6 @@ import 'features/chat/line_history_preview_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
-import 'features/daily_reports/daily_report_page.dart';
 import 'features/daily_reports/daily_report_month_page.dart';
 import 'features/expenses/expense_home_page.dart';
 import 'features/home/company_payroll_rates_home_entry.dart';
