@@ -353,6 +353,13 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
           (c.action == 'approve' && (result['allocation'] != c.destination!.category.name || result['counterparty_id'] != c.destination!.counterpartyId)))) {
         throw StateError('確定した内容が一致しません。');
       }
+      if (c.confirmReview && (result['reviewed_by'] != c.actor || result['reviewed_at'] is! String ||
+          DateTime.tryParse(result['reviewed_at']) == null ||
+          result['approval'] != (c.action == 'approve' ? 'approved' : c.action == 'reject' ? 'rejected' : 'pending') ||
+          (c.action == 'approve' && result['cost_allocation_current'] !=
+            [ExpenseCategory.customer, ExpenseCategory.subcontractor].contains(c.destination!.category)))) {
+        throw StateError('確定状態と保存内容が一致しません。');
+      }
       if (c.action == 'edit' && (result['incurred_on'] != c.editedDate || result['description'] != c.editedDescription || result['amount_yen'] != c.editedAmount)) throw StateError('修正の保存結果が一致しません。');
       if (c.costRecoveryOptIn && result['cost_allocation_current'] !=
           (c.destination?.category != ExpenseCategory.ownCompany)) {

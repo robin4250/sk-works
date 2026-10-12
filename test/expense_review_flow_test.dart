@@ -18,6 +18,7 @@ void main() {
     final repository = ExpenseManagementRepository(actor: () => 'actor', rpc: (name, params) async {
       endpoint = name; sent = params;
       return {'id':'claim','company_id':'company','revision':2,'allocation':'other','counterparty_id':null,
+        'approval':'approved','reviewed_by':'actor','reviewed_at':'2026-10-13T01:00:00+09:00','cost_allocation_current':false,
         'review_action':'approve','review_memo':'確認済み','settlement_method':'paid','settlement_month':'2026-10-01'};
     });
     final command = ExpenseReviewCommand.create('actor','company','claim',1,'approve',ExpenseAllocation(ExpenseCategory.other),
@@ -28,6 +29,16 @@ void main() {
     expect(sent!['p_method'], 'paid'); expect(sent!['p_allocation'], 'other');
     expect(sent!.containsKey('p_settlement_month'), isFalse);
     expect(await repository.pending('company'), isNull);
+  });
+  test('inconsistent final approval receipt preserves the fixed command', () async {
+    final repository = ExpenseManagementRepository(actor: () => 'actor', rpc: (_, params) async => {
+      'id':'claim','company_id':'company','revision':2,'allocation':'other','counterparty_id':null,
+      'approval':'pending','reviewed_by':'actor','reviewed_at':'2026-10-13T01:00:00+09:00','cost_allocation_current':false,
+      'review_action':'approve','review_memo':'','settlement_method':'paid','settlement_month':'2026-10-01'});
+    final command = ExpenseReviewCommand.create('actor','company','claim',1,'approve',ExpenseAllocation(ExpenseCategory.other),
+      settlement: ExpenseSettlementChoice(ExpenseSettlementMethod.paid,DateTime.utc(2026,10)), confirmReview:true,memo:'');
+    await expectLater(repository.execute(command), throwsA(isA<StateError>()));
+    expect((await repository.pending('company'))!.encoded,command.encoded);
   });
   testWidgets('five steps preserve local choices and write only on final confirmation', (tester) async {
     tester.view.physicalSize=const Size(320,900);tester.view.devicePixelRatio=1;
