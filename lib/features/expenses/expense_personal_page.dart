@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'expense_receipt_attachment.dart';
+import 'expense_review_detail_page.dart';
+import 'expense_review_history_dialog.dart';
 import 'package:flutter/services.dart';
 import 'expense_claim.dart';
 import 'expense_claims_page.dart';
@@ -453,6 +455,23 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                   ),
                   for (final claim in _history)
                     ListTile(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
+                        claim: claim,
+                        onEdit: editable && _changes != null && !claim.withdrawn ? () async {
+                          await _changeClaim(claim, withdraw: false);
+                          if (detailContext.mounted && _pendingChange == null && _error == null) Navigator.pop(detailContext);
+                        } : null,
+                        onHistory: _access is! ExpenseSubmissionRepository ? null : () async {
+                          try {
+                            final result = await (_access as ExpenseSubmissionRepository).reviewHistory(claim);
+                            if (!detailContext.mounted) return;
+                            await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
+                              events: (result['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
+                          } catch (_) {
+                            if (detailContext.mounted) ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
+                          }
+                        },
+                      ))),
                       title: Text(claim.description),
                       subtitle: Text(
                         '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}'

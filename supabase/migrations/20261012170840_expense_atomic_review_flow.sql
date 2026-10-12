@@ -163,6 +163,10 @@ begin
     'command',command,'result',result,'kind','review'),created_at,command_id from private.expense_claim_events where claim_id=p_claim
    union all select jsonb_build_object('command_id',command_id,'actor_id',actor_id,'occurred_at',created_at,
     'command',command,'result',result,'kind','personal'),created_at,command_id from private.expense_personal_changes where claim_id=p_claim
+   union all select jsonb_build_object('command_id',command_id,'actor_id',actor_id,'occurred_at',created_at,
+    'command',command,'result',result,'kind','settlement'),created_at,command_id from private.expense_settlement_events where claim_id=p_claim
+   union all select jsonb_build_object('command_id',command_id,'actor_id',actor_id,'occurred_at',created_at,
+    'command',command,'result',result,'kind','allocation'),created_at,command_id from private.expense_cost_allocation_events where claim_id=p_claim
   ) x));
 end $$;
 create function public.expense_review_flow_history(p_claim uuid) returns jsonb

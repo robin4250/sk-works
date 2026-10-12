@@ -188,6 +188,8 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         incurredOn: DateTime.parse(r['incurred_on']),
         submittedAt: DateTime.parse(r['submitted_at']),
         receiptObjectPath: r['receipt_object_path'],
+        reviewedAt: r['reviewed_at'] == null ? null : DateTime.parse(r['reviewed_at']),
+        reviewedBy: r['reviewed_by'], reviewedByName: r['reviewed_by_name'], reviewMemo: r['review_memo'],
         description: r['description'],
         amountYen: r['amount_yen'],
         approval: ExpenseApproval.values.byName(r['approval']),
@@ -202,6 +204,15 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         ),
       );
     }).toList();
+  }
+
+  Future<Map<String, dynamic>> reviewHistory(ExpenseClaim claim) async {
+    final expected = actor;
+    _check(expected);
+    final data = Map<String, dynamic>.from(await _client.rpc('expense_review_flow_history', params: {'p_claim': claim.id}));
+    _check(expected);
+    if (data['claim_id'] != claim.id || data['company_id'] != claim.companyId || data['events'] is! List) throw StateError('履歴の対象が一致しません。');
+    return data;
   }
 
   String _key(String expected, String company, String worker) =>

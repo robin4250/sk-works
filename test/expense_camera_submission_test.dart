@@ -20,11 +20,18 @@ class Access implements ExpenseSubmissionAccess {
 }
 void main(){
  testWidgets('camera preview is local until submit and failed upload preserves the exact photo and command', (tester)async{
-  final directory=await Directory.systemTemp.createTemp('expense-camera-test-');addTearDown(()=>directory.delete(recursive:true));
-  final bytes=base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6V8AAAAASUVORK5CYII=');
-  final file=await File('${directory.path}/receipt.png').writeAsBytes(bytes);
-  final photo=ExpenseReceiptAttachment(file.path,sha256.convert(bytes).toString(),bytes.length,'image/png');
-  expect(await photo.verifiedBytes(),bytes);
+  final fixture = await tester.runAsync(() async {
+    final directory = await Directory.systemTemp.createTemp('expense-camera-test-');
+    final bytes = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6V8AAAAASUVORK5CYII=');
+    final file = await File('${directory.path}/receipt.png').writeAsBytes(bytes);
+    final photo = ExpenseReceiptAttachment(file.path, sha256.convert(bytes).toString(), bytes.length, 'image/png');
+    expect(await photo.verifiedBytes(), bytes);
+    return (directory, file, photo);
+  });
+  final captured = fixture!;
+  final directory = captured.$1, file = captured.$2;
+  final photo = captured.$3;
+  addTearDown(() => tester.runAsync(() async { await directory.delete(recursive: true); }));
   final access=Access();final sources=<ImageSource>[];
   await tester.binding.setSurfaceSize(const Size(650,1500));addTearDown(()=>tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home:ExpensePersonalPage(access:access,pickReceipt:(source)async{sources.add(source);return photo;})));
@@ -37,7 +44,7 @@ void main(){
   final encoded=access.draft!.encoded;expect(ExpenseSubmission.decode(encoded).encoded,encoded);
   await tester.ensureVisible(find.text('同じ申請を再確認'));await tester.tap(find.text('同じ申請を再確認'));await tester.pumpAndSettle();
   expect(access.submitted.length,2);expect(access.submitted[1].encoded,encoded);
-  expect(await file.exists(),isTrue);expect(tester.takeException(),isNull);
+  expect(await tester.runAsync(() => file.exists()),isTrue);expect(tester.takeException(),isNull);
  });
  test('changed local receipt cannot be uploaded on a retry',()async{
   final directory=await Directory.systemTemp.createTemp('expense-camera-integrity-');addTearDown(()=>directory.delete(recursive:true));

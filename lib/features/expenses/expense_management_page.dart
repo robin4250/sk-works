@@ -6,6 +6,7 @@ import 'expense_settlement_choice.dart';
 import 'expense_settlement_dialog.dart';
 import 'expense_review_flow_dialog.dart';
 import 'expense_review_detail_page.dart';
+import 'expense_review_history_dialog.dart';
 import 'expense_edit_dialog.dart';
 import 'expense_submission_repository.dart';
 
@@ -158,12 +159,8 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
         try {
           final value = await (_access as ExpenseManagementRepository).reviewHistory(claim);
           if (!detailContext.mounted) return;
-          await showDialog<void>(context: detailContext, builder: (dialogContext) => AlertDialog(
-            title: const Text('経費の履歴'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-                for (final event in value['events'] as List) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(
-                  '${event['occurred_at']}\n${event['result']['review_action'] == 'edit' ? '内容を修正' : event['result']['approval'] == 'approved' ? '承認済み' : event['result']['approval'] == 'rejected' ? '却下済み' : '申請を変更'}\n${event['result']['review_memo'] ?? ''}')),
-              ])), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('閉じる'))]));
+          await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
+            events: (value['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
         } catch (_) {
           if (detailContext.mounted) ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
         }

@@ -99,7 +99,7 @@ language plpgsql security definer set search_path='' as $$
 declare result jsonb;
 begin
  result:=private.expense_personal_settlement_history(p_company,p_worker,p_month);
- return (select coalesce(jsonb_agg(x.claim||jsonb_build_object('receipt_object_path',r.object_path) order by x.ordinality),'[]')
+ return (select coalesce(jsonb_agg(x.claim||jsonb_build_object('receipt_object_path',r.object_path)||coalesce((select jsonb_build_object('reviewed_at',v.result->'reviewed_at','reviewed_by',v.actor_id,'reviewed_by_name',v.result->'reviewed_by_name','review_memo',v.result->'review_memo') from private.expense_review_confirmations v where v.claim_id=(x.claim->>'id')::uuid and (v.result->>'revision')::integer=(x.claim->>'revision')::integer order by v.created_at desc,v.command_id desc limit 1),'{}'::jsonb) order by x.ordinality),'[]')
   from jsonb_array_elements(result) with ordinality x(claim,ordinality)
   left join private.expense_receipts r on r.claim_id=(x.claim->>'id')::uuid and r.attached);
 end $$;
