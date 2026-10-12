@@ -131,11 +131,17 @@ class WeatherForecastHomeCard extends StatelessWidget {
               ),
             ),
           ),
-    trailing: WeatherDayNavigation(
-      data: data,
-      onSelectDay: onSelectDay,
-      compact: true,
-    ),
+    leadingAtTop: true,
+    leading: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: true, onPrimary: true),
+    trailing: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: false),
+    headerCenter: Column(mainAxisSize: MainAxisSize.min, children: [
+      FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.cloud_outlined, size: 14, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 4),
+        Text(SkoLanguageController.tr('天気予報'), style: const TextStyle(fontSize: 12, height: 1.1)),
+      ])),
+      FittedBox(fit: BoxFit.scaleDown, child: Text('${data.compactDayLabel} ${data.date.month}/${data.date.day}', maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 10, height: 1.1))),
+    ]),
     onTap: () => Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => WeatherForecastDetailPage(
@@ -148,6 +154,31 @@ class WeatherForecastHomeCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _WeatherHomeDayArrow extends StatelessWidget {
+  const _WeatherHomeDayArrow({required this.data, required this.backward, this.onSelectDay, this.onPrimary = false});
+  final WeatherForecastViewData data;
+  final bool backward;
+  final ValueChanged<int>? onSelectDay;
+  final bool onPrimary;
+  @override
+  Widget build(BuildContext context) {
+    final allowed = onSelectDay != null && (backward ? data.selectedDay > 0 : data.selectedDay < 2);
+    final scheme = Theme.of(context).colorScheme;
+    final color = onPrimary ? scheme.onPrimary : scheme.primary;
+    return GestureDetector(
+      excludeFromSemantics: true,
+      onTap: allowed ? null : () {},
+      child: IconButton(
+        tooltip: SkoLanguageController.tr(backward ? '前の日の天気' : '次の日の天気'),
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        padding: EdgeInsets.zero,
+        onPressed: allowed ? () => onSelectDay!(data.selectedDay + (backward ? -1 : 1)) : null,
+        icon: Icon(backward ? Icons.arrow_left : Icons.arrow_right, color: allowed ? color : color.withValues(alpha: 0.38)),
+      ),
+    );
+  }
 }
 
 class WeatherDayNavigation extends StatelessWidget {

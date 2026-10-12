@@ -62,6 +62,14 @@ void main() {
     final handle = find.byKey(const ValueKey('home-reorder-weather_forecast'));
     final next = find.byTooltip('次の日の天気');
     expect(tester.getRect(handle).overlaps(tester.getRect(next)), isFalse);
+    final frame = find.ancestor(of: find.text('天気予報'), matching: find.byType(HomeInformationCard));
+    final previous = find.byTooltip('前の日の天気');
+    final cardRect = tester.getRect(frame);
+    expect(tester.getRect(previous).left - cardRect.left, lessThanOrEqualTo(6));
+    expect(cardRect.right - tester.getRect(next).right, lessThanOrEqualTo(16));
+    expect(tester.getRect(previous).overlaps(tester.getRect(handle)), isFalse);
+    expect((tester.getCenter(find.text('今日 10/12')).dx - cardRect.center.dx).abs(), lessThanOrEqualTo(16));
+
     await tester.tap(next);
     await tester.pump();
     expect(state.value.selectedDay, 1);
@@ -225,7 +233,7 @@ void main() {
       expect(state.value.selectedDay, 1);
       expect(find.textContaining('21.5℃'), findsNothing);
       expect(find.textContaining('Today only'), findsNothing);
-      expect(find.text('Tomorrow'), findsOneWidget);
+      expect(find.text('Tomorrow 10/13'), findsOneWidget);
       state.value = WeatherForecastViewData(
         baseDate: base,
         selectedDay: 1,
@@ -264,7 +272,7 @@ void main() {
       expect(find.text('Old area'), findsNothing);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('In 2 days'), findsOneWidget);
+      expect(find.text('In 2 days 10/14'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

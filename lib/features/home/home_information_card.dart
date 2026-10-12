@@ -14,6 +14,9 @@ class HomeInformationCard extends StatelessWidget {
     this.footer,
     this.showChevron = true,
     this.detailsTrailing,
+    this.leading,
+    this.leadingAtTop = false,
+    this.headerCenter,
   });
   final IconData icon;
   final String title;
@@ -23,6 +26,9 @@ class HomeInformationCard extends StatelessWidget {
   final String? footer;
   final bool showChevron;
   final Widget? detailsTrailing;
+  final Widget? leading;
+  final bool leadingAtTop;
+  final Widget? headerCenter;
 
   @override
   Widget build(BuildContext context) {
@@ -58,8 +64,8 @@ class HomeInformationCard extends StatelessWidget {
                     left: Radius.circular(14),
                   ),
                 ),
-                alignment: Alignment.center,
-                child: Icon(icon, color: colors.onPrimary),
+                alignment: leadingAtTop ? Alignment.topCenter : Alignment.center,
+                child: leadingAtTop ? Padding(padding: const EdgeInsets.only(top: 10), child: leading) : leading ?? Icon(icon, color: colors.onPrimary),
               ),
               Expanded(
                 child: Padding(
@@ -75,7 +81,7 @@ class HomeInformationCard extends StatelessWidget {
                         child: Row(
                           children: [
                             Expanded(
-                              child: FittedBox(
+                              child: headerCenter ?? FittedBox(
                                 fit: BoxFit.scaleDown,
                                 alignment: Alignment.centerLeft,
                                 child: Text(
