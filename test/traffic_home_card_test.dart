@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sk_works/features/traffic/traffic_shortcut_store.dart';
 import 'package:sk_works/branding/sko_theme.dart';
 import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
@@ -151,6 +154,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final moves = <String>[];
     final opened = <Uri>[];
+    const scope = TrafficShortcutScope(actorId: 'test-actor', companyId: 'test-company');
+    SharedPreferences.setMockInitialValues({
+      scope.storageKey: jsonEncode(TrafficShortcut.web('時刻表', 'https://example.com/timetable')!.toJson()),
+    });
     Future<void> home(bool show) => tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: FriendlyHomeContent(
       identity: const HomeIdentity(role: 'worker', companyName: '会社', displayName: '本人'),
       requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
@@ -158,7 +165,7 @@ void main() {
       showAttendanceReport: false,
       showTodayAttendance: false,
       weatherCard: const SizedBox(key: ValueKey('test-weather'), height: 80),
-      trafficCard: TrafficHomeCard(key: const ValueKey('test-traffic'), availability: enabled,
+      trafficCard: TrafficHomeCard(key: const ValueKey('test-traffic'), availability: enabled, shortcutScope: scope,
         launcher: (uri) async { opened.add(uri); return true; }),
       showTrafficGuidance: show,
       onOpen: (_) async {}, onRefresh: () async {},
@@ -177,6 +184,12 @@ void main() {
     }
     expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
     opened.clear();
+    await tester.longPress(find.byKey(const ValueKey('traffic-personal-shortcut')));
+    await tester.pumpAndSettle();
+    expect(find.text('登録を解除'), findsOneWidget);
+    expect(moves, isEmpty, reason: 'Registered shortcut long press edits instead of starting card reorder');
+    await tester.tap(find.text('閉じる'));
+    await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(first));
     await tester.pump(const Duration(milliseconds: 650));
     await gesture.moveTo(tester.getCenter(find.byKey(const ValueKey('test-weather'))));
