@@ -43,9 +43,11 @@ class InvoicePdfService {
       if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
         throw StateError('別途経費の内訳と請求書金額が一致しません。再読み込みしてください。');
       }
-      if (expenses != null) invoice.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
-        'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
-      }));
+      if (expenses != null) {
+        invoice.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
+          'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+        }));
+      }
       final sealFont = effectiveSettings?.companySealEnabled == false
           ? regular
           : await CompanySealPdf.loadStyleFont(invoice.companySealSnapshot.style);

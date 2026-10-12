@@ -23,9 +23,11 @@ class PaymentCertificatePdfService {
     if (record.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
       throw StateError('別途経費の内訳と支払証明書金額が一致しません。再読み込みしてください。');
     }
-    if (expenses != null) record.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
-      'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
-    }));
+    if (expenses != null) {
+      record.expenseCost.verifyDetails(expenses.claims.entries.map((claim) => {
+        'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+      }));
+    }
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final sealFont = record.payerCompanySealEnabled
