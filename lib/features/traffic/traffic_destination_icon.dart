@@ -81,7 +81,7 @@ class _TrafficSignPainter extends CustomPainter {
         canvas.drawCircle(const Offset(18, 18), 1.6, fill);
         segment(1, 22, 23, 22);
       case TrafficDestination.busStop:
-        // Bus-stop sign on a post, rather than a front-facing bus.
+        // Bus-stop sign with a side-view bus, windows and two wheels.
         canvas.drawRRect(
           RRect.fromRectAndRadius(const Rect.fromLTWH(5, 2, 14, 12), const Radius.circular(4)),
           line,
@@ -90,7 +90,9 @@ class _TrafficSignPainter extends CustomPainter {
           RRect.fromRectAndRadius(const Rect.fromLTWH(8, 5, 8, 5), const Radius.circular(1)),
           line,
         );
-        segment(10, 6, 14, 6);
+        for (final x in [9.0, 11.5, 14.0]) {
+          canvas.drawRect(Rect.fromLTWH(x, 6, 1.5, 1.5), fill);
+        }
         canvas.drawCircle(const Offset(9.5, 11), .8, fill);
         canvas.drawCircle(const Offset(14.5, 11), .8, fill);
         segment(12, 14, 12, 21);
