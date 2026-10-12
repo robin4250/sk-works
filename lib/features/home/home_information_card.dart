@@ -13,6 +13,7 @@ class HomeInformationCard extends StatelessWidget {
     this.trailing,
     this.footer,
     this.showChevron = true,
+    this.detailsTrailing,
   });
   final IconData icon;
   final String title;
@@ -21,6 +22,7 @@ class HomeInformationCard extends StatelessWidget {
   final Widget? trailing;
   final String? footer;
   final bool showChevron;
+  final Widget? detailsTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -93,15 +95,33 @@ class HomeInformationCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        details,
-                        maxLines: footer == null ? 3 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontSize: 11,
-                          height: 1.25,
+                      if (detailsTrailing == null)
+                        Text(
+                          details,
+                          maxLines: footer == null ? 3 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(fontSize: 11, height: 1.25),
+                        )
+                      else
+                        SizedBox(
+                          height: (scale.scale(11) * 1.25).ceilToDouble(),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  details,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(fontSize: 11, height: 1.25),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              detailsTrailing!,
+                            ],
+                          ),
                         ),
-                      ),
                       if (footer != null)
                         Text(
                           footer!,

@@ -738,6 +738,7 @@ class _DraggableHomeCard extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           child: _HomeReorderSurface(
             data: keyName,
+            lowerLeadingHandle: keyName == 'weather_forecast',
             feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
@@ -754,9 +755,11 @@ class _HomeReorderSurface extends StatelessWidget {
     required this.data,
     required this.feedbackWidth,
     required this.child,
+    this.lowerLeadingHandle = false,
   });
   final String data;
   final double feedbackWidth;
+  final bool lowerLeadingHandle;
   final Widget child;
 
   @override
@@ -767,8 +770,10 @@ class _HomeReorderSurface extends StatelessWidget {
     children: [
       child,
       Positioned(
-        top: 0,
-        right: 0,
+        top: lowerLeadingHandle ? null : 0,
+        right: lowerLeadingHandle ? null : 0,
+        left: lowerLeadingHandle ? 11 : null,
+        bottom: lowerLeadingHandle ? 8 : null,
         child: LongPressDraggable<String>(
           data: data,
           delay: const Duration(milliseconds: 600),
@@ -784,7 +789,7 @@ class _HomeReorderSurface extends StatelessWidget {
               key: ValueKey('home-reorder-$data'),
               width: 28,
               height: 28,
-              child: const Icon(Icons.drag_indicator, size: 18),
+              child: Icon(Icons.drag_indicator, size: 18, color: lowerLeadingHandle ? Theme.of(context).colorScheme.onPrimary : null),
             ),
           ),
         ),

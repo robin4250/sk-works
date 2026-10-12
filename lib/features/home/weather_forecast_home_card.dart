@@ -115,8 +115,22 @@ class WeatherForecastHomeCard extends StatelessWidget {
     title: SkoLanguageController.tr('天気予報'),
     showChevron: false,
     details:
-        '${data.regionLabel ?? data.locationLabel ?? ''}${data.regionLabel == null && data.locationLabel == null ? '' : ' ／ '}${data.status}${data.forecast == null ? '' : ' ／ ${data.temperatureLabel}'}',
+        '${data.regionLabel ?? data.locationLabel ?? ''}${data.regionLabel == null && data.locationLabel == null ? '' : ' ／ '}${data.status}',
     footer: SkoLanguageController.tr('出勤前：自宅周辺 ／ 出勤後：現場周辺の天気を表示'),
+    detailsTrailing: data.forecast == null
+        ? null
+        : SizedBox(
+            width: 64,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                data.temperatureLabel,
+                key: const ValueKey('weather-summary-temperature'),
+                style: const TextStyle(fontSize: 11, height: 1.25),
+              ),
+            ),
+          ),
     trailing: WeatherDayNavigation(
       data: data,
       onSelectDay: onSelectDay,

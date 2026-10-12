@@ -11,6 +11,77 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  testWidgets('weather reorder handle does not steal the next-day button', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final state = ValueNotifier(
+      WeatherForecastViewData(baseDate: DateTime(2026, 10, 12)),
+    );
+    addTearDown(state.dispose);
+    final reordered = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            child: FriendlyHomeContent(
+              identity: const HomeIdentity(
+                role: 'worker',
+                companyName: '会社',
+                displayName: '本人',
+              ),
+              requiredDocumentAttention: const RequiredDocumentAttention(
+                missingCount: 0,
+                missingNames: [],
+                needsLicense: false,
+                needsQualification: false,
+              ),
+              moduleEnabled: (_) => true,
+              showAttendanceReport: false,
+              visibleHomeKeys: const {'attendance_today'},
+              weatherCard: WeatherForecastHomeCard(
+                state: state,
+                onSelectDay: (day) => state.value = WeatherForecastViewData(
+                  baseDate: DateTime(2026, 10, 12),
+                  selectedDay: day,
+                ),
+              ),
+              onOpen: (_) async {},
+              onRefresh: () async {},
+              onReorderAction: (from, to) async => reordered.add('$from:$to'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final handle = find.byKey(const ValueKey('home-reorder-weather_forecast'));
+    final next = find.byTooltip('次の日の天気');
+    expect(tester.getRect(handle).overlaps(tester.getRect(next)), isFalse);
+    await tester.tap(next);
+    await tester.pump();
+    expect(state.value.selectedDay, 1);
+    expect(reordered, isEmpty);
+    final target = find.ancestor(
+      of: find.text('本日の出勤'),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is DragTarget<String>,
+      ),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(const Duration(milliseconds: 650));
+    await gesture.moveTo(tester.getCenter(target));
+    await tester.pump(const Duration(milliseconds: 150));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(reordered, ['weather_forecast:attendance_today']);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   test(
     'settings menu reorder retains weather defaults and the attention slot',
     () {
@@ -134,7 +205,7 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('21.5℃'), findsOneWidget);
+      expect(find.textContaining('21.5℃').hitTestable(), findsOneWidget);
       final description = find.text('Before: home / During: site');
       expect(description.hitTestable(), findsOneWidget);
       final text = tester.widget<Text>(description);
