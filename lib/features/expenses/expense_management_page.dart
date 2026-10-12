@@ -157,7 +157,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       },
       onHistory: _access is! ExpenseManagementRepository ? null : () async {
         try {
-          final value = await (_access as ExpenseManagementRepository).reviewHistory(claim);
+          final value = await _access.reviewHistory(claim);
           if (!detailContext.mounted) return;
           await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
             events: (value['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
