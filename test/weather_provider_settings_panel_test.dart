@@ -5,7 +5,8 @@ import 'package:sk_works/features/home/weather_provider_settings_panel.dart';
 import 'package:sk_works/features/home/weather_attribution.dart';
 
 class FakeWeatherSettings extends WeatherProviderSettingsRepository {
-  FakeWeatherSettings() : super(SupabaseClient('https://example.invalid', 'test-public'));
+  FakeWeatherSettings() : super(SupabaseClient('https://example.invalid', 'test-public',
+    authOptions: const AuthClientOptions(autoRefreshToken: false)));
   String value = 'openweather'; int saves = 0; bool fail = false;
   @override
   Future<String> load() async => value;
@@ -18,6 +19,7 @@ class FakeWeatherSettings extends WeatherProviderSettingsRepository {
 void main() {
   testWidgets('only master can switch and failed save preserves previous provider', (tester) async {
     final repo = FakeWeatherSettings(); var changes = 0;
+    addTearDown(repo.client.dispose);
     Future<void> pump(bool master) async {
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: WeatherProviderSettingsPanel(
         isMaster: master, repository: repo, onChanged: () { changes++; }))));
