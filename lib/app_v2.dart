@@ -763,9 +763,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (key == 'people' && !_identity.isManagement) {
+    if (key == 'people' && !_identity.isManagement && !_isViewer) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('社員情報は管理者・サブ管理者のみ利用できます'))),
+        SnackBar(content: Text(SkoLanguageController.tr('社員情報は管理者・閲覧者・サブ管理者が閲覧できます'))),
       );
       return;
     }
@@ -1127,7 +1127,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Set<String> get _employeeResourceKeys => {
-    if (_identity.isManagement && _subAdminFeatureEnabled('people')) 'people',
+    if ((_identity.isManagement || _isViewer) && _subAdminFeatureEnabled('people')) 'people',
     if (_identity.isManagement && _moduleEnabled('qualifications') && _subAdminFeatureEnabled('employee_qualifications')) 'employee_qualifications',
     if (_identity.isManagement && _moduleEnabled('documents') && _subAdminFeatureEnabled('documents')) 'documents',
   };
@@ -1198,7 +1198,7 @@ class _HomePageState extends State<HomePage> {
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
       ),
       if (_employeeResourceKeys.isNotEmpty)
-        _MenuAction(key: 'employee_resources', label: SkoLanguageController.tr('社員資格書類'), icon: Icons.folder_shared_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者')),
+        _MenuAction(key: 'employee_resources', label: SkoLanguageController.tr('社員資格書類'), icon: Icons.folder_shared_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・閲覧者・サブ管理者')),
       if (_identity.isManagement && _moduleEnabled('vehicle_routes'))
         _MenuAction(
           key: 'vehicle_routes',
@@ -1549,6 +1549,8 @@ class _HomePageState extends State<HomePage> {
       'subcontractors',
     };
     const viewer = <String>{
+      'employee_resources',
+      'people',
       'invoices',
       'payroll_settings',
       'payroll_adjustments',

@@ -32,6 +32,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   PersonKind? _filter;
   bool _loading = true;
   bool _canManagePeople = false;
+  bool _canViewPeople = false;
   bool _canConfigurePersonnelApprovers = false;
   String _companyName = '';
   String? _error;
@@ -52,13 +53,16 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       });
       return;
     }
+    final actor = repository.actorId;
     try {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManagePeople(),
         repository.companyName(),
         repository.canConfigurePersonnelApprovers(),
+        repository.canViewPeople(),
       ]);
+      if (actor == null || repository.actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map(PersonRecord.fromJson).toList();
       if (!mounted) return;
@@ -69,12 +73,16 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         _canManagePeople = values[1] as bool;
         _companyName = values[2] as String;
         _canConfigurePersonnelApprovers = values[3] as bool;
+        _canViewPeople = values[4] as bool;
         _loading = false;
         _error = null;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _records.clear();
+        _canManagePeople = false;
+        _canViewPeople = false;
         _loading = false;
         _error = error.toString();
       });
@@ -115,14 +123,14 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
           ),
           IconButton(
             tooltip: 'A4横プレビュー確認後に送信',
-            onPressed: _loading || _records.isEmpty
+            onPressed: _loading || !_canManagePeople || _records.isEmpty
                 ? null
                 : () => _openExportWithScope(PersonnelExportOperation.send),
             icon: const Icon(Icons.send_outlined),
           ),
           IconButton(
             tooltip: 'A4横プレビュー・印刷',
-            onPressed: _loading || _records.isEmpty
+            onPressed: _loading || !_canManagePeople || _records.isEmpty
                 ? null
                 : () => _openExportWithScope(PersonnelExportOperation.print),
             icon: const Icon(Icons.print_outlined),
@@ -286,7 +294,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                         const Icon(Icons.chevron_right),
                                       ],
                                     ),
-                                    onTap: !_canManagePeople
+                                    onTap: !_canViewPeople
                                         ? null
                                         : () {
                                             if (record.kind ==
@@ -307,6 +315,9 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                                       )
                                                       .toList(growable: false),
                                                   companyName: _companyName,
+                                                  canManage: _canManagePeople,
+                                                  canViewFamily: _canViewPeople,
+                                                  portraitLoader: () => _repository!.portraitUrl(record.id),
                                                 ),
                                               ),
                                             );

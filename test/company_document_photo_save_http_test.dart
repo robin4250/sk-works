@@ -184,6 +184,20 @@ void main() {
     );
     expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
   });
+  test('removing the last photo clears the current set while preserving stored objects', () async {
+    final saved = await CompanySubmittedDocumentRepository.forTesting(fixture.client).savePhotos(
+      id: _status,
+      retainedPaths: [],
+      expectedPaths: ['$_company/$_status/old.jpg'],
+      files: [],
+    );
+    expect(saved['attachment_path'], isNull);
+    expect(saved['attachment_paths'], isEmpty);
+    expect(saved['status'], 'missing');
+    expect(fixture.writes, hasLength(1));
+    expect(fixture.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    expect(fixture.requests.where((r) => r.uri.path.startsWith('/storage/')), isEmpty);
+  });
   test(
     'a replacement front photo stays before retained back and appended extra',
     () async {

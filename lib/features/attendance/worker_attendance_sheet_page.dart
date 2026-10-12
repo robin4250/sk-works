@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -7,6 +9,7 @@ import '../daily_reports/daily_report_page.dart';
 import 'attendance_pdf_service.dart';
 import 'bulk_attendance_correction_page.dart';
 import 'japan_holiday.dart';
+import 'attendance_week_date_label.dart';
 import 'paid_leave_page.dart';
 import 'worker_attendance_sheet_repository.dart';
 
@@ -376,6 +379,10 @@ class _WeekTabs extends StatelessWidget {
   }
 }
 
+@visibleForTesting
+Widget attendanceWeekForTesting({required DateTime month, required List<DateTime> week, required WorkerAttendanceMonth data}) =>
+    _WeekList(month: month, week: week, data: data, onDateTap: (_) {});
+
 class _WeekList extends StatelessWidget {
   const _WeekList({
     required this.month,
@@ -397,11 +404,15 @@ class _WeekList extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final verticalPadding = 4.0;
-        final itemHeight =
-            (constraints.maxHeight - verticalPadding) / week.length;
+        final minimumHeight = 54.0 *
+            (MediaQuery.textScalerOf(context).scale(12) / 12).clamp(1.0, double.infinity);
+        final itemHeight = math.max(
+            (constraints.maxHeight - verticalPadding) / week.length, minimumHeight);
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-          physics: const NeverScrollableScrollPhysics(),
+          physics: itemHeight * week.length > constraints.maxHeight - verticalPadding
+              ? const ClampingScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
           itemExtent: itemHeight,
           itemCount: week.length,
           itemBuilder: (context, index) {
@@ -446,7 +457,6 @@ class _AttendanceDayCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final faded = !inMonth;
     final holidayName = JapanHoliday.name(date);
-    final isHoliday = holidayName != null;
     final now = DateTime.now();
     final isToday = date.year == now.year &&
         date.month == now.month &&
@@ -481,50 +491,10 @@ class _AttendanceDayCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(
-                width: 46,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${date.day}',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: isHoliday || date.weekday == DateTime.sunday
-                                ? colors.error
-                                : date.weekday == DateTime.saturday
-                                    ? Colors.blue.shade700
-                                    : null,
-                          ),
-                    ),
-                    Text(
-                      weekday,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: isHoliday || weekday == '日'
-                            ? colors.error
-                            : weekday == '土'
-                                ? Colors.blue.shade700
-                                : colors.onSurfaceVariant,
-                      ),
-                    ),
-                    if (holidayName != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        holidayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: colors.error,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          height: 1.05,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+              AttendanceWeekDateLabel(
+                date: date,
+                weekday: weekday,
+                holidayName: holidayName,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -562,10 +532,14 @@ class _AttendanceDayCard extends StatelessWidget {
                       ),
                     ] else if (worked) ...[
                       const SizedBox(height: 2),
-                      Wrap(
-                        spacing: 4,
-                        runSpacing: 2,
-                        children: _tags(day!),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final tag in _tags(day!))
+                              Padding(padding: const EdgeInsets.only(right: 4), child: tag),
+                          ],
+                        ),
                       ),
                     ],
                   ],
@@ -587,20 +561,28 @@ class _AttendanceDayCard extends StatelessWidget {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
                             SkoLanguageController.isEnglish ? 'In ${_time(day?.clockIn)}' : '出 ${_time(day?.clockIn)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
                             ),
                           ),
+                          ),
                           const SizedBox(height: 2),
-                          Text(
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
                             SkoLanguageController.isEnglish ? 'Out ${_time(day?.clockOut)}' : '退 ${_time(day?.clockOut)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
                             ),
+                          ),
                           ),
                         ],
                       )
@@ -768,6 +750,20 @@ class _WorkerAttendanceMonthPageState
     }
   }
 
+  Future<void> _openPrintPreview() async {
+    if (_loading || _error != null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WorkerAttendancePrintPreviewPage(
+          month: _month,
+          data: _data,
+          workerName: widget.workerName,
+        ),
+      ),
+    );
+    if (mounted) SkoScrollChromeController.visible.value = true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -780,6 +776,11 @@ class _WorkerAttendanceMonthPageState
                   : '${_month.year}年${_month.month}月'),
         ),
         actions: [
+          IconButton(
+            tooltip: SkoLanguageController.tr('A4印刷プレビュー'),
+            onPressed: _loading || _error != null ? null : _openPrintPreview,
+            icon: const Icon(Icons.print_outlined),
+          ),
           const SkoNotificationBell(),
         ],
       ),
@@ -816,17 +817,7 @@ class _WorkerAttendanceMonthPageState
             _MonthlySummary(data: _data),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _loading
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => WorkerAttendancePrintPreviewPage(
-                            month: _month,
-                            data: _data,
-                            workerName: widget.workerName,
-                          ),
-                        ),
-                      ),
+              onPressed: _loading || _error != null ? null : _openPrintPreview,
               icon: const Icon(Icons.print_outlined),
               label: Text(SkoLanguageController.tr('A4印刷プレビュー')),
             ),
@@ -889,6 +880,8 @@ class _MonthCalendar extends StatelessWidget {
                       label,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                        height: 1.05,
                         color: label == '日'
                             ? Theme.of(context).colorScheme.error
                             : label == '土'
@@ -900,24 +893,29 @@ class _MonthCalendar extends StatelessWidget {
               ],
             ),
             const Divider(height: 1),
-            GridView.count(
-              crossAxisCount: 7,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 0.78,
-              children: [
-                for (final date in days)
-                  _MonthCalendarCell(
-                    date: date,
-                    inMonth: date.month == month.month,
-                    day: data.days[DateTime(date.year, date.month, date.day)],
-                    onTap: data.days[DateTime(date.year, date.month, date.day)]
-                                ?.paidLeave ==
-                            true
-                        ? () {}
-                        : () => onDateTap(date),
-                  ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final cellHeight =
+                    MediaQuery.textScalerOf(context).scale(11) * 5 + 18;
+                return GridView.count(
+                  crossAxisCount: 7,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: (constraints.maxWidth / 7) / cellHeight,
+                  children: [
+                    for (final date in days)
+                      _MonthCalendarCell(
+                        date: date,
+                        inMonth: date.month == month.month,
+                        day: data.days[DateTime(date.year, date.month, date.day)],
+                        onTap: data.days[DateTime(date.year, date.month, date.day)]
+                                    ?.paidLeave == true
+                            ? () {}
+                            : () => onDateTap(date),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -988,19 +986,6 @@ class _MonthCalendarCell extends StatelessWidget {
                 ),
               ),
             ),
-            if (holidayName != null)
-              Text(
-                holidayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                ),
-              ),
             const Spacer(),
             Text(
               paidLeave ? '有給' : worked ? shortSite : '休',

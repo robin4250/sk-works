@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'document_photo_draft.dart';
+import 'company_document_photo_row.dart';
 
 import '../common/data_date_labels.dart';
 import '../../international/language_controller.dart';
@@ -456,17 +457,17 @@ class _CompanySubmittedDocumentsPageState
                 if (path.isNotEmpty)
                   TextButton(
                     onPressed: _busy ? null : () => _previewSavedPhoto(path),
-                    child: const Text('登録書類を見る'),
+                    child: const Text('書類をプレビュー'),
                   ),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: _busy ? null : () => _edit(row),
                   child: const Text('編集'),
                 ),
-                IconButton(
-                  tooltip: '無効化',
+                TextButton.icon(
                   onPressed: _busy ? null : () => _archive(row),
-                  icon: const Icon(Icons.archive_outlined),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('一覧から削除'),
                 ),
               ],
             ),
@@ -610,73 +611,37 @@ class _CompanySubmittedDocumentsPageState
                 children: [
                   if (saveError != null) Text(saveError!),
                   for (var i = 0; i < photos.length; i++)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.image_outlined),
-                      title: Text(
-                        i == 0
-                            ? '表面'
-                            : i == 1
-                            ? '裏面'
-                            : '追加写真 ${i - 1}',
-                      ),
-                      subtitle: Text(
-                        photos.photos[i] is XFile
-                            ? (photos.photos[i] as XFile).name
-                            : '登録済み',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: SizedBox(
-                        width: 192,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: '上へ移動',
-                              onPressed: saving || i == 0
-                                  ? null
-                                  : () => refresh(() => photos.move(i, i - 1)),
-                              icon: const Icon(Icons.arrow_upward),
-                            ),
-                            IconButton(
-                              tooltip: '下へ移動',
-                              onPressed: saving || i == photos.length - 1
-                                  ? null
-                                  : () => refresh(() => photos.move(i, i + 1)),
-                              icon: const Icon(Icons.arrow_downward),
-                            ),
-                            IconButton(
-                              tooltip: '差し替え',
-                              icon: const Icon(Icons.swap_horiz),
-                              onPressed: saving
-                                  ? null
-                                  : () async {
-                                      final picked = await _imagePicker
-                                          .pickImage(
-                                            source: ImageSource.gallery,
-                                            imageQuality: 90,
-                                            maxWidth: 2600,
-                                          );
-                                      if (picked != null &&
-                                          dialogContext.mounted) {
-                                        refresh(
-                                          () => photos.replaceAt(i, picked),
-                                        );
-                                      }
-                                    },
-                            ),
-                            IconButton(
-                              tooltip: '削除',
-                              icon: const Icon(Icons.close),
-                              onPressed: saving
-                                  ? null
-                                  : () => refresh(() => photos.removeAt(i)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      onTap: () async {
+                    CompanyDocumentPhotoRow(
+                      label: i == 0
+                          ? '表面'
+                          : i == 1
+                          ? '裏面'
+                          : '追加写真 ${i - 1}',
+                      subtitle: photos.photos[i] is XFile
+                          ? (photos.photos[i] as XFile).name
+                          : '登録済み',
+                      onMoveUp: saving || i == 0
+                          ? null
+                          : () => refresh(() => photos.move(i, i - 1)),
+                      onMoveDown: saving || i == photos.length - 1
+                          ? null
+                          : () => refresh(() => photos.move(i, i + 1)),
+                      onReplace: saving
+                          ? null
+                          : () async {
+                              final picked = await _imagePicker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 90,
+                                maxWidth: 2600,
+                              );
+                              if (picked != null && dialogContext.mounted) {
+                                refresh(() => photos.replaceAt(i, picked));
+                              }
+                            },
+                      onRemove: saving
+                          ? null
+                          : () => refresh(() => photos.removeAt(i)),
+                      onPreview: () async {
                         final selected = photos.photos[i];
                         if (selected is String) {
                           await _previewSavedPhoto(selected);
@@ -687,7 +652,7 @@ class _CompanySubmittedDocumentsPageState
                         await showDialog<void>(
                           context: context,
                           builder: (previewContext) => AlertDialog(
-                            content: Image.memory(bytes, fit: BoxFit.contain),
+                            content: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(previewContext),
@@ -739,7 +704,7 @@ class _CompanySubmittedDocumentsPageState
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const Text(
-                    '登録写真と追加写真をまとめて保存します。矢印で表・裏・追加写真の順序を変更できます。差し替えボタンでその位置の写真を変更できます。',
+                    '登録写真と追加写真をまとめて保存します。矢印で表・裏・追加写真の順序を変更できます。差し替えボタンでその位置の写真を変更できます。「写真を削除」で選択から外し、「写真を保存」で反映します。閉じるだけでは変更されません。',
                   ),
                 ],
               ),
@@ -939,7 +904,7 @@ class _CompanySubmittedDocumentsPageState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('会社提出書類を無効化'),
+        title: const Text('会社提出書類を一覧から削除'),
         content: Text(name + 'を一覧から外します。履歴・送信済みデータは削除しません。'),
         actions: [
           TextButton(
@@ -948,7 +913,7 @@ class _CompanySubmittedDocumentsPageState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('無効化'),
+            child: const Text('一覧から削除'),
           ),
         ],
       ),
