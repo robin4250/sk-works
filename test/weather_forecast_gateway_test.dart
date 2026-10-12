@@ -2,6 +2,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/home/weather_forecast_gateway.dart';
 
 void main() {
+  test('minute precipitation uses sourced future time; missing/stale/malformed does not become rain-free', () {
+    Map<String, dynamic> today() => {
+      'contract_version': 1, 'day_offset': 0, 'base_date': '2026-10-12',
+      'forecast_date': '2026-10-12', 'time_zone': 'Asia/Tokyo', 'source': 'OpenWeather',
+      'region_kind': 'company', 'location_label': 'company', 'checked_at': '2026-10-12T00:00:00Z',
+      'attribution': {'name': 'OpenWeather', 'url': 'https://openweathermap.org/'},
+      'summary_kind': 'unavailable',
+      'hours': List.generate(9, (i) => {'hour': i * 3}),
+      'rain_approach': {'forecast_at': '2026-10-12T00:05:00Z', 'reference_at': '2026-10-12T00:00:00Z',
+        'local_hour': 9, 'local_minute': 5, 'precipitation_mm_per_hour': 1.2, 'source': 'OpenWeather'},
+    };
+    final result = WeatherGatewayResult.parse(today(), 0);
+    expect(result.snapshot.rainForecastAt, DateTime.utc(2026, 10, 12, 0, 5));
+    expect(result.snapshot.updatedAt, DateTime.parse('2026-10-12T00:00:00Z').toLocal());
+    expect(result.snapshot.updatedAt.isUtc, isFalse);
+    final missing = today()..['rain_approach'] = null;
+    expect(WeatherGatewayResult.parse(missing, 0).snapshot.rainForecastAt, isNull);
+    for (final change in ['forecast_at','reference_at','local_minute','precipitation_mm_per_hour','source']) {
+      final data = today();
+      final rain = data['rain_approach'] as Map<String, dynamic>;
+      rain[change] = switch (change) {
+        'forecast_at' => '2026-10-12T01:01:00Z',
+        'reference_at' => '2026-10-11T23:40:00Z',
+        'local_minute' => 60,
+        'precipitation_mm_per_hour' => 0,
+        _ => 'unknown',
+      };
+      expect(() => WeatherGatewayResult.parse(data, 0), throwsFormatException);
+    }
+  });
+
   Map<String, dynamic> payload() => {
     'contract_version': 1, 'day_offset': 2, 'base_date': '2026-10-12',
     'forecast_date': '2026-10-14', 'time_zone': 'Asia/Tokyo', 'source': 'OpenWeather',

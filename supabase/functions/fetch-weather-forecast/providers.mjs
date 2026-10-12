@@ -33,6 +33,19 @@ function coordinates(location) {
   if(!Number.isFinite(location.latitude)||Math.abs(location.latitude)>90||!Number.isFinite(location.longitude)||Math.abs(location.longitude)>180) throw new Error('Coordinates unavailable');
   new Intl.DateTimeFormat('en',{timeZone:location.timeZone});
 }
+export function normalizeRainApproach({date,timeZone,minutes,referenceEpoch,expiresEpoch=null,source,now=new Date()}) {
+  const seconds=now.getTime()/1000;
+  if(date!==localParts(seconds,timeZone).date||!Number.isFinite(referenceEpoch)||
+      referenceEpoch<seconds-15*60||referenceEpoch>seconds+60||
+      (expiresEpoch!==null&&(!Number.isFinite(expiresEpoch)||expiresEpoch<=seconds)))return null;
+  const candidates=minutes.filter(row=>Number.isFinite(row.epoch)&&row.epoch>=seconds&&row.epoch<=seconds+3600&&
+    finite(row.precipitation)!==null&&row.precipitation>0&&localParts(row.epoch,timeZone).date===date).sort((a,b)=>a.epoch-b.epoch);
+  if(!candidates.length)return null;
+  const earliest=candidates[0];
+  if(candidates.filter(row=>row.epoch===earliest.epoch).length!==1)return null;
+  const local=localParts(earliest.epoch,timeZone);
+  return {forecast_at:new Date(earliest.epoch*1000).toISOString(),reference_at:new Date(referenceEpoch*1000).toISOString(),local_hour:local.hour,local_minute:local.minute,precipitation_mm_per_hour:earliest.precipitation,source};
+}
 export async function fetchOpenWeather({location,date,env,fetcher=fetch,now=new Date()}) {
   coordinates(location);
   const key=env('OPENWEATHER_API_KEY'); if(!key)throw new Error('Weather configuration unavailable');
@@ -52,7 +65,8 @@ export async function fetchOpenWeather({location,date,env,fetcher=fetch,now=new 
   const hours=(Array.isArray(hourly)?hourly:[]).filter(row=>Number.isFinite(row.dt)).map(row=>({epoch:row.dt,temperature:row.temp,probability:row.pop,condition:condition(row)}));
   const result=normalizeForecast({date,timeZone:location.timeZone,hours,current:data.current?{epoch:data.current.dt,temperature:data.current.temp,condition:condition(data.current)}:null,source:'OpenWeather',now,attribution:{name:'OpenWeather',url:'https://openweathermap.org/'}});
   // Minute precipitation is a sourced series, not a fabricated rain approach ETA.
-  result.rain_minutes=(Array.isArray(data.minutely)?data.minutely:[]).filter(row=>Number.isFinite(row.dt)&&finite(row.precipitation)!==null).map(row=>({time:new Date(row.dt*1000).toISOString(),precipitation_mm:row.precipitation}));
+  const minutes=(Array.isArray(data.minutely)?data.minutely:[]).filter(row=>Number.isFinite(row.dt)).map(row=>({epoch:row.dt,precipitation:row.precipitation}));
+  result.rain_approach=normalizeRainApproach({date,timeZone:location.timeZone,minutes,referenceEpoch:minutes[0]?.epoch,source:'OpenWeather',now});
   return result;
 }
 const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
@@ -79,5 +93,24 @@ export async function fetchWeatherKit({location,date,env,fetcher=fetch,now=new D
   const assets=await json(fetcher,'https://weatherkit.apple.com/attribution/ja',{Authorization:`Bearer ${token}`});
   const appleUrl=value=>{if(typeof value!=='string')throw Error('Weather attribution unavailable');const url=new URL(value,'https://weatherkit.apple.com');if(url.protocol!=='https:'||url.hostname!=='weatherkit.apple.com')throw Error('Weather attribution unavailable');return url.href;};
   const attribution={name:assets.serviceName??'Apple Weather',url:appleUrl(current?.metadata?.attributionURL??data.forecastHourly?.metadata?.attributionURL),logo_light_url:appleUrl(assets['logoLight@2x']),logo_dark_url:appleUrl(assets['logoDark@2x']),trademark_required:true};
-  return normalizeForecast({date,timeZone:location.timeZone,hours,current:current?{epoch:Date.parse(current.asOf)/1000,temperature:current.temperature,condition:typeof current.conditionCode==='string'?`weatherkit:${current.conditionCode}`:null}:null,source:'Apple Weather',now,attribution});
+  const result=normalizeForecast({date,timeZone:location.timeZone,hours,current:current?{epoch:Date.parse(current.asOf)/1000,temperature:current.temperature,condition:typeof current.conditionCode==='string'?`weatherkit:${current.conditionCode}`:null}:null,source:'Apple Weather',now,attribution});
+  result.rain_approach=null;
+  // Optional next-hour data must not suppress the useful current/hourly response.
+  if(date===localParts(now.getTime()/1000,location.timeZone).date&&/^[A-Z]{2}$/.test(location.countryCode??'')) {
+    try {
+      const availableUrl=new URL(`https://weatherkit.apple.com/api/v1/availability/${location.latitude}/${location.longitude}`);
+      availableUrl.searchParams.set('country',location.countryCode);
+      const available=await json(fetcher,availableUrl,{Authorization:`Bearer ${token}`});
+      if(Array.isArray(available)&&available.includes('forecastNextHour')) {
+        const nextUrl=new URL(url);nextUrl.searchParams.set('dataSets','forecastNextHour');nextUrl.searchParams.set('countryCode',location.countryCode);nextUrl.searchParams.delete('hourlyEnd');
+        const next=await json(fetcher,nextUrl,{Authorization:`Bearer ${token}`});
+        const forecast=next.forecastNextHour,meta=forecast?.metadata;
+        if(meta&&meta.temporarilyUnavailable!==true&&meta.units==='m') {
+          const minutes=(Array.isArray(forecast.minutes)?forecast.minutes:[]).map(row=>({epoch:Date.parse(row.startTime)/1000,precipitation:row.precipitationIntensity}));
+          result.rain_approach=normalizeRainApproach({date,timeZone:location.timeZone,minutes,referenceEpoch:Date.parse(meta.readTime)/1000,expiresEpoch:Date.parse(meta.expireTime)/1000,source:'Apple Weather',now});
+        }
+      }
+    } catch { /* Unavailable minute forecast remains null, never "no rain". */ }
+  }
+  return result;
 }

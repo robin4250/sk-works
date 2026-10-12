@@ -116,14 +116,41 @@ class WeatherGatewayResult {
     }
     final checked = DateTime.tryParse(raw['checked_at']?.toString() ?? '');
     if (checked == null) { throw const FormatException('Weather timestamp unavailable'); }
+    DateTime? rainAt, rainReference;
+    int? rainHour, rainMinute;
+    final rain = raw['rain_approach'];
+    if (rain != null) {
+      DateTime? utc(dynamic value) => value is String && value.endsWith('Z')
+          ? DateTime.tryParse(value) : null;
+      if (rain is! Map || expectedOffset != 0 || rain['source'] != raw['source'] ||
+          !['OpenWeather', 'Apple Weather'].contains(rain['source'])) {
+        throw const FormatException('Precipitation forecast unavailable');
+      }
+      rainAt = utc(rain['forecast_at']);
+      rainReference = utc(rain['reference_at']);
+      final amount = numeric(rain['precipitation_mm_per_hour']);
+      if (rainAt == null || rainReference == null || amount == null || amount <= 0 ||
+          rainAt.isBefore(checked) || rainAt.isAfter(checked.add(const Duration(minutes: 60))) ||
+          rainReference.isBefore(checked.subtract(const Duration(minutes: 15))) ||
+          rainReference.isAfter(checked.add(const Duration(minutes: 1))) ||
+          rain['local_hour'] is! int || rain['local_minute'] is! int ||
+          rain['local_hour'] < 0 || rain['local_hour'] > 23 ||
+          rain['local_minute'] < 0 || rain['local_minute'] > 59) {
+        throw const FormatException('Precipitation forecast timestamp unavailable');
+      }
+      rainHour = rain['local_hour'] as int;
+      rainMinute = rain['local_minute'] as int;
+    }
     // Unknown source conditions stay unavailable; provider codes are not UI text.
     return WeatherGatewayResult(baseDate: base, dayOffset: expectedOffset,
       timeZone: raw['time_zone'] as String, regionKind: raw['region_kind'] as String, attribution: attribution, radarUri: radarUri,
       snapshot: WeatherForecastSnapshot(locationLabel: SkoLanguageController.tr(switch (raw['region_kind']) {
         'company' => '会社周辺', 'home' => '自宅周辺', 'site' => '現場周辺', _ => '地域未設定',
       }),
-        updatedAt: checked, forecastDate: forecast, sourceLabel: raw['source'] as String,
+        updatedAt: checked.toLocal(), forecastDate: forecast, sourceLabel: raw['source'] as String,
         hours: hours, radarSupported: radarUri != null,
+        rainForecastAt: rainAt, rainReferenceAt: rainReference,
+        rainLocalHour: rainHour, rainLocalMinute: rainMinute,
         forecastSummaryHour: kind == 'forecast_hour' ? summaryHour as int : null,
         forecastSummaryTemperatureCelsius: kind == 'forecast_hour' ? summaryTemperature : null,
         forecastSummary: kind == 'forecast_hour' ? weatherCondition(raw['summary_condition']).label : null,

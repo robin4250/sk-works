@@ -13,6 +13,10 @@ class WeatherForecastSnapshot {
     this.currentSummary,
     this.currentTemperatureCelsius,
     this.rainApproachMessage,
+    this.rainForecastAt,
+    this.rainReferenceAt,
+    this.rainLocalHour,
+    this.rainLocalMinute,
     this.radarSupported = false,
     this.forecastSummaryTemperatureCelsius,
     this.forecastSummaryHour,
@@ -26,6 +30,10 @@ class WeatherForecastSnapshot {
   final String? currentSummary;
   final double? currentTemperatureCelsius;
   final String? rainApproachMessage;
+  final DateTime? rainForecastAt;
+  final DateTime? rainReferenceAt;
+  final int? rainLocalHour;
+  final int? rainLocalMinute;
   final bool radarSupported;
   final double? forecastSummaryTemperatureCelsius;
   final int? forecastSummaryHour;

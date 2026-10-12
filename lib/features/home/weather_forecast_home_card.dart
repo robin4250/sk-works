@@ -71,6 +71,33 @@ class WeatherForecastViewData {
     return null;
   }
 
+  String? rainApproachMessageAt(DateTime now) {
+    final value = forecast;
+    if (value == null || selectedDay != 0) {
+      return null;
+    }
+    final at = value.rainForecastAt;
+    final reference = value.rainReferenceAt;
+    final hour = value.rainLocalHour, minute = value.rainLocalMinute;
+    if (at == null || reference == null || hour == null || minute == null ||
+        !at.isAfter(now) || at.isAfter(now.add(const Duration(minutes: 60))) ||
+        reference.isBefore(now.subtract(const Duration(minutes: 15))) ||
+        reference.isAfter(now.add(const Duration(minutes: 1))) ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+    return SkoLanguageController.trParams('{hour}:{minute}の降水予報', {
+      'hour': hour.toString().padLeft(2, '0'),
+      'minute': minute.toString().padLeft(2, '0'),
+    });
+  }
+  String? get rainApproachMessage => rainApproachMessageAt(DateTime.now());
+  String? get summaryWithRain {
+    final summary = summaryLabel;
+    final rain = rainApproachMessage;
+    return rain == null ? summary : summary == null ? rain : '$summary ／ $rain';
+  }
+
   String get compactDayLabel =>
       selectedDay == 2 ? SkoLanguageController.tr('2日後') : dayLabel;
   String get dayLabel =>
@@ -83,7 +110,7 @@ class WeatherForecastViewData {
       ? SkoLanguageController.tr('天気予報を取得中')
       : failed
       ? SkoLanguageController.tr('最新の天気予報を取得できませんでした。')
-      : summaryLabel ?? SkoLanguageController.tr('天気予報は未取得です。');
+      : summaryWithRain ?? SkoLanguageController.tr('天気予報は未取得です。');
 }
 
 class WeatherForecastHomeCard extends StatelessWidget {
@@ -315,7 +342,7 @@ class WeatherForecastDetailPage extends StatelessWidget {
               hours: forecast?.hours ?? const [],
               currentSummary: data.summaryLabel,
               currentTemperatureCelsius: data.summaryTemperature,
-              rainApproachMessage: forecast?.rainApproachMessage,
+              rainApproachMessage: data.rainApproachMessage,
               updatedAt: forecast?.updatedAt,
               sourceLabel: forecast?.sourceLabel,
               radarSupported: forecast?.radarSupported ?? false,

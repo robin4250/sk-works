@@ -11,6 +11,20 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  test('cached minute forecast hides past or stale notices and never appears on future days', () {
+    final now = DateTime.utc(2026, 10, 12, 0, 1);
+    final snapshot = WeatherForecastSnapshot(locationLabel: '会社周辺', updatedAt: now,
+      forecastDate: DateTime(2026, 10, 12), sourceLabel: 'OpenWeather',
+      rainForecastAt: DateTime.utc(2026, 10, 12, 0, 5),
+      rainReferenceAt: DateTime.utc(2026, 10, 12), rainLocalHour: 9, rainLocalMinute: 5);
+    final data = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), snapshot: snapshot);
+    expect(data.rainApproachMessageAt(now), '09:05の降水予報');
+    expect(data.rainApproachMessageAt(DateTime.utc(2026, 10, 12, 0, 5)), isNull);
+    expect(data.rainApproachMessageAt(DateTime.utc(2026, 10, 12, 0, 16)), isNull);
+    final future = WeatherForecastViewData(baseDate: DateTime(2026, 10, 11), selectedDay: 1, snapshot: snapshot);
+    expect(future.rainApproachMessageAt(now), isNull);
+  });
+
   test('future summary uses the selected forecast hour and never today's current value', () {
     final data = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12), selectedDay: 1,
       snapshot: WeatherForecastSnapshot(locationLabel: '現場', updatedAt: DateTime(2026, 10, 12),
