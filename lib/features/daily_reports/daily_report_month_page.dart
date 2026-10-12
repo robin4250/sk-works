@@ -298,7 +298,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
             IconButton(tooltip: SkoLanguageController.tr('日報一覧のヘルプ'), onPressed: _help,
               icon: const Icon(Icons.help_outline)),
           ],
-          bottom: PreferredSize(preferredSize: Size.fromHeight(114 + (MediaQuery.textScalerOf(context).scale(17) - 17).clamp(0, 40) * 3),
+          bottom: PreferredSize(preferredSize: Size.fromHeight(114 + (MediaQuery.textScalerOf(context).scale(17) - 17).clamp(0, 40).toDouble() * 3),
             child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
               child: Column(children: [
                 Row(children: [
@@ -325,9 +325,9 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
             child: _siteKey == null ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(12), children: [
-                Padding(padding: EdgeInsets.all(8), child: Text(SkoLanguageController.tr('現場名一覧'),
+                Padding(padding: const EdgeInsets.all(8), child: Text(SkoLanguageController.tr('現場名一覧'),
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-                if (destinations.isEmpty) Padding(padding: EdgeInsets.all(24),
+                if (destinations.isEmpty) Padding(padding: const EdgeInsets.all(24),
                   child: Text(SkoLanguageController.tr('この月の保存済み日報はありません。'), style: TextStyle(fontSize: 18))),
                 for (final destination in destinations.entries) Card(child: ListTile(
                   key: ValueKey('daily-report-site-${destination.key}'),
@@ -394,7 +394,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     final selected = await showModalBottomSheet<DailyReportMonthEntry>(context: context,
       isScrollControlled: true, builder: (sheetContext) => SafeArea(child: Column(
         mainAxisSize: MainAxisSize.min, children: [
-          Padding(padding: EdgeInsets.all(16), child: Text(SkoLanguageController.tr('日報を選択（古い順）'),
+          Padding(padding: const EdgeInsets.all(16), child: Text(SkoLanguageController.tr('日報を選択（古い順）'),
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
           Flexible(child: ListView(shrinkWrap: true, children: [
             for (var i = 0; i < entries.length; i++) ListTile(

@@ -16,6 +16,8 @@ class Reports extends DailyReportMonthRepository {
   final opened = <String>[];
   final requestedMonths = <int>[];
   bool changed = false;
+  bool extraOld = false;
+  final classified = <String>[];
   @override
   String get actor => 'actor';
   @override
@@ -24,12 +26,13 @@ class Reports extends DailyReportMonthRepository {
   Future<List<DailyReportMonthEntry>> list(DateTime month, {String? workerId}) async {
     requestedMonths.add(month.month);
     if (month.month != 10) return [];
-    return [entry('new',12,2), entry('old',12,1), entry('tomorrow',13,1),
+    return [if (extraOld) entry('older',12,0), entry('new',12,2), entry('old',12,1), entry('tomorrow',13,1),
       entry('other',12,1,site:'site-b',name:'現場B')];
   }
   @override
   Future<bool> hasPhotos(DailyReportMonthEntry entry, {required String expectedActor}) async {
     checkActor(expectedActor);
+    classified.add(entry.id);
     return entry.id == 'new';
   }
   @override
@@ -79,6 +82,26 @@ void main() {
     await tester.tap(find.byTooltip('次の月')); await tester.pumpAndSettle();
     expect(find.text('2026年11月'),findsOneWidget);
     expect(reports.requestedMonths.last,11);
+    expect(tester.takeException(),isNull);
+  });
+
+  testWidgets('same-day photo groups keep each report ID selectable in creation order', (tester) async {
+    final reports=Reports(client)..extraOld=true;
+    await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),
+      repositoryForTesting:reports,previewBuilderForTesting:(doc)=>Scaffold(appBar:AppBar(title:Text(doc.report.id)),
+        body:Text(doc.report.workDescription)))));
+    await tester.pumpAndSettle(); await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
+    final button=find.byKey(const ValueKey('daily-report-day-12-no-photos'));
+    await tester.scrollUntilVisible(button,400); await tester.pumpAndSettle();
+    expect(find.descendant(of:button,matching:find.text('写真無し 2枚')),findsOneWidget);
+    expect(reports.classified.where((id)=>id=='old').length,1);
+    await tester.tap(button); await tester.pumpAndSettle();
+    final older=find.byKey(const ValueKey('daily-report-select-older'));
+    final old=find.byKey(const ValueKey('daily-report-select-old'));
+    expect(tester.getTopLeft(older).dy,lessThan(tester.getTopLeft(old).dy));
+    await tester.tap(old); await tester.pumpAndSettle();
+    expect(find.text('作業:old'),findsOneWidget);
+    expect(reports.opened,['old']);
     expect(tester.takeException(),isNull);
   });
 
