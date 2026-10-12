@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
 import 'traffic_link_policy.dart';
+import 'traffic_destination_icon.dart';
 
 typedef TrafficLinkLauncher = Future<bool> Function(Uri uri);
 
@@ -64,7 +65,6 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
     SkoLanguageController.watch(context);
     final colors = Theme.of(context).colorScheme;
     final labels = ['最寄駅', '電車乗換', 'バス停'];
-    final icons = [Icons.apartment_rounded, Icons.train_rounded, Icons.directions_bus_rounded];
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
@@ -89,7 +89,10 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: Row(children: [
-                  Icon(icons[index], size: 16),
+                  TrafficDestinationIcon(
+                    key: ValueKey('traffic-icon-${TrafficDestination.values[index].name}'),
+                    destination: TrafficDestination.values[index],
+                  ),
                   const SizedBox(width: 2),
                   Expanded(child: Text(
                     SkoLanguageController.tr(labels[index]),

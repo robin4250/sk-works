@@ -792,9 +792,9 @@ class _HomeReorderSurface extends StatelessWidget {
       else
         child,
       Positioned(
-        top: lowerLeadingHandle ? HomeInformationCard.heightFor(context) - 36 : upperLeadingHandle ? 10 : 0,
+        top: lowerLeadingHandle ? 8 : upperLeadingHandle ? 10 : 0,
         right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
-        left: lowerLeadingHandle ? 11 : upperLeadingHandle ? 10 : null,
+        left: lowerLeadingHandle ? 44 : upperLeadingHandle ? 10 : null,
         bottom: null,
         child: LongPressDraggable<String>(
           data: data,
@@ -811,7 +811,7 @@ class _HomeReorderSurface extends StatelessWidget {
               key: ValueKey('home-reorder-$data'),
               width: 28,
               height: 28,
-              child: Icon(Icons.drag_indicator, size: 18, color: lowerLeadingHandle ? Theme.of(context).colorScheme.onPrimary : null),
+              child: Icon(Icons.drag_indicator, size: 18, color: lowerLeadingHandle ? Theme.of(context).colorScheme.primary : null),
             ),
           ),
         ),
