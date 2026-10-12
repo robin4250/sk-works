@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/branding/sko_theme.dart';
 import 'package:sk_works/features/traffic/traffic_home_card.dart';
 import 'package:sk_works/features/traffic/traffic_link_policy.dart';
 import 'package:sk_works/features/settings/master_feature_availability.dart';
@@ -10,7 +11,7 @@ void main() {
   Future<void> pump(WidgetTester tester, {TrafficAvailability availability = enabled, TrafficLinkLauncher? launcher}) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+    await tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: MediaQuery(
       data: const MediaQueryData(size: Size(320, 640), textScaler: TextScaler.linear(1.6)),
       child: TrafficHomeCard(availability: availability, launcher: launcher),
     ))));
