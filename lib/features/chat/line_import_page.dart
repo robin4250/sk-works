@@ -57,7 +57,7 @@ class _LineImportPageState extends State<LineImportPage> {
       final data = await _repository!.load(id, widget.target, _month);
       final canEdit = data['can_edit'] == true;
       final features = LineImportFeatures.fromJson(data['features']);
-      final refs = canEdit ? await _repository!.references(id) : (workers: <Map<String, dynamic>>[], sites: <Map<String, dynamic>>[]);
+      final refs = canEdit ? await _repository.references(id) : (workers: <Map<String, dynamic>>[], sites: <Map<String, dynamic>>[]);
       if (!mounted || _groupId != id) return;
       setState(() {
         _canEdit = canEdit; _enabled = widget.target == 'attendance' ? features.attendance : features.invoice;

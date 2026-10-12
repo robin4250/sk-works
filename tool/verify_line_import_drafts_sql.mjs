@@ -53,7 +53,10 @@ const past=readFileSync('supabase/migrations/20261003164557_route_past_attendanc
 await db.exec(`insert into public.customers values('${id(70)}','${id(10)}','取引先A','','東京都');
  update public.sites set customer_id='${id(70)}' where id='${id(40)}';
  insert into public.site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values('${id(10)}','${id(40)}',20000,8);`);
-await db.exec(readFileSync('supabase/migrations/20261012153116_line_confirmed_import_drafts.sql','utf8'));
+const migration=readFileSync('supabase/migrations/20261012153116_line_confirmed_import_drafts.sql','utf8');
+assert.ok(migration.includes(readFileSync('supabase/tests/line_confirmed_invoice_components.sql','utf8')));
+assert.ok(migration.includes(readFileSync('supabase/tests/line_confirmed_import_actions.sql','utf8')));
+await db.exec(migration);
 const q=async(sql,params=[]) => (await db.query(sql,params)).rows[0]?.value;
 const source={id:id(50),body:'10月1日\n現場A 本人、管理者\n現場A 定時',sent_at:'2026-10-01T00:00:00Z'};
 const row=(n,name)=>({row_id:`${id(50)}:${n}`,source_message_id:id(50),work_date:'2026-10-01',worker_id:id(30+n),worker_name:name,site_id:id(40),site_name:'現場A',man_days:1,overtime_hours:0,early_hours:0,confirmed:true});
@@ -117,4 +120,11 @@ assert.equal((await db.query('select count(*)::int n from invoices')).rows[0].n,
 const document=(await db.query('select * from invoices')).rows[0];assert.equal(document.status,'draft');assert.equal(document.automatic_calculation,false);assert.equal(document.grand_total,47520);assert.equal(document.snapshot.line_import_evidence.draft_id,invoiceDraft.draft_id);
 await rejected(()=>q('select public.create_line_invoices($1,$2,1,$3) value',[id(86),invoiceDraft.draft_id,preview.fingerprint]),/同じ取引会社/);
 assert.equal((await db.query('select count(*)::int n from invoices')).rows[0].n,1);
+await db.query("update attendance_correction_requests set status='rejected' where id=$1",[submitted.request_id]);
+const resubmitted=await q('select public.submit_line_attendance($1,$2,2,$3,$4::jsonb,null) value',[id(87),draftId,'確認者',submitParams[4]]);
+assert.notEqual(resubmitted.request_id,submitted.request_id);
+assert.equal((await db.query('select count(*)::int n from private.line_attendance_submissions where active')).rows[0].n,2);
+assert.equal((await db.query('select count(*)::int n from private.line_attendance_submissions where not active')).rows[0].n,2);
+const missingAllowance=await save(88,1,[{...row(0,'本人'),allowance_names:['未登録手当']}],[source],'invoice',true);
+await rejected(()=>q('select public.line_invoice_preview($1,2) value',[missingAllowance.draft_id]),/手当の名称/);
 await db.close();console.log('LINE imports: reversible Master flags, own-worker privacy, source/revision/duplicate guards, signature to ordinary approval, exact general invoice math, drift rejection and atomic draft receipts passed.');

@@ -2,8 +2,10 @@ create table private.line_attendance_submissions (
  company_id uuid not null,worker_id uuid not null,work_date date not null,
  draft_id uuid not null references private.line_import_drafts(id),revision integer not null,
  request_id uuid not null references public.attendance_correction_requests(id),
- primary key(company_id,worker_id,work_date)
+ active boolean not null default true,
+ primary key(company_id,worker_id,work_date,request_id)
 );
+create unique index line_attendance_one_active_day on private.line_attendance_submissions(company_id,worker_id,work_date) where active;
 create table private.line_invoice_submissions (
  company_id uuid not null,customer_id uuid not null,work_month date not null,
  draft_id uuid not null references private.line_import_drafts(id),revision integer not null,
@@ -50,6 +52,14 @@ begin
  if rows is null or not exists(select 1 from jsonb_array_elements(rows)) then raise exception '請求の対象がありません。' using errcode='22023';end if;
  if exists(select 1 from jsonb_array_elements(rows) r join public.sites s on s.id=(r->>'site_id')::uuid where s.customer_id is null or not exists(select 1 from public.customers c where c.id=s.customer_id and c.company_id=draft.company_id)) then raise exception '現場の取引会社を設定してください。' using errcode='22023';end if;
  if exists(select 1 from jsonb_array_elements(draft.candidate_rows) r where coalesce(r->>'excluded','false')<>'true' and r->>'steel_allowance'='true' and jsonb_array_length(coalesce(r->'allowance_names','[]'))=0) then raise exception 'PC・鉄骨手当の登録名称を確認してください。' using errcode='22023';end if;
+ if exists(select 1 from jsonb_array_elements(draft.candidate_rows) r
+  cross join lateral jsonb_array_elements_text(coalesce(r->'allowance_names','[]')) allowance(name)
+  left join public.site_financial_settings fs on fs.site_id=(r->>'site_id')::uuid and fs.company_id=draft.company_id
+  where coalesce(r->>'excluded','false')<>'true' and (
+   (allowance.name=fs.billing_allowance_1_name and fs.billing_allowance_1_amount_yen>0) or
+   (allowance.name=fs.billing_allowance_2_name and fs.billing_allowance_2_amount_yen>0) or
+   (allowance.name=fs.billing_allowance_3_name and fs.billing_allowance_3_amount_yen>0)
+  ) is not true) then raise exception '現場に登録した手当の名称・単価を確認してください。' using errcode='22023';end if;
  for customer in select distinct c.id,c.name,c.billing_address from public.customers c join public.sites s on s.customer_id=c.id and s.company_id=c.company_id
  where c.company_id=draft.company_id and exists(select 1 from jsonb_array_elements(rows) r where (r->>'site_id')::uuid=s.id) order by c.id loop
   quote:=private.line_confirmed_invoice_components(draft.company_id,customer.id,draft.work_month,rows);
@@ -111,8 +121,10 @@ begin
  lock table public.attendance_correction_requests,public.attendance_entries in share row exclusive mode;
  for r in select value from jsonb_array_elements(draft.candidate_rows) where coalesce(value->>'excluded','false')<>'true' and (p_worker_ids is null or (value->>'worker_id')::uuid=any(p_worker_ids)) order by value->>'worker_id',value->>'work_date' loop
   if (r->>'work_date')::date >= (now() at time zone 'Asia/Tokyo')::date then raise exception '過去の日付だけをまとめて申請できます。' using errcode='22023';end if;
+  update private.line_attendance_submissions sub set active=false where sub.company_id=cid and sub.worker_id=(r->>'worker_id')::uuid and sub.work_date=(r->>'work_date')::date and sub.active
+   and exists(select 1 from public.attendance_correction_requests req where req.id=sub.request_id and req.status='rejected');
   if exists(select 1 from public.attendance_entries where company_id=cid and worker_id=(r->>'worker_id')::uuid and work_date=(r->>'work_date')::date)
-   or exists(select 1 from private.line_attendance_submissions where company_id=cid and worker_id=(r->>'worker_id')::uuid and work_date=(r->>'work_date')::date)
+   or exists(select 1 from private.line_attendance_submissions where company_id=cid and worker_id=(r->>'worker_id')::uuid and work_date=(r->>'work_date')::date and active)
    or exists(select 1 from public.attendance_correction_items i join public.attendance_correction_requests req on req.id=i.request_id
     where req.company_id=cid and req.request_kind='past_attendance' and req.status in ('draft','submitted') and (i.proposed_snapshot->>'workerId')=(r->>'worker_id') and replace(i.proposed_snapshot->>'date','/','-')=r->>'work_date') then raise exception '同日の出勤または申請があります。勤務修正から確認してください。' using errcode='22023';end if;
   if r->>'steel_allowance'='true' and jsonb_array_length(coalesce(r->'allowance_names','[]'))=0 then raise exception 'PC・鉄骨手当の登録名称を確認してください。' using errcode='22023';end if;
