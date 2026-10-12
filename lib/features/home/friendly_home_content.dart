@@ -9,6 +9,8 @@ import '../notifications/notification_settings_button.dart';
 import 'home_route_action_state.dart';
 import 'initial_company_rates_card.dart';
 import 'home_appearance.dart';
+import 'home_information_card.dart';
+import 'home_action_order_policy.dart';
 import 'home_membership_repository.dart';
 
 enum HomeShortcutAccess { general, subAdmin, viewer, admin }
@@ -36,6 +38,8 @@ class FriendlyHomeContent extends StatelessWidget {
     required this.requiredDocumentAttention,
     required this.moduleEnabled,
     this.tutorialCard,
+    this.weatherCard,
+    this.showWeatherForecast = true,
     this.gridColumns = 2,
     this.actionOrder = const <String>[],
     this.visibleHomeKeys = const <String>{},
@@ -57,6 +61,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final HomeIdentity identity;
   final RequiredDocumentAttention requiredDocumentAttention;
   final Widget? tutorialCard;
+  final Widget? weatherCard;
+  final bool showWeatherForecast;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
@@ -114,7 +120,7 @@ class FriendlyHomeContent extends StatelessWidget {
                   ),
                 ),
               if (identity.isAdmin) const InitialCompanyRatesCard(),
-              if (requiredDocumentAttention.hasMissing) ...[
+              if (weatherCard == null && requiredDocumentAttention.hasMissing) ...[
                 const SizedBox(height: 12),
                 Opacity(
                   opacity: appearance.cardOpacity,
@@ -126,6 +132,10 @@ class FriendlyHomeContent extends StatelessWidget {
               ],
               const SizedBox(height: 14),
               _OrderedHomeContent(
+                weatherCard: showWeatherForecast ? weatherCard : null,
+                attentionCard: weatherCard != null && requiredDocumentAttention.hasMissing
+                    ? _RequiredDocumentAttentionCard(key: const ValueKey('home-attention-card'), attention: requiredDocumentAttention, onOpen: onOpen)
+                    : null,
                 identity: identity,
                 moduleEnabled: moduleEnabled,
                 gridColumns: gridColumns,
@@ -152,6 +162,7 @@ class FriendlyHomeContent extends StatelessWidget {
 
 class _RequiredDocumentAttentionCard extends StatefulWidget {
   const _RequiredDocumentAttentionCard({
+    super.key,
     required this.attention,
     required this.onOpen,
   });
@@ -193,93 +204,18 @@ class _RequiredDocumentAttentionCardState
     final scheme = Theme.of(context).colorScheme;
     return FadeTransition(
       opacity: _pulse,
-      child: Card(
-        margin: EdgeInsets.zero,
-        color: scheme.surface,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: scheme.primary, width: 1.5),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => widget.onOpen('notifications'),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(14),
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.notifications_active_outlined,
-                    color: scheme.onPrimary,
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            SkoLanguageController.tr('要対応'),
-                            style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize:
-                                          (Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium
-                                                  ?.fontSize ??
-                                              14) *
-                                          1.25,
-                                    ),
-                          ),
-                        ),
-                        Text(
-                          '${SkoLanguageController.tr('未対応')} ${widget.attention.unresolvedCount}${SkoLanguageController.isEnglish ? '' : '件'}',
-                          style: TextStyle(
-                            color: scheme.error,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right),
-                          ],
-                        ),
-                        if (widget
-                            .attention
-                            .notificationPreviews
-                            .isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.attention.notificationPreviews.join('\n'),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(fontSize: 11),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+      child: HomeInformationCard(
+        icon: Icons.notifications_active_outlined,
+        title: SkoLanguageController.tr('要対応'),
+        details: widget.attention.notificationPreviews.join('\n'),
+        trailing: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            '${SkoLanguageController.tr('未対応')} ${widget.attention.unresolvedCount}${SkoLanguageController.isEnglish ? '' : '件'}',
+            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w900),
           ),
         ),
+        onTap: () => widget.onOpen('notifications'),
       ),
     );
   }
@@ -598,6 +534,8 @@ class _PersonalAttendanceCard extends StatelessWidget {
 class _OrderedHomeContent extends StatelessWidget {
   const _OrderedHomeContent({
     required this.identity,
+    this.weatherCard,
+    this.attentionCard,
     required this.moduleEnabled,
     required this.gridColumns,
     required this.actionOrder,
@@ -615,6 +553,8 @@ class _OrderedHomeContent extends StatelessWidget {
   });
 
   final HomeIdentity identity;
+  final Widget? weatherCard;
+  final Widget? attentionCard;
   final bool Function(String key) moduleEnabled;
   final int gridColumns;
   final List<String> actionOrder;
@@ -633,9 +573,6 @@ class _OrderedHomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rank = <String, int>{
-      for (var i = 0; i < actionOrder.length; i++) actionOrder[i]: i,
-    };
     final keys = <String>[
       if (moduleEnabled('attendance') &&
           showAttendanceReport &&
@@ -645,12 +582,18 @@ class _OrderedHomeContent extends StatelessWidget {
           showTodayAttendance &&
           visibleHomeKeys.contains('attendance_today'))
         'attendance_today',
+      if (weatherCard != null) 'weather_forecast',
+      if (attentionCard != null) 'home_attention',
       for (final shortcut in shortcuts)
         if (visibleHomeKeys.contains(shortcut.key) &&
             shortcut.key != 'attendance_verify' &&
-            shortcut.key != 'attendance_today')
+            shortcut.key != 'attendance_today' &&
+            shortcut.key != 'weather_forecast' &&
+            shortcut.key != 'home_attention')
           shortcut.key,
     ];
+    final effectiveOrder = normalizeHomeActionOrder(actionOrder, keys);
+    final rank = <String, int>{for (var i = 0; i < effectiveOrder.length; i++) effectiveOrder[i]: i};
     final fallbackRank = <String, int>{
       for (var i = 0; i < keys.length; i++) keys[i]: i,
     };
@@ -686,6 +629,17 @@ class _OrderedHomeContent extends StatelessWidget {
     }
 
     for (final key in keys) {
+      if (key == 'weather_forecast' || key == 'home_attention') {
+        flushGrid();
+        children.add(_DraggableHomeCard(
+          keyName: key,
+          onReorderAction: onReorderAction,
+          child: Opacity(opacity: appearance.cardOpacity,
+            child: key == 'weather_forecast' ? weatherCard! : attentionCard!),
+        ));
+        children.add(const SizedBox(height: 12));
+        continue;
+      }
       if (key == 'attendance_verify') {
         flushGrid();
         children.add(
@@ -784,6 +738,7 @@ class _DraggableHomeCard extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           child: _HomeReorderSurface(
             data: keyName,
+            lowerLeadingHandle: keyName == 'weather_forecast',
             feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
@@ -800,9 +755,11 @@ class _HomeReorderSurface extends StatelessWidget {
     required this.data,
     required this.feedbackWidth,
     required this.child,
+    this.lowerLeadingHandle = false,
   });
   final String data;
   final double feedbackWidth;
+  final bool lowerLeadingHandle;
   final Widget child;
 
   @override
@@ -813,8 +770,10 @@ class _HomeReorderSurface extends StatelessWidget {
     children: [
       child,
       Positioned(
-        top: 0,
-        right: 0,
+        top: lowerLeadingHandle ? null : 0,
+        right: lowerLeadingHandle ? null : 0,
+        left: lowerLeadingHandle ? 11 : null,
+        bottom: lowerLeadingHandle ? 8 : null,
         child: LongPressDraggable<String>(
           data: data,
           delay: const Duration(milliseconds: 600),
@@ -830,7 +789,7 @@ class _HomeReorderSurface extends StatelessWidget {
               key: ValueKey('home-reorder-$data'),
               width: 28,
               height: 28,
-              child: const Icon(Icons.drag_indicator, size: 18),
+              child: Icon(Icons.drag_indicator, size: 18, color: lowerLeadingHandle ? Theme.of(context).colorScheme.onPrimary : null),
             ),
           ),
         ),

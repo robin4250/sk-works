@@ -1,0 +1,33 @@
+name: Weather forecast contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/fetch-weather-forecast/**'
+      - 'supabase/migrations/*weather_provider_settings.sql'
+      - 'tool/verify_weather_provider_sql.mjs'
+      - '.github/workflows/weather-forecast-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/fetch-weather-forecast/**'
+      - 'supabase/migrations/*weather_provider_settings.sql'
+      - 'tool/verify_weather_provider_sql.mjs'
+      - '.github/workflows/weather-forecast-contract.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify both weather provider adapters and actor address policy
+        run: node --test supabase/functions/fetch-weather-forecast/*_test.mjs
+      - name: Install isolated SQL test runtime
+        run: npm install --prefix /tmp/sko-weather-sql --ignore-scripts --no-audit --no-fund --save-exact @electric-sql/pglite@0.3.14
+      - name: Verify isolated provider settings SQL
+        env:
+          SKO_PGLITE_MODULE: /tmp/sko-weather-sql/node_modules/@electric-sql/pglite/dist/index.js
+        run: node tool/verify_weather_provider_sql.mjs
