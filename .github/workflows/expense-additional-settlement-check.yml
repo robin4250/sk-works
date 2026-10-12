@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'supabase/tests/expense_settlement_choice.sql'
+      - 'supabase/migrations/*expense_settlement_method_choices.sql'
       - 'supabase/tests/fixtures/expense_foundation_20261012.json'
       - 'tool/verify_expense_settlement*.mjs'
       - 'tool/fixtures/expense_settlement_choice_assertions.mjs'

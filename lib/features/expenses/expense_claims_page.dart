@@ -332,7 +332,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               !(widget.allowSettlementSetup && claim.settlement == null))
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    child: Text(claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup ? '精算方法を設定' : '承認'),
+                    child: Text(claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
                   ),
                   TextButton(
                     onPressed:

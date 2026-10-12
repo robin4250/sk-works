@@ -2,7 +2,12 @@
  await db.exec(fs.readFileSync('supabase/migrations/20261010152829_expense_personal_revision.sql','utf8'));
  const foundation=JSON.parse(fs.readFileSync('supabase/tests/fixtures/expense_foundation_20261012.json','utf8'));
  for(const key of ['expense_review_command','expense_review_workspace']) await db.exec(foundation[key]);
- await db.exec(fs.readFileSync('supabase/tests/expense_settlement_choice.sql','utf8'));
+ const protectedHelpers = "select oid::regprocedure::text signature,md5(prosrc) body,proacl::text acl from pg_proc where oid in ('private.expense_review_command(uuid,uuid,integer,text,text,uuid)'::regprocedure,'private.expense_review_workspace(uuid,date)'::regprocedure,'private.expense_personal_history(uuid,uuid,date)'::regprocedure) order by 1";
+ const beforeHelpers=(await db.query(protectedHelpers)).rows;
+ const migration=fs.readFileSync('supabase/migrations/20261012112410_expense_settlement_method_choices.sql','utf8');
+ await db.exec(migration);
+ assert.deepEqual((await db.query(protectedHelpers)).rows,beforeHelpers);
+ await assert.rejects(db.exec(migration),/already exists/);
  const beforeClaims=(await db.query('select to_jsonb(e) value from private.expense_claims e order by id')).rows;
  await db.exec(`set role authenticated;set test.actor='${actor}';set test.blocked='false'`);
  const settle=(n,rev,method,month)=>call(`public.expense_approve_with_settlement('${id(n)}','${id(10)}',${rev},${method ? "'"+method+"'" : 'null'},${month ? "'"+month+"'::date" : 'null'})`);

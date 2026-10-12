@@ -101,8 +101,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final company = _company;
     final revision = _data!.revisions[claim.id]!;
     ExpenseSettlementChoice? choice;
-    if (action == 'approve' && _data!.settlementChoiceEnabled) {
-      if (!_data!.canSettle) return;
+    if (action == 'approve' && _data!.settlementChoiceEnabled && _data!.canSettle) {
       choice = await showDialog<ExpenseSettlementChoice>(context: context,
         builder: (_) => ExpenseSettlementDialog(claim: claim));
       if (choice == null || !_current(generation) || actor != _actor || company != _company ||
@@ -344,7 +343,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       claims: data.claims,
       header: _header(),
       canDecide: (c) => data.canDecide(c, _actor!),
-      onApprove: enabled && (!data.settlementChoiceEnabled || data.canSettle) ? (c) => _act(c, 'approve') : null,
+      onApprove: enabled ? (c) => _act(c, 'approve') : null,
       allowSettlementSetup: data.settlementChoiceEnabled && data.canSettle,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
       onAllocate: enabled ? (c, d) => _act(c, 'allocate', d) : null,

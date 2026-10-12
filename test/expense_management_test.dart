@@ -27,6 +27,8 @@ Map<String, dynamic> row({
   'revision': revision,
 };
 ExpenseReviewWorkspace workspace({
+  bool settlementChoiceEnabled = false,
+  bool canSettle = false,
   String actor = 'reviewer',
   String status = 'pending',
   String allocation = 'unallocated',
@@ -35,6 +37,8 @@ ExpenseReviewWorkspace workspace({
   {
     'company_id': 'company',
     'can_review': true,
+    'settlement_choice_enabled': settlementChoiceEnabled,
+    'can_settle': canSettle,
     'can_configure': true,
     'settings_revision': 1,
     'approver_ids': ['reviewer', 'applicant'],
@@ -184,6 +188,20 @@ void main() {
       );
     },
   );
+  testWidgets('selected reviewer keeps approval when settlement is manager-only', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(650, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final access = Access()..data = workspace(settlementChoiceEnabled: true);
+    await tester.pumpWidget(MaterialApp(home: ExpenseManagementPage(access: access)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(TextButton, '承認'));
+    await tester.tap(find.widgetWithText(TextButton, '承認'));
+    await tester.pumpAndSettle();
+    expect(access.calls, 1);
+    expect(find.text('承認と精算方法'), findsNothing);
+    expect(find.text('費用の負担先：自社'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'approve refreshes authoritative own-company status; reject remains visible',
     (tester) async {
