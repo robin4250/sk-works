@@ -16,7 +16,10 @@ void main() {
       ));
       await tester.pump();
       final text = tester.widget<Text>(find.text(name));
-      expect(text.style!.fontSize, 12);
+      expect(text.style!.fontSize, 10);
+      expect(text.style!.fontWeight, FontWeight.w400);
+      final dateText = tester.widget<Text>(find.text('23 月'));
+      expect(dateText.style!.fontSize, 14);
       expect(text.overflow, isNull);
       final painter = TextPainter(text: TextSpan(text: name, style: text.style), textDirection: TextDirection.ltr,
           textScaler: const TextScaler.linear(1.3), maxLines: text.maxLines)..layout(maxWidth: 110);
@@ -45,6 +48,17 @@ void main() {
     await tester.drag(scroll, const Offset(0, -500));
     await tester.pumpAndSettle();
     expect(find.text('29 日').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('weekly rest days show one rest label per day', (tester) async {
+    final date = DateTime(2026, 11, 23);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body:
+      attendanceWeekForTesting(month: date,
+        week: [for (var i = 0; i < 7; i++) date.add(Duration(days: i))],
+        data: WorkerAttendanceMonth(year: 2026, month: 11, days: {})),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('休み'), findsNWidgets(7));
     expect(tester.takeException(), isNull);
   });
   testWidgets('calendar hides holiday names and header preview opens with current month data', (tester) async {

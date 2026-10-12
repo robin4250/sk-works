@@ -30,7 +30,7 @@ void main() {
     expect(home, contains('HomeShortcutAccess.admin'));
     expect(home, isNot(contains('_ProfessionalAccessMark')));
     expect(home, contains('final borderWidth = isAdmin ? 4.0'));
-    expect(home, contains('if (isViewer)'));
+    expect(home, contains("if (isViewer && item.key != 'employee_resources')"));
     expect(home, contains('padding: const EdgeInsets.all(3)'));
     expect(home, contains('final background = scheme.surfaceContainerLowest;'));
     expect(home, isNot(contains('isSubAdmin ? scheme.primaryContainer')));

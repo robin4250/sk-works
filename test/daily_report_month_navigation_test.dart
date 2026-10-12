@@ -23,6 +23,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(DailyReportMonthPage), findsNothing);
+      expect(find.text('保存済み一覧'), findsOneWidget);
       await tester.tap(find.byKey(const Key('daily-report-month-list')));
       await tester.pumpAndSettle();
       expect(find.byType(DailyReportMonthPage), findsOneWidget);

@@ -325,6 +325,11 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                 runSpacing: 4,
                 children: [
                   TextButton(
+                    style: TextButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    ),
                     onPressed:
                         !canDecide ||
                             onApprove == null ||
@@ -343,7 +348,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         : () => _request(generation, () => onReject(claim)),
                     child: const Text('却下'),
                   ),
-                  OutlinedButton(
+                  if (approved) OutlinedButton(
                     onPressed:
                         _busy ||
                             !approved ||
@@ -355,7 +360,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                   ),
                 ],
               ),
-              if (!approved && !claim.withdrawn) const Text('振り分けは承認後に行います。'),
+              if (approved) const Text('費用の負担先を変える場合は「振り分け」を押します。'),
             ],
           ],
         ),
@@ -399,22 +404,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('申請内容を確認 → 承認 → 費用の負担先へ振り分け'),
-                      const SizedBox(height: 12),
-                      const Text('費用の負担先'),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          for (final kind in ExpenseList.values)
-                            ChoiceChip(
-                              label: Text(
-                                '${_listLabel(kind)}（${scope.forList(kind).length}）',
-                              ),
-                              selected: _list == kind,
-                              onSelected: (_) => setState(() => _list = kind),
-                            ),
-                        ],
-                      ),
+                      const Text('まず申請内容を確認し、承認または却下します。'),
                       const SizedBox(height: 12),
                       const Text('承認状態'),
                       Wrap(
@@ -426,6 +416,21 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               selected: _filter == filter,
                               onSelected: (_) =>
                                   setState(() => _filter = filter),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('負担先で絞り込む'),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final kind in ExpenseList.values)
+                            ChoiceChip(
+                              label: Text(
+                                '${_listLabel(kind)}（${scope.forList(kind).length}）',
+                              ),
+                              selected: _list == kind,
+                              onSelected: (_) => setState(() => _list = kind),
                             ),
                         ],
                       ),
