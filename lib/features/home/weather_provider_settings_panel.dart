@@ -7,10 +7,26 @@ import '../../international/language_controller.dart';
 class WeatherProviderSettingsRepository {
   const WeatherProviderSettingsRepository(this.client);
   final SupabaseClient client;
-  Future<String> load() async => _provider(await client.rpc('current_weather_provider'));
+  Future<String> load() async {
+    final actor = _actor();
+    final value = await client.rpc('current_weather_provider');
+    _checkActor(actor);
+    return _provider(value);
+  }
   Future<String> save(String provider) async {
     _provider(provider);
-    return _provider(await client.rpc('set_weather_provider', params: {'p_provider': provider}));
+    final actor = _actor();
+    final value = await client.rpc('set_weather_provider', params: {'p_provider': provider});
+    _checkActor(actor);
+    return _provider(value);
+  }
+  String _actor() {
+    final actor = client.auth.currentUser?.id;
+    if (actor == null) { throw StateError('Weather settings session unavailable'); }
+    return actor;
+  }
+  void _checkActor(String actor) {
+    if (client.auth.currentUser?.id != actor) { throw StateError('Weather settings session changed'); }
   }
   String _provider(dynamic value) {
     if (value != 'openweather' && value != 'weatherkit') {
