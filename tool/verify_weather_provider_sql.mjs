@@ -20,6 +20,9 @@ try{
  assert.equal((await get("select enabled from private.master_feature_settings where feature_key='traffic_train_transfer'"))[0].enabled,false);
  await db.exec(sql); // replay preserves the previously selected provider
  assert.equal((await get("select provider from private.weather_provider_settings"))[0].provider,'weatherkit');
+ await db.exec("delete from auth.users where id='00000000-0000-0000-0000-000000000001'");
+ assert.equal((await get('select provider,updated_by from private.weather_provider_settings'))[0].provider,'weatherkit');
+ assert.equal((await get('select updated_by from private.weather_provider_settings'))[0].updated_by,null);
  const rls=(await get("select relrowsecurity from pg_class where oid='private.weather_provider_settings'::regclass"))[0];assert.equal(rls.relrowsecurity,true);
  await db.exec("set role anon;select set_config('request.jwt.claim.sub','',false)");
  await assert.rejects(get('select public.current_weather_provider()'),/permission denied/);
