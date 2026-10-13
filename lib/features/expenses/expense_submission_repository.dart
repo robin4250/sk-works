@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'expense_receipt_attachment.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import '../../data/supabase_backend.dart';
@@ -23,6 +26,7 @@ class ExpenseSubmission {
     required this.date,
     required this.description,
     required this.amount,
+    this.receipt,
   });
   factory ExpenseSubmission.create(
     String actor,
@@ -30,8 +34,9 @@ class ExpenseSubmission {
     String worker,
     DateTime date,
     String description,
-    String amount,
-  ) {
+    String amount, {
+    ExpenseReceiptAttachment? receipt,
+  }) {
     final yen = int.tryParse(amount);
     if (!RegExp(r'^[0-9]+$').hasMatch(amount) ||
         yen == null ||
@@ -50,7 +55,7 @@ class ExpenseSubmission {
       date:
           '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
       description: description.trim(),
-      amount: yen,
+      amount: yen, receipt: receipt,
     );
   }
   factory ExpenseSubmission.decode(String encoded) {
@@ -88,10 +93,12 @@ class ExpenseSubmission {
       date: v['date'],
       description: v['description'],
       amount: v['amount'],
+      receipt: v['receipt'] == null ? null : ExpenseReceiptAttachment.decode(Map<String, dynamic>.from(v['receipt'])),
     );
   }
   final String id, actor, company, worker, date, description;
   final int amount;
+  final ExpenseReceiptAttachment? receipt;
   String get encoded => jsonEncode({
     'id': id,
     'actor': actor,
@@ -100,6 +107,7 @@ class ExpenseSubmission {
     'date': date,
     'description': description,
     'amount': amount,
+    if (receipt != null) 'receipt': receipt!.encoded,
   });
   void verify(Map<String, dynamic> row) {
     if (row['id'] != id ||
@@ -108,7 +116,8 @@ class ExpenseSubmission {
         row['applicant_id'] != worker ||
         row['incurred_on'] != date ||
         row['description'] != description ||
-        row['amount_yen'] != amount) {
+        row['amount_yen'] != amount ||
+        (receipt != null && row['receipt_object_path'] != receipt!.objectPath(company, actor, id))) {
       throw StateError('申請の照会結果が一致しません。同じ申請の確認が必要です。');
     }
   }
@@ -153,15 +162,16 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
   ) async {
     final expected = actor;
     _check(expected);
-    final rows = await _client.rpc(
-      'expense_personal_settlement_history',
-      params: {
-        'p_company': company,
-        'p_worker': worker,
-        'p_month':
-            '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01',
-      },
-    );
+    dynamic rows;
+    final params = {
+      'p_company': company, 'p_worker': worker,
+      'p_month': '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01',
+    };
+    try { rows = await _client.rpc('expense_personal_receipt_history', params: params); }
+    on PostgrestException catch (error) {
+      if (error.code != 'PGRST202') rethrow;
+      rows = await _client.rpc('expense_personal_settlement_history', params: params);
+    }
     _check(expected);
     return (rows as List).map((v) {
       final r = Map<String, dynamic>.from(v);
@@ -177,6 +187,9 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         applicantName: r['applicant_name'],
         incurredOn: DateTime.parse(r['incurred_on']),
         submittedAt: DateTime.parse(r['submitted_at']),
+        receiptObjectPath: r['receipt_object_path'],
+        reviewedAt: r['reviewed_at'] == null ? null : DateTime.parse(r['reviewed_at']),
+        reviewedBy: r['reviewed_by'], reviewedByName: r['reviewed_by_name'], reviewMemo: r['review_memo'],
         description: r['description'],
         amountYen: r['amount_yen'],
         approval: ExpenseApproval.values.byName(r['approval']),
@@ -191,6 +204,15 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         ),
       );
     }).toList();
+  }
+
+  Future<Map<String, dynamic>> reviewHistory(ExpenseClaim claim) async {
+    final expected = actor;
+    _check(expected);
+    final data = Map<String, dynamic>.from(await _client.rpc('expense_review_flow_history', params: {'p_claim': claim.id}));
+    _check(expected);
+    if (data['claim_id'] != claim.id || data['company_id'] != claim.companyId || data['events'] is! List) throw StateError('履歴の対象が一致しません。');
+    return data;
   }
 
   String _key(String expected, String company, String worker) =>
@@ -227,6 +249,39 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
     return guarded;
   }
 
+  Future<void> _uploadReceipt(ExpenseSubmission draft) async {
+    final photo = draft.receipt!;
+    final expectedPath = photo.objectPath(draft.company, draft.actor, draft.id);
+    Future<Map<String, dynamic>> prepare() async {
+      _check(draft.actor);
+      final data = Map<String, dynamic>.from(await _client.rpc('expense_prepare_receipt', params: {
+        'p_claim': draft.id, 'p_company': draft.company, 'p_worker': draft.worker,
+        'p_sha256': photo.sha256Hex, 'p_size': photo.size, 'p_mime': photo.mime,
+      }));
+      _check(draft.actor);
+      if (data['claim_id'] != draft.id || data['object_path'] != expectedPath) throw StateError('領収書の保存先が一致しません。');
+      return data;
+    }
+    final reservation = await prepare();
+    final bucket = _client.storage.from('expense-receipts');
+    if (reservation['uploaded'] != true) {
+      final bytes = await photo.verifiedBytes();
+      _check(draft.actor);
+      try {
+        await bucket.uploadBinary(expectedPath, bytes, fileOptions: FileOptions(contentType: photo.mime, upsert: false));
+      } on StorageException {
+        final retried = await prepare();
+        if (retried['uploaded'] != true) rethrow;
+      }
+    }
+    _check(draft.actor);
+    final uploaded = await bucket.download(expectedPath);
+    _check(draft.actor);
+    if (uploaded.length != photo.size || sha256.convert(uploaded).toString() != photo.sha256Hex) {
+      throw StateError('領収書の保存内容が一致しません。');
+    }
+  }
+
   Future<void> _submit(ExpenseSubmission draft) async {
     _check(draft.actor);
     final prefs = await SharedPreferences.getInstance();
@@ -242,12 +297,13 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
     _check(draft.actor);
     // A failed lookup must never turn into a new submission.
     var row = await _client.rpc(
-      'expense_personal_exact',
+      draft.receipt == null ? 'expense_personal_exact' : 'expense_personal_exact_with_receipt',
       params: {'p_id': draft.id},
     );
     _check(draft.actor);
+    if (row == null && draft.receipt != null) await _uploadReceipt(draft);
     row ??= await _client.rpc(
-      'expense_personal_submit',
+      draft.receipt == null ? 'expense_personal_submit' : 'expense_personal_submit_with_receipt',
       params: {
         'p_id': draft.id,
         'p_company': draft.company,
