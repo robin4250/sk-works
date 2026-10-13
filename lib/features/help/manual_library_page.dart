@@ -208,7 +208,8 @@ class ManualChapterPage extends StatelessWidget {
       appBar: AppBar(title: Text(SkoLanguageController.tr(section.title))),
       body: SafeArea(child: ListView(padding: const EdgeInsets.all(16),
         children: [
-          Text(ManualVersion.revisionLabel),
+          Text(SkoLanguageController.trParams('SKO v{version} / ベータ版 / {date}',
+            {'version': ManualVersion.appVersion, 'date': ManualVersion.revisionDate})),
           const SizedBox(height: 8),
           _ManualSectionCard(number: number, section: section, initiallyExpanded: true),
         ])),

@@ -38,7 +38,7 @@ void main() {
       final result = await Process.run('python', ['-c', r'''
 import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'links':len(p.get_links()),'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf],ensure_ascii=False))
+print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'links':len(p.get_links()),'link_targets':[x.get('page',-1) for x in p.get_links()],'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf],ensure_ascii=False))
 ''', file.path]);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       final pages = (jsonDecode(result.stdout.toString()) as List<dynamic>).cast<Map<String, dynamic>>();
@@ -51,6 +51,15 @@ print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text
           section.buttonLabel, section.support, ...section.steps]) {
           expect(allText, contains(normalize(expected)),
             reason: '${entry.key} omitted registered feature content.');
+        }
+      }
+      for (final page in pages) {
+        for (final target in (page['link_targets'] as List<dynamic>).cast<int>()) {
+          expect(target, inInclusiveRange(0, pages.length - 1));
+          final targetText = normalize(pages[target]['text'] as String);
+          expect(targetText.contains(normalize('機能別目次')) ||
+            entry.value.any((section) => targetText.contains(normalize(section.title))),
+            isTrue, reason: 'PDF contents link points outside feature headings.');
         }
       }
       for (var index = 0; index < pages.length; index++) {
@@ -74,18 +83,21 @@ print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text
       title: '長い機能の説明', summary: '必要な手順を途中で削りません。',
       buttonLabel: '確認する',
       steps: List.generate(100, (i) => '手順$i：対象を確認して保存後の表示を確認します。'),
-      support: '最後の補足も確認できます。',
+      support: '${List.filled(120, '長い補足では確認対象・保存・再確認を順に説明します。').join(' ')} 最後の補足も確認できます。',
     );
     final chapter = File('$output/manual_beta_long_chapter.pdf');
     await chapter.writeAsBytes(await ManualPdfService.buildChapter(longChapter,
       regularFont: font, boldFont: font));
     final inspection = await Process.run('python', ['-c',
-      'import fitz,json,sys; p=fitz.open(sys.argv[1]); print(json.dumps({"pages":len(p),"text":"".join(x.get_text() for x in p),"links":sum(len(x.get_links()) for x in p)},ensure_ascii=False))',
+      'import fitz,json,sys; p=fitz.open(sys.argv[1]); print(json.dumps({"pages":len(p),"text":"".join(x.get_text() for x in p),"links":sum(len(x.get_links()) for x in p),"targets":[a.get("page",-1) for x in p for a in x.get_links()]},ensure_ascii=False))',
       chapter.path]);
     expect(inspection.exitCode, 0, reason: inspection.stderr.toString());
     final detail = jsonDecode(inspection.stdout.toString()) as Map<String, dynamic>;
     expect(detail['pages'] as int, greaterThan(2));
     expect(detail['links'] as int, greaterThanOrEqualTo(2));
+    for (final target in (detail['targets'] as List<dynamic>).cast<int>()) {
+      expect(target, inInclusiveRange(0, (detail['pages'] as int) - 1));
+    }
     for (final step in longChapter.steps) {
       expect(normalize(detail['text'] as String), contains(normalize(step)));
     }
