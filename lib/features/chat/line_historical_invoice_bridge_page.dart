@@ -97,7 +97,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
           for (final claim in preview['expense_extra_claims'] as List) Text('${claim['incurred_on']} ${claim['description']} ${claim['amount_yen']}円'),
         ])), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('確認して経費を更新'))]));
       if (confirmed != true || !mounted) return;
-      final result = await _repository!.refreshExpenses(widget.quoteId, invoiceId, preview['fingerprint'] as String);
+      final result = await _repository.refreshExpenses(widget.quoteId, invoiceId, preview['fingerprint'] as String);
       if (result['invoice_id'] != invoiceId || result['quote_id'] != widget.quoteId) throw StateError('Expense update mismatch');
       await _load();
     } catch (_) { if (mounted) setState(() => _error = '経費を更新できませんでした。承認済み・確定済み・手動編集済みの請求書は変更しません。再読み込みして内容を確認してください。'); }
