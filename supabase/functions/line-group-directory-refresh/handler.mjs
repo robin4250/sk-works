@@ -18,7 +18,7 @@ export function createDirectoryRefreshHandler({env,fetcher=fetch,now=()=>new Dat
    const after=input?.after??null;if(after!==null&&(typeof after!=='string'||! /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(after)))return new Response('Invalid cursor',{status:400});
    const headers={apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,'Content-Type':'application/json'};
    const ids=await json(`${base}/rest/v1/rpc/line_known_group_ids`,{method:'POST',headers,body:JSON.stringify({p_after:after})});
-   if(!Array.isArray(ids)||ids.length>10)throw Error('Directory unavailable');
+   if(!Array.isArray(ids)||ids.length>8)throw Error('Directory unavailable');
    let checked=0,unavailable=0;
    for(const row of ids) {
     const id=row?.line_group_id;
@@ -35,7 +35,7 @@ export function createDirectoryRefreshHandler({env,fetcher=fetch,now=()=>new Dat
      if(!saved.ok){unavailable++;continue;}checked++;
     } catch {unavailable++;}
    }
-   return Response.json({checked,unavailable,next_cursor:ids.length===10?ids.at(-1)?.id:null});
+   return Response.json({checked,unavailable,next_cursor:ids.length===8?ids.at(-1)?.id:null});
   } catch {return new Response('Directory refresh unavailable',{status:503});}
  };
 }

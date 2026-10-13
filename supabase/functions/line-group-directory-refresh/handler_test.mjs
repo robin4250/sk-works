@@ -14,3 +14,7 @@ test('current summary confirms known names; 404 marks nonparticipation, transien
  }});const response=await handler(request());assert.equal(response.status,200);const result=await response.json();assert.equal(result.checked,status===200||status===404?1:0);assert.equal(observations.length,result.checked);
  if(status===200)assert.equal(observations[0].p_display_name,'Sourced group');if(status===404)assert.equal(observations[0].p_joined,false);assert.ok(!JSON.stringify(result).includes('secret')); }
 });
+
+test('invalid bearer is 401 and never reads service catalog',async()=>{
+ const handler=createDirectoryRefreshHandler({env,fetcher:async()=>new Response('',{status:401})});assert.equal((await handler(request())).status,401);
+});
