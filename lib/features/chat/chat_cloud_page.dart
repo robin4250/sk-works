@@ -1830,7 +1830,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
           child: ChatConversationTile(
             name: group['display_name']?.toString() ?? group['name']?.toString() ?? '',
             preview: group['last_message_body']?.toString() ?? SkoLanguageController.tr('まだ会話はありません'),
-            time: group['last_message_at'] == null ? '' : _activityText(_lastActivity(group)),
+            time: DateTime.tryParse((group['last_message_at'] ?? group['last_activity_at'])?.toString() ?? '') == null
+                ? '' : _activityText(_lastActivity(group)),
             unreadCount: _unreadCounts[group['id']?.toString()] ?? 0,
             avatarUrl: group['avatar_url']?.toString(),
             icon: group['group_type'] == 'site' ? Icons.business_outlined : Icons.groups_outlined,
