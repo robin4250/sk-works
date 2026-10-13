@@ -176,13 +176,25 @@ class AppNotificationRepository {
   }
 
   Future<List<AppNotificationRecord>> unreadTargets() async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('Notifications unavailable');
     await _enqueueDueInvoiceApprovals();
-    final rows = await _client
-        .from('app_notifications')
-        .select('id,kind,title,body,action_key,action_id,read_at,created_at')
-        .isFilter('read_at', null);
-    return rows.map<AppNotificationRecord>((row) =>
-      AppNotificationRecord.fromRow(Map<String, dynamic>.from(row))).toList();
+    final result = <AppNotificationRecord>[];
+    const pageSize = 500;
+    for (var offset = 0; ; offset += pageSize) {
+      if (_client.auth.currentUser?.id != actor) throw StateError('Account changed');
+      final rows = await _client
+          .from('app_notifications')
+          .select('id,kind,title,body,action_key,action_id,read_at,created_at')
+          .eq('recipient_user_id', actor)
+          .isFilter('read_at', null)
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+      if (_client.auth.currentUser?.id != actor) throw StateError('Account changed');
+      result.addAll(rows.map<AppNotificationRecord>((row) =>
+        AppNotificationRecord.fromRow(Map<String, dynamic>.from(row))));
+      if (rows.length < pageSize) return result;
+    }
   }
 
   Future<int> unreadCount() async {
