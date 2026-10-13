@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/features/security/security_incident.dart';
 import '../lib/features/security/security_incident_page.dart';
+import '../lib/features/security/security_incident_report.dart';
 
 Map<String, dynamic> fixture() => {
   'version': 1,
@@ -49,6 +52,32 @@ Map<String, dynamic> fixture() => {
   ],
 };
 void main() {
+  test(
+    'PDF lines and JSON use the same immutable incident snapshot and digest',
+    () {
+      final record = SecurityIncident.parseResponse(fixture()).single;
+      final report = SecurityIncidentReportData(
+        record,
+        generatedAt: DateTime.utc(2026, 10, 14),
+      );
+      final json = jsonDecode(report.json) as Map;
+      expect(json['incident_id'], record.id);
+      expect(json['record_version'], 1);
+      expect(json['metadata_sha256'], report.digest);
+      final lines = report.lines(false).join('\n');
+      expect(lines, contains(report.digest));
+      expect(lines, contains('合成データ'));
+      expect(lines, contains('UTC+09:00'));
+      expect(lines, isNot(contains('SECRET')));
+      expect(jsonEncode(json), isNot(contains('SECRET')));
+      final second = SecurityIncidentReportData(
+        record,
+        generatedAt: DateTime.utc(2026, 10, 15),
+      );
+      expect(second.digest, isNot(report.digest));
+    },
+  );
+
   test('report copies only allowlisted metadata and distinguishes detection from confirmation', () {
     final record = SecurityIncident.parseResponse(fixture()).single;
     final report = record.reportLines(false).join('\n');
