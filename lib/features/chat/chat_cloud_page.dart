@@ -795,7 +795,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             final source = await Navigator.of(dialogContext).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(selectOnly: true, newGroupCompanyId:creationCompanyId)));
             if (!dialogContext.mounted || repository.currentUserId != actor || source == null) return;
             try {
-              final companyName=await repository.lineLinkCompanyName();
+              final companyName=await repository.lineLinkCompanyName(creationCompanyId:creationCompanyId);
               if(!dialogContext.mounted || repository.currentUserId!=actor) return;
               final confirm=await showDialog<bool>(context:dialogContext,builder:(context)=>AlertDialog(
                 title:Text(SkoLanguageController.tr('LINEトークを追加しますか？')),
@@ -837,7 +837,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
   Future<void> _addLineToSelectedGroup() async {
     final group=_selectedGroup;
     if (!_isCustomGroup(group) || group?['can_edit_group_photo']!=true) return;
-    await Navigator.of(context).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(targetGroupId:group!['id'].toString())));
+    await Navigator.of(context).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(targetGroupId:group!['id'].toString(),targetGroupName:group['display_name']?.toString()??group['name']?.toString())));
     if(mounted) await _load();
   }
 

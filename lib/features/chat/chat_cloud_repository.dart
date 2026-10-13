@@ -492,14 +492,18 @@ class ChatCloudRepository {
     return Map<String, dynamic>.from(row);
   }
 
-  Future<String> lineLinkCompanyName() async {
+  Future<String?> lineLinkCompanyName({String? groupId, String? creationCompanyId}) async {
     final actor=currentUserId;
-    final member=await membership();
-    final rows=await _client.from('companies').select('name').eq('id',member.companyId).limit(1);
-    if(actor==null || currentUserId!=actor || rows.length!=1) throw StateError('会社を確認できませんでした。');
-    final name=rows.single['name']?.toString().trim();
-    if(name==null || name.isEmpty) throw StateError('会社を確認できませんでした。');
-    return name;
+    if(actor==null || (groupId==null && creationCompanyId==null)) throw StateError('会社を確認できませんでした。');
+    final companyId=groupId==null ? creationCompanyId! : await _groupCompanyId(groupId);
+    if(groupId==null && (await membership()).companyId!=companyId) throw StateError('会社を確認できませんでした。');
+    final rows=await _client.from('companies').select('name').eq('id',companyId).limit(1);
+    if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+    final currentCompany=groupId==null ? (await membership()).companyId : await _groupCompanyId(groupId);
+    if(currentUserId!=actor || currentCompany!=companyId) throw StateError('会社を確認できませんでした。');
+    final name=rows.length==1 ? rows.single['name']?.toString().trim() : null;
+    if(groupId==null && (name==null || name.isEmpty)) throw StateError('会社を確認できませんでした。');
+    return name==null || name.isEmpty ? null : name;
   }
 
   Future<bool> canRefreshLineDirectory() async {

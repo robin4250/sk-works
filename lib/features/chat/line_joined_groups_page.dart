@@ -6,10 +6,10 @@ import 'line_talk_page.dart';
 import 'line_linked_talk_page.dart';
 
 class LineJoinedGroupsPage extends StatefulWidget {
-  const LineJoinedGroupsPage({super.key, this.targetGroupId, this.selectOnly = false, this.newGroupCompanyId});
+  const LineJoinedGroupsPage({super.key, this.targetGroupId, this.selectOnly = false, this.newGroupCompanyId, this.targetGroupName});
   final String? targetGroupId;
   final bool selectOnly;
-  final String? newGroupCompanyId;
+  final String? newGroupCompanyId, targetGroupName;
   @override
   State<LineJoinedGroupsPage> createState() => _LineJoinedGroupsPageState();
 }
@@ -101,11 +101,11 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
     }
     final group=widget.targetGroupId;
     if(group==null || row['can_link']!=true) return;
-    final companyName=await repository.lineLinkCompanyName();
+    final companyName=await repository.lineLinkCompanyName(groupId:group);
     if(!mounted || repository.currentUserId!=actor) return;
     final confirm=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
       title:Text(_tr('LINEトークを追加しますか？')),
-      content:Text('$companyName\n${row['display_name'] ?? _tr('グループ名未取得')}\n${_tr('このSKOグループから、LINEグループ名を押して受信トークを開けるようにします。会社への連携先を確認して追加してください。')}'),
+      content:Text('${companyName==null ? '' : '$companyName\n'}${widget.targetGroupName??_tr('トーク')}\n${row['display_name'] ?? _tr('グループ名未取得')}\n${_tr('このSKOグループから、LINEグループ名を押して受信トークを開けるようにします。会社への連携先を確認して追加してください。')}'),
       actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:Text(_tr('戻る'))),FilledButton(onPressed:()=>Navigator.pop(context,true),child:Text(_tr('追加')))]));
     if(confirm!=true || !mounted || repository.currentUserId!=actor) return;
     setState(()=>_busy=true);
