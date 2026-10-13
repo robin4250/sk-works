@@ -68,7 +68,7 @@ begin
  v_name:=case v_pref.mode when 'nickname' then v_pref.nickname when 'company' then (select name from public.companies where id=new.company_id) else new.sender_display_name end;
  v_name:=coalesce(nullif(btrim(regexp_replace(v_name,'[[:cntrl:]]','','g')),''),'SKO');
  while private.line_utf16_length(v_name)>11 loop v_name:=left(v_name,length(v_name)-1); end loop;
- v_name:=v_name||' from SKO';
+ v_name:=btrim(v_name)||' from SKO';
  insert into private.line_chat_outbox(message_id,binding_id,company_id,group_id,actor_id,line_group_id,body,sender_name)
  values(new.id,b.id,new.company_id,new.communication_group_id,new.sender_user_id,b.line_group_id,new.body,v_name) on conflict do nothing;
  return new;
@@ -82,6 +82,7 @@ begin
   select * into m from public.chat_messages where id=p_message_id and sender_user_id=auth.uid() and origin='sk_works';
   if not found or not private.line_outbound_actor_allowed(auth.uid(),m.communication_group_id,m.company_id) then raise exception 'Own accessible SKO post required' using errcode='42501'; end if;
   if (select count(*) from private.line_chat_targets(m.communication_group_id,m.company_id))>1 then return jsonb_build_object('state','ambiguous'); end if;
+  if private.line_utf16_length(m.body)>5000 and (select count(*) from private.line_chat_targets(m.communication_group_id,m.company_id))=1 then return jsonb_build_object('state','too_long'); end if;
   return jsonb_build_object('state','not_linked');
  end if;
  if not private.line_outbound_actor_allowed(auth.uid(),o.group_id,o.company_id) then raise exception 'Chat send access required' using errcode='42501'; end if;
