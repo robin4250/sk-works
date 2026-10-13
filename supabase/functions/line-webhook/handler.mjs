@@ -1,3 +1,27 @@
+// SKO admission limit, not an asserted LINE webhook delivery maximum.
+export const MAX_WEBHOOK_BYTES = 2 * 1024 * 1024;
+
+async function readWebhookBytes(req) {
+  const reader = req.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const bytes = new Uint8Array(MAX_WEBHOOK_BYTES);
+  let length = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value.byteLength > MAX_WEBHOOK_BYTES - length) {
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      bytes.set(value, length);
+      length += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return bytes.subarray(0, length);
+}
 
 export function createLineWebhookHandler({ env, fetch: fetchImpl = fetch, logger = console }) {
 const fetch = fetchImpl;
@@ -20,7 +44,7 @@ async function hmacSha256Base64(secret, body) {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+  const signature = await crypto.subtle.sign("HMAC", key, body);
   const bytes = new Uint8Array(signature);
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
@@ -31,15 +55,14 @@ async function lineGroupMemberDisplayName(groupId, userId) {
   const token = env("LINE_CHANNEL_ACCESS_TOKEN");
   if (!token) return null;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
   try {
     const response = await fetch(
       `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
+        signal: AbortSignal.timeout(1500),
+        redirect: "error",
       },
     );
     if (!response.ok) return null;
@@ -51,8 +74,6 @@ async function lineGroupMemberDisplayName(groupId, userId) {
     return displayName || null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -62,6 +83,8 @@ async function rest(path, init = {}) {
   if (!url || !serviceRole) throw new Error("Supabase service configuration missing");
   return fetch(`${url}/rest/v1/${path}`, {
     ...init,
+    signal: AbortSignal.timeout(10000),
+    redirect: "error",
     headers: {
       apikey: serviceRole,
       Authorization: `Bearer ${serviceRole}`,
@@ -78,16 +101,19 @@ return async (req) => {
   const secret = env("LINE_CHANNEL_SECRET");
   if (!secret) return new Response("Server configuration missing", { status: 500 });
 
-  const rawBody = await req.text();
+  let rawBytes;
+  try { rawBytes = await readWebhookBytes(req); }
+  catch { return new Response("Invalid body", { status: 400 }); }
+  if (rawBytes === null) return new Response("Payload Too Large", { status: 413 });
   const receivedSignature = req.headers.get("x-line-signature") ?? "";
-  const expectedSignature = await hmacSha256Base64(secret, rawBody);
+  const expectedSignature = await hmacSha256Base64(secret, rawBytes);
   if (!receivedSignature || !constantTimeEqual(receivedSignature, expectedSignature)) {
     return new Response("Invalid signature", { status: 401 });
   }
 
   let payload;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawBytes));
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }

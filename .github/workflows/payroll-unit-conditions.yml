@@ -1,0 +1,45 @@
+name: Payroll unit conditions
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_unit*'
+      - 'lib/features/payroll/individual_payroll_settings*'
+      - 'supabase/migrations/20261013175452_payroll_unit_conditions.sql'
+      - 'tool/verify_payroll_unit_conditions.mjs'
+      - 'test/payroll_unit_conditions*'
+      - '.github/workflows/payroll-unit-conditions.yml'
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-unit-sql --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/verify_payroll_unit_conditions.mjs /tmp/sko-unit-sql/node_modules/@electric-sql/pglite/dist/index.js
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_unit_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-unit-pg --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/verify_payroll_unit_conditions.mjs /tmp/sko-unit-pg/node_modules/pg/lib/index.js postgres
+        env:
+          SKO_UNIT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_unit_fixture

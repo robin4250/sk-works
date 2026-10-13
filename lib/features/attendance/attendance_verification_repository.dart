@@ -76,6 +76,26 @@ class AttendanceVerificationRepository {
       AttendanceVerificationRepository._(client);
 
   final SupabaseClient _client;
+
+  /// Compatibility check only; never submits or approves a billing quantity.
+  Future<bool> usesSignedCheckoutBilling() async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) return false;
+    try {
+      final raw = await _client.rpc('route_checkout_billing_contract');
+      if (_client.auth.currentUser?.id != actor) {
+        throw StateError('操作したアカウントを再確認してください');
+      }
+      return raw is Map && raw['contract_version'] == 1 &&
+          raw['checkout_signature_required'] == true &&
+          raw['quantity_contract'] == 'one_per_worker_day_customer' &&
+          raw['separate_quantity_approval_required'] == false;
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202' || error.code == '42883') return false;
+      rethrow;
+    }
+  }
+
   static const _bucket = 'attendance-evidence';
 
   static AttendanceVerificationRepository? maybeCreate() {

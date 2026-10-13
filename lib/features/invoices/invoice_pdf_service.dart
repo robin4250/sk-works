@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../data/supabase_backend.dart';
 import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
@@ -955,6 +956,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   final _approvalRepository = InvoiceApprovalRepository.maybeCreate();
   late Future<_InvoicePreviewData> _previewData;
   int _previewRevision = 0;
+  bool _approving = false;
 
   @override
   void initState() {
@@ -1014,32 +1016,128 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
   }
 
+  Future<void> _setApprovalSurname() async {
+    if (_approving) return;
+    final invoice = _singleInvoice;
+    final repository = _approvalRepository;
+    if (invoice == null || repository == null) return;
+    final actor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    if (actor == null) return;
+    void checkActor() {
+      if (!SupabaseBackend.isInitialized ||
+          SupabaseBackend.client.auth.currentUser?.id != actor) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your account changed. Reopen this invoice before continuing.'
+            : 'アカウントが変わりました。請求書を開き直してください。');
+      }
+    }
+    setState(() => _approving = true);
+    try {
+      checkActor();
+      final rows = await repository.loadForInvoice(invoice.invoiceId);
+      checkActor();
+      final editable = rows.where((row) => row.canCurrentUserSetStampSurname).toList();
+      if (!mounted) return;
+      if (editable.length != 1) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your approval-seal settings are unavailable. Reload the invoice.'
+            : '本人の承認印設定を確認できません。請求書を再読み込みしてください。');
+      }
+      final saved = await editInvoiceStampSurname(context, repository, invoice.invoiceId,
+        initialSurname: editable.single.draftStampSurname, checkActor: checkActor,
+      );
+      checkActor();
+      if (!saved || !mounted) return;
+      setState(() {
+        _previewRevision++;
+        _previewData = _buildPreviewData().timeout(const Duration(seconds: 90));
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          error is StateError ? error.message.toString()
+              : (SkoLanguageController.isEnglish ? 'Could not update your seal surname. Check the pending approval and retry.' : '承認印の名字を更新できませんでした。承認待ち状態を確認して再試行してください。'),
+        )));
+      }
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
+  }
+
   Future<void> _approve() async {
+    if (_approving) return;
     final invoice = _singleInvoice;
     final repository = _approvalRepository;
     if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
       return;
     }
-    final rows = await repository.loadForInvoice(invoice.invoiceId);
-    if (!mounted) return;
-    final ownPending = rows.where((row) => row.canCurrentUserApprove).toList();
-    if (ownPending.length != 1) return;
-    final row = ownPending.single;
-    if (row.canCurrentUserSetStampSurname && row.draftStampSurname == null) {
-      final saved = await editInvoiceStampSurname(context, repository, invoice.invoiceId);
-      if (!saved || !mounted) return;
+    final actor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    if (actor == null) return;
+    void checkActor() {
+      if (!SupabaseBackend.isInitialized ||
+          SupabaseBackend.client.auth.currentUser?.id != actor) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your account changed. Reopen this invoice before continuing.'
+            : 'アカウントが変わりました。請求書を開き直してください。');
+      }
     }
-    await repository.approve(invoice.invoiceId);
-    if (!mounted) return;
-    setState(() {
-      _previewRevision++;
-      _previewData = _buildPreviewData().timeout(
-      const Duration(seconds: 90),
-      onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
-    );
-    });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('請求書を承認しました')));
+    setState(() => _approving = true);
+    try {
+      checkActor();
+      final rows = await repository.loadForInvoice(invoice.invoiceId);
+      checkActor();
+      if (!mounted) return;
+      final ownPending = rows.where((row) => row.canCurrentUserApprove).toList();
+      if (ownPending.length != 1) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your approval status has changed. Reload the invoice and check your approval permissions.'
+            : '本人の承認状態が変わっています。請求書を再読み込みし、承認権限を確認してください。');
+      }
+      final row = ownPending.single;
+      if (row.canCurrentUserSetStampSurname && row.draftStampSurname == null) {
+        final saved = await editInvoiceStampSurname(context, repository, invoice.invoiceId, checkActor: checkActor);
+        checkActor();
+      if (!saved || !mounted) return;
+      }
+      checkActor();
+      final approved = await repository.approve(invoice.invoiceId);
+      checkActor();
+      if (!approved) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Approval was not saved. Check your seal surname, invoice calculation and approval permissions.'
+            : '承認を保存できませんでした。承認印の名字・請求額の確定状態・承認権限を確認してください。');
+      }
+      final refreshed = _buildPreviewData().timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
+      );
+      // Only report success after reading the server's actual saved approval.
+      final data = await refreshed;
+      checkActor();
+      if (!data.approvals.any((item) => item.userId == row.userId && item.approved)) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Could not confirm the saved approval. Reload before trying again.'
+            : '保存された承認を確認できませんでした。再操作の前に再読み込みしてください。');
+      }
+      if (!mounted) return;
+      setState(() {
+        _previewRevision++;
+        _previewData = Future.value(data);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.isEnglish ? 'Invoice approved' : '請求書を承認しました',
+      )));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        error is StateError ? error.message.toString()
+            : (SkoLanguageController.isEnglish ? 'Could not confirm invoice approval. Check your surname, invoice calculation and approval permissions, then reload.' : '請求書の承認を確認できませんでした。名字・請求額の確定状態・承認権限を確認し、再読み込みしてください。'),
+      )));
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
   }
 
   @override
@@ -1067,10 +1165,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
           }
           final previewData = snapshot.data!;
           final pdfBytes = previewData.pdfBytes;
-          return FutureBuilder<List<InvoiceApprovalRecord>>(
-            future: _loadApprovals(),
-            builder: (context, approvalSnapshot) {
-              final approvals = approvalSnapshot.data ?? const [];
+          return Builder(
+            builder: (context) {
+              final approvals = previewData.approvals;
               final canApprove = approvals.any(
                 (item) => item.canCurrentUserApprove,
               );
@@ -1095,11 +1192,19 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                               ),
                             ),
                           ),
+                          if (approvals.any((row) => row.canCurrentUserSetStampSurname))
+                            TextButton.icon(
+                              onPressed: _approving ? null : _setApprovalSurname,
+                              icon: const Icon(Icons.badge_outlined),
+                              label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'),
+                            ),
                           if (canApprove)
                             FilledButton.icon(
-                              onPressed: _approve,
+                              onPressed: _approving ? null : _approve,
                               icon: const Icon(Icons.approval_outlined),
-                              label: const Text('承認'),
+                              label: Text(_approving
+                                  ? (SkoLanguageController.isEnglish ? 'Approving…' : '承認中…')
+                                  : (SkoLanguageController.isEnglish ? 'Approve' : '承認')),
                             ),
                         ],
                       ),

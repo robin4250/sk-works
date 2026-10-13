@@ -23,6 +23,21 @@ Future<void> reveal(WidgetTester tester, Finder target) async {
 }
 
 void main() {
+  testWidgets('approved unset settlement has a clear authorized setup action', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(home: ExpenseClaimsPage(
+      claims: ExpenseClaims(companyId: 'company', claims: [expenseFixture('approved').approve()]),
+      allowSettlementSetup: true, reviewFlowEnabled: true,
+      onApprove: (_) async { calls++; },
+    )));
+    await tester.pumpAndSettle();
+    await reveal(tester, find.widgetWithText(TextButton, '精算方法を設定'));
+    expect(find.text('承認・却下を選ぶ'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, '精算方法を設定'));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+  });
+
   test('expense help is reachable from the existing home feature key', () {
     final entries = MenuHelpCatalog.visibleFor(
       role: ManualRole.general,
@@ -137,15 +152,22 @@ void main() {
         MaterialApp(home: ExpenseClaimsPage(claims: claims)),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, '取引会社（2）'));
-      await tester.tap(find.widgetWithText(ChoiceChip, '承認済み'));
+      await tester.tap(find.byKey(const ValueKey('expense-burden-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取引会社（2）').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('expense-status-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('承認済み').last);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('a')), findsOneWidget);
       expect(find.byKey(const ValueKey('p')), findsNothing);
       expect(find.byKey(const ValueKey('r')), findsNothing);
       final amount = claims.entries.singleWhere((c) => c.id == 'a').amountYen;
       expect(find.text('表示：1件 / この負担先の承認済み：1件・$amount円'), findsOneWidget);
-      await tester.tap(find.widgetWithText(ChoiceChip, '却下'));
+      await tester.tap(find.byKey(const ValueKey('expense-status-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('却下').last);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('r')), findsOneWidget);
       expect(find.byKey(const ValueKey('a')), findsNothing);

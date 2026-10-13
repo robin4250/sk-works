@@ -1,4 +1,5 @@
 import 'resident_tax_capability.dart';
+import 'payroll_unit_conditions_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -46,6 +47,8 @@ class IndividualPayrollSettingsRepository {
   IndividualPayrollSettingsRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+
+  PayrollUnitConditionsRepository get unitConditions => PayrollUnitConditionsRepository(_client);
 
   static IndividualPayrollSettingsRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -149,3 +152,4 @@ class IndividualPayrollSettingsRepository {
     );
   }
 }
+

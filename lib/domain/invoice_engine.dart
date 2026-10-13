@@ -123,6 +123,7 @@ class InvoiceCalculationResult {
     this.documentUpdatedAt,
     this.outputReadinessError,
     this.routeQuantityPending = false,
+    this.routeSourcePending = false,
     this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.invoiceNumber = '',
     this.issueDate,
@@ -151,6 +152,8 @@ class InvoiceCalculationResult {
 
   /// Read-only saved status; pending quantities are not a finalized zero amount.
   final bool routeQuantityPending;
+  final bool routeSourcePending;
+  bool get amountPending => routeQuantityPending || routeSourcePending;
   final CompanySealSnapshot companySealSnapshot;
   final String invoiceNumber;
   final DateTime? issueDate;
@@ -189,6 +192,7 @@ class InvoiceEngine {
     String? documentUpdatedAt,
     String? outputReadinessError,
     bool routeQuantityPending = false,
+    bool routeSourcePending = false,
     CompanySealSnapshot companySealSnapshot = CompanySealSnapshot.legacy,
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -253,6 +257,7 @@ class InvoiceEngine {
       documentUpdatedAt: documentUpdatedAt,
       outputReadinessError: outputReadinessError,
       routeQuantityPending: routeQuantityPending,
+      routeSourcePending: routeSourcePending,
       companySealSnapshot: companySealSnapshot,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,

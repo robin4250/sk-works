@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 import 'package:sk_works/features/invoices/invoice_list_card.dart';
 
-InvoiceCalculationResult _invoice({required bool pending, int amount = 0}) =>
+InvoiceCalculationResult _invoice({required bool pending, int amount = 0, bool sourcePending = false}) =>
     InvoiceEngine.calculate(
       customerId: '株式会社秀中',
       billingPeriod: '2026年10月',
@@ -11,6 +11,7 @@ InvoiceCalculationResult _invoice({required bool pending, int amount = 0}) =>
       sites: const [],
       grandTotalYenOverride: amount,
       routeQuantityPending: pending,
+      routeSourcePending: sourcePending,
     );
 
 void main() {
@@ -55,5 +56,16 @@ void main() {
           value.$1 ? findsNothing : findsOneWidget);
       expect(tester.takeException(), isNull);
     }
+  });
+  testWidgets('unready signed source hides zero without requiring quantity approval', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: InvoiceListCard(
+      invoice: _invoice(pending: false, sourcePending: true),
+      periodLabel: '2026年10月', onTap: () {},
+    ))));
+    expect(find.text('未確定'), findsOneWidget);
+    expect(find.text('退勤日報・請求設定の確認待ち'), findsOneWidget);
+    expect(find.text('請求数量の承認待ち'), findsNothing);
+    expect(find.text('¥0'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

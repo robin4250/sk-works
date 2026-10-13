@@ -960,7 +960,26 @@ class _AttendanceVerificationPageState
         if (_repository?.userId != _savedVerificationActor) {
           throw StateError('操作したアカウントを再確認してください');
         }
-        if (routeId != null && date != null && reportWorkerId != null) {
+        var signedCheckoutBilling = false;
+        if (routeId != null) {
+          try {
+            signedCheckoutBilling = await _repository!.usesSignedCheckoutBilling();
+          } catch (_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(SkoLanguageController.isEnglish
+                    ? 'Could not confirm the updated billing flow. Showing the saved quantity screen; attendance was already saved.'
+                    : '請求の更新方式を確認できませんでした。保存済み数量の画面を表示します。退勤記録は保存済みです。'),
+              ));
+            }
+          }
+        }
+        if (!mounted) return;
+        if (_repository?.userId != _savedVerificationActor) {
+          throw StateError('操作したアカウントを再確認してください');
+        }
+        if (routeId != null && date != null && reportWorkerId != null &&
+            !signedCheckoutBilling) {
           await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
             RouteCustomerDayQuantityPage(workerId: reportWorkerId, workDate: date)));
         }

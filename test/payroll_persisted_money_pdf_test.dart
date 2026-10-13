@@ -16,7 +16,7 @@ void main() {
     final directory = Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
         (await Directory.systemTemp.createTemp('sko-persisted-money-')).path;
     await Directory(directory).create(recursive: true);
-    for (final name in ['actual_monthly', 'actual_deduction', 'actual_daily_categories', 'actual_hourly_categories', 'actual_monthly_categories']) {
+    for (final name in ['actual_monthly', 'actual_deduction', 'actual_daily_categories', 'actual_hourly_categories', 'actual_monthly_categories', 'actual_unit_base_alias', 'actual_unit_direct_base_alias']) {
       final row = jsonDecode(await File('test/fixtures/payroll_persisted_money/$name.json').readAsString()) as Map<String, dynamic>;
       // Numeric-looking snapshot names and versions must not become legacy pay.
       final metadata = <String, dynamic>{
@@ -29,6 +29,9 @@ void main() {
         'finalized_at': '321098',
         'schema_version': 1,
         'snapshot_version': 2,
+        // The SQL scope fixture seal uses synthetic English glyphs; this test
+        // verifies financial rows, while dedicated tests verify seal rendering.
+        if (name.startsWith('actual_unit_')) 'company_seal_enabled': false,
       };
       (row['detail'] as Map).addAll(metadata);
       final original = jsonEncode(row);
@@ -65,11 +68,16 @@ print(json.dumps({'earnings':money(240,293),'deductions':money(490,558),'labels'
       expect((report['earnings'] as int) - (report['deductions'] as int), record.netPay);
       final labels = (report['labels'] as List<dynamic>).cast<String>();
       expect(labels.where((value) => value == '基本給'), hasLength(1));
-      expect(labels.where((value) => value == '残業手当'), hasLength(1));
+      if (!name.startsWith('actual_unit_')) {
+        expect(labels.where((value) => value == '残業手当'), hasLength(1));
+      }
       expect(labels, isNot(contains('月固定給')));
       for (final key in metadata.keys) {
         expect(labels, isNot(contains(key)),
             reason: '$key is saved metadata, never a pay or deduction item.');
+      }
+      if (name.startsWith('actual_unit_')) {
+        expect(labels.where((value) => value == '交通費'), hasLength(1));
       }
       if (name == 'actual_deduction' || name.endsWith('_categories')) {
         expect(labels.where((value) => value == '道具代'), hasLength(1));
