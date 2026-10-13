@@ -8,7 +8,7 @@ create type public.app_role as enum('owner','admin','worker');
 create table auth.users(id uuid primary key);
 create table companies(id uuid primary key);create table communication_group_members(group_id uuid,user_id uuid);create table company_members(company_id uuid,user_id uuid,role app_role);
 create table communication_groups(id uuid primary key,company_id uuid,group_type text,participants_only boolean,created_by uuid,archived_at timestamptz);
-create table line_group_bindings(id uuid primary key default gen_random_uuid(),line_group_id text unique,company_id uuid,communication_group_id uuid,status text,display_name text,created_at timestamptz default now(),updated_at timestamptz default now());
+create table line_group_bindings(id uuid primary key default gen_random_uuid(),line_group_id text unique,company_id uuid,communication_group_id uuid,status text,display_name text,discovered_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create table line_binding_audit(binding_id uuid,company_id uuid,communication_group_id uuid,line_group_id text,action text,actor_user_id uuid,source text);
 create unique index binding_primary on line_group_bindings(communication_group_id) where status='active';
 create table line_webhook_events(group_id text,received_at timestamptz);
@@ -26,7 +26,10 @@ insert into communication_groups values('00000000-0000-0000-0000-000000000021','
 // Use the latest main access helper, not a creator-only test substitute.
 await db.exec(await readFile('supabase/migrations/20261004190939_restore_site_chat_visibility_after_custom_groups.sql','utf8'));
 await db.exec("insert into communication_group_members select id,'00000000-0000-0000-0000-000000000001'::uuid from communication_groups;");
+await db.exec("insert into line_group_bindings(line_group_id,display_name,status,discovered_at,updated_at) values('known-before-deploy','Existing group','pending','2026-10-01T00:00:00Z','2026-10-02T00:00:00Z')");
 await db.exec(await readFile('supabase/migrations/20261013041322_line_joined_group_directory.sql','utf8'));
+const seeded=(await db.query("select display_name,joined,observed_at from private.line_joined_groups where line_group_id='known-before-deploy'")).rows[0];assert.equal(seeded.display_name,'Existing group');assert.equal(seeded.joined,null);assert.equal(new Date(seeded.observed_at).toISOString(),'2026-10-02T00:00:00.000Z');
+await db.exec("delete from private.line_joined_groups where line_group_id='known-before-deploy';delete from line_group_bindings where line_group_id='known-before-deploy'");
 const call=async(sql,args=[])=>db.query(sql,args);const actor='00000000-0000-0000-0000-000000000001',target='00000000-0000-0000-0000-000000000021';
 await assert.rejects(call('select public.line_joined_group_workspace()'),/authentication/);
 await call("select public.observe_line_joined_group('source','Real group',true,'2026-10-13T00:00:00Z','event-1')");
