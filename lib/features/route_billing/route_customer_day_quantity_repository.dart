@@ -13,9 +13,44 @@ class RouteCustomerQuantityCandidate {
 }
 
 class RouteCustomerQuantityDay {
-  const RouteCustomerQuantityDay(this.customers, this.unresolvedCount);
+  const RouteCustomerQuantityDay(this.customers, this.unresolvedCount, {this.diagnostics});
   final List<RouteCustomerQuantityCandidate> customers;
   final int unresolvedCount;
+  final RouteQuantityEvidenceDiagnostics? diagnostics;
+}
+
+class RouteQuantityEvidenceDiagnostics {
+  const RouteQuantityEvidenceDiagnostics({
+    required this.completedReportCount, required this.eligibleReportCount,
+    required this.unresolvedCustomerCount, required this.missingSourceCount,
+    required this.waitingCheckoutCount,
+  });
+  final int completedReportCount, eligibleReportCount, unresolvedCustomerCount;
+  final int missingSourceCount, waitingCheckoutCount;
+
+  factory RouteQuantityEvidenceDiagnostics.fromJson(Object? value) {
+    if (value is! Map) throw StateError('訪問日報の診断情報を確認できません。');
+    int count(String key) {
+      final number = value[key];
+      if (number is! int || number < 0) {
+        throw StateError('訪問日報の診断件数を確認できません。');
+      }
+      return number;
+    }
+    final result = RouteQuantityEvidenceDiagnostics(
+      completedReportCount: count('completed_report_count'),
+      eligibleReportCount: count('eligible_report_count'),
+      unresolvedCustomerCount: count('unresolved_customer_count'),
+      missingSourceCount: count('missing_source_count'),
+      waitingCheckoutCount: count('waiting_checkout_count'),
+    );
+    if (result.completedReportCount != result.eligibleReportCount +
+        result.unresolvedCustomerCount + result.missingSourceCount +
+        result.waitingCheckoutCount) {
+      throw StateError('訪問日報の診断件数が一致しません。');
+    }
+    return result;
+  }
 }
 
 abstract class RouteCustomerQuantityAccess {
@@ -49,6 +84,7 @@ class RouteCustomerDayQuantityRepository implements RouteCustomerQuantityAccess 
   }
   @override
   Future<RouteCustomerQuantityDay> load(String workerId, DateTime date) async {
+    final captured = actor;
     final value = await _rpc('route_customer_day_quantity_candidates', {
       'p_worker_id': workerId, 'p_work_date': _date(date),
     });
@@ -74,7 +110,21 @@ class RouteCustomerDayQuantityRepository implements RouteCustomerQuantityAccess 
         approvedQuantity: row['status'] == 'approved' ? (row['quantity'] as num?)?.toDouble() : null,
         status: row['status']?.toString()));
     }
-    return RouteCustomerQuantityDay(candidates, (value['unresolved_count'] as num).toInt());
+    RouteQuantityEvidenceDiagnostics? diagnostics;
+    try {
+      diagnostics = RouteQuantityEvidenceDiagnostics.fromJson(
+        await _rpc('route_customer_day_quantity_diagnostics', {
+          'p_worker_id': workerId, 'p_work_date': _date(date),
+        }).timeout(const Duration(seconds: 10)),
+      );
+    } catch (_) {
+      // A missing/new diagnostic RPC must not hide existing valid candidates.
+      // Do not fabricate zero counts from a read failure.
+      checkActor(captured);
+    }
+    checkActor(captured);
+    return RouteCustomerQuantityDay(candidates,
+      (value['unresolved_count'] as num).toInt(), diagnostics: diagnostics);
   }
   @override
   Future<void> submit(String workerId, DateTime date, RouteCustomerQuantityDay day,
@@ -99,3 +149,4 @@ class RouteCustomerDayQuantityRepository implements RouteCustomerQuantityAccess 
     }
   }
 }
+
