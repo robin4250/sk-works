@@ -1250,5 +1250,6 @@ const englishLanguagePack = LanguagePack(
     '書類を登録': 'Register Document',
     '資格を登録': 'Register Qualification',
     '登録する書類を選択': 'Choose a document to register',
+    '書類項目': 'Document Item',
   },
 );
