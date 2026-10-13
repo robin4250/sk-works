@@ -2075,8 +2075,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             ),
                           ),
                     actions: [
-                      if (selected == null)
-                        IconButton(
+                      IconButton(
                           tooltip: SkoLanguageController.tr('再読み込み'),
                           onPressed: _loading ? null : _loadGroupsOnly,
                           icon: const Icon(Icons.refresh),
