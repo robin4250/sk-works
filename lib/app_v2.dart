@@ -33,7 +33,7 @@ import 'features/chat/line_talk_hub_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
-import 'features/daily_reports/daily_report_page.dart';
+import 'features/daily_reports/daily_report_month_page.dart';
 import 'features/expenses/expense_home_page.dart';
 import 'features/home/company_payroll_rates_home_entry.dart';
 import 'features/help/help_page.dart';
@@ -1076,7 +1076,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = EmployeeResourcesPage(availableKeys: _employeeResourceKeys, onOpen: _openHomeAction);
         break;
       case 'daily_report':
-        page = const DailyReportPage();
+        page = const DailyReportMonthPage();
         break;
       case 'expense_claims':
         page = const ExpenseHomePage();
