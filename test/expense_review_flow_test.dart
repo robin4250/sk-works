@@ -99,4 +99,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('approved review keeps amount, company, settlement and actions readable with enlarged text', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var openedHistory = false;
+    final approved = ExpenseClaim(
+      id: 'claim', companyId: 'company', applicantId: 'worker',
+      applicantName: '本人', incurredOn: DateTime(2026, 9, 30),
+      submittedAt: DateTime.utc(2026, 9, 30, 15),
+      description: '領収書の交通費', amountYen: 1234567,
+      approval: ExpenseApproval.approved,
+      allocation: ExpenseAllocation(ExpenseCategory.customer,
+        counterpartyId: 'customer', counterpartyName: '株式会社すみだ建設取引会社'),
+      settlement: ExpenseSettlementChoice(ExpenseSettlementMethod.cash, DateTime.utc(2026, 10)),
+      reviewMemo: '承認した経費の確認メモ',
+    );
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)), child: child!),
+      home: ExpenseReviewDetailPage(claim: approved,
+        onHistory: () async { openedHistory = true; }),
+    ));
+    expect(find.text('1,234,567円'), findsOneWidget);
+    await tester.ensureVisible(find.text('負担先：取引会社 / 株式会社すみだ建設取引会社'));
+    expect(find.text('負担先：取引会社 / 株式会社すみだ建設取引会社'), findsOneWidget);
+    await tester.ensureVisible(find.text('精算対象月（申請月）：2026年10月'));
+    expect(find.text('精算対象月（申請月）：2026年10月'), findsOneWidget);
+    await tester.ensureVisible(find.text('履歴を確認'));
+    await tester.tap(find.text('履歴を確認')); await tester.pump();
+    expect(openedHistory, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
 }

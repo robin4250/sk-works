@@ -51,15 +51,18 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
       if (label.startsWith('立替')) return Icons.receipt_long_outlined;
       return Icons.more_horiz;
     }
-    Widget choose(String label, bool selected, VoidCallback onTap) => Padding(
+    Widget choose(String label, bool selected, VoidCallback onTap) {
+      final decisionColor = label.startsWith('承認') ? Colors.green.shade700
+        : label.startsWith('却下') ? Colors.red.shade700 : null;
+      return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Semantics(selected: selected, child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(double.infinity, 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          backgroundColor: selected ? colors.primaryContainer : colors.surface,
-          foregroundColor: selected ? colors.onPrimaryContainer : colors.onSurface,
-          side: BorderSide(color: selected ? colors.primary : colors.outlineVariant, width: selected ? 2 : 1),
+          backgroundColor: selected ? decisionColor ?? colors.primaryContainer : colors.surface,
+          foregroundColor: selected && decisionColor != null ? Colors.white : selected ? colors.onPrimaryContainer : colors.onSurface,
+          side: BorderSide(color: selected ? decisionColor ?? colors.primary : colors.outlineVariant, width: selected ? 2 : 1),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: onTap,
@@ -69,7 +72,8 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
           if (selected) ...[const SizedBox(width: 8), const Icon(Icons.check_circle)],
         ]),
       )),
-    );
+      );
+    }
     return AlertDialog(
       title: Text(['① 承認・却下', '② 費用の負担先', '③ 精算方法', '④ メモ', '⑤ 最終確認'][_step]),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
@@ -103,13 +107,24 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
           if (_step == 3) TextField(controller: _memo, maxLength: 1000, maxLines: 3,
             decoration: InputDecoration(labelText: _approve ? 'メモ（任意）' : '却下理由・メモ')),
           if (_step == 4) ...[
-            Text(_approve ? '承認する' : '却下する'),
+            Container(padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [Icon(_approve ? Icons.check_circle : Icons.cancel,
+              color: _approve ? Colors.green.shade700 : Colors.red.shade700),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_approve ? '承認する' : '却下する',
+                style: const TextStyle(fontWeight: FontWeight.w700)))]),
+            const Divider(height: 24),
             if (_approve) ...[
               Text('負担先：${expenseBurdenLabel(_destination!.category)}${_destination!.counterpartyName == null ? '' : ' / ${_destination!.counterpartyName}'}'),
               Text('精算方法：${ExpenseSettlementChoice(_method!, month).label}'),
               Text('精算対象月（申請月）：${month.year}年${month.month}月'),
             ],
+            const SizedBox(height: 8),
             Text('メモ：${_memo.text.trim().isEmpty ? 'なし' : _memo.text.trim()}'),
+            ])),
             const SizedBox(height: 12), const Text('「確定」を押すまで保存されません。'),
           ],
         ])),
