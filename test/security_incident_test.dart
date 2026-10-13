@@ -39,7 +39,7 @@ Map<String, dynamic> fixture() => {
         },
       ],
       'events': [
-        {
+        <String, dynamic>{
           'sequence': 1,
           'at': '2026-10-14T00:00:00Z',
           'kind': 'current_lure_touched',
