@@ -11,6 +11,8 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
+import 'invoice_preview_raster.dart';
+import 'invoice_preview_failure.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
 
@@ -955,7 +957,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   @override
   void initState() {
     super.initState();
-    _previewData = _buildPreviewData();
+    _previewData = _buildPreviewData().timeout(
+      const Duration(seconds: 90),
+      onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
+    );
   }
 
   InvoiceCalculationResult? get _singleInvoice =>
@@ -1026,7 +1031,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     if (!mounted) return;
     setState(() {
       _previewRevision++;
-      _previewData = _buildPreviewData();
+      _previewData = _buildPreviewData().timeout(
+      const Duration(seconds: 90),
+      onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
+    );
     });
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('請求書を承認しました')));
@@ -1043,35 +1051,16 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError || snapshot.data == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.picture_as_pdf_outlined, size: 44),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '請求書プレビューを生成できませんでした',
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      snapshot.error?.toString() ?? 'PDFデータが空です。',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => setState(() {
-                        _previewRevision++;
-                        _previewData = _buildPreviewData();
-                      }),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('再試行'),
-                    ),
-                  ],
-                ),
-              ),
+            return InvoicePreviewFailure(
+              title: '請求書プレビューを生成できませんでした',
+              message: snapshot.error?.toString() ?? SkoLanguageController.tr('PDFデータが空です。'),
+              onRetry: () => setState(() {
+                _previewRevision++;
+                _previewData = _buildPreviewData().timeout(
+                  const Duration(seconds: 90),
+                  onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
+                );
+              }),
             );
           }
           final previewData = snapshot.data!;
@@ -1223,12 +1212,15 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
     }
   }
 
-  Future<List<Uint8List>> _rasterPages() async {
-    final pages = <Uint8List>[];
-    await for (final page in Printing.raster(widget.pdfBytes, dpi: 120)) {
-      pages.add(await page.toPng());
-    }
-    return pages;
+  Future<List<Uint8List>> _rasterPages() => collectInvoicePreviewPages(
+    Printing.raster(widget.pdfBytes, dpi: 120).asyncMap((page) => encodeInvoicePreviewRaster(
+      width: page.width, height: page.height, pixels: page.pixels,
+      encode: page.toPng,
+    )),
+  );
+
+  void _retryRaster() {
+    setState(() => _pages = _rasterPages());
   }
 
   void _readScale() {
@@ -1290,8 +1282,11 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
               future: _pages,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Text('PDFを表示できませんでした：${snapshot.error}'),
+                  return InvoicePreviewFailure(
+                    title: 'PDFを表示できませんでした',
+                    message: snapshot.error.toString(),
+                    onRetry: _retryRaster,
+                    pdfReady: true,
                   );
                 }
                 if (!snapshot.hasData) {
@@ -1319,6 +1314,12 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
                                 fit: BoxFit.fitWidth,
                                 gaplessPlayback: true,
                                 filterQuality: FilterQuality.high,
+                                errorBuilder: (context, error, stack) => InvoicePreviewFailure(
+                                  title: 'PDFを表示できませんでした',
+                                  message: SkoLanguageController.tr('PDFのページ画像を表示できませんでした。'),
+                                  onRetry: _retryRaster,
+                                  pdfReady: true,
+                                ),
                               ),
                             ),
                         ],
