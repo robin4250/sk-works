@@ -67,7 +67,7 @@ grant execute on function private.line_joined_group_workspace(uuid,uuid),public.
 -- current membership or company ownership. Bodies are never exposed.
 insert into private.line_joined_groups(line_group_id,joined,observed_at,observed_event_id)
 select group_id,null,max(received_at),'retained-webhook:'||group_id from public.line_webhook_events where nullif(group_id,'') is not null group by group_id on conflict(line_group_id) do nothing;
-create function private.line_known_group_ids(p_after uuid default null) returns jsonb language sql stable security definer set search_path='' as $$ select coalesce(jsonb_agg(jsonb_build_object('id',id,'line_group_id',line_group_id) order by id),'[]'::jsonb) from (select id,line_group_id from private.line_joined_groups where p_after is null or id>p_after order by id limit 50) d $$;
+create function private.line_known_group_ids(p_after uuid default null) returns jsonb language sql stable security definer set search_path='' as $$ select coalesce(jsonb_agg(jsonb_build_object('id',id,'line_group_id',line_group_id) order by id),'[]'::jsonb) from (select id,line_group_id from private.line_joined_groups where p_after is null or id>p_after order by id limit 10) d $$;
 create function public.line_known_group_ids(p_after uuid default null) returns jsonb language sql stable security invoker set search_path='' as $$ select private.line_known_group_ids(p_after) $$;
 revoke all on function private.line_known_group_ids(uuid),public.line_known_group_ids(uuid) from public,anon,authenticated;
 grant execute on function private.line_known_group_ids(uuid),public.line_known_group_ids(uuid) to service_role;
