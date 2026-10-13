@@ -26,6 +26,7 @@ void main() {
       const actor = '11111111-1111-4111-8111-111111111111';
       final calls = <Map>[];
       var wrongResult = false;
+      var pendingRows = <Map<String, dynamic>>[];
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((request) async {
         Object response;
@@ -49,6 +50,8 @@ void main() {
               'created_at': '2026-01-01T00:00:00Z',
             },
           };
+        } else if (request.uri.path.endsWith('/pending_route_billing_quantity_rows')) {
+          response = pendingRows;
         } else if (request.uri.path.endsWith(
           '/decide_route_billing_quantity',
         )) {
@@ -80,6 +83,10 @@ void main() {
         final repository = RouteBillingQuantityApprovalRepository.forTesting(
           client,
         );
+        expect(await repository.pending(), isEmpty);
+        pendingRows = [{'id': 'reviewable-A', 'status': 'pending'}];
+        expect((await repository.pending()).single.id, 'reviewable-A');
+        expect(calls, isEmpty); // Discovery never approves or creates quantities.
         final request = RouteBillingQuantityRequest({
           'id': 'request-A',
           'customer_id': 'customer-A',

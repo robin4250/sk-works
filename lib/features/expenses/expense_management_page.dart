@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'expense_claim.dart';
+import 'expense_surface_card.dart';
 import 'expense_claims_page.dart';
 import 'expense_management_repository.dart';
 import 'expense_settlement_choice.dart';
@@ -268,7 +269,9 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Widget _header() => Column(
+  Widget _header() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    child: ExpenseSurfaceCard(child: Column(
     children: [
       if (_companies.length > 1)
         Padding(
@@ -350,11 +353,13 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
         Padding(padding: const EdgeInsets.all(12), child: Text(_error!)),
       if (_busy) const LinearProgressIndicator(),
     ],
+  )),
   );
   @override
   Widget build(BuildContext context) {
     if (_actor != null && _access.actor != _actor) {
       return Scaffold(
+        backgroundColor: const Color(0xfff5f7fa),
         appBar: AppBar(
           toolbarHeight: kToolbarHeight,
           title: const Text('経費申請一覧'),
@@ -365,11 +370,12 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final data = _data;
     if (data == null) {
       return Scaffold(
+        backgroundColor: const Color(0xfff5f7fa),
         appBar: AppBar(
           toolbarHeight: kToolbarHeight,
           title: const Text('経費申請一覧'),
         ),
-        body: Column(
+        body: ListView(
           children: [
             _header(),
             if (!_busy && _error == null)
