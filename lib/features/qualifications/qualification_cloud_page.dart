@@ -275,8 +275,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                 final actor = _certificateRepository?.currentUserId;
                                 Future<String> signedUrl(String path) async {
                                   final repository = _certificateRepository;
-                                  if (repository == null || actor == null || actor != repository.currentUserId)
+                                  if (repository == null || actor == null || actor != repository.currentUserId) {
                                     throw StateError('Session changed');
+                                  }
                                   final url = await repository.createSignedUrl(path);
                                   if (actor != repository.currentUserId) throw StateError('Session changed');
                                   return url;
@@ -608,8 +609,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final actor = _certificateRepository?.currentUserId;
     Future<String> detailSignedUrl(String path) async {
       final repository = _certificateRepository;
-      if (repository == null || actor == null || actor != repository.currentUserId)
+      if (repository == null || actor == null || actor != repository.currentUserId) {
         throw StateError('Session changed');
+      }
       final url = await repository.createSignedUrl(path);
       if (actor != repository.currentUserId) throw StateError('Session changed');
       return url;

@@ -698,8 +698,9 @@ class _OwnQualificationRegistrationPageState
                               final repository = _repository;
                               final actor = repository?.currentUserId;
                               Future<String> signedUrl(String path) async {
-                                if (repository == null || actor == null || actor != repository.currentUserId)
+                                if (repository == null || actor == null || actor != repository.currentUserId) {
                                   throw StateError('Session changed');
+                                }
                                 final url = await repository.createOwnQualificationPhotoUrl(
                                   qualificationId: row['id'].toString(), storagePath: path);
                                 if (actor != repository.currentUserId) throw StateError('Session changed');

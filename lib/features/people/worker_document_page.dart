@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../domain/company_data_transfer.dart';
 import '../../international/language_controller.dart';
 import '../help/floating_help_controller.dart';
-import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 import '../shared/resource_registration_card.dart';
@@ -288,10 +287,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                               final actor = _loadedActorId;
                               Future<String> signedUrl(String path) async {
                                 if (repository == null || actor == null || actor != repository.actorId ||
-                                    workerId != _selectedWorkerId) throw StateError('Session changed');
+                                    workerId != _selectedWorkerId) { throw StateError('Session changed'); }
                                 final url = await repository.createSignedAttachmentUrl(path);
-                                if (actor != repository.actorId || workerId != _selectedWorkerId)
+                                if (actor != repository.actorId || workerId != _selectedWorkerId) {
                                   throw StateError('Session changed');
+                                }
                                 return url;
                               }
                               final attachments = [

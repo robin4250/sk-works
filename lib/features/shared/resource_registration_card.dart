@@ -44,7 +44,7 @@ ResourceAttachment signedResourceAttachment({
       await for (final chunk in response.timeout(const Duration(seconds: 15))) {
         bytes.add(chunk);
       }
-      await signedUrl(path!);
+      await signedUrl(path);
       return bytes.takeBytes();
     } finally {
       client.close(force: true);
@@ -172,7 +172,9 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
   void didUpdateWidget(covariant ResourceAttachmentThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.attachment.path != widget.attachment.path ||
-        oldWidget.attachment.known != widget.attachment.known) _content = _load();
+        oldWidget.attachment.known != widget.attachment.known) {
+      _content = _load();
+    }
   }
   Future<(Uint8List, Uint8List?, bool)>? _load() {
     if (!widget.attachment.registered || widget.attachment.loadBytes == null) {
@@ -218,11 +220,11 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
         ),
       ));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('添付を表示できませんでした。')),
         action: SnackBarAction(label: SkoLanguageController.tr('再試行'), onPressed: () {
           if (mounted) setState(() => _content = _load());
-        })));
+        }))); }
     }
   }
 
@@ -237,10 +239,10 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
           child: _content == null ? Center(child: Text(SkoLanguageController.tr(widget.attachment.known ? '未登録' : '未取得'),
             style: const TextStyle(fontSize: 10), textAlign: TextAlign.center))
             : FutureBuilder<(Uint8List, Uint8List?, bool)>(future: _content, builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const Center(
-                  child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)));
-                if (snapshot.hasError || snapshot.data == null) return Center(child: Text(SkoLanguageController.tr('読込不可'),
-                  style: const TextStyle(fontSize: 10), textAlign: TextAlign.center));
+                if (snapshot.connectionState != ConnectionState.done) { return const Center(
+                  child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))); }
+                if (snapshot.hasError || snapshot.data == null) { return Center(child: Text(SkoLanguageController.tr('読込不可'),
+                  style: const TextStyle(fontSize: 10), textAlign: TextAlign.center)); }
                 if (snapshot.data!.$2 == null) return const Icon(Icons.picture_as_pdf_outlined, size: 24);
                 return ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.memory(
                   snapshot.data!.$2!, cacheWidth: 120, cacheHeight: 160, fit: BoxFit.contain,

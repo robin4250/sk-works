@@ -608,7 +608,7 @@ class _OwnDocumentRegistrationPageState
                           final action = _saving ? null : needsRegistration
                             ? () => _registerDocument(initialRequirementId: id)
                             : gateway is OwnDocumentPhotoGateway
-                              ? () => _editPhotos(status!)
+                              ? () => _editPhotos(status)
                               : () => _registerDocument(initialRequirementId: id);
                           return ResourceRegistrationCard(
                             key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
