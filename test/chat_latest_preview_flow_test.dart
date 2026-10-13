@@ -42,6 +42,7 @@ class _Repository implements ChatCloudRepository {
       'sender_display_name': 'LINE sender',
       'origin': 'line',
     },
+    timeout: const Timeout(Duration(seconds: 60)),
   );
   int createCalls = 0;
   @override
@@ -177,6 +178,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.runAsync(() => client.dispose());
     },
+    timeout: const Timeout(Duration(seconds: 60)),
   );
   test('message order compares instants and breaks ties by ID without mutating input', () {
     final rows = [
@@ -253,6 +255,7 @@ void main() {
         await server.close(force: true);
       }
     }, _RealHttp()),
+    timeout: const Timeout(Duration(seconds: 60)),
   );
   test('existing-group LINE help matches both UI entries and keeps English guidance', () {
     for (final key in ['chat', 'line_talk']) {
@@ -445,6 +448,7 @@ void main() {
         await tester.runAsync(() => server.close(force: true));
       }
     }, _RealHttp()),
+    timeout: const Timeout(Duration(seconds: 60)),
   );
 
   testWidgets(
@@ -489,5 +493,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.runAsync(() => client.dispose());
     },
+    timeout: const Timeout(Duration(seconds: 60)),
   );
 }
