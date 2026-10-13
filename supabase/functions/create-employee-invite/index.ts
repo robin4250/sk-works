@@ -270,6 +270,7 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!authResponse.ok) {
+    // Upstream errors may contain personal data; retain only the stage and status.
     console.error("employee auth create failed", authResponse.status);
     return json(
       { error: authResponse.status === 422
