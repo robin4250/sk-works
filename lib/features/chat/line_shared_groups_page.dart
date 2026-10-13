@@ -53,7 +53,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     if (_busy || _repository == null) return;
     setState(() => _busy = true);
     try {
-      final repository = _repository!;
+      final repository = _repository;
       final actor = repository.actor;
       final company = await repository.company();
       if (!mounted || repository.actor != actor) return;
