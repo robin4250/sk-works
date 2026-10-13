@@ -218,4 +218,33 @@ void main() {
       expect(claims.forMonth(DateTime(2026, 10)).entries, isEmpty);
     },
   );
+  testWidgets('personal history exposes edit and delete with settlement and cancellation makes no writes', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final access = _Access();
+    final changes = _Changes(access);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)), child: child!),
+      home: ExpensePersonalPage(access: access, changes: changes),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('削除'));
+    expect(find.text('編集'), findsOneWidget);
+    expect(find.textContaining('精算方法：未設定'), findsOneWidget);
+    await tester.tap(find.text('削除')); await tester.pumpAndSettle();
+    expect(find.text('経費申請を削除'), findsOneWidget);
+    expect(changes.commands, isEmpty);
+    await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
+    expect(changes.commands, isEmpty);
+    await tester.ensureVisible(find.text('却下された交通費'));
+    await tester.tap(find.text('却下された交通費')); await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('削除'));
+    await tester.tap(find.text('削除')); await tester.pumpAndSettle();
+    await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
+    expect(find.text('経費の承認・振り分け'), findsOneWidget);
+    expect(changes.commands, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
 }
