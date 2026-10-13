@@ -31,8 +31,7 @@ class PayrollUnitItemDraft {
   final String quantity;
 }
 
-/// An isolated editor for the future unit-aware payroll storage adapter.
-/// It is not routed from the app until that adapter is implemented.
+/// Unit-aware editor used by the saved payroll conditions page.
 class PayrollUnitItemEditor extends StatefulWidget {
   const PayrollUnitItemEditor({
     super.key,
@@ -222,10 +221,28 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
               for (final row in visible)
                 Card(
                   key: row.key,
+                  color: Colors.white,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12)),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       children: [
+                        Row(children: [
+                          CircleAvatar(radius: 17,
+                            backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: .09),
+                            child: Icon(_unit == PayrollItemUnit.hour ? Icons.schedule :
+                              _unit == PayrollItemUnit.day ? Icons.today_outlined : Icons.calendar_month_outlined,
+                              color: Theme.of(context).colorScheme.primary, size: 22)),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('${tr(_unitLabel(_unit))} ${tr(_section == PayrollItemSection.earning ? '支給' : '控除')}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87))),
+                        ]),
+                        const SizedBox(height: 12),
                         TextField(
                           key: ValueKey('${row.value.id}-name'),
                           controller: row.name,
