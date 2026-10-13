@@ -553,14 +553,14 @@ class _IndividualPayrollSettingsPageState
                   ),
                   const SizedBox(height: 12),
                   if (_workerId != null && _repository != null &&
-                      (workspace?.companyId ?? _settingValues['company_id']) is String)
+                      (workspace.companyId ?? _settingValues['company_id']) is String)
                     OutlinedButton.icon(
                       icon: const Icon(Icons.calculate_outlined),
                       label: Text(SkoLanguageController.tr('単位別の支給・控除')),
                       onPressed: _saving ? null : () => Navigator.of(context).push<void>(
                         MaterialPageRoute(builder: (_) => PayrollUnitConditionsPage(
-                          repository: _repository!.unitConditions,
-                          companyId: (workspace?.companyId ?? _settingValues['company_id']) as String,
+                          repository: _repository.unitConditions,
+                          companyId: (workspace.companyId ?? _settingValues['company_id']) as String,
                           workerId: _workerId!,
                         )),
                       ),

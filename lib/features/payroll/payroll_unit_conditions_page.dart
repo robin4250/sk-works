@@ -177,7 +177,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                           _value!,
                           items,
                         );
-                        if (!mounted) return;
+                        if (!mounted || !context.mounted) return;
                         setState(() => _value = saved);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
