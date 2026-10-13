@@ -35,8 +35,16 @@ class PayrollUnitConditions {
       final unit = PayrollItemUnit.values
           .where((x) => x.name == value['unit'])
           .firstOrNull;
-      if (section == null || unit == null)
+      if (section == null || unit == null) {
         throw StateError('Payroll unit response unavailable');
+      }
+      final rate = value['rate_yen'] as num;
+      if (!rate.isFinite ||
+          rate < 0 ||
+          rate > 2147483647 ||
+          rate != rate.round()) {
+        throw StateError('Payroll unit response unavailable');
+      }
       items.add(
         PayrollUnitItemDraft(
           id: value['id'] as String,

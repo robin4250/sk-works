@@ -65,8 +65,9 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       _error = null;
     });
     try {
-      if (!await widget.repository.available())
+      if (!await widget.repository.available()) {
         throw StateError('not available');
+      }
       final value = await widget.repository.load(
         widget.companyId,
         widget.workerId,
@@ -100,9 +101,11 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
               context: context,
               builder: (context) => AlertDialog(
                 title: Text(tr('単位別の支給・控除')),
-                content: Text(
-                  tr(
-                    '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。現在の月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。',
+                content: SingleChildScrollView(
+                  child: Text(
+                    tr(
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。',
+                    ),
                   ),
                 ),
                 actions: [
