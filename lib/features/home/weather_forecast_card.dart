@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'weather_forecast_policy.dart';
 
+/// Material's umbrella glyph is closed; use its open canopy for rain displays.
+IconData weatherConditionDisplayIcon(IconData icon) =>
+    icon == Icons.umbrella || icon == Icons.umbrella_outlined
+        ? Icons.beach_access
+        : icon;
+
 /// Clear and rain symbols use fixed colors in both compact and detailed forecasts.
 Color weatherConditionIconColor(IconData icon, ColorScheme colors) {
   if (icon == Icons.wb_sunny || icon == Icons.wb_sunny_outlined) {
@@ -175,7 +181,7 @@ class WeatherForecastCard extends StatelessWidget {
                             Text('$hour${SkoLanguageController.tr('時')}'),
                             const SizedBox(height: 6),
                             Icon(
-                              weatherForecastHourIcon(_at(hour)),
+                              weatherConditionDisplayIcon(weatherForecastHourIcon(_at(hour))),
                               color: weatherConditionIconColor(
                                 weatherForecastHourIcon(_at(hour)),
                                 colors,

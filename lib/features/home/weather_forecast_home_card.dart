@@ -225,7 +225,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
     return Column(children: [
       Expanded(flex: 4, child: Row(children: [
-        Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
+        Icon(weatherConditionDisplayIcon(summaryIcon), key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
         const SizedBox(width: 4),
         Expanded(child: LayoutBuilder(builder: (context, constraints) => FittedBox(
           fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
@@ -265,7 +265,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
         return Expanded(child: Semantics(label: '$hour${SkoLanguageController.tr('時')} ${value?.summary ?? SkoLanguageController.tr('未取得')}',
           child: FittedBox(fit: BoxFit.scaleDown, child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('$hour${SkoLanguageController.tr('時')}', style: const TextStyle(fontSize: 9, height: 1.1)),
-            Icon(weatherForecastHourIcon(value), key: ValueKey('weather-home-hour-$hour'), size: 16, color: weatherConditionIconColor(weatherForecastHourIcon(value), colors)),
+            Icon(weatherConditionDisplayIcon(weatherForecastHourIcon(value)), key: ValueKey('weather-home-hour-$hour'), size: 16, color: weatherConditionIconColor(weatherForecastHourIcon(value), colors)),
             Text(value?.rainProbability == null ? '—' : '${value?.rainProbability}%', style: const TextStyle(fontSize: 9, height: 1.1)),
           ]))));
       }))),
