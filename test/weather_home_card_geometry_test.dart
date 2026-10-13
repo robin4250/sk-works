@@ -38,15 +38,15 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('home and detail share orange sun and blue umbrella in both languages', (tester) async {
+  testWidgets('home and detail share orange sun and blue open umbrella in both languages', (tester) async {
     final original = SkoLanguageController.pack.value;
     addTearDown(() => SkoLanguageController.pack.value = original);
     final date = DateTime(2026, 10, 12);
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
       for (final symbol in [
-        (label: '晴れ', icon: Icons.wb_sunny, color: Colors.orange),
-        (label: '雨', icon: Icons.umbrella, color: Colors.blue),
+        (label: '晴れ', icon: Icons.wb_sunny, displayIcon: Icons.wb_sunny, color: Colors.orange),
+        (label: '雨', icon: Icons.umbrella, displayIcon: Icons.beach_access, color: Colors.blue),
       ]) {
         final snapshot = WeatherForecastSnapshot(
           locationLabel: '会社周辺', updatedAt: date, forecastDate: date,
@@ -61,10 +61,10 @@ void main() {
           state: state,
         ))));
         final summary = tester.widget<Icon>(find.byKey(const ValueKey('weather-summary-icon')));
-        expect(summary.icon, symbol.icon);
+        expect(summary.icon, symbol.displayIcon);
         expect(summary.color, symbol.color);
         final hour = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-12')));
-        expect(hour.icon, symbol.icon);
+        expect(hour.icon, symbol.displayIcon);
         expect(hour.color, symbol.color);
         final missing = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-0')));
         expect(missing.icon, Icons.help_outline);
@@ -72,9 +72,9 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('weather-home-frame')));
         await tester.pumpAndSettle();
         expect(find.byType(WeatherForecastDetailPage), findsOneWidget);
-        expect(find.byIcon(symbol.icon), findsOneWidget);
+        expect(find.byIcon(symbol.displayIcon), findsOneWidget);
         // The supplied 12h slot can be outside the horizontal viewport.
-        for (final icon in tester.widgetList<Icon>(find.byIcon(symbol.icon))) {
+        for (final icon in tester.widgetList<Icon>(find.byIcon(symbol.displayIcon))) {
           expect(icon.color, symbol.color);
         }
         expect(tester.takeException(), isNull);
