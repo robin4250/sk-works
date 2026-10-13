@@ -20,7 +20,7 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
   late final _repository = widget.repository ?? ChatCloudRepository.maybeCreate();
   List<Map<String,dynamic>> _rows = const [];
   String? _error, _actor;
-  bool _loading = true, _busy = false, _master = false, _foreground = true;
+  bool _loading = true, _busy = false, _master = false, _foreground = true, _awaitingInput = false;
   int _generation = 0;
   Timer? _timer;
   String _tr(String value) => SkoLanguageController.tr(value);
@@ -112,6 +112,15 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
       closeAfterLink: true);
   }
 
+  Future<T?> _dialog<T>(WidgetBuilder builder) async {
+    setState(() => _awaitingInput = true);
+    try {
+      return await showDialog<T>(context: context, builder: builder);
+    } finally {
+      if (mounted) setState(() => _awaitingInput = false);
+    }
+  }
+
   bool _canConnect(Map<String,dynamic> row) =>
       widget.targetGroupId == null && !widget.selectOnly && _master &&
       row['joined'] == true && row['can_select'] == true &&
@@ -129,7 +138,7 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
       final normal = groups.where((g) => g['group_type'] == 'company' &&
           g['participants_only'] == true && g['archived_at'] == null &&
           g['can_edit_group_photo'] == true && g['id'] is String).toList();
-      final target = await showDialog<String>(context: context, builder: (context) =>
+      final target = await _dialog<String>((context) =>
         SimpleDialog(title: Text(_tr('受信トークを表示するSKOグループ')),
           children: [
             for (final group in normal) SimpleDialogOption(
@@ -183,7 +192,7 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
     if (!closeAfterLink && (companyName == null || companyName.isEmpty)) {
       throw StateError('Company confirmation unavailable');
     }
-    final confirm = await showDialog<bool>(context: context, builder: (context) =>
+    final confirm = await _dialog<bool>((context) =>
       AlertDialog(title: Text(_tr('LINEトークを追加しますか？')),
         content: Text('${companyName == null ? '' : '$companyName\n'}$groupName\n${row['display_name'] ?? _tr('グループ名未取得')}\n${_tr('このSKOグループから、LINEグループ名を押して受信トークを開けるようにします。会社への連携先を確認して追加してください。')}'),
         actions: [
@@ -212,7 +221,7 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
     appBar:AppBar(title:Text(_tr(widget.targetGroupId==null ? '参加済みグループ一覧' : 'LINEトークを追加')),
       actions:[IconButton(onPressed:_help,icon:const Icon(Icons.help_outline),tooltip:_tr('使い方')),IconButton(onPressed:_busy?null:_refresh,icon:const Icon(Icons.refresh),tooltip:_tr('再読み込み'))]),
     body:Column(children:[
-      if(_busy) const LinearProgressIndicator(),
+      if(_busy && !_awaitingInput) const LinearProgressIndicator(),
       Expanded(child:_loading ? const Center(child:CircularProgressIndicator())
         : _error!=null ? Center(child:Padding(padding:const EdgeInsets.all(16),child:Text(_tr(_error!))))
         : _rows.isEmpty ? Center(child:Padding(padding:const EdgeInsets.all(16),child:Text(_tr('確認できる参加グループはまだありません。'))))
