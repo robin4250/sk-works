@@ -119,7 +119,8 @@ void main() {
       expect(find.text('LINE only'), findsNothing);
       expect(find.text('Shared group'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
-      await repo.messages.close();
+      unawaited(repo.messages.close());
+      await tester.pumpAndSettle();
     },
   );
   testWidgets(
@@ -146,7 +147,8 @@ void main() {
       expect(repo.dispatches, ['saved-message', 'saved-message']);
       expect(find.text('LINE受付済み（配信確認はLINE側で）'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
-      await repo.messages.close();
+      unawaited(repo.messages.close());
+      await tester.pumpAndSettle();
     },
   );
   for (final holdRetry in [false, true]) {
@@ -205,7 +207,8 @@ void main() {
         expect(repo.writes, 2);
         expect(repo.dispatches.where((id) => id == 'saved-message').length, 2);
         await tester.pumpWidget(const SizedBox());
-        await repo.messages.close();
+        unawaited(repo.messages.close());
+        await tester.pumpAndSettle();
       },
     );
   }

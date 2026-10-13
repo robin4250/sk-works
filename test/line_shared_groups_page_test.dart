@@ -6,7 +6,13 @@ import 'package:sk_works/features/chat/line_shared_groups_repository.dart';
 
 class FakeGroups extends LineSharedGroupsRepository {
   FakeGroups(this.rows, {this.fail = false})
-    : super(SupabaseClient('https://example.invalid', 'public-test'));
+    : super(
+        SupabaseClient(
+          'https://example.invalid',
+          'public-test',
+          authOptions: const AuthClientOptions(autoRefreshToken: false),
+        ),
+      );
   final List<Map<String, dynamic>> rows;
   final bool fail;
   @override

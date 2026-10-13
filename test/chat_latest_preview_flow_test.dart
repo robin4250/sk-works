@@ -172,8 +172,9 @@ void main() {
       await advance(tester);
       expect(repository.requested, ['other-group']);
       await tester.pumpWidget(const SizedBox());
-      await repository.messages.close();
-      await repository.changes.close();
+      unawaited(repository.messages.close());
+      unawaited(repository.changes.close());
+      await tester.pumpAndSettle();
       await tester.runAsync(() => client.dispose());
     },
   );
@@ -196,6 +197,39 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       var receivedOrder = '';
       server.listen((request) async {
+        if (WebSocketTransformer.isUpgradeRequest(request)) {
+          final socket = await WebSocketTransformer.upgrade(request);
+          socket.listen((raw) {
+            final event = jsonDecode(raw as String);
+            if (event is List && event.length >= 5) {
+              socket.add(
+                jsonEncode([
+                  event[0],
+                  event[1],
+                  event[2],
+                  'phx_reply',
+                  {
+                    'status': 'ok',
+                    'response': {'postgres_changes': []},
+                  },
+                ]),
+              );
+            } else if (event is Map) {
+              socket.add(
+                jsonEncode({
+                  'topic': event['topic'],
+                  'event': 'phx_reply',
+                  'ref': event['ref'],
+                  'payload': {
+                    'status': 'ok',
+                    'response': {'postgres_changes': []},
+                  },
+                }),
+              );
+            }
+          });
+          return;
+        }
         Object data = [];
         if (request.uri.path.endsWith('/chat_messages')) {
           receivedOrder = request.uri.queryParameters['order'] ?? '';
@@ -408,8 +442,9 @@ void main() {
           latestGate.complete();
         }
         await tester.pumpWidget(const SizedBox());
-        await repository.messages.close();
-        await repository.changes.close();
+        unawaited(repository.messages.close());
+        unawaited(repository.changes.close());
+        await tester.pumpAndSettle();
         await tester.runAsync(() => client.dispose());
         await tester.runAsync(() => server.close(force: true));
       }
@@ -453,8 +488,10 @@ void main() {
       expect(page.selectOnly, false);
       expect(repository.createCalls, 0);
       await tester.pumpWidget(const SizedBox());
-      await repository.messages.close();
-      await client.dispose();
+      unawaited(repository.messages.close());
+      unawaited(repository.changes.close());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => client.dispose());
     },
   );
 }

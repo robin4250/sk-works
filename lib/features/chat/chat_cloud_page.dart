@@ -2090,8 +2090,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                         ],
                         Expanded(
                           child: switch (_tab) {
-                            _ChatTab.all =>
-                              _selectedGroupId == null
+                            _ChatTab.all => _selectedGroupId == null
                                   ? _groupList(
                                       _allGroups,
                                       emptyText: SkoLanguageController.tr(
@@ -2119,8 +2118,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                                         '現場トークはまだありません',
                                       ),
                                     ),
-                            _ChatTab.groups =>
-                              _selectedGroupId != null &&
+                            _ChatTab.groups => _selectedGroupId != null &&
                                       _isCustomGroup(selected)
                                   ? _conversationView()
                                   : _groupWorkspace(),
