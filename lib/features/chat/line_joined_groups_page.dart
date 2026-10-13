@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
 import 'line_talk_page.dart';
+import 'line_linked_talk_page.dart';
 
 class LineJoinedGroupsPage extends StatefulWidget {
   const LineJoinedGroupsPage({super.key, this.targetGroupId, this.selectOnly = false, this.newGroupCompanyId});
@@ -82,7 +83,13 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
       final current=await repository.loadJoinedLineGroups(targetGroupId:widget.targetGroupId,newGroupCompanyId:widget.newGroupCompanyId);
       final matching=current.where((value)=>value['id']==row['id']);
       if(!mounted || repository.currentUserId!=actor || matching.length!=1) return;
-      final primary=matching.single['primary_group_id']?.toString();
+      final value=matching.single;
+      final target=value['read_target_group_id']?.toString();
+      if(target!=null) {
+        await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>LineLinkedTalkPage(targetGroupId:target,directoryId:value['id'].toString(),name:value['display_name']?.toString()??_tr('グループ名未取得'))));
+        return;
+      }
+      final primary=value['primary_group_id']?.toString();
       if(primary!=null) await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>LineTalkPage(initialGroupId:primary)));
       return;
     }

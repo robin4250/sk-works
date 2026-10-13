@@ -532,6 +532,25 @@ class ChatCloudRepository {
     return raw is List ? raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : const [];
   }
 
+  Future<List<Map<String,dynamic>>> loadLinkedLineMessages(String groupId, String directoryId) async {
+    final actor=currentUserId;
+    final rows=<Map<String,dynamic>>[];
+    String? afterAt,afterId;
+    while(true) {
+      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+      final raw=await _client.rpc('line_linked_talk',params:{'p_target_group_id':groupId,'p_directory_id':directoryId,'p_after_at':afterAt,'p_after_id':afterId});
+      if(currentUserId!=actor || raw is! List) throw StateError('受信トークを読み込めませんでした。');
+      final page=raw.whereType<Map>().map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
+      rows.addAll(page);
+      if(page.length<200) break;
+      final last=page.last;
+      final nextAt=last['sent_at']?.toString(),nextId=last['id']?.toString();
+      if(nextAt==null || nextId==null || (nextAt==afterAt && nextId==afterId)) throw StateError('受信トークを読み込めませんでした。');
+      afterAt=nextAt;afterId=nextId;
+    }
+    return rows;
+  }
+
   Future<void> linkLineSource(String groupId, String directoryId) async {
     final actor=currentUserId;
     if(actor==null) throw StateError('ログインが必要です。');

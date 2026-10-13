@@ -16,7 +16,7 @@ import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
-import 'line_talk_page.dart';
+import 'line_linked_talk_page.dart';
 
 enum _ChatTab { all, friends, site, groups, partner }
 
@@ -818,6 +818,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               final id = create ? createdId! : selected!['id'].toString();
               if (photo != null) await repository.saveCustomGroupPhoto(id, photo!);
+              if (repository.currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
               if (create && selectedLine != null && !lineLinked) { await repository.linkLineSource(id, selectedLine!['id'].toString()); lineLinked = true; }
               if (!dialogContext.mounted) return;
               Navigator.pop(dialogContext);
@@ -979,7 +980,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                   ),
                 ),
                 for(final source in lineSources)
-                  ListTile(leading:const Icon(Icons.link),title:Text(source['display_name']?.toString() ?? SkoLanguageController.tr('グループ名未取得')),subtitle:Text(SkoLanguageController.tr('LINEトーク')),trailing:const Icon(Icons.chevron_right),onTap:source['primary_group_id']==null ? null : () { Navigator.pop(sheetContext); Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>LineTalkPage(initialGroupId:source['primary_group_id'].toString()))); }),
+                  ListTile(leading:const Icon(Icons.link),title:Text(source['display_name']?.toString() ?? SkoLanguageController.tr('グループ名未取得')),subtitle:Text(SkoLanguageController.tr('LINEトーク')),trailing:const Icon(Icons.chevron_right),onTap:source['primary_group_id']==null ? null : () { Navigator.pop(sheetContext); Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>LineLinkedTalkPage(targetGroupId:groupId,directoryId:source['id'].toString(),name:source['display_name']?.toString()??SkoLanguageController.tr('グループ名未取得')))); }),
                 if (customGroup && selectedGroup?['can_edit_group_photo']==true)
                   Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); _addLineToSelectedGroup(); }, icon: const Icon(Icons.add_link), label: Text(SkoLanguageController.tr('LINEトークを追加')))),
                 if (customGroup)

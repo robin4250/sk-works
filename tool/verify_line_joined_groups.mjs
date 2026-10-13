@@ -6,17 +6,17 @@ await db.exec(`create role anon;create role authenticated;create role service_ro
 create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('test.actor',true),'')::uuid $$;
 create type public.app_role as enum('owner','admin','worker');
 create table auth.users(id uuid primary key);
-create table companies(id uuid primary key);create table company_members(company_id uuid,user_id uuid,role app_role);
+create table companies(id uuid primary key);create table communication_group_members(group_id uuid,user_id uuid);create table company_members(company_id uuid,user_id uuid,role app_role);
 create table communication_groups(id uuid primary key,company_id uuid,group_type text,participants_only boolean,created_by uuid,archived_at timestamptz);
 create table line_group_bindings(id uuid primary key default gen_random_uuid(),line_group_id text unique,company_id uuid,communication_group_id uuid,status text,display_name text,created_at timestamptz default now(),updated_at timestamptz default now());
 create table line_binding_audit(binding_id uuid,company_id uuid,communication_group_id uuid,line_group_id text,action text,actor_user_id uuid,source text);
 create unique index binding_primary on line_group_bindings(communication_group_id) where status='active';
 create table line_webhook_events(group_id text,received_at timestamptz);
-create table chat_messages(origin text,external_event_id text,communication_group_id uuid,constraint chat_messages_origin_external_event_id_key unique(origin,external_event_id));
+create table chat_messages(id uuid default gen_random_uuid(),company_id uuid,body text,sender_display_name text,sent_at timestamptz, origin text,external_event_id text,communication_group_id uuid,constraint chat_messages_origin_external_event_id_key unique(origin,external_event_id));
 create unique index chat_messages_line_external_event_uidx on chat_messages(external_event_id) where origin='line' and external_event_id is not null;
 create function public.is_current_user_master_admin() returns boolean language sql as $$select current_setting('test.master',true)='true'$$;
 create function private.account_access_allowed() returns boolean language sql as $$select auth.uid() is not null$$;
-create function private.can_access_communication_group(target uuid) returns boolean language sql as $$select exists(select 1 from public.communication_groups where id=target and created_by=auth.uid())$$;
+create function private.can_access_communication_group(target uuid) returns boolean language sql as $$select exists(select 1 from public.communication_groups where id=target and (created_by=auth.uid() or exists(select 1 from public.communication_group_members m where m.group_id=target and m.user_id=auth.uid())))$$;
 create function private.has_company_role(company uuid,roles app_role[]) returns boolean language sql as $$select exists(select 1 from public.company_members where company_id=company and user_id=auth.uid() and role=any(roles))$$;
 create function private.can_edit_custom_chat_photo(target uuid) returns boolean language sql as $$ select exists(select 1 from public.communication_groups where id=target and group_type='company' and participants_only and created_by=auth.uid() and archived_at is null) $$;
 insert into auth.users values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002');
@@ -38,4 +38,15 @@ await call("select public.observe_line_joined_group('source',null,false,'2026-10
 await call("select public.observe_line_joined_group('source',null,true,'2026-10-13T01:00:00Z','event-tie')");assert.equal((await call('select joined,display_name from private.line_joined_groups')).rows[0].joined,false);assert.equal((await call('select joined,display_name from private.line_joined_groups')).rows[0].display_name,'Real group');
 assert.equal((await call("select has_function_privilege('authenticated','public.observe_line_joined_group(text,text,boolean,timestamptz,text)','EXECUTE') value")).rows[0].value,false);
 assert.equal((await call("select has_table_privilege('authenticated','private.line_joined_groups','SELECT') value")).rows[0].value,false);
+// A target-only employee receives a narrow read route, never primary membership.
+await db.exec("insert into company_members values('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000002','worker');insert into communication_group_members values('00000000-0000-0000-0000-000000000025','00000000-0000-0000-0000-000000000002');");
+await db.query("insert into chat_messages(company_id,origin,external_event_id,communication_group_id,body,sender_display_name,sent_at) values('00000000-0000-0000-0000-000000000011','line','original-event',$1,'Original body','Sender','2026-10-13T00:00:00Z')",[target]);
+assert.equal((await call('select private.can_access_communication_group($1) allowed',[target])).rows[0].allowed,false);
+const targetOnly='00000000-0000-0000-0000-000000000025';
+const linkedRows=(await call('select public.line_linked_talk($1,$2) value',[targetOnly,directory])).rows[0].value;
+assert.equal(linkedRows.length,1);assert.equal(linkedRows[0].body,'Original body');assert.equal((await call('select count(*) n from public.chat_messages')).rows[0].n,1);
+const visible=(await call('select public.line_joined_group_workspace($1) value',[targetOnly])).rows[0].value;assert.equal(visible.length,1);assert.equal(visible[0].read_target_group_id,targetOnly);assert.equal(visible[0].can_link,false);
+await db.exec("update line_group_bindings set status='disabled'");assert.equal((await call('select public.line_linked_talk($1,$2) value',[targetOnly,directory])).rows[0].value.length,1);
+await db.exec("delete from communication_group_members");await assert.rejects(call('select public.line_linked_talk($1,$2)',[targetOnly,directory]),/access required/);
+await assert.rejects(call("insert into chat_messages(origin,external_event_id,communication_group_id) values('line','original-event',$1)",[targetOnly]));
 await db.close();console.log('Joined groups: master/company ownership, site/open rejection, idempotent source links, revoked rights, leave/stale/tie and private ACL verified.');
