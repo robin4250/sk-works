@@ -790,6 +790,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
           source['joined'] == true && source['can_select'] == true);
         if (!mounted || repository.currentUserId != actor || matches.length != 1) {
           controller.dispose();
+          if (mounted && repository.currentUserId == actor) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+              SkoLanguageController.tr('LINEトークを追加できませんでした。権限と連携先を再確認してください。'))));
+          }
           return;
         }
         selectedLine = Map<String, dynamic>.from(matches.single);
