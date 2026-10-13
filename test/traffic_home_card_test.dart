@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/traffic/traffic_shortcut_store.dart';
@@ -158,6 +159,10 @@ void main() {
     SharedPreferences.setMockInitialValues({
       scope.storageKey: jsonEncode(TrafficShortcut.web('時刻表', 'https://example.com/timetable')!.toJson()),
     });
+    await tester.runAsync(() async { await SharedPreferences.getInstance(); });
+    const launcherChannel = MethodChannel('plugins.flutter.io/url_launcher');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcherChannel, (call) async => false);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcherChannel, null));
     Future<void> home(bool show) => tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: FriendlyHomeContent(
       identity: const HomeIdentity(role: 'worker', companyName: '会社', displayName: '本人'),
       requiredDocumentAttention: const RequiredDocumentAttention(missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false),
@@ -184,6 +189,7 @@ void main() {
     }
     expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
     opened.clear();
+    expect(find.text('時刻表'), findsOneWidget, reason: 'The registered shortcut finished loading before its gesture is tested');
     await tester.longPress(find.byKey(const ValueKey('traffic-personal-shortcut')));
     await tester.pumpAndSettle();
     expect(find.text('登録を解除'), findsOneWidget);
