@@ -16,13 +16,16 @@ create table chat_messages(id uuid default gen_random_uuid(),company_id uuid,bod
 create unique index chat_messages_line_external_event_uidx on chat_messages(external_event_id) where origin='line' and external_event_id is not null;
 create function public.is_current_user_master_admin() returns boolean language sql as $$select current_setting('test.master',true)='true'$$;
 create function private.account_access_allowed() returns boolean language sql as $$select auth.uid() is not null and current_setting('test.blocked',true) is distinct from 'true'$$;
-create function private.can_access_communication_group(target uuid) returns boolean language sql as $$select exists(select 1 from public.communication_groups where id=target and (created_by=auth.uid() or exists(select 1 from public.communication_group_members m where m.group_id=target and m.user_id=auth.uid())))$$;
+create function private.can_access_communication_group(p_group_id uuid) returns boolean language sql as $$select false$$;
 create function private.has_company_role(company uuid,roles app_role[]) returns boolean language sql as $$select exists(select 1 from public.company_members where company_id=company and user_id=auth.uid() and role=any(roles))$$;
 create function private.can_edit_custom_chat_photo(target uuid) returns boolean language sql as $$ select exists(select 1 from public.communication_groups where id=target and group_type='company' and participants_only and created_by=auth.uid() and archived_at is null) $$;
 insert into auth.users values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002');
 insert into companies values('00000000-0000-0000-0000-000000000011'),('00000000-0000-0000-0000-000000000012');
 insert into company_members values('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001','owner');
 insert into communication_groups values('00000000-0000-0000-0000-000000000021','00000000-0000-0000-0000-000000000011','company',true,'00000000-0000-0000-0000-000000000001',null),('00000000-0000-0000-0000-000000000022','00000000-0000-0000-0000-000000000011','site',true,'00000000-0000-0000-0000-000000000001',null),('00000000-0000-0000-0000-000000000023','00000000-0000-0000-0000-000000000011','open',true,'00000000-0000-0000-0000-000000000001',null),('00000000-0000-0000-0000-000000000024','00000000-0000-0000-0000-000000000012','company',true,'00000000-0000-0000-0000-000000000001',null),('00000000-0000-0000-0000-000000000025','00000000-0000-0000-0000-000000000011','company',true,'00000000-0000-0000-0000-000000000001',null);`);
+// Use the latest main access helper, not a creator-only test substitute.
+await db.exec(await readFile('supabase/migrations/20261004190939_restore_site_chat_visibility_after_custom_groups.sql','utf8'));
+await db.exec("insert into communication_group_members select id,'00000000-0000-0000-0000-000000000001'::uuid from communication_groups;");
 await db.exec(await readFile('supabase/migrations/20261013041322_line_joined_group_directory.sql','utf8'));
 const call=async(sql,args=[])=>db.query(sql,args);const actor='00000000-0000-0000-0000-000000000001',target='00000000-0000-0000-0000-000000000021';
 await assert.rejects(call('select public.line_joined_group_workspace()'),/authentication/);
