@@ -722,8 +722,8 @@ class ChatCloudRepository {
       // Both queries are subject to the existing group/message RLS. No service key.
       final latestQuery = _client.from('chat_messages')
           .select('id,body,sender_user_id,sent_at').eq('communication_group_id', entry.key);
-      final latest = await (blocked.isEmpty ? latestQuery : latestQuery.not('sender_user_id', 'in',
-          '(${blocked.join(',')})')).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
+      final latest = await (blocked.isEmpty ? latestQuery : latestQuery.or(
+          'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})')).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
       var count = 0;
       for (var offset = 0; ; offset += 1000) {
         final rows = await _client.from('chat_messages').select('id,sender_user_id,sent_at')
@@ -731,7 +731,7 @@ class ChatCloudRepository {
             .gt('sent_at', entry.value.toUtc().toIso8601String())
             .order('sent_at').order('id').range(offset, offset + 999);
         count += rows.where((row) {final sender = row['sender_user_id']?.toString();
-          return sender != null && sender != actor && !blocked.contains(sender);}).length;
+          return sender != actor && !blocked.contains(sender);}).length;
         if (rows.length < 1000) break;
       }
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
