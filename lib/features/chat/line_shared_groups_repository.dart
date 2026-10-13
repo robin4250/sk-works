@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'chat_cloud_repository.dart';
 
 class LineSharedGroupsRepository {
   LineSharedGroupsRepository(this.client);
@@ -23,7 +24,27 @@ class LineSharedGroupsRepository {
     final value = await client.rpc('line_shared_chat_groups');
     _check(expected);
     if (value is! List) throw StateError('Group metadata unavailable');
-    return value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final rows = value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final previews = await ChatCloudRepository.forTesting(client)
+      .loadConversationPreviews(rows.map((row) => row['group_id'].toString()));
+    _check(expected);
+    return [for (final row in rows) {
+      ...row,
+      'last_message_body': previews[row['group_id']]?.body,
+      'last_message_at': previews[row['group_id']]?.sentAt,
+    }];
+  }
+
+  Stream<String> watchChanges() =>
+    ChatCloudRepository.forTesting(client).watchConversationChanges();
+
+  Future<ChatConversationSummary?> preview(String groupId) async {
+    final expected = actor;
+    _check(expected);
+    final result = await ChatCloudRepository.forTesting(client)
+      .loadConversationPreviews([groupId]);
+    _check(expected);
+    return result[groupId];
   }
 
   Future<String> company() async {

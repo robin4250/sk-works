@@ -5,6 +5,7 @@ on:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
       - 'test/chat_line_surface_flow_test.dart'
+      - 'test/line_shared_chat_list_test.dart'
       - '.github/workflows/chat-display-regressions.yml'
   push:
     branches: [main]
@@ -12,6 +13,7 @@ on:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
       - 'test/chat_line_surface_flow_test.dart'
+      - 'test/line_shared_chat_list_test.dart'
       - '.github/workflows/chat-display-regressions.yml'
 permissions:
   contents: read
@@ -31,4 +33,4 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter test test/chat_latest_preview_flow_test.dart test/chat_line_surface_flow_test.dart --reporter expanded
+      - run: flutter test test/chat_latest_preview_flow_test.dart test/chat_line_surface_flow_test.dart test/line_shared_chat_list_test.dart --reporter expanded

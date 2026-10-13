@@ -996,6 +996,35 @@ class ChatCloudRepository {
     );
   }
 
+  Future<Map<String, dynamic>?> _latestConversationMessage(
+    String groupId, Set<String> blocked,
+  ) async {
+    final query = _client.from('chat_messages')
+      .select('id,body,sender_user_id,sent_at')
+      .eq('communication_group_id', groupId);
+    final rows = await (blocked.isEmpty ? query : query.or(
+      'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})',
+    )).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
+    return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  Future<Map<String, ChatConversationSummary>> loadConversationPreviews(
+    Iterable<String> groupIds,
+  ) async {
+    final actor = currentUserId;
+    if (actor == null) throw StateError('ログインが必要です。');
+    final blocked = await loadBlockedUserIds();
+    final result = <String, ChatConversationSummary>{};
+    for (final id in groupIds.toSet()) {
+      if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+      final latest = await _latestConversationMessage(id, blocked);
+      if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+      result[id] = ChatConversationSummary(unread: 0,
+        body: latest?['body']?.toString(), sentAt: latest?['sent_at']?.toString());
+    }
+    return result;
+  }
+
   Future<Map<String, int>> loadUnreadCounts(
     Map<String, DateTime> lastReadByGroup,
   ) async =>
@@ -1011,19 +1040,7 @@ class ChatCloudRepository {
     final result = <String, ChatConversationSummary>{};
     for (final entry in lastReadByGroup.entries) {
       // Both queries are subject to the existing group/message RLS. No service key.
-      final latestQuery = _client
-          .from('chat_messages')
-          .select('id,body,sender_user_id,sent_at')
-          .eq('communication_group_id', entry.key);
-      final latest =
-          await (blocked.isEmpty
-                  ? latestQuery
-                  : latestQuery.or(
-                      'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})',
-                    ))
-              .order('sent_at', ascending: false)
-              .order('id', ascending: false)
-              .limit(1);
+      final latest = await _latestConversationMessage(entry.key, blocked);
       var count = 0;
       for (var offset = 0; ; offset += 1000) {
         final rows = await _client
@@ -1043,8 +1060,8 @@ class ChatCloudRepository {
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
       result[entry.key] = ChatConversationSummary(
         unread: count,
-        body: latest.isEmpty ? null : latest.first['body']?.toString(),
-        sentAt: latest.isEmpty ? null : latest.first['sent_at']?.toString(),
+        body: latest?['body']?.toString(),
+        sentAt: latest?['sent_at']?.toString(),
       );
     }
     return result;
