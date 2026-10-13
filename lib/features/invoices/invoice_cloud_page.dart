@@ -350,8 +350,8 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                     child: Text(
                                       visible.any((invoice) => invoice.amountPending)
                                           ? (SkoLanguageController.isEnglish
-                                                ? '${visible.length} invoices / Total pending quantity approval'
-                                                : '年間 ${visible.length}件 / 合計未確定（数量承認待ち）')
+                                                ? '${visible.length} invoices / Total unconfirmed'
+                                                : '年間 ${visible.length}件 / 合計未確定')
                                           : (SkoLanguageController.isEnglish
                                                 ? 'Year total: ${visible.length} invoices / ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}'
                                                 : '年間 ${visible.length}件 / 合計 ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}'),

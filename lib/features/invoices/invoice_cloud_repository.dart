@@ -74,7 +74,16 @@ class InvoiceCloudRepository {
   /// Recomputes only editable drafts from already-signed checkout evidence.
   /// Older servers and invoice viewers retain the saved read-only list.
   Future<void> refreshSignedCheckoutInvoices() async {
-    if (!await canManageFinancials()) return;
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) return;
+    void checkActor() {
+      if (_client.auth.currentUser?.id != actor) {
+        throw StateError('操作したアカウントを再確認してください');
+      }
+    }
+    final allowed = await canManageFinancials();
+    checkActor();
+    if (!allowed) return;
     dynamic contract;
     try {
       contract = await _client.rpc('route_checkout_billing_contract');
@@ -82,11 +91,14 @@ class InvoiceCloudRepository {
       if (error.code == 'PGRST202' || error.code == '42883') return;
       rethrow;
     }
+    checkActor();
     if (contract is! Map || contract['contract_version'] != 1 ||
         contract['separate_quantity_approval_required'] != false) return;
     final companyId = await _companyId();
+    checkActor();
     await _client.rpc('refresh_signed_checkout_invoices',
         params: {'p_company_id': companyId});
+    checkActor();
   }
 
   Future<List<InvoiceCalculationResult>> loadAll() async {

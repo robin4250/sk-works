@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
-const {PGlite}=await import(pathToFileURL(process.argv[2]).href);
+const runtime=await import(pathToFileURL(process.argv[2]).href);
 const migration=await fs.readFile(new URL('../supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql',import.meta.url),'utf8');
 function section(name,next) {
  const start=migration.indexOf('create or replace function private.'+name+'(');
  const end=migration.indexOf('create or replace function private.'+next+'(',start+1);
  assert.ok(start>=0 && end>start);return migration.slice(start,end);
 }
-const db=new PGlite();
+const realDatabase=process.env.SKO_SIGNED_BILLING_DATABASE_URL;
+const PgClient=runtime.Client ?? runtime.default?.Client;
+if (realDatabase) {
+  const target=new URL(realDatabase);
+  assert.ok(['127.0.0.1','localhost'].includes(target.hostname) && target.pathname==='/sko_signed_checkout_fixture',
+    'Use only the disposable local signed-checkout fixture database');
+}
+let pg;
+if (realDatabase) { pg=new PgClient({connectionString:realDatabase});await pg.connect(); }
+const db=realDatabase ? {
+  exec:sql=>pg.query(sql),query:(sql,args)=>pg.query(sql,args),close:()=>pg.end(),
+} : new runtime.PGlite();
 await db.exec(`create schema private;
 create table daily_reports(id uuid,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date,status text,signed_at timestamptz,signature_json jsonb);
 create table attendance_entries(id uuid,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,source_report_id uuid,work_date date,base_man_days numeric,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[]);
@@ -140,6 +151,34 @@ assert.deepEqual((await db.query('select updated_at from invoices')).rows[0].upd
 
 await db.query(`update daily_reports set status='signed',signed_at='2026-10-12T09:00Z' where id=$1`,[report]);
 assert.equal((await db.query('select grand_total from invoices')).rows[0].grand_total,41492);
+if (realDatabase) {
+  // Real Postgres connections serialize refreshing the same customer/month.
+  const second=new PgClient({connectionString:realDatabase});await second.connect();
+  await second.query(`select set_config('test.uid',$1,false)`,[worker]);
+  await Promise.all([
+    pg.query(`select public.refresh_signed_checkout_invoices($1)`,[company]),
+    second.query(`select public.refresh_signed_checkout_invoices($1)`,[company]),
+  ]);
+  assert.equal((await pg.query('select count(*)::integer n from invoices')).rows[0].n,1);
+  assert.equal((await pg.query('select grand_total from invoices')).rows[0].grand_total,41492);
+  // Finalization holds the existing row lock. A concurrent refresh must recheck
+  // the finalized status after waiting, and keep that snapshot unchanged.
+  await pg.query('begin');
+  await pg.query('select id from invoices for update');
+  const concurrent=second.query(`select public.refresh_signed_checkout_invoices($1)`,[company]);
+  let waited=false;
+  for (let attempt=0;attempt<100;attempt++) {
+    const activity=await pg.query('select wait_event_type from pg_stat_activity where pid=$1',[second.processID]);
+    if (activity.rows[0]?.wait_event_type==='Lock') {waited=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.equal(waited,true,'Concurrent refresh must wait for the finalization row lock');
+  await pg.query("update invoices set status='finalized',finalized_at=now()");
+  const finalSnapshot=(await pg.query('select snapshot from invoices')).rows[0].snapshot;
+  await pg.query('commit');await concurrent;
+  assert.deepEqual((await pg.query('select snapshot from invoices')).rows[0].snapshot,finalSnapshot);
+  await second.end();
+}
 // A finalized snapshot remains unchanged on refresh after a registered-rate edit.
 await db.exec("update invoices set status='finalized',finalized_at=now()");
 const frozen=(await db.query('select snapshot from invoices')).rows[0].snapshot;

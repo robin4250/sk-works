@@ -17,6 +17,7 @@ class _Fixture {
   bool denySeal = false;
   bool denyPermissions = false;
   bool signedCheckoutContract = false;
+  bool signOutOnContract = false;
   Object? pendingQuantity;
   Object? pendingSource;
   bool zeroAmount = false;
@@ -78,6 +79,7 @@ class _Fixture {
           ? {'code': '42501', 'message': 'unavailable permission lookup'}
           : {'can_manage_invoices': true};
     } else if (path == '/rest/v1/rpc/route_checkout_billing_contract') {
+      if (signOutOnContract) await client.auth.signOut();
       if (!signedCheckoutContract) request.response.statusCode = 404;
       response = signedCheckoutContract
           ? {'contract_version': 1, 'separate_quantity_approval_required': false}
@@ -184,6 +186,13 @@ void main() {
     fixture.denyPermissions = true;
     await repository.refreshSignedCheckoutInvoices();
     expect(fixture.requests.any((r) => r.uri.path.endsWith('/route_checkout_billing_contract') || r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
+  });
+  test('session change while reading capability prevents the refresh write', () async {
+    fixture.signedCheckoutContract = true;
+    fixture.signOutOnContract = true;
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    await expectLater(repository.refreshSignedCheckoutInvoices(), throwsStateError);
+    expect(fixture.requests.any((r) => r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
   });
 }
 
