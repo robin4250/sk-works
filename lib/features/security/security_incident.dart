@@ -24,7 +24,8 @@ class SecurityIncident {
   final bool missingBefore, missingAfter;
   final List<SecurityIncidentEvent> events;
   final int recordVersion;
-  final DateTime savedAt, firstSeen, lastSeen;
+  final DateTime savedAt;
+  final DateTime? firstSeen, lastSeen;
   final String provenance, confidence, sourceTracking;
   final List<SecurityIncidentAudit> audit;
 
@@ -50,29 +51,41 @@ class SecurityIncident {
         final events =
             (row['events'] as List).map(SecurityIncidentEvent.parse).toList()
               ..sort((a, b) => a.sequence.compareTo(b.sequence));
-        if (events.isEmpty ||
-            row['event_count'] != events.length ||
+        if (row['event_count'] != events.length ||
             events.map((e) => e.sequence).toSet().length != events.length) {
           throw const FormatException('Security records unavailable');
         }
         final from = _date(row['window_from']), to = _date(row['window_to']);
-        final first = _date(row['first_seen']), last = _date(row['last_seen']);
+        final first = row['first_seen'] == null
+            ? null
+            : _date(row['first_seen']);
+        final last = row['last_seen'] == null ? null : _date(row['last_seen']);
         final version = row['record_version'];
         if (version is! int ||
             version < 1 ||
             version > 16 ||
             row['audit'] is! List ||
-            (row['audit'] as List).length > 16 ||
-            last.isBefore(first)) {
+            (row['audit'] as List).length > 16) {
           throw const FormatException('Security records unavailable');
         }
         _enum(row['reason_code'], const {'decoy_lure_touched'});
         _enum(row['timezone'], const {'UTC'});
-        if (first != events.first.at ||
+        if (to.isBefore(from))
+          throw const FormatException('Security records unavailable');
+        if (events.isEmpty) {
+          if (first != null ||
+              last != null ||
+              row['collection_status'] != 'partial' ||
+              row['missing_before'] != true) {
+            throw const FormatException('Security records unavailable');
+          }
+        } else if (first == null ||
+            last == null ||
+            first != events.first.at ||
             last != events.last.at ||
+            last.isBefore(first) ||
             from.isAfter(first) ||
-            to.isBefore(last) ||
-            to.isBefore(from)) {
+            to.isBefore(last)) {
           throw const FormatException('Security records unavailable');
         }
         return SecurityIncident(
