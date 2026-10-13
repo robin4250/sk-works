@@ -29,8 +29,7 @@ class MenuHelpCatalog {
 
   static const items = <MenuHelpItem>[
     MenuHelpItem(
-      key: 'traffic_guidance',
-      label: '交通案内',
+      key: 'traffic_guidance', label: '交通案内',
       purpose: '最寄駅・電車乗換・バス停の外部案内を開きます。',
       destination: '最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内へ移動します。',
       access: '管理者・サブ管理者・一般・閲覧権限',
@@ -101,12 +100,10 @@ class MenuHelpCatalog {
       details: '現場詳細はスマホ1画面で確認しやすいコンパクトな2列配置です。未登録・空欄の項目は表示しません。登録者は履歴情報として表示しますが編集対象にはしません。現場写真と共有/編集操作も同じ詳細画面内にまとめています。',
     ),
     MenuHelpItem(
-      key: 'employee_resources',
-      label: '社員資格書類',
+      key: 'employee_resources', label: '社員資格書類',
       purpose: '社員データ・従業員資格・必要書類を一つの入口から管理します。',
       destination: '利用できる機能を選びます。会社の機能ON/OFFとサブ管理者の利用設定に従います。',
-      access: '管理者・閲覧者・サブ管理者',
-      roles: {ManualRole.general, ManualRole.admin, ManualRole.subAdmin},
+      access: '管理者・閲覧者・サブ管理者', roles: {ManualRole.general, ManualRole.admin, ManualRole.subAdmin},
     ),
     MenuHelpItem(
       key: 'people',
@@ -212,14 +209,7 @@ class MenuHelpCatalog {
       roles: {ManualRole.admin},
       details: '締め日は末日、給料日は支払月と日付を会社共通で設定します。確認者を1〜3名選びます。個別の給与単価は個別給与設定で管理します。会社提出書類は「写真を管理」で表面・裏面・追加写真を選び、個別プレビューと順序を確認してまとめて保存します。保存後も登録写真を再表示し、追加・差し替えができます。「プレビュー」で保存済み・保存前の写真を拡大して確認できます。「写真を削除」で選択から外し、「写真を保存」で反映します。「閉じる」では変更を保存しません。書類全体は「一覧から削除」で確認後に一覧から外します。履歴・送信済み書類と元のファイルは保持します。保存結果が不明な場合は再読み込みして確認してください。会社角印のON／OFFは会社共通で、請求書・給与明細・支払証明書に反映します。OFFでも確認印・承認印と承認履歴は残ります。会社角印の書体選択は試験用です。会社設定でPDFを確認して保存します。帳票保存の連携が利用可能になった後、新しく保存する帳票に書体を固定します。過去の帳票は変更しません。未対応文字や小さすぎる隷書は保存できません。5種類の完成版ではありません。',
     ),
-    MenuHelpItem(
-      key: 'company_delivery_inbox',
-      label: '受信した社員・書類',
-      purpose: '協力会社から受信したデータを確認します。',
-      destination: '協力会社登録の受信データから開きます。',
-      access: '管理者・サブ管理者',
-      roles: {ManualRole.admin, ManualRole.subAdmin},
-    ),
+    MenuHelpItem(key: 'company_delivery_inbox', label: '受信した社員・書類', purpose: '協力会社から受信したデータを確認します。', destination: '協力会社登録の受信データから開きます。', access: '管理者・サブ管理者', roles: {ManualRole.admin, ManualRole.subAdmin}),
     MenuHelpItem(
       key: 'company_deliveries',
       label: '協力会社登録・受信データ',
@@ -367,3 +357,7 @@ class MenuHelpCatalog {
     ];
   }
 }
+
+
+
+

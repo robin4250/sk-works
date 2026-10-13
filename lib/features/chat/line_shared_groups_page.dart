@@ -24,6 +24,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
   List<Map<String, dynamic>> _groups = const [];
   bool _busy = false;
   String? _error;
+  String? _displayedActor;
   @override
   void initState() {
     super.initState();
@@ -34,10 +35,12 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     try {
       final repository = _repository;
       if (repository == null) throw StateError('Login required');
+      final actor = repository.actor;
       final rows = await repository.groups();
-      if (mounted) {
+      if (mounted && repository.actor == actor) {
         setState(() {
           _groups = rows;
+          _displayedActor = actor;
           _error = null;
         });
       }
@@ -170,7 +173,13 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
                 overflow: TextOverflow.ellipsis,
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => widget.onOpenGroup(group['group_id'].toString()),
+              onTap: () {
+                if (_repository?.actor != _displayedActor) {
+                  _load();
+                  return;
+                }
+                widget.onOpenGroup(group['group_id'].toString());
+              },
             ),
           ),
       ],

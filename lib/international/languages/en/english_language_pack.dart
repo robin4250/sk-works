@@ -15,8 +15,7 @@ const englishLanguagePack = LanguagePack(
     "項目名を入力してください": "Enter an item name",
     "単価は0以上の整数で入力してください": "Enter a non-negative whole number for the rate",
     "同じ単位の項目名が重複しています": "Item names must be unique within the same unit",
-    "登録できませんでした。入力内容を保持しています":
-        "Registration failed. Your input has been retained",
+    "登録できませんでした。入力内容を保持しています": "Registration failed. Your input has been retained",
     "項目はありません": "No items",
     "登録中": "Registering",
     "対象月の時間数を入力してください": "Enter explicit hours for the selected month",
@@ -27,27 +26,21 @@ const englishLanguagePack = LanguagePack(
     "登録済み夜間時間": "Recorded night hours",
     "対象月の時間数": "Hours for the selected month",
     "対象月": "Selected month",
-    "月を変更しますか？未登録の入力内容は保存されません。":
-        "Change month? Unsaved input will not be retained.",
+    "月を変更しますか？未登録の入力内容は保存されません。": "Change month? Unsaved input will not be retained.",
     "月を変更": "Change month",
-    "単位別設定を取得できません。サーバー準備状況を確認してください。":
-        "Unit settings could not be loaded. Check server readiness.",
-    "単位別設定を保存し、対象月の給与を再計算しました":
-        "Unit settings saved and payroll recalculated for the selected month",
+    "単位別設定を取得できません。サーバー準備状況を確認してください。": "Unit settings could not be loaded. Check server readiness.",
+    "単位別設定を保存し、対象月の給与を再計算しました": "Unit settings saved and payroll recalculated for the selected month",
     "支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。": "Register hourly, daily and monthly rates for earnings and deductions. Enter explicit hours for the selected month or choose recorded overtime, early or night hours. Daily units count actual attendance dates, with multiple sites on one date counted once. Monthly units apply once per month without prorating. Conditions start in the selected month and existing direct amounts are retained separately. Missing hours block calculation. Finalized payroll remains unchanged.",
     "請求書の読み込みに時間がかかっています。通信を確認して再試行してください。": "Loading the invoice is taking too long. Check your connection and retry.",
     "PDFのページ画像が空です。再試行してください。": "The PDF page image is empty. Please retry.",
-    "PDFの画面表示に時間がかかっています。再試行してください。":
-        "Rendering the PDF is taking too long. Please retry.",
-    "PDFのページを表示できませんでした。再試行してください。":
-        "No PDF pages could be displayed. Please retry.",
+    "PDFの画面表示に時間がかかっています。再試行してください。": "Rendering the PDF is taking too long. Please retry.",
+    "PDFのページを表示できませんでした。再試行してください。": "No PDF pages could be displayed. Please retry.",
     "PDFのページ画像を表示できませんでした。": "The PDF page image could not be displayed.",
     "PDFを表示できませんでした": "The PDF could not be displayed",
     "請求書プレビューを生成できませんでした": "The invoice preview could not be generated",
     "PDFデータが空です。": "The PDF data is empty.",
     "下の印刷・保存共有ボタンから同じPDFを開くこともできます。": "You can also open the same PDF using the Print or Save and share buttons below.",
-    'PDFのページを描画できませんでした。再試行してください。':
-        'The PDF page could not be rendered. Please retry.',
+    'PDFのページを描画できませんでした。再試行してください。': 'The PDF page could not be rendered. Please retry.',
     "請求書が0件の場合は「一覧を再読み込み」で保存済みの請求書を確認します。複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。請求書の承認印は別の確認操作です。退勤日報や単価を確認した後、一覧を再読み込みしてください。請求書は預け済みの「御請求書」テンプレートを基準にA4縦で表示します。明細は「作業所名 / 工事内容 / 数量 / 単価 / 請求金額」で、出勤実績がある現場ごとに正式名称を表示します。請求書用の残業単価・早出単価は現場管理で個別に登録し、給与計算用単価とは分けて管理します。手当は出勤データに登録された実際の手当名を「（手当名）」として表示し、現場管理の同名手当単価を使います。明細は35行を基本とし、外側に印刷余白を確保します。確認印は氏名を表示せず印影のみ表示し、会社角印は登録会社名から採用済み角印案Aで自動生成します。承認者は1〜3名を設定でき、1名でも承認を完了できます。プレビュー下部の「承認履歴・印影設定」で自分の承認を取り消して再承認し、印影の日付を手動指定または会社設定に戻せます。会社設定の日付は締め日・実際の承認日・日付なしから選び、実際の承認日時と履歴は変更しません。請求書の確認・承認印の名字は、承認待ちの本人が「承認印に表示する名字」で明示入力します。新しい承認時に名字を固定し、名字のみの円印を表示します。氏名・承認日時・役割と過去の承認印は変更しません。未設定・未導入の印影は従来表示を保持し、姓名を推測分割しません。設定が利用できるまで待つ必要があります。請求金額枠と確認印枠は隣り合う独立した枠とし、請求金額枠は請求先名の直下へ配置します。下部の「お支払約定日」と「金額」は同じ横幅で表示します。プレビュー・PDF・印刷・共有は同じ帳票生成を使います。PDFの画面表示に失敗した場合は「再試行」を押せます。生成済みPDFがある場合は、画面表示に失敗しても下の印刷・保存共有ボタンから同じPDFを開けます。プレビューは2本指で拡大縮小、拡大後はドラッグ移動できます。プレビューの「保存・共有」から、iPhoneでは「ファイルに保存」を選ぶと表示中のPDFを保存できます。根拠や請求設定の確認待ちは「未確定」と表示し、0円で確定した請求書と区別します。未確定の請求書を含む年間合計も未確定です。": "Multiple-site billing uses the signed formal checkout report. Intermediate visit reports alone do not finalize billing. Each worker/day/customer is billed for one man-day, including several sites or revisits for the same customer; different customers are billed separately. No additional billing-quantity submission or approval is required. Missing checkout signatures, visit evidence or registered rates leave the amount unconfirmed. Invoice seal approval is a separate confirmation. If no invoices are shown, Reload list reads saved invoices again.  Invoices use the supplied adopted Invoice template in A4 portrait format. Detail columns are Site / Work Description / Quantity / Rate / Amount, with the official name shown for each site with attendance. Invoice overtime and early-work rates are registered separately in Site Management from payroll rates. Allowances use the actual allowance names saved with attendance, shown in parentheses, and the matching site allowance rates. The base layout has 35 detail rows with outer print margins. Confirmation areas show stamps without a separate name label. The company seal is generated dynamically from the registered company name in the adopted seal design. Assign 1–3 approvers; one approver can complete approval. Approval History and Stamp Settings below the preview let you cancel and reapprove your own approval, specify a display date manually or return to the company policy. Company date options are closing date, actual approval date or no date; actual approval timestamps and history remain unchanged. The amount and confirmation-stamp boxes are adjacent independent boxes, with the amount directly below the client name. Payment Due Date and Amount at the bottom have equal widths. Preview, PDF, printing and sharing use the same report generator. If rendering fails, select Retry. When a PDF has been generated, the Print or Save and share buttons below can still open the same PDF even if the preview fails. Pinch to zoom and drag the zoomed preview. Pending approvers explicitly enter the surname shown on their own invoice seal. A new approval fixes the surname in a snapshot and renders a surname-only circle. Full names, actual timestamps, roles and previous seals remain unchanged. Unconfigured or unavailable seals retain their existing display; names are never guessed or split. Surname configuration requires server readiness. Choose Save / Share in the preview, then Save to Files on iPhone to save the displayed PDF. Unconfirmed sources are distinct from a genuine zero total; annual totals remain unconfirmed if any included invoice is unconfirmed.",
     "日報一覧の使い方": "Daily report list help",
     "日報一覧・保存": "Daily reports and exports",
@@ -72,12 +65,10 @@ const englishLanguagePack = LanguagePack(
     "作成 {hour}:{minute}": "Created {hour}:{minute} JST",
     "古い日報へ（左スライド）": "Older report (swipe left)",
     "次の日へ（右スライド）": "Next day (swipe right)",
-    "選んだ日報を取得できませんでした。一覧を再読み込みしてください。":
-        "Could not load the selected report. Reload the list.",
+    "選んだ日報を取得できませんでした。一覧を再読み込みしてください。": "Could not load the selected report. Reload the list.",
     "日報を取得できませんでした。": "Could not load the report.",
     "日報プレビュー": "Daily report preview",
-    "日報を編集できませんでした。ログイン状態を確認してください。":
-        "Could not edit the report. Check that you are signed in.",
+    "日報を編集できませんでした。ログイン状態を確認してください。": "Could not edit the report. Check that you are signed in.",
     "日報を印刷できませんでした": "Could not print the report",
     "訪問日報": "Site visit report",
     "ルート日報": "Route report",
@@ -121,8 +112,7 @@ const englishLanguagePack = LanguagePack(
     "長押しで編集・解除": "Hold to edit or remove",
     "追加した項目を取得できませんでした。": "Could not load your shortcut.",
     "追加した項目を保存できませんでした。": "Could not save your shortcut.",
-    "登録した項目を開けませんでした。編集して選び直してください。":
-        "Could not open this shortcut. Edit it to choose another destination.",
+    "登録した項目を開けませんでした。編集して選び直してください。": "Could not open this shortcut. Edit it to choose another destination.",
     "表示名を入力してください。": "Enter a display name.",
     "https://で始まるURLを入力してください。": "Enter a URL starting with https://.",
     "最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。4枠目の「追加」で、この端末から開ける対応アプリやWebサイトを1件登録できます。登録した項目を長押しすると編集・解除できます。設定はこの端末の自分のアカウント・会社別に保存します。端末の全アプリを一覧表示する機能ではありません。": "Nearest stations and bus stops open Google Maps. Train transfers open Yahoo! Transit. Location and searches are handled by the external service. Use Add in the fourth slot to register one supported app or website. Hold the saved shortcut to edit or remove it. Settings are saved on this device separately for your account and company. This does not list every app installed on the device.",
@@ -159,13 +149,10 @@ const englishLanguagePack = LanguagePack(
     "電車乗換": "Transfer",
     "バス停": "Bus stop",
     "交通案内のヘルプ": "Travel help",
-    "外部サービスを開けませんでした。もう一度お試しください。":
-        "Could not open the external service. Please try again.",
+    "外部サービスを開けませんでした。もう一度お試しください。": "Could not open the external service. Please try again.",
     "最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。": "Station and bus stop open Google Maps; transfer opens Yahoo! Transit. Location and searches are handled by the external service.",
-    "最寄駅・電車乗換・バス停の外部案内を開きます。":
-        "Open external station, transfer and bus stop services.",
-    "最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内へ移動します。":
-        "Station and bus stop open Google Maps; transfer opens Yahoo! Transit.",
+    "最寄駅・電車乗換・バス停の外部案内を開きます。": "Open external station, transfer and bus stop services.",
+    "最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内へ移動します。": "Station and bus stop open Google Maps; transfer opens Yahoo! Transit.",
     "交通カードはアイコンの右に文字を並べた薄い横一列の4枠で表示し、4枠目は将来用の空欄です。持ち手で並べ替え、メニューのスイッチでカードを表示・非表示にできます。利用できない項目は押せません。SKOでGPSを取得せず、現在地や検索は外部サービス側で操作します。LINEトークカードが追加されたら交通カードの下に配置します。": "The four-slot travel card starts below weather. The fourth slot is reserved. Hold its handle to reorder and use the Menu switch to show or hide it. Unavailable options cannot be opened. SKO does not read GPS. Location and searches are handled externally. A future LINE Talk card belongs below travel.",
     "要対応は準備ガイド直下に表示し、天気カードは本日の出勤の下を初期位置にして、持ち手の長押しで並べ替えられます。メニューのスイッチで表示を切り替えます。管理者は会社住所、社員は自宅住所の登録前は会社住所、登録後は出勤前に自宅住所・出勤中に登録済み現場住所を使用します。GPS現在地は使用しません。住所の未登録と取得失敗は別に表示します。現在天気、気温、降水確率、雨接近、今日・明日・明後日を矢印で切り替え、選択日0〜24時の3時間ごとの9区分を表示する構成です。実際の予報取得は認証・取得契約の準備中で、未取得を架空の天気に置き換えません。雨雲レーダーは対応地域だけに表示する別機能です。": "Use the Menu switch to show or hide the weather card. Hold its handle to reorder it; the initial position is between Today attendance and Needs attention. Registered company, home and active site addresses are used without GPS. Missing addresses and read failures are distinguished. Use the arrows to select today, tomorrow or the day after tomorrow and see nine three-hour slots from 00:00 to 24:00. Live weather authentication and retrieval are still being prepared. Missing forecasts are never replaced with invented values. Rain radar is a separate feature shown only in supported regions.",
     "会社周辺": "Company area",
@@ -199,14 +186,12 @@ const englishLanguagePack = LanguagePack(
     "「必要書類を追加」では全用途の登録済み一覧から選びます。他の用途の書類を選ぶと同じ項目を両方で共用します。新しい名称だけ「新しい書類を登録」から作成します。管理者・サブ管理者は「従業員データ編集」で検索・選択し、提出済みの状態と写真を確認・編集します。写真の削除は保存済み履歴を保持します。「必要書類設定」では項目の用途に「自社・取引会社で共用」を選べます。同じ項目・登録・写真を両方で参照し、本人の登録は1回です。取引会社へ自動送信はされません。既に同名の項目が二つある場合は、保存済み写真と期限を確認して使う項目を共用にし、不要な項目は一覧から外します。既存の提出済みデータ・写真・送信済み帳票は保持します。項目の追加・編集・削除ができます。項目の削除は一覧から外す操作で、提出済みデータと写真は保持します。本人は自分の書類を登録します。保存済み写真は個別にプレビューできます。写真を選択・確定しただけでは未保存です。登録画面で保存してください。": "Choose from existing documents across all purposes when adding a required document. Choosing a document used for the other purpose reuses its original ID for both purposes, including saved photos and expiry dates. Register a new document only for a new name. Administrators and sub-administrators can review and edit employee submissions and photos. Shared documents require one employee registration; they are not automatically sent to clients. Existing separate entries with the same name must be checked before sharing and removing an unnecessary entry from the list. Submitted data, photos and previously sent documents are retained. Removing a requirement hides it from the list. Employees register their own documents and can preview saved photos. Selecting photos alone does not save them; save from the registration screen.",
     "給料一覧の最上部の「個別給与設定」から開きます。社員を選び、給与形態・単価・支給または控除の順に設定します。": "Open Individual Payroll Settings at the top of the payroll list. Select an employee, pay type, wage, then earnings or deductions.",
     "「単位別の支給・控除」から、支給／控除それぞれの時間・日にち・月の条件を登録できます。時間数は対象月に明示入力するか、登録済み残業・早出・夜間時間を選びます。日にち単位は同じ日の複数現場を1日と数える実出勤日数で、人工数ではありません。月単位は月1回です。選んだ月から条件が有効になり、従来の直接金額は保持します。時間数の未入力は計算保留で、確定済み給与は変更しません。社員を選び、日給・時給・月給の青いタブで給与形態を選択して単価を入力します。残業・早出・夜勤・休日の単価と計算式は「詳細設定」を開いて確認します。支給・控除はタブで切り替えます。下部の「追加」で現在のタブに項目を追加し、入力欄へ移動します。「登録」は両方のタブの入力内容を確認して保存します。タブを切り替えても入力中の内容は保持します。最終更新日はヘッダー右側で確認できます。控除の中では税・社会保険の月額設定、住民税、その他の控除を分けて確認できます。残業=基準時給×1.25、早出=基準時給×1.25、夜勤=日額換算×1.5、休日出勤=日額換算×1.35、休日夜勤=日額換算×1.6を初期式とし、倍率・1日時間を変更保存できます。日給の場合は日額÷1日時間から時給換算、時給の場合は同じ倍率体系を直接適用します。単価欄へ1円以上を直接入力すると自動値より優先し、0円は自動計算です。追加支給/控除は名称変更・追加・削除でき、0円は給与明細に非表示です。給料日・締め日・確認者は会社データの共通設定を参照します。月給では月固定給と計算用の日額基準を分けて登録します。登録済みの手動単価を確認し、保存後に再計算された給与明細を確認してください。既存の家族手当月額と追加支給の家族手当は別項目として合算されます。有給1日分は日給では登録日給、時給では初期値が時給×8時間で手動変更可能です。月給では設定した1日分の給与額を内訳に使い、基本月給に加算せず有給取得で減額しません。サーバー準備待ちと表示された場合は自動計算を利用できません。承認済みで勤務実績と重ならない有給だけを計算し、確定済み給与は変更しません。": "Open Unit Earnings and Deductions to register hourly, daily and monthly conditions for both sections. Enter explicit hours for the selected month or choose recorded overtime, early or night hours. Daily units count actual attendance dates, with multiple sites on one date counted once; they are not man-days. Monthly units apply once per month. Conditions start in the selected month and existing direct amounts are retained. Missing hours block calculation; finalized payroll remains unchanged. Select an employee, choose the blue daily, hourly or monthly pay tab, and enter the wage. Open Advanced Settings to review overtime, early, night and holiday wages and formulas. Switch between earnings and deductions. Add in the fixed footer adds an item to the selected tab and moves to its input. Register confirms and saves both tabs. Switching tabs keeps unsaved input. The last update appears at the right of the header. Earnings and deductions appear in separate panels. Deductions are divided into monthly tax and social insurance amounts, resident tax, and other deductions. Initial formulas are base hourly rate × 1.25 for overtime and early work, daily equivalent × 1.5 for night work, × 1.35 for holiday work and × 1.6 for holiday night work. Save changes to multipliers and hours per day. Daily pay is divided by hours per day to obtain an hourly rate; hourly pay uses the same multipliers directly. Entering a rate of at least 1 yen overrides the automatic value; zero means automatic calculation. Additional earnings and deductions can be renamed, added or removed; zero amounts are hidden on payslips. Payday, closing date and reviewers come from company-wide settings in Company Data. For monthly pay, register the fixed monthly salary and the daily calculation base separately. Check saved manual rates and the recalculated payslip after saving. The existing monthly family allowance and an additional earning named Family Allowance are separate items and are added together. For paid leave, daily pay uses the registered daily wage; hourly pay defaults to eight hours and may be edited. Monthly pay shows the configured daily allocation without adding it to or reducing the fixed monthly salary. Automatic leave wages are unavailable while server preparation is pending. Only approved leave that does not overlap worked attendance is calculated. Finalized wages remain unchanged.",
-    '以前の出勤は履歴化されています': 'This clock-in is archived',
-    'この出勤は削除・修正後の履歴に保存されています。同じ記録では再出勤できません。記録と写真を保持して、新しい出勤を始めます。': 'This clock-in was removed or corrected and is preserved in history. It cannot be reused. Keep the record and photo, then begin a new clock-in.',
-    '新しい出勤を始める': 'Begin a new clock-in',
-    '作業する現場を選び、現場到着のボタンを押してください':
-        'Select your work site and press Site arrival.',
+  '以前の出勤は履歴化されています': 'This clock-in is archived',
+  'この出勤は削除・修正後の履歴に保存されています。同じ記録では再出勤できません。記録と写真を保持して、新しい出勤を始めます。': 'This clock-in was removed or corrected and is preserved in history. It cannot be reused. Keep the record and photo, then begin a new clock-in.',
+  '新しい出勤を始める': 'Begin a new clock-in',
+    '作業する現場を選び、現場到着のボタンを押してください': 'Select your work site and press Site arrival.',
     '作業終了して次の現場に向かう時に現場移動ボタン押してください': 'When work is finished and you leave for the next site, press Site move.',
-    '次の現場に到着したら現場到着ボタンを押してください':
-        'When you reach the next site, press Site arrival.',
+    '次の現場に到着したら現場到着ボタンを押してください': 'When you reach the next site, press Site arrival.',
     '最後の現場に到着したらホームから退勤してください。退勤後に日報とサインを登録します。': 'After arriving at the final site, clock out from Home when work is finished, then complete the report and signatures.',
     '受信した社員・書類': 'Received employee records and documents',
     '社員資格書類': 'Employee records and documents',
@@ -214,10 +199,8 @@ const englishLanguagePack = LanguagePack(
     '必要書類設定': 'Required document settings',
     '従業員を検索して選択してください': 'Search for and select an employee',
     '従業員を追加': 'Add employee',
-    '従業員を検索して、提出済みの書類を確認・編集':
-        'Search for an employee to review and edit submitted documents',
-    '社内・取引先の書類項目を追加・編集・削除':
-        'Add, edit or remove internal and customer document requirements',
+    '従業員を検索して、提出済みの書類を確認・編集': 'Search for an employee to review and edit submitted documents',
+    '社内・取引先の書類項目を追加・編集・削除': 'Add, edit or remove internal and customer document requirements',
     '必要書類を削除': 'Remove document requirement',
     '必要書類を編集': 'Edit document requirement',
     '一覧から外します。提出済みデータと写真は保持します。': 'Remove from the list. Submitted documents and photos will be preserved.',
@@ -231,8 +214,7 @@ const englishLanguagePack = LanguagePack(
     "時刻不明": "Time unknown",
     "現場到着・現場移動": "Site arrival and departure",
     "出勤後に到着した現場を記録し、現場を離れるときは移動の時刻を記録してください。GPS＋写真方式では到着時に撮影します。現場移動の保存後、この訪問の日報を作成するか選択します。途中で戻った場合は「現場日報を再開」から同じ訪問を仕上げてください。": "Record your site arrival after checking in, then record the departure time when leaving. GPS and photo mode takes a photo on arrival. After saving your departure, choose whether to create a report for this visit. If you leave before finishing, use Resume Site Report to complete the same visit.",
-    "手動出勤では到着・移動の時刻のみ記録します。":
-        "Manual check-in records only arrival and departure times.",
+    "手動出勤では到着・移動の時刻のみ記録します。": "Manual check-in records only arrival and departure times.",
     "勤務日": "Work date",
     "この勤務は管理変更されています。変更前の記録は保持されています。新しい開始・終了は登録できません。": "This shift has been changed by an administrator. Earlier records are preserved. New starts or departures cannot be recorded.",
     "この訪問の日報が未完了です。作成または作成しないを確定してから次の現場へ進んでください。": "The report decision for this visit is unfinished. Complete the report or confirm that you will not create one before continuing to the next site.",
@@ -249,8 +231,7 @@ const englishLanguagePack = LanguagePack(
     "請求内容を確認・作成し、拡大縮小できるPDFプレビュー、印刷、保存・共有、承認を行います。": "Review or create invoices, zoom PDF previews, print, share and approve them.",
     "請求書は預け済みの「御請求書」テンプレートを基準にA4縦で表示します。明細は「作業所名 / 工事内容 / 数量 / 単価 / 請求金額」で、出勤実績がある現場ごとに正式名称を表示します。請求書用の残業単価・早出単価は管理現場で個別に登録し、給与計算用単価とは分けて管理します。手当は出勤データに登録された実際の手当名を「（手当名）」として表示し、管理現場の同名手当単価を使います。明細は35行を基本とし、外側に印刷余白を確保します。確認印は氏名を表示せず印影のみ表示し、会社角印は登録会社名から採用済み角印案Aで自動生成します。承認者は1〜3名を設定でき、1名でも承認を完了できます。プレビュー下部の「承認履歴・印影設定」で自分の承認を取り消して再承認し、印影の日付を手動指定または会社設定に戻せます。会社設定の日付は締め日・実際の承認日・日付なしから選び、実際の承認日時と履歴は変更しません。請求書の確認・承認印の名字は、承認待ちの本人が「承認印に表示する名字」で明示入力します。新しい承認時に名字を固定し、名字のみの円印を表示します。氏名・承認日時・役割と過去の承認印は変更しません。未設定・未導入の印影は従来表示を保持し、姓名を推測分割しません。設定が利用できるまで待つ必要があります。請求金額枠と確認印枠は隣り合う独立した枠とし、請求金額枠は請求先名の直下へ配置します。下部の「お支払約定日」と「金額」は同じ横幅で表示します。プレビュー・PDF・印刷・共有は同じ帳票生成を使います。プレビューは2本指で拡大縮小、拡大後はドラッグ移動できます。プレビューの「保存・共有」から、iPhoneでは「ファイルに保存」を選ぶと表示中のPDFを保存できます。": "Invoices use the supplied adopted Invoice template in A4 portrait format. Detail columns are Site / Work Description / Quantity / Rate / Amount, with the official name shown for each site with attendance. Invoice overtime and early-work rates are registered separately in Site Management from payroll rates. Allowances use the actual allowance names saved with attendance, shown in parentheses, and the matching site allowance rates. The base layout has 35 detail rows with outer print margins. Confirmation areas show stamps without a separate name label. The company seal is generated dynamically from the registered company name in the adopted seal design. Assign 1–3 approvers; one approver can complete approval. Approval History and Stamp Settings below the preview let you cancel and reapprove your own approval, specify a display date manually or return to the company policy. Company date options are closing date, actual approval date or no date; actual approval timestamps and history remain unchanged. The amount and confirmation-stamp boxes are adjacent independent boxes, with the amount directly below the client name. Payment Due Date and Amount at the bottom have equal widths. Preview, PDF, printing and sharing use the same report generator. Pinch to zoom and drag the zoomed preview. Pending approvers explicitly enter the surname shown on their own invoice seal. A new approval fixes the surname in a snapshot and renders a surname-only circle. Full names, actual timestamps, roles and previous seals remain unchanged. Unconfigured or unavailable seals retain their existing display; names are never guessed or split. Surname configuration requires server readiness. Choose Save / Share in the preview, then Save to Files on iPhone to save the displayed PDF.",
     "保存・共有": "Save / Share",
-    "iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。":
-        "On iPhone, choose Save to Files in the share menu to save the PDF.",
+    "iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。": "On iPhone, choose Save to Files in the share menu to save the PDF.",
     "勤怠・現場記録": "Attendance and site records",
     "勤怠・現場記録一覧": "Attendance and site record list",
     "{count}件 / この日報に紐付いています": "{count} records linked to this daily report",
@@ -264,8 +245,7 @@ const englishLanguagePack = LanguagePack(
     "その他の控除": "Other deductions",
     "支給と控除は別枠で表示します。控除の中では税・社会保険の月額設定、住民税、その他の控除を分けて確認できます。残業=基準時給×1.25、早出=基準時給×1.25、夜勤=日額換算×1.5、休日出勤=日額換算×1.35、休日夜勤=日額換算×1.6を初期式とし、倍率・1日時間を変更保存できます。日給の場合は日額÷1日時間から時給換算、時給の場合は同じ倍率体系を直接適用します。単価欄へ1円以上を直接入力すると自動値より優先し、0円は自動計算です。追加支給/控除は名称変更・追加・削除でき、0円は給与明細に非表示です。給料日・締め日・確認者は会社データの共通設定を参照します。月給では月固定給と計算用の日額基準を分けて登録します。登録済みの手動単価を確認し、保存後に再計算された給与明細を確認してください。既存の家族手当月額と追加支給の家族手当は別項目として合算されます。有給1日分は日給では登録日給、時給では初期値が時給×8時間で手動変更可能です。月給では設定した1日分の給与額を内訳に使い、基本月給に加算せず有給取得で減額しません。サーバー準備待ちと表示された場合は自動計算を利用できません。承認済みで勤務実績と重ならない有給だけを計算し、確定済み給与は変更しません。": "Earnings and deductions appear in separate panels. Deductions are divided into monthly tax and social insurance amounts, resident tax, and other deductions. Initial formulas are base hourly rate × 1.25 for overtime and early work, daily equivalent × 1.5 for night work, × 1.35 for holiday work and × 1.6 for holiday night work. Save changes to multipliers and hours per day. Daily pay is divided by hours per day to obtain an hourly rate; hourly pay uses the same multipliers directly. Entering a rate of at least 1 yen overrides the automatic value; zero means automatic calculation. Additional earnings and deductions can be renamed, added or removed; zero amounts are hidden on payslips. Payday, closing date and reviewers come from company-wide settings in Company Data. For monthly pay, register the fixed monthly salary and the daily calculation base separately. Check saved manual rates and the recalculated payslip after saving. The existing monthly family allowance and an additional earning named Family Allowance are separate items and are added together. For paid leave, daily pay uses the registered daily wage; hourly pay defaults to eight hours and may be edited. Monthly pay shows the configured daily allocation without adding it to or reducing the fixed monthly salary. Automatic leave wages are unavailable while server preparation is pending. Only approved leave that does not overlap worked attendance is calculated. Finalized wages remain unchanged.",
     '会社角印の書体を読み込めませんでした。': 'Could not load the seal typeface. Existing visibility settings remain available.',
-    '会社の選択が変わりました。再読み込みしてください。':
-        'The company selection changed. Reload settings.',
+    '会社の選択が変わりました。再読み込みしてください。': 'The company selection changed. Reload settings.',
     '隷書の説明を読み込めませんでした。': 'Could not load the Reisho explanation.',
     '書体の解説（作者原文）': 'Typeface explanation (original author document)',
 
@@ -280,8 +260,7 @@ const englishLanguagePack = LanguagePack(
     "既存の角印": "Existing seal",
     "隷書（無償社内試験）": "Reisho (free internal trial)",
     "篆書体・印相体・古印体・古印体別配置は未完成です。": "Seal script, Inso, Koin and the alternate Koin layout remain unfinished.",
-    "書体の保存準備中です。PDFプレビューのみ利用できます。":
-        "Typeface saving is not available yet. PDF preview is available.",
+    "書体の保存準備中です。PDFプレビューのみ利用できます。": "Typeface saving is not available yet. PDF preview is available.",
     "作者の利用条件を確認してください。有料配布への対応は未確定です。": "Review the author’s usage terms. Paid distribution has not been confirmed.",
     "未対応文字": "Unsupported characters",
     "登録会社名が長く、小さい帳票の印影を読み取れません。隷書はまだ保存できません。": "The registered name is too long for the small report seal. Reisho cannot be saved yet.",
@@ -298,8 +277,7 @@ const englishLanguagePack = LanguagePack(
     "有給1日分：{amount}円": "Pay per paid-leave day: ¥{amount}",
     "有給1日分（空欄は時給×8時間）": "Pay per Paid-Leave Day (blank: hourly wage × 8 hours)",
     "有給額の自動計算はサーバー準備待ちです。現在の給与条件の警告を確認してください。": "Automatic paid-leave wages are awaiting server preparation. Review the current payroll condition warnings.",
-    "有給1日分の金額は0以上の整数で入力してください":
-        "Enter a nonnegative whole-yen amount for one paid-leave day.",
+    "有給1日分の金額は0以上の整数で入力してください": "Enter a nonnegative whole-yen amount for one paid-leave day.",
     "有給支給額・通常勤務の夜間割増が未登録なら会社規定を確認します。有給1日分は日給では登録日給、時給では初期値が時給×8時間で手動変更可能です。月給では設定した1日分の給与額を内訳に使い、基本月給に加算せず有給取得で減額しません。サーバー準備待ちと表示された場合は自動計算を利用できません。承認済みで勤務実績と重ならない有給だけを計算し、確定済み給与は変更しません。": "Check company policies when paid-leave wages or regular-work night premiums are missing. For paid leave, daily pay uses the registered daily wage; hourly pay defaults to eight hours and may be edited. Monthly pay shows the configured daily allocation without adding it to or reducing the fixed monthly salary. Automatic leave wages are unavailable while server preparation is pending. Only approved leave that does not overlap worked attendance is calculated. Finalized wages remain unchanged.",
     "旧単価は登録済み設定の折りたたみ欄に保持します。有給支給額・通常勤務の夜間割増が未登録なら設定を確認し、計算完了と判断しないでください。有給1日分は日給では登録日給、時給では初期値が時給×8時間で手動変更可能です。月給では設定した1日分の給与額を内訳に使い、基本月給に加算せず有給取得で減額しません。サーバー準備待ちと表示された場合は自動計算を利用できません。承認済みで勤務実績と重ならない有給だけを計算し、確定済み給与は変更しません。": "Legacy rates remain in a collapsed saved-settings section. If paid-leave wages or regular-work night premiums are missing, review settings before treating the calculation as complete. For paid leave, daily pay uses the registered daily wage; hourly pay defaults to eight hours and may be edited. Monthly pay shows the configured daily allocation without adding it to or reducing the fixed monthly salary. Automatic leave wages are unavailable while server preparation is pending. Only approved leave that does not overlap worked attendance is calculated. Finalized wages remain unchanged.",
     "残業=基準時給×1.25、早出=基準時給×1.25、夜勤=日額換算×1.5、休日出勤=日額換算×1.35、休日夜勤=日額換算×1.6を初期式とし、倍率・1日時間を変更保存できます。日給の場合は日額÷1日時間から時給換算、時給の場合は同じ倍率体系を直接適用します。単価欄へ1円以上を直接入力すると自動値より優先し、0円は自動計算です。追加支給/控除は名称変更・追加・削除でき、0円は給与明細に非表示です。給料日・締め日・確認者は会社データの共通設定を参照します。月給では月固定給と計算用の日額基準を分けて登録します。登録済みの手動単価を確認し、保存後に再計算された給与明細を確認してください。既存の家族手当月額と追加支給の家族手当は別項目として合算されます。有給1日分は日給では登録日給、時給では初期値が時給×8時間で手動変更可能です。月給では設定した1日分の給与額を内訳に使い、基本月給に加算せず有給取得で減額しません。サーバー準備待ちと表示された場合は自動計算を利用できません。承認済みで勤務実績と重ならない有給だけを計算し、確定済み給与は変更しません。": "Initial formulas are base hourly rate × 1.25 for overtime and early work, daily equivalent × 1.5 for night work, × 1.35 for holiday work and × 1.6 for holiday night work. Save changes to multipliers and hours per day. Daily pay is divided by hours per day to obtain an hourly rate; hourly pay uses the same multipliers directly. Entering a rate of at least 1 yen overrides the automatic value; zero means automatic calculation. Additional earnings and deductions can be renamed, added or removed; zero amounts are hidden on payslips. Payday, closing date and reviewers come from company-wide settings in Company Data. For monthly pay, register the fixed monthly salary and the daily calculation base separately. Check saved manual rates and the recalculated payslip after saving. The existing monthly family allowance and an additional earning named Family Allowance are separate items and are added together. For paid leave, daily pay uses the registered daily wage; hourly pay defaults to eight hours and may be edited. Monthly pay shows the configured daily allocation without adding it to or reducing the fixed monthly salary. Automatic leave wages are unavailable while server preparation is pending. Only approved leave that does not overlap worked attendance is calculated. Finalized wages remain unchanged.",
@@ -330,27 +308,23 @@ const englishLanguagePack = LanguagePack(
     "取得失敗": "Capture Failed",
     "撮り直す": "Retake",
     "運転手のメーター登録待ち": "Waiting for the driver’s meter reading",
-    "車両距離は運転手の登録記録から表示します":
-        "Vehicle distances come from the driver’s saved reading.",
+    "車両距離は運転手の登録記録から表示します": "Vehicle distances come from the driver’s saved reading.",
     "前回距離": "Previous Reading",
     "今回距離": "Current Reading",
     "当日の走行距離": "Trip Distance",
     "運転手のメーター登録が未完了です。下書き保存後、登録を確認して日報を再読み込みしてください": "The driver’s meter reading is incomplete. Save a draft, confirm the reading, then reload the report.",
     "車両の勤務記録を再確認してください": "Recheck the vehicle attendance record.",
-    "日報の車両距離の連携を再確認してください":
-        "Recheck the vehicle distance attachment to this report.",
+    "日報の車両距離の連携を再確認してください": "Recheck the vehicle distance attachment to this report.",
     "車両の勤務記録を確認できません": "Cannot confirm the vehicle attendance record.",
     "車両の勤務記録が不明です": "The vehicle attendance record is unknown.",
     "車両の対象勤務・メーター記録が一致しません": "The vehicle shift and meter record do not match.",
     "車両利用記録のないメーター証跡です": "The meter evidence has no vehicle usage record.",
-    "車両の運転手が日報メンバーと一致しません":
-        "The vehicle driver does not match a report member.",
+    "車両の運転手が日報メンバーと一致しません": "The vehicle driver does not match a report member.",
     "未退勤のメンバーがいます。下書き保存後、退勤を確認して日報を再読み込みしてください": "Some members have not clocked out. Save a draft, confirm their clock-out, then reload the report.",
     "退勤未登録・確定前に確認": "Clock-out missing — check before finalizing",
     "退勤済み・元勤務と連携": "Clocked out — linked to the original shift",
     "現場メンバーの勤務を再確認してください": "Recheck the site members’ shifts.",
-    "対象勤務が変わりました。日報を再読み込みしてください":
-        "The target shifts changed. Reload the daily report.",
+    "対象勤務が変わりました。日報を再読み込みしてください": "The target shifts changed. Reload the daily report.",
     "日報は保存済みですが勤務証跡の連携が未確認です。同じ日報を再保存してください": "The report is saved, but attendance evidence linking is unconfirmed. Save the same report again.",
     "現場メンバー退勤が有効な会社では、本人の退勤を登録した後、同じ現場・勤務日の出勤メンバーを確認できます。退勤する人を選び、代理退勤を登録して日報へ進みます。早退・退勤済みの時刻は変更しません。本人のGPS・写真を他メンバーへコピーしません。通信結果が不明な場合は対象を変えず同じ内容で再確認してください。機能が無効な会社では従来の本人退勤・日報を使用します。メンバー通知が有効な会社では、全員の元出勤・退勤が連携された日報の「登録」後に、他メンバーへ確認案内を通知します。署名前の内部下書き保存では通知しません。通知結果が未確認でも日報の保存は取り消されません。「登録済み日報の通知のみ再確認」で同じ日報の通知だけを再確認できます。再確認情報は利用者・会社ごとに端末へ保存され、アプリ再起動後も残ります。日付や現場を変えても元の日報だけを照会し、通知のみ再確認します。照会失敗・機能未提供・通知0件の場合は未確認として保持します。通知を読むことと日報の確認・承認は別です。途中現場のGPS＋写真が有効な会社では、複数現場ルートの本人出勤に紐づく記録を日報へ連携します。撮影住所は実GPS住所だけを使用し、未取得は未取得のまま表示します。写真観測時刻と実撮影時刻は別です。": "When site member clock-out is enabled for your company, first save your own clock-out, then review members who clocked in at the same site and work date. Select members to clock out by proxy and continue to the daily report. Existing early-leave and clock-out times remain unchanged. Your GPS and photos are never copied to other members. If a submission result is unknown, retry the same selection. Companies with this feature disabled keep the existing personal clock-out and report flow. When member notifications are enabled, explicit registration of a report with every original clock-in and clock-out attached notifies the other members. Internal draft saves before signatures do not notify. An unconfirmed notification does not undo the saved report. Retry saved report notification only checks that same report without saving it again. Retry identifiers are saved on this device per user and company and survive app restarts. Changing the date or site does not change the original report. Lookup failures, unavailable publishing and zero notifications retain the unconfirmed record. Reading a notification and confirming or approving the report are separate. Route stop captures are available only for enabled actual personal multi-site shifts. Choose company departure or direct travel and the registered stop. Actual GPS addresses are used; missing evidence remains missing. Observation and capture times are separate. Retry pending records with the same fixed identity.",
     "現場メンバーの退勤": "Site Member Clock-out",
@@ -360,10 +334,8 @@ const englishLanguagePack = LanguagePack(
     "あなたの退勤は登録済みです。他メンバーの退勤結果が未確認です。重複を避けるため、同じ内容で再確認することをおすすめします。": "Your clock-out is saved. Other members’ results are unconfirmed. Retry the same selection to avoid duplicate requests.",
     "あなたの退勤は登録済みです。未選択・未処理のメンバーの退勤は登録されません。": "Your clock-out is saved. Unselected or unprocessed members will not be clocked out.",
     "日報へ進む": "Continue to Daily Report",
-    "他メンバーの退勤を確認できません: {error}":
-        "Could not confirm other members’ clock-out: {error}",
-    "送信結果が未確認のため、対象を変えず同じ内容で再確認してください。":
-        "The submission result is unconfirmed. Retry the same selection.",
+    "他メンバーの退勤を確認できません: {error}": "Could not confirm other members’ clock-out: {error}",
+    "送信結果が未確認のため、対象を変えず同じ内容で再確認してください。": "The submission result is unconfirmed. Retry the same selection.",
     "退勤済み・時刻を保持": "Clocked out — original time retained",
     "同じ内容で再確認": "Retry Same Selection",
     "選択したメンバーを代理退勤": "Clock Out Selected Members",
@@ -371,14 +343,11 @@ const englishLanguagePack = LanguagePack(
     "勤務日 {date}": "Work Date {date}",
     "現場メンバーを確認できません": "Cannot confirm site members.",
     "現場メンバーの記録を確認できません": "Cannot confirm member attendance records.",
-    "勤務日または対象勤務が一致しません。再確認してください":
-        "The work date or shift does not match. Please check again.",
+    "勤務日または対象勤務が一致しません。再確認してください": "The work date or shift does not match. Please check again.",
     "対象の勤務を選択してください": "Select the target shifts.",
-    "退勤結果を確認できません。同じ内容で再確認してください":
-        "Cannot confirm clock-out results. Retry the same selection.",
+    "退勤結果を確認できません。同じ内容で再確認してください": "Cannot confirm clock-out results. Retry the same selection.",
     "退勤結果を確認できません": "Cannot confirm clock-out results.",
-    "対象勤務と退勤結果が一致しません":
-        "The clock-out results do not match the selected shifts.",
+    "対象勤務と退勤結果が一致しません": "The clock-out results do not match the selected shifts.",
     '会社情報': 'Company information',
     '社員情報': 'Employee information',
     "準備率は保存済みの登録内容から計算します。通常の登録画面で保存しても更新されます。必須項目と推奨項目は別に表示し、対象外は計算に含めません。取得できない項目は未確定と表示します。初期準備の完了後はホームの準備カードを非表示にし、案内はメニューから開き直せます。案内を初めからにしても登録データは消えません。": "Progress is calculated from saved registrations and also updates when you save from regular pages. Required and recommended items are separate; inapplicable items are excluded. Unavailable items remain unknown. The home setup card disappears after initial completion; reopen the guide from the menu. Restarting the guide does not delete saved data.",
@@ -405,14 +374,12 @@ const englishLanguagePack = LanguagePack(
     "確認・承認を行う": "Confirm or approve",
     "一覧で状態を再確認": "Recheck the status in the list",
     "申請状態を確認してください": "Check the request status",
-    "対象の現場共有は完了済み、または閲覧できません。":
-        "The site share has already been resolved or cannot be viewed.",
+    "対象の現場共有は完了済み、または閲覧できません。": "The site share has already been resolved or cannot be viewed.",
     "日報修正の通知は対象の申請を直接表示します。申請の日付・現場・承認待ち／承認済み／却下済みを確認してください。承認担当者は会社で1〜3名を設定し、日報修正は設定された担当者のうち1名の承認で編集可能になります。通知の既読だけでは承認完了になりません。有給申請と現場共有も通知の対象だけを表示します。有給の承認済み・却下済みは操作できません。現場共有の対象が一覧にない場合は、完了済みまたは閲覧できない旨を表示し、別の現場へ案内しません。": "Daily report edit notifications open the specific request. Check its date, site and pending, approved or rejected status. The company assigns one to three approvers; one assigned approver’s approval allows editing. Reading a notification does not complete approval. Paid-leave and site-share notifications also display only their target. Resolved paid-leave requests cannot be approved or rejected again. If the site share is no longer listed, the page reports that it has been resolved or is inaccessible without showing a different site.",
     "確定済みの日報は直接変更できません。会社で設定した承認担当者（1〜3名）へ承認依頼を送ります。": "Finalized daily reports cannot be changed directly. An approval request is sent to the company’s assigned approvers (one to three people).",
     "承認依頼を送りました。設定された承認担当者の承認後、日報を開いて編集できます。": "Approval requested. Once an assigned approver approves it, open the daily report to edit.",
     "設定された承認担当者の承認が完了し、編集可能になりました": "An assigned approver has approved the request. The report can now be edited.",
-    "承認しました。必要な承認が完了するまでお待ちください":
-        "Approved. Please wait for the required approval to complete.",
+    "承認しました。必要な承認が完了するまでお待ちください": "Approved. Please wait for the required approval to complete.",
     "対象の申請を表示できません。閲覧権限を確認してください。": "The requested application cannot be displayed. Check your viewing permissions.",
     "承認済み": "Approved",
     "却下済み": "Rejected",
@@ -428,27 +395,20 @@ const englishLanguagePack = LanguagePack(
     "準備項目": "Setup item",
     "準備ガイドを開く": "Open setup guide",
     "準備状況：未確定": "Setup status: unknown",
-    "準備状況を確認できません。再読み込みしてください。":
-        "Unable to check setup progress. Please reload.",
-    "この項目を開けません。利用権限を確認してください。":
-        "Unable to open this item. Check your access permissions.",
-    "案内を初めから表示します。登録済みデータはそのままです。":
-        "The guide will restart. Your saved data is retained.",
+    "準備状況を確認できません。再読み込みしてください。": "Unable to check setup progress. Please reload.",
+    "この項目を開けません。利用権限を確認してください。": "Unable to open this item. Check your access permissions.",
+    "案内を初めから表示します。登録済みデータはそのままです。": "The guide will restart. Your saved data is retained.",
     "登録済みの内容で進行率が更新されます。通常の登録画面から保存しても反映されます。": "Progress is based on saved data. Saving from the regular registration pages also updates it.",
-    "初期準備は完了しました。案内はいつでも開き直せます。":
-        "Initial setup is complete. You can reopen the guide at any time.",
+    "初期準備は完了しました。案内はいつでも開き直せます。": "Initial setup is complete. You can reopen the guide at any time.",
     "利用方法を見る": "View usage guide",
     "案内を初めから": "Restart guide",
     "登録画面を開き直す": "Reopen registration page",
     "登録画面を開く": "Open registration page",
-    "準備 {ready}% / 残り {remaining}%（あと{count}項目）":
-        "Ready {ready}% / Remaining {remaining}% ({count} items left)",
+    "準備 {ready}% / 残り {remaining}%（あと{count}項目）": "Ready {ready}% / Remaining {remaining}% ({count} items left)",
     "対象の準備項目はありません": "No applicable setup items",
     "登録済み {completed}/{total} 項目": "Saved: {completed}/{total} items",
-    "未取得の項目を確認するまで進行率は確定しません。":
-        "Progress remains unknown until unavailable items have been checked.",
-    "対象外 {count} 項目は進行率に含めません。":
-        "{count} inapplicable items are excluded from progress.",
+    "未取得の項目を確認するまで進行率は確定しません。": "Progress remains unknown until unavailable items have been checked.",
+    "対象外 {count} 項目は進行率に含めません。": "{count} inapplicable items are excluded from progress.",
     "本人情報": "Personal information",
     "社員情報の追加項目": "Additional employee information",
     "会社情報の追加項目": "Additional company information",
@@ -458,8 +418,7 @@ const englishLanguagePack = LanguagePack(
     "緊急連絡先住所": "Emergency contact address",
     "必須書類": "Required documents",
     "対象外": "Not applicable",
-    "一部のお知らせを取得できません。再読み込みしてください。":
-        "Some notifications could not be loaded. Please reload.",
+    "一部のお知らせを取得できません。再読み込みしてください。": "Some notifications could not be loaded. Please reload.",
     "未対応の項目はありません": "No pending actions",
     "スムーズなSKOライフを！": "Enjoy a smooth SKO experience!",
     '同じPDFを印刷・共有します。登録した下請け会社は出勤なしでも支払証明書をプレビューできます。会社角印のON／OFFは会社データで設定し、3帳票へ共通反映します。確認印・承認印と履歴は保持します。': 'Print and share the same PDF. Registered subcontractors can preview a payment certificate without attendance. Configure company seal ON / OFF in Company Data for all three reports. Confirmation and approval stamps and history are retained.',
@@ -468,8 +427,7 @@ const englishLanguagePack = LanguagePack(
     '会社角印': 'Company Seal',
     '会社角印のON／OFF': 'Company Seal ON / OFF',
     '会社角印を表示': 'Show Company Seal',
-    '会社共通。請求書・給与明細・支払証明書に反映します。':
-        'Applies company-wide to invoices, payslips and payment certificates.',
+    '会社共通。請求書・給与明細・支払証明書に反映します。': 'Applies company-wide to invoices, payslips and payment certificates.',
     'OFFでも確認印・承認印と承認履歴は残ります。': 'Confirmation and approval stamps and approval history are retained when OFF.',
     '会社角印の設定を保存しました': 'Company seal settings saved.',
     '会社角印の設定を読み込めませんでした。': 'Could not load company seal settings.',
@@ -484,11 +442,9 @@ const englishLanguagePack = LanguagePack(
     "新しいお知らせはありません": "No new notifications.",
     "通知を開けませんでした: {error}": "Could not open notification: {error}",
     "現場データの承認待ち": "Site Data Approvals",
-    "現場情報の変更・終了申請を確認して承認":
-        "Review and approve site information changes or closure requests",
+    "現場情報の変更・終了申請を確認して承認": "Review and approve site information changes or closure requests",
     "社員個人情報の変更承認": "Employee Information Approvals",
-    "社員個人情報の変更申請を確認して承認・拒否":
-        "Review employee information changes and approve or reject them",
+    "社員個人情報の変更申請を確認して承認・拒否": "Review employee information changes and approve or reject them",
 
     '利用機能のON／OFF': 'Feature ON / OFF',
     '会社で使う機能（ON／OFF）': 'Company Features (ON / OFF)',
@@ -516,37 +472,30 @@ const englishLanguagePack = LanguagePack(
     '旧単価を使用しています：{items}': 'Using legacy rates: {items}',
     '編集内容を保存した場合は、報告者サインを再登録してから確定してください': 'After saving changes, add the reporter signature again before finalizing.',
     'メーターを読み取れませんでした: {error}': 'Could not read the odometer: {error}',
-    '報告者サインを保存できませんでした: {error}':
-        'Could not save the reporter signature: {error}',
+    '報告者サインを保存できませんでした: {error}': 'Could not save the reporter signature: {error}',
     '確定できませんでした: {error}': 'Could not finalize: {error}',
     '承認依頼を送れませんでした: {error}': 'Could not send the approval request: {error}',
-    '{names} の退勤時走行距離を入力してください':
-        'Enter the clock-out odometer reading for {names}.',
+    '{names} の退勤時走行距離を入力してください': 'Enter the clock-out odometer reading for {names}.',
     '責任者サイン：{name}': 'Supervisor signature: {name}',
     'ルート：{name}': 'Route: {name}',
     '車両：{name}': 'Vehicle: {name}',
     '朝の出勤メンバー  {count}名': 'Morning attendance: {count} people',
     '{count}枚 / この日報に紐付いています': '{count} photos linked to this daily report',
-    '位置を地図で確認（精度 約{accuracy}m）':
-        'View location on map (accuracy approximately {accuracy} m)',
-    "Supabase接続またはログイン状態を確認してください。":
-        "Check your Supabase connection and login status.",
+    '位置を地図で確認（精度 約{accuracy}m）': 'View location on map (accuracy approximately {accuracy} m)',
+    "Supabase接続またはログイン状態を確認してください。": "Check your Supabase connection and login status.",
     "{day}日": "Day {day}",
     "{field}は0以上の数字で入力してください": "Enter a nonnegative number for {field}.",
     "{month}{day}払い・末締め": "Paid {month}, {day}; month-end closing",
     "{section}{number} 名称": "{section} {number}: Name",
     "{section}{number} 金額": "{section} {number}: Amount",
-    "{section}項目{number}の名称を入力してください":
-        "Enter a name for {section} item {number}.",
+    "{section}項目{number}の名称を入力してください": "Enter a name for {section} item {number}.",
     "「{name}」の金額は0以上の数字で入力してください": "Enter a nonnegative amount for {name}.",
     "「{name}」は重複しています": "Duplicate name: {name}",
     "この{section}を削除": "Remove this {section}",
-    "この社員の給与計算に使用する設定を更新します。":
-        "Update the settings used to calculate this employee's payroll.",
+    "この社員の給与計算に使用する設定を更新します。": "Update the settings used to calculate this employee's payroll.",
     "この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。": "This amount and the additional family allowance are separate items and are added together. Set an unused existing amount to 0 yen.",
     "サブ管理者に表示する機能": "Features Shown to Sub-Administrators",
-    "サブ管理者表示設定を保存できませんでした: {error}":
-        "Could not save sub-administrator display settings: {error}",
+    "サブ管理者表示設定を保存できませんでした: {error}": "Could not save sub-administrator display settings: {error}",
     "モジュール設定を保存できませんでした: {error}": "Could not save feature settings: {error}",
     "一般ユーザー用・閲覧者用は自動で表示されます。下記はチェックONの項目だけサブ管理者へ表示します。": "Employee and viewer features appear automatically. Only checked items below appear for sub-administrators.",
     "交通費・月額": "Monthly Travel Allowance",
@@ -565,12 +514,9 @@ const englishLanguagePack = LanguagePack(
     "個別給与設定を保存しました": "Payroll settings saved",
     "個別給与設定を保存しますか？": "Save payroll settings?",
     "個別給与設定を利用できません。": "Payroll settings are unavailable.",
-    "個別給与設定を編集する権限がありません":
-        "You do not have permission to edit payroll settings.",
-    "個別給与設定を閲覧する権限がありません。":
-        "You do not have permission to view payroll settings.",
-    "全社員共通。会社データの設定を使用します。":
-        "Applies to all employees. Uses Company Data settings.",
+    "個別給与設定を編集する権限がありません": "You do not have permission to edit payroll settings.",
+    "個別給与設定を閲覧する権限がありません。": "You do not have permission to view payroll settings.",
+    "全社員共通。会社データの設定を使用します。": "Applies to all employees. Uses Company Data settings.",
     "円": "JPY",
     "勤務単価 自動計算": "Automatic Work Rate Calculation",
     "勤務単価の基準額を確認してください": "Check the base work rate.",
@@ -593,12 +539,10 @@ const englishLanguagePack = LanguagePack(
     "早出単価（1時間・円）": "Early Work Rate (JPY / Hour)",
     "最終更新日：{date}": "Last updated: {date}",
     "月給の場合は月固定給を入力してください": "Enter the fixed monthly salary for monthly pay.",
-    "月給の場合は計算用1日基本ベースを入力してください":
-        "Enter the daily calculation base for monthly pay.",
+    "月給の場合は計算用1日基本ベースを入力してください": "Enter the daily calculation base for monthly pay.",
     "有給": "Paid Leave",
     "有給付与日数": "Granted Paid Leave Days",
-    "有給付与日数は0以上の数字で入力してください":
-        "Enter a nonnegative number of granted leave days.",
+    "有給付与日数は0以上の数字で入力してください": "Enter a nonnegative number of granted leave days.",
     "末日": "Month End",
     "残業単価（1時間・円）": "Overtime Rate (JPY / Hour)",
     "消費税率（%）": "Consumption Tax Rate (%)",
@@ -650,11 +594,9 @@ const englishLanguagePack = LanguagePack(
     "月の給与を確認": "Confirm This Month's Payroll",
     "確認を取り消す": "Cancel Confirmation",
     "未確認": "Unconfirmed",
-    "手当{number}の名称と0以上の金額を入力してください":
-        "Enter a name and nonnegative amount for allowance {number}.",
+    "手当{number}の名称と0以上の金額を入力してください": "Enter a name and nonnegative amount for allowance {number}.",
     "手当{number} 単価": "Allowance {number}: Rate",
-    "自動計算 ¥{amount}　式: {formula}":
-        "Calculated JPY {amount}; formula: {formula}",
+    "自動計算 ¥{amount}　式: {formula}": "Calculated JPY {amount}; formula: {formula}",
     "プレビューできませんでした: {error}": "Could not preview: {error}",
     "0なら自動計算 / 1円以上を直接入力するとその金額を使用": "0 uses automatic calculation; an amount of at least 1 yen overrides it.",
     "1日の時間": "Hours per Day",
@@ -710,12 +652,10 @@ const englishLanguagePack = LanguagePack(
     "福利厚生費率": "Welfare Rate",
     "計算式": "Formula",
     "社員・協力会社": "Employees and Partner Companies",
-    "社員・協力会社・作業員の基本情報":
-        "Basic information for employees, partner companies and workers",
+    "社員・協力会社・作業員の基本情報": "Basic information for employees, partner companies and workers",
     "会社情報・共通設定": "Company information and shared settings",
     "資格管理": "Qualification Management",
-    "資格マスター・保有資格・資格証":
-        "Qualification catalog, held qualifications and certificates",
+    "資格マスター・保有資格・資格証": "Qualification catalog, held qualifications and certificates",
     "社員・作業員の必要書類チェック": "Required document checks for employees and workers",
     "勤怠・人工": "Attendance and Work Units",
     "勤怠・出退勤確認・人工": "Attendance, clock-in/out verification and work units",
@@ -733,29 +673,23 @@ const englishLanguagePack = LanguagePack(
     "このグループの受信テキストはまだありません。": "No received text messages for this group yet.",
     "グループ名未取得": "Group Name Unavailable",
     "会社を確認できませんでした。": "Could not confirm the company.",
-    "保存できませんでした。選択内容を保持して再試行できます。":
-        "Could not save. Your selections are retained for retry.",
+    "保存できませんでした。選択内容を保持して再試行できます。": "Could not save. Your selections are retained for retry.",
     "参加中でSKOの受信先が未設定の場合、マスターは「連携してトークを開く」から既存の通常グループを選ぶか、新しい通常グループを作成します。会社名・SKOグループ名・LINEグループ名を確認して追加してください。名前の取得だけでは連携は完了しません。参加未確認や既存の連携先を確認できない場合は変更しません。公式アカウントの参加・投稿を受信したグループが自動で追加されます。以前の受信記録があるグループは再読み込みで参加状況を確認できます。受信記録のない参加済みグループは、次の投稿を受信すると追加されます。未連携の一覧はマスターのみ確認できます。LINEへの送信や過去投稿の自動取得は行いません。": "For a joined group without a SKO receiving destination, the master can use Connect and Open Talk to choose or create a normal SKO group. Confirm the company, SKO group and LINE group before adding it. Fetching the name alone does not complete a link. Unverified participation or an unavailable existing link is not changed. Groups are added automatically when the official account receives join events or posts. Reload to check participation for groups with earlier received records. Groups without a received record appear after their next post is received. Only the master administrator can view unlinked groups. This feature does not send to LINE or automatically retrieve old posts.",
     "参加なし": "Not Participating",
-    "参加グループを読み込めませんでした。再読み込みしてください。":
-        "Could not load participating groups. Please reload.",
+    "参加グループを読み込めませんでした。再読み込みしてください。": "Could not load participating groups. Please reload.",
     "参加中": "Participating",
     "参加済みグループ一覧": "Participating Groups",
-    "参加状況を更新できませんでした。保存済みの一覧を表示します。":
-        "Could not update participation. Showing the saved list.",
+    "参加状況を更新できませんでした。保存済みの一覧を表示します。": "Could not update participation. Showing the saved list.",
     "参加状況未確認": "Participation Unconfirmed",
-    "受信トークを読み込めませんでした。再読み込みしてください。":
-        "Could not load received messages. Please reload.",
+    "受信トークを読み込めませんでした。再読み込みしてください。": "Could not load received messages. Please reload.",
     "確認できる参加グループはまだありません。": "No participating groups are available yet.",
     "追加済み": "Added",
     "LINEトークの「参加済みグループ一覧」から参加状況を確認し、連携済みの受信トークを開きます。": "Open Participating Groups in LINE Talks to check participation and open linked received messages.",
     "「参加済みグループ一覧」では、公式アカウントの参加・投稿を実際に受信したLINEグループ名を確認できます。新しい参加・投稿を受信すると一覧が増えます。以前の受信記録があるグループは再読み込みで参加状況を確認します。受信記録のない過去参加グループは次の投稿の受信が必要です。未連携のグループ一覧はマスターのみ確認できます。通常のSKOグループの新規作成時・参加者画面の「LINEトークを追加」から同じ一覧を選びます。現場グループ・オープンチャットは対象外です。追加先のメンバーはLINEグループ名から元の受信トークを閲覧でき、投稿の複製やLINEへの送信・返信は行いません。追加先からの閲覧に出勤表・請求書の管理権限は付与されません。管理者はLINEグループを連携からSKOトークを選び、連携文をコピーして公式アカウントが参加したLINEグループへ15分以内に送信します。送信後に再読み込みし、投稿したテキスト・投稿者・日時を確認します。保存済みトークは連携停止後も残ります。停止中・連携前の過去投稿や画像・動画・スタンプは取得しません。LINEへの返信は行いません。マスター専用の履歴集計では保存データの対象月を確認し、実人数と延べ人工を分けて集計します。保存した履歴単価と人工・残業・手当を確認し、対象月の取引先・消費税・法定福利費を明示指定して正式請求書の下書きを作成します。過去履歴を現在の単価で自動計算せず、同じ月の重複作成を防ぎます。作成後の登録経費変更は履歴の請求書画面から金額を確認して更新できます。承認済み・確定済み・手動編集済みの下書きは変更しません。承認と発行は既存の請求書画面で行います。出勤表・請求書ボタンはマスターが個別にONにした場合だけトークの下に表示します。出勤表の一般メンバー閲覧は本人の確認済み行だけです。管理者は対象月の投稿・過去履歴から候補を抽出し、作業員・現場・人工・時間・手当を確認修正してLINEノートの集計と照合します。変わっていない投稿の修正は再取込後も保持します。出勤の登録は署名後に既存の承認待ちへ、請求書は現場設定・会社税率の金額を確認後に通常の下書きへ保存します。既存の同日出勤や同月請求書は上書きしません。OFFでも保存データは削除せず、再ONで継続します。": "Participating Groups lists LINE groups whose join events or posts were received by the official account. New join events and posts add groups automatically. Reload to check participation for groups with earlier received records. Groups without a received record need their next post to be received. Only the master administrator can view unlinked groups. Use Add LINE Talk when creating a normal SKO group or from its participants screen, then choose from the same list. Site groups and open chats are excluded. Members of the linked SKO group can open the original received messages using the LINE group name. Messages are not copied, and SKO does not send or reply to LINE. Linked viewing does not grant attendance or invoice management permissions. Administrators can also use the existing 15-minute connection-code flow. Saved received messages remain after stopping the connection. Earlier unreceived posts and attachments are not imported. Master-only historical aggregation separates unique people and total person-days. Review frozen historical rates, work, overtime and allowances, then explicitly choose the customer, tax and statutory welfare settings to create an invoice draft. Current rates are not automatically applied to history. Existing attendance and invoice approval permissions remain unchanged.",
     "LINE連携": "LINE Integration",
     "LINEグループ連携・出勤候補": "LINE group integration and attendance suggestions",
-    "車両・保険書類・走行距離・業務ルート":
-        "Vehicles, insurance documents, mileage and work routes",
-    "会社共通。OFFでも登録データは残ります。":
-        "Company-wide settings. Saved data remains when a feature is OFF.",
+    "車両・保険書類・走行距離・業務ルート": "Vehicles, insurance documents, mileage and work routes",
+    "会社共通。OFFでも登録データは残ります。": "Company-wide settings. Saved data remains when a feature is OFF.",
     "給与の締め日・給料日・確認者": "Payroll Closing Date, Payday and Reviewers",
     "会社共通の給与設定": "Company Payroll Settings",
     "ON": "ON",
@@ -768,8 +702,7 @@ const englishLanguagePack = LanguagePack(
     "全社員共通": "Applies to All Employees",
     "支払月": "Payment Month",
     "月末に確認開始を通知します。未確認者には給料日の7日前から当日まで毎日通知します。": "A notification opens reviews at month end. Unconfirmed reviewers receive daily reminders from seven days before payday through payday.",
-    "末締めの当月払いは月末（31日）を選択してください":
-        "For month-end closing and same-month payment, select Month End (31).",
+    "末締めの当月払いは月末（31日）を選択してください": "For month-end closing and same-month payment, select Month End (31).",
     "確認者を1〜3名選択してください。": "Select one to three reviewers.",
     "給与の確認者（1〜3名）": "Payroll Reviewers (1–3)",
     "給料日": "Payday",
@@ -778,8 +711,7 @@ const englishLanguagePack = LanguagePack(
     'サブ管理者': 'Sub-Administrator',
     '閲覧者': 'Viewer',
     "{role}用説明書": "Manual for {role}",
-    "{count}ページ構成です。画面内でも読めて、A4 PDFとしてプレビュー・印刷・共有できます。":
-        "{count} pages. Read on screen or preview, print and share an A4 PDF.",
+    "{count}ページ構成です。画面内でも読めて、A4 PDFとしてプレビュー・印刷・共有できます。": "{count} pages. Read on screen or preview, print and share an A4 PDF.",
     "PDFは日本語版です。": "The PDF is in Japanese.",
     "{role}用説明書 PDFを開く": "Open {role} Manual PDF",
     "SKOパンフレット 20ページを開く": "Open the 20-page SKO Brochure",
@@ -793,8 +725,7 @@ const englishLanguagePack = LanguagePack(
     "GPS": "GPS",
     "PDF": "PDF",
     "いつでも見直す": "Review Anytime",
-    "アプリ内で役割別説明書とパンフレットを確認できます。":
-        "Read role-specific manuals and the brochure in the app.",
+    "アプリ内で役割別説明書とパンフレットを確認できます。": "Read role-specific manuals and the brochure in the app.",
     "サイン": "Signature",
     "メール/印刷": "Email / Print",
     "会社の機能ON/OFF": "Company Feature ON / OFF",
@@ -818,13 +749,10 @@ const englishLanguagePack = LanguagePack(
     "同じPDFを印刷・共有します。登録した下請け会社は出勤なしでも支払証明書をプレビューできます。": "Print and share the same PDF. Registered subcontractors can preview payment certificates without attendance.",
     "役割・承認担当者の指定は管理者だけが行えます。同じ会社で使用中の社員番号は登録できません。給与など金銭情報の設定・変更と、閲覧者の確認は別の権限です。会社の機能ONだけで権限は増えません。": "Only administrators can assign roles and approvers. Employee numbers already used in the same company cannot be registered. Editing financial information and reviewer confirmation require separate permissions. Turning a company feature ON does not grant access.",
     "必要なら写真": "Photo if Required",
-    "必要な人だけが必要な情報へアクセスします。":
-        "Only authorized people can access the information they need.",
+    "必要な人だけが必要な情報へアクセスします。": "Only authorized people can access the information they need.",
     "手動の打刻と日報の確定は別です。GPS自動出勤を本人が有効にした場合は、設定条件に応じて背景でも位置情報を使います。": "Manual clocking and daily report finalization are separate. If you enable automatic GPS attendance, location is also used in the background under the configured conditions.",
-    "手動の打刻と本人が有効にするGPS自動出勤を使い分けます。":
-        "Choose manual clocking or automatic GPS attendance enabled by you.",
-    "手動登録か本人が設定したGPS自動出勤を使う":
-        "Use manual registration or your configured automatic GPS attendance",
+    "手動の打刻と本人が有効にするGPS自動出勤を使い分けます。": "Choose manual clocking or automatic GPS attendance enabled by you.",
+    "手動登録か本人が設定したGPS自動出勤を使う": "Use manual registration or your configured automatic GPS attendance",
     "手当の名称・金額・単位を設定": "Set Allowance Names, Amounts and Units",
     "打刻と日報の確定は別です。確定後の修正は申請内容を確認して承認します。": "Clocking and finalizing reports are separate. Changes after finalization require review and approval of the request.",
     "打刻時刻と日報で確定した勤務内容を確認します。有給額・通常勤務の夜間割増が未設定の場合は、管理者へ会社規定の登録を依頼してください。": "Check clock times and work finalized in daily reports. If paid-leave wages or regular-work night premiums are missing, ask an administrator to register company policies.",
@@ -860,8 +788,7 @@ const englishLanguagePack = LanguagePack(
     'SKO v{version} / ベータ版 / {date}': 'SKO v{version} / Beta / {date}',
     'ベータ版 改訂 2026-10-08': 'Beta revision 2026-10-08',
     "Googleマップ一覧へ移動します。": "Opens the Google Maps list.",
-    "LINE連携から取り込んだ出勤候補を確認します。":
-        "Review attendance suggestions imported through the LINE integration.",
+    "LINE連携から取り込んだ出勤候補を確認します。": "Review attendance suggestions imported through the LINE integration.",
     "OFFでも登録データは残り、ONに戻して再利用できます。表示設定と担当者の操作権限は別に保護します。設定は会社共通です。管理者が変更し、サブ管理者向け表示も個別に選べます。OFFの機能へ進もうとすると利用停止の案内が表示されます。": "Turning a feature OFF retains its registered data; turn it ON to use it again. Display settings and each person's permissions are protected separately. Settings apply to the whole company. Administrators can change them and choose which features sub-administrators see. Opening an OFF feature displays a notice that it is unavailable.",
     "SKO連携あり・なしを問わず取引会社を登録し、会社情報の確認・編集・削除と、1日・月・平米・請負の契約金額設定を行います。": "Register client companies with or without an SKO connection. View, edit or delete company information and configure daily, monthly, per-square-meter or fixed-price contracts.",
     "SKO連携なしの協力会社も登録し、会社情報の確認・編集・削除と契約設定を行います。支払証明書の単価は支払証明書設定で管理します。": "Register partner companies without an SKO connection, manage their information and configure contracts. Payment certificate rates are managed in Payment Certificate Settings.",
@@ -911,14 +838,12 @@ const englishLanguagePack = LanguagePack(
     "友達の氏名をタップすると個別トークを開始できます。グループでは友達招待、承認/拒否、メンバー確認、脱退、メンバー追放ができます。グループを右スワイプするとピン留め・通知音、左スワイプすると非表示・削除を選べます。現場タブには利用権限のある現場チャットが表示されます。個別トークやグループトークを開いた後でも、上部のタブを押すとそのタブの一覧へ戻れます。": "Tap a friend's name to start a direct chat. Groups support invitations, acceptance or rejection, member lists, leaving and member removal. Swipe a group right for pinning or notification sounds, or left to hide or delete it. The Sites tab shows site chats you are permitted to access. After opening a direct or group chat, tap a tab at the top to return to that tab's list.",
     'グループ設定': 'Group Settings',
     '写真を変更': 'Change Photo',
-    '保存できませんでした。写真を保持して再試行できます。':
-        'Could not save. Your selected photo is kept so you can retry.',
+    '保存できませんでした。写真を保持して再試行できます。': 'Could not save. Your selected photo is kept so you can retry.',
     '写真は5MB以下で選択してください。': 'Choose a photo of 5 MB or less.',
     'JPEGまたはPNGの写真を選択してください。': 'Choose a JPEG or PNG photo.',
     "一覧は名前の下に最新メッセージを2行まで表示し、更新日時を右上に表示します。未読は各トークとタブの赤い数字で確認でき、表示したメッセージは既読になります。グループ作成時に写真を選べます。参加中の作成者または既存の管理権限がある利用者は「グループ設定」の「写真を変更」から変更できます。写真未設定では標準アイコンを表示します。写真の保存が失敗した場合は再試行できます。友達の氏名をタップすると個別トークを開始できます。グループでは友達招待、承認/拒否、メンバー確認、脱退、メンバー追放ができます。グループを右スワイプするとピン留め・通知音、左スワイプすると非表示・削除を選べます。現場タブには利用権限のある現場チャットが表示されます。個別トークやグループトークを開いた後でも、上部のタブを押すとそのタブの一覧へ戻れます。": "Names appear above a two-line latest-message preview, with the update time at the upper right. Red number badges show unread messages for conversations and tabs, and messages become read when displayed. Choose a photo when creating a group. Participants who created the group or hold existing management permission can change it in Group Settings. Groups without a photo use the standard icon. Retry if saving the photo fails. Tap a friend's name to start a direct chat. Groups support invitations, acceptance or rejection, member lists, leaving and member removal. Swipe a group right for pinning or notification sounds, or left to hide or delete it. The Sites tab shows site chats you are permitted to access. After opening a direct or group chat, tap a tab at the top to return to that tab's list.",
     "取引会社一覧へ移動し、会社名タップで詳細を確認できます。詳細画面から会社情報の編集、削除、契約設定、SKO連携候補の統合確認を行えます。": "Opens the client-company list. Tap a company name to view details, edit or delete information, configure contracts or review a possible SKO connection merge.",
-    "従業員の名前と携帯電話番号を先に登録します。":
-        "Register the employee's name and mobile number first.",
+    "従業員の名前と携帯電話番号を先に登録します。": "Register the employee's name and mobile number first.",
     "従業員の本人情報登録を確認して本登録を承認・拒否します。": "Review an employee's personal information and approve or reject their full registration.",
     "従業員登録済みの人へ、TestFlightと本人専用の初回ログイン情報を送ります。": "Send TestFlight and personal first-login details to employees who have already been registered.",
     "従業員登録画面へ移動します。": "Opens Employee Registration.",
@@ -935,13 +860,11 @@ const englishLanguagePack = LanguagePack(
     "本人・給与明細閲覧権限": "The employee and users with payslip-viewing permission",
     "本日のLINE出勤候補画面へ移動します。": "Opens today's LINE attendance suggestions.",
     "本登録承認待ち一覧へ移動します。": "Opens pending full-registration approvals.",
-    "業務メモと添付ファイルをチャット単位で管理します。":
-        "Manage work notes and attachments for each chat.",
+    "業務メモと添付ファイルをチャット単位で管理します。": "Manage work notes and attachments for each chat.",
     "業務写真をアルバムとしてまとめて確認します。": "View work photos organized into albums.",
     "残業=基準時給×1.25、早出=基準時給×1.25、夜勤=日額換算×1.5、休日出勤=日額換算×1.35、休日夜勤=日額換算×1.6を初期式とし、倍率・1日時間を変更保存できます。日給の場合は日額÷1日時間から時給換算、時給の場合は同じ倍率体系を直接適用します。単価欄へ1円以上を直接入力すると自動値より優先し、0円は自動計算です。追加支給/控除は名称変更・追加・削除でき、0円は給与明細に非表示です。給料日・締め日・確認者は会社データの共通設定を参照します。月給では月固定給と計算用の日額基準を分けて登録します。登録済みの手動単価を確認し、保存後に再計算された給与明細を確認してください。既存の家族手当月額と追加支給の家族手当は別項目として合算されます。": "Initial formulas are base hourly rate × 1.25 for overtime and early work, daily equivalent × 1.5 for night work, × 1.35 for holiday work and × 1.6 for holiday night work. Save changes to multipliers and hours per day. Daily pay is divided by hours per day to obtain an hourly rate; hourly pay uses the same multipliers directly. Entering a rate of at least 1 yen overrides the automatic value; zero means automatic calculation. Additional earnings and deductions can be renamed, added or removed; zero amounts are hidden on payslips. Payday, closing date and reviewers come from company-wide settings in Company Data. For monthly pay, register the fixed monthly salary and the daily calculation base separately. Check saved manual rates and the recalculated payslip after saving. The existing monthly family allowance and an additional earning named Family Allowance are separate items and are added together.",
     "残業・早出・夜勤・夜勤残業・休日出勤・休日残業・休日夜勤・休日夜勤残業を、日給または時給と保存した倍率から自動計算します。各単価は0円なら自動、1円以上なら直接入力を優先します。請求書用の月額・平米・請負・手当・福利厚生費率も既存どおり利用できます。": "Calculate overtime, early work, night work, night overtime, holiday work, holiday overtime, holiday night work and holiday night overtime from daily or hourly pay and saved multipliers. Zero means automatic calculation; direct amounts of at least 1 yen take priority. Existing monthly, per-square-meter, fixed-price, allowance and welfare-rate settings for invoicing remain available.",
-    "現在利用できる各ボタンの説明と役割別説明書を確認します。":
-        "View explanations for available buttons and manuals for your role.",
+    "現在利用できる各ボタンの説明と役割別説明書を確認します。": "View explanations for available buttons and manuals for your role.",
     "現場・友達・グループ・協力会社との連絡、写真、ファイルを扱います。": "Communicate with sites, friends, groups and partner companies using messages, photos and files.",
     "現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。": "View the latest recorded clock-in locations of sites, client companies, subcontractors and employees on Google Maps.",
     "現場名・取引先・状態・正式名称・担当者・責任者・責任者電話番号・住所・最寄り駅・開始日・終了日・備考を登録します。": "Register the site name, client, status, official name, contact person, supervisor, supervisor's phone number, address, nearest station, start and end dates and notes.",
@@ -953,18 +876,14 @@ const englishLanguagePack = LanguagePack(
     "社員一覧へ移動します。": "Opens the employee list.",
     "社員番号は会社ごとに自動採番し、任意の番号にも変更できます。同じ会社で使用済みの番号は登録できません。所属・職種・入社日は社員データに保存し、本人プロフィールも同じ情報を参照します。登録済みの社員個人情報を変更する場合は承認申請になります。社員個人情報の承認者は管理者が1〜3名で登録でき、申請時に必要な承認人数は登録済み承認者数です。1名登録なら1名、2名登録なら2名、3名登録なら3名の承認で反映されます。申請者本人は自分の申請を承認できません。氏名と会社内の社員番号を確認してください。社員番号は同じ会社内で重複できません。社員データの登録情報を給与明細にも使用します。": "Employee numbers are assigned automatically within each company and can be changed to a custom number. A number already used in that company cannot be registered again. Department, occupation and joining date are saved in employee data and also used by the personal profile. Changes to saved personal information require an approval request. Administrators can assign 1–3 personal-information approvers; the required approvals are determined by the assigned approver count when the request is made. One assigned approver requires one approval, two require two and three require three. Applicants cannot approve their own requests. Check the name and company employee number. Employee numbers must be unique within the company. Saved employee information is also used on payslips.",
     "第2認証後、管理現場画面へ移動します。給与用/請求用それぞれで日給/時給、自動計算式、直接入力を設定できます。": "After secondary authentication, opens Site Management. Configure separate daily or hourly rates, automatic formulas and manual amounts for payroll and invoicing.",
-    "第2認証後、給与明細一覧へ移動します。":
-        "After secondary authentication, opens the payslip list.",
+    "第2認証後、給与明細一覧へ移動します。": "After secondary authentication, opens the payslip list.",
     "第2認証後、請求書画面へ移動します。月末の承認通知から対象請求書を直接開けます。": "After secondary authentication, opens Invoices. Month-end approval notifications can open the relevant invoice directly.",
     "管理者・サブ管理者・支払証明書閲覧権限": "Administrators, sub-administrators and users with payment-certificate viewing permission",
     "管理者・サブ管理者・社員閲覧権限": "Administrators, sub-administrators and users with employee-viewing permission",
-    "管理者・勤怠管理権限":
-        "Administrators and users with attendance-management permission",
+    "管理者・勤怠管理権限": "Administrators and users with attendance-management permission",
     "管理者・承認担当者": "Administrators and assigned approvers",
-    "管理者・現場データ閲覧権限":
-        "Administrators and users with site-data viewing permission",
-    "管理者・給与閲覧/編集権限":
-        "Administrators and users with payroll viewing or editing permission",
+    "管理者・現場データ閲覧権限": "Administrators and users with site-data viewing permission",
+    "管理者・給与閲覧/編集権限": "Administrators and users with payroll viewing or editing permission",
     "管理者・請求書閲覧権限・設定済み承認者": "Administrators, users with invoice-viewing permission and assigned approvers",
     "給与の加算・控除項目を社員別・期間別に登録、修正、取消します。": "Register, edit or cancel payroll additions and deductions for each employee and period.",
     "給与明細は採用済みA4縦・青基調の帳票で表示します。勤務実績は出勤・欠勤・有給・休日出勤・残業・早出・深夜・休日残業・休日深夜・休日深夜残業を表示し、0実績は薄色にします。支給と控除は名称付きで分け、0円項目は非表示、「その他支給」「その他控除」へまとめません。月給・日給・時給で同じ帳票を使い、項目数に応じて行高をA4内で調整します。右上の支払日は会社データの給料日・支払月から表示し、保存済みの明示支払日は保持します。会社が選んだ1〜3名の確認者について、実際に確認した人だけ確認印を表示します。確認は月末から行え、未確認者へ給料日の7日前から当日まで通知します。プレビューは2本指で拡大縮小、拡大後はドラッグ移動できます。勤務実績・個別給与設定・給与調整の登録内容を反映します。プレビュー・印刷・保存・共有は同一PDFを使用します。確認印の実際の確認日時は履歴として保持します。有給支給額・通常勤務の夜間割増・月給の追加単価について警告が出た場合は、会社の条件を確認してから確定してください。": "Payslips use the adopted A4 portrait design with blue styling. Attendance shows workdays, absences, paid leave, holiday work, overtime, early work, late-night hours, holiday overtime, holiday late-night hours and holiday late-night overtime; zero figures use a lighter color. Earnings and deductions have named rows; zero amounts are hidden and items are not combined under Other Earnings or Other Deductions. Monthly, daily and hourly pay use the same report, with row heights adjusted to fit the items within A4. The payment date at the top right uses the company's payday and payment month, while saved explicit dates are retained. Only reviewers who have actually confirmed receive a confirmation stamp, from the 1–3 reviewers selected by the company. Confirmation opens at month end. Unconfirmed reviewers are notified daily from seven days before payday through payday. Pinch to zoom the preview and drag to move after zooming. Saved attendance, individual payroll settings and payroll adjustments are reflected. Previewing, printing, saving and sharing use the same PDF. Actual confirmation timestamps are retained in history. If warnings concern paid-leave pay, premiums for night hours within regular work or additional monthly-pay rates, check the company's conditions before finalizing.",
@@ -975,8 +894,7 @@ const englishLanguagePack = LanguagePack(
     "自分の氏名、電話番号、写真、会社SKO ID等を確認します。": "Check your name, phone number, photo, company SKO ID and other profile information.",
     "自分の給与明細を月別に確認し、採用済みA4縦帳票でプレビュー・印刷・共有を行います。": "View your payslips by month and preview, print or share the adopted A4 portrait report.",
     "自社社員の基本情報、資格、必要書類を確認・管理します。": "View and manage your company's employee information, qualifications and required documents.",
-    "表示項目は役割と付与権限で変わります":
-        "Visible items depend on your role and assigned permissions",
+    "表示項目は役割と付与権限で変わります": "Visible items depend on your role and assigned permissions",
     "計算式の倍率・1日時間は変更保存できます。各単価は0円なら自動計算、1円以上の直接入力を優先します。手当は名称と金額を自由に追加/削除できます。福利厚生費率と消費税率も設定し、保存後に自動下書きを再計算します。": "Save changes to formula multipliers and hours per day. Zero rates use automatic calculation, while direct rates of at least 1 yen take priority. Add or remove allowances with custom names and amounts. Configure welfare and consumption-tax rates; saving recalculates automatic drafts.",
     "設定画面へ移動します。": "Opens Settings.",
     "該当する説明がありません": "No matching help topics.",
@@ -988,14 +906,11 @@ const englishLanguagePack = LanguagePack(
     "車両番号・走行距離・車両書類と、複数地点の業務ルートを確認します。当日の勤務報告では車両とルートを選択できます。": "View vehicle numbers, mileage, vehicle documents and work routes with multiple stops. Select a vehicle and route in today's attendance report.",
     "週間・月間の勤務実績、残業、早出、夜間、手当を確認します。": "Review weekly or monthly attendance, overtime, early work, night hours and allowances.",
     "週間表示は開いた時に本日を含む週を表示し、今日の勤務日は枠で確認できます。週/月を切り替え、月間集計では出勤日数・残業・早出・夜間・回数制手当を確認できます。日付・勤務修正・有給画面から戻った後も下部ナビを再表示します。勤務修正が承認された日は有給との重複を解消し、給与明細・請求書の自動計算にも反映します。同じ日の複数現場は勤務量を合算して確認してください。勤務区分と承認済み有給を確認し、重複を避けます。給与条件の警告がある場合は個別給与設定と会社の支給条件を確認してください。": "The weekly view opens to the week containing today, with today's work date outlined. Switch between weekly and monthly views; monthly totals show workdays, overtime, early work, night hours and per-occurrence allowances. Bottom navigation returns after leaving date, attendance-correction or paid-leave screens. Approved attendance corrections resolve overlapping paid leave and feed automatic payroll and invoice calculations. For multiple sites on one date, review the combined work quantity. Check work categories and approved paid leave to avoid overlap. If payroll-condition warnings appear, check individual payroll settings and the company's payment conditions.",
-    "会社と管理者の初回登録を順番に進めます。":
-        "Complete the company and administrator setup in order.",
-    "会社データ / 給与の締め日・給料日・確認者":
-        "Company Data / Payroll Closing Date, Payday and Reviewers",
+    "会社と管理者の初回登録を順番に進めます。": "Complete the company and administrator setup in order.",
+    "会社データ / 給与の締め日・給料日・確認者": "Company Data / Payroll Closing Date, Payday and Reviewers",
     "個人情報と会社情報を登録": "Register Personal and Company Information",
     "個人情報・会社情報": "Personal and Company Information",
-    "初回登録から本人専用のログイン情報を案内":
-        "Send Personal Login Information through Initial Registration",
+    "初回登録から本人専用のログイン情報を案内": "Send Personal Login Information through Initial Registration",
     "初回設定": "Initial Setup",
     "初回設定の6項目を確認します。給料日・締め日・確認者は会社データ、社員の給与単価は個別給与設定で管理します。": "Review the six initial setup items. Manage payday, closing date and reviewers in Company Data, and employee pay rates in Payroll Settings.",
     "従業員の名前と電話番号を登録": "Register Employee Names and Phone Numbers",
@@ -1006,8 +921,7 @@ const englishLanguagePack = LanguagePack(
     "未提出などの対応事項はホームの「要対応」で確認します。登録を完了すると対応状態が更新されます。": "Check missing submissions and other pending items in Action Required on Home. Their status updates when registration is completed.",
     "現場 / 管理現場": "Sites / Admin Sites",
     "管理者用現場データは第2認証対象です。閲覧・変更できる範囲は会社から付与された現場データの権限に従います。": "Admin Site Data requires secondary authentication. Your viewing and editing access follows the site-data permissions granted by your company.",
-    "請求書・管理現場は会社から付与された権限を確認":
-        "Check Company-Granted Access to Invoices and Admin Sites",
+    "請求書・管理現場は会社から付与された権限を確認": "Check Company-Granted Access to Invoices and Admin Sites",
     'ホーム': 'Home',
     '出勤表': 'Attendance',
     '現場': 'Sites',
@@ -1055,8 +969,7 @@ const englishLanguagePack = LanguagePack(
     '本人のみ': 'Self only',
     '表示中の権限に合わせて案内': 'Help for your current access',
     'この機能は管理者のみ利用できます': 'This feature is available to administrators only.',
-    '社員情報は管理者・サブ管理者のみ利用できます':
-        'Employee information is available to admins and sub-admins only.',
+    '社員情報は管理者・サブ管理者のみ利用できます': 'Employee information is available to admins and sub-admins only.',
     '再読み込み': 'Reload',
     '要対応': 'Action Required',
     '本日の勤務報告': "Today's Work Report",
@@ -1074,8 +987,7 @@ const englishLanguagePack = LanguagePack(
     '退勤': 'Clock Out',
     '退勤する勤務': 'Shift to clock out',
     '退勤対象の勤務を確認してください': 'Check the shift you are clocking out from',
-    '勤務日・現場・ルートの変更は勤怠管理から修正してください':
-        'Change the work date, site or route through attendance management',
+    '勤務日・現場・ルートの変更は勤怠管理から修正してください': 'Change the work date, site or route through attendance management',
     '社員': 'Employees',
     '社員登録': 'Add Employee',
     '給与明細': 'Payslips',
@@ -1089,8 +1001,7 @@ const englishLanguagePack = LanguagePack(
     '作業者名': 'Workers',
     '未登録': 'Not Registered',
     '（記載なし）': '(No entry)',
-    '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。':
-        'Clock-in photos and location can be viewed in the SKO daily report.',
+    '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。': 'Clock-in photos and location can be viewed in the SKO daily report.',
     '集計なし': 'No Summary',
     '日付': 'Date',
     '車両': 'Vehicle',
@@ -1125,10 +1036,8 @@ const englishLanguagePack = LanguagePack(
     '日報を登録しました': 'Daily report saved',
     '撮影日時未取得（表示時刻は途中現場の記録時刻）': 'Capture time unavailable; the displayed time is the route stop registration time.',
     '写真を送信できませんでした。撮り直すか、送信失敗を記録してください。': 'The photo upload was unsuccessful. Retake or record the upload failure.',
-    'GPSを取得できませんでした。撮り直すか、取得失敗を記録してください。':
-        'GPS was not acquired. Retake or record the failed state.',
-    '写真を取得できませんでした。撮り直すか、未取得の状態を記録してください。':
-        'The photo was not acquired. Retake it or record the missing state.',
+    'GPSを取得できませんでした。撮り直すか、取得失敗を記録してください。': 'GPS was not acquired. Retake or record the failed state.',
+    '写真を取得できませんでした。撮り直すか、未取得の状態を記録してください。': 'The photo was not acquired. Retake it or record the missing state.',
     '出勤→現場→現場→退勤の行程です。会社出勤後の移動か直行直帰かを選び、実際に到着した現場を撮影します。': 'Follow the clock-in, site stops and clock-out journey. Choose company departure or direct travel, then capture the stop where you actually arrived.',
     '保留中の対象・写真・取得状態は固定されています。新しい記録を作らず同じUUIDを照会します。': 'The pending destination, photo and capture states are fixed. The same UUID is checked without creating another record.',
     '途中現場の記録は利用できません。機能設定または対象勤務を確認してください。': 'Route stop capture is unavailable. Check the feature setting and selected shift.',
@@ -1136,8 +1045,7 @@ const englishLanguagePack = LanguagePack(
     '同じ途中現場記録で再確認': 'Retry the same route stop record',
     'この現場を撮影して記録': 'Capture and record this route stop',
     '保留中の途中現場記録を再確認': 'Review pending route stop record',
-    '登録結果は未確認です。同じ記録で再確認してください':
-        'The registration result is unconfirmed. Retry the same record.',
+    '登録結果は未確認です。同じ記録で再確認してください': 'The registration result is unconfirmed. Retry the same record.',
     '途中現場の取得状態を記録しました': 'Route stop capture status recorded',
     '途中現場の撮影確認': 'Check route stop capture',
     '途中現場のGPS＋写真': 'Route stop GPS and photo',
@@ -1278,8 +1186,7 @@ const englishLanguagePack = LanguagePack(
     '登録者': 'Registered By',
     '登録日': 'Created',
     '最終更新日': 'Last Updated',
-    '現場名・取引先・担当者・住所・最寄駅で検索':
-        'Search site, customer, manager, address, or station',
+    '現場名・取引先・担当者・住所・最寄駅で検索': 'Search site, customer, manager, address, or station',
     '現場をクラウドに登録しました': 'Site saved to cloud',
     '登録できませんでした': 'Could not save',
     '現場終了の確認': 'Confirm Site Completion',
@@ -1290,9 +1197,9 @@ const englishLanguagePack = LanguagePack(
     '同時に表示する項目': 'Items to Show Together',
     '登録済みの現場全部': 'All Registered Sites',
     '取引会社': 'Customers',
-    '取引会社登録': 'Register Trade Company',
-    '協力会社登録': 'Register Partner Company',
-    '協力会社情報': 'Partner Company Info',
+  '取引会社登録': 'Register Trade Company',
+  '協力会社登録': 'Register Partner Company',
+  '協力会社情報': 'Partner Company Info',
     '自社': 'My Company',
     '選択地点を複数ピンで地図表示': 'Show Selected Places as Multiple Pins',
     '地点': 'Location',
@@ -1301,8 +1208,7 @@ const englishLanguagePack = LanguagePack(
     '地図を開けませんでした': 'Could not open the map.',
     '現場マップを利用できません': 'Site Map is unavailable.',
     'Googleマップで開ける位置情報がありません': 'No location data is available for Google Maps.',
-    'iPhone地図機能を読み込めませんでした。アプリを更新してください。':
-        'Could not load the iPhone map feature. Please update the app.',
+    'iPhone地図機能を読み込めませんでした。アプリを更新してください。': 'Could not load the iPhone map feature. Please update the app.',
     '複数ピン地図を開けませんでした': 'Could not open the multi-pin map',
     '月間カレンダー': 'Monthly Calendar',
     '前の月': 'Previous Month',
@@ -1331,8 +1237,7 @@ const englishLanguagePack = LanguagePack(
     '本パスワード': 'Primary Password',
     '本パスワード（確認）': 'Confirm Primary Password',
     '本パスワードを設定して次へ': 'Set Password and Continue',
-    '本パスワードは8文字以上で設定してください。':
-        'Use at least 8 characters for your primary password.',
+    '本パスワードは8文字以上で設定してください。': 'Use at least 8 characters for your primary password.',
     '確認用の本パスワードが一致していません。': 'The confirmation password does not match.',
     '本パスワードを設定できませんでした': 'Could not set the primary password',
     '初期パスワードはここで終了です。これから使う本パスワードを2回入力してください。': 'Your temporary password is no longer needed. Enter your new primary password twice.',
@@ -1359,8 +1264,7 @@ const englishLanguagePack = LanguagePack(
     'この従業員登録は期限切れです': 'This employee registration has expired',
     '登録した会社のSKO利用者に、従業員登録をもう一度作成してもらってください。': 'Ask an SKO user at your company to create a new employee registration invitation.',
     '従業員登録QRを読み取る': 'Scan Employee Registration QR',
-    'SKO従業員登録用のQRコードではありません。':
-        'This is not an SKO employee registration QR code.',
+    'SKO従業員登録用のQRコードではありません。': 'This is not an SKO employee registration QR code.',
     'SKO利用者が表示した従業員登録QRコードをカメラで読み取ると、初期ログイン情報が自動入力されます。': 'Scan the employee registration QR code shown by an SKO user to fill in the initial sign-in information automatically.',
     'SKOを利用している人が表示した従業員登録QRコードを枠内に映してください。': 'Place the employee registration QR code shown by an SKO user inside the frame.',
     'ヘルプ表示': 'Help Display',
@@ -1374,8 +1278,7 @@ const englishLanguagePack = LanguagePack(
     '有給申請の承認待ち': 'Paid Leave Approvals',
     '有給申請を確認して承認・却下': 'Review and approve or reject paid leave requests',
     '従業員の本登録承認': 'Employee Registration Approvals',
-    '本登録待ちの従業員を確認して承認':
-        'Review and approve employees waiting for full registration',
+    '本登録待ちの従業員を確認して承認': 'Review and approve employees waiting for full registration',
     '勤怠管理': 'Attendance Management',
     '一括': 'Bulk',
     '勤怠管理を利用できません。': 'Attendance management is unavailable.',
@@ -1425,40 +1328,33 @@ const englishLanguagePack = LanguagePack(
     "車両とルートの登録・管理": "Register and Manage Vehicles and Routes",
     "現場マップと複数地点表示": "Site Map and Multiple Locations",
     "取引会社・協力会社の登録と契約": "Trading and Partner Company Registration and Contracts",
-    "協力会社から受信した社員・書類":
-        "Employees and Documents Received from Partner Companies",
+    "協力会社から受信した社員・書類": "Employees and Documents Received from Partner Companies",
     "支払証明書の単価・計算式設定": "Payment Certificate Rates and Formulas",
     "月別支払証明書と現場別合意帳票": "Monthly Payment Certificates and Site Agreements",
     "ホームに承認待ちボタンを置かなくても、ルート請求数量の申請は通知センターの「要対応」から対象を開いて承認できます。ホームの表示設定で保存済みの申請や承認機能は削除しません。ルート請求数量の承認では、取引会社・勤務日・従業員・訪問した現場を確認します。同じ取引会社の訪問はまとめ、異なる会社は会社ごとに1人工または0.5人工を承認します。別会社の数量の合計を1人工に制限しません。請求に使用する現場を選び、登録単価を確認・修正して承認します。承認前に確認画面が表示されます。人工以外の計算方式はこの数量承認から変更できません。勤務・給与の出勤日数を増やす操作ではありません。日報修正の通知は対象の申請を直接表示します。申請の日付・現場・承認待ち／承認済み／却下済みを確認してください。承認担当者は会社で1〜3名を設定し、日報修正は設定された担当者のうち1名の承認で編集可能になります。通知の既読だけでは承認完了になりません。有給申請と現場共有も通知の対象だけを表示します。有給の承認済み・却下済みは操作できません。現場共有の対象が一覧にない場合は、完了済みまたは閲覧できない旨を表示し、別の現場へ案内しません。": "Route billing quantity requests can be reviewed from Needs attention in the notification center without placing an approval button on the home screen. Home display settings do not delete saved requests or approval functionality. Review the customer, work date, worker and visited sites when approving route billing quantities. Combine visits for the same customer, and approve 1 or 0.5 man-days for each different customer. Different customers are not limited to a combined total of 1 man-day. Choose the billing site, check or adjust its registered rate, then review the confirmation before approving. This quantity approval cannot change billing methods other than man-days and does not increase payroll or attendance days. Daily report correction notices open the exact request. Check its date, site and pending, approved or rejected status. The company assigns one to three approvers, and one assigned approver can authorize a daily report correction. Reading a notification does not complete approval. Leave and site-sharing notices also open only their target. Approved or rejected leave requests cannot be processed again. If a shared site is missing, the app indicates that it is completed or inaccessible and does not open a different site.",
     "ルート請求数量の承認": "Approve Route Billing Quantities",
     "本日のLINE出勤候補を確認する": "Review Today's LINE Attendance Suggestions",
-    "LINE出勤表・請求書の確認と申請":
-        "Review and Submit LINE Attendance Sheets and Invoices",
+    "LINE出勤表・請求書の確認と申請": "Review and Submit LINE Attendance Sheets and Invoices",
     "会社データ・角印・提出書類の送信": "Company Details, Seal and Submitted Document Delivery",
     "個別給与設定と給与調整の確認": "Review Individual Payroll Settings and Adjustments",
     "現場の給与用・請求用単価": "Site Payroll and Billing Rates",
     "設定・通知音・動かせるヘルプ": "Settings, Notification Sounds and Movable Help",
-    "社員データと個人情報の変更承認":
-        "Employee Details and Personal Information Change Approval",
-    "LINE参加グループ一覧と通常グループへの追加":
-        "Participating LINE Groups and Links to Normal Groups",
+    "社員データと個人情報の変更承認": "Employee Details and Personal Information Change Approval",
+    "LINE参加グループ一覧と通常グループへの追加": "Participating LINE Groups and Links to Normal Groups",
     "個別給与設定の確認・登録": "View and Save Individual Payroll Settings",
     "給与調整の対象日と登録・修正": "Payroll Adjustment Dates, Registration and Changes",
     "業務メモを作成・検索・ピン留めして確認します。": "Create, search and pin work notes.",
     "ノートを開き、本文を入力して登録します。検索やピン留めで必要な本文を探します。削除は既存の権限で行います。": "Open Notes, enter the text and save it. Use search and pinning to find notes. Deletion follows existing permissions.",
     "本日の候補を確認する読み取り専用の画面です。正式な勤怠申請は、LINEトークの出勤表で候補を確認・修正・保存し、署名して承認待ちへ提出します。出勤表の表示はマスターのON設定と既存の権限に従います。": "This is a read-only view of today's suggestions. To submit official attendance, review, correct and save suggestions in the LINE attendance sheet, then sign and submit them for approval. The attendance sheet follows the master feature switch and existing permissions.",
-    "表示できる現場・会社・社員の地点を地図で確認します。":
-        "View available site, company and employee locations on a map.",
+    "表示できる現場・会社・社員の地点を地図で確認します。": "View available site, company and employee locations on a map.",
     "参加中で受信先が未設定のグループは、マスターのチャットから「連携してトークを開く」を選び、通常SKOグループを選択または作成します。会社名・SKO名・LINE名を確認して追加した後、権限付きの受信トークを開きます。参加未確認や既存の連携先を確認できない場合は変更しません。LINEトークの「マスター権限」内に「チャット」「請求書」「単価設定」をまとめています。チャットは連携済みグループの受信データ、請求書は月別の確認済み候補と保存履歴、単価設定はその過去月の履歴単価を扱います。請求書の「この月の単価設定」で同じグループ・月を開き、履歴小計を保存した後に請求書へ戻って確認できます。通常メンバーのトーク閲覧は従来どおりです。受信トークは最新の投稿位置から開き、上にスクロールして過去の投稿を確認できます。「参加済みグループ一覧」では、公式アカウントの参加・投稿を実際に受信したLINEグループ名を確認できます。新しい参加・投稿を受信すると一覧が増えます。以前の受信記録があるグループは再読み込みで参加状況を確認します。受信記録のない過去参加グループは次の投稿の受信が必要です。未連携のグループ一覧はマスターのみ確認できます。通常のSKOグループの新規作成時・参加者画面の「LINEトークを追加」から同じ一覧を選びます。現場グループ・オープンチャットは対象外です。追加先のメンバーはLINEグループ名から元の受信トークを閲覧でき、投稿の複製やLINEへの送信・返信は行いません。追加先からの閲覧に出勤表・請求書の管理権限は付与されません。管理者はLINEグループを連携からSKOトークを選び、連携文をコピーして公式アカウントが参加したLINEグループへ15分以内に送信します。送信後に再読み込みし、投稿したテキスト・投稿者・日時を確認します。保存済みトークは連携停止後も残ります。停止中・連携前の過去投稿や画像・動画・スタンプは取得しません。LINEへの返信は行いません。マスター専用の履歴集計では保存データの対象月を確認し、実人数と延べ人工を分けて集計します。保存した履歴単価と人工・残業・手当を確認し、対象月の取引先・消費税・法定福利費を明示指定して正式請求書の下書きを作成します。過去履歴を現在の単価で自動計算せず、同じ月の重複作成を防ぎます。作成後の登録経費変更は履歴の請求書画面から金額を確認して更新できます。承認済み・確定済み・手動編集済みの下書きは変更しません。承認と発行は既存の請求書画面で行います。出勤表・請求書ボタンはマスターが個別にONにした場合だけトークの下に表示します。出勤表の一般メンバー閲覧は本人の確認済み行だけです。管理者は対象月の投稿・過去履歴から候補を抽出し、作業員・現場・人工・時間・手当を確認修正してLINEノートの集計と照合します。変わっていない投稿の修正は再取込後も保持します。出勤の登録は署名後に既存の承認待ちへ、請求書は現場設定・会社税率の金額を確認後に通常の下書きへ保存します。既存の同日出勤や同月請求書は上書きしません。OFFでも保存データは削除せず、再ONで継続します。": "For a joined group without a receiving destination, select Connect and Open Talk in the master's Chat entry, then choose or create a normal SKO group. Confirm the company, SKO group and LINE group before adding the link and opening permission-scoped received messages. Unverified participation or an unavailable existing link is not changed. Open Master Access in LINE Talk for Chat, Invoices and Unit Rates. Chat displays received data from linked groups. Invoices shows verified monthly candidates and saved history. Unit Rates sets historical rates for the selected past month. Unit Rates for This Month opens the same group and month; save the historical subtotal and return to Invoices to review it. Members retain their existing talk access. Received talks open at the latest post; scroll up to view older posts. Participating Groups lists LINE groups whose join events or posts were received by the official account. New join events and posts add groups automatically. Reload to check participation for groups with earlier received records. Groups without a received record need their next post to be received. Only the master administrator can view unlinked groups. Use Add LINE Talk when creating a normal SKO group or from its participants screen, then choose from the same list. Site groups and open chats are excluded. Members of the linked SKO group can open the original received messages using the LINE group name. Messages are not copied, and SKO does not send or reply to LINE. Linked viewing does not grant attendance or invoice management permissions. Administrators can also use the existing 15-minute connection-code flow. Saved received messages remain after stopping the connection. Earlier unreceived posts and attachments are not imported. Master-only historical aggregation separates unique people and total person-days. Review frozen historical rates, work, overtime and allowances, then explicitly choose the customer, tax and statutory welfare settings to create an invoice draft. Current rates are not automatically applied to history. Existing attendance and invoice approval permissions remain unchanged.",
     "マスター権限": "Master Access",
     "LINEマスター権限": "LINE Master Access",
     "マスター権限でログインしてください。": "Sign in with master access.",
     "マスター権限と接続を確認してください。": "Check master access and your connection.",
     "連携済みLINEグループの投稿者・日時・本文": "Sender, date and text from linked LINE groups",
-    "月別の確認済み候補・保存履歴・正式下書き":
-        "Verified monthly candidates, saved history and official drafts",
-    "対象月の人工・残業・早出・手当の履歴単価":
-        "Historical rates for labor, overtime, early work and allowances",
+    "月別の確認済み候補・保存履歴・正式下書き": "Verified monthly candidates, saved history and official drafts",
+    "対象月の人工・残業・早出・手当の履歴単価": "Historical rates for labor, overtime, early work and allowances",
     "LINE単価設定": "LINE Unit Rates",
     "LINE月別請求書": "LINE Monthly Invoices",
     "確認済みの過去月候補へ単価を入力し、履歴小計として保存します。空欄は0円にしません。現在の現場単価・給与は変更しません。": "Enter rates for verified past-month candidates and save a historical subtotal. Blank rates are not treated as zero. Current site rates and payroll remain unchanged.",
@@ -1466,8 +1362,7 @@ const englishLanguagePack = LanguagePack(
     "LINE請求候補を確認・取込": "Review and Import LINE Invoice Candidates",
     "この月の単価設定": "Unit Rates for This Month",
     "確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。": "No verified invoice candidates. Import LINE candidates, compare them and save.",
-    "表示できるLINEグループがありません。連携状態を確認してください。":
-        "No available LINE groups. Check the link status.",
+    "表示できるLINEグループがありません。連携状態を確認してください。": "No available LINE groups. Check the link status.",
     "チャットは参加済み一覧からグループを選び、未連携の場合は通常SKOグループへ連携して受信データを開きます。未連携のグループを作成済みとして表示しません。請求書は対象月の確認済み候補と保存履歴を確認します。単価設定は過去月の人工・残業・早出・手当の単価を入力し、履歴小計として保存します。実人数と延べ人工は別です。保存は通常請求書の発行と別で、正式下書きは取引先と税・福利費を確認して作成します。現在の現場単価や給与は変更しません。": "Chat opens the participating-group directory. Choose a group and link it to a normal SKO group if needed, then open received data. Unlinked groups are not shown as created. Invoices shows verified monthly candidates and saved history. Unit Rates saves past-month labor, overtime, early-work and allowance rates as a historical subtotal. Unique people and total labor days are distinct. Saving a subtotal does not issue an invoice. Confirm the customer, tax and welfare costs to create an official draft. Current site rates and payroll remain unchanged.",
     "単価設定": "Unit Rates",
     "使い方": "Help",
@@ -1475,25 +1370,26 @@ const englishLanguagePack = LanguagePack(
     "新しい通常グループを作成": "Create a Normal Group",
     "連携してトークを開く": "Connect and Open Talk",
     "既存の連携先・設定を確認してください。": "Check the existing link and its settings.",
-    "LINEグループの連携・投稿者・日時・本文":
-        "Link a LINE group and view its sender, date and text",
+    "LINEグループの連携・投稿者・日時・本文": "Link a LINE group and view its sender, date and text",
     "LINEグループのチャット": "LINE group chats",
     "LINEグループから作成": "Create from LINE group",
     "LINE送信名": "LINE sender name",
     "登録氏名": "Registered name",
     "ニックネーム": "Nickname",
-    "LINEには送信名の後ろに from SKO が付きます。":
-        "LINE adds from SKO after your sender name.",
+    "LINEには送信名の後ろに from SKO が付きます。": "LINE adds from SKO after your sender name.",
     "LINE送信名を保存できませんでした。": "Could not save your LINE sender name.",
     "LINE受付済み（配信確認はLINE側で）": "Accepted by LINE (check delivery in LINE)",
     "SKO保存済み・LINE送信未確認": "Saved in SKO; LINE sending unconfirmed",
     "LINE再試行": "Retry LINE",
     "LINE側で作ると1つ、SKO側で作ると同じトークを両入口に表示します。写真はグループ設定で変更できます。": "Creating from LINE shows one entry. Creating from SKO shares the same conversation across both entries. Change its photo in group settings.",
-    "作成できませんでした。連携先と権限を確認してください。":
-        "Could not create the group. Check its link and your permissions.",
+    "作成できませんでした。連携先と権限を確認してください。": "Could not create the group. Check its link and your permissions.",
     "グループを読み込めませんでした。再読み込みしてください。": "Could not load groups. Please reload.",
     "一覧は名前の下に最新メッセージを2行まで表示し、更新日時を右上に表示します。未読は各トークとタブの赤い数字で確認でき、表示したメッセージは既読になります。グループ作成時に写真を選べます。参加中の作成者または既存の管理権限がある利用者は「グループ設定」の「写真を変更」から変更できます。写真未設定では標準アイコンを表示します。写真の保存が失敗した場合は再試行できます。友達の氏名をタップすると個別トークを開始できます。グループでは友達招待、承認/拒否、メンバー確認、脱退、メンバー追放ができます。グループを右スワイプするとピン留め・通知音、左スワイプすると非表示・削除を選べます。現場タブには利用権限のある現場チャットが表示されます。個別トークやグループトークを開いた後でも、上部のタブを押すとそのタブの一覧へ戻れます。すべてのトークは古い投稿が上、新しい投稿が下です。新着の対象グループだけ最新本文・未読を更新し、入力中や周期的な全一覧再読み込みは行いません。履歴を読んでいる間は位置と未読を保持します。通常グループを先に作成した後、トーク機能（︙）またはグループ設定からLINEトークを追加できます。グループ名・写真・メンバーはそのままです。LINEグループからの新規作成では既存の連携グループを再利用し、写真はグループ設定で変更します。": "All conversations show older messages above newer ones. Only the changed group refreshes its latest message and unread count. Reading history preserves your position and unread state. Create a normal group first, then use Talk menu or Group settings to add a LINE source to the existing group. Existing names, photos and members remain. LINE-created groups appear only in LINE; SKO-created linked groups share the same conversation across both entries. New linked SKO text posts are sent to LINE automatically. Choose your registered name, nickname or company name, followed by from SKO. LINE acceptance does not guarantee delivery. If sending fails, retry the saved message without creating another post. Historical messages, incoming LINE posts and photos are not forwarded.",
     "参加中で受信先が未設定のグループは、マスターのチャットから「連携してトークを開く」を選び、通常SKOグループを選択または作成します。会社名・SKO名・LINE名を確認して追加した後、権限付きの受信トークを開きます。参加未確認や既存の連携先を確認できない場合は変更しません。LINEトークの「マスター権限」内に「チャット」「請求書」「単価設定」をまとめています。チャットは連携済みグループの受信データ、請求書は月別の確認済み候補と保存履歴、単価設定はその過去月の履歴単価を扱います。請求書の「この月の単価設定」で同じグループ・月を開き、履歴小計を保存した後に請求書へ戻って確認できます。通常メンバーのトーク閲覧は従来どおりです。受信トークは最新の投稿位置から開き、上にスクロールして過去の投稿を確認できます。「参加済みグループ一覧」では、公式アカウントの参加・投稿を実際に受信したLINEグループ名を確認できます。新しい参加・投稿を受信すると一覧が増えます。以前の受信記録があるグループは再読み込みで参加状況を確認します。受信記録のない過去参加グループは次の投稿の受信が必要です。未連携のグループ一覧はマスターのみ確認できます。通常のSKOグループの新規作成時・参加者画面の「LINEトークを追加」から同じ一覧を選びます。現場グループ・オープンチャットは対象外です。追加先のメンバーはLINEグループ名から元の受信トークを閲覧でき、投稿の複製は行いません。追加先からの閲覧に出勤表・請求書の管理権限は付与されません。管理者はLINEグループを連携からSKOトークを選び、連携文をコピーして公式アカウントが参加したLINEグループへ15分以内に送信します。送信後に再読み込みし、投稿したテキスト・投稿者・日時を確認します。保存済みトークは連携停止後も残ります。停止中・連携前の過去投稿や画像・動画・スタンプは取得しません。マスター専用の履歴集計では保存データの対象月を確認し、実人数と延べ人工を分けて集計します。保存した履歴単価と人工・残業・手当を確認し、対象月の取引先・消費税・法定福利費を明示指定して正式請求書の下書きを作成します。過去履歴を現在の単価で自動計算せず、同じ月の重複作成を防ぎます。作成後の登録経費変更は履歴の請求書画面から金額を確認して更新できます。承認済み・確定済み・手動編集済みの下書きは変更しません。承認と発行は既存の請求書画面で行います。出勤表・請求書ボタンはマスターが個別にONにした場合だけトークの下に表示します。出勤表の一般メンバー閲覧は本人の確認済み行だけです。管理者は対象月の投稿・過去履歴から候補を抽出し、作業員・現場・人工・時間・手当を確認修正してLINEノートの集計と照合します。変わっていない投稿の修正は再取込後も保持します。出勤の登録は署名後に既存の承認待ちへ、請求書は現場設定・会社税率の金額を確認後に通常の下書きへ保存します。既存の同日出勤や同月請求書は上書きしません。OFFでも保存データは削除せず、再ONで継続します。LINEグループのチャットを開くと、グループから作成・一覧・トークを利用できます。LINE側で作成したグループはLINE側だけに1つ、SKOチャットでLINEグループを追加して作成したグループは同じデータをSKOとLINEの両入口に表示します。投稿は複製しません。連携済みグループでSKOから送信した新しいテキストはLINEへ自動送信します。LINE送信名では登録氏名・ニックネーム・会社名を選び、末尾に from SKO が付きます。LINE受付済みは配信の保証ではありません。失敗時もSKOの投稿は保存済みで、LINE再試行は同じ投稿を使い重複登録しません。過去投稿・LINEからの受信・写真はLINEへ送り直しません。": "All conversations show older messages above newer ones. Only the changed group refreshes its latest message and unread count. Reading history preserves your position and unread state. Create a normal group first, then use Talk menu or Group settings to add a LINE source to the existing group. Existing names, photos and members remain. LINE-created groups appear only in LINE; SKO-created linked groups share the same conversation across both entries. New linked SKO text posts are sent to LINE automatically. Choose your registered name, nickname or company name, followed by from SKO. LINE acceptance does not guarantee delivery. If sending fails, retry the saved message without creating another post. Historical messages, incoming LINE posts and photos are not forwarded.",
     "参加中で受信先が未設定のグループは、マスターのチャットから「連携してトークを開く」を選び、通常SKOグループを選択または作成します。会社名・SKO名・LINE名を確認して追加した後、権限付きの受信トークを開きます。参加未確認や既存の連携先を確認できない場合は変更しません。LINEトークの「マスター権限」内に「チャット」「請求書」「単価設定」をまとめています。チャットは連携済みグループの受信データ、請求書は月別の確認済み候補と保存履歴、単価設定はその過去月の履歴単価を扱います。請求書の「この月の単価設定」で同じグループ・月を開き、履歴小計を保存した後に請求書へ戻って確認できます。通常メンバーのトーク閲覧は従来どおりです。受信トークは最新の投稿位置から開き、上にスクロールして過去の投稿を確認できます。「参加済みグループ一覧」では、公式アカウントの参加・投稿を実際に受信したLINEグループ名を確認できます。新しい参加・投稿を受信すると一覧が増えます。以前の受信記録があるグループは再読み込みで参加状況を確認します。受信記録のない過去参加グループは次の投稿の受信が必要です。未連携のグループ一覧はマスターのみ確認できます。通常のSKOグループの新規作成時・参加者画面の「LINEトークを追加」から同じ一覧を選びます。現場グループ・オープンチャットは対象外です。追加先のメンバーはLINEグループ名から元の受信トークを閲覧でき、投稿の複製は行いません。追加先からの閲覧に出勤表・請求書の管理権限は付与されません。管理者はLINEグループを連携からSKOトークを選び、連携文をコピーして公式アカウントが参加したLINEグループへ15分以内に送信します。送信後に再読み込みし、投稿したテキスト・投稿者・日時を確認します。保存済みトークは連携停止後も残ります。停止中・連携前の過去投稿や画像・動画・スタンプは取得しません。マスター専用の履歴集計では保存データの対象月を確認し、実人数と延べ人工を分けて集計します。保存した履歴単価と人工・残業・手当を確認し、対象月の取引先・消費税・法定福利費を明示指定して正式請求書の下書きを作成します。過去履歴を現在の単価で自動計算せず、同じ月の重複作成を防ぎます。作成後の登録経費変更は履歴の請求書画面から金額を確認して更新できます。承認済み・確定済み・手動編集済みの下書きは変更しません。承認と発行は既存の請求書画面で行います。出勤表・請求書ボタンはマスターが個別にONにした場合だけトークの下に表示します。出勤表の一般メンバー閲覧は本人の確認済み行だけです。管理者は対象月の投稿・過去履歴から候補を抽出し、作業員・現場・人工・時間・手当を確認修正してLINEノートの集計と照合します。変わっていない投稿の修正は再取込後も保持します。出勤の登録は署名後に既存の承認待ちへ、請求書は現場設定・会社税率の金額を確認後に通常の下書きへ保存します。既存の同日出勤や同月請求書は上書きしません。OFFでも保存データは削除せず、再ONで継続します。通常グループを先に作成した後、トーク機能（︙）またはグループ設定からLINEトークを追加できます。グループ名・写真・メンバーはそのままです。LINEグループのチャットを開くと、グループから作成・一覧・トークを利用できます。LINE側で作成したグループはLINE側だけに1つ、SKOチャットでLINEグループを追加して作成したグループは同じデータをSKOとLINEの両入口に表示します。投稿は複製しません。連携済みグループでSKOから送信した新しいテキストはLINEへ自動送信します。LINE送信名では登録氏名・ニックネーム・会社名を選び、末尾に from SKO が付きます。LINE受付済みは配信の保証ではありません。失敗時もSKOの投稿は保存済みで、LINE再試行は同じ投稿を使い重複登録しません。過去投稿・LINEからの受信・写真はLINEへ送り直しません。": "Create a normal group first, then use Talk menu or Group settings to add a LINE source to the existing group. Existing group name, photo and members remain. LINE-created groups show one entry; SKO-created linked groups share their conversation through both entries. New SKO text posts are sent to LINE automatically; retry only the saved post if LINE acceptance is unconfirmed.",
   },
 );
+
+
+
+
