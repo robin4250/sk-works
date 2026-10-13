@@ -101,6 +101,7 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
                   TrafficDestinationIcon(
                     key: ValueKey('traffic-icon-${TrafficDestination.values[index].name}'),
                     destination: TrafficDestination.values[index],
+                    enabled: widget.availability.permits(TrafficDestination.values[index]) && !_opening,
                   ),
                   const SizedBox(width: 2),
                   Expanded(child: FittedBox(
