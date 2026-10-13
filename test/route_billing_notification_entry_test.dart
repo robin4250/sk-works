@@ -37,6 +37,11 @@ void main() {
       read: false, actionKey: 'route_billing_quantity_request', actionId: id);
     expect(routeAwareNotificationBadgeCount([], pending), 1);
     expect(routeAwareNotificationBadgeCount([notice], pending), 1);
+    final snapshot = AttentionCenterSnapshot([
+      mapAttentionNotification(notice), ...pending,
+    ], now: DateTime(2026, 10, 14));
+    expect(snapshot.items.length, 1);
+    expect(snapshot.unresolvedCount, 1);
     expect(routeAwareNotificationBadgeCount([], []), 0);
   });
 

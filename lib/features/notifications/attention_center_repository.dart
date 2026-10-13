@@ -190,7 +190,7 @@ List<AttentionCenterItem> mapRouteBillingQuantityAttention(Object? raw) {
         targetName: _text(row['customer_name']),
         targetDate: _date(row['work_date']),
         createdAt: _date(row['created_at']),
-        evidenceRank: 10, actionable: true,
+        evidenceRank: 30, actionable: true,
       ),
   ];
 }
