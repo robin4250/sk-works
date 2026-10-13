@@ -13,14 +13,14 @@ create table payroll_unit_private.conditions (
  worker_id uuid not null references public.workers(id) on delete cascade,
  starts_on date not null check(starts_on=date_trunc('month',starts_on)::date),
  version bigint not null check(version>0), items jsonb not null check(jsonb_typeof(items)='array'),
- updated_by uuid not null references auth.users(id), updated_at timestamptz not null default now(),
+ updated_by uuid references auth.users(id) on delete set null, updated_at timestamptz not null default now(),
  primary key(company_id,worker_id,starts_on)
 );
 create table payroll_unit_private.quantities (
  company_id uuid not null references public.companies(id) on delete cascade,
  worker_id uuid not null references public.workers(id) on delete cascade,
  item_id uuid not null, month date not null check(month=date_trunc('month',month)::date),
- hours numeric(12,4) not null check(hours>=0), updated_by uuid not null references auth.users(id),
+ hours numeric(12,4) not null check(hours>=0), updated_by uuid references auth.users(id) on delete set null,
  updated_at timestamptz not null default now(), primary key(company_id,worker_id,item_id,month)
 );
 alter table payroll_unit_private.conditions enable row level security;

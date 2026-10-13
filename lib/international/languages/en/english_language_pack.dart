@@ -4,6 +4,7 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "閲覧のみ": "Read only",
     "単位別の支給・控除": "Unit Earnings and Deductions",
     "時間単位": "Hourly",
     "日にち単位": "Daily",

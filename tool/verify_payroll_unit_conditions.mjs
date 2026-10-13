@@ -102,5 +102,18 @@ try {
  const frozen=await statement();
  await actor(editor);assert.equal((await state()).can_edit,false,'frozen payroll is visibly read-only, not a failed editable form');
  await assert.rejects(save(2,changed.items),/finalized\/manual/);assert.deepEqual(await statement(),frozen);
+ // Retiring an attribution-only account must not delete financial conditions or
+ // prevent the existing account deletion flow. No production accounts are used.
+ await db.exec('reset role');
+ const retired='00000000-0000-0000-0000-000000000099';
+ await db.query('insert into auth.users(id) values($1)',[retired]);
+ await db.query('update payroll_unit_private.conditions set updated_by=$1 where company_id=$2 and worker_id=$3',[retired,cid,wid]);
+ await db.query('update payroll_unit_private.quantities set updated_by=$1 where company_id=$2 and worker_id=$3',[retired,cid,wid]);
+ const countConditions=(await db.query('select count(*) n from payroll_unit_private.conditions')).rows[0].n;
+ const countQuantities=(await db.query('select count(*) n from payroll_unit_private.quantities')).rows[0].n;
+ await db.query('delete from auth.users where id=$1',[retired]);
+ assert.equal((await db.query('select count(*) n from payroll_unit_private.conditions where updated_by is null')).rows[0].n,countConditions);
+ assert.equal((await db.query('select count(*) n from payroll_unit_private.quantities where updated_by is null')).rows[0].n,countQuantities);
+ assert.deepEqual(await statement(),frozen);
  console.log('PASS unit settings 6 bases, save/reload, quantity identity, direct amounts, taxes, stale version, reviewer scope, day dedup, source hours, missing future quantity, frozen manual payroll');
 } finally {await db.close();}
