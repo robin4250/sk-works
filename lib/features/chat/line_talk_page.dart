@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'chat_cloud_repository.dart';
+import 'line_received_messages_list.dart';
 
 /// Stage one is a read-only view of saved LINE posts. It does not create attendance.
 class LineTalkPage extends StatefulWidget {
@@ -207,14 +208,7 @@ class _LineTalkPageState extends State<LineTalkPage> {
 
   Widget _messageList() {
     if (_messages.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('このグループの受信テキストはまだありません。\nLINEで投稿後、再読み込みしてください。', textAlign: TextAlign.center)));
-    return ListView.separated(itemCount: _messages.length, padding: const EdgeInsets.all(16), separatorBuilder: (_, index) => const SizedBox(height: 12), itemBuilder: (context, index) {
-      final message = _messages[index];
-      final at = DateTime.tryParse(message['sent_at']?.toString() ?? '')?.toLocal();
-      return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${message['sender_display_name'] ?? 'LINE'}${at == null ? '' : '  ${_date(at)}'}', style: Theme.of(context).textTheme.labelMedium),
-        const SizedBox(height: 8), SelectableText(message['body']?.toString() ?? ''),
-      ])));
-    });
+    return LineReceivedMessagesList(rows: _messages);
   }
 }
 
