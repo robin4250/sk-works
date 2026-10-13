@@ -18,6 +18,9 @@ class ChatCloudRepository {
     return ChatCloudRepository._(client);
   }
 
+  factory ChatCloudRepository.forClient(SupabaseClient client) =>
+      ChatCloudRepository._(client);
+
   @visibleForTesting
   factory ChatCloudRepository.forTesting(SupabaseClient client) =>
       ChatCloudRepository._(client);

@@ -25,7 +25,7 @@ class LineSharedGroupsRepository {
     _check(expected);
     if (value is! List) throw StateError('Group metadata unavailable');
     final rows = value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
-    final previews = await ChatCloudRepository.forTesting(client)
+    final previews = await ChatCloudRepository.forClient(client)
       .loadConversationPreviews(rows.map((row) => row['group_id'].toString()));
     _check(expected);
     return [for (final row in rows) {
@@ -36,12 +36,12 @@ class LineSharedGroupsRepository {
   }
 
   Stream<String> watchChanges() =>
-    ChatCloudRepository.forTesting(client).watchConversationChanges();
+    ChatCloudRepository.forClient(client).watchConversationChanges();
 
   Future<ChatConversationSummary?> preview(String groupId) async {
     final expected = actor;
     _check(expected);
-    final result = await ChatCloudRepository.forTesting(client)
+    final result = await ChatCloudRepository.forClient(client)
       .loadConversationPreviews([groupId]);
     _check(expected);
     return result[groupId];
