@@ -249,7 +249,7 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'site_map',
       label: '現場マップ',
-      purpose: '現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。',
+      purpose: '表示できる現場・会社・社員の地点を地図で確認します。',
       destination: '現場管理のフッターにある現場マップから地図一覧を開きます。',
       access: '管理者・サブ管理者',
       roles: {ManualRole.subAdmin, ManualRole.admin},
@@ -281,7 +281,8 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'notes',
       label: 'ノート',
-      purpose: '業務メモと添付ファイルをチャット単位で管理します。',
+      purpose: '業務メモを作成・検索・ピン留めして確認します。',
+      details: 'ノートを開き、本文を入力して登録します。検索やピン留めで必要な本文を探します。削除は既存の権限で行います。',
       destination: 'ノート一覧へ移動します。',
       access: '会社設定と参加チャットの権限に従います',
     ),
@@ -314,6 +315,7 @@ class MenuHelpCatalog {
       key: 'today_line',
       label: '本日のLINE出勤候補',
       purpose: 'LINE連携から取り込んだ出勤候補を確認します。',
+      details: '本日の候補を確認する読み取り専用の画面です。正式な勤怠申請は、LINEトークの出勤表で候補を確認・修正・保存し、署名して承認待ちへ提出します。出勤表の表示はマスターのON設定と既存の権限に従います。',
       destination: '本日のLINE出勤候補画面へ移動します。',
       access: '管理者・勤怠管理権限',
       roles: {ManualRole.subAdmin, ManualRole.admin},

@@ -1294,5 +1294,9 @@ const englishLanguagePack = LanguagePack(
     "LINE参加グループ一覧と通常グループへの追加": "Participating LINE Groups and Links to Normal Groups",
     "個別給与設定の確認・登録": "View and Save Individual Payroll Settings",
     "給与調整の対象日と登録・修正": "Payroll Adjustment Dates, Registration and Changes",
+    "業務メモを作成・検索・ピン留めして確認します。": "Create, search and pin work notes.",
+    "ノートを開き、本文を入力して登録します。検索やピン留めで必要な本文を探します。削除は既存の権限で行います。": "Open Notes, enter the text and save it. Use search and pinning to find notes. Deletion follows existing permissions.",
+    "本日の候補を確認する読み取り専用の画面です。正式な勤怠申請は、LINEトークの出勤表で候補を確認・修正・保存し、署名して承認待ちへ提出します。出勤表の表示はマスターのON設定と既存の権限に従います。": "This is a read-only view of today's suggestions. To submit official attendance, review, correct and save suggestions in the LINE attendance sheet, then sign and submit them for approval. The attendance sheet follows the master feature switch and existing permissions.",
+    "表示できる現場・会社・社員の地点を地図で確認します。": "View available site, company and employee locations on a map.",
   },
 );
