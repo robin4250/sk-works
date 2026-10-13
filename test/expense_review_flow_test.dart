@@ -88,7 +88,7 @@ void main() {
         onHistory: () async { openedHistory = true; }),
     ));
     expect(find.text('メモ（却下理由）：領収書の内容を確認してください。'), findsOneWidget);
-    expect(find.textContaining('精算方法：'), findsNothing);
+    expect(find.text('精算方法：未設定'), findsOneWidget);
     await tester.ensureVisible(find.text('内容を修正する'));
     await tester.tap(find.text('内容を修正する')); await tester.pump();
     await tester.ensureVisible(find.text('履歴を確認'));

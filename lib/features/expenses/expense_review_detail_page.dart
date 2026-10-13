@@ -4,9 +4,9 @@ import 'expense_receipt_preview.dart';
 import 'expense_review_flow_dialog.dart';
 
 class ExpenseReviewDetailPage extends StatelessWidget {
-  const ExpenseReviewDetailPage({super.key, required this.claim, this.onEdit, this.onHistory});
+  const ExpenseReviewDetailPage({super.key, required this.claim, this.onEdit, this.onHistory, this.onDelete});
   final ExpenseClaim claim;
-  final Future<void> Function()? onEdit, onHistory;
+  final Future<void> Function()? onEdit, onHistory, onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -77,11 +77,14 @@ class ExpenseReviewDetailPage extends StatelessWidget {
           if (approved) ...[
             const Divider(height: 1, indent: 14, endIndent: 14),
             detailRow(Icons.business, '負担先', '${expenseBurdenLabel(claim.allocation.category)}${claim.allocation.counterpartyName == null ? '' : ' / ${claim.allocation.counterpartyName}'}'),
-            if (claim.settlement != null) ...[
+          ],
+          if (claim.settlement != null) ...[
               const Divider(height: 1, indent: 14, endIndent: 14),
-              detailRow(Icons.payments_outlined, '精算方法', claim.settlement!.label),
+              detailRow(Icons.payments_outlined, approved ? '精算方法' : '前回の精算設定', claim.settlement!.label),
               detailRow(Icons.calendar_month, '精算対象月（申請月）', '${claim.settlement!.month.year}年${claim.settlement!.month.month}月'),
-            ],
+          ] else ...[
+            const Divider(height: 1, indent: 14, endIndent: 14),
+            detailRow(Icons.payments_outlined, '精算方法', '未設定'),
           ],
           const Divider(height: 1, indent: 14, endIndent: 14),
           detailRow(Icons.notes, rejected ? 'メモ（却下理由）' : 'メモ',
@@ -91,6 +94,12 @@ class ExpenseReviewDetailPage extends StatelessWidget {
       OutlinedButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined),
         style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
         label: const Text('内容を修正する')),
+      if (onDelete != null) ...[
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete_outline),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48), foregroundColor: colors.error),
+          label: const Text('削除')),
+      ],
       const SizedBox(height: 8),
       OutlinedButton.icon(onPressed: onHistory, icon: const Icon(Icons.history),
         style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
