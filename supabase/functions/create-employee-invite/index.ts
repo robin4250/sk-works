@@ -270,8 +270,8 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!authResponse.ok) {
-    const body = await authResponse.text();
-    console.error("employee auth create failed", authResponse.status, body);
+    // Upstream errors may contain personal data; retain only the stage and status.
+    console.error("employee auth create failed", authResponse.status);
     return json(
       { error: authResponse.status === 422
           ? "この電話番号はすでにSKOへ登録されています。"
@@ -442,3 +442,4 @@ Deno.serve(async (req: Request) => {
     return json({ error: "従業員登録を保存できませんでした。" }, 500);
   }
 });
+
