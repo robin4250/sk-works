@@ -87,7 +87,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   String? _readScope;
   bool _initialGroupCreationOpened = false;
   bool _initialConversationOpened = false;
-  final Map<String, ({String messageId, String state})> _lineDispatch = {};
+  final Map<String, ({String groupId, String state})> _lineDispatch = {};
   final Set<String> _lineDispatchBusy = {};
   bool _chatForeground = true;
 
@@ -617,24 +617,27 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final text = _composer.text.trim();
     if (repository == null || id == null || text.isEmpty || _sending) return;
 
+    final actor = repository.currentUserId;
+    String messageId;
     setState(() => _sending = true);
     try {
-      final actor = repository.currentUserId;
-      final messageId = await repository.sendMessage(groupId: id, body: text);
-      if (!mounted || repository.currentUserId != actor) return;
-      if (_selectedGroupId == id) _composer.clear();
-      await _refreshGroupSummary(id);
-      await _dispatchSavedMessage(id, messageId);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${SkoLanguageController.tr('送信できませんでした')}: $error'),
-        ),
-      );
+      messageId = await repository.sendMessage(groupId: id, body: text);
+    } catch (_) {
+      if (mounted && repository.currentUserId == actor) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(SkoLanguageController.tr('送信できませんでした'))),
+        );
+      }
+      return;
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+    // From here the SKO post already exists. No later failure may ask for
+    // reinsertion, suppress LINE dispatch, or retain the composer draft.
+    if (!mounted || repository.currentUserId != actor) return;
+    if (_selectedGroupId == id) _composer.clear();
+    unawaited(_refreshGroupSummary(id).catchError((Object _) {}));
+    await _dispatchSavedMessage(id, messageId);
   }
 
   Future<void> _dispatchSavedMessage(String groupId, String messageId) async {
@@ -645,10 +648,13 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         !_groups.any(
           (group) => group['id'] == groupId && group['line_origin'] != null,
         ) ||
-        _lineDispatchBusy.contains(groupId)) {
+        _lineDispatchBusy.contains(messageId)) {
       return;
     }
-    setState(() => _lineDispatchBusy.add(groupId));
+    setState(() {
+      _lineDispatchBusy.add(messageId);
+      _lineDispatch[messageId] = (groupId: groupId, state: 'sending');
+    });
     var status = 'unavailable';
     try {
       status = await repository.dispatchLineMessage(messageId);
@@ -657,11 +663,21 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     }
     if (!mounted || repository.currentUserId != actor) return;
     setState(() {
-      _lineDispatchBusy.remove(groupId);
+      _lineDispatchBusy.remove(messageId);
       if (status == 'not_linked') {
-        _lineDispatch.remove(groupId);
+        _lineDispatch.remove(messageId);
       } else {
-        _lineDispatch[groupId] = (messageId: messageId, state: status);
+        // Keep unresolved older message IDs retryable after subsequent posts.
+        // Only completed receipt rows are reduced to the newest per group.
+        if (status == 'accepted') {
+          _lineDispatch.removeWhere(
+            (id, value) =>
+                id != messageId &&
+                value.groupId == groupId &&
+                value.state == 'accepted',
+          );
+        }
+        _lineDispatch[messageId] = (groupId: groupId, state: status);
       }
     });
   }
@@ -739,8 +755,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       if (result == null ||
           !mounted ||
           repository.currentUserId != actor ||
-          _selectedGroupId != groupId)
+          _selectedGroupId != groupId) {
         return;
+      }
       await repository.lineSenderPreferences(
         groupId,
         mode: result.mode,
@@ -2302,15 +2319,18 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                       ),
                     ),
             ),
-            if (_lineDispatch[_selectedGroupId] != null)
+            for (final delivery in _lineDispatch.entries.where(
+              (entry) => entry.value.groupId == _selectedGroupId,
+            ))
               Padding(
+                key: ValueKey('line-dispatch-${delivery.key}'),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         SkoLanguageController.tr(
-                          _lineDispatch[_selectedGroupId]!.state == 'accepted'
+                          delivery.value.state == 'accepted'
                               ? 'LINE受付済み（配信確認はLINE側で）'
                               : 'SKO保存済み・LINE送信未確認',
                         ),
@@ -2321,13 +2341,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                       'expired',
                       'too_long',
                       'ambiguous',
-                    ].contains(_lineDispatch[_selectedGroupId]!.state))
+                    ].contains(delivery.value.state))
                       TextButton(
-                        onPressed: _lineDispatchBusy.contains(_selectedGroupId)
+                        key: ValueKey('line-retry-${delivery.key}'),
+                        onPressed: _lineDispatchBusy.contains(delivery.key)
                             ? null
                             : () => _dispatchSavedMessage(
-                                _selectedGroupId!,
-                                _lineDispatch[_selectedGroupId]!.messageId,
+                                delivery.value.groupId,
+                                delivery.key,
                               ),
                         child: Text(SkoLanguageController.tr('LINE再試行')),
                       ),

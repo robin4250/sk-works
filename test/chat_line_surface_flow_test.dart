@@ -8,6 +8,8 @@ import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 
 class SurfaceRepository implements ChatCloudRepository {
   int writes = 0;
+  bool failSavedSummary = false;
+  Completer<void>? retryGate;
   final dispatches = <String>[];
   final messages = StreamController<List<Map<String, dynamic>>>.broadcast();
   @override
@@ -49,7 +51,11 @@ class SurfaceRepository implements ChatCloudRepository {
   @override
   Future<Map<String, ChatConversationSummary>> loadConversationSummaries(
     Map<String, DateTime> lastReadByGroup,
-  ) async => {};
+  ) async {
+    if (failSavedSummary && writes > 0) throw StateError('Summary read failed');
+    return {};
+  }
+
   @override
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
     Future.microtask(
@@ -71,12 +77,16 @@ class SurfaceRepository implements ChatCloudRepository {
     required String body,
   }) async {
     writes++;
-    return 'saved-message';
+    return writes == 1 ? 'saved-message' : 'saved-message-$writes';
   }
 
   @override
   Future<String> dispatchLineMessage(String messageId) async {
     dispatches.add(messageId);
+    if (messageId == 'saved-message' &&
+        dispatches.where((id) => id == messageId).length > 1) {
+      await retryGate?.future;
+    }
     return dispatches.length == 1 ? 'unknown' : 'accepted';
   }
 
@@ -139,4 +149,64 @@ void main() {
       await repo.messages.close();
     },
   );
+  for (final holdRetry in [false, true]) {
+    testWidgets(
+      holdRetry
+          ? 'a new saved message dispatches while older retry is pending'
+          : 'summary failure cannot suppress dispatch or lose older unknown retry',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = SurfaceRepository()..failSavedSummary = true;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ChatCloudPage(repository: repo, initialGroupId: 'line-only'),
+          ),
+        );
+        await settle(tester);
+        await tester.enterText(find.byType(TextField), 'First post');
+        await tester.tap(find.byTooltip('送信'));
+        await settle(tester);
+        expect(repo.writes, 1);
+        expect(repo.dispatches, ['saved-message']);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+        expect(find.text('送信できませんでした'), findsNothing);
+        if (holdRetry) {
+          repo.retryGate = Completer<void>();
+          await tester.tap(
+            find.byKey(const ValueKey('line-retry-saved-message')),
+          );
+          await settle(tester);
+        }
+        await tester.enterText(find.byType(TextField), 'Second post');
+        await tester.tap(find.byTooltip('送信'));
+        await settle(tester);
+        expect(repo.writes, 2);
+        expect(
+          repo.dispatches,
+          holdRetry
+              ? ['saved-message', 'saved-message', 'saved-message-2']
+              : ['saved-message', 'saved-message-2'],
+        );
+        expect(
+          find.byKey(const ValueKey('line-retry-saved-message')),
+          findsOneWidget,
+        );
+        if (holdRetry) {
+          repo.retryGate!.complete();
+        } else {
+          await tester.tap(
+            find.byKey(const ValueKey('line-retry-saved-message')),
+          );
+        }
+        await settle(tester);
+        expect(repo.writes, 2);
+        expect(repo.dispatches.where((id) => id == 'saved-message').length, 2);
+        await tester.pumpWidget(const SizedBox());
+        await repo.messages.close();
+      },
+    );
+  }
 }
