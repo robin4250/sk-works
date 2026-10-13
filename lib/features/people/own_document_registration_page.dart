@@ -419,6 +419,9 @@ class _OwnDocumentRegistrationPageState
       paths: workerDocumentPaths(row),
       signedUrl: gateway.signedUrl,
       canEdit: gateway.photoEditingAvailable,
+      uploadNotice: [resourceDocumentReviewLabel(row['status']),
+        if ((row['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${row['expires_at']}',
+      ].join('\n'),
     );
     if (photos == null || !mounted) return;
     setState(() => _saving = true);
@@ -619,7 +622,8 @@ class _OwnDocumentRegistrationPageState
                             registered: !needsRegistration,
                             statusLabel: label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
-                            detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                            detailLabel: [if (status != null) resourceDocumentReviewLabel(status['status']),
+                              workerDocumentScopeLabel(requirement['scope']),
                               if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                             attachments: attachments,

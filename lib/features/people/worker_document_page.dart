@@ -315,10 +315,15 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 icon: Icons.description_outlined, registered: status != null,
                                 statusLabel: status == null ? '未登録' : '登録済み',
                                 dateLabel: dates.isEmpty ? '' : dates.first,
-                                detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                                detailLabel: [resourceDocumentReviewLabel(effective),
+                                  workerDocumentScopeLabel(requirement['scope']),
+                                  requirement['is_required'] == true ? '必須' : '任意',
                                   if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
-                                  if (effective == 'expired') '期限切れ',
-                                  if (effective == 'missing') '不足',
+                                  if (_expiryHint(requirement, _parseDocumentDate(status?['expires_at']), today) != null)
+                                    _expiryHint(requirement, _parseDocumentDate(status?['expires_at']), today)!,
+                                  if (status?['original_verified'] == true) '原本確認済み',
+                                  for (final date in DataDateLabels.labels(createdAt: requirement['created_at'],
+                                    updatedAt: requirement['updated_at'])) '${SkoLanguageController.tr('書類項目')} $date',
                                   if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                                 attachments: attachments,
                                 onAction: _canManageStatuses ? () => _editStatus(requirement, status)
@@ -794,6 +799,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text([workerDocumentScopeLabel(requirement['scope']),
+                  requirement['is_required'] == true ? '必須' : '任意'].join(' / ')),
+                for (final date in DataDateLabels.labels(createdAt: requirement['created_at'],
+                    updatedAt: requirement['updated_at']))
+                  Align(alignment: Alignment.centerLeft, child: Text('${SkoLanguageController.tr('書類項目')} $date')),
                 for (final date in DataDateLabels.labels(createdAt: current?['created_at'],
                     updatedAt: current?['updated_at']))
                   Align(alignment: Alignment.centerLeft, child: Text(date)),
@@ -1009,6 +1019,15 @@ bool _documentNeedsAttention(
   if (expiry == null) return false;
   final days = expiry.difference(_dateOnly(now)).inDays;
   return days >= 0 && days <= _reminderDays(requirement);
+}
+
+String? _expiryHint(Map<String, dynamic> requirement, DateTime? expiry, DateTime now) {
+  if (requirement['expiry_required'] != true || expiry == null) { return null; }
+  final days = expiry.difference(_dateOnly(now)).inDays;
+  if (days < 0) { return '期限切れ'; }
+  if (days == 0) { return '本日期限'; }
+  if (days <= _reminderDays(requirement)) { return 'あと$days日'; }
+  return null;
 }
 
 class _EmptyState extends StatelessWidget {

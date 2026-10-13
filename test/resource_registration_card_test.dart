@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/resource_registration_card.dart';
+import 'package:sk_works/features/people/worker_document_photo_editor.dart';
 
 Widget host(Widget child, {double scale = 1}) => MaterialApp(home: MediaQuery(
   data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
@@ -12,6 +13,42 @@ ResourceRegistrationCard card(List<ResourceAttachment> attachments, {String titl
     registered: registered, attachments: attachments, onAction: () {});
 
 void main() {
+  testWidgets('full saved qualification metadata stays accessible without resizing the card', (tester) async {
+    final row = <String, dynamic>{
+      'expires_at': '2027-12-31',
+      'issuer': '保存されたとても長い発行元の正式名称を省略せず確認する機関',
+      'certificate_number': 'CERT-0042',
+    };
+    final fields = resourceQualificationMetadata(row);
+    expect(fields, ['期限 2027-12-31', '発行元: ${row['issuer']}', '証明書 CERT-0042']);
+    final detail = fields.join(' / ');
+    await tester.pumpWidget(host(ResourceRegistrationCard(title: '資格', icon: Icons.badge_outlined,
+      registered: true, attachments: const [], detailLabel: detail, onAction: () {})));
+    final before = tester.getRect(find.byType(ResourceRegistrationCard));
+    await tester.longPress(find.byTooltip(detail));
+    await tester.pumpAndSettle();
+    expect(find.text(detail, findRichText: true), findsNWidgets(2));
+    expect(tester.getRect(find.byType(ResourceRegistrationCard)), before);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (context) =>
+      TextButton(onPressed: () => editWorkerDocumentPhotos(context, paths: const [],
+        signedUrl: (_) async => throw StateError('Unexpected download'),
+        canEdit: false, allowNewPhotos: false, uploadNotice: fields.join('\n')),
+        child: const Text('確認・編集'))))));
+    await tester.tap(find.text('確認・編集'));
+    await tester.pumpAndSettle();
+    expect(find.text(fields.join('\n')), findsOneWidget);
+    expect(find.text('写真を確定'), findsNothing);
+  });
+  test('stored document review states remain distinct from registration labels', () {
+    expect(resourceDocumentReviewLabel('submitted'), '提出済み');
+    expect(resourceDocumentReviewLabel('verified'), '確認済み');
+    expect(resourceDocumentReviewLabel('missing'), '不足');
+    expect(resourceDocumentReviewLabel('expired'), '期限切れ');
+    expect(resourceDocumentReviewLabel('future-status'), 'future-status');
+  });
+
   testWidgets('shared registration footer keeps full width and position for both labels', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;

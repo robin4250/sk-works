@@ -118,8 +118,9 @@ class ResourceRegistrationCard extends StatelessWidget {
               Expanded(child: Text(dateLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11, color: Colors.black54))),
             ])),
-            SizedBox(height: detailHeight, child: Text(detailLabel, maxLines: 1,
-              overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.black54))),
+            SizedBox(height: detailHeight, child: Tooltip(message: detailLabel,
+              child: Text(detailLabel, maxLines: 1,
+                overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.black54)))),
             const SizedBox(height: 8),
             Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(child: attachments.isEmpty
@@ -330,3 +331,18 @@ Future<String?> chooseRegisteredDocumentRequirement(BuildContext context,
   if (isCurrentScope != null && !isCurrentScope()) { return null; }
   return selected;
 }
+
+String resourceDocumentReviewLabel(Object? value) {
+  final status = value?.toString() ?? 'not_submitted';
+  return switch (status) {
+    'not_submitted' => '未提出', 'submitted' => '提出済み',
+    'verified' => '確認済み', 'missing' => '不足', 'expired' => '期限切れ',
+    _ => status,
+  };
+}
+
+List<String> resourceQualificationMetadata(Map<String, dynamic> row) => [
+  if ((row['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${row['expires_at']}',
+  if ((row['issuer']?.toString() ?? '').isNotEmpty) '発行元: ${row['issuer']}',
+  if ((row['certificate_number']?.toString() ?? '').isNotEmpty) '証明書 ${row['certificate_number']}',
+];

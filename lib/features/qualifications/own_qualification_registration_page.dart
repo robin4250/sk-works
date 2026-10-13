@@ -159,9 +159,12 @@ class _OwnQualificationRegistrationPageState
         storagePath: path,
       ),
       allowNewPhotos: _photoCapability.uploadAllowed,
-      uploadNotice: _photoCapability.uploadAllowed
+      uploadNotice: [
+        ...resourceQualificationMetadata(row),
+        _photoCapability.uploadAllowed
           ? '写真の変更は申請として送信し、承認後に登録内容へ反映します。資格名・番号などの情報は変更しません。'
           : '新しい資格証写真の送信は停止中です。保存済み写真の並べ替え・一覧からの削除だけを申請できます。承認後に反映し、写真ファイルは履歴に保持します。',
+      ].join('\n'),
     );
     if (!mounted ||
         actor == null ||
@@ -471,6 +474,8 @@ class _OwnQualificationRegistrationPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (index == 0)
+                      for (final metadata in resourceQualificationMetadata(row)) Text(metadata),
                     Text(
                       photos[index].label,
                       style: const TextStyle(fontWeight: FontWeight.w700),
@@ -721,9 +726,8 @@ class _OwnQualificationRegistrationPageState
                                 dateLabel: (row['issued_at']?.toString() ?? '').isEmpty
                                   ? '' : '取得日 ${row['issued_at']}',
                                 statusLabel: unregistered ? '未登録' : '登録済み',
-                                detailLabel: [if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,
-                                  if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
-                                  '証明書 ${row['certificate_number']}',
+                                detailLabel: [...resourceQualificationMetadata(row),
+                                  if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,
                                   if (photos.length > 2) '添付 ${photos.length}件（詳細で確認）'].join(' / '),
                                 attachments: attachments,
                                 onAction: unregistered
