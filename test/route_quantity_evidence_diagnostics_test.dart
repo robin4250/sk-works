@@ -74,6 +74,7 @@ void main() {
     await open(tester,access);
     final buttons = find.byType(SegmentedButton<double>);
     await tester.ensureVisible(buttons);
+    await tester.pumpAndSettle();
     await tester.tap(find.descendant(of:buttons,matching:find.text('1人工')));
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'申請')).onPressed,isNotNull);
