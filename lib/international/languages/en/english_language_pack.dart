@@ -1247,5 +1247,8 @@ const englishLanguagePack = LanguagePack(
     'PDFを表示できませんでした。': 'Could not display the PDF.',
     '画像を表示できませんでした。': 'Could not display the image.',
     '添付を表示できませんでした。': 'Could not display the attachment.',
+    '書類を登録': 'Register Document',
+    '資格を登録': 'Register Qualification',
+    '登録する書類を選択': 'Choose a document to register',
   },
 );
