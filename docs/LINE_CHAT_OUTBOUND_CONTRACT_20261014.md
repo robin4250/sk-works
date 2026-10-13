@@ -1,0 +1,15 @@
+# LINE outbound text contract (beta)
+
+New SKO text posts in a linked normal group can be dispatched by `line-chat-dispatch` with `{message_id}` only. The authenticated author is verified through Auth, then database guards. Existing chat insertion, permissions and old history remain intact. This feature never inserts the SKO message again when LINE fails.
+
+An AFTER INSERT trigger snapshots future, own `sk_works` posts only. No historical backfill, imported-message forwarding, or LINE-origin echo. Primary active joined binding is preferred. Without a primary, exactly one active joined source linked to the same company is allowed. Multiple candidates return `ambiguous`; no broadcast or arbitrary selection. Archived groups, revoked membership and account deletion restrictions prevent dispatch. Explicit invited participants keep existing group membership semantics; unrelated companies/actors cannot dispatch.
+
+`line_chat_sender_preferences(p_group_id,p_mode,p_nickname)` reads own preferences when mode is null, or saves `name`, `nickname`, `company`. Company mode reads the registered company name. Name mode uses the saved message sender name. The chosen label is safely shortened to 11 UTF-16 units, followed by ` from SKO` (9 units). Original message text is unchanged; LINE's 5000 UTF-16-unit limit is enforced. This does not change the audit author ID or profile.
+
+Outbox is private with RLS deny-all. Public wrappers are invoker; private definer guards have empty search paths and explicit function ACLs. Claim/finish are service-role only, and claim consumes a short-lived author-bound authorization ticket and rechecks live access/source. One row per message/binding, immutable text/target/sender and fixed UUID retry key. Concurrent claims lock the same persisted row; lease IDs prevent stale completion overwrites.
+
+The first attempt includes `X-Line-Retry-Key`. Same key and payload are retained for uncertain network failures. Retries stop after 23h55m, within LINE's documented 24h limit. A successful API acceptance is `accepted`, never a claim of delivery: HTTP 200, or 409 with `x-line-accepted-request-id`. Other 4xx are rejected, 429 is a limit error, 5xx/network outcomes remain unknown with a 30-second minimum retry interval. There is no periodic sender, paid-plan enrollment or quota increase. Error bodies/tokens are never logged or returned. The UI must retain the saved message ID for safe retry.
+
+References checked 2026-10-14: LINE retry specification https://developers.line.biz/en/docs/messaging-api/retrying-api-request/ ; Messaging API text/sender/push reference https://developers.line.biz/en/reference/messaging-api/nojs/ ; Supabase changelog https://supabase.com/changelog.md (Oct12 TLS cipher deprecation takes effect Nov10 and is not a current code change).
+
+Verification: Node synthetic HTTP contract, real SQL permission/outbox/preferences checks, and PostgreSQL 17 two-connection claim lock race in CI. No real LINE messages or production mutations are performed by these tests. Deployment and the user's real iPhone-to-LINE test remain separate stages.
