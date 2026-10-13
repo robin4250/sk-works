@@ -42,7 +42,6 @@ class _Repository implements ChatCloudRepository {
       'sender_display_name': 'LINE sender',
       'origin': 'line',
     },
-    timeout: const Timeout(Duration(seconds: 60)),
   );
   int createCalls = 0;
   @override
