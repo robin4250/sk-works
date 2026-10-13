@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
         encodeURIComponent(workerId) +
         "&company_id=eq." +
         encodeURIComponent(companyId) +
-        "&affiliation=eq.employee&select=id,name,phone,user_id&limit=1",
+        "&affiliation=eq.employee&select=id,name,phone,user_id,status&limit=1",
       { method: "GET" },
     );
     if (!workerResponse.ok) {
@@ -270,8 +270,7 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!authResponse.ok) {
-    const body = await authResponse.text();
-    console.error("employee auth create failed", authResponse.status, body);
+    console.error("employee auth create failed", authResponse.status);
     return json(
       { error: authResponse.status === 422
           ? "この電話番号はすでにSKOへ登録されています。"
@@ -292,10 +291,11 @@ Deno.serve(async (req: Request) => {
   try {
     if (existingWorker && persistedWorkerId) {
       const workerResponse = await serviceFetch(
-        "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
+        "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId) +
+          "&company_id=eq." + encodeURIComponent(companyId) + "&user_id=is.null&select=id",
         {
           method: "PATCH",
-          headers: { Prefer: "return=minimal" },
+          headers: { Prefer: "return=representation" },
           body: JSON.stringify({
             user_id: authUserId,
             status: "active",
@@ -307,7 +307,14 @@ Deno.serve(async (req: Request) => {
         persistenceStatus = workerResponse.status;
         throw new Error("employee worker persistence failed");
       }
+      // A successful response may still have an unreadable body. Cleanup is
+      // conditional on the new Auth ID, so never touches a concurrent owner.
       linkedExistingWorker = true;
+      const linkedRows = await workerResponse.json();
+      if (!Array.isArray(linkedRows) || linkedRows.length !== 1 ||
+          linkedRows[0]?.id !== persistedWorkerId) {
+        throw new Error("employee worker linkage unconfirmed");
+      }
     } else {
       const workerResponse = await serviceFetch("/rest/v1/workers?select=id", {
         method: "POST",
@@ -437,13 +444,14 @@ Deno.serve(async (req: Request) => {
     console.error("employee invite persistence failed", persistenceStage, persistenceStatus);
     // Existing employees must never be deleted when a link attempt fails.
     // Undo only this attempt's successful linkage; concurrent reassignment wins.
-    if (persistedWorkerId && (linkedExistingWorker || newWorkerCreated)) {
+    if ((persistedWorkerId && linkedExistingWorker) || newWorkerCreated) {
       try {
         const cleanupResponse = await serviceFetch(
-          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId) +
+          "/rest/v1/workers?company_id=eq." + encodeURIComponent(companyId) +
+            (persistedWorkerId ? "&id=eq." + encodeURIComponent(persistedWorkerId) : "") +
             "&user_id=eq." + encodeURIComponent(authUserId),
           linkedExistingWorker
-            ? { method: "PATCH", body: JSON.stringify({ user_id: null }) }
+            ? { method: "PATCH", body: JSON.stringify({ user_id: null, status: existingWorker.status }) }
             : { method: "DELETE" },
         );
         if (!cleanupResponse.ok) {
