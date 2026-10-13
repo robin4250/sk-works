@@ -15,7 +15,8 @@ void main() {
     final latestTop = tester.getTopLeft(find.text('post 249')).dy;
     expect(tester.getTopLeft(find.text('post 248')).dy, lessThan(latestTop));
     await tester.scrollUntilVisible(find.text('post 0'), 500,
-      scrollable: find.byType(Scrollable), maxScrolls: 100);
+      scrollable: find.byWidgetPredicate((widget) => widget is Scrollable &&
+        widget.axisDirection == AxisDirection.up), maxScrolls: 100);
     expect(find.text('post 0'), findsOneWidget);
     expect(rows.first['body'], 'post 0');
     expect(rows.last['body'], 'post 249');
