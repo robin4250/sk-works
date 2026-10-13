@@ -177,7 +177,13 @@ class _SecurityIncidentDetailPageState
   bool _busy = false;
   late final _report = SecurityIncidentReportData(widget.record);
   final _repository = SecurityIncidentRepository.maybeCreate();
-  late final String? _actor = _repository?.currentActor;
+  late final String? _actor;
+  @override
+  void initState() {
+    super.initState();
+    _actor = _repository?.currentActor;
+  }
+
   Future<void> _authorizeExport() async {
     final repository = _repository;
     if (repository == null) {
