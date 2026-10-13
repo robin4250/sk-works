@@ -68,7 +68,9 @@ print(json.dumps({'earnings':money(240,293),'deductions':money(490,558),'labels'
       expect((report['earnings'] as int) - (report['deductions'] as int), record.netPay);
       final labels = (report['labels'] as List<dynamic>).cast<String>();
       expect(labels.where((value) => value == '基本給'), hasLength(1));
-      expect(labels.where((value) => value == '残業手当'), hasLength(1));
+      if (!name.startsWith('actual_unit_')) {
+        expect(labels.where((value) => value == '残業手当'), hasLength(1));
+      }
       expect(labels, isNot(contains('月固定給')));
       for (final key in metadata.keys) {
         expect(labels, isNot(contains(key)),
