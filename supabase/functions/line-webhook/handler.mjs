@@ -131,7 +131,28 @@ return async (req) => {
       continue;
     }
 
-    if (!groupId || event?.type !== "message" || messageType !== "text" || !messageText) continue;
+    if (!groupId || source.type !== "group") continue;
+    const observedAt = typeof event.timestamp === "number" && Number.isFinite(event.timestamp)
+      ? new Date(event.timestamp).toISOString() : null;
+    if (!observedAt) { failed = true; continue; }
+    let groupName = null;
+    if (event.type !== "leave" && env("LINE_CHANNEL_ACCESS_TOKEN")) {
+      try {
+        const summary = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+          headers: { Authorization: `Bearer ${env("LINE_CHANNEL_ACCESS_TOKEN")}` },
+          signal: AbortSignal.timeout(1500), redirect: "error",
+        });
+        if (summary.ok) {
+          const value = await summary.json();
+          if (value.groupId === groupId && typeof value.groupName === "string") groupName = value.groupName.trim() || null;
+        }
+      } catch { /* Preserve discovery and previous sourced name. */ }
+    }
+    const observation = await rest("rpc/observe_line_joined_group", {method:"POST",body:JSON.stringify({
+      p_line_group_id:groupId,p_display_name:groupName,p_joined:event.type!=="leave",p_observed_at:observedAt,p_event_id:webhookEventId,
+    })});
+    if (!observation.ok) { logger.error("LINE group observation failed", observation.status); failed=true; continue; }
+    if (event.type !== "message" || messageType !== "text" || !messageText) continue;
 
     const claimMatch = messageText.match(/^\s*SKO連携[\s　]+([A-F0-9]{8})\s*$/i);
     if (claimMatch) {
@@ -154,16 +175,11 @@ return async (req) => {
       `line_group_bindings?line_group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&select=company_id,communication_group_id&limit=1`,
       { method: "GET", headers: { Prefer: "" } },
     );
-    if (!bindingResp.ok) {
-      logger.error("binding lookup failed", bindingResp.status);
-      failed = true;
-      continue;
-    }
+    if (!bindingResp.ok) { logger.error("binding lookup failed", bindingResp.status); failed=true; continue; }
     const bindings = await bindingResp.json();
     if (!Array.isArray(bindings) || bindings.length === 0) continue;
-
-    const binding = bindings[0];
-    if (!binding.company_id || !binding.communication_group_id) continue;
+    const binding=bindings[0];
+    if(!binding.company_id || !binding.communication_group_id) continue;
 
     const sentAt = typeof event?.timestamp === "number"
       ? new Date(event.timestamp).toISOString()
@@ -202,3 +218,4 @@ return async (req) => {
     : new Response("OK", { status: 200 });
 };
 }
+

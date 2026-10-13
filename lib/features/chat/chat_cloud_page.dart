@@ -15,6 +15,8 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
 import 'chat_list_widgets.dart';
+import 'line_joined_groups_page.dart';
+import 'line_linked_talk_page.dart';
 
 enum _ChatTab { all, friends, site, groups, partner }
 
@@ -755,9 +757,19 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     final selected = _selectedGroup;
     if (repository == null || (!create && selected?['can_edit_group_photo'] != true)) return;
     final actor = repository.currentUserId;
+    String? creationCompanyId;
+    if(create) {
+      try { creationCompanyId=(await repository.membership()).companyId; } catch(_) {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(SkoLanguageController.tr('会社を確認できませんでした。'))));
+        return;
+      }
+      if(!mounted || repository.currentUserId!=actor) return;
+    }
     final controller = TextEditingController(text: create ? '' : selected?['name']?.toString());
     Uint8List? photo;
     String? createdId;
+    Map<String, dynamic>? selectedLine;
+    var lineLinked = false;
     var busy = false;
     String? error;
     await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
@@ -779,6 +791,19 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             if (!dialogContext.mounted || repository.currentUserId != actor) return;
             update(() { photo = bytes; error = null; });
           }, icon: const Icon(Icons.camera_alt_outlined), label: Text(SkoLanguageController.tr('写真を変更'))),
+          if (create) OutlinedButton.icon(onPressed: busy ? null : () async {
+            final source = await Navigator.of(dialogContext).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(selectOnly: true, newGroupCompanyId:creationCompanyId)));
+            if (!dialogContext.mounted || repository.currentUserId != actor || source == null) return;
+            try {
+              final companyName=await repository.lineLinkCompanyName(creationCompanyId:creationCompanyId);
+              if(!dialogContext.mounted || repository.currentUserId!=actor) return;
+              final confirm=await showDialog<bool>(context:dialogContext,builder:(context)=>AlertDialog(
+                title:Text(SkoLanguageController.tr('LINEトークを追加しますか？')),
+                content:Text('$companyName\n${controller.text.trim()}\n${source['display_name'] ?? SkoLanguageController.tr('グループ名未取得')}'),
+                actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(context,true),child:Text(SkoLanguageController.tr('追加')))]));
+              if(confirm==true && dialogContext.mounted && repository.currentUserId==actor) update(() { selectedLine = source; lineLinked = false; });
+            } catch(_) { if(dialogContext.mounted) update(()=>error='会社を確認できませんでした。'); }
+          }, icon: const Icon(Icons.add_link), label: Text(selectedLine?['display_name']?.toString() ?? SkoLanguageController.tr('LINEトークを追加'))),
           if (error != null) Text(SkoLanguageController.tr(error!), style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ])),
         actions: [TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('戻る')),
@@ -788,22 +813,32 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             update(() { busy = true; error = null; });
             try {
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+              if (create && ((await repository.membership()).companyId!=creationCompanyId || repository.currentUserId!=actor)) throw StateError('会社を確認できませんでした。');
               if (create && createdId == null) createdId = await repository.createCustomGroup(controller.text);
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               final id = create ? createdId! : selected!['id'].toString();
               if (photo != null) await repository.saveCustomGroupPhoto(id, photo!);
+              if (repository.currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+              if (create && selectedLine != null && !lineLinked) { await repository.linkLineSource(id, selectedLine!['id'].toString()); lineLinked = true; }
               if (!dialogContext.mounted) return;
               Navigator.pop(dialogContext);
               await _load();
               if (mounted && repository.currentUserId == actor) await _selectGroup(id);
             } catch (_) {
-              if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。写真を保持して再試行できます。'; });
+              if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。選択内容を保持して再試行できます。'; });
             }
           }, child: Text(SkoLanguageController.tr(create ? '作成' : '保存')))],
       )));
     controller.dispose();
     // A successful group creation followed by a cancelled photo retry remains accessible.
     if (createdId != null && mounted) await _load();
+  }
+
+  Future<void> _addLineToSelectedGroup() async {
+    final group=_selectedGroup;
+    if (!_isCustomGroup(group) || group?['can_edit_group_photo']!=true) return;
+    await Navigator.of(context).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(targetGroupId:group!['id'].toString(),targetGroupName:group['display_name']?.toString()??group['name']?.toString())));
+    if(mounted) await _load();
   }
 
   Future<void> _inviteFriendToSelectedGroup() async {
@@ -920,6 +955,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
           : await repository.loadGroupMembers(groupId);
       if (!mounted) return;
       final customGroup = _isCustomGroup(selectedGroup);
+      var lineSources = <Map<String,dynamic>>[];
+      if(customGroup) {
+        try { lineSources=(await repository.loadJoinedLineGroups(targetGroupId:groupId)).where((row)=>row['linked']==true).toList(growable:false); } catch(_) { /* Existing member controls remain available during server rollout. */ }
+      }
+      if(!mounted) return;
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -939,6 +979,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
+                if (customGroup && selectedGroup?['can_edit_group_photo']==true)
+                  Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); _addLineToSelectedGroup(); }, icon: const Icon(Icons.add_link), label: Text(SkoLanguageController.tr('LINEトークを追加')))),
                 if (customGroup)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -970,7 +1012,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                   ),
                 const Divider(height: 1),
                 Expanded(
-                  child: members.isEmpty
+                  child: members.isEmpty && lineSources.isEmpty
                       ? Center(
                           child: Text(
                             SkoLanguageController.tr('参加メンバーはいません'),
@@ -978,11 +1020,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(10),
-                          itemCount: members.length,
+                          itemCount: lineSources.length + members.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 4),
                           itemBuilder: (context, index) {
-                            final member = members[index];
+                            if(index<lineSources.length) {
+                              final source=lineSources[index];
+                              return ListTile(leading:const Icon(Icons.link),title:Text(source['display_name']?.toString() ?? SkoLanguageController.tr('グループ名未取得')),subtitle:Text(SkoLanguageController.tr('LINEトーク')),trailing:const Icon(Icons.chevron_right),onTap:source['primary_group_id']==null ? null : () { Navigator.pop(sheetContext); Navigator.of(this.context).push<void>(MaterialPageRoute(builder:(_)=>LineLinkedTalkPage(targetGroupId:groupId,directoryId:source['id'].toString(),name:source['display_name']?.toString()??SkoLanguageController.tr('グループ名未取得')))); });
+                            }
+                            final member = members[index-lineSources.length];
                             final avatarUrl =
                                 member['avatar_url']?.toString();
                             final userId =
@@ -2049,4 +2095,5 @@ class _MessageBubble extends StatelessWidget {
     return '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
+
 
