@@ -786,6 +786,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             try {
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               if (create && createdId == null) createdId = await repository.createCustomGroup(controller.text);
+              if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               final id = create ? createdId! : selected!['id'].toString();
               if (photo != null) await repository.saveCustomGroupPhoto(id, photo!);
               if (!dialogContext.mounted) return;
