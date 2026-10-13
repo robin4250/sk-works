@@ -115,6 +115,29 @@ void main() {
     expect(tester.takeException(),isNull);
   });
 
+  testWidgets('calendar dates use blue Saturdays and red Sundays and Japanese holidays', (tester) async {
+    final reports = Reports(client);
+    final theme = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue));
+    await tester.pumpWidget(MaterialApp(theme: theme,
+      home: DailyReportMonthPage(initialMonth: DateTime(2026, 10), repositoryForTesting: reports)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('現場A'));
+    await tester.pumpAndSettle();
+    Future<Color?> dateColor(int day) async {
+      final label = find.byKey(ValueKey('daily-report-date-label-$day'));
+      await tester.scrollUntilVisible(label, 200);
+      await tester.pumpAndSettle();
+      return tester.widget<Text>(label).style?.color;
+    }
+    expect(await dateColor(3), Colors.blue.shade700);
+    expect(await dateColor(4), theme.colorScheme.error);
+    expect(await dateColor(5), isNull);
+    // Sports Day is a Monday, so this checks the holiday rule separately.
+    expect(await dateColor(12), theme.colorScheme.error);
+    expect(find.byKey(const ValueKey('daily-report-day-12-no-photos')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('same-day photo groups keep each report ID selectable in creation order', (tester) async {
     final reports=Reports(client)..extraOld=true;
     await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),
