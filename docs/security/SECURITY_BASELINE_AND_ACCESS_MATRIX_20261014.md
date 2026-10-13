@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | 初回配布設定 | #997をmain・本番へ反映。正常owner/adminは維持し、匿名EXECUTEと制限中アカウントを拒否。 | `20261013191956_guard_initial_distribution_account_access.sql` と `tool/verify_initial_distribution_account_access.mjs`。実SQLロール検査成功、本番の新prosrc/ACL確認済み。保存URLと更新日時の前後照合は統括担当の記録。 |
 | LINE Webhook | #998をmainへ反映。署名検証・本文上限・通信制限の更新。 | `supabase/functions/line-webhook/handler.mjs` と専用検査。本番反映・実投稿の受信結果はIssue最新記録で別確認する。 |
-| グループ写真 | #999で4 Storageポリシーの `name` 参照を修正。 | 旧式は `communication_groups.name` を読んでいた。`objects.name` へ修飾し、本人/グループ/匿名/他bucketと既存restrictive境界を実SQLで検証。資料時点ではPR検査中、本番未適用。 |
+| グループ写真 | #999をmain `62c6d7b8`・本番へ反映し、4 Storageポリシーの `name` 参照を修正。 | 旧式は `communication_groups.name` を読んでいた。`objects.name` へ修飾し、本人/グループ/匿名/他bucketと既存restrictive境界を実SQLで検証。本番の新qual/roles/flagsと既存グループ保持を確認。iPhoneからの実写真保存・LINE連携成功は別途確認する。 |
 | 写真の入替 | 別パスINSERT → 既存setter → 一覧再読込。 | 本番setter定義を隔離fixtureへ読み、2枚目への参照差替と旧画像保持を実SQLで確認。Storage UPDATE/DELETEを開放する必要はない。 |
 | 給与・複数現場 | #993/#996の機能修正で否定ロール・確定snapshot・同時実行検査を追加。 | PR段階の証拠と本番を混同しない。担当がsource/head/CIを固定し、統括担当が前提確認後に反映する。 |
 | 通信鍵 | クライアントはpublishable key、上流API鍵・service権限鍵はサーバー。 | `lib/data/supabase_backend.dart`、天気/LINE handler、Secret Scan。秘密値や利用者JWTの取得・記録は行っていない。 |
