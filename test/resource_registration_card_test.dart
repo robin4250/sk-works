@@ -67,4 +67,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests, 2);
   });
+  testWidgets('retry retained after card removal cannot update a disposed thumbnail', (tester) async {
+    var requests = 0;
+    await tester.pumpWidget(host(card([ResourceAttachment(label: '表面', path: 'front',
+      loadBytes: () async { requests++; throw StateError('Unavailable'); })])));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(ResourceAttachmentThumbnail));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(host(const SizedBox()));
+    await tester.pump();
+    await tester.tap(find.text('再試行'));
+    await tester.pumpAndSettle();
+    expect(requests, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
