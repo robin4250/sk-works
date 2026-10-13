@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
+import '../../data/supabase_backend.dart';
+import 'attention_center_repository.dart';
+import 'attention_center_item.dart';
 import '../../international/language_controller.dart';
 import 'notifications_page.dart';
 
@@ -11,26 +16,48 @@ class SkoNotificationBell extends StatefulWidget {
   State<SkoNotificationBell> createState() => _SkoNotificationBellState();
 }
 
-class _SkoNotificationBellState extends State<SkoNotificationBell> {
+class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsBindingObserver {
   final _repository = AppNotificationRepository.maybeCreate();
-  int _unread = 0;
+  final _badge = NotificationBadgeRefresh();
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _refresh();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _badge.invalidate();
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
     final repository = _repository;
-    if (repository == null) return;
-    try {
-      final count = await repository.unreadCount();
-      if (!mounted) return;
-      setState(() => _unread = count);
-    } catch (_) {
-      // A bell without a badge remains usable if notifications are unavailable.
-    }
+    if (repository == null || !SupabaseBackend.isInitialized) return;
+    final client = SupabaseBackend.client;
+    await _badge.refresh(
+      currentActor: () => client.auth.currentUser?.id,
+      loadUnread: repository.unreadTargets,
+      loadPending: () async => mapRouteBillingQuantityAttention(
+        await client.rpc('pending_route_billing_quantity_rows'),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _open() async {
@@ -46,10 +73,61 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> {
       tooltip: SkoLanguageController.tr('お知らせ'),
       onPressed: _open,
       icon: Badge(
-        isLabelVisible: _unread > 0,
-        label: Text(_unread > 99 ? '99+' : '$_unread'),
+        isLabelVisible: _badge.count > 0,
+        label: Text(_badge.count > 99 ? '99+' : '${_badge.count}'),
         child: const Icon(Icons.notifications_outlined),
       ),
     );
+  }
+}
+
+int routeAwareNotificationBadgeCount(
+  List<AppNotificationRecord> unread, List<AttentionCenterItem> pending,
+) {
+  final targets = {for (final notice in unread)
+    if (!notice.read && notice.actionKey == 'route_billing_quantity_request' &&
+        notice.actionId != null) notice.actionId};
+  final extra = {for (final task in pending)
+    if (task.actionable && task.needsAction && !targets.contains(task.actionId))
+      task.actionId};
+  return unread.where((notice) => !notice.read).length + extra.length;
+}
+
+/// Account-bound, overlap-safe badge refresh. Old account responses are discarded.
+class NotificationBadgeRefresh {
+  int count = 0;
+  String? _actor;
+  int _generation = 0;
+  bool _busy = false;
+
+  void invalidate() { ++_generation; count = 0; _actor = null; }
+
+  Future<void> refresh({
+    required String? Function() currentActor,
+    required Future<List<AppNotificationRecord>> Function() loadUnread,
+    required Future<List<AttentionCenterItem>> Function() loadPending,
+  }) async {
+    final actor = currentActor();
+    if (_actor != actor) { invalidate(); _actor = actor; }
+    if (actor == null || _busy) return;
+    _busy = true;
+    final generation = ++_generation;
+    try {
+      final unread = await loadUnread();
+      if (generation != _generation || currentActor() != actor) {
+        invalidate(); return;
+      }
+      var pending = const <AttentionCenterItem>[];
+      try { pending = await loadPending(); } catch (_) {
+        // Preserve existing unread notices when the optional task source fails.
+      }
+      if (generation != _generation || currentActor() != actor) {
+        invalidate(); return;
+      }
+      count = routeAwareNotificationBadgeCount(unread, pending);
+    } catch (_) {
+      if (currentActor() != actor) invalidate();
+      // Existing same-account count remains usable on a temporary read failure.
+    } finally { _busy = false; }
   }
 }
