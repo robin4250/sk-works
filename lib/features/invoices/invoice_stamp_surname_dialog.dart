@@ -8,6 +8,7 @@ Future<bool> editInvoiceStampSurname(
   InvoiceApprovalRepository repository,
   String invoiceId, {
   String? initialSurname,
+  VoidCallback? checkActor,
 }) async {
   final controller = TextEditingController(text: initialSurname ?? '');
   String? error;
@@ -46,7 +47,9 @@ Future<bool> editInvoiceStampSurname(
               onPressed: busy ? null : () async {
                 setDialogState(() { busy = true; error = null; });
                 try {
+                  checkActor?.call();
                   await repository.setStampSurname(invoiceId, controller.text);
+                  checkActor?.call();
                   if (dialogContext.mounted) Navigator.pop(dialogContext, true);
                 } catch (_) {
                   if (dialogContext.mounted) {

@@ -219,13 +219,22 @@ class InvoiceApprovalRepository {
   }
 
   Future<bool> approve(String invoiceId) async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('SKOへのログインが必要です。');
+    void checkActor() {
+      if (_client.auth.currentUser?.id != actor) {
+        throw StateError('アカウントが変わりました。請求書を開き直してください。');
+      }
+    }
     final surnameContract = await _loadSurnameContract(invoiceId);
+    checkActor();
     final raw = await _client.rpc(
       surnameContract?['enabled'] == true
           ? 'approve_invoice_with_stamp_surname'
           : 'approve_invoice',
       params: {'p_invoice_id': invoiceId},
     );
+    checkActor();
     return raw == true;
   }
 
