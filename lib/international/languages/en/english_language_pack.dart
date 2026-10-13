@@ -1268,5 +1268,7 @@ const englishLanguagePack = LanguagePack(
     '社員の書類・資格カード': 'Employee Document and Qualification Cards',
     '通常請求書の下書き・プレビュー': 'Invoice Drafts and Preview',
     'LINEトークと月別請求書': 'LINE Talks and Monthly Invoices',
+    'パンフレットの機能別目次': 'Brochure Feature Contents',
+    '画面右側の「？」は少し長めに長押しして好きな位置へ移動できます。タップすると現在画面の説明が最初に出ます。検索欄には「出勤」「日報」「チャット」「給与」「現場」などの機能名を入力して使い方を探せます。 説明書とパンフレットは「ベータ版」の機能別目次から開けます。全体のPDFと各機能だけのPDFを選べます。内容に応じてページを増やし、新しい機能は章を追加します。画面の操作が変わった場合は、その章と「？」の説明を更新します。': 'Press and hold the ? button on the right to move it. Tap it to see help for the current screen. Search for a feature such as attendance, daily reports, chat, payroll or sites. Open the beta manuals and brochure from their feature contents. Choose the complete PDF or a PDF for one feature. Pages expand to fit the content, and new features are added as chapters. When an operation changes, its chapter and ? help are updated.',
   },
 );
