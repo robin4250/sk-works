@@ -70,6 +70,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
   int _summaryGeneration = 0;
   String? _readScope;
   bool _refreshingList = false;
+  bool _chatForeground = true;
+
+  bool get _readVisible => mounted && _chatForeground &&
+      (ModalRoute.of(context)?.isCurrent ?? false);
 
   Map<String, dynamic>? get _selectedGroup {
     final id = _selectedGroupId;
@@ -338,7 +342,12 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshList();
+    _chatForeground = state == AppLifecycleState.resumed;
+    if (_chatForeground) {
+      _refreshList();
+      final group = _selectedGroupId;
+      if (group != null && _isNearBottom()) _markRead(group);
+    }
   }
 
   Future<void> _refreshList() async {
@@ -353,7 +362,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
   Future<void> _markRead(String groupId) async {
     final actor = _repository?.currentUserId;
     final scope = _readScope;
-    if (actor == null || scope == null || !scope.startsWith('$actor/') ||
+    if (!_readVisible || actor == null || scope == null || !scope.startsWith('$actor/') ||
         _selectedGroupId != groupId || _messages.isEmpty) return;
     // Persist the newest message actually received, not wall clock time: a
     // concurrent/newly arriving message must remain unread until displayed.
@@ -362,7 +371,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     if (dates.isEmpty) return;
     final receivedThrough = dates.last.toUtc();
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted || _repository?.currentUserId != actor || _readScope != scope || _selectedGroupId != groupId) return;
+    if (!_readVisible || _repository?.currentUserId != actor || _readScope != scope || _selectedGroupId != groupId) return;
     final key = _readKey(scope, groupId);
     final previous = DateTime.tryParse(prefs.getString(key) ?? '');
     if (previous == null || receivedThrough.isAfter(previous)) {
