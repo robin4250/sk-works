@@ -175,6 +175,16 @@ class AppNotificationRepository {
       expectedSourceId: item.actionId!);
   }
 
+  Future<List<AppNotificationRecord>> unreadTargets() async {
+    await _enqueueDueInvoiceApprovals();
+    final rows = await _client
+        .from('app_notifications')
+        .select('id,kind,title,body,action_key,action_id,read_at,created_at')
+        .isFilter('read_at', null);
+    return rows.map<AppNotificationRecord>((row) =>
+      AppNotificationRecord.fromRow(Map<String, dynamic>.from(row))).toList();
+  }
+
   Future<int> unreadCount() async {
     await _enqueueDueInvoiceApprovals();
     final rows = await _client

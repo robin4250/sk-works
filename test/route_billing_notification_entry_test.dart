@@ -3,6 +3,7 @@ import 'package:sk_works/features/notifications/app_notification_repository.dart
 import 'package:sk_works/features/notifications/attention_center_item.dart';
 import 'package:sk_works/features/notifications/attention_center_repository.dart';
 import 'package:sk_works/features/notifications/notifications_page.dart';
+import 'package:sk_works/features/notifications/notification_bell.dart';
 import 'package:sk_works/features/route_billing/route_billing_quantity_approvals_page.dart';
 
 void main() {
@@ -26,6 +27,16 @@ void main() {
       actionKey: item.actionKey, actionId: item.actionId));
     expect(destination, isA<RouteBillingQuantityApprovalsPage>()
       .having((page) => page.initialRequestId, 'exact saved request', id));
+  });
+
+  test('bell counts a pending request once with a matching unread notification', () {
+    final pending = mapRouteBillingQuantityAttention(rows);
+    final notice = AppNotificationRecord(id: 'notice', kind: 'approval',
+      title: 'approval', body: '', createdAt: DateTime(2026, 10, 14),
+      read: false, actionKey: 'route_billing_quantity_request', actionId: id);
+    expect(routeAwareNotificationBadgeCount([], pending), 1);
+    expect(routeAwareNotificationBadgeCount([notice], pending), 1);
+    expect(routeAwareNotificationBadgeCount([], []), 0);
   });
 
   test('approved, missing and malformed rows never become synthetic pending tasks', () {
