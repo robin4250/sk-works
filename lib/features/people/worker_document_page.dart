@@ -8,6 +8,8 @@ import '../help/floating_help_controller.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import '../shared/resource_registration_card.dart';
+
 import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
@@ -281,12 +283,41 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                   statusByRequirement[requirement['id']
                                           ?.toString() ??
                                       ''];
-                              return _RequirementTile(
-                                requirement: requirement,
-                                status: status,
-                                onTap: _canManageStatuses && status != null
-                                    ? () => _editStatus(requirement, status)
-                                    : null,
+                              final paths = workerDocumentPaths(status);
+                              final repository = _repository;
+                              final actor = _loadedActorId;
+                              Future<String> signedUrl(String path) async {
+                                if (repository == null || actor == null || actor != repository.actorId ||
+                                    workerId != _selectedWorkerId) throw StateError('Session changed');
+                                final url = await repository.createSignedAttachmentUrl(path);
+                                if (actor != repository.actorId || workerId != _selectedWorkerId)
+                                  throw StateError('Session changed');
+                                return url;
+                              }
+                              final attachments = [
+                                for (var i = 0; i < paths.length; i++)
+                                  signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signedUrl),
+                              ];
+                              final effective = _effectiveDocumentStatus(requirement, status, today);
+                              return ResourceRegistrationCard(
+                                key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
+                                title: requirement['name']?.toString() ?? '書類',
+                                icon: Icons.description_outlined, registered: status != null,
+                                statusLabel: switch (effective) {
+                                  'verified' => '確認済み', 'submitted' => '提出済み',
+                                  'expired' => '期限切れ', 'missing' => '不足', _ => '未登録',
+                                },
+                                dateLabel: (status?['expires_at']?.toString() ?? '').isEmpty
+                                  ? '' : '期限 ${status!['expires_at']}',
+                                detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                                  if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
+                                attachments: attachments,
+                                onAction: _canManageStatuses ? () => _editStatus(requirement, status)
+                                  : paths.isEmpty ? null : () => showResourceAttachments(
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                                onOpenDetail: _canManageStatuses ? () => _editStatus(requirement, status)
+                                  : paths.isEmpty ? null : () => showResourceAttachments(
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
                               );
                             },
                           ),
@@ -942,85 +973,6 @@ bool _documentNeedsAttention(
   return days >= 0 && days <= _reminderDays(requirement);
 }
 
-String? _expiryHint(
-  Map<String, dynamic> requirement,
-  DateTime? expiry,
-  DateTime now,
-) {
-  if (requirement['expiry_required'] != true || expiry == null) return null;
-  final days = expiry.difference(_dateOnly(now)).inDays;
-  if (days < 0) return '期限切れ';
-  if (days == 0) return '本日期限';
-  if (days <= _reminderDays(requirement)) return 'あと$days日';
-  return null;
-}
-
-class _RequirementTile extends StatelessWidget {
-  const _RequirementTile({
-    required this.requirement,
-    required this.status,
-    required this.onTap,
-  });
-
-  final Map<String, dynamic> requirement;
-  final Map<String, dynamic>? status;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final today = DateTime.now();
-    final statusValue = _effectiveDocumentStatus(requirement, status, today);
-    final labels = <String, String>{
-      'not_submitted': '未提出',
-      'submitted': '提出済み',
-      'verified': '確認済み',
-      'missing': '不足',
-      'expired': '期限切れ',
-    };
-    final scopeLabel = workerDocumentScopeLabel(requirement['scope']);
-    final requiredLabel = requirement['is_required'] == true ? '必須' : '任意';
-    final expiry = status?['expires_at']?.toString();
-    final expiryDate = _parseDocumentDate(expiry);
-    final expiryHint = _expiryHint(requirement, expiryDate, today);
-
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Icon(
-            statusValue == 'verified'
-                ? Icons.check
-                : statusValue == 'expired'
-                ? Icons.warning_amber_rounded
-                : Icons.description_outlined,
-          ),
-        ),
-        title: Text(
-          requirement['name']?.toString() ?? '',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text(
-          [
-            '$scopeLabel / $requiredLabel',
-            labels[statusValue] ?? statusValue,
-            if (expiry != null && expiry.isNotEmpty) '期限 $expiry',
-            if (expiryHint != null) expiryHint,
-            if (status?['original_verified'] == true) '原本確認済み',
-            if (workerDocumentPaths(status).isNotEmpty) '写真あり',
-            ...DataDateLabels.labels(
-              createdAt: status?['created_at'] ?? requirement['created_at'],
-              updatedAt: status?['updated_at'] ?? requirement['updated_at'],
-            ),
-          ].join(' / '),
-        ),
-        trailing: onTap == null
-            ? null
-            : OutlinedButton(onPressed: onTap, child: const Text('編集')),
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onAddDefaults});
 
@@ -1144,3 +1096,4 @@ class WorkerDocumentEntryChoices extends StatelessWidget {
     ],
   );
 }
+

@@ -5,6 +5,9 @@ import '../common/data_date_labels.dart';
 import '../people/personnel_export_page.dart';
 import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
+import 'qualification_certificate_page.dart';
+import 'qualification_certificate_repository.dart';
+import '../shared/resource_registration_card.dart';
 
 class QualificationCloudPage extends StatefulWidget {
   const QualificationCloudPage({super.key});
@@ -25,6 +28,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   bool _canManageMaster = false;
   bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
+  bool _canEditCertificates = false;
+  final _certificateRepository = QualificationCertificateRepository.maybeCreate();
   String _workerQuery = '';
   String _qualificationQuery = '';
   String? _selectedWorkerId;
@@ -59,6 +64,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         repository.loadAll(),
         repository.canManageMaster(),
         repository.canManageWorkerQualifications(),
+        _certificateRepository?.canManageCertificates() ?? Future.value(false),
       ]);
       final data = values[0] as Map<String, dynamic>;
       if (!mounted) return;
@@ -68,6 +74,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _qualifications = List<Map<String, dynamic>>.from(data['qualifications'] as List);
         _canManageMaster = values[1] as bool;
         _canManageWorkerQualifications = values[2] as bool;
+        _canEditCertificates = values[3] as bool;
         _loading = false;
         _error = null;
       });
@@ -99,7 +106,15 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       ].whereType<Object>().join(' ').toLowerCase().contains(workerNeedle);
     }).toList(growable: false);
 
-    final filtered = _qualifications.where((row) {
+    final listed = <Map<String, dynamic>>[
+      ..._qualifications,
+      if (_selectedWorkerId != null)
+        for (final master in _masters)
+          if (!_qualifications.any((row) => row['worker_id']?.toString() == _selectedWorkerId &&
+              row['qualification_master_id'] == master['id']))
+            {'worker_id': _selectedWorkerId, 'qualification_master_id': master['id'], '_unregistered': true},
+    ];
+    final filtered = listed.where((row) {
       final master = masterById[row['qualification_master_id']?.toString() ?? ''];
       final expiry = _parseDate(row['expires_at']);
       final isExpired = expiry != null && expiry.isBefore(_dateOnly(now));
@@ -256,31 +271,32 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                 final worker = workerById[row['worker_id']?.toString() ?? ''];
                                 final expiry = _parseDate(row['expires_at']);
                                 final status = _expiryLabel(expiry, now);
-                                return Card(
-                                  child: ListTile(
-                                    leading: const CircleAvatar(
-                                      child: Icon(Icons.badge_outlined),
-                                    ),
-                                    title: Text(
-                                      master?['name']?.toString() ?? '資格',
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
-                                    ),
-                                    subtitle: Text(
-                                      [
-                                        worker?['name']?.toString() ?? '保有者不明',
-                                        if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
-                                          '証明書 ${row['certificate_number']}',
-                                        status,
-                                      ].join(' / '),
-                                    ),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => _showDetails(
-                                      row,
-                                      master,
-                                      worker,
-                                      status,
-                                    ),
-                                  ),
+                                final unregistered = row['_unregistered'] == true;
+                                final actor = _certificateRepository?.currentUserId;
+                                Future<String> signedUrl(String path) async {
+                                  final repository = _certificateRepository;
+                                  if (repository == null || actor == null || actor != repository.currentUserId)
+                                    throw StateError('Session changed');
+                                  final url = await repository.createSignedUrl(path);
+                                  if (actor != repository.currentUserId) throw StateError('Session changed');
+                                  return url;
+                                }
+                                final attachments = [
+                                  signedResourceAttachment(label: '表面', path: row['attachment_path']?.toString(),
+                                    signedUrl: signedUrl, known: unregistered || row.containsKey('attachment_path')),
+                                  signedResourceAttachment(label: '裏面', path: row['attachment_back_path']?.toString(),
+                                    signedUrl: signedUrl, known: unregistered || row.containsKey('attachment_back_path')),
+                                ];
+                                return ResourceRegistrationCard(
+                                  key: ValueKey('managed-qualification:$actor:${row['worker_id']}:${row['id'] ?? row['qualification_master_id']}'),
+                                  title: master?['name']?.toString() ?? '資格', icon: Icons.badge_outlined,
+                                  registered: !unregistered,
+                                  dateLabel: (row['issued_at']?.toString() ?? '').isEmpty ? '' : '取得日 ${row['issued_at']}',
+                                  detailLabel: worker?['name']?.toString() ?? '', attachments: attachments,
+                                  onAction: unregistered ? _canManageWorkerQualifications
+                                    ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString()) : null
+                                    : () => _showDetails(row, master, worker, status),
+                                  onOpenDetail: unregistered ? null : () => _showDetails(row, master, worker, status),
                                 );
                               },
                             ),
@@ -424,7 +440,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     }
   }
 
-  Future<void> _addQualification() async {
+  Future<void> _addQualification({String? initialMasterId}) async {
     final repository = _repository;
     if (repository == null) return;
     if (_masters.isEmpty) {
@@ -441,7 +457,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     }
 
     var workerId = _selectedWorkerId ?? _workers.first['id']?.toString();
-    var masterId = _masters.first['id']?.toString();
+    var masterId = _masters.any((m) => m['id']?.toString() == initialMasterId)
+        ? initialMasterId : _masters.first['id']?.toString();
     final certificateController = TextEditingController();
     final issuerController = TextEditingController();
     final notesController = TextEditingController();
@@ -588,6 +605,15 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     Map<String, dynamic>? worker,
     String status,
   ) {
+    final actor = _certificateRepository?.currentUserId;
+    Future<String> detailSignedUrl(String path) async {
+      final repository = _certificateRepository;
+      if (repository == null || actor == null || actor != repository.currentUserId)
+        throw StateError('Session changed');
+      final url = await repository.createSignedUrl(path);
+      if (actor != repository.currentUserId) throw StateError('Session changed');
+      return url;
+    }
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -620,6 +646,22 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               ))
                 Text(label),
               const SizedBox(height: 16),
+              if (_canManageWorkerQualifications && _canEditCertificates)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
+                      QualificationCertificatePage(initialQualificationId: row['id']?.toString())));
+                    if (mounted) await _load();
+                  },
+                  icon: const Icon(Icons.edit_outlined), label: const Text('資格証を確認・編集')),
+              if (QualificationCloudRepository.ownPhotoAttachments(row).isNotEmpty)
+                TextButton(onPressed: () => showResourceAttachments(context,
+                  title: master?['name']?.toString() ?? '資格', attachments: [
+                    for (final photo in QualificationCloudRepository.ownPhotoAttachments(row))
+                      signedResourceAttachment(label: photo.label, path: photo.path,
+                        signedUrl: detailSignedUrl),
+                  ]), child: const Text('すべての添付を確認')),
               if (_canManageWorkerQualifications)
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -782,3 +824,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import '../shared/resource_registration_card.dart';
+
 import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
@@ -40,15 +42,20 @@ abstract interface class OwnDocumentPhotoGateway
 
 class _OwnDocumentRepositoryGateway
     implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway {
-  const _OwnDocumentRepositoryGateway(this.repository);
+  _OwnDocumentRepositoryGateway(this.repository) : actorId = repository.actorId;
   final WorkerDocumentRepository repository;
+  final String? actorId;
 
   @override
   bool get photoEditingAvailable => repository.photoEditingAvailable;
 
   @override
-  Future<String> signedUrl(String path) =>
-      repository.createSignedAttachmentUrl(path);
+  Future<String> signedUrl(String path) async {
+    if (actorId == null || actorId != repository.actorId) throw StateError('Session changed');
+    final url = await repository.createSignedAttachmentUrl(path);
+    if (actorId != repository.actorId) throw StateError('Session changed');
+    return url;
+  }
 
   @override
   Future<void> savePhotos({
@@ -592,65 +599,32 @@ class _OwnDocumentRegistrationPageState
                               : status?['status']?.toString() == 'submitted'
                               ? '提出済み'
                               : '未登録';
-                          return Card(
-                            child: ListTile(
-                              onTap: _saving
-                                  ? null
-                                  : needsRegistration
-                                  ? () => _registerDocument(
-                                      initialRequirementId: id,
-                                    )
-                                  : _repository is OwnDocumentPhotoGateway
-                                  ? () => _editPhotos(status)
-                                  : null,
-                              trailing: TextButton(
-                                onPressed: _saving
-                                    ? null
-                                    : needsRegistration
-                                    ? () => _registerDocument(
-                                        initialRequirementId: id,
-                                      )
-                                    : _repository is OwnDocumentPhotoGateway
-                                    ? () => _editPhotos(status)
-                                    : () => _registerDocument(
-                                        initialRequirementId: id,
-                                      ),
-                                child: Text(
-                                  needsRegistration
-                                      ? '登録する'
-                                      : _repository is OwnDocumentPhotoGateway &&
-                                            !(_repository
-                                                    as OwnDocumentPhotoGateway)
-                                                .photoEditingAvailable
-                                      ? '写真を確認'
-                                      : '写真を追加・編集',
-                                ),
-                              ),
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.description_outlined),
-                              ),
-                              title: Text(
-                                requirement['name']?.toString() ?? '書類',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                [
-                                  label,
-                                  workerDocumentScopeLabel(requirement['scope']),
-                                  if ((status?['expires_at']?.toString() ?? '')
-                                      .isNotEmpty)
-                                    '期限 ${status!['expires_at']}',
-                                  if (paths.isNotEmpty)
-                                    '画像あり${paths.length > 1 ? '（${paths.length}枚）' : ''}'
-                                  else if (status?['status'] == 'submitted')
-                                    '写真未添付',
-                                ].join(' / '),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
+                          final gateway = _repository;
+                          final attachments = [
+                            for (var i = 0; i < paths.length; i++)
+                              signedResourceAttachment(label: '${i + 1}',
+                                path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
+                                  ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
+                          ];
+                          final action = _saving ? null : needsRegistration
+                            ? () => _registerDocument(initialRequirementId: id)
+                            : gateway is OwnDocumentPhotoGateway
+                              ? () => _editPhotos(status!)
+                              : () => _registerDocument(initialRequirementId: id);
+                          return ResourceRegistrationCard(
+                            key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
+                            title: requirement['name']?.toString() ?? '書類',
+                            icon: Icons.description_outlined,
+                            registered: !needsRegistration,
+                            statusLabel: label,
+                            dateLabel: (status?['expires_at']?.toString() ?? '').isEmpty
+                              ? '' : '期限 ${status!['expires_at']}',
+                            detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                              if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
+                            attachments: attachments,
+                            onAction: action,
+                            onOpenDetail: paths.isEmpty ? action : () => showResourceAttachments(
+                              context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
                           );
                         },
                       ),
@@ -662,3 +636,4 @@ class _OwnDocumentRegistrationPageState
     );
   }
 }
+

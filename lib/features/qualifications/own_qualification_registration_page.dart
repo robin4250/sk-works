@@ -6,6 +6,8 @@ import 'own_qualification_photo_contract.dart';
 import 'own_qualification_photo_submission_repository.dart';
 
 import 'qualification_cloud_repository.dart';
+import '../shared/resource_registration_card.dart';
+
 
 class OwnQualificationRegistrationPage extends StatefulWidget {
   const OwnQualificationRegistrationPage({super.key});
@@ -298,7 +300,7 @@ class _OwnQualificationRegistrationPageState
     };
   }
 
-  Future<void> _addQualification() async {
+  Future<void> _addQualification({String? initialMasterId}) async {
     final repository = _repository;
     if (repository == null || _masters.isEmpty) return;
 
@@ -319,7 +321,8 @@ class _OwnQualificationRegistrationPageState
       return;
     }
 
-    var masterId = filteredMasters.first['id']?.toString();
+    var masterId = filteredMasters.any((m) => m['id']?.toString() == initialMasterId)
+      ? initialMasterId : filteredMasters.first['id']?.toString();
     final certificateController = TextEditingController();
     final issuerController = TextEditingController();
     final notesController = TextEditingController();
@@ -557,7 +560,13 @@ class _OwnQualificationRegistrationPageState
       for (final row in _masters) row['id']?.toString() ?? '': row,
     };
     final needle = _query.trim().toLowerCase();
-    final qualifications = _qualifications
+    final allQualifications = <Map<String, dynamic>>[
+      ..._qualifications,
+      for (final master in _masters)
+        if (!_qualifications.any((row) => row['qualification_master_id'] == master['id']))
+          {'qualification_master_id': master['id'], '_unregistered': true},
+    ];
+    final qualifications = allQualifications
         .where((row) {
           if (needle.isEmpty) return true;
           final master =
@@ -684,57 +693,41 @@ class _OwnQualificationRegistrationPageState
                                   QualificationCloudRepository.ownPhotoAttachments(
                                     row,
                                   );
-                              return Card(
-                                child: ListTile(
-                                  onTap: photos.isEmpty
-                                      ? null
-                                      : () => _previewPhotos(
-                                          row,
-                                          master?['name']?.toString() ??
-                                              '資格証写真',
-                                        ),
-                                  trailing: IconButton(
-                                    tooltip: '資格証写真を変更申請',
-                                    onPressed:
-                                        _photoBusy ||
-                                            !_photoCapability.available ||
-                                            _pendingPhotos != null
-                                        ? null
-                                        : () => _editPhotos(row),
-                                    icon: const Icon(
-                                      Icons.add_photo_alternate_outlined,
-                                    ),
-                                  ),
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.badge_outlined),
-                                  ),
-                                  title: Text(
-                                    master?['name']?.toString() ?? '資格',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    [
-                                      if (photos.isNotEmpty)
-                                        '登録写真 ${photos.length}枚（タップして確認）',
-                                      if (_photoStatus(row['id'].toString()) !=
-                                          null)
-                                        _photoStatus(row['id'].toString())!,
-                                      if ((row['certificate_number']
-                                                  ?.toString() ??
-                                              '')
-                                          .isNotEmpty)
-                                        '証明書 ${row['certificate_number']}',
-                                      if ((row['expires_at']?.toString() ?? '')
-                                          .isNotEmpty)
-                                        '期限 ${row['expires_at']}',
-                                      if ((row['issuer']?.toString() ?? '')
-                                          .isNotEmpty)
-                                        row['issuer'].toString(),
-                                    ].join(' / '),
-                                  ),
-                                ),
+                              final unregistered = row['_unregistered'] == true;
+                              final title = master?['name']?.toString() ?? '資格';
+                              final repository = _repository;
+                              final actor = repository?.currentUserId;
+                              Future<String> signedUrl(String path) async {
+                                if (repository == null || actor == null || actor != repository.currentUserId)
+                                  throw StateError('Session changed');
+                                final url = await repository.createOwnQualificationPhotoUrl(
+                                  qualificationId: row['id'].toString(), storagePath: path);
+                                if (actor != repository.currentUserId) throw StateError('Session changed');
+                                return url;
+                              }
+                              final attachments = [
+                                signedResourceAttachment(label: '表面',
+                                  path: row['attachment_path']?.toString(), signedUrl: signedUrl,
+                                  known: unregistered || row.containsKey('attachment_path')),
+                                signedResourceAttachment(label: '裏面',
+                                  path: row['attachment_back_path']?.toString(), signedUrl: signedUrl,
+                                  known: unregistered || row.containsKey('attachment_back_path')),
+                              ];
+                              final canEdit = !_photoBusy && _photoCapability.available && _pendingPhotos == null;
+                              return ResourceRegistrationCard(
+                                key: ValueKey('own-qualification:${_worker?['id']}:${row['id'] ?? row['qualification_master_id']}'),
+                                title: title, icon: Icons.badge_outlined, registered: !unregistered,
+                                dateLabel: (row['issued_at']?.toString() ?? '').isEmpty
+                                  ? '' : '取得日 ${row['issued_at']}',
+                                statusLabel: unregistered ? '未登録' : _photoStatus(row['id'].toString()) ?? '登録済み',
+                                detailLabel: [if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
+                                  '証明書 ${row['certificate_number']}',
+                                  if (photos.length > 2) '添付 ${photos.length}件（詳細で確認）'].join(' / '),
+                                attachments: attachments,
+                                onAction: unregistered
+                                  ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
+                                  : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
+                                onOpenDetail: unregistered ? null : () => _previewPhotos(row, title),
                               );
                             },
                           ),
@@ -801,3 +794,4 @@ class _OwnQualificationError extends StatelessWidget {
     );
   }
 }
+
