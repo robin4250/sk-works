@@ -13,8 +13,8 @@ class SecurityIncidentReportData {
     'report_version': 1,
     'record_version': record.recordVersion,
     'saved_at_utc': record.savedAt.toIso8601String(),
-    'first_seen_utc': record.firstSeen.toIso8601String(),
-    'last_seen_utc': record.lastSeen.toIso8601String(),
+    'first_seen_utc': record.firstSeen?.toIso8601String(),
+    'last_seen_utc': record.lastSeen?.toIso8601String(),
     'source_provenance': record.provenance,
     'source_tracking': record.sourceTracking,
     'correlation_confidence': record.confidence,
@@ -64,7 +64,7 @@ class SecurityIncidentReportData {
     english
         ? 'Counts refer only to collected events, not an inferred lifetime total.'
         : '回数は収集済みイベント数です。未収集の累積回数は推測していません。',
-    '${english ? 'First / last (UTC)' : '初回／最終 (UTC)'}: ${record.firstSeen.toIso8601String()} / ${record.lastSeen.toIso8601String()}',
+    '${english ? 'First / last (UTC)' : '初回／最終 (UTC)'}: ${record.firstSeen?.toIso8601String() ?? (english ? 'Unavailable' : '未収集')} / ${record.lastSeen?.toIso8601String() ?? (english ? 'Unavailable' : '未収集')}',
     '${english ? 'Saved (UTC)' : '保管日時 (UTC)'}: ${record.savedAt.toIso8601String()}',
     '${english ? 'Generated (UTC)' : '作成日時 (UTC)'}: ${generatedAt.toIso8601String()}',
     '${english ? 'Detected (JST, UTC+09:00)' : '検知日時 (日本時間 JST・UTC+09:00)'}: ${record.detectedAt.add(const Duration(hours: 9)).toIso8601String().replaceAll('Z', '+09:00')}',
