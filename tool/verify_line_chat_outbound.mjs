@@ -31,7 +31,7 @@ const prep=async id=>{await role('authenticated');return (await q('select public
 const claim=async ticket=>{await role('service_role');return (await q('select public.claim_line_chat_dispatch($1,$2) v',[ticket,u])).rows[0].v;};
 const finish=async(c,state)=>{await role('service_role');return (await q('select public.finish_line_chat_dispatch($1,$2,$3) v',[c.outbox_id,c.lease_id,state])).rows[0].v;};
 const id=await post();let p=await prep(id);const c=await claim(p.ticket);assert.equal(c.state,'claimed');assert.equal(c.body,'new text');assert.equal(c.sender_name,'😀'.repeat(5)+' from SKO');assert.ok(c.sender_name.length<=20);
-await assert.rejects(claim(p.ticket));assert.equal(await finish(c,'unknown'),true);
+await assert.rejects(claim(p.ticket));await role('service_role');await assert.rejects(q('select public.claim_line_chat_dispatch($1,$2)',[p.ticket,other]));assert.equal(await finish(c,'unknown'),true);
 p=await prep(id);assert.equal((await claim(p.ticket)).state,'busy');
 await role('postgres');await q("update private.line_chat_outbox set next_attempt_at=now()-interval '1 second' where message_id=$1",[id]);
 await role('authenticated');await q("select public.line_chat_sender_preferences($1,'nickname','New name')",[group]);
@@ -58,4 +58,5 @@ if(pg){
   assert.equal((await q('select attempts from private.line_chat_outbox where message_id=$1',[raceMessage])).rows[0].attempts,1);
  }finally{await a.end();await b.end();}
 }
+await role('postgres');await q('delete from auth.users where id=$1',[u]);assert.equal((await q('select count(*) n from private.line_chat_outbox')).rows[0].n,0);assert.equal((await q('select count(*) n from private.line_chat_sender_preferences')).rows[0].n,0);
 await db.close();console.log('Outbound real SQL: new-only snapshots, UTF16 names, own actor, account restriction, canonical/unique sources, ambiguous denial, lease/retry/expired, preference snapshot and explicit role ACL passed.');
