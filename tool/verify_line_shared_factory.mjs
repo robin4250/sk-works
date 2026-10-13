@@ -16,6 +16,12 @@ assert.equal(await factory(20,'sko'),first);assert.equal(await factory(20,'line'
 assert.equal(await scalar(`select origin v from private.line_chat_group_origins where group_id='${first}'`),'sko');
 assert.equal((await scalar('select public.line_shared_chat_groups() v')).length,1);
 await assert.rejects(factory(22));await assert.rejects(factory(99));
+await db.exec(`update line_group_bindings set status=null where line_group_id='source-a'`);await assert.rejects(factory(20));
+await db.exec(`update line_group_bindings set status='disabled' where line_group_id='source-a'`);await assert.rejects(factory(20));
+await db.exec(`update line_group_bindings set status='active';update communication_groups set participants_only=null where id='${first}'`);await assert.rejects(factory(20));
+await db.exec(`update communication_groups set participants_only=true;delete from communication_group_members where group_id='${first}'`);await assert.rejects(factory(20));
+await db.exec(`insert into communication_group_members values('${first}','${id(10)}','${id(1)}')`);
+
 await db.exec(`select set_config('test.blocked','true',false)`);await assert.rejects(factory(21));await db.exec(`select set_config('test.blocked','false',false)`);
 await db.exec(`select set_config('test.uid','${id(2)}',false)`);await assert.rejects(factory(20));assert.deepEqual(await scalar('select public.line_shared_chat_groups() v'),[]);
 await db.exec(`select set_config('test.uid','${id(1)}',false);update communication_groups set archived_at=now() where id='${first}'`);await assert.rejects(factory(20));

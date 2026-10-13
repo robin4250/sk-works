@@ -33,15 +33,15 @@ begin
  if not found or d.joined is distinct from true then raise exception 'joined LINE group required'; end if;
  select * into b from public.line_group_bindings where line_group_id=d.line_group_id;
  if found and b.company_id is not null then
-  if b.company_id<>p_company_id or b.status<>'active' then raise exception 'active company LINE source required' using errcode='42501'; end if;
+  if b.company_id<>p_company_id or b.status is distinct from 'active' then raise exception 'active company LINE source required' using errcode='42501'; end if;
   select * into g from public.communication_groups where id=b.communication_group_id;
-  if not found or g.company_id<>p_company_id or g.archived_at is not null or g.group_type<>'company' or not g.participants_only or not private.can_access_communication_group(g.id) or not private.can_edit_custom_chat_photo(g.id) then raise exception 'normal group management required' using errcode='42501'; end if;
+  if not found or g.company_id<>p_company_id or g.archived_at is not null or g.group_type is distinct from 'company' or g.participants_only is distinct from true or not private.can_access_communication_group(g.id) or not private.can_edit_custom_chat_photo(g.id) then raise exception 'normal group management required' using errcode='42501'; end if;
   select origin into v_origin from private.line_chat_group_origins where group_id=g.id;
   if v_origin='line' and p_origin='sko' then update private.line_chat_group_origins set origin='sko' where group_id=g.id; end if;
   -- Existing legacy groups default to SKO origin; never downgrade or rename.
   return g.id;
  end if;
- if b.id is not null and b.status<>'pending' then raise exception 'LINE source unavailable'; end if;
+ if b.id is not null and b.status is distinct from 'pending' then raise exception 'LINE source unavailable'; end if;
  if not public.is_current_user_master_admin() or not private.has_company_role(p_company_id,array['owner'::public.app_role,'admin'::public.app_role]) then raise exception 'master and company administrator required' using errcode='42501'; end if;
  -- Existing creation chooses the actor's company; require an unambiguous match.
  if (select count(*) from public.company_members where user_id=auth.uid())<>1 then raise exception 'company selection unavailable'; end if;

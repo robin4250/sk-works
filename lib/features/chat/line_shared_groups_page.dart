@@ -104,7 +104,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
       );
       if (!mounted || repository.actor != actor) return;
       await _load();
-      if (mounted) await widget.onOpenGroup(id);
+      if (mounted && repository.actor == actor) await widget.onOpenGroup(id);
     } catch (_) {
       if (mounted) setState(() => _error = '作成できませんでした。連携先と権限を確認してください。');
     } finally {
