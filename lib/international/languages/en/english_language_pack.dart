@@ -1238,5 +1238,10 @@ const englishLanguagePack = LanguagePack(
     '支払証明書': 'Payment Certificate',
     '下書き': 'Draft',
     '確定': 'Finalized',
+    'グループ設定': 'Group Settings',
+    '写真を変更': 'Change Photo',
+    '保存できませんでした。写真を保持して再試行できます。': 'Could not save. Your selected photo is kept so you can retry.',
+    '写真は5MB以下で選択してください。': 'Choose a photo of 5 MB or less.',
+    'JPEGまたはPNGの写真を選択してください。': 'Choose a JPEG or PNG photo.',
   },
 );
