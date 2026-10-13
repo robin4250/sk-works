@@ -126,6 +126,8 @@ class InvoiceStampSurnameMetadata {
 class InvoiceApprovalRepository {
   InvoiceApprovalRepository._(this._client);
 
+  InvoiceApprovalRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   static InvoiceApprovalRepository? maybeCreate() {
