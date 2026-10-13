@@ -679,10 +679,10 @@ class _OwnQualificationRegistrationPageState
                     child: qualifications.isEmpty
                         ? const Center(child: Text('登録済みの資格はありません'))
                         : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                             itemCount: qualifications.length,
                             separatorBuilder: (_, __) =>
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 8),
                             itemBuilder: (context, index) {
                               final row = qualifications[index];
                               final master =

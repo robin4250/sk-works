@@ -579,9 +579,9 @@ class _OwnDocumentRegistrationPageState
                     ),
                     Expanded(
                       child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                         itemCount: requirements.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final requirement = requirements[index];
                           final id = requirement['id']?.toString() ?? '';
