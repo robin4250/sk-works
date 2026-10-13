@@ -312,7 +312,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
             ),
             if (claim.settlement != null)
               Text('${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'),
-            if (claim.settlement == null) const Text('精算方法：未設定（現金・給与などを選択）'),
+            if (claim.settlement == null) const Text('精算方法：未設定'),
             const SizedBox(height: 8),
             if (claim.receiptObjectPath != null) ...[
               SizedBox(height: 80, child: Align(alignment: Alignment.centerLeft,
