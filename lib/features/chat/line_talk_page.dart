@@ -24,6 +24,7 @@ class _LineTalkPageState extends State<LineTalkPage> {
   bool _loading = true;
   bool _busy = false;
   bool _canManage = false;
+  bool _initialOpened = false;
   String? _error;
 
   @override
@@ -55,9 +56,9 @@ class _LineTalkPageState extends State<LineTalkPage> {
         _error = null;
       });
       final initial = widget.initialGroupId;
-      if (initial != null && _selected == null) {
+      if (initial != null && !_initialOpened && _selected == null) {
         final matching=data.groups.where((group)=>group['id']?.toString()==initial);
-        if(matching.length==1) await _open(matching.single);
+        if(matching.length==1) { _initialOpened=true; await _open(matching.single); }
       }
     } catch (_) {
       if (mounted) setState(() { _loading = false; _error = 'LINEトークを読み込めませんでした。再読み込みしてください。'; });
