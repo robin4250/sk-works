@@ -868,7 +868,7 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
               opacity: buttonOpacity,
               child: FilledButton.icon(
                 onPressed: () => onOpen('attendance_today'),
-                icon: const Icon(Icons.groups_outlined, color: Color(0xFF27998B)),
+                icon: const Icon(Icons.groups_outlined),
                 label: Text(SkoLanguageController.tr('出勤状況を確認')),
               ),
             ),
