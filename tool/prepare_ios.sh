@@ -324,6 +324,7 @@ import UIKit
 import MapKit
 import CoreLocation
 import ImageIO
+import PDFKit
 import UserNotifications
 
 @main
@@ -338,6 +339,10 @@ import UserNotifications
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+
+    if let registrar = self.registrar(forPlugin: "SkoInvoicePdfView") {
+      registrar.register(SkoInvoicePdfViewFactory(messenger: registrar.messenger()), withId: "sko.invoice_pdf_view")
+    }
 
     if let registrar = self.registrar(forPlugin: "SkoMultiPinMap") {
       let channel = FlutterMethodChannel(
@@ -703,6 +708,79 @@ private final class SkoMultiPinMapViewController: UIViewController, MKMapViewDel
     view.markerTintColor = .systemRed
     view.glyphImage = UIImage(systemName: "mappin")
     return view
+  }
+}
+
+
+private final class SkoInvoicePdfViewFactory: NSObject, FlutterPlatformViewFactory {
+  private let messenger: FlutterBinaryMessenger
+  init(messenger: FlutterBinaryMessenger) { self.messenger = messenger; super.init() }
+  func create(withFrame frame: CGRect, viewIdentifier viewId: Int64, arguments args: Any?) -> FlutterPlatformView {
+    return SkoInvoicePdfPlatformView(frame: frame, viewId: viewId, messenger: messenger)
+  }
+}
+
+private final class SkoInvoicePdfPlatformView: NSObject, FlutterPlatformView {
+  private let pdfView: PDFView
+  private let channel: FlutterMethodChannel
+  private var scaleObserver: NSObjectProtocol?
+  init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger) {
+    pdfView = PDFView(frame: frame)
+    channel = FlutterMethodChannel(name: "sko.invoice_pdf_view/\(viewId)", binaryMessenger: messenger)
+    super.init()
+    pdfView.displayMode = .singlePageContinuous
+    pdfView.displayDirection = .vertical
+    pdfView.backgroundColor = .secondarySystemBackground
+    pdfView.autoScales = true
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else { result(FlutterError(code: "disposed", message: nil, details: nil)); return }
+      switch call.method {
+      case "load":
+        guard let bytes = call.arguments as? FlutterStandardTypedData,
+              let document = PDFDocument(data: bytes.data), document.pageCount > 0,
+              !document.isLocked else {
+          result(FlutterError(code: "invalid_pdf", message: "Cannot open invoice PDF", details: nil))
+          return
+        }
+        self.pdfView.document = document
+        self.pdfView.autoScales = true
+        self.pdfView.layoutIfNeeded()
+        // Continuous mode fits the page width and retains all original pages.
+        let fit = self.pdfView.scaleFactorForSizeToFit
+        if fit.isFinite && fit > 0 {
+          self.pdfView.minScaleFactor = fit
+          self.pdfView.maxScaleFactor = fit * 5
+          self.pdfView.scaleFactor = fit
+        }
+        result(document.pageCount)
+      case "zoom":
+        guard let value = call.arguments as? NSNumber, value.doubleValue.isFinite,
+              self.pdfView.document != nil else {
+          result(FlutterError(code: "invalid_scale", message: nil, details: nil)); return
+        }
+        let fit = self.pdfView.scaleFactorForSizeToFit
+        guard fit.isFinite && fit > 0 else { result(nil); return }
+        self.pdfView.autoScales = false
+        self.pdfView.minScaleFactor = fit
+        self.pdfView.maxScaleFactor = fit * 5
+        self.pdfView.scaleFactor = fit * CGFloat(min(5, max(1, value.doubleValue)))
+        result(nil)
+      default: result(FlutterMethodNotImplemented)
+      }
+    }
+    scaleObserver = NotificationCenter.default.addObserver(
+      forName: Notification.Name.PDFViewScaleChanged, object: pdfView, queue: .main
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      let fit = self.pdfView.scaleFactorForSizeToFit
+      guard fit.isFinite && fit > 0 else { return }
+      self.channel.invokeMethod("scale", arguments: Double(self.pdfView.scaleFactor / fit))
+    }
+  }
+  func view() -> UIView { pdfView }
+  deinit {
+    channel.setMethodCallHandler(nil)
+    if let observer = scaleObserver { NotificationCenter.default.removeObserver(observer) }
   }
 }
 
