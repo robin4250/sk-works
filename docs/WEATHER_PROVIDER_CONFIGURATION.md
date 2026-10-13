@@ -1,61 +1,72 @@
-# 天気取得の接続契約（Issue #273 / PR #945）
+# 天気取得の接続契約（Issue #273 / PR #945・#963）
 
-本ソースは本番へ未導入。実API認証・本番schema・実機成功を意味しません。APIキーの値を記録・表示しません。
+2026-10-13更新。現在の採用経路は **OpenWeatherの無料の現在天気＋5日間・3時間ごと予報と、iOS標準の登録住所検索** です。One Call、有料4day、Googleの追加契約・請求先登録は行いません。鍵名だけを記載し、秘密値は記録・表示しません。
 
-## 実装
+## 現在の接続と確認状態
 
-`fetch-weather-forecast/index.ts` は認証済み本人のBearerでAuthとRLS対象RESTを読み、会社／本人の自宅／単一固定勤務現場の住所を解決します。天気のために社員を作成しません。会社行取得失敗を住所未登録と扱いません。ルートのclock-in現場を現在現場として使わず、route・複数勤務・48時間を超える未解決出勤・取得件数上限は未取得へ倒します。server住所resolverとHOMEの既存出勤日付判定には保守的な差があり、長期勤務・ルート現在訪問の統合確認が残ります。
-
-クライアントの入力は `day_offset: 0|1|2` のみ。住所／緯度経度／provider／actorの指定は受け付けません。server住所のIANA timezoneから `base_date` と `forecast_date` を決定。24時は選択日の翌日0時。同じ時刻が重複・欠損なら値はnull。source値と％以外の平均・補完をしません。未来日は現在気温を借用せず、選択日の12時（欠損時は実取得済み0〜21時の最初の枠）をsummary_hourと共に返します。現在データもsource timestampが地域の今日に属する時だけ使用します。Flutter `WeatherForecastGateway` は本人変更／レスポンス日付／9枠／数値範囲を検証し、sourceconditionを晴曇雨雪等の既存翻訳経路とアイコンへ変換します。
-
-新規private `weather_provider_settings` は既存traffic等のmaster flagsと別テーブル。初期OpenWeather。本人認証済み読取、変更は既存 `is_current_user_master_admin` だけ。public RPCはsecurity invoker、private実装が認証/MASTER確認を行い、テーブルの直接アクセスは許可しません。migrationはSupabase CLI `migration new` で生成。production未適用。MASTER選択部品 WeatherProviderSettingsPanel を既存の保護されたマスター画面へ挿入、HOME fetch hookは共有file担当が直列接続しました。traffic3項目と既存車両/ルート設定は保持。
-
-## 本番で必要な設定（未確認）
-
-| 設定 | 必要な内容 |
+| 段階 | 確認した状態 |
 |---|---|
-| SUPABASE_URL | 対象SK WORKS projectのURL |
-| SUPABASE_PUBLISHABLE_KEYS.default | public API key（legacy SUPABASE_ANON_KEYへfallback）。service_roleは使わない |
-| OPENWEATHER_API_KEY | 所有者が契約済みのkey。OneCall3 accessが必要 |
-| OPENWEATHER_HOURLY_PRODUCT | `4day` なら別契約の4日hourlyを追加取得。未設定ならOneCall48h範囲だけ、day2欠損はnull |
-| WEATHERKIT_TEAM_ID / SERVICE_ID / KEY_ID | Apple Developer登録済みWeatherKit service/keyの識別子 |
-| WEATHERKIT_PRIVATE_KEY | serverのみのP-256 PKCS8 PEM。5分ES256 JWTを発行 |
-| WEATHER_GEOCODING_PROVIDER | `google` を明示した時だけ住所lookup有効 |
-| WEATHER_GEOCODING_API_KEY | Google Geocoding＋Time Zone権限を持つserver key。利用契約/課金/制限設定は所有者確認が必要 |
+| main実装 | 無料API・native iOS住所検索・ホーム取得接続を反映済み |
+| 本番Supabase | fetch-weather-forecast関数反映、既存provider設定のopenweather、OpenWeatherキー登録を確認済み |
+| 提供元API | ユーザーのMacでweather・forecastとも取得成功を確認済み。以前の401記録は成功前の履歴 |
+| アプリ表示 | 2026-10-13 08:48 JSTのユーザー実機確認で天気カード表示を確認 |
+| 最新Releaseの実機検証 | 上記表示確認後の最新main全体については導入・表示・操作の完了とは扱わない。最新Releaseで再確認が必要 |
+| WeatherKit | 切替adapter/UIは存在するが、必要設定・実API・実機成功は未確認 |
 
-Google adapterは単一のROOFTOPかつpartial_matchでない住所を必須にし、曖昧な住所や市中心を推測しません。外部契約未確認のため勝手にAPIを契約・購入・secret登録しません。住所建物情報等で正確照合しない場合は未取得。外部提供先への住所送信とattribution/契約は本番導入前の確認事項です。Yahoo radarは独立系統、serverのcountryCode=JPのみ公開ページURLを返します。位置中心指定の公式URL契約は未確認のため推測のqueryを付けません。詳細ボタンはnativeアプリ内ブラウザーへ接続済み（url_launcher inAppBrowserView）。実機での開き方確認は未実行。
+実APIの成功、本番秘密設定、アプリ表示、最新Releaseの全機能検証は別の証拠です。現在の文書はmain `82538dd0`のソースを確認して更新しています。
 
-## 検証と残る作業
+## 無料OpenWeatherの取得
 
-Node24の17テストで両HTTPprovider、WeatherKit実ES256署名verify、地域日付・24時・48h欠損、4dayfixture、actor scoped住所、曖昧geocode、認証、入力override拒否、secret非露出を検証。PGlite0.3.14の実SQLで通常社員の更新拒否、MASTER変更、直接テーブル拒否、匿名拒否、無効値拒否、migration replayでprovider保持、既存traffic値保持を確認。本物APIは呼びません。
+`fetchOpenWeather` は `https://api.openweathermap.org/data/2.5/forecast` を取得します。選択日が表示地域の今日の場合だけ `https://api.openweathermap.org/data/2.5/weather` も取得します。緯度経度とserver保持キーを使い、`units=metric`、`lang=ja`で呼びます。現在天気だけ失敗しても取得済みの予報は保持します。
 
-Flutter新gateway2テストはCI対象、ローカルFlutterは未実行。HOME/controllerへregion baseDate/取得状態を接続、MASTER provider選択UI、Apple returned trademark画像＋legalリンク部品とOpenWeather attribution部品は実装済み、詳細への挿入・実画像表示確認が残ります。Yahoo国判定/ボタン、rain approachのclient表示接続、未来日代表値のHOME表示接続が残ります。server function/migration未導入。API契約・秘密設定確認→本番導入→両provider実API→iPhone Release確認が必要です。
+予報のsourceは`list.dt`、`list.main.temp`、`list.pop`、`list.weather[0].id`です。降水確率だけ0〜1から％へ変換します。One Call 3/4や`pro.openweathermap.org`の有料hourlyは呼びません。`OPENWEATHER_HOURLY_PRODUCT`は現在のadapterでは参照しません。
 
-## 確認した一次資料
+今日・明日・明後日の0/3/6/9/12/15/18/21/24時の9枠を表示します。24時は選択日の翌日0時です。地域のIANA timezoneへ変換したsource時刻がその枠に完全一致し、一意である場合だけ使います。過去の時刻は無料予報APIから取得できないため未取得になり、欠損・重複もnullです。0℃・0％の補完、平均、丸めた時刻の付替えは行いません。地域によって3時間予報の時刻が表示枠に一致しない場合も未取得です。
 
-- https://openweathermap.org/api/one-call-3 （OneCall48h、metric Celsius、timezone）
-- https://openweathermap.org/api/one-call-4 （新APIもhourly48h。契約を勝手に4へ切替しない）
-- https://openweathermap.org/api/hourly-forecast （pro4dayHourly、別商品）
-- https://developer.apple.com/documentation/weatherkitrestapi/request-authentication-for-weatherkit-rest-api
-- https://developer.apple.com/weatherkit/ （AppleWeather trademark＋他datasources legal attribution。RESTは10dayhourly、ADP membershipが必要）
-- https://developers.google.com/maps/documentation/geocoding/requests-geocoding
-- https://developers.google.com/maps/documentation/timezone/requests-timezone
-- https://supabase.com/docs/guides/functions/auth
+今日の現在天気はsource timestampが地域の今日に属する場合だけ表示します。未来日の代表値はその日の実取得12時枠、欠損時は実取得0〜21時の最初の枠で、`summary_hour`を返します。未来日に現在気温を借用しません。
 
-API利用料・アカウント登録・購読操作は行っていません。
+**無料OpenWeather経路の`rain_approach`は常にnullです。** 3時間の降水量や降水確率から分単位の雨接近・到着ETA・「雨なし」を推測しません。
 
-## 雨接近の取得契約
+## 登録住所とnative iOSの2段階契約
 
-server `rain_approach` はnull、または `forecast_at` UTC ISO／`reference_at` UTC ISO／`local_hour`／`local_minute`／`precipitation_mm_per_hour`（正の実値）／`source` を返します。今日の選択だけ、実予報時刻が現在以降60分以内かつ地域の同じ日付、referenceが15分以内（未来1分を超えない）で表示候補になります。stale／明日選択／翌日の時刻／欠損／全0／非対応はnull。ETAを作らず、『雨なし』も推測しません。OpenWeatherは実minutely.dt/precipitation。WeatherKitは公式availabilityの応答がforecastNextHourを含む場合だけ別NextHour requestを行い、失敗してもcurrent/hourlyは保持。ForecastMinute.startTime/precipitationIntensity、metadata.readTime/expireTime、units=mを確認。clientは取得後時刻経過時も過去の雨接近表示を残さない確認が必要です。
+サーバーは本人BearerをAuthで検証し、同じBearerでRLS対象の会社／本人自宅／単一固定勤務現場の登録住所を読みます。社員作成やGPS現在地の読取は行いません。会社行取得失敗を住所未登録と扱わず、route、複数勤務、48時間を超える未解決勤務、取得上限は未取得にします。ルートのclock-in現場を現在訪問先と推測しません。
 
-追加一次資料（Apple一次DocC JSONも直接確認）:
-- https://developer.apple.com/documentation/weatherkitrestapi/get-api-v1-availability-_latitude_-_longitude_ （country必須、応答はDataSet配列）
-- https://developer.apple.com/documentation/weatherkitrestapi/forecastminute （startTime、precipitationIntensity）
-- https://developer.apple.com/documentation/weatherkitrestapi/unitssystem （metric=m）
-- https://developer.apple.com/documentation/weatherkitrestapi/get-attribution-_language_ （https://weatherkit.apple.com/attribution/{language}）
+1. iOS gatewayが`day_offset: 0|1|2`と`prepare_location: true`を送ります。serverが解決した`address`、`region_kind`、`region_token`を返します。
+2. MethodChannel `sko.capture_metadata`の`weatherGeocode`で、登録住所を`CLGeocoder.geocodeAddressString`へ渡します。単一候補・有効座標・timezone・country・localityを要求し、15秒で検索を打ち切ります。生成元`tool/prepare_ios.sh`にも処理を保持しています。
+3. gatewayは同じ本人を再確認し、`day_offset`、`native_location`、`region_token`を送ります。nativeの許可fieldは`latitude`、`longitude`、`time_zone`、`country_code`、`source: apple_native`です。
+4. serverが登録住所を読み直し、本人ID・住所種別・住所文字列から算出したSHA-256とtokenを照合します。本人／住所が変わった結果を拒否し、座標範囲・IANA timezone・国コードを検証して地域日付を決めます。
 
-共有UI接続：分単位の降水予報を取得できた時だけ、実予報時刻を「HH:mmの降水予報」と表示。雨/雪種別や到着ETAは推測しない。TODAY限定・60分内・source参照15分内をclientでも検証し、cached予報時刻を過ぎた表示は破棄。更新日時はUTC instantを端末のlocal時刻へ変換して表示し、予報の日付/時刻はserver地域calendarを保持する。実APIと実機での取得/表示は未検証。
+任意の住所・actor・provider指定は受け付けません。tokenは現在の本人・登録住所への結び付けであり、ログイン認証を代替しません。座標とtimezoneは端末のApple検索結果を信頼する境界で、サーバーによる独立した住所地理照合ではありません。Apple検索はネットワークを使うため、通信失敗・曖昧候補は未取得になります。
 
+このnative経路はiOS専用です。Google APIキーは不要で、他platformの対応完了とは扱いません。旧Google adapterはソースに残りますが、`WEATHER_GEOCODING_PROVIDER=google`と鍵を明示しない限り使えず、現在の採用経路として設定しません。
 
-## 2026-10-13 更新（最新仕様）
-追加契約・請求先登録は行わない。OpenWeatherは無料のdata/2.5/weatherとdata/2.5/forecastへ変更。One Call・有料4dayを呼ばず、分単位雨接近はnull。iOS標準CLGeocoderで登録住所を検索する。サーバーが本人の住所を準備し、本人・住所種別・住所のSHA256を再確認して検索結果を受け取る。座標・国・タイムゾーンは端末の検索結果であり、サーバーでの独立した地理検証ではない。Google APIキーは不要。iOS以外は現時点で未対応。prepare_ios.shにも検索処理を追加。Node18件・Flutter24件成功、Dart解析とSwift構文成功。関数は本番へ反映済み。実APIは401のため未成功、Releaseビルド・実機確認は未完了。
+## 設定と権限
+
+| 名前 | 現在の扱い |
+|---|---|
+| SUPABASE_URL | Edge Functionの対象project |
+| SUPABASE_PUBLISHABLE_KEYS.default | public API key。legacy SUPABASE_ANON_KEYへfallback。本人読取にservice_roleを使わない |
+| OPENWEATHER_API_KEY | serverのみ。登録成功確認済み、値は出力しない |
+| OPENWEATHER_HOURLY_PRODUCT | 現在は不要・参照しない |
+| WEATHER_GEOCODING_PROVIDER / WEATHER_GEOCODING_API_KEY | native iOS経路では不要。Googleの契約・請求先登録は進めない |
+| WEATHERKIT_TEAM_ID / WEATHERKIT_SERVICE_ID / WEATHERKIT_KEY_ID / WEATHERKIT_PRIVATE_KEY | 将来WeatherKitを利用する場合に別途確認が必要。現時点で追加設定・契約は行わない |
+
+`private.weather_provider_settings`は既存traffic/master flagsと別です。現在providerはopenweather。本人認証済みの読取、既存`is_current_user_master_admin`による変更、直接テーブルアクセス不可の契約を保持します。WeatherKitはApple Developer登録・service/key・server ES256 tokenとattribution確認が必要です。切替UIがあることを実取得成功と扱いません。
+
+Yahoo!雨雲レーダーは別系統です。sourceの国コードがJPの時だけ公開ページURLを返し、推測の位置queryは付けません。分単位予報を得られるWeatherKitの将来経路は公式availabilityがNextHourを提供する場合だけ対象とし、無料OpenWeatherで同じ機能が使えるとは表示しません。
+
+## 検証と残る確認
+
+無料endpoint、現在天気失敗時の予報保持、未来日・24時・欠損、認証・本人住所変更・native準備、秘密非露出はNodeテストで検証しました。Flutter gateway/cardとiOS生成処理の検査・CIを経てmainへ反映しています。実キーを使うAPI呼出と実機表示は上表のユーザー確認で別に記録しています。
+
+残る実機確認は最新Releaseでの今日／明日／明後日の切替、詳細の9枠・未取得表示、住所source変更、Yahoo導線、attribution、晴れのオレンジ／雨の青い傘の表示です。ルート現在訪問先の住所adapter、iOS以外、WeatherKit実接続は完了扱いにしません。同地域の再取得失敗時は既存予報と更新日時を保持し、地域変更では古い地域の値を消す既存契約を維持します。
+
+## 一次資料（2026-10-13確認）
+
+- [OpenWeather Current weather](https://openweathermap.org/api/current)：data/2.5/weather、metric温度、source timestamp。
+- [OpenWeather 5 day / 3 hour forecast](https://openweathermap.org/api/forecast5)：data/2.5/forecast、3時間予報、pop。
+- [Apple CLGeocoder](https://developer.apple.com/documentation/corelocation/clgeocoder) / [Apple公式Geocoding guide（archive）](https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/LocationAwarenessPG/UsingGeocoders/UsingGeocoders.html)：住所のforward geocodingと通信依存。archiveは現在のAPI推奨や無料無制限を保証する資料としては使わない。
+- [Apple WeatherKit](https://developer.apple.com/weatherkit/)：Developer Programと別途service設定が必要な将来経路。
+- [WeatherKit REST token](https://developer.apple.com/documentation/weatherkitrestapi/request-authentication-for-weatherkit-rest-api)
+
+旧One Call・有料hourly・Googleのみ・401未成功の記述は、導入途中の記録として[2026-10-12引継ぎ](WEATHER_CARD_HANDOFF_20261012.md)に保持しています。この文書の現在契約はそれらを置き換えます。

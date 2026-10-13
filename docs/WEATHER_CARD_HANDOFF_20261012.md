@@ -53,3 +53,16 @@ API認証/取得契約、住所geocoding、提供元別レスポンス正規化�
 
 ## 2026-10-13 更新（最新仕様）
 追加契約・請求先登録は行わない。OpenWeatherは無料のdata/2.5/weatherとdata/2.5/forecastへ変更。One Call・有料4dayを呼ばず、分単位雨接近はnull。iOS標準CLGeocoderで登録住所を検索する。サーバーが本人の住所を準備し、本人・住所種別・住所のSHA256を再確認して検索結果を受け取る。座標・国・タイムゾーンは端末の検索結果であり、サーバーでの独立した地理検証ではない。Google APIキーは不要。iOS以外は現時点で未対応。prepare_ios.shにも検索処理を追加。Node18件・Flutter24件成功、Dart解析とSwift構文成功。関数は本番へ反映済み。実APIは401のため未成功、Releaseビルド・実機確認は未完了。
+
+## 2026-10-13 現状追記（無料API接続後）
+
+上の本文と「実APIは401のため未成功」は当時の履歴です。現在の設定手順は[天気取得の接続契約](WEATHER_PROVIDER_CONFIGURATION.md)を参照してください。旧本文は消去・巻き戻しません。
+
+- 採用経路は無料OpenWeather `data/2.5/weather` と `data/2.5/forecast`。One Call・有料4day・Googleの追加契約や請求先登録は行いません。秘密値は文書やクリップボードへ出しません。
+- iOSの登録住所をserverの本人Bearer/RLSで準備し、`prepare_location` → native `CLGeocoder` → `region_token`再確認で取得します。tokenは本人・住所種別・登録住所へのSHA-256の結び付けです。端末検索の座標をserverで独立に地理照合したという意味ではありません。生成元prepare_ios.shに処理を保持、Googleキー不要、iOS以外は未対応です。
+- 無料予報の3時間sourceと地域時刻が一致する枠だけ使います。過去枠、欠損・重複、地域時刻が一致しない枠は未取得。24時は翌日0時、未来日の気温を現在値から作りません。無料版の分単位雨接近はnullです。
+- ユーザーは無料weather・forecastの実API成功と本番OpenWeatherキー登録成功を確認済み。天気関数は本番反映済み、provider=openweather。2026-10-13 08:48 JSTにユーザーが実カード表示を確認しました。
+- mainには晴れのオレンジ／雨の青い傘の表示変更も反映済みですが、上の実表示確認と、さらに更新された最新Releaseの導入・表示・操作の全確認は区別します。最新Releaseの実機検証は未完了です。
+- Apple WeatherKitは将来の切替候補で、service/key・server秘密設定・attribution・実API・実機検証は別途必要です。追加設定・契約を自動で進めません。
+
+この追記と接続契約の整備はdocs-onlyです。runtime、共有UI、DB、認証・権限、本番秘密設定は変更しません。
