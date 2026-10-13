@@ -230,6 +230,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('削除'));
+    await tester.pumpAndSettle();
     expect(find.text('編集'), findsOneWidget);
     expect(find.textContaining('精算方法：未設定'), findsOneWidget);
     await tester.tap(find.text('削除')); await tester.pumpAndSettle();
@@ -238,8 +239,10 @@ void main() {
     await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
     expect(changes.commands, isEmpty);
     await tester.ensureVisible(find.text('却下された交通費'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('却下された交通費')); await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('削除'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('削除')); await tester.pumpAndSettle();
     await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
     expect(find.text('経費の承認・振り分け'), findsOneWidget);
