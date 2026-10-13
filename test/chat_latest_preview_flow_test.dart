@@ -93,6 +93,38 @@ class _Repository implements ChatCloudRepository {
       throw StateError('Unexpected operation: ${invocation.memberName}');
 }
 
+class _TargetRepository extends _Repository {
+  _TargetRepository(super.delegate);
+  String actorId = actor;
+  final requested = <String>[];
+  Completer<void>? gate;
+  String nextBody = 'Event latest';
+  @override
+  String? get currentUserId => actorId;
+  @override
+  Future<List<Map<String, dynamic>>> loadGroups() async => [
+    ...await super.loadGroups(),
+    {
+      'id': 'other-group',
+      'name': 'Other SKO group',
+      'display_name': 'Other SKO group',
+      'group_type': 'company',
+      'participants_only': true,
+    },
+  ];
+  @override
+  Future<Map<String, ChatConversationSummary>> loadConversationSummaries(
+    Map<String, DateTime> lastReadByGroup,
+  ) async {
+    requested.addAll(lastReadByGroup.keys);
+    await gate?.future;
+    return {
+      for (final id in lastReadByGroup.keys)
+        id: ChatConversationSummary(unread: 2, body: nextBody, sentAt: newAt),
+    };
+  }
+}
+
 Future<void> advance(WidgetTester tester) async {
   for (var i = 0; i < 15; i++) {
     await tester.runAsync(
@@ -104,6 +136,47 @@ Future<void> advance(WidgetTester tester) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets(
+    'an event refreshes only its group and an old actor response is ignored',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = SupabaseClient(
+        'https://fixture.invalid',
+        'fixture',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+      );
+      final repository = _TargetRepository(
+        ChatCloudRepository.forTesting(client),
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: ChatCloudPage(repository: repository)),
+      );
+      await advance(tester);
+      repository.requested.clear();
+      repository.changes.add(groupId);
+      await advance(tester);
+      expect(repository.requested, [groupId]);
+      repository.requested.clear();
+      repository.nextBody = 'Stale actor result';
+      repository.gate = Completer<void>();
+      repository.changes.add('other-group');
+      await advance(tester);
+      expect(repository.requested, ['other-group']);
+      repository.actorId = 'new-actor';
+      repository.gate!.complete();
+      await advance(tester);
+      expect(find.text('Stale actor result'), findsNothing);
+      // The old response cannot update the new actor's view or trigger another query.
+      expect(repository.requested, ['other-group']);
+      repository.changes.add(groupId);
+      await advance(tester);
+      expect(repository.requested, ['other-group']);
+      await tester.pumpWidget(const SizedBox());
+      await repository.messages.close();
+      await repository.changes.close();
+      await tester.runAsync(() => client.dispose());
+    },
+  );
   test('message order compares instants and breaks ties by ID without mutating input', () {
     final rows = [
       {'id': 'b', 'sent_at': '2026-10-14T05:00:00+09:00'},
