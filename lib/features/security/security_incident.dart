@@ -10,11 +10,23 @@ class SecurityIncident {
     required this.missingBefore,
     required this.missingAfter,
     required this.events,
+    required this.recordVersion,
+    required this.savedAt,
+    required this.firstSeen,
+    required this.lastSeen,
+    required this.provenance,
+    required this.confidence,
+    required this.sourceTracking,
+    required this.audit,
   });
   final String id, correlationId, status, collectionStatus;
   final DateTime detectedAt, windowFrom, windowTo;
   final bool missingBefore, missingAfter;
   final List<SecurityIncidentEvent> events;
+  final int recordVersion;
+  final DateTime savedAt, firstSeen, lastSeen;
+  final String provenance, confidence, sourceTracking;
+  final List<SecurityIncidentAudit> audit;
 
   static List<SecurityIncident> parseResponse(dynamic response) {
     if (response is! Map ||
@@ -37,12 +49,29 @@ class SecurityIncident {
         final events =
             (row['events'] as List).map(SecurityIncidentEvent.parse).toList()
               ..sort((a, b) => a.sequence.compareTo(b.sequence));
-        if (row['event_count'] != events.length ||
+        if (events.isEmpty ||
+            row['event_count'] != events.length ||
             events.map((e) => e.sequence).toSet().length != events.length) {
           throw const FormatException('Security records unavailable');
         }
         final from = _date(row['window_from']), to = _date(row['window_to']);
-        if (to.isBefore(from))
+        final first = _date(row['first_seen']), last = _date(row['last_seen']);
+        final version = row['record_version'];
+        if (version is! int ||
+            version < 1 ||
+            version > 16 ||
+            row['audit'] is! List ||
+            (row['audit'] as List).length > 16 ||
+            last.isBefore(first)) {
+          throw const FormatException('Security records unavailable');
+        }
+        _enum(row['reason_code'], const {'decoy_lure_touched'});
+        _enum(row['timezone'], const {'UTC'});
+        if (first != events.first.at ||
+            last != events.last.at ||
+            from.isAfter(first) ||
+            to.isBefore(last) ||
+            to.isBefore(from))
           throw const FormatException('Security records unavailable');
         return SecurityIncident(
           id: _id(row['incident_id']),
@@ -63,6 +92,24 @@ class SecurityIncident {
           missingBefore: row['missing_before'] as bool,
           missingAfter: row['missing_after'] as bool,
           events: List.unmodifiable(events),
+          recordVersion: version,
+          savedAt: _date(row['saved_at']),
+          firstSeen: first,
+          lastSeen: last,
+          provenance: _enum(row['source_provenance'], const {
+            'synthetic_fixture',
+          }),
+          confidence: _enum(row['correlation_confidence'], const {
+            'unavailable',
+            'synthetic_source_only',
+          }),
+          sourceTracking: _enum(row['source_tracking'], const {
+            'unavailable',
+            'synthetic_pseudonym',
+          }),
+          audit: List.unmodifiable(
+            (row['audit'] as List).map(SecurityIncidentAudit.parse),
+          ),
         );
       }),
     );
@@ -149,4 +196,24 @@ DateTime _date(dynamic value) {
   if (value is! String || !RegExp(r'(Z|[+-]\d\d:\d\d)$').hasMatch(value))
     throw const FormatException('Security records unavailable');
   return DateTime.parse(value).toUtc();
+}
+
+class SecurityIncidentAudit {
+  const SecurityIncidentAudit(this.at, this.recordVersion);
+  final DateTime at;
+  final int recordVersion;
+  static SecurityIncidentAudit parse(dynamic row) {
+    if (row is! Map ||
+        row['record_version'] is! int ||
+        (row['record_version'] as int) < 1 ||
+        (row['record_version'] as int) > 16) {
+      throw const FormatException('Security records unavailable');
+    }
+    _enum(row['action'], const {'imported'});
+    _enum(row['operator'], const {'self_master'});
+    return SecurityIncidentAudit(
+      _date(row['at']),
+      row['record_version'] as int,
+    );
+  }
 }
