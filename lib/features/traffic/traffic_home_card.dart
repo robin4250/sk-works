@@ -58,7 +58,7 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(SkoLanguageController.tr('交通案内')),
-        content: Text(SkoLanguageController.tr('最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。4枠目の「追加」で、この端末から開ける対応アプリやWebサイトを1件登録できます。登録した項目を長押しすると編集・解除できます。設定はこの端末の自分のアカウント・会社別に保存します。端末の全アプリを一覧表示する機能ではありません。')),
+        content: Text(SkoLanguageController.tr('最寄駅・バス停はGoogleマップ、電車乗換はYahoo!乗換案内を開きます。現在地の確認や検索は外部サービス側で行います。4枠目の「追加」で、この端末から開ける対応アプリやWebサイトを1件登録できます。交通カード本体を長押しすると並べ替えできます。登録した項目を長押しすると編集・解除できます。設定はこの端末の自分のアカウント・会社別に保存します。端末の全アプリを一覧表示する機能ではありません。')),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる')))],
       ),
     );
@@ -77,8 +77,8 @@ class _TrafficHomeCardState extends State<TrafficHomeCard> {
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        // Keep the existing reorder handle clear of the three destinations.
-        padding: const EdgeInsets.fromLTRB(44, 2, 4, 2),
+        // Give all four destinations the width previously reserved for a handle.
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(children: [
           for (var index = 0; index < 3; index++)
             Expanded(
