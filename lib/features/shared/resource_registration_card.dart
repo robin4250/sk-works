@@ -223,7 +223,10 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('添付を表示できませんでした。')),
         action: SnackBarAction(label: SkoLanguageController.tr('再試行'), onPressed: () {
-          if (mounted) setState(() => _content = _load());
+          if (mounted) {
+            final reloaded = _load();
+            setState(() { _content = reloaded; });
+          }
         }))); }
     }
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../domain/company_data_transfer.dart';
 import '../../international/language_controller.dart';
 import '../help/floating_help_controller.dart';
+import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 import '../shared/resource_registration_card.dart';
@@ -299,14 +300,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                   signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signedUrl),
                               ];
                               final effective = _effectiveDocumentStatus(requirement, status, today);
+                              final dates = DataDateLabels.labels(createdAt: status?['created_at'],
+                                updatedAt: status?['updated_at']);
                               return ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
                                 title: requirement['name']?.toString() ?? '書類',
                                 icon: Icons.description_outlined, registered: status != null,
                                 statusLabel: status == null ? '未登録' : '登録済み',
-                                dateLabel: (status?['expires_at']?.toString() ?? '').isEmpty
-                                  ? '' : '期限 ${status!['expires_at']}',
+                                dateLabel: dates.isEmpty ? '' : dates.first,
                                 detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                                  if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                                   if (effective == 'expired') '期限切れ',
                                   if (effective == 'missing') '不足',
                                   if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
@@ -758,6 +761,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                for (final date in DataDateLabels.labels(createdAt: current?['created_at'],
+                    updatedAt: current?['updated_at']))
+                  Align(alignment: Alignment.centerLeft, child: Text(date)),
                 DropdownButtonFormField<String>(
                   key: ValueKey('status:$status'),
                   initialValue: status,

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
 import '../shared/resource_registration_card.dart';
+import '../common/data_date_labels.dart';
 
 import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
@@ -610,15 +611,17 @@ class _OwnDocumentRegistrationPageState
                             : gateway is OwnDocumentPhotoGateway
                               ? () => _editPhotos(status)
                               : () => _registerDocument(initialRequirementId: id);
+                          final dates = DataDateLabels.labels(createdAt: status?['created_at'],
+                            updatedAt: status?['updated_at']);
                           return ResourceRegistrationCard(
                             key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
                             title: requirement['name']?.toString() ?? '書類',
                             icon: Icons.description_outlined,
                             registered: !needsRegistration,
                             statusLabel: label,
-                            dateLabel: (status?['expires_at']?.toString() ?? '').isEmpty
-                              ? '' : '期限 ${status!['expires_at']}',
+                            dateLabel: dates.isEmpty ? '' : dates.first,
                             detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                              if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                             attachments: attachments,
                             onAction: action,

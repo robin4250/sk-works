@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
+import 'package:sk_works/features/common/data_date_labels.dart';
 
 class _MemoryPhoto extends XFile {
   _MemoryPhoto(this.bytes) : super('license.jpg');
@@ -259,6 +260,9 @@ void main() {
             'requirement_id': 'license',
             'status': 'submitted',
             'attachment_path': null,
+            'created_at': '2026-10-01T12:00:00Z',
+            'updated_at': '2026-10-01T12:00:00Z',
+            'expires_at': '2026-11-30',
           },
         ],
       );
@@ -268,6 +272,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('登録済み'), findsOneWidget);
       expect(find.text('登録なし'), findsOneWidget);
+      expect(find.text(DataDateLabels.labels(createdAt: '2026-10-01T12:00:00Z').first), findsOneWidget);
+      expect(find.textContaining('期限 2026-11-30'), findsOneWidget);
       expect(find.text('未登録'), findsNothing);
       expect(gateway.calls, isEmpty);
     },
