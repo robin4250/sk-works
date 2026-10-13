@@ -223,8 +223,10 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final summaryHour = forecast?.forecastSummaryHour ?? 12;
     final chance = at(summaryHour)?.rainProbability;
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
+    final radarTwoLineHeight = MediaQuery.textScalerOf(context).scale(11) * 2.2;
+    final summaryHeight = radarAvailable && radarTwoLineHeight > 32 ? radarTwoLineHeight : 32.0;
     return Column(children: [
-      SizedBox(height: 32, child: Row(children: [
+      SizedBox(height: summaryHeight, child: Row(children: [
         Expanded(child: FittedBox(
           fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -257,13 +259,14 @@ class _WeatherReferenceInformation extends StatelessWidget {
           ]))),
           if (radarAvailable) ...[
             const SizedBox(width: 4),
-            SizedBox(width: 78, height: 32, child: TextButton(
+            SizedBox(width: 78, height: summaryHeight, child: TextButton(
               key: const ValueKey('weather-home-radar'),
               onPressed: onOpenRadar,
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 2),
                 minimumSize: const Size(78, 32), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-              child: FittedBox(fit: BoxFit.scaleDown, child: Text(
-                SkoLanguageController.tr('雨雲レーダー'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600))),
+              child: Text(SkoLanguageController.tr('雨雲レーダー'),
+                maxLines: 2, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, height: 1.1, fontWeight: FontWeight.w600)),
             )),
           ],
         ],

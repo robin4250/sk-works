@@ -199,9 +199,11 @@ void main() {
             expect(temperatureRect.left - regionRect.right, inInclusiveRange(0, 5));
             final radar = find.byKey(const ValueKey('weather-home-radar'));
             expect(tester.getSize(radar).width, 78);
-            expect(tester.getSize(radar).height, 32);
+            expect(tester.getSize(radar).height, greaterThanOrEqualTo(32));
             final radarText = tester.widget<Text>(find.descendant(of: radar, matching: find.byType(Text)));
             expect(radarText.style!.fontSize, 11);
+            expect(find.ancestor(of: find.descendant(of: radar, matching: find.byType(Text)), matching: find.byType(FittedBox)), findsNothing);
+            expect(tester.renderObject<RenderParagraph>(find.descendant(of: radar, matching: find.byType(Text))).didExceedMaxLines, isFalse);
             final beforeRadar = radarOpened;
             await tester.tap(radar);
             await tester.pump();
