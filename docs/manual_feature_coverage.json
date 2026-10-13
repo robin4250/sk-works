@@ -164,7 +164,7 @@
     {
       "key": "payroll_settings",
       "chapters": [
-        "個別給与設定と給与調整の確認"
+        "個別給与設定の確認・登録"
       ],
       "sources": [
         "lib/features/payroll/individual_payroll_settings_page.dart"
@@ -173,7 +173,7 @@
     {
       "key": "payroll_adjustments",
       "chapters": [
-        "個別給与設定と給与調整の確認"
+        "給与調整の対象日と登録・修正"
       ],
       "sources": [
         "lib/features/payroll/payroll_adjustment_page.dart"

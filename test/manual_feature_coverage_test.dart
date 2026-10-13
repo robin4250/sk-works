@@ -35,7 +35,7 @@ void main() {
     expect(formal.support, contains('マスター設定と既存権限'));
   });
 
-  test('all roles receive own workflows while company payroll edit guidance stays admin', () {
+  test('manual role guides preserve permission-based payroll settings and admin adjustments', () {
     for (final role in ManualRole.values) {
       final titles = ManualContent.forRole(role).map((section) => section.title);
       expect(titles, contains('本人の経費申請と領収書'));
@@ -43,9 +43,17 @@ void main() {
       expect(titles, contains('アルバムの作成・写真の追加'));
       expect(titles, contains('ルート勤務の現場到着・現場移動'));
     }
-    for (final role in [ManualRole.general, ManualRole.subAdmin]) {
-      expect(ManualContent.forRole(role).map((section) => section.title),
-        isNot(contains('個別給与設定と給与調整の確認')));
-    }
+    expect(ManualContent.general.map((section) => section.title),
+      isNot(contains('個別給与設定の確認・登録')));
+    expect(ManualContent.subAdmin.map((section) => section.title),
+      contains('個別給与設定の確認・登録'));
+    expect(ManualContent.subAdmin.map((section) => section.title),
+      isNot(contains('給与調整の対象日と登録・修正')));
+    expect(ManualContent.admin.map((section) => section.title),
+      contains('給与調整の対象日と登録・修正'));
+    expect(ManualContent.subAdmin.singleWhere((section) =>
+      section.title == '個別給与設定の確認・登録').support,
+      contains('閲覧と編集の権限は別'));
+
   });
 }
