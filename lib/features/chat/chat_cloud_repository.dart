@@ -401,8 +401,7 @@ class ChatCloudRepository {
         !result.any((row) => row['user_id']?.toString() == currentUser.id)) {
       result.add({
         'user_id': currentUser.id,
-        'display_name':
-            currentUser.userMetadata?['display_name']?.toString() ??
+        'display_name': currentUser.userMetadata?['display_name']?.toString() ??
             currentUser.phone ??
             currentUser.email ??
             '自分',
@@ -852,12 +851,13 @@ class ChatCloudRepository {
         'uploaded_by': user.id,
       });
 
-      await _client.storage
-          .from(_attachmentBucket)
-          .uploadBinary(
+      await _client.storage.from(_attachmentBucket).uploadBinary(
             storagePath,
             bytes,
-            fileOptions: FileOptions(upsert: false, contentType: mimeType),
+            fileOptions: FileOptions(
+              upsert: false,
+              contentType: mimeType,
+            ),
           );
     } catch (_) {
       // Keep metadata in place until Storage cleanup runs because the
@@ -868,10 +868,10 @@ class ChatCloudRepository {
         // The upload may have failed before an object was created.
       }
       try {
-        await _client
-            .from('chat_attachments')
-            .delete()
-            .eq('storage_path', storagePath);
+        await _client.from('chat_attachments').delete().eq(
+              'storage_path',
+              storagePath,
+            );
       } catch (_) {
         // Best effort; the original attachment error remains primary.
       }
