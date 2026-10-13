@@ -19,9 +19,9 @@ void main() {
     await tester.tap(find.text('長いグループ名 長いグループ名'));expect(tapped,true);
   });
   testWidgets('read clears number badge and missing photo keeps normal icon', (tester) async {
-    Future<void> show(int count) => tester.pumpWidget(MaterialApp(home: ChatConversationTile(
+    Future<void> show(int count) => tester.pumpWidget(MaterialApp(home: Scaffold(body: ChatConversationTile(
       name:'グループ',preview:'本文',time:'10:24',unreadCount:count,
-      icon:Icons.groups_outlined,onTap:(){})));
+      icon:Icons.groups_outlined,onTap:(){}))));
     await show(2);expect(find.text('2'),findsOneWidget);
     await show(0);expect(find.text('2'),findsNothing);expect(find.byIcon(Icons.groups_outlined),findsOneWidget);
   });
