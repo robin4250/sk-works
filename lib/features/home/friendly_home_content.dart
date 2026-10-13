@@ -406,13 +406,13 @@ class _PersonalAttendanceCard extends StatelessWidget {
                 children: [
                   OutlinedButton.icon(
                     onPressed: () => onOpen('workplace_select'),
-                    icon: const Icon(Icons.place_outlined),
+                    icon: const Icon(Icons.place_outlined, color: Color(0xFFC94D59)),
                     label: Text(SkoLanguageController.tr('現場の選択（1現場／複数現場）')),
                   ),
                   const SizedBox(height: 9),
                   OutlinedButton.icon(
                     onPressed: () => onOpen('attendance_method_vehicle'),
-                    icon: const Icon(Icons.tune_outlined),
+                    icon: const Icon(Icons.tune_outlined, color: Color(0xFF7B4BA8)),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
                   if (vehicleRoutesEnabled && hasActiveRouteShift) ...[
