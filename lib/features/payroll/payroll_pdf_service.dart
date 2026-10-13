@@ -1268,10 +1268,9 @@ class PayrollPdfService {
     Map<String, Object?> configured, {
     Map<String, num> independentUnits = const {},
   }) => legacy.where((entry) {
+    if ((independentUnits[entry.key.trim()] ?? 0) > 0) return true;
     final amount = _asNumber(entry.value)?.abs();
-    final configuredAmount = _asNumber(configured[entry.key.trim()])?.abs();
-    final registered = configuredAmount == null ? null :
-        configuredAmount - (independentUnits[entry.key.trim()] ?? 0);
+    final registered = _asNumber(configured[entry.key.trim()])?.abs();
     return amount == null || registered == null || amount != registered;
   });
 
