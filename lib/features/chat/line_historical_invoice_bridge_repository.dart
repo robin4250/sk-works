@@ -23,5 +23,7 @@ class LineHistoricalInvoiceBridgeRepository {
     ...params, 'p_command_id': LineImportRepository.commandId(),
     'p_preview_fingerprint': fingerprint, 'p_preview_confirmed': true,
   })) as Map);
+  Future<Map<String, dynamic>> expensePreview(String quoteId, String invoiceId) => _rpc('line_historical_invoice_expense_preview', {'p_quote_id': quoteId, 'p_invoice_id': invoiceId});
+  Future<Map<String, dynamic>> refreshExpenses(String quoteId, String invoiceId, String fingerprint) => _rpc('refresh_line_historical_invoice_expenses', {'p_quote_id': quoteId, 'p_invoice_id': invoiceId, 'p_preview_fingerprint': fingerprint, 'p_confirmed': true});
   Future<Map<String, dynamic>> create(Map<String, dynamic> params) => _rpc('create_line_historical_invoices', params);
 }

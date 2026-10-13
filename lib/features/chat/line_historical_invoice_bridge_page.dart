@@ -29,7 +29,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
     if (_repository == null) { setState(() { _busy = false; _error = 'Masterでログインしてください。'; }); return; }
     setState(() { _busy = true; _error = null; });
     try {
-      final data = await _repository!.load(widget.quoteId);
+      final data = await _repository.load(widget.quoteId);
       final quote = Map<String, dynamic>.from(data['quote'] as Map);
       final sites = <String>{for (final line in quote['lines'] as List) line['site_id'].toString()}.toList();
       if (!mounted) return;
@@ -83,6 +83,26 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
     } catch (_) { if (mounted) setState(() => _error = '作成結果を確認できませんでした。同じ作成を再送するか、再読み込みしてください。設定・経費変更時はプレビューをやり直してください。'); }
     finally { if (mounted) setState(() => _busy = false); }
   }
+  Future<void> _refreshExpenses(String invoiceId) async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      final preview = await _repository!.expensePreview(widget.quoteId, invoiceId);
+      if (preview['invoice_id'] != invoiceId || preview['quote_id'] != widget.quoteId || preview['fingerprint'] is! String || preview['expense_extra_claims'] is! List) throw StateError('Expense preview mismatch');
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('登録経費の更新を確認'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${preview['customer_name']}\n前回の登録経費 ${preview['previous_expense_amount_yen']}円 → ${preview['expense_extra_amount_yen']}円\n更新後の合計 ${preview['grand_total']}円'),
+          const Text('保存した人工・単価・消費税・法定福利費は変わりません。'),
+          for (final claim in preview['expense_extra_claims'] as List) Text('${claim['incurred_on']} ${claim['description']} ${claim['amount_yen']}円'),
+        ])), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('確認して経費を更新'))]));
+      if (confirmed != true || !mounted) return;
+      final result = await _repository!.refreshExpenses(widget.quoteId, invoiceId, preview['fingerprint'] as String);
+      if (result['invoice_id'] != invoiceId || result['quote_id'] != widget.quoteId) throw StateError('Expense update mismatch');
+      await _load();
+    } catch (_) { if (mounted) setState(() => _error = '経費を更新できませんでした。承認済み・確定済み・手動編集済みの請求書は変更しません。再読み込みして内容を確認してください。'); }
+    finally { if (mounted) setState(() => _busy = false); }
+  }
   Future<void> _reload() async {
     if (_edited || _pending != null) {
       final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('保存済み状態を再確認'), content: const Text('入力・プレビューを閉じて、作成済み下書きと履歴を再読み込みします。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')), TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('再読み込み'))]));
@@ -98,7 +118,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
     final locked = _busy || _pending != null || _created != null || previous.isNotEmpty;
     final results = _created?['invoices'] as List? ?? previous;
     return Scaffold(appBar: AppBar(title: const Text('履歴から正式請求の下書き'), actions: [
-      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴と正式下書き'), content: const Text('保存時の数量と単価を使用します。過去の取引先・現場名・税福利条件を明示し、登録済み対象月経費を含む金額を確認してから下書きを作成します。承認と発行は既存の請求書画面で行います。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
+      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴と正式下書き'), content: const Text('保存時の数量と単価を使用します。過去の取引先・現場名・税福利条件を明示し、登録済み対象月経費を含む金額を確認してから下書きを作成します。作成後の登録経費変更は、この画面から金額を確認して更新できます。承認済み・確定済み・手動編集済みの下書きは変更しません。承認と発行は既存の請求書画面で行います。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('Master専用。保存済みの数量・単価で正式請求書の下書きを作成します。過去月の条件を入力し、金額と登録経費を確認してください。'),
@@ -122,7 +142,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
           CheckboxListTile(value: _previewConfirmed, onChanged: locked ? null : (value) => setState(() => _previewConfirmed = value == true), title: const Text('表示された取引先・金額・登録経費を確認しました')),
           FilledButton(onPressed: _busy || _created != null || previous.isNotEmpty || (!_previewConfirmed && _pending == null) ? null : _create, child: Text(_pending == null ? '正式請求書の下書きを作成' : '同じ作成を再送')),
         ],
-        if (results.isNotEmpty) ...[const SizedBox(height: 16), const Text('正式請求書への作成記録。請求書画面で状態を確認してください。'), for (final invoice in results) ListTile(title: Text(invoice['customer_name']?.toString() ?? '作成記録'), subtitle: Text(invoice['invoice_exists'] == false ? '請求書を確認できません。作成記録は保持しています。' : '${invoice['work_month']} ／ 合計 ${invoice['grand_total']}円'), trailing: OutlinedButton(onPressed: invoice['invoice_exists'] == false ? null : () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => InvoiceCloudPage(initialInvoiceId: invoice['invoice_id'].toString()))), child: const Text('請求書を確認')))],
+        if (results.isNotEmpty) ...[const SizedBox(height: 16), const Text('正式請求書への作成記録。請求書画面で状態を確認してください。'), for (final invoice in results) ListTile(title: Text(invoice['customer_name']?.toString() ?? '作成記録'), subtitle: Text(invoice['invoice_exists'] == false ? '請求書を確認できません。作成記録は保持しています。' : '${invoice['work_month']} ／ 合計 ${invoice['grand_total']}円'), trailing: OutlinedButton(onPressed: invoice['invoice_exists'] == false ? null : () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => InvoiceCloudPage(initialInvoiceId: invoice['invoice_id'].toString()))), child: const Text('請求書を確認'))), for (final invoice in results) OutlinedButton(onPressed: _busy || invoice['invoice_exists'] == false ? null : () => _refreshExpenses(invoice['invoice_id'].toString()), child: Text('${invoice['customer_name'] ?? '作成記録'}：登録経費を確認・更新'))],
       ]));
   }
 }

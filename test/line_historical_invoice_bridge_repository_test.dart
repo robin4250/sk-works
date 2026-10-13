@@ -54,4 +54,14 @@ void main() {
     expect(requests.length,2);expect(requests.first,requests.last);
     expect(requests.last['p_preview_confirmed'],true);
   });
+  test('expense preview and retry keep invoice scope and confirmation fingerprint', () async {
+    await repository.expensePreview('quote', 'invoice');
+    expect(requests.single, {'p_quote_id':'quote','p_invoice_id':'invoice'});
+    requests.clear();failures=1;
+    await expectLater(repository.refreshExpenses('quote','invoice','confirmed-preview'),throwsA(isA<PostgrestException>()));
+    await repository.refreshExpenses('quote','invoice','confirmed-preview');
+    expect(requests.length,2);expect(requests.first,requests.last);
+    expect(requests.last, {'p_quote_id':'quote','p_invoice_id':'invoice','p_preview_fingerprint':'confirmed-preview','p_confirmed':true});
+  });
+
 }

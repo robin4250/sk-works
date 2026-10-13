@@ -27,3 +27,7 @@ PGlite 実 SQL：明示条件必須・0%と空欄の区別、現在税率/単価
 本 migration は CLI `migration new` により生成。本番適用・実 LINE 履歴からの正式下書き/承認/発行・iPhone 操作は未確認。これらを合成テスト成功と混同しない。
 
 参考：Supabase Database Functions https://supabase.com/docs/guides/database/functions と changelog https://supabase.com/changelog を確認。Data API 自動公開の変更を踏まえ、private 表は公開せず public thin invoker RPC のみ明示 grant とする。
+
+## 作成後の登録経費変更
+
+橋渡しで作成した未確定・未承認・未編集の下書きに限り、「登録経費を確認・更新」で新しい経費と合計を確認して更新できる。作成直後の請求書保存行 fingerprint を private link に保存し、手動変更・部分承認も拒否する。人工・単価・税率・福利率・履歴証拠・取引先・印影は再生成しない。更新は経費 snapshot と税込合計のみ。company→invoice 行順と既存 invoice advisory/table NOWAIT、expense scope/claim locks、既存 invoice hooks を保持する。確認後の経費変更は stale fingerprint で拒否。同じ更新の再送は固定結果を返す。通常請求書・過去 quote・給与・勤怠は変更しない。

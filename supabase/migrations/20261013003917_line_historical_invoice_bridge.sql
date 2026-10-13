@@ -13,6 +13,7 @@ create table private.line_historical_invoice_links (
  company_id uuid not null,customer_id uuid not null,work_month date not null,
  quote_id uuid not null references private.line_historical_quote_snapshots(id),
  actor_id uuid not null,command_id uuid not null,invoice_id uuid not null,
+ invoice_fingerprint text not null,last_refresh_fingerprint text,refresh_result jsonb,
  primary key(company_id,customer_id,work_month),
  foreign key(company_id,actor_id,command_id) references private.line_historical_invoice_commands(company_id,actor_id,command_id)
 );
@@ -143,8 +144,8 @@ begin
  end loop;
  result:=jsonb_build_object('invoices',results,'status','draft','issued',false,'approved',false);
  insert into private.line_historical_invoice_commands(company_id,actor_id,command_id,quote_id,group_id,work_month,payload,result) values(q.company_id,auth.uid(),p_command_id,q.id,q.group_id,q.work_month,payload,result);
- insert into private.line_historical_invoice_links(company_id,customer_id,work_month,quote_id,actor_id,command_id,invoice_id)
- select q.company_id,(r->>'customer_id')::uuid,q.work_month,q.id,auth.uid(),p_command_id,(r->>'invoice_id')::uuid from jsonb_array_elements(results) r;
+ insert into private.line_historical_invoice_links(company_id,customer_id,work_month,quote_id,actor_id,command_id,invoice_id,invoice_fingerprint)
+ select q.company_id,(r->>'customer_id')::uuid,q.work_month,q.id,auth.uid(),p_command_id,(r->>'invoice_id')::uuid,(select md5((to_jsonb(i)-'updated_at')::text) from public.invoices i where i.id=(r->>'invoice_id')::uuid) from jsonb_array_elements(results) r;
  return result;
 end $$;
 
@@ -166,4 +167,49 @@ create function public.create_line_historical_invoices(p_command_id uuid,p_quote
 revoke all on function private.require_line_historical_invoice_quote(uuid) from public,anon,authenticated,service_role;
 revoke all on function private.line_historical_invoice_workspace(uuid),private.line_historical_invoice_preview(uuid,text,jsonb,integer,boolean),private.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean),public.line_historical_invoice_workspace(uuid),public.line_historical_invoice_preview(uuid,text,jsonb,integer,boolean),public.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean) from public,anon;
 grant execute on function private.line_historical_invoice_workspace(uuid),private.line_historical_invoice_preview(uuid,text,jsonb,integer,boolean),private.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean),public.line_historical_invoice_workspace(uuid),public.line_historical_invoice_preview(uuid,text,jsonb,integer,boolean),public.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean) to authenticated;
+-- Refresh only bridge-owned, unchanged, unapproved drafts. Frozen source rows,
+-- rates, tax/welfare, identity and seal evidence remain untouched.
+create function private.line_historical_invoice_expenses(p_quote_id uuid,p_invoice_id uuid,p_preview_fingerprint text default null,p_confirmed boolean default false)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare q private.line_historical_quote_snapshots; link private.line_historical_invoice_links; invoice public.invoices;
+ row_data jsonb; baseline text; component jsonb; data jsonb; fingerprint text; total numeric;
+begin
+ q:=private.require_line_historical_invoice_quote(p_quote_id);
+ select * into link from private.line_historical_invoice_links where company_id=q.company_id and quote_id=q.id and invoice_id=p_invoice_id;
+ if not found then raise exception 'Bridge invoice unavailable' using errcode='42501';end if;
+ if not pg_try_advisory_xact_lock(hashtextextended('invoice:'||q.company_id::text||link.customer_id::text||link.work_month::text,0)) then raise exception 'Another invoice operation is active' using errcode='40001';end if;
+ begin lock table public.invoices in share row exclusive mode nowait;
+ exception when lock_not_available then raise exception 'Another invoice operation is active' using errcode='40001';end;
+ begin perform 1 from public.companies where id=q.company_id for update nowait;
+ exception when lock_not_available then raise exception 'Another approval operation is active' using errcode='40001';end;
+ select * into link from private.line_historical_invoice_links where company_id=q.company_id and quote_id=q.id and invoice_id=p_invoice_id for update;
+ select * into invoice from public.invoices where id=p_invoice_id and company_id=q.company_id for update;
+ if not found then raise exception 'Bridge invoice unavailable' using errcode='42501';end if;
+ row_data:=to_jsonb(invoice);
+ baseline:=md5((row_data-'updated_at')::text);
+ if invoice.status is distinct from 'draft' or invoice.finalized_at is not null or row_data->>'approval_finalized_at' is not null
+  or exists(select 1 from public.invoice_approvals a where a.invoice_id=invoice.id and a.status='approved')
+  or invoice.automatic_calculation is distinct from false or baseline is distinct from link.invoice_fingerprint then
+  raise exception 'Invoice was edited or finalized; use its existing review screen' using errcode='22023';end if;
+ if p_confirmed and p_preview_fingerprint=link.last_refresh_fingerprint then return link.refresh_result;end if;
+ perform private.expense_cost_scope_lock(q.company_id,'customer',link.customer_id,link.work_month);
+ perform e.id from private.expense_claims e join private.expense_settlement_choices sc on sc.claim_id=e.id and sc.company_id=e.company_id
+ where e.company_id=q.company_id and e.incurred_on between invoice.billing_period_start and invoice.billing_period_end and e.allocation='customer' and e.counterparty_id=link.customer_id and sc.cost_allocation_current order by e.id for share of e,sc;
+ component:=private.expense_cost_components('invoice',q.company_id,link.customer_id,invoice.billing_period_start,invoice.billing_period_end,invoice.id);
+ total:=invoice.subtotal::numeric+invoice.tax::numeric+invoice.adjustments::numeric+(component->>'amount_yen')::numeric;
+ if total is null or total<0 or total>2147483647 then raise exception 'Invoice total unavailable' using errcode='22023';end if;
+ data:=jsonb_build_object('invoice_id',invoice.id,'quote_id',q.id,'customer_name',invoice.snapshot->>'customer_name','previous_expense_amount_yen',invoice.snapshot->'expense_extra_amount_yen','expense_extra_amount_yen',component->'amount_yen','expense_extra_claims',component->'claims','subtotal',invoice.subtotal,'tax',invoice.tax,'welfare',invoice.welfare_amount,'grand_total',total,'invoice_fingerprint',baseline);
+ fingerprint:=md5(data::text);data:=data||jsonb_build_object('fingerprint',fingerprint);
+ if not p_confirmed then return data;end if;
+ if p_preview_fingerprint is distinct from fingerprint then raise exception 'Invoice or expenses changed; preview again' using errcode='40001';end if;
+ update public.invoices set grand_total=total::integer,snapshot=invoice.snapshot||jsonb_build_object('grand_total',total,'expense_extra_amount_yen',component->'amount_yen','expense_extra_claims',component->'claims','expense_extra_source_version',1),updated_at=now() where id=invoice.id and company_id=q.company_id;
+ select md5((to_jsonb(i)-'updated_at')::text) into baseline from public.invoices i where i.id=invoice.id;
+ update private.line_historical_invoice_links set invoice_fingerprint=baseline,last_refresh_fingerprint=fingerprint,refresh_result=data where company_id=q.company_id and quote_id=q.id and invoice_id=invoice.id;
+ return data;
+end $$;
+create function public.line_historical_invoice_expense_preview(p_quote_id uuid,p_invoice_id uuid) returns jsonb language sql security invoker set search_path='' as $$select private.line_historical_invoice_expenses(p_quote_id,p_invoice_id)$$;
+create function public.refresh_line_historical_invoice_expenses(p_quote_id uuid,p_invoice_id uuid,p_preview_fingerprint text,p_confirmed boolean) returns jsonb language sql security invoker set search_path='' as $$select private.line_historical_invoice_expenses(p_quote_id,p_invoice_id,p_preview_fingerprint,p_confirmed)$$;
+revoke all on function private.line_historical_invoice_expenses(uuid,uuid,text,boolean),public.line_historical_invoice_expense_preview(uuid,uuid),public.refresh_line_historical_invoice_expenses(uuid,uuid,text,boolean) from public,anon;
+grant execute on function private.line_historical_invoice_expenses(uuid,uuid,text,boolean),public.line_historical_invoice_expense_preview(uuid,uuid),public.refresh_line_historical_invoice_expenses(uuid,uuid,text,boolean) to authenticated;
+
 commit;

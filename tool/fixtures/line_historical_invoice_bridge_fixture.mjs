@@ -25,6 +25,7 @@ select set_config('test.uid','${id(1)}',false);`);
 await db.exec(`alter table public.companies add column tax_rate numeric default 10;
 alter table public.sites add column customer_id uuid,add column formal_name text,add column created_at timestamptz default now();
 create table public.customers(id uuid primary key,company_id uuid,name text,notes text,billing_address text);
+create table public.invoice_approvals(invoice_id uuid,status text);
 create table public.invoices(id uuid primary key default gen_random_uuid(),company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,status text,finalized_at timestamptz,automatic_calculation boolean,calculation_blocked boolean,subtotal integer,tax integer,welfare_amount integer,grand_total integer,snapshot jsonb,updated_at timestamptz,adjustments integer,detail_mode text);
 create table public.attendance_entries(id uuid primary key default gen_random_uuid(),company_id uuid,worker_id uuid,site_id uuid,work_date date,work_category text,base_man_days numeric,overtime_hours numeric,early_hours numeric,allowance_names text[]);
 create table public.attendance_correction_requests(id uuid primary key default gen_random_uuid(),company_id uuid,requested_by uuid,status text,request_kind text,signer_name text,signature_json jsonb,signed_at timestamptz,submitted_at timestamptz);

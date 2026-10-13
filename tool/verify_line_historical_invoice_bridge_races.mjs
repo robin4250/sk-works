@@ -43,6 +43,15 @@ try {
  const fifth=await makeBridgeQuote(db,'2020-06-01',440),fifthPreview=await preview(fifth);
  await b.query('begin');await b.query('lock table invoices in row exclusive mode');await assert.rejects(bridge(a,fifth,441,fifthPreview),error=>error.code==='40001');
  const key='invoice:'+id(10)+id(70)+fifth.month;assert.equal((await b.query('select pg_try_advisory_xact_lock(hashtextextended($1,0)) value',[key])).rows[0].value,true);await b.query('rollback');
+ const iid=made.invoices[0].invoice_id;
+ const expenses=()=>value(a,'select public.line_historical_invoice_expense_preview($1,$2) value',[first.id,iid]);
+ // Existing approve_invoice locks company before the invoice. Refresh does the
+ // same row order and uses NOWAIT, preserving nonblocking lock recovery.
+ await b.query('begin');await b.query('select id from companies where id=$1 for update',[id(10)]);await assert.rejects(expenses(),error=>error.code==='40001');
+ await b.query("insert into invoice_approvals values($1,'approved')",[iid]);await b.query('commit');await assert.rejects(expenses(),error=>error.code==='22023');
+ await b.query('delete from invoice_approvals where invoice_id=$1',[iid]);const ep=await expenses();
+ const apply=(client)=>value(client,'select public.refresh_line_historical_invoice_expenses($1,$2,$3,true) value',[first.id,iid,ep.fingerprint]);
+ await a.query('begin');const refreshed=await apply(a);await assert.rejects(apply(b),error=>error.code==='40001');await a.query('commit');assert.deepEqual(await apply(b),refreshed);
  assert.equal((await a.query('select count(*)::int n from attendance_entries')).rows[0].n,0);assert.equal((await a.query('select count(*)::int n from attendance_correction_requests')).rows[0].n,0);
  console.log('Postgres 17 bridge races: both legacy/bridge winners, common NOWAIT lock order, no deadlocks, both immutable command replays, one group/month conversion and nonblocking ordinary writers passed.');
 } finally {await Promise.allSettled([a.query('rollback'),b.query('rollback')]);await Promise.allSettled([a.end(),b.end()]);}
