@@ -26,6 +26,17 @@ try {
  await db.exec(`delete from public.attendance_entries;delete from public.payroll_statements;delete from public.payroll_adjustments;
  update public.worker_payroll_settings set pay_type='monthly',monthly_salary_yen=300000,custom_earnings='[{"name":"Old direct","amount_yen":100}]',custom_deductions='[{"name":"Old deduction","amount_yen":50}]',income_tax_monthly=0,social_insurance_monthly=0,resident_tax_monthly=0 where worker_id='${wid}';`);
  await actor(editor);
+ // Reproduce the saved base/unit same-name same-amount PDF boundary in SQL.
+ await db.exec('begin;reset role');
+ await db.exec(`update public.worker_payroll_settings set transport_monthly=1000 where worker_id='${wid}'`);
+ await actor(editor);await save(0,[item('earning','month','交通費',1000)]);
+ const alias=await statement();
+ const pdfFixture=JSON.parse(read('test/fixtures/payroll_persisted_money/actual_unit_base_alias.json'));
+ assert.equal(alias.gross_pay,pdfFixture.gross_pay);assert.equal(alias.deductions,pdfFixture.deductions);
+ assert.equal(alias.detail['交通費'],1000);
+ assert.deepEqual(alias.detail.custom_earnings,pdfFixture.detail.custom_earnings);
+ assert.equal(alias.detail.unit_resolution.items[0].amount_yen,1000);
+ await db.exec('rollback');await actor(editor);
  const conditions=[item('earning','hour','Hourly',100,{source:'manual_hours',quantity:'2.5000'}),item('deduction','hour','Hourly removal',50,{source:'manual_hours',quantity:'1.5'}),item('earning','day','Daily',300),item('deduction','day','Daily removal',100),item('earning','month','Monthly',1000),item('deduction','month','Monthly removal',200)];
  const saved=await save(0,conditions);assert.equal(saved.version,1);assert.equal(saved.items.length,6);
  assert.equal(saved.items[0].quantity,2.5);assert.ok(saved.items.every(x=>/^[0-9a-f-]{36}$/.test(x.id)));

@@ -16,7 +16,7 @@ void main() {
     final directory = Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
         (await Directory.systemTemp.createTemp('sko-persisted-money-')).path;
     await Directory(directory).create(recursive: true);
-    for (final name in ['actual_monthly', 'actual_deduction', 'actual_daily_categories', 'actual_hourly_categories', 'actual_monthly_categories']) {
+    for (final name in ['actual_monthly', 'actual_deduction', 'actual_daily_categories', 'actual_hourly_categories', 'actual_monthly_categories', 'actual_unit_base_alias']) {
       final row = jsonDecode(await File('test/fixtures/payroll_persisted_money/$name.json').readAsString()) as Map<String, dynamic>;
       // Numeric-looking snapshot names and versions must not become legacy pay.
       final metadata = <String, dynamic>{
@@ -70,6 +70,9 @@ print(json.dumps({'earnings':money(240,293),'deductions':money(490,558),'labels'
       for (final key in metadata.keys) {
         expect(labels, isNot(contains(key)),
             reason: '$key is saved metadata, never a pay or deduction item.');
+      }
+      if (name == 'actual_unit_base_alias') {
+        expect(labels.where((value) => value == '交通費'), hasLength(1));
       }
       if (name == 'actual_deduction' || name.endsWith('_categories')) {
         expect(labels.where((value) => value == '道具代'), hasLength(1));

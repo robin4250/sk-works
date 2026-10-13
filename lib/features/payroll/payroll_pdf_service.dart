@@ -73,7 +73,8 @@ class PayrollPdfService {
       ...adjustmentEarnings.entries,
     ];
     final earningEntries = _mergeMoneyEntries([
-      ..._withoutConfiguredAliases(legacyEarnings, configuredEarnings),
+      ..._withoutConfiguredAliases(legacyEarnings, configuredEarnings,
+        independentUnits: _unitBaseMoney(detail, section: 'earning')),
       ...configuredEarnings.entries,
     ]);
 
@@ -94,7 +95,8 @@ class PayrollPdfService {
       ),
     ];
     final deductionEntries = _mergeMoneyEntries([
-      ..._withoutConfiguredAliases(legacyDeductions, configuredDeductions),
+      ..._withoutConfiguredAliases(legacyDeductions, configuredDeductions,
+        independentUnits: _unitBaseMoney(detail, section: 'deduction')),
       ...configuredDeductions.entries,
     ]);
 
@@ -1263,12 +1265,38 @@ class PayrollPdfService {
   // Remove only an exact label-and-amount mirror; separate amounts still add.
   static Iterable<MapEntry<String, Object?>> _withoutConfiguredAliases(
     Iterable<MapEntry<String, Object?>> legacy,
-    Map<String, Object?> configured,
-  ) => legacy.where((entry) {
+    Map<String, Object?> configured, {
+    Map<String, num> independentUnits = const {},
+  }) => legacy.where((entry) {
     final amount = _asNumber(entry.value)?.abs();
-    final registered = _asNumber(configured[entry.key.trim()])?.abs();
+    final configuredAmount = _asNumber(configured[entry.key.trim()])?.abs();
+    final registered = configuredAmount == null ? null :
+        configuredAmount - (independentUnits[entry.key.trim()] ?? 0);
     return amount == null || registered == null || amount != registered;
   });
+
+  // Formal base fields are independent of explicitly resolved unit items.
+  // Arbitrary signed legacy keys still mirror the full configured item amount.
+  static Map<String, num> _unitBaseMoney(Map<String, dynamic> detail, {
+    required String section,
+  }) {
+    final resolution = detail['unit_resolution'];
+    if (resolution is! Map || resolution['contract_version'] != 1) return const {};
+    final items = resolution['items'];
+    if (items is! List) return const {};
+    final baseLabels = section == 'earning'
+        ? const {'基本給', '残業手当', '交通費'}
+        : const {'健康保険料', '社会保険', '所得税', '住民税', '介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金'};
+    final result = <String, num>{};
+    for (final item in items) {
+      if (item is! Map || item['section'] != section) continue;
+      final name = item['name']?.toString().trim() ?? '';
+      final amount = _asNumber(item['amount_yen']);
+      if (!baseLabels.contains(name) || amount == null || amount <= 0) continue;
+      result[name] = (result[name] ?? 0) + amount;
+    }
+    return result;
+  }
 
   static Map<String, Object?> _mergeMoneyEntries(
     Iterable<MapEntry<String, Object?>> entries,
