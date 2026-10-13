@@ -62,7 +62,7 @@ class _RouteCustomerDayQuantityPageState extends State<RouteCustomerDayQuantityP
   void _help() {
     showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('ルートの請求数量'),
-      content: const SingleChildScrollView(child: Text('退勤済みの訪問日報を取引会社ごとにまとめています。各社について1人工または0.5人工を選び、申請してください。別々の取引会社の合計を1人工に制限しません。管理者が根拠現場・数量・単価を確認して承認した後、請求書の下書きへ反映します。給与や出勤表の人工は変更しません。戻るだけでは申請しません。')),
+      content: const SingleChildScrollView(child: Text('退勤済みの訪問日報を取引会社ごとにまとめています。各社について1人工または0.5人工を選び、申請してください。別々の取引会社の合計を1人工に制限しません。管理者が根拠現場・数量・単価を確認して承認した後、請求書の下書きへ反映します。給与や出勤表の人工は変更しません。戻るだけでは申請しません。\n\n自分が作成した対象日の完了訪問日報を確認しています。日報が保存されていても、退勤記録を確認できない場合は数量の申請候補に表示しません。「日報なし」や「取引会社未設定」とは別の状態です。過去の記録は管理者に日付・現場・保存済み日報の確認を依頼してください。実際に勤務中なら通常の退勤操作後に再読み込みしてください。\n\nこの画面で表示した候補を申請しても、同じ月の別の日報に根拠不足や承認待ちがあれば、請求書の確定は完了しません。過去の退勤日時や人工を推測して登録せず、請求数量の承認ページと保存済み記録を確認してください。')),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
   }
   @override
@@ -82,8 +82,7 @@ class _RouteCustomerDayQuantityPageState extends State<RouteCustomerDayQuantityP
           if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
           if (day != null && day.unresolvedCount > 0)
             const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('取引会社が未設定の現場があります。現場の登録を確認してから再読み込みしてください。')),
-          if (day != null && day.customers.isEmpty && day.unresolvedCount == 0)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('退勤済みの訪問日報がありません。日報の登録・サインを確認してください。')),
+          if (day != null) _evidenceNotice(day),
           for (final c in day?.customers ?? <RouteCustomerQuantityCandidate>[])
             Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -103,4 +102,30 @@ class _RouteCustomerDayQuantityPageState extends State<RouteCustomerDayQuantityP
         onPressed: canSubmit ? _submit : null, child: Text(_saving ? '申請中…' : '申請')))),
     );
   }
+
+  Widget _evidenceNotice(RouteCustomerQuantityDay day) {
+    final diagnostics = day.diagnostics;
+    if (diagnostics == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('訪問日報の根拠確認情報は未取得です。候補に出ない日報がある場合は、再読み込みするか、管理者に元の出勤・退勤記録の確認を依頼してください。'),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('自分が作成した対象日の完了訪問日報：${diagnostics.completedReportCount}件／申請候補：${diagnostics.eligibleReportCount}件'),
+        if (diagnostics.missingSourceCount > 0)
+          Text('元の出勤・退勤記録を確認できない日報：${diagnostics.missingSourceCount}件。日報は保存されていますが、この画面から数量を申請できません。管理者に日付・現場・保存済み日報の確認を依頼してください。'),
+        if (diagnostics.waitingCheckoutCount > 0)
+          Text('退勤記録を確認できない日報：${diagnostics.waitingCheckoutCount}件。実際に勤務中なら通常の退勤操作後に再読み込みしてください。過去の記録は管理者に確認してください。'),
+        if (diagnostics.completedReportCount == 0)
+          const Text('自分が作成した対象日の、署名まで完了した訪問日報が見つかりません。日報の登録・サインを確認してください。'),
+        if (diagnostics.missingSourceCount > 0 ||
+            diagnostics.waitingCheckoutCount > 0)
+          const Text('同じ月に未申請・未承認の日報が残る場合、請求書の確定は停止します。出勤表に勤務が表示されていることだけでは、請求数量の申請・承認が完了したことにはなりません。'),
+      ]),
+    );
+  }
 }
+

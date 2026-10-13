@@ -1,0 +1,34 @@
+name: Route quantity evidence diagnostics
+on:
+  pull_request:
+    paths:
+      - 'lib/features/route_billing/route_customer_day_quantity_page.dart'
+      - 'lib/features/route_billing/route_customer_day_quantity_repository.dart'
+      - 'test/route_quantity_evidence_diagnostics_test.dart'
+      - 'supabase/migrations/20261013004228_route_quantity_evidence_diagnostics.sql'
+      - 'tool/verify_route_quantity_evidence_diagnostics.mjs'
+      - '.github/workflows/route-quantity-evidence-diagnostics.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261013004228_route_quantity_evidence_diagnostics.sql'
+      - 'tool/verify_route_quantity_evidence_diagnostics.mjs'
+      - '.github/workflows/route-quantity-evidence-diagnostics.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/route-evidence-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify read-only evidence reasons and retained guards
+        run: node tool/verify_route_quantity_evidence_diagnostics.mjs "$RUNNER_TEMP/route-evidence-runtime/node_modules/@electric-sql/pglite/dist/index.js"
