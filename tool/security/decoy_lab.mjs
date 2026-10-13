@@ -2,8 +2,8 @@
 export class DecoyLab {
   #generation=1; #events=[]; #blocked=false; #sequence=0;
   constructor({clock=()=>Date.now(),capacity=128,retentionMs=3600000}={}) {
-    if(!Number.isInteger(capacity)||capacity<1||capacity>1024||!Number.isFinite(retentionMs)||retentionMs<1||retentionMs>86400000) throw Error('Invalid bounds');
-    this.clock=clock; this.capacity=capacity; this.retentionMs=retentionMs;
+    if(typeof clock!=='function'||!Number.isInteger(capacity)||capacity<1||capacity>1024||!Number.isFinite(retentionMs)||retentionMs<1||retentionMs>86400000) throw Error('Invalid bounds');
+    Object.defineProperties(this,{clock:{value:clock},capacity:{value:capacity},retentionMs:{value:retentionMs}});
   }
   get lure(){return `/synthetic-decoy/g${this.#generation}/fixture-records`;}
   #record(kind,generation=null){

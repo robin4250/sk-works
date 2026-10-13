@@ -1,0 +1,20 @@
+name: Employee invitation expiry boundary
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*employee_invitation_initial_password_expiry.sql'
+      - 'supabase/tests/fixtures/employee_invitation_expiry_before.sql'
+      - 'tool/verify_employee_invitation_expiry.mjs'
+      - '.github/workflows/employee-invitation-expiry.yml'
+jobs:
+  expiry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/expiry-deps --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tool/verify_employee_invitation_expiry.mjs
+        env:
+          PGLITE_MODULE: /tmp/expiry-deps/node_modules/@electric-sql/pglite/dist/index.js
