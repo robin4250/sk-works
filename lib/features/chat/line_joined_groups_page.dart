@@ -68,6 +68,12 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
     content:SingleChildScrollView(child:Text(_tr('公式アカウントの参加・投稿を受信したグループが自動で追加されます。以前の受信記録があるグループは再読み込みで参加状況を確認できます。受信記録のない参加済みグループは、次の投稿を受信すると追加されます。未連携の一覧はマスターのみ確認できます。LINEへの送信や過去投稿の自動取得は行いません。'))),
     actions:[TextButton(onPressed:()=>Navigator.pop(context),child:Text(_tr('閉じる')))]));
   Future<void> _select(Map<String,dynamic> row) async {
+    try { await _selectSource(row); } catch(_) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(_tr('LINEトークを追加できませんでした。権限と連携先を再確認してください。'))));
+      await _load();
+    }
+  }
+  Future<void> _selectSource(Map<String,dynamic> row) async {
     final repository=_repository;
     final actor=repository?.currentUserId;
     if(repository==null || actor==null || actor!=_actor) { await _load(); return; }

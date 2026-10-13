@@ -757,8 +757,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     final selected = _selectedGroup;
     if (repository == null || (!create && selected?['can_edit_group_photo'] != true)) return;
     final actor = repository.currentUserId;
-    final company = await repository.membership();
-    if(!mounted || repository.currentUserId!=actor) return;
+    String? creationCompanyId;
+    if(create) {
+      try { creationCompanyId=(await repository.membership()).companyId; } catch(_) {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(SkoLanguageController.tr('会社を確認できませんでした。'))));
+        return;
+      }
+      if(!mounted || repository.currentUserId!=actor) return;
+    }
     final controller = TextEditingController(text: create ? '' : selected?['name']?.toString());
     Uint8List? photo;
     String? createdId;
@@ -786,7 +792,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             update(() { photo = bytes; error = null; });
           }, icon: const Icon(Icons.camera_alt_outlined), label: Text(SkoLanguageController.tr('写真を変更'))),
           if (create) OutlinedButton.icon(onPressed: busy ? null : () async {
-            final source = await Navigator.of(dialogContext).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(selectOnly: true, newGroupCompanyId:company.companyId)));
+            final source = await Navigator.of(dialogContext).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(selectOnly: true, newGroupCompanyId:creationCompanyId)));
             if (!dialogContext.mounted || repository.currentUserId != actor || source == null) return;
             try {
               final companyName=await repository.lineLinkCompanyName();
@@ -807,7 +813,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             update(() { busy = true; error = null; });
             try {
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-              if ((await repository.membership()).companyId!=company.companyId || repository.currentUserId!=actor) throw StateError('会社を確認できませんでした。');
+              if (create && ((await repository.membership()).companyId!=creationCompanyId || repository.currentUserId!=actor)) throw StateError('会社を確認できませんでした。');
               if (create && createdId == null) createdId = await repository.createCustomGroup(controller.text);
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               final id = create ? createdId! : selected!['id'].toString();
@@ -818,7 +824,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
               await _load();
               if (mounted && repository.currentUserId == actor) await _selectGroup(id);
             } catch (_) {
-              if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。写真を保持して再試行できます。'; });
+              if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。選択内容を保持して再試行できます。'; });
             }
           }, child: Text(SkoLanguageController.tr(create ? '作成' : '保存')))],
       )));
