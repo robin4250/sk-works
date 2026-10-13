@@ -42,6 +42,14 @@ class ManualPdfService {
     );
   }
 
+  static Future<Uint8List> buildChapter(ManualSection section, {
+    PdfPageFormat format = PdfPageFormat.a4,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
+  }) => _build(title: 'SKO ベータ版 / ${section.title}',
+    sections: [section], format: format,
+    regularFont: regularFont, boldFont: boldFont);
+
   static Future<Uint8List> _build({
     required String title,
     required List<ManualSection> sections,
@@ -55,308 +63,117 @@ class ManualPdfService {
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
 
+    // Each feature is independently paginated. The safeguard scales with
+    // actual text rather than imposing a total brochure/manual page cap.
+    int pageBudget(Iterable<String> text) =>
+        20 + text.fold<int>(0, (length, value) => length + value.length) ~/ 100;
+    pw.Widget footer(pw.Context context) => pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 10),
+      child: pw.Row(children: [
+        pw.Expanded(child: pw.Text(ManualVersion.label,
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700))),
+        pw.Text('${context.pageNumber} / ${context.pagesCount}',
+          style: const pw.TextStyle(fontSize: 8)),
+      ]),
+    );
+    document.addPage(pw.MultiPage(
+      pageFormat: format,
+      margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+      maxPages: pageBudget(sections.map((section) => section.title)),
+      footer: footer,
+      build: (_) => [
+        pw.Anchor(name: 'contents', child: pw.Text(title,
+          style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+        pw.SizedBox(height: 12),
+        pw.Text('機能別目次', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 8),
+        pw.Text('項目を押すと該当する機能の説明へ移動します。必要な説明は機能ごとに追加します。'),
+        pw.SizedBox(height: 12),
+        for (var i = 0; i < sections.length; i++)
+          pw.Link(destination: 'feature-$i', child: pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 4),
+            child: pw.Text('${i + 1}. ${sections[i].title}',
+              style: const pw.TextStyle(color: PdfColors.blue700)),
+          )),
+      ],
+    ));
     for (var i = 0; i < sections.length; i++) {
       final section = sections[i];
-      document.addPage(
-        pw.Page(
-          pageFormat: format,
-          margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
-          build: (_) => _page(
-            title: title,
-            section: section,
-            page: i + 1,
-            total: sections.length,
-          ),
+      document.addPage(pw.MultiPage(
+        pageFormat: format,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        maxPages: pageBudget([section.title, section.summary,
+          section.support, section.buttonLabel, ...section.steps]),
+        header: (_) => pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 10),
+          child: pw.Text(title, style: const pw.TextStyle(
+            fontSize: 10, color: PdfColors.blue700)),
         ),
-      );
+        footer: footer,
+        build: (_) => [
+          pw.Anchor(name: 'feature-$i', child: pw.Text(section.title,
+            style: pw.TextStyle(fontSize: 23, fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue900))),
+          pw.SizedBox(height: 8),
+          pw.Text(section.summary, overflow: pw.TextOverflow.span),
+          pw.SizedBox(height: 12),
+          pw.Text('操作手順', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+          for (var step = 0; step < section.steps.length; step++) ...[
+            pw.Text('${step + 1}.${section.steps[step]}', overflow: pw.TextOverflow.span),
+            pw.SizedBox(height: 10),
+          ],
+          pw.SizedBox(height: 12),
+          _screenMock(section),
+          pw.SizedBox(height: 12),
+          pw.Text('サポート・補足', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 6),
+          pw.Text(section.support, overflow: pw.TextOverflow.span),
+          pw.SizedBox(height: 12),
+          pw.Link(destination: 'contents', child: pw.Text('機能別目次へ戻る',
+            style: const pw.TextStyle(color: PdfColors.blue700))),
+        ],
+      ));
     }
-
     return document.save();
   }
 
-  static pw.Widget _page({
-    required String title,
-    required ManualSection section,
-    required int page,
-    required int total,
-  }) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+  static pw.Widget _screenMock(ManualSection section) => pw.Container(
+    padding: const pw.EdgeInsets.all(12),
+    decoration: pw.BoxDecoration(color: PdfColors.blue50,
+      border: pw.Border.all(color: PdfColors.blue700),
+      borderRadius: pw.BorderRadius.circular(8)),
+    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.blue700,
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                title,
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 15,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Text(
-                '$page / $total',
-                style: const pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 14),
-        pw.Text(
-          section.title,
-          style: pw.TextStyle(
-            fontSize: 23,
-            fontWeight: pw.FontWeight.bold,
-            color: PdfColors.blue900,
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Container(
-          padding: const pw.EdgeInsets.all(12),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.blue50,
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          child: pw.Text(section.summary),
-        ),
-        pw.SizedBox(height: 14),
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              flex: 6,
-              child: _steps(section),
-            ),
-            pw.SizedBox(width: 14),
-            pw.Expanded(
-              flex: 5,
-              child: _screenMock(section),
-            ),
-          ],
-        ),
-        pw.Spacer(),
-        pw.Container(
-          padding: const pw.EdgeInsets.all(12),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.amber50,
-            border: pw.Border.all(color: PdfColors.amber700),
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          child: pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Container(
-                width: 22,
-                height: 22,
-                decoration: const pw.BoxDecoration(
-                  color: PdfColors.amber700,
-                  shape: pw.BoxShape.circle,
-                ),
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  '!',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.SizedBox(width: 8),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'サポート・補足が出るタイミング',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 3),
-                    pw.Text(section.support),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Expanded(
-              child: pw.Text(
-                'ベータ版：アプリの大幅更新時は、説明書・パンフレットもセットで更新します。',
-                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-              ),
-            ),
-            pw.SizedBox(width: 8),
-            pw.Text(
-              ManualVersion.label,
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _steps(ManualSection section) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Text(
-          '操作手順',
-          style: pw.TextStyle(
-            fontSize: 15,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        for (var i = 0; i < section.steps.length; i++) ...[
-          pw.Container(
-            margin: const pw.EdgeInsets.only(bottom: 8),
-            padding: const pw.EdgeInsets.all(9),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey300),
-              borderRadius: pw.BorderRadius.circular(7),
-            ),
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Container(
-                  width: 24,
-                  height: 24,
-                  decoration: const pw.BoxDecoration(
-                    color: PdfColors.blue700,
-                    shape: pw.BoxShape.circle,
-                  ),
-                  alignment: pw.Alignment.center,
-                  child: pw.Text(
-                    '${i + 1}',
-                    style: pw.TextStyle(
-                      color: PdfColors.white,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                ),
-                pw.SizedBox(width: 8),
-                pw.Expanded(child: pw.Text(section.steps[i])),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  static pw.Widget _screenMock(ManualSection section) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Text(
-          '画面イメージ',
-          style: pw.TextStyle(
-            fontSize: 15,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Container(
-          height: 310,
-          padding: const pw.EdgeInsets.all(12),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.grey100,
-            border: pw.Border.all(color: PdfColors.grey500, width: 1.5),
-            borderRadius: pw.BorderRadius.circular(16),
-          ),
-          child: pw.Column(
-            children: [
-              pw.Container(
-                height: 22,
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.blue700,
-                  borderRadius: pw.BorderRadius.circular(6),
-                ),
-              ),
-              pw.SizedBox(height: 12),
-              for (var i = 0; i < 3; i++) ...[
-                pw.Container(
-                  height: 28,
-                  margin: const pw.EdgeInsets.only(bottom: 8),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.white,
-                    borderRadius: pw.BorderRadius.circular(6),
-                  ),
-                ),
-              ],
-              pw.Spacer(),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(4),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(
-                    color: PdfColors.red600,
-                    width: 3,
-                  ),
-                  borderRadius: pw.BorderRadius.circular(12),
-                ),
-                child: pw.Container(
-                  height: 48,
-                  alignment: pw.Alignment.center,
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.blue700,
-                    borderRadius: pw.BorderRadius.circular(8),
-                  ),
-                  child: pw.Text(
-                    section.buttonLabel,
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      color: PdfColors.white,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Text(
-                'ここを押す',
-                textAlign: pw.TextAlign.center,
-                style: pw.TextStyle(
-                  color: PdfColors.red700,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+        pw.Text('操作の目印（画面イメージ）',
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 6),
+        pw.Text('ここを押す：${section.buttonLabel}',
+          style: pw.TextStyle(color: PdfColors.blue900,
+            fontWeight: pw.FontWeight.bold)),
+      ]),
+  );
 
   static String fileNameForRole(ManualRole role) =>
-      'SKO_${ManualContent.roleLabel(role)}用説明書.pdf';
+      'SKO_ベータ版_${ManualContent.roleLabel(role)}用説明書.pdf';
 
   static const pamphletFileName = 'SKO_ベータ版パンフレット.pdf';
 }
 
 class ManualPdfPreviewPage extends StatefulWidget {
+  const ManualPdfPreviewPage.chapter({super.key, required ManualSection section})
+      : _section = section, _role = null, _pamphlet = false;
+
   const ManualPdfPreviewPage.role({
     super.key,
     required ManualRole role,
-  })  : _role = role,
+  })  : _section = null, _role = role,
         _pamphlet = false;
 
   const ManualPdfPreviewPage.pamphlet({super.key})
-      : _role = null,
+      : _section = null, _role = null,
         _pamphlet = true;
 
+  final ManualSection? _section;
   final ManualRole? _role;
   final bool _pamphlet;
 
@@ -370,7 +187,7 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
   @override
   void didUpdateWidget(covariant ManualPdfPreviewPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget._role != widget._role || oldWidget._pamphlet != widget._pamphlet) {
+    if (oldWidget._role != widget._role || oldWidget._pamphlet != widget._pamphlet || oldWidget._section != widget._section) {
       _pdfBytes.invalidate();
     }
   }
@@ -378,11 +195,12 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final section = widget._section;
     final role = widget._role;
     final pamphlet = widget._pamphlet;
-    final title = pamphlet
+    final title = section?.title ?? (pamphlet
         ? 'SKOパンフレット'
-        : '${ManualContent.roleLabel(role!)}用説明書';
+        : '${ManualContent.roleLabel(role!)}用説明書');
 
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr(title))),
@@ -392,11 +210,15 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
         canChangeOrientation: false,
         allowPrinting: true,
         allowSharing: true,
-        pdfFileName: pamphlet
+        pdfFileName: section != null
+            ? 'SKO_ベータ版_${section.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.pdf'
+            : pamphlet
             ? ManualPdfService.pamphletFileName
             : ManualPdfService.fileNameForRole(role!),
         build: (format) => _pdfBytes.get(
-          () => pamphlet
+          () => section != null
+              ? ManualPdfService.buildChapter(section, format: format)
+              : pamphlet
               ? ManualPdfService.buildPamphlet(format: format)
               : ManualPdfService.buildRoleManual(role!, format: format),
         ),
@@ -404,3 +226,4 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
     );
   }
 }
+

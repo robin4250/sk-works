@@ -249,7 +249,7 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'site_map',
       label: '現場マップ',
-      purpose: '現場・取引会社・下請け会社・社員の最新打刻位置をGoogleマップで確認します。',
+      purpose: '表示できる現場・会社・社員の地点を地図で確認します。',
       destination: '現場管理のフッターにある現場マップから地図一覧を開きます。',
       access: '管理者・サブ管理者',
       roles: {ManualRole.subAdmin, ManualRole.admin},
@@ -281,7 +281,8 @@ class MenuHelpCatalog {
     MenuHelpItem(
       key: 'notes',
       label: 'ノート',
-      purpose: '業務メモと添付ファイルをチャット単位で管理します。',
+      purpose: '業務メモを作成・検索・ピン留めして確認します。',
+      details: 'ノートを開き、本文を入力して登録します。検索やピン留めで必要な本文を探します。削除は既存の権限で行います。',
       destination: 'ノート一覧へ移動します。',
       access: '会社設定と参加チャットの権限に従います',
     ),
@@ -314,6 +315,7 @@ class MenuHelpCatalog {
       key: 'today_line',
       label: '本日のLINE出勤候補',
       purpose: 'LINE連携から取り込んだ出勤候補を確認します。',
+      details: '本日の候補を確認する読み取り専用の画面です。正式な勤怠申請は、LINEトークの出勤表で候補を確認・修正・保存し、署名して承認待ちへ提出します。出勤表の表示はマスターのON設定と既存の権限に従います。',
       destination: '本日のLINE出勤候補画面へ移動します。',
       access: '管理者・勤怠管理権限',
       roles: {ManualRole.subAdmin, ManualRole.admin},
@@ -339,7 +341,7 @@ class MenuHelpCatalog {
       purpose: '現在利用できる各ボタンの説明と役割別説明書を確認します。',
       destination: 'このヘルプ画面です。',
       access: '管理者・サブ管理者・一般・閲覧権限',
-      details: '画面右側の「？」は少し長めに長押しして好きな位置へ移動できます。タップすると現在画面の説明が最初に出ます。検索欄には「出勤」「日報」「チャット」「給与」「現場」などの機能名を入力して使い方を探せます。',
+      details: '画面右側の「？」は少し長めに長押しして好きな位置へ移動できます。タップすると現在画面の説明が最初に出ます。検索欄には「出勤」「日報」「チャット」「給与」「現場」などの機能名を入力して使い方を探せます。 説明書とパンフレットは「ベータ版」の機能別目次から開けます。全体のPDFと各機能だけのPDFを選べます。内容に応じてページを増やし、新しい機能は章を追加します。画面の操作が変わった場合は、その章と「？」の説明を更新します。',
     ),
   ];
 
@@ -355,3 +357,4 @@ class MenuHelpCatalog {
     ];
   }
 }
+
