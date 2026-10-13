@@ -93,7 +93,9 @@ class InvoiceCloudRepository {
     }
     checkActor();
     if (contract is! Map || contract['contract_version'] != 1 ||
-        contract['separate_quantity_approval_required'] != false) return;
+        contract['separate_quantity_approval_required'] != false) {
+      return;
+    }
     final companyId = await _companyId();
     checkActor();
     await _client.rpc('refresh_signed_checkout_invoices',
