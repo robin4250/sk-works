@@ -17,12 +17,16 @@ class SecurityIncidentRepository {
       : null;
   Future<List<SecurityIncident>> load() async {
     final actor = _client.auth.currentUser?.id;
-    if (actor == null) throw StateError('Security records unavailable');
+    if (actor == null) {
+      throw StateError('Security records unavailable');
+    }
     final response = await _client.rpc('master_security_incidents');
-    if (_client.auth.currentUser?.id != actor)
+    if (_client.auth.currentUser?.id != actor) {
       throw StateError('Security records unavailable');
-    if (utf8.encode(jsonEncode(response)).length > 512 * 1024)
+    }
+    if (utf8.encode(jsonEncode(response)).length > 512 * 1024) {
       throw StateError('Security records unavailable');
+    }
     return SecurityIncident.parseResponse(response);
   }
 
@@ -30,8 +34,9 @@ class SecurityIncidentRepository {
     SecurityIncidentReportData report,
     String? actor,
   ) async {
-    if (actor == null || currentActor != actor)
+    if (actor == null || currentActor != actor) {
       throw StateError('Security records unavailable');
+    }
     final records = await load();
     final matches = records.where((record) => record.id == report.record.id);
     if (currentActor != actor ||
