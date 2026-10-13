@@ -593,12 +593,7 @@ class _OwnDocumentRegistrationPageState
                                   _repository is OwnDocumentPhotoGateway &&
                                   !(_repository as OwnDocumentPhotoGateway)
                                       .photoEditingAvailable);
-                          final label =
-                              status?['status']?.toString() == 'verified'
-                              ? '確認済み'
-                              : status?['status']?.toString() == 'submitted'
-                              ? '提出済み'
-                              : '未登録';
+                          final label = needsRegistration ? '未登録' : '登録済み';
                           final gateway = _repository;
                           final attachments = [
                             for (var i = 0; i < paths.length; i++)

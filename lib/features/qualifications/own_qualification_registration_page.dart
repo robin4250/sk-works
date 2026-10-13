@@ -719,8 +719,9 @@ class _OwnQualificationRegistrationPageState
                                 title: title, icon: Icons.badge_outlined, registered: !unregistered,
                                 dateLabel: (row['issued_at']?.toString() ?? '').isEmpty
                                   ? '' : '取得日 ${row['issued_at']}',
-                                statusLabel: unregistered ? '未登録' : _photoStatus(row['id'].toString()) ?? '登録済み',
-                                detailLabel: [if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
+                                statusLabel: unregistered ? '未登録' : '登録済み',
+                                detailLabel: [if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,
+                                  if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
                                   '証明書 ${row['certificate_number']}',
                                   if (photos.length > 2) '添付 ${photos.length}件（詳細で確認）'].join(' / '),
                                 attachments: attachments,

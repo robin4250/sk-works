@@ -132,7 +132,7 @@ class ResourceRegistrationCard extends StatelessWidget {
                     ],
                   ])),
               const SizedBox(width: 6),
-              SizedBox(width: 112, height: 44, child: registered
+              SizedBox(width: 112, height: (13 * scale * 1.3 + 16).clamp(44.0, double.infinity).toDouble(), child: registered
                 ? OutlinedButton(onPressed: onAction,
                     style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8),
                       foregroundColor: colors.primary, side: BorderSide(color: colors.primary),

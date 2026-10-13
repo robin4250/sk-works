@@ -303,13 +303,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
                                 title: requirement['name']?.toString() ?? '書類',
                                 icon: Icons.description_outlined, registered: status != null,
-                                statusLabel: switch (effective) {
-                                  'verified' => '確認済み', 'submitted' => '提出済み',
-                                  'expired' => '期限切れ', 'missing' => '不足', _ => '未登録',
-                                },
+                                statusLabel: status == null ? '未登録' : '登録済み',
                                 dateLabel: (status?['expires_at']?.toString() ?? '').isEmpty
                                   ? '' : '期限 ${status!['expires_at']}',
                                 detailLabel: [workerDocumentScopeLabel(requirement['scope']),
+                                  if (effective == 'expired') '期限切れ',
+                                  if (effective == 'missing') '不足',
                                   if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                                 attachments: attachments,
                                 onAction: _canManageStatuses ? () => _editStatus(requirement, status)
