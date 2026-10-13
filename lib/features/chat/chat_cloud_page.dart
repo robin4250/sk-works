@@ -979,8 +979,6 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
-                for(final source in lineSources)
-                  ListTile(leading:const Icon(Icons.link),title:Text(source['display_name']?.toString() ?? SkoLanguageController.tr('グループ名未取得')),subtitle:Text(SkoLanguageController.tr('LINEトーク')),trailing:const Icon(Icons.chevron_right),onTap:source['primary_group_id']==null ? null : () { Navigator.pop(sheetContext); Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>LineLinkedTalkPage(targetGroupId:groupId,directoryId:source['id'].toString(),name:source['display_name']?.toString()??SkoLanguageController.tr('グループ名未取得')))); }),
                 if (customGroup && selectedGroup?['can_edit_group_photo']==true)
                   Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); _addLineToSelectedGroup(); }, icon: const Icon(Icons.add_link), label: Text(SkoLanguageController.tr('LINEトークを追加')))),
                 if (customGroup)
@@ -1014,7 +1012,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                   ),
                 const Divider(height: 1),
                 Expanded(
-                  child: members.isEmpty
+                  child: members.isEmpty && lineSources.isEmpty
                       ? Center(
                           child: Text(
                             SkoLanguageController.tr('参加メンバーはいません'),
@@ -1022,11 +1020,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(10),
-                          itemCount: members.length,
+                          itemCount: lineSources.length + members.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 4),
                           itemBuilder: (context, index) {
-                            final member = members[index];
+                            if(index<lineSources.length) {
+                              final source=lineSources[index];
+                              return ListTile(leading:const Icon(Icons.link),title:Text(source['display_name']?.toString() ?? SkoLanguageController.tr('グループ名未取得')),subtitle:Text(SkoLanguageController.tr('LINEトーク')),trailing:const Icon(Icons.chevron_right),onTap:source['primary_group_id']==null ? null : () { Navigator.pop(sheetContext); Navigator.of(this.context).push<void>(MaterialPageRoute(builder:(_)=>LineLinkedTalkPage(targetGroupId:groupId,directoryId:source['id'].toString(),name:source['display_name']?.toString()??SkoLanguageController.tr('グループ名未取得')))); });
+                            }
+                            final member = members[index-lineSources.length];
                             final avatarUrl =
                                 member['avatar_url']?.toString();
                             final userId =
