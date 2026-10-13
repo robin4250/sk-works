@@ -81,8 +81,12 @@ class _OwnDocumentRepositoryGateway
   }
 
   @override
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() =>
-      repository.loadOwnDocuments();
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
+    if (actorId == null || actorId != repository.actorId) throw StateError('Session changed');
+    final data = await repository.loadOwnDocuments();
+    if (actorId != repository.actorId) throw StateError('Session changed');
+    return data;
+  }
 
   @override
   Future<void> saveOwnDocument({
