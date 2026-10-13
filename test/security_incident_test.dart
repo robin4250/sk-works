@@ -161,7 +161,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('印刷'),
       400,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find.descendant(
+        of: find.byType(SecurityIncidentDetailPage),
+        matching: find.byType(Scrollable),
+      ).first,
     );
     expect(find.text('印刷'), findsOneWidget);
     expect(find.text('保存・共有'), findsOneWidget);
