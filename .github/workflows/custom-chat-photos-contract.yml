@@ -1,0 +1,17 @@
+name: Custom chat photos contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*custom_chat_group_photos.sql'
+      - 'tool/verify_custom_chat_photos.mjs'
+      - '.github/workflows/custom-chat-photos-contract.yml'
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/chat-contract --no-package-lock --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/verify_custom_chat_photos.mjs /tmp/chat-contract/node_modules/@electric-sql/pglite/dist/index.js
