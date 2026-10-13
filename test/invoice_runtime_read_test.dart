@@ -16,6 +16,8 @@ class _Fixture {
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool denySeal = false;
   bool denyPermissions = false;
+  Object? pendingQuantity;
+  bool zeroAmount = false;
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen(_respond);
@@ -83,11 +85,12 @@ class _Fixture {
     } else if (path == '/rest/v1/invoices') {
       response = [{
         'id': _invoice, 'customer_id': '', 'billing_period_start': '2026-09-01',
-        'billing_period_end': '2026-09-30', 'subtotal': 40000, 'tax': 4000,
-        'grand_total': 44000, 'detail_mode': 'consolidated_only',
+        'billing_period_end': '2026-09-30', 'subtotal': zeroAmount ? 0 : 40000, 'tax': zeroAmount ? 0 : 4000,
+        'grand_total': zeroAmount ? 0 : 44000, 'detail_mode': 'consolidated_only',
         'status': 'draft', 'finalized_at': null, 'approval_finalized_at': null,
         'invoice_seal_frozen': false, 'snapshot': {
           'customer_name': '検証取引先', 'customer_address': '検証住所',
+          if (pendingQuantity != null) 'route_quantity_pending': pendingQuantity,
           'sites': [{'site_id': 'site-1', 'site_name': '検証現場', 'lines': [
             {'label': '通常作業', 'quantity': 2, 'unit_price': 20000, 'amount': 40000}
           ], 'subtotal': 40000}]
@@ -113,6 +116,7 @@ void main() {
     final rows = await repository.loadAll();
     expect(rows, hasLength(1));
     expect(rows.single.grandTotalYen, 44000);
+    expect(rows.single.routeQuantityPending, isFalse);
     expect(rows.single.billingPeriod, '2026年9月');
     expect(await repository.canManageFinancials(), isFalse);
     expect(rows.single.outputReadinessError, isNull);
@@ -131,4 +135,18 @@ void main() {
     expect((await repository.loadAll()).single.outputReadinessError, isNull);
   });
 
+  test('saved route pending state preserves totals and clears only with source state', () async {
+    fixture.zeroAmount = true;
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    for (final value in [true, 'true', false, 'false', null]) {
+      fixture.pendingQuantity = value;
+      final invoice = (await repository.loadAll()).single;
+      expect(invoice.routeQuantityPending, value == true || value == 'true');
+      expect(invoice.grandTotalYen, 0);
+    }
+    expect(fixture.requests.where((request) => request.method != 'GET' &&
+        !request.uri.path.contains('/rpc/')).isEmpty, isTrue);
+  });
+
 }
+

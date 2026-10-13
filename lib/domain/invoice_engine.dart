@@ -122,6 +122,7 @@ class InvoiceCalculationResult {
     this.invoiceId = '',
     this.documentUpdatedAt,
     this.outputReadinessError,
+    this.routeQuantityPending = false,
     this.companySealSnapshot = CompanySealSnapshot.legacy,
     this.invoiceNumber = '',
     this.issueDate,
@@ -147,6 +148,9 @@ class InvoiceCalculationResult {
   final String? documentUpdatedAt;
   /// A readable saved invoice can still require current settings before output.
   final String? outputReadinessError;
+
+  /// Read-only saved status; pending quantities are not a finalized zero amount.
+  final bool routeQuantityPending;
   final CompanySealSnapshot companySealSnapshot;
   final String invoiceNumber;
   final DateTime? issueDate;
@@ -184,6 +188,7 @@ class InvoiceEngine {
     String invoiceId = '',
     String? documentUpdatedAt,
     String? outputReadinessError,
+    bool routeQuantityPending = false,
     CompanySealSnapshot companySealSnapshot = CompanySealSnapshot.legacy,
     String invoiceNumber = '',
     DateTime? issueDate,
@@ -247,6 +252,7 @@ class InvoiceEngine {
       invoiceId: invoiceId,
       documentUpdatedAt: documentUpdatedAt,
       outputReadinessError: outputReadinessError,
+      routeQuantityPending: routeQuantityPending,
       companySealSnapshot: companySealSnapshot,
       invoiceNumber: invoiceNumber,
       issueDate: issueDate,
@@ -259,3 +265,4 @@ class InvoiceEngine {
     );
   }
 }
+

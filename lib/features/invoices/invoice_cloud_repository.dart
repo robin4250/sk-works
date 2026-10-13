@@ -393,6 +393,8 @@ class InvoiceCloudRepository {
                   ),
             invoiceId: invoiceId,
             documentUpdatedAt: invoice['updated_at']?.toString(),
+            routeQuantityPending: snapshotMap['route_quantity_pending'] == true ||
+                snapshotMap['route_quantity_pending'] == 'true',
             outputReadinessError: sealUnavailable
                 ? '請求書の現在の角印設定を確認できません。再読み込みしてください。'
                 : null,
@@ -615,3 +617,4 @@ class InvoiceCloudRepository {
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
+
