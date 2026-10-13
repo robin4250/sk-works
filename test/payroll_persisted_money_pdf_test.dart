@@ -29,6 +29,9 @@ void main() {
         'finalized_at': '321098',
         'schema_version': 1,
         'snapshot_version': 2,
+        // The SQL scope fixture seal uses synthetic English glyphs; this test
+        // verifies financial rows, while dedicated tests verify seal rendering.
+        if (name.startsWith('actual_unit_')) 'company_seal_enabled': false,
       };
       (row['detail'] as Map).addAll(metadata);
       final original = jsonEncode(row);
