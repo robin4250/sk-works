@@ -98,19 +98,28 @@ class QualificationCloudRepository {
     }
     final workers = await workersQuery.order('name');
 
-    var qualificationsQuery = _client
-        .from('worker_qualifications')
-        .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
-        )
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
+    const baseFields =
+      'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+    final optionalFields = <String>{'attachment_back_path', 'attachment_extra_paths'};
+    late List<Map<String, dynamic>> qualifications;
+    for (;;) {
+      try {
+        var qualificationsQuery = _client.from('worker_qualifications')
+          .select([baseFields, ...optionalFields].join(', '))
+          .eq('company_id', companyId);
+        if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
+          qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
+        }
+        qualifications = List<Map<String, dynamic>>.from(
+          await qualificationsQuery.order('created_at', ascending: false));
+        break;
+      } on PostgrestException catch (error) {
+        final missing = optionalFields.where(
+          (column) => isMissingOwnPhotoColumn(error, column)).toList();
+        if (missing.length != 1) rethrow;
+        optionalFields.remove(missing.single);
+      }
     }
-    final qualifications = await qualificationsQuery.order(
-      'created_at',
-      ascending: false,
-    );
 
     return {
       'masters': List<Map<String, dynamic>>.from(masters),
@@ -361,3 +370,4 @@ class QualificationCloudRepository {
     return text.isEmpty ? null : text;
   }
 }
+

@@ -4,7 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'qualification_certificate_repository.dart';
 
 class QualificationCertificatePage extends StatefulWidget {
-  const QualificationCertificatePage({super.key});
+  const QualificationCertificatePage({super.key, this.initialQualificationId});
+  final String? initialQualificationId;
 
   @override
   State<QualificationCertificatePage> createState() =>
@@ -88,6 +89,8 @@ class _QualificationCertificatePageState
     final needle = _query.trim().toLowerCase();
     final filtered = _qualifications
         .where((row) {
+          if (widget.initialQualificationId != null &&
+              row['id']?.toString() != widget.initialQualificationId) { return false; }
           final master =
               masterById[row['qualification_master_id']?.toString() ?? ''];
           final worker = workerById[row['worker_id']?.toString() ?? ''];
@@ -634,3 +637,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+

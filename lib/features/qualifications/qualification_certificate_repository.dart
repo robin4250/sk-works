@@ -28,6 +28,8 @@ class QualificationCertificateRepository {
     return permissions['can_manage_people'] == true;
   }
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+
   Future<void> _requireManagePeople() async {
     if (!await canManageCertificates()) {
       throw StateError('資格証を変更する権限がありません。');
@@ -367,3 +369,4 @@ class QualificationCertificateRepository {
     return sanitized.isEmpty ? '.jpg' : sanitized;
   }
 }
+

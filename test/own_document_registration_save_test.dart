@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
+import 'package:sk_works/features/common/data_date_labels.dart';
+import 'package:sk_works/features/shared/resource_registration_card.dart';
 
 class _MemoryPhoto extends XFile {
   _MemoryPhoto(this.bytes) : super('license.jpg');
@@ -118,14 +120,14 @@ Future<void> _open(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.byType(FloatingActionButton));
+  await tester.tap(find.widgetWithText(FilledButton, '書類を登録'));
   await tester.pumpAndSettle();
 }
 
 Future<void> _selectPhoto(WidgetTester tester) async {
   await tester.tap(find.byType(CheckboxListTile));
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton, '登録'));
+  await tester.tap(find.widgetWithText(FilledButton, '登録').last);
   await tester.pumpAndSettle();
 }
 
@@ -140,10 +142,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('運転免許証'), findsOneWidget);
       expect(find.textContaining('自社・取引会社で共用（登録は1回）'), findsOneWidget);
-      expect(find.text('登録する'), findsOneWidget);
-      await tester.tap(find.text('登録する'));
+      expect(find.widgetWithText(FilledButton, '登録').first, findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '登録').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '登録'));
+      await tester.tap(find.widgetWithText(FilledButton, '登録').last);
       await tester.pumpAndSettle();
       expect(gateway.calls, hasLength(1));
       expect(gateway.calls.single.requirement, 'license');
@@ -164,7 +166,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('登録する'));
+      await tester.tap(find.widgetWithText(FilledButton, '登録').first);
       await tester.pumpAndSettle();
       expect(
         tester
@@ -187,8 +189,9 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 自社用 / 画像あり（3枚）'), findsOneWidget);
-      await tester.tap(find.text('運転免許証'));
+      expect(find.text('登録済み'), findsOneWidget);
+      expect(find.textContaining('添付 3件（詳細で確認）'), findsOneWidget);
+      await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
       await tester.pumpAndSettle();
       expect(find.text('複数写真の保存準備中です。保存済みの写真は確認できます。'), findsOneWidget);
       expect(find.text('写真を確定'), findsNothing);
@@ -213,8 +216,9 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 自社用 / 画像あり（3枚）'), findsOneWidget);
-      await tester.tap(find.text('運転免許証'));
+      expect(find.text('登録済み'), findsOneWidget);
+      expect(find.textContaining('添付 3件（詳細で確認）'), findsOneWidget);
+      await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
       await tester.pumpAndSettle();
       expect(find.text('登録写真 3枚'), findsOneWidget);
       await tester.tap(find.text('キャンセル'));
@@ -231,7 +235,7 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('運転免許証'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('写真を一覧から削除').at(1));
       await tester.pumpAndSettle();
@@ -257,6 +261,9 @@ void main() {
             'requirement_id': 'license',
             'status': 'submitted',
             'attachment_path': null,
+            'created_at': '2026-10-01T12:00:00Z',
+            'updated_at': '2026-10-01T12:00:00Z',
+            'expires_at': '2026-11-30',
           },
         ],
       );
@@ -264,7 +271,10 @@ void main() {
         MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('提出済み / 自社用 / 写真未添付'), findsOneWidget);
+      expect(find.text('登録済み'), findsOneWidget);
+      expect(find.text('登録なし'), findsOneWidget);
+      expect(find.text(DataDateLabels.labels(createdAt: '2026-10-01T12:00:00Z').first), findsOneWidget);
+      expect(find.textContaining('期限 2026-11-30'), findsOneWidget);
       expect(find.text('未登録'), findsNothing);
       expect(gateway.calls, isEmpty);
     },
@@ -375,14 +385,14 @@ void main() {
         gateway,
         (_) async => throw StateError('unexpected picker'),
       );
-      await tester.tap(find.widgetWithText(FilledButton, '登録'));
+      await tester.tap(find.widgetWithText(FilledButton, '登録').last);
       await tester.pumpAndSettle();
       expect(gateway.calls, hasLength(1));
       expect(gateway.calls.single.bytes, isNull);
       expect(find.text('自分の書類を登録しました'), findsNothing);
       expect(
         tester
-            .widget<FloatingActionButton>(find.byType(FloatingActionButton))
+            .widget<ResourceRegistrationFooter>(find.byType(ResourceRegistrationFooter))
             .onPressed,
         isNull,
       );
@@ -406,3 +416,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+

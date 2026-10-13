@@ -12,7 +12,8 @@ void main() {
     expect(app, contains('SupabaseBackend.isInitialized'));
     expect(app, contains('const OwnQualificationRegistrationPage()'));
     expect(app, contains('const QualificationCloudPage()'));
-    expect(cloud, contains('Future<void> _addQualification()'));
+    expect(cloud, contains('Future<void> _addQualification({String? initialMasterId})'));
+    expect(cloud, contains("initialMasterId: row['qualification_master_id']?.toString()"));
     expect(cloud, contains('insertWorkerQualification('));
     expect(cloud, contains("title: const Text('従業員資格')"));
     expect(cloud, contains("hintText: '従業員名で検索'"));
@@ -29,3 +30,4 @@ void main() {
     expect(source, contains('createSignedUrl('));
   });
 }
+

@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import '../shared/resource_registration_card.dart';
+import '../common/data_date_labels.dart';
+
 import 'worker_document_scope.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_photo_editor.dart';
@@ -40,15 +43,20 @@ abstract interface class OwnDocumentPhotoGateway
 
 class _OwnDocumentRepositoryGateway
     implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway {
-  const _OwnDocumentRepositoryGateway(this.repository);
+  _OwnDocumentRepositoryGateway(this.repository) : actorId = repository.actorId;
   final WorkerDocumentRepository repository;
+  final String? actorId;
 
   @override
   bool get photoEditingAvailable => repository.photoEditingAvailable;
 
   @override
-  Future<String> signedUrl(String path) =>
-      repository.createSignedAttachmentUrl(path);
+  Future<String> signedUrl(String path) async {
+    if (actorId == null || actorId != repository.actorId) throw StateError('Session changed');
+    final url = await repository.createSignedAttachmentUrl(path);
+    if (actorId != repository.actorId) throw StateError('Session changed');
+    return url;
+  }
 
   @override
   Future<void> savePhotos({
@@ -74,8 +82,12 @@ class _OwnDocumentRepositoryGateway
   }
 
   @override
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() =>
-      repository.loadOwnDocuments();
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
+    if (actorId == null || actorId != repository.actorId) throw StateError('Session changed');
+    final data = await repository.loadOwnDocuments();
+    if (actorId != repository.actorId) throw StateError('Session changed');
+    return data;
+  }
 
   @override
   Future<void> saveOwnDocument({
@@ -407,6 +419,9 @@ class _OwnDocumentRegistrationPageState
       paths: workerDocumentPaths(row),
       signedUrl: gateway.signedUrl,
       canEdit: gateway.photoEditingAvailable,
+      uploadNotice: [resourceDocumentReviewLabel(row['status']),
+        if ((row['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${row['expires_at']}',
+      ].join('\n'),
     );
     if (photos == null || !mounted) return;
     setState(() => _saving = true);
@@ -464,7 +479,8 @@ class _OwnDocumentRegistrationPageState
             '見出し・一覧・登録フォームの文字を小さめに揃えています。iPhoneの文字サイズ設定による拡大は利用できます。'
             '\n\n写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
             '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
-            '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '一覧の「確認・編集」で、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '小さい画像・PDFを押すと、その場で拡大できます。下の「書類を登録」から既存の書類を登録します。'
             '写真の選択や撮影をキャンセルした場合は保存しません。'
             '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
             '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
@@ -518,12 +534,10 @@ class _OwnDocumentRegistrationPageState
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _loading || _saving || _requirements.isEmpty
-              ? null
-              : _registerDocument,
-          icon: const Icon(Icons.note_add_outlined),
-          label: const Text('書類登録', style: TextStyle(fontSize: 14)),
+        bottomNavigationBar: ResourceRegistrationFooter(
+          label: '書類を登録',
+          onPressed: _loading || _saving || _requirements.isEmpty || _worker == null
+            ? null : _registerDocument,
         ),
         body: SafeArea(
           child: _loading
@@ -572,9 +586,9 @@ class _OwnDocumentRegistrationPageState
                     ),
                     Expanded(
                       child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         itemCount: requirements.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final requirement = requirements[index];
                           final id = requirement['id']?.toString() ?? '';
@@ -586,71 +600,35 @@ class _OwnDocumentRegistrationPageState
                                   _repository is OwnDocumentPhotoGateway &&
                                   !(_repository as OwnDocumentPhotoGateway)
                                       .photoEditingAvailable);
-                          final label =
-                              status?['status']?.toString() == 'verified'
-                              ? '確認済み'
-                              : status?['status']?.toString() == 'submitted'
-                              ? '提出済み'
-                              : '未登録';
-                          return Card(
-                            child: ListTile(
-                              onTap: _saving
-                                  ? null
-                                  : needsRegistration
-                                  ? () => _registerDocument(
-                                      initialRequirementId: id,
-                                    )
-                                  : _repository is OwnDocumentPhotoGateway
-                                  ? () => _editPhotos(status)
-                                  : null,
-                              trailing: TextButton(
-                                onPressed: _saving
-                                    ? null
-                                    : needsRegistration
-                                    ? () => _registerDocument(
-                                        initialRequirementId: id,
-                                      )
-                                    : _repository is OwnDocumentPhotoGateway
-                                    ? () => _editPhotos(status)
-                                    : () => _registerDocument(
-                                        initialRequirementId: id,
-                                      ),
-                                child: Text(
-                                  needsRegistration
-                                      ? '登録する'
-                                      : _repository is OwnDocumentPhotoGateway &&
-                                            !(_repository
-                                                    as OwnDocumentPhotoGateway)
-                                                .photoEditingAvailable
-                                      ? '写真を確認'
-                                      : '写真を追加・編集',
-                                ),
-                              ),
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.description_outlined),
-                              ),
-                              title: Text(
-                                requirement['name']?.toString() ?? '書類',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                [
-                                  label,
-                                  workerDocumentScopeLabel(requirement['scope']),
-                                  if ((status?['expires_at']?.toString() ?? '')
-                                      .isNotEmpty)
-                                    '期限 ${status!['expires_at']}',
-                                  if (paths.isNotEmpty)
-                                    '画像あり${paths.length > 1 ? '（${paths.length}枚）' : ''}'
-                                  else if (status?['status'] == 'submitted')
-                                    '写真未添付',
-                                ].join(' / '),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
+                          final label = needsRegistration ? '未登録' : '登録済み';
+                          final gateway = _repository;
+                          final attachments = [
+                            for (var i = 0; i < paths.length; i++)
+                              signedResourceAttachment(label: '${i + 1}',
+                                path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
+                                  ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
+                          ];
+                          final action = _saving ? null : needsRegistration
+                            ? () => _registerDocument(initialRequirementId: id)
+                            : gateway is OwnDocumentPhotoGateway
+                              ? () => _editPhotos(status)
+                              : () => _registerDocument(initialRequirementId: id);
+                          final dates = DataDateLabels.labels(createdAt: status?['created_at'],
+                            updatedAt: status?['updated_at']);
+                          return ResourceRegistrationCard(
+                            key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
+                            title: requirement['name']?.toString() ?? '書類',
+                            icon: Icons.description_outlined,
+                            registered: !needsRegistration,
+                            statusLabel: label,
+                            dateLabel: dates.isEmpty ? '' : dates.first,
+                            detailLabel: [if (status != null) resourceDocumentReviewLabel(status['status']),
+                              workerDocumentScopeLabel(requirement['scope']),
+                              if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
+                              if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
+                            attachments: attachments,
+                            onAction: action,
+                            onOpenDetail: action,
                           );
                         },
                       ),
@@ -662,3 +640,4 @@ class _OwnDocumentRegistrationPageState
     );
   }
 }
+
