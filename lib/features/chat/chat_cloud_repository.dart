@@ -537,13 +537,15 @@ class ChatCloudRepository {
     String? creationCompanyId,
   }) async {
     final actor = currentUserId;
-    if (actor == null || (groupId == null && creationCompanyId == null))
+    if (actor == null || (groupId == null && creationCompanyId == null)) {
       throw StateError('会社を確認できませんでした。');
+    }
     final companyId = groupId == null
         ? creationCompanyId!
         : await _groupCompanyId(groupId);
-    if (groupId == null && (await membership()).companyId != companyId)
+    if (groupId == null && (await membership()).companyId != companyId) {
       throw StateError('会社を確認できませんでした。');
+    }
     final rows = await _client
         .from('companies')
         .select('name')
@@ -553,21 +555,24 @@ class ChatCloudRepository {
     final currentCompany = groupId == null
         ? (await membership()).companyId
         : await _groupCompanyId(groupId);
-    if (currentUserId != actor || currentCompany != companyId)
+    if (currentUserId != actor || currentCompany != companyId) {
       throw StateError('会社を確認できませんでした。');
+    }
     final name = rows.length == 1
         ? rows.single['name']?.toString().trim()
         : null;
-    if (groupId == null && (name == null || name.isEmpty))
+    if (groupId == null && (name == null || name.isEmpty)) {
       throw StateError('会社を確認できませんでした。');
+    }
     return name == null || name.isEmpty ? null : name;
   }
 
   Future<bool> canRefreshLineDirectory() async {
     final actor = currentUserId;
     final result = await _client.rpc('is_current_user_master_admin');
-    if (actor == null || currentUserId != actor)
+    if (actor == null || currentUserId != actor) {
       throw StateError('ログイン状態が変わりました。');
+    }
     return result == true;
   }
 
@@ -576,8 +581,9 @@ class ChatCloudRepository {
     String? cursor;
     var unavailable = 0;
     do {
-      if (actor == null || currentUserId != actor)
+      if (actor == null || currentUserId != actor) {
         throw StateError('ログイン状態が変わりました。');
+      }
       final response = await _client.functions.invoke(
         'line-group-directory-refresh',
         body: {'after': cursor},
@@ -603,8 +609,9 @@ class ChatCloudRepository {
         'p_new_company_id': newGroupCompanyId,
       },
     );
-    if (actor == null || currentUserId != actor)
+    if (actor == null || currentUserId != actor) {
       throw StateError('ログイン状態が変わりました。');
+    }
     return raw is List
         ? raw
               .whereType<Map>()
@@ -621,8 +628,9 @@ class ChatCloudRepository {
     final rows = <Map<String, dynamic>>[];
     String? afterAt, afterId;
     while (true) {
-      if (actor == null || currentUserId != actor)
+      if (actor == null || currentUserId != actor) {
         throw StateError('ログイン状態が変わりました。');
+      }
       final raw = await _client.rpc(
         'line_linked_talk',
         params: {
@@ -632,8 +640,9 @@ class ChatCloudRepository {
           'p_after_id': afterId,
         },
       );
-      if (currentUserId != actor || raw is! List)
+      if (currentUserId != actor || raw is! List) {
         throw StateError('受信トークを読み込めませんでした。');
+      }
       final page = raw
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
@@ -645,8 +654,9 @@ class ChatCloudRepository {
           nextId = last['id']?.toString();
       if (nextAt == null ||
           nextId == null ||
-          (nextAt == afterAt && nextId == afterId))
+          (nextAt == afterAt && nextId == afterId)) {
         throw StateError('受信トークを読み込めませんでした。');
+      }
       afterAt = nextAt;
       afterId = nextId;
     }
@@ -1029,8 +1039,9 @@ class ChatCloudRepository {
   Future<void> saveCustomGroupPhoto(String groupId, Uint8List bytes) async {
     final actor = currentUserId;
     if (actor == null) throw StateError('ログインが必要です。');
-    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024)
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
       throw StateError('写真は5MB以下で選択してください。');
+    }
     final png =
         bytes.length >= 8 &&
         bytes[0] == 137 &&

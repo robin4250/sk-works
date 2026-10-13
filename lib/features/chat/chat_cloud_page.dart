@@ -83,7 +83,6 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   final Set<String> _summaryPendingGroups = {};
   final Map<String, int> _summaryGenerations = {};
   String? _readScope;
-  bool _refreshingList = false;
   bool _initialGroupCreationOpened = false;
   bool _chatForeground = true;
 
@@ -386,16 +385,6 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       } else if (group != null) {
         _refreshGroupSummary(group);
       }
-    }
-  }
-
-  Future<void> _refreshList() async {
-    if (_refreshingList || _loading || _repository == null) return;
-    _refreshingList = true;
-    try {
-      await _loadGroupsOnly();
-    } finally {
-      _refreshingList = false;
     }
   }
 
@@ -947,10 +936,11 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       try {
         creationCompanyId = (await repository.membership()).companyId;
       } catch (_) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(SkoLanguageController.tr('会社を確認できませんでした。'))),
           );
+        }
         return;
       }
       if (!mounted || repository.currentUserId != actor) return;
@@ -1144,15 +1134,17 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                               );
                               if (confirm == true &&
                                   dialogContext.mounted &&
-                                  repository.currentUserId == actor)
+                                  repository.currentUserId == actor) {
                                 update(() {
                                   selectedLine = source;
                                   lineLinked = false;
                                   lineConfirmed = true;
                                 });
+                              }
                             } catch (_) {
-                              if (dialogContext.mounted)
+                              if (dialogContext.mounted) {
                                 update(() => error = '会社を確認できませんでした。');
+                              }
                             }
                           },
                     icon: const Icon(Icons.add_link),
@@ -1187,13 +1179,15 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                         error = null;
                       });
                       try {
-                        if (repository.currentUserId != actor)
+                        if (repository.currentUserId != actor) {
                           throw StateError('ログイン状態が変わりました。');
+                        }
                         if (create &&
                             ((await repository.membership()).companyId !=
                                     creationCompanyId ||
-                                repository.currentUserId != actor))
+                                repository.currentUserId != actor)) {
                           throw StateError('会社を確認できませんでした。');
+                        }
                         if (create && selectedLine != null && !lineLinked) {
                           final sources = await repository.loadJoinedLineGroups(
                             newGroupCompanyId: creationCompanyId,
@@ -1253,19 +1247,23 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             lineConfirmed = true;
                           }
                         }
-                        if (create && createdId == null)
+                        if (create && createdId == null) {
                           createdId = await repository.createCustomGroup(
                             controller.text,
                           );
-                        if (repository.currentUserId != actor)
+                        }
+                        if (repository.currentUserId != actor) {
                           throw StateError('ログイン状態が変わりました。');
+                        }
                         final id = create
                             ? createdId!
                             : selected!['id'].toString();
-                        if (photo != null)
+                        if (photo != null) {
                           await repository.saveCustomGroupPhoto(id, photo!);
-                        if (repository.currentUserId != actor)
+                        }
+                        if (repository.currentUserId != actor) {
                           throw StateError('ログイン状態が変わりました。');
+                        }
                         if (create && selectedLine != null && !lineLinked) {
                           await repository.linkLineSource(
                             id,
@@ -1276,14 +1274,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                         if (!dialogContext.mounted) return;
                         Navigator.pop(dialogContext);
                         await _load();
-                        if (mounted && repository.currentUserId == actor)
+                        if (mounted && repository.currentUserId == actor) {
                           await _selectGroup(id);
+                        }
                       } catch (_) {
-                        if (dialogContext.mounted)
+                        if (dialogContext.mounted) {
                           update(() {
                             busy = false;
                             error = '保存できませんでした。選択内容を保持して再試行できます。';
                           });
+                        }
                       }
                     },
               child: Text(SkoLanguageController.tr(create ? '作成' : '保存')),
@@ -1640,8 +1640,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Iterable<Map<String, dynamic>> get _accessibleListGroups => _groups.where((
     group,
   ) {
-    if (group['group_type'] == 'partner' && !_canManagePartnerChat)
+    if (group['group_type'] == 'partner' && !_canManagePartnerChat) {
       return false;
+    }
     if (_hiddenGroupIds.contains(group['id']?.toString())) return false;
     return !_blockedUserIds.contains(group['direct_other_user_id']?.toString());
   });
@@ -2488,8 +2489,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   String _activityText(DateTime value) {
-    if (value.millisecondsSinceEpoch == 0)
+    if (value.millisecondsSinceEpoch == 0) {
       return SkoLanguageController.tr('まだ会話はありません');
+    }
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(value.month)}/${two(value.day)} '
         '${two(value.hour)}:${two(value.minute)}';
