@@ -8,13 +8,15 @@ import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 
 class SurfaceRepository implements ChatCloudRepository {
   int writes = 0;
+  String? actorId = 'actor';
+  bool mapped = true;
   bool failSavedSummary = false;
   bool allUnknown = false;
   Completer<void>? retryGate;
   final dispatches = <String>[];
   final messages = StreamController<List<Map<String, dynamic>>>.broadcast();
   @override
-  String? get currentUserId => 'actor';
+  String? get currentUserId => actorId;
   @override
   Future<({String companyId, String role})> membership() async =>
       (companyId: 'company', role: 'owner');
@@ -28,7 +30,7 @@ class SurfaceRepository implements ChatCloudRepository {
       'display_name': 'LINE only',
       'group_type': 'company',
       'participants_only': true,
-      'line_origin': 'line',
+      'line_origin': mapped ? 'line' : null,
     },
     {
       'id': 'shared',
@@ -246,4 +248,60 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  for (final logout in [true, false]) {
+    testWidgets(
+      logout
+          ? 'logout clears retries immediately and A-to-logout-to-A rejects old reply'
+          : 'removed group mapping cannot resurrect its retry after an old reply',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final repo = SurfaceRepository();
+        final actors = StreamController<String?>.broadcast();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ChatCloudPage(
+              repository: repo,
+              actorChanges: actors.stream,
+              initialGroupId: 'line-only',
+            ),
+          ),
+        );
+        await settle(tester);
+        await tester.enterText(find.byType(TextField), 'Pending text');
+        await tester.tap(find.byTooltip('送信'));
+        await settle(tester);
+        repo.retryGate = Completer<void>();
+        await tester.tap(
+          find.byKey(const ValueKey('line-retry-saved-message')),
+        );
+        await settle(tester);
+        if (logout) {
+          repo.actorId = null;
+          actors.add(null);
+          await settle(tester);
+          expect(find.text('SKO保存済み・LINE送信未確認'), findsNothing);
+          expect(find.text('Pending text'), findsNothing);
+          repo.actorId = 'actor';
+          actors.add('actor');
+          await settle(tester);
+        } else {
+          repo.mapped = false;
+          await tester.tap(find.byTooltip('再読み込み'));
+          await settle(tester);
+        }
+        repo.retryGate!.complete();
+        await settle(tester);
+        expect(find.text('LINE受付済み（配信確認はLINE側で）'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('line-retry-saved-message')),
+          findsNothing,
+        );
+        expect(repo.writes, 1);
+        await tester.pumpWidget(const SizedBox());
+        unawaited(repo.messages.close());
+        unawaited(actors.close());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
 }

@@ -23,6 +23,9 @@ class ChatCloudRepository {
       ChatCloudRepository._(client);
 
   String? get currentUserId => _client.auth.currentUser?.id;
+  Stream<String?> watchActorChanges() => _client.auth.onAuthStateChange
+      .map((state) => state.session?.user.id)
+      .distinct();
 
   Future<({String companyId, String role})> membership() async {
     final user = _client.auth.currentUser;

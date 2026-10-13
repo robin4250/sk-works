@@ -29,6 +29,7 @@ class ChatCloudPage extends StatefulWidget {
     this.initialLineDirectoryId,
     this.initialGroupId,
     this.repository,
+    this.actorChanges,
   });
 
   final bool viewerOnlyFriends;
@@ -38,6 +39,8 @@ class ChatCloudPage extends StatefulWidget {
   final String? initialGroupId;
   @visibleForTesting
   final ChatCloudRepository? repository;
+  @visibleForTesting
+  final Stream<String?>? actorChanges;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -91,6 +94,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   final Set<String> _lineDispatchBusy = {};
   final Map<String, String> _lineDispatchPreviews = {};
   bool _chatForeground = true;
+  StreamSubscription<String?>? _actorSubscription;
+  String? _watchedActor;
+  int _dispatchEpoch = 0;
 
   bool get _readVisible =>
       mounted &&
@@ -110,6 +116,11 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _watchedActor = _repository?.currentUserId;
+    final actorChanges =
+        widget.actorChanges ??
+        (widget.repository == null ? _repository?.watchActorChanges() : null);
+    _actorSubscription = actorChanges?.listen(_actorChanged);
     if (widget.showGroupsInitially) {
       _tab = _ChatTab.groups;
     }
@@ -143,11 +154,52 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _actorSubscription?.cancel();
     _summarySubscription?.cancel();
     _subscription?.cancel();
     _composer.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _actorChanged(String? actor) {
+    if (!mounted || actor == _watchedActor) return;
+    _watchedActor = actor;
+    _dispatchEpoch++;
+    _subscription?.cancel();
+    _summarySubscription?.cancel();
+    _summaryActor = null;
+    _summaryRefreshes.clear();
+    _summaryPendingGroups.clear();
+    setState(() {
+      _lineDispatch.clear();
+      _lineDispatchBusy.clear();
+      _lineDispatchPreviews.clear();
+      _unreadCounts = const {};
+      _groups = [];
+      _messages = [];
+      _friends = [];
+      _selectedGroupId = null;
+      _readScope = null;
+      _sending = false;
+      _composer.clear();
+      _initialConversationOpened = false;
+      _loading = actor != null;
+      _error = actor == null ? SkoLanguageController.tr('チャットを利用できません。') : null;
+    });
+    if (actor != null) unawaited(_load());
+  }
+
+  void _retainLinkedDispatches(List<Map<String, dynamic>> groups) {
+    final linked = groups
+        .where((g) => g['line_origin'] != null)
+        .map((g) => g['id'])
+        .toSet();
+    _lineDispatch.removeWhere((_, value) => !linked.contains(value.groupId));
+    _lineDispatchBusy.removeWhere((id) => !_lineDispatch.containsKey(id));
+    _lineDispatchPreviews.removeWhere(
+      (id, _) => !_lineDispatch.containsKey(id),
+    );
   }
 
   Future<void> _load() async {
@@ -211,6 +263,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       if (!mounted || repository.currentUserId != actor) return;
       setState(() {
         if (_readScope != scope) {
+          _dispatchEpoch++;
           _unreadCounts = const {};
           _lineDispatch.clear();
           _lineDispatchBusy.clear();
@@ -222,6 +275,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _tab = _ChatTab.all;
         }
         _groups = groups;
+        _retainLinkedDispatches(groups);
         _friends = friends;
         _pendingGroupInvites = pendingGroupInvites;
         _prioritizedSiteGroupIds = priorities;
@@ -508,8 +562,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     } finally {
       if (identical(_summaryRefreshes[key], refresh)) {
         _summaryRefreshes.remove(key);
+        _summaryPendingGroups.remove(key);
       }
-      _summaryPendingGroups.remove(key);
     }
   }
 
@@ -520,6 +574,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     String groupId,
     String key,
   ) async {
+    final epoch = _dispatchEpoch;
     do {
       _summaryPendingGroups.remove(key);
       final generation = (_summaryGenerations[key] ?? 0) + 1;
@@ -527,6 +582,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       try {
         final prefs = await SharedPreferences.getInstance();
         if (!mounted ||
+            _dispatchEpoch != epoch ||
             repository.currentUserId != actor ||
             _readScope != scope) {
           return;
@@ -541,6 +597,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         });
         if (!mounted ||
             _summaryGenerations[key] != generation ||
+            _dispatchEpoch != epoch ||
             repository.currentUserId != actor ||
             _readScope != scope) {
           return;
@@ -565,6 +622,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         /* Keep this group's last successful preview on refresh failure. */
       }
     } while (mounted &&
+        _dispatchEpoch == epoch &&
         repository.currentUserId == actor &&
         _readScope == scope &&
         _summaryPendingGroups.contains(key));
@@ -620,25 +678,36 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     if (repository == null || id == null || text.isEmpty || _sending) return;
 
     final actor = repository.currentUserId;
+    final epoch = _dispatchEpoch;
     String messageId;
     setState(() => _sending = true);
     try {
       messageId = await repository.sendMessage(groupId: id, body: text);
     } catch (_) {
-      if (mounted && repository.currentUserId == actor) {
+      if (mounted && repository.currentUserId == actor && _dispatchEpoch == epoch) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(SkoLanguageController.tr('送信できませんでした'))),
         );
       }
       return;
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted &&
+          repository.currentUserId == actor &&
+          _dispatchEpoch == epoch) {
+        setState(() => _sending = false);
+      }
     }
     // From here the SKO post already exists. No later failure may ask for
     // reinsertion, suppress LINE dispatch, or retain the composer draft.
-    if (!mounted || repository.currentUserId != actor) return;
+    if (!mounted ||
+        repository.currentUserId != actor ||
+        _dispatchEpoch != epoch) {
+      return;
+    }
     if (_selectedGroupId == id) _composer.clear();
-    if (_groups.any((group) => group['id'] == id && group['line_origin'] != null)) {
+    if (_groups.any(
+      (group) => group['id'] == id && group['line_origin'] != null,
+    )) {
       _lineDispatchPreviews[messageId] = text;
     }
     unawaited(_refreshGroupSummary(id).catchError((Object _) {}));
@@ -648,6 +717,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Future<void> _dispatchSavedMessage(String groupId, String messageId) async {
     final repository = _repository;
     final actor = repository?.currentUserId;
+    final scope = _readScope;
+    final epoch = _dispatchEpoch;
     if (repository == null ||
         actor == null ||
         !_groups.any(
@@ -666,7 +737,22 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     } catch (_) {
       /* The SKO post is already saved. Never insert it again. */
     }
-    if (!mounted || repository.currentUserId != actor) return;
+    if (!mounted ||
+        repository.currentUserId != actor ||
+        _dispatchEpoch != epoch ||
+        _readScope != scope) {
+      return;
+    }
+    if (!_groups.any(
+      (group) => group['id'] == groupId && group['line_origin'] != null,
+    )) {
+      setState(() {
+        _lineDispatch.remove(messageId);
+        _lineDispatchBusy.remove(messageId);
+        _lineDispatchPreviews.remove(messageId);
+      });
+      return;
+    }
     setState(() {
       _lineDispatchBusy.remove(messageId);
       if (status == 'not_linked') {
@@ -684,7 +770,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         }
         _lineDispatch[messageId] = (groupId: groupId, state: status);
       }
-      _lineDispatchPreviews.removeWhere((id, _) => !_lineDispatch.containsKey(id));
+      _lineDispatchPreviews.removeWhere(
+        (id, _) => !_lineDispatch.containsKey(id),
+      );
     });
   }
 
@@ -816,6 +904,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               'last_message_at': previous[group['id']]?['last_message_at'],
             },
         ];
+        _retainLinkedDispatches(groups);
         _prioritizedSiteGroupIds = priorities;
       });
       await _refreshUnreadCounts(_groups);
