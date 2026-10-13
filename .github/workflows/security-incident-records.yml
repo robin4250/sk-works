@@ -1,0 +1,27 @@
+name: Security incident records
+on:
+  pull_request:
+    paths:
+      - 'tool/security/**'
+      - 'supabase/migrations/*master_security_incident_records.sql'
+      - '.github/workflows/security-incident-records.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/**'
+      - 'supabase/migrations/*master_security_incident_records.sql'
+      - '.github/workflows/security-incident-records.yml'
+permissions:
+  contents: read
+jobs:
+  sanitized-record-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node --test tool/security/incident_collector_test.mjs
+      - run: node tool/security/incident_sql_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
