@@ -48,7 +48,7 @@ await db.exec(section('route_signed_checkout_sources','route_signed_site_rates')
 const rows=async()=> (await db.query(`select * from private.route_signed_checkout_sources($1,'2026-10-12','2026-10-12') order by customer_id`,[company])).rows;
 let result=await rows();
 assert.equal(result.length,2);assert.ok(result.every(x=>x.quantity==='1'&&x.source_ready));
-assert.deepEqual(result[0].site_names,['第一現場','第二現場']);assert.equal(result[0].visit_count,2);
+assert.deepEqual(result[0].site_names,['第一現場','第二現場']);assert.equal(Number(result[0].visit_count),2);
 await db.query(`update daily_reports set status='draft'`);assert.equal((await rows()).length,0);
 await db.exec(`update daily_reports set status='signed'`);
 await db.query(`delete from attendance_verifications where id=$1`,[out]);assert.equal((await rows()).length,0);
