@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_master_workspace_page.dart';
+import 'package:sk_works/international/language_controller.dart';
+import 'package:sk_works/international/languages/en/english_language_pack.dart';
 import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
 
 void main() {
@@ -23,6 +25,20 @@ void main() {
     expect(find.byKey(const ValueKey('line-master-rates')), findsOneWidget);
     expect(find.text('すみだ建設出勤'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('master entries use the shared English language pack', (tester) async {
+    final previous = SkoLanguageController.pack.value;
+    SkoLanguageController.pack.value = englishLanguagePack;
+    addTearDown(() => SkoLanguageController.pack.value = previous);
+    await tester.pumpWidget(MaterialApp(
+      home: LineMasterWorkspacePage(masterCheck: () async => true),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('LINE Master Access'), findsOneWidget);
+    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('Invoices'), findsOneWidget);
+    expect(find.text('Unit Rates'), findsOneWidget);
   });
 
   testWidgets('non-master cannot see or open master entries', (tester) async {
