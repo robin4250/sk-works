@@ -316,7 +316,7 @@ void main() {
           if (request.uri.queryParameters['limit'] == '1') {
             expect(
               request.uri.queryParameters['order'],
-              'sent_at.desc,id.desc',
+              'sent_at.desc.nullslast,id.desc.nullslast',
             );
             latestRequests++;
             if (holdLatest) await latestGate!.future;
