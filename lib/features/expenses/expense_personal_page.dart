@@ -1,4 +1,9 @@
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
+import 'expense_receipt_attachment.dart';
+import 'expense_review_detail_page.dart';
+import 'expense_review_history_dialog.dart';
 import 'package:flutter/services.dart';
 import 'expense_claim.dart';
 import 'expense_claims_page.dart';
@@ -7,9 +12,10 @@ import 'expense_personal_change_repository.dart';
 import 'expense_edit_dialog.dart';
 
 class ExpensePersonalPage extends StatefulWidget {
-  const ExpensePersonalPage({super.key, this.access, this.changes});
+  const ExpensePersonalPage({super.key, this.access, this.changes, this.pickReceipt});
   final ExpenseSubmissionAccess? access;
   final ExpensePersonalChangeAccess? changes;
+  final Future<ExpenseReceiptAttachment?> Function(ImageSource source)? pickReceipt;
   @override
   State<ExpensePersonalPage> createState() => _ExpensePersonalPageState();
 }
@@ -24,6 +30,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   Map<String, dynamic>? _scope;
   List<ExpenseClaim> _history = [];
   ExpenseSubmission? _pending;
+  ExpenseReceiptAttachment? _receipt;
   DateTime _date = DateTime.now(), _month = DateTime.now();
   bool _busy = true, _ready = false;
   String? _error, _actor;
@@ -147,7 +154,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
             _scope!['worker_id'],
             _date,
             _description.text,
-            _amount.text,
+            _amount.text, receipt: _receipt,
           );
       setState(() => _pending = draft);
       await _access!.submit(draft);
@@ -156,6 +163,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         _pending = null;
         _description.clear();
         _amount.clear();
+        _receipt = null;
         _month = DateTime.parse(draft.date);
       });
       await _loadSelection(generation);
@@ -173,6 +181,27 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       }
     } finally {
       if (mounted && generation == _generation) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickReceipt(ImageSource source) async {
+    if (_busy || _pending != null || _scope == null || _access?.actor != _actor) return;
+    final generation = _generation, actor = _actor, scope = _scope;
+    setState(() => _busy = true);
+    try {
+      ExpenseReceiptAttachment? photo;
+      if (widget.pickReceipt != null) {
+        photo = await widget.pickReceipt!(source);
+      } else {
+        final selected = await ImagePicker().pickImage(source: source, maxWidth: 1800, imageQuality: 85);
+        if (selected != null) photo = await ExpenseReceiptAttachment.capture(selected);
+      }
+      if (!_current(generation) || actor != _actor || scope != _scope) return;
+      if (photo != null) setState(() { _receipt = photo; _error = null; });
+    } catch (_) {
+      if (_current(generation)) setState(() => _error = '領収書を取得できません。カメラ・写真の許可と画像（10MB以内のJPEG／PNG）を確認してください。');
+    } finally {
+      if (_current(generation)) setState(() => _busy = false);
     }
   }
 
@@ -338,6 +367,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                                     value,
                               );
                               _pending = null;
+                              _receipt = null;
                               _description.clear();
                               _amount.clear();
                             });
@@ -362,6 +392,20 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       icon: const Icon(Icons.calendar_month),
                       label: Text('利用日　${_label(_date)}'),
                     ),
+                    const Text('領収書の写真（任意）'),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      OutlinedButton.icon(onPressed: editable ? () => _pickReceipt(ImageSource.camera) : null,
+                        icon: const Icon(Icons.camera_alt), label: const Text('写真を撮る')),
+                      OutlinedButton.icon(onPressed: editable ? () => _pickReceipt(ImageSource.gallery) : null,
+                        icon: const Icon(Icons.photo_library), label: const Text('写真を選ぶ')),
+                    ]),
+                    if (_receipt != null) ...[
+                      const Text('申請前の領収書プレビュー'),
+                      Image.file(File(_receipt!.localPath), height: 180, fit: BoxFit.contain,
+                        errorBuilder: (_, error, stack) => const Text('写真を確認できません。選び直してください。')),
+                      TextButton(onPressed: editable ? () => setState(() => _receipt = null) : null,
+                        child: const Text('写真を外す')),
+                    ],
                     TextField(
                       controller: _description,
                       enabled: editable,
@@ -411,6 +455,23 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                   ),
                   for (final claim in _history)
                     ListTile(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
+                        claim: claim,
+                        onEdit: editable && _changes != null && !claim.withdrawn ? () async {
+                          await _changeClaim(claim, withdraw: false);
+                          if (detailContext.mounted && _pendingChange == null && _error == null) Navigator.pop(detailContext);
+                        } : null,
+                        onHistory: _access is! ExpenseSubmissionRepository ? null : () async {
+                          try {
+                            final result = await (_access as ExpenseSubmissionRepository).reviewHistory(claim);
+                            if (!detailContext.mounted) return;
+                            await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
+                              events: (result['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
+                          } catch (_) {
+                            if (detailContext.mounted) ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
+                          }
+                        },
+                      ))),
                       title: Text(claim.description),
                       subtitle: Text(
                         '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}'
