@@ -1,0 +1,423 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/supabase_backend.dart';
+import 'attendance_work_date.dart';
+
+class AttendanceWorker {
+  const AttendanceWorker({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+class WorkerAttendanceDay {
+  const WorkerAttendanceDay({
+    required this.date,
+    this.siteName,
+    this.routeNames = const <String>[],
+    this.clockIn,
+    this.clockOut,
+    this.overtimeHours = 0,
+    this.earlyHours = 0,
+    this.nightHours = 0,
+    this.manDays = 0,
+    this.hasHolidayWork = false,
+    this.allowanceYen = 0,
+    this.allowanceNames = const <String>[],
+    this.allowanceUnits = const <String, String>{},
+    this.paidLeave = false,
+    this.paidLeaveOrdinal = 0,
+    this.paidLeaveRemaining = 0,
+  });
+
+  final DateTime date;
+  final String? siteName;
+  final List<String> routeNames;
+  String get destinationLabel => routeNames.isEmpty
+      ? siteName ?? ''
+      : routeNames.join('／');
+  final DateTime? clockIn;
+  final DateTime? clockOut;
+  final double overtimeHours;
+  final double earlyHours;
+  final double nightHours;
+  final double manDays;
+  final bool hasHolidayWork;
+  final int allowanceYen;
+  final List<String> allowanceNames;
+  final Map<String, String> allowanceUnits;
+  final bool paidLeave;
+  final int paidLeaveOrdinal;
+  final double paidLeaveRemaining;
+
+  bool get hasAllowance => allowanceNames.isNotEmpty || allowanceYen > 0;
+
+  bool get worked => attendanceDayHasWorkedData(
+    manDays: manDays,
+    overtimeHours: overtimeHours,
+    earlyHours: earlyHours,
+    nightHours: nightHours,
+    siteName: siteName,
+    clockIn: clockIn,
+    clockOut: clockOut,
+  );
+}
+
+class WorkerAttendanceMonth {
+  const WorkerAttendanceMonth({
+    required this.year,
+    required this.month,
+    required this.days,
+    this.allowanceUnits = const <String, String>{},
+  });
+
+  final int year;
+  final int month;
+  final Map<DateTime, WorkerAttendanceDay> days;
+  final Map<String, String> allowanceUnits;
+
+  int get workedDays => days.values.where((day) => day.worked).length;
+  /// Calendar days and billable man-days are intentionally separate units.
+  double get manDays => days.values.fold(0, (sum, day) => sum + day.manDays);
+  int get holidayWorkedDays =>
+      days.values.where((day) => day.hasHolidayWork && day.worked).length;
+
+  int get paidLeaveDays => days.values.where((day) => day.paidLeave).length;
+
+  double get overtimeHours =>
+      days.values.fold(0, (sum, day) => sum + day.overtimeHours);
+
+  double get earlyHours =>
+      days.values.fold(0, (sum, day) => sum + day.earlyHours);
+
+  double get nightHours =>
+      days.values.fold(0, (sum, day) => sum + day.nightHours);
+
+  int get allowanceYen =>
+      days.values.fold(0, (sum, day) => sum + day.allowanceYen);
+
+  Map<String, int> get allowanceCounts {
+    final counts = <String, int>{};
+    for (final day in days.values) {
+      final names = day.allowanceNames.isEmpty && day.allowanceYen > 0
+          ? const <String>['手当']
+          : day.allowanceNames;
+      for (final raw in names) {
+        final name = raw.trim();
+        if (name.isEmpty) continue;
+        counts[name] = (counts[name] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+}
+
+class WorkerAttendanceSheetRepository {
+  WorkerAttendanceSheetRepository._(this._client);
+
+  final SupabaseClient _client;
+
+  static WorkerAttendanceSheetRepository? maybeCreate() {
+    if (!SupabaseBackend.isInitialized) return null;
+    final client = SupabaseBackend.client;
+    if (client.auth.currentUser == null) return null;
+    return WorkerAttendanceSheetRepository._(client);
+  }
+
+  Future<String> _companyId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return rows.first['company_id'] as String;
+  }
+
+  Future<List<AttendanceWorker>> loadCompanyWorkers() async {
+    final companyId = await _companyId();
+    final rows = await _client
+        .from('workers')
+        .select('id,name,affiliation,status')
+        .eq('company_id', companyId)
+        .eq('affiliation', 'employee')
+        .order('name');
+
+    return [
+      for (final raw in rows)
+        if ((raw['id']?.toString() ?? '').isNotEmpty &&
+            raw['status']?.toString() != 'inactive')
+          AttendanceWorker(
+            id: raw['id'].toString(),
+            name: raw['name']?.toString().trim().isNotEmpty == true
+                ? raw['name'].toString().trim()
+                : '名前未登録',
+          ),
+    ];
+  }
+
+  Future<String> ensureCurrentWorkerId() async {
+    final value = await _client.rpc('ensure_current_user_worker');
+    final id = value?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('本人の作業員情報を確認できません。');
+    }
+    return id;
+  }
+
+  Future<({String reportId, String? siteId, String? routeAssignmentId})?>
+      findDailyReportForDate(
+    DateTime date, {
+    String? workerId,
+  }) async {
+    final targetWorkerId = workerId ?? await ensureCurrentWorkerId();
+    final rows = await _client
+        .from('daily_report_workers')
+        .select(
+          'report_id,daily_reports!inner(site_id,route_assignment_id,report_date)',
+        )
+        .eq('worker_id', targetWorkerId)
+        .eq('daily_reports.report_date', _dbDate(date))
+        .limit(1);
+    if (rows.isEmpty) return null;
+    final row = Map<String, dynamic>.from(rows.first);
+    final report = row['daily_reports'];
+    if (report is! Map) return null;
+    final reportId = row['report_id']?.toString() ?? '';
+    final siteId = report['site_id']?.toString();
+    final routeAssignmentId = report['route_assignment_id']?.toString();
+    if (reportId.isEmpty ||
+        ((siteId == null || siteId.isEmpty) &&
+            (routeAssignmentId == null || routeAssignmentId.isEmpty))) {
+      return null;
+    }
+    return (
+      reportId: reportId,
+      siteId: siteId?.isEmpty == true ? null : siteId,
+      routeAssignmentId:
+          routeAssignmentId?.isEmpty == true ? null : routeAssignmentId,
+    );
+  }
+
+  Future<WorkerAttendanceMonth> loadMonth(
+    DateTime month, {
+    String? workerId,
+  }) async {
+    final targetWorkerId = workerId ?? await ensureCurrentWorkerId();
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    final startText = _dbDate(start);
+    final endText = _dbDate(end);
+
+    final attendanceRows = await _client
+        .from('attendance_entries')
+        .select(
+          'id, work_date, site_id, base_man_days, work_category, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
+        )
+        .eq('worker_id', targetWorkerId)
+        .gte('work_date', startText)
+        .lt('work_date', endText)
+        .order('work_date');
+
+    final verificationRows = await _client
+        .from('attendance_verifications')
+        .select(
+          'event_type, confirmed_at, work_date, site_id, sites(name), route_assignment_id, route_assignments(route_name), daily_reports(report_date)',
+        )
+        .eq('worker_id', targetWorkerId)
+        .or('and(work_date.gte.$startText,work_date.lt.$endText),and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.add(const Duration(days: 1)).toUtc().toIso8601String()})')
+        .order('confirmed_at');
+
+    final drafts = <DateTime, _DayDraft>{};
+
+    for (final raw in attendanceRows) {
+      final row = Map<String, dynamic>.from(raw);
+      final date = _parseDate(row['work_date']?.toString());
+      if (date == null) continue;
+      final key = _dateOnly(date);
+      final draft = drafts.putIfAbsent(key, () => _DayDraft(key));
+
+      final site = row['sites'];
+      if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
+        draft.siteName ??= site['name'].toString();
+      }
+      final manDays = _number(row['base_man_days']);
+      draft.manDays += manDays;
+      if (manDays > 0 &&
+          const ['holiday', 'holiday_night'].contains(row['work_category'])) {
+        draft.hasHolidayWork = true;
+      }
+      draft.overtimeHours += _number(row['overtime_hours']);
+      draft.earlyHours += _number(row['early_hours']);
+      draft.nightHours += _number(row['night_hours']);
+      draft.allowanceYen += (row['allowance_amount'] as num?)?.toInt() ?? 0;
+      final allowanceNames = row['allowance_names'];
+      if (allowanceNames is List) {
+        for (final value in allowanceNames) {
+          final name = value?.toString().trim() ?? '';
+          if (name.isNotEmpty && !draft.allowanceNames.contains(name)) {
+            draft.allowanceNames.add(name);
+          }
+        }
+      }
+    }
+
+    for (final raw in verificationRows) {
+      final row = Map<String, dynamic>.from(raw);
+      final confirmed = DateTime.tryParse(row['confirmed_at']?.toString() ?? '')?.toLocal();
+      if (confirmed == null) continue;
+      final key = attendanceEventWorkDate(confirmed, row['daily_reports'], workDate: row['work_date']);
+      if (key.isBefore(start) || !key.isBefore(end)) continue;
+      final draft = drafts.putIfAbsent(key, () => _DayDraft(key));
+
+      final route = row['route_assignments'];
+      final routeName = route is Map
+          ? route['route_name']?.toString().trim() ?? ''
+          : '';
+      if (routeName.isNotEmpty && !draft.routeNames.contains(routeName)) {
+        draft.routeNames.add(routeName);
+      }
+
+      final site = row['sites'];
+      if (site is Map && (site['name']?.toString().trim().isNotEmpty ?? false)) {
+        draft.siteName ??= site['name'].toString();
+      }
+
+      if (row['event_type'] == 'clock_in') {
+        if (draft.clockIn == null || confirmed.isBefore(draft.clockIn!)) {
+          draft.clockIn = confirmed;
+        }
+      } else if (row['event_type'] == 'clock_out') {
+        if (draft.clockOut == null || confirmed.isAfter(draft.clockOut!)) {
+          draft.clockOut = confirmed;
+        }
+      }
+    }
+
+    final allApprovedLeaveRows = await _client
+        .from('paid_leave_requests')
+        .select('leave_date')
+        .eq('worker_id', targetWorkerId)
+        .eq('status', 'approved')
+        .order('leave_date');
+
+    final summaryRaw = await _client.rpc(
+      'paid_leave_worker_summary',
+      params: {'p_worker_id': targetWorkerId},
+    );
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : const <String, dynamic>{};
+    final grantedDays = _number(summary['granted_days']);
+
+    final approvedDates = <DateTime>{
+      for (final row in allApprovedLeaveRows)
+        if (_parseDate(row['leave_date']?.toString()) case final date?)
+          _dateOnly(date),
+    }.toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    for (var i = 0; i < approvedDates.length; i++) {
+      final date = approvedDates[i];
+      if (date.isBefore(start) || !date.isBefore(end)) continue;
+      final draft = drafts.putIfAbsent(date, () => _DayDraft(date));
+      // A corrected work record wins over an older approved paid-leave marker.
+      // The approval RPC also cancels the overlapping leave in production.
+      if (draft.hasWorkedData) continue;
+      draft.paidLeave = true;
+      draft.paidLeaveOrdinal = i + 1;
+      draft.paidLeaveRemaining =
+          (grantedDays - (i + 1)).clamp(0, double.infinity).toDouble();
+    }
+
+    final rawUnits = await _client.rpc('my_attendance_allowance_units');
+    final allowanceUnits = rawUnits is Map
+        ? {
+            for (final entry in rawUnits.entries)
+              entry.key.toString(): entry.value?.toString().trim().isNotEmpty == true
+                  ? entry.value.toString().trim()
+                  : '回',
+          }
+        : <String, String>{};
+
+    return WorkerAttendanceMonth(
+      year: month.year,
+      month: month.month,
+      allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
+      days: {
+        for (final entry in drafts.entries)
+          entry.key: entry.value.toValue(allowanceUnits),
+      },
+    );
+  }
+
+  DateTime? _parseDate(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return DateTime.tryParse(value.replaceAll('/', '-'));
+  }
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  String _dbDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  double _number(Object? value) =>
+      (value as num?)?.toDouble() ??
+      double.tryParse(value?.toString() ?? '') ??
+      0;
+}
+
+class _DayDraft {
+  _DayDraft(this.date);
+
+  final DateTime date;
+  String? siteName;
+  final List<String> routeNames = <String>[];
+  DateTime? clockIn;
+  DateTime? clockOut;
+  double overtimeHours = 0;
+  double earlyHours = 0;
+  double nightHours = 0;
+  double manDays = 0;
+  bool hasHolidayWork = false;
+  int allowanceYen = 0;
+  final List<String> allowanceNames = <String>[];
+  bool paidLeave = false;
+  int paidLeaveOrdinal = 0;
+  double paidLeaveRemaining = 0;
+
+  bool get hasWorkedData => attendanceDayHasWorkedData(
+    manDays: manDays,
+    overtimeHours: overtimeHours,
+    earlyHours: earlyHours,
+    nightHours: nightHours,
+    siteName: siteName,
+    clockIn: clockIn,
+    clockOut: clockOut,
+  );
+
+  WorkerAttendanceDay toValue(Map<String, String> allowanceUnits) =>
+      WorkerAttendanceDay(
+        date: date,
+        siteName: siteName,
+        routeNames: List<String>.unmodifiable(routeNames),
+        clockIn: clockIn,
+        clockOut: clockOut,
+        overtimeHours: overtimeHours,
+        earlyHours: earlyHours,
+        nightHours: nightHours,
+        manDays: manDays,
+        hasHolidayWork: hasHolidayWork,
+        allowanceYen: allowanceYen,
+        allowanceNames: List<String>.unmodifiable(allowanceNames),
+        allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
+        paidLeave: paidLeave,
+        paidLeaveOrdinal: paidLeaveOrdinal,
+        paidLeaveRemaining: paidLeaveRemaining,
+      );
+}

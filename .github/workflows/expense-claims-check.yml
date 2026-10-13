@@ -1,0 +1,23 @@
+name: Expense submission and review SQL
+on:
+  pull_request:
+    branches: [main]
+    paths: ['supabase/migrations/*expense*.sql', 'tool/verify_expense*.mjs', '.github/workflows/expense-claims-check.yml']
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/*expense*.sql', 'tool/verify_expense*.mjs', '.github/workflows/expense-claims-check.yml']
+permissions:
+  contents: read
+jobs:
+  pglite:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --prefix "$RUNNER_TEMP/sko-expense" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: node tool/verify_expense_personal_submission.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_review_allocation.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_document_details.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_personal_revision.mjs "$RUNNER_TEMP/sko-expense/node_modules/@electric-sql/pglite/dist/index.js"

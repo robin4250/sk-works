@@ -1,0 +1,39 @@
+name: Vehicle Meter Report Attachment SQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*attach_vehicle_meter_to_report.sql'
+      - 'supabase/tests/vehicle_meter_report_attachment_assertions.sql'
+      - 'tool/verify_vehicle_meter_report_attachment.mjs'
+      - '.github/workflows/vehicle-meter-report-attachment-sql.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*attach_vehicle_meter_to_report.sql'
+      - 'supabase/tests/vehicle_meter_report_attachment_assertions.sql'
+      - 'tool/verify_vehicle_meter_report_attachment.mjs'
+      - '.github/workflows/vehicle-meter-report-attachment-sql.yml'
+
+concurrency:
+  group: vehicle-meter-report-sql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Immutable reviewed #764 dependency, including vehicle lock-order fix.
+      - uses: actions/checkout@v4
+        with:
+          ref: '3662a29171a8a3e947780165a674c4134ea46f37'
+          path: dependency-sql
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify actual scoped attachment RPC and draft compatibility
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_vehicle_meter_report_attachment.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" dependency-sql

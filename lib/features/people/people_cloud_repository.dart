@@ -1,0 +1,416 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/supabase_backend.dart';
+
+class PeopleCloudRepository {
+  PeopleCloudRepository._(this._client);
+
+  final SupabaseClient _client;
+
+  static PeopleCloudRepository? maybeCreate() {
+    if (!SupabaseBackend.isInitialized) return null;
+    final client = SupabaseBackend.client;
+    if (client.auth.currentUser == null) return null;
+    return PeopleCloudRepository._(client);
+  }
+
+  Future<({String companyId, String role})> membership() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('SKOへのログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id, role')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return (
+      companyId: rows.first['company_id'] as String,
+      role: rows.first['role']?.toString() ?? 'viewer',
+    );
+  }
+
+  Future<String> companyName() async {
+    final member = await membership();
+    final row = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', member.companyId)
+        .maybeSingle();
+    return row?['name']?.toString() ?? '';
+  }
+
+  Future<bool> canManagePeople() async {
+    final member = await membership();
+    return member.role == 'owner' ||
+        member.role == 'admin' ||
+        member.role == 'manager';
+  }
+
+  Future<bool> canConfigurePersonnelApprovers() async {
+    final member = await membership();
+    return member.role == 'owner' || member.role == 'admin';
+  }
+
+  Future<void> _requireManagePeople() async {
+    if (!await canManagePeople()) {
+      throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
+    }
+  }
+
+  Future<String> _companyId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw StateError('SKOへのログインが必要です。');
+    }
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) {
+      throw StateError('会社情報が見つかりません。');
+    }
+    return rows.first['company_id'] as String;
+  }
+
+  String? get actorId => _client.auth.currentUser?.id;
+
+  Future<bool> canViewPeople() async {
+    final member = await membership();
+    return ['owner', 'admin', 'manager', 'viewer'].contains(member.role);
+  }
+
+  Future<String?> portraitUrl(String workerId) async {
+    final actor = actorId;
+    final member = await membership();
+    final path = await _client.rpc(
+      'employee_personnel_portrait',
+      params: {'p_company': member.companyId, 'p_worker': workerId},
+    );
+    if (actor == null || actorId != actor) throw StateError('ログイン情報が変更されました');
+    if (path == null) return null;
+    final value = path.toString();
+    if (!value.startsWith('${member.companyId}/$workerId/')) {
+      throw StateError('顔写真の所属が一致しません');
+    }
+    final url = await _client.storage
+        .from('worker-documents')
+        .createSignedUrl(value, 600);
+    if (actorId != actor) throw StateError('ログイン情報が変更されました');
+    return url;
+  }
+
+  Future<List<Map<String, dynamic>>> loadAll() async {
+    final member = await membership();
+    if (member.role == 'viewer') {
+      final actor = actorId;
+      final raw = await _client.rpc(
+        'employee_personnel_view',
+        params: {'p_company': member.companyId},
+      );
+      if (actor == null ||
+          actorId != actor ||
+          raw is! Map ||
+          raw['company_id'] != member.companyId ||
+          raw['records'] is! List) {
+        throw StateError('社員情報の取得結果を確認できません');
+      }
+      return (raw['records'] as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList(growable: false);
+    }
+    await _requireManagePeople();
+    final rows = await _client.rpc('people_management_records');
+    if (rows is! List) return const <Map<String, dynamic>>[];
+
+    final personnelRaw = await _client.rpc('employee_personnel_rows');
+    final personnelRows = personnelRaw is List
+        ? personnelRaw
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+    final personnelByWorker = <String, Map<String, dynamic>>{
+      for (final row in personnelRows)
+        if ((row['worker_id']?.toString() ?? '').isNotEmpty)
+          row['worker_id'].toString(): row,
+    };
+
+    final companyId = await _companyId();
+    final workerDates = await _client
+        .from('workers')
+        .select('id,created_at,updated_at,employee_number,department,hire_date')
+        .eq('company_id', companyId);
+    final partnerDates = await _client
+        .from('partner_companies')
+        .select('id,created_at,updated_at')
+        .eq('company_id', companyId);
+    final datesById = <String, Map<String, dynamic>>{};
+    for (final row in workerDates) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isNotEmpty) datesById[id] = Map<String, dynamic>.from(row);
+    }
+    for (final row in partnerDates) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isNotEmpty) datesById[id] = Map<String, dynamic>.from(row);
+    }
+
+    return rows
+        .map<Map<String, dynamic>>((row) {
+          final value = Map<String, dynamic>.from(row as Map);
+          final id = value['id']?.toString() ?? '';
+          final dates = datesById[id] ?? const <String, dynamic>{};
+          final personnel = personnelByWorker[id] ?? const <String, dynamic>{};
+          return {
+            'id': value['id'],
+            'kind': value['kind'],
+            'name': value['name'] ?? '',
+            'companyName': value['company_name'] ?? '',
+            'phone': value['phone'] ?? '',
+            'email': value['email'] ?? '',
+            'role': value['role'] ?? '',
+            'employeeNumber':
+                personnel['employee_number'] ?? dates['employee_number'] ?? '',
+            'department': personnel['department'] ?? dates['department'] ?? '',
+            'hireDate': personnel['hire_date'] ?? dates['hire_date'] ?? '',
+            'notes': value['notes'] ?? '',
+            'active': value['active'] == true,
+            'createdAt': dates['created_at'] ?? '',
+            'updatedAt': dates['updated_at'] ?? '',
+            'bloodType': personnel['blood_type'] ?? '',
+            'address': personnel['address'] ?? '',
+            'emergencyName': personnel['emergency_name'] ?? '',
+            'emergencyRelation': personnel['emergency_relation'] ?? '',
+            'emergencyPhone': personnel['emergency_phone'] ?? '',
+            'emergencyAddress': personnel['emergency_address'] ?? '',
+            'familyComposition': personnel['family_composition'] ?? '',
+            'familyMembers': personnel['family_members'] is List
+                ? personnel['family_members']
+                : const <dynamic>[],
+          };
+        })
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
+    validatePersonnelMetadata(record);
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    final kind = record['kind']?.toString() ?? 'employee';
+    if (kind == 'partnerCompany') {
+      final inserted = await _client
+          .from('partner_companies')
+          .insert({
+            'company_id': companyId,
+            'name': record['name'],
+            'phone': _nullable(record['phone']),
+            'email': _nullable(record['email']),
+            'trade_role': _nullable(record['role']),
+            'notes': _nullable(record['notes']),
+            'status': record['active'] == false ? 'inactive' : 'active',
+          })
+          .select('id')
+          .single();
+      return {...record, 'id': inserted['id']};
+    }
+
+    String? partnerCompanyId;
+    if (kind == 'partnerWorker') {
+      final companyName = record['companyName']?.toString().trim() ?? '';
+      if (companyName.isEmpty) {
+        throw StateError('協力会社作業員は所属会社を入力してください。');
+      }
+      final existing = await _client
+          .from('partner_companies')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('name', companyName)
+          .limit(1);
+      if (existing.isNotEmpty) {
+        partnerCompanyId = existing.first['id'] as String;
+      } else {
+        final created = await _client
+            .from('partner_companies')
+            .insert({
+              'company_id': companyId,
+              'name': companyName,
+              'status': 'active',
+            })
+            .select('id')
+            .single();
+        partnerCompanyId = created['id'] as String;
+      }
+    }
+
+    final inserted = await _client
+        .from('workers')
+        .insert({
+          'company_id': companyId,
+          'affiliation': kind == 'employee' ? 'employee' : 'partner_company',
+          'partner_company_id': partnerCompanyId,
+          'name': record['name'],
+          'phone': _nullable(record['phone']),
+          'email': _nullable(record['email']),
+          'role': _nullable(record['role']),
+          'employee_number': _nullable(record['employeeNumber']),
+          'department': _nullable(record['department']),
+          'hire_date': _nullable(record['hireDate']),
+          'notes': _nullable(record['notes']),
+          'status': record['active'] == false ? 'inactive' : 'active',
+        })
+        .select('id,employee_number')
+        .single();
+
+    final workerId = inserted['id']?.toString() ?? '';
+    if (workerId.isNotEmpty) {
+      await _client.rpc(
+        'save_worker_personnel_profile',
+        params: {
+          'p_worker_id': workerId,
+          'p_payload': {
+            'name': record['name']?.toString() ?? '',
+            'kind': kind,
+            'blood_type': record['bloodType']?.toString() ?? '',
+            'role': record['role']?.toString() ?? '',
+            'employee_number':
+                (record['employeeNumber']?.toString().trim().isNotEmpty == true)
+                ? record['employeeNumber']
+                : inserted['employee_number'],
+            'department': record['department']?.toString() ?? '',
+            'hire_date': record['hireDate']?.toString() ?? '',
+            'phone': record['phone']?.toString() ?? '',
+            'address': record['address']?.toString() ?? '',
+            'emergency_name': record['emergencyName']?.toString() ?? '',
+            'emergency_relation': record['emergencyRelation']?.toString() ?? '',
+            'emergency_phone': record['emergencyPhone']?.toString() ?? '',
+            'emergency_address': record['emergencyAddress']?.toString() ?? '',
+            'family_composition': record['familyComposition']?.toString() ?? '',
+            'family_members': record['familyMembers'] is List
+                ? record['familyMembers']
+                : const <dynamic>[],
+          },
+        },
+      );
+    }
+
+    return {
+      ...record,
+      'id': inserted['id'],
+      'employeeNumber': inserted['employee_number'] ?? '',
+    };
+  }
+
+  Future<Map<String, dynamic>> savePersonnelProfile(
+    Map<String, dynamic> record,
+  ) async {
+    validatePersonnelMetadata(record);
+    final id = record['id']?.toString() ?? '';
+    if (id.isEmpty) throw StateError('社員情報を確認できません。');
+    final raw = await _client.rpc(
+      'save_worker_personnel_profile',
+      params: {
+        'p_worker_id': id,
+        'p_payload': {
+          'name': record['name']?.toString() ?? '',
+          'kind': record['kind']?.toString() ?? 'employee',
+          'blood_type': record['bloodType']?.toString() ?? '',
+          'role': record['role']?.toString() ?? '',
+          'employee_number': record['employeeNumber']?.toString() ?? '',
+          'department': record['department']?.toString() ?? '',
+          'hire_date': record['hireDate']?.toString() ?? '',
+          'phone': record['phone']?.toString() ?? '',
+          'address': record['address']?.toString() ?? '',
+          'emergency_name': record['emergencyName']?.toString() ?? '',
+          'emergency_relation': record['emergencyRelation']?.toString() ?? '',
+          'emergency_phone': record['emergencyPhone']?.toString() ?? '',
+          'emergency_address': record['emergencyAddress']?.toString() ?? '',
+          'family_composition': record['familyComposition']?.toString() ?? '',
+          'family_members': record['familyMembers'] is List
+              ? record['familyMembers']
+              : const <dynamic>[],
+        },
+      },
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> loadPersonnelApproverSettings() async {
+    final raw = await _client.rpc('worker_personnel_approver_rows');
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> savePersonnelApprovers(List<String> userIds) async {
+    await _client.rpc(
+      'set_worker_personnel_approvers',
+      params: {'p_user_ids': userIds},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loadPendingPersonnelChanges() async {
+    final raw = await _client.rpc('pending_worker_personnel_changes');
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> decidePersonnelChange({
+    required String requestId,
+    required bool approve,
+  }) async {
+    final raw = await _client.rpc(
+      'decide_worker_personnel_change',
+      params: {'p_request_id': requestId, 'p_approve': approve},
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+  }
+
+  Future<void> delete(Map<String, dynamic> record) async {
+    await _requireManagePeople();
+    final id = record['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final kind = record['kind']?.toString() ?? 'employee';
+    final table = kind == 'partnerCompany' ? 'partner_companies' : 'workers';
+    await _client.from(table).delete().eq('id', id);
+  }
+
+  static void validatePersonnelMetadata(Map<String, dynamic> record) {
+    final number = record['employeeNumber']?.toString().trim() ?? '';
+    if (number.length > 40 || number.contains(RegExp(r'[\r\n]'))) {
+      throw StateError('社員番号は改行なしの40文字以内で入力してください。');
+    }
+    final date = record['hireDate']?.toString().trim() ?? '';
+    if (date.isNotEmpty) {
+      final parsed = DateTime.tryParse(date);
+      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date) ||
+          parsed == null ||
+          parsed.toIso8601String().substring(0, 10) != date) {
+        throw StateError('入社日を正しい日付で選択してください。');
+      }
+    }
+  }
+
+  static String personnelSaveError(Object error) {
+    final message = error.toString();
+    final lower = message.toLowerCase();
+    if (lower.contains('employee_number_duplicate') ||
+        (error is PostgrestException &&
+            error.code == '23505' &&
+            lower.contains('employee_number'))) {
+      return 'この社員番号は同じ会社で使用されています。別の番号を入力してください。';
+    }
+    return message.replaceFirst('Bad state: ', '');
+  }
+
+  Object? _nullable(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
+}

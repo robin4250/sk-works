@@ -1,0 +1,21 @@
+revoke all privileges on public.company_payroll_adjustment_settings from anon;
+revoke all privileges on public.gps_auto_attendance_schedules from anon;
+revoke all privileges on public.payroll_adjustment_audit_log from anon;
+revoke all privileges on public.payroll_adjustment_types from anon;
+revoke all privileges on public.payroll_adjustments from anon;
+revoke all privileges on public.route_stops from anon;
+revoke all privileges on public.work_attendance_selections from anon;
+revoke all privileges on public.work_vehicle_route_selections from anon;
+revoke all privileges on public.worker_family_members from anon;
+revoke all privileges on public.worker_personnel_profiles from anon;
+
+revoke truncate,trigger,references on public.company_payroll_adjustment_settings from authenticated;
+revoke truncate,trigger,references on public.gps_auto_attendance_schedules from authenticated;
+revoke truncate,trigger,references on public.payroll_adjustment_audit_log from authenticated;
+revoke truncate,trigger,references on public.payroll_adjustment_types from authenticated;
+revoke truncate,trigger,references on public.payroll_adjustments from authenticated;
+revoke truncate,trigger,references on public.route_stops from authenticated;
+revoke truncate,trigger,references on public.work_attendance_selections from authenticated;
+revoke truncate,trigger,references on public.work_vehicle_route_selections from authenticated;
+revoke truncate,trigger,references on public.worker_family_members from authenticated;
+revoke truncate,trigger,references on public.worker_personnel_profiles from authenticated;

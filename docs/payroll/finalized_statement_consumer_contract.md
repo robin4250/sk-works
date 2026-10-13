@@ -1,0 +1,9 @@
+# 保存済み給与明細の表示境界
+
+明示workflow_state=draftのみ現在の月単位確認状態を重ねる。top-levelが無い場合はdetail.workflow_stateだけを読む。revision、金額、issued_atから状態を推定しない。状態不明の旧明細は保存済みrow/detailを使用し、現在の確認者・会社設定で置き換えない。
+
+管理workspaceのcompany_nameをRecordへ保持する。PDF再取得後の確定済み・旧明細には元画面会社名のfallbackや現在の確認panelを重ねない。計算結果、detail、使用条件、明細内確認記録は変更しない。自己明細RPC・管理workspace・自己fallbackのアクセス経路は既存のまま。銀行情報を別経路で取得しない。
+
+既存RPCは現行company_nameやdocument metadataをDB側で合成するため、RPCで既に失われた保存値をclientだけで復元することはできない。保存snapshotを返すDB/APIの導入は別作業。新snapshot APIと確定操作には接続していない。self RPCが状態を返さない既存環境では現在の月単位確認表示は重ねず、保存済み確認状態が無い時は未確認表示となる。
+
+純粋consumer regression testsは確定・旧状態不明の保持、明示draft限定overlay、detail状態fallback・非推定を確認する。Flutter SDK無しのため実行はCIで必要。git diff --check確認済み。

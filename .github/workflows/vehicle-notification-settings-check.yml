@@ -1,0 +1,32 @@
+name: Vehicle notification settings check
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
+      - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
+      - 'tool/verify_vehicle_notification_settings.mjs'
+      - '.github/workflows/vehicle-notification-settings-check.yml'
+  push:
+    branches: [main, 'feat/vehicle-notification-assignees-*']
+    paths:
+      - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
+      - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
+      - 'tool/verify_vehicle_notification_settings.mjs'
+      - '.github/workflows/vehicle-notification-settings-check.yml'
+permissions:
+  contents: read
+jobs:
+  settings-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/vehicle-settings-runtime" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify vehicle administrator settings read contract
+        run: node tool/verify_vehicle_notification_settings.mjs "$RUNNER_TEMP/vehicle-settings-runtime/node_modules/@electric-sql/pglite/dist/index.js"

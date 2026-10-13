@@ -1,0 +1,498 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
+import 'dart:typed_data';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/supabase_backend.dart';
+import '../settings/master_feature_controls_repository.dart';
+
+abstract class VehicleRouteSelectionAccess {
+  String? get selectionActorId;
+  Future<MasterFeatureAvailability> featureAvailability();
+  Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false});
+  Future<List<Map<String, dynamic>>> routes({bool activeOnly = false});
+  Future<Map<String, dynamic>> loadTodaySelection();
+  Future<void> saveTodayVehicleSelection(String? vehicleId);
+  Future<void> saveTodayRouteSelection(String? routeId);
+}
+
+class VehicleRouteRepository implements VehicleRouteSelectionAccess {
+  VehicleRouteRepository._(this._client);
+
+  VehicleRouteRepository.forTesting(this._client);
+
+  final SupabaseClient _client;
+
+  @override
+  String? get selectionActorId => _client.auth.currentUser?.id;
+  static const _documentBucket = 'vehicle-documents';
+
+  static VehicleRouteRepository? maybeCreate() {
+    if (!SupabaseBackend.isInitialized) return null;
+    final client = SupabaseBackend.client;
+    if (client.auth.currentUser == null) return null;
+    return VehicleRouteRepository._(client);
+  }
+
+  @override
+  Future<MasterFeatureAvailability> featureAvailability() =>
+      MasterFeatureControlsRepository.loadForClient(_client);
+
+  void _requireSelectionActor(String? actor) {
+    if (actor == null || _client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+    }
+  }
+
+  Future<void> _requireFeature({required bool vehicle}) async {
+    final flags = await featureAvailability();
+    if (vehicle ? !flags.vehicleManagement : !flags.routeAssignment) {
+      throw StateError(vehicle ? '車両の新しい利用は一時停止中です。' : 'ルート・配車の新しい利用は一時停止中です。');
+    }
+  }
+
+  Future<Map<String, dynamic>> permissions() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return const {};
+    final rows = await _client
+        .from('company_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .limit(1);
+    final role = rows.isEmpty ? '' : rows.first['role']?.toString() ?? '';
+    MasterFeatureAvailability flags;
+    try { flags = await featureAvailability(); }
+    catch (_) { flags = MasterFeatureAvailability.unavailable; }
+    final canManage = role == 'owner' || role == 'admin' || role == 'manager';
+    return {
+      'can_manage_vehicles': canManage && flags.vehicleManagement,
+      'can_manage_routes': canManage && flags.routeAssignment,
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> vehicles({bool activeOnly = false}) async {
+    var query = _client.from('vehicles').select(
+      'id,display_name,registration_number,odometer_km,storage_address,'
+      'registration_document_path,compulsory_insurance_path,'
+      'voluntary_insurance_path,notes,is_active,created_at,updated_at',
+    );
+    if (activeOnly) query = query.eq('is_active', true);
+    final rows = await query
+        .order('is_active', ascending: false)
+        .order('display_name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> routes({bool activeOnly = false}) async {
+    var query = _client.from('route_assignments').select(
+      'id,route_name,notes,responsible_name,responsible_phone,is_active,created_at,updated_at,'
+      'route_stops(id,stop_order,site_id,address,source_kind,source_id,source_label,latitude,longitude,sites(name,address,latitude,longitude))',
+    );
+    if (activeOnly) query = query.eq('is_active', true);
+    final rows = await query
+        .order('is_active', ascending: false)
+        .order('route_name');
+    return [
+      for (final raw in rows)
+        {
+          ...Map<String, dynamic>.from(raw),
+          'route_stops': _sortedStops(raw['route_stops']),
+        },
+    ];
+  }
+
+  Future<List<Map<String, dynamic>>> sites() async {
+    final rows = await _client
+        .from('sites')
+        .select('id,name,address,latitude,longitude,status')
+        .neq('status', 'completed')
+        .order('name');
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>>
+      routeCompanyDirectories() async {
+    final raw = await _client.rpc('site_map_workspace');
+    final value = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+
+    List<Map<String, dynamic>> rows(String key) {
+      final source = value[key];
+      if (source is! List) return const [];
+      return source
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+
+    return {
+      'customers': rows('customers'),
+      'partners': rows('partners'),
+    };
+  }
+
+  Future<String> saveVehicle({
+    String? id,
+    required String name,
+    required String registrationNumber,
+    required double odometerKm,
+    required String storageAddress,
+  }) async {
+    await _requireFeature(vehicle: true);
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+    final companyId = await _membership();
+    final data = <String, dynamic>{
+      'company_id': companyId,
+      'display_name': name.trim(),
+      'registration_number': _nullable(registrationNumber),
+      'odometer_km': odometerKm,
+      'storage_address': _nullable(storageAddress),
+      'updated_by': user.id,
+    };
+
+    if (id == null) {
+      data['created_by'] = user.id;
+      final row = await _client
+          .from('vehicles')
+          .insert(data)
+          .select('id')
+          .single();
+      return row['id'].toString();
+    }
+
+    await _client.from('vehicles').update(data).eq('id', id);
+    return id;
+  }
+
+  Future<void> uploadVehicleDocument({
+    required String vehicleId,
+    required String kind,
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    await _requireFeature(vehicle: true);
+    final column = switch (kind) {
+      'registration' => 'registration_document_path',
+      'compulsory' => 'compulsory_insurance_path',
+      'voluntary' => 'voluntary_insurance_path',
+      _ => throw ArgumentError.value(kind, 'kind', 'unknown vehicle document'),
+    };
+
+    final companyId = await _membership();
+    final rows = await _client
+        .from('vehicles')
+        .select('id,' + column)
+        .eq('id', vehicleId)
+        .eq('company_id', companyId)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('車両が見つかりません。');
+
+    final oldPath = rows.first[column]?.toString();
+    final safe = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = companyId +
+        '/' +
+        vehicleId +
+        '/' +
+        kind +
+        '/' +
+        DateTime.now().microsecondsSinceEpoch.toString() +
+        '_' +
+        safe;
+
+    await _client.storage.from(_documentBucket).uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+
+    try {
+      await _client.from('vehicles').update({
+        column: path,
+        'updated_by': _client.auth.currentUser?.id,
+      }).eq('id', vehicleId);
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != path) {
+        await _client.storage.from(_documentBucket).remove([oldPath]);
+      }
+    } catch (_) {
+      await _client.storage.from(_documentBucket).remove([path]);
+      rethrow;
+    }
+  }
+
+  Future<List<String>> notifyMissingVehicleDocuments(
+    String vehicleId,
+  ) async {
+    final value = await _client.rpc(
+      'notify_missing_vehicle_documents',
+      params: {'p_vehicle_id': vehicleId},
+    );
+    if (value is! List) return const [];
+    return value.map((item) => item.toString()).toList(growable: false);
+  }
+
+  Future<void> setVehicleActive(String id, bool active) async {
+    await _requireFeature(vehicle: true);
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+    await _client.from('vehicles').update({
+      'is_active': active,
+      'updated_by': user.id,
+    }).eq('id', id);
+  }
+
+  Future<String> saveRoute({
+    String? id,
+    required String name,
+    required String notes,
+    String? responsibleName,
+    String? responsiblePhone,
+    required List<Map<String, Object?>> stops,
+  }) async {
+    await _requireFeature(vehicle: false);
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+    final companyId = await _membership();
+    final data = <String, dynamic>{
+      'company_id': companyId,
+      'route_name': name.trim(),
+      if (responsibleName != null) 'responsible_name': _nullable(responsibleName),
+      if (responsiblePhone != null) 'responsible_phone': _nullable(responsiblePhone),
+      'service_date': null,
+      'vehicle_id': null,
+      'site_id': null,
+      'driver_user_id': null,
+      'notes': _nullable(notes),
+      'updated_by': user.id,
+    };
+
+    String routeId;
+    if (id == null) {
+      data['created_by'] = user.id;
+      final row = await _client
+          .from('route_assignments')
+          .insert(data)
+          .select('id')
+          .single();
+      routeId = row['id'].toString();
+    } else {
+      await _client.from('route_assignments').update(data).eq('id', id);
+      routeId = id;
+      await _client.from('route_stops').delete().eq('route_assignment_id', id);
+    }
+
+    if (stops.isNotEmpty) {
+      await _client.from('route_stops').insert([
+        for (var i = 0; i < stops.length; i++)
+          {
+            'company_id': companyId,
+            'route_assignment_id': routeId,
+            'stop_order': i,
+            'site_id': _nullable(stops[i]['site_id']),
+            'address': _nullable(stops[i]['address']),
+            'source_kind': _nullable(stops[i]['source_kind']),
+            'source_id': _nullable(stops[i]['source_id']),
+            'source_label': _nullable(stops[i]['source_label']),
+            'latitude': stops[i]['latitude'],
+            'longitude': stops[i]['longitude'],
+            'created_by': user.id,
+            'updated_by': user.id,
+          },
+      ]);
+    }
+    return routeId;
+  }
+
+  Future<void> setRouteActive(String id, bool active) async {
+    await _requireFeature(vehicle: false);
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+    await _client.from('route_assignments').update({
+      'is_active': active,
+      'updated_by': user.id,
+    }).eq('id', id);
+  }
+
+  @override
+  Future<Map<String, dynamic>> loadTodaySelection() async {
+    final companyId = await _membership();
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) return const {};
+
+    final row = await _client
+        .from('work_vehicle_route_selections')
+        .select(
+          'vehicle_id,route_assignment_id,updated_at,'
+          'vehicles(display_name,registration_number,odometer_km),'
+          'route_assignments(route_name)',
+        )
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq('work_date', _date(DateTime.now()))
+        .maybeSingle();
+    return row == null ? const {} : Map<String, dynamic>.from(row);
+  }
+
+  @override
+  Future<void> saveTodayVehicleSelection(String? vehicleId) async {
+    final actor = selectionActorId;
+    if (vehicleId != null && vehicleId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: true);
+    }
+    final companyId = await _membership();
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+    final workDate = _date(DateTime.now());
+
+    final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
+    await _client.from('work_vehicle_route_selections').upsert(
+      {
+        'company_id': companyId,
+        'worker_id': workerId,
+        'work_date': workDate,
+        'vehicle_id': _nullable(vehicleId),
+        'route_assignment_id': current['route_assignment_id'],
+        'updated_by': _client.auth.currentUser?.id,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'company_id,worker_id,work_date',
+    );
+  }
+
+  @override
+  Future<void> saveTodayRouteSelection(String? routeId) async {
+    final actor = selectionActorId;
+    if (routeId == null || routeId.trim().isEmpty) {
+      _requireSelectionActor(actor);
+      final workDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      final result = await _client.rpc('clear_my_route_attendance_selection');
+      _requireSelectionActor(actor);
+      final responseDate = _date(DateTime.now().toUtc().add(const Duration(hours: 9)));
+      if (result is! Map || result['cleared'] != true ||
+          !result.containsKey('route_assignment_id') ||
+          result['route_assignment_id'] != null ||
+          (result['work_date'] != workDate && result['work_date'] != responseDate)) {
+        throw StateError('ルート選択の解除を確認できません。再読み込みしてください。');
+      }
+      return;
+    }
+    if (routeId.trim().isNotEmpty) {
+      await _requireFeature(vehicle: false);
+    }
+    final companyId = await _membership();
+    final workerValue = await _client.rpc('ensure_current_user_worker');
+    final workerId = workerValue?.toString() ?? '';
+    if (workerId.isEmpty) throw StateError('社員情報を確認できません。');
+    final workDate = _date(DateTime.now());
+
+    final current = await loadTodaySelection();
+    _requireSelectionActor(actor);
+    await _client.from('work_vehicle_route_selections').upsert(
+      {
+        'company_id': companyId,
+        'worker_id': workerId,
+        'work_date': workDate,
+        'vehicle_id': current['vehicle_id'],
+        'route_assignment_id': _nullable(routeId),
+        'updated_by': _client.auth.currentUser?.id,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'company_id,worker_id,work_date',
+    );
+
+    if (routeId.trim().isNotEmpty) {
+      final currentAttendance = await _client
+          .from('work_attendance_selections')
+          .select('verification_mode')
+          .eq('company_id', companyId)
+          .eq('worker_id', workerId)
+          .eq('work_date', workDate)
+          .maybeSingle();
+      final mode =
+          currentAttendance?['verification_mode']?.toString() ?? 'manual';
+      _requireSelectionActor(actor);
+      await _client.from('work_attendance_selections').upsert(
+        {
+          'company_id': companyId,
+          'worker_id': workerId,
+          'work_date': workDate,
+          'verification_mode': mode,
+          'site_id': null,
+          'route_assignment_id': routeId,
+          'updated_by': _client.auth.currentUser?.id,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'company_id,worker_id,work_date',
+      );
+    }
+  }
+
+  Future<void> updateOdometer({
+    required String vehicleId,
+    required double odometerKm,
+  }) async {
+    final companyId = await _membership();
+    final rows = await _client
+        .from('vehicles')
+        .select('odometer_km')
+        .eq('id', vehicleId)
+        .eq('company_id', companyId)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('車両が見つかりません。');
+
+    final current = (rows.first['odometer_km'] as num?)?.toDouble() ?? 0;
+    if (odometerKm < current) {
+      throw StateError('現在の走行距離より小さい数値は登録できません。');
+    }
+
+    await _client.from('vehicles').update({
+      'odometer_km': odometerKm,
+      'updated_by': _client.auth.currentUser?.id,
+    }).eq('id', vehicleId);
+  }
+
+  Future<String> _membership() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+    return rows.first['company_id'].toString();
+  }
+
+  List<Map<String, dynamic>> _sortedStops(Object? value) {
+    if (value is! List) return const [];
+    final rows = value
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    rows.sort(
+      (a, b) => ((a['stop_order'] as num?)?.toInt() ?? 0)
+          .compareTo((b['stop_order'] as num?)?.toInt() ?? 0),
+    );
+    return rows;
+  }
+
+  String _date(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return year + '-' + month + '-' + day;
+  }
+
+  Object? _nullable(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
+}

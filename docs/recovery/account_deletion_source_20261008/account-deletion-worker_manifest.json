@@ -1,0 +1,146 @@
+{
+  "captured_date": "2026-10-08",
+  "function": {
+    "slug": "account-deletion-worker",
+    "name": "account-deletion-worker",
+    "status": "ACTIVE",
+    "version": 2,
+    "created_at": 1790453530570,
+    "updated_at": 1790455760846,
+    "verify_jwt": true,
+    "import_map": false,
+    "ezbr_sha256": "07522ea33968ddd7854561004e7aa22d68d0b688f29f99239d67238f854c6c50"
+  },
+  "files": [
+    {
+      "path": "account-deletion-worker/account-deletion-worker/index.ts",
+      "bytes": 721,
+      "sha256": "fe4fa98a21caa2d064ae986e8bf2a09b374160707525ad80ad0a0b516bc5abfe"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion-worker/handler.mjs",
+      "bytes": 953,
+      "sha256": "d27219d4bd1c23d722c361d32577c5ee02ac8f4693818d73beee21811c21fb6a"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/service_client.mjs",
+      "bytes": 2880,
+      "sha256": "5366631de3f7c02bacef1c6a3c7c61a0fa786f75c4837f95eba2ed18d45c773d"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/configured_worker.mjs",
+      "bytes": 4803,
+      "sha256": "8ebea712efdc09aa7666ba08dd7d12c1353059b7984be85446f561906464ee6f"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/worker.mjs",
+      "bytes": 5331,
+      "sha256": "ef77865ea9d6f6097f2d53ff4b2624ff71bf7c7c1cb056cd954f48fe6d9e327c"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/completion_notice.mjs",
+      "bytes": 1595,
+      "sha256": "6b86cfe51a92cef52ecddc20de4ec309dbb8c5c788669f70b4fbbb0473678417"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/processor.mjs",
+      "bytes": 2480,
+      "sha256": "dd3cbd2361613b252e50700ef9d2a3024c8d64868f55cfdc4621a9dc046da191"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/job_store.mjs",
+      "bytes": 604,
+      "sha256": "6af044f1579a396c18f577d58f3d1ec5d7fd5cd5605776da7cea1cdf28c7b8b0"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/storage_plan.mjs",
+      "bytes": 1417,
+      "sha256": "d93a5d4a49df1763fcfa6f1723804a983a0134e67387800c07466c699d275fca"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/storage_erasure.mjs",
+      "bytes": 2778,
+      "sha256": "34862e0aef9252e69b431c4443f7f281055dc4a3cb07c8c6343bbd2a5259d671"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/policy.mjs",
+      "bytes": 933,
+      "sha256": "93030860af3b10719deb4b2adf153be2e1ec3e3307efa2b25b8257ecb9131fdb"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/auth_erasure.mjs",
+      "bytes": 1276,
+      "sha256": "953aee027893120f09865b0acba2cef87d349d07ce422e9c42ef1506d2abffbb"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/external_identity.mjs",
+      "bytes": 1743,
+      "sha256": "edbf4dde8b4f2226f5823acbc3c08991426ab8dea6125b7ae5ecd528df733c8e"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/erasure_verification.mjs",
+      "bytes": 1542,
+      "sha256": "5f24a3c05c31827d86812f558e065fbb55b20d02bfcf00da99f9753af86bf0dd"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/access_restriction.mjs",
+      "bytes": 1871,
+      "sha256": "a2210af03f8badd4ed55e59d7a2aa28bf4b9df03e15fe0da9447ccd6e8b71763"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/completion_sender.mjs",
+      "bytes": 579,
+      "sha256": "cc4045a01094740e2e43ab3ada14aa045ff9c70197b389f4e8bd55de5e5fdf3d"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/completion_gmail.mjs",
+      "bytes": 3417,
+      "sha256": "b47dee8cfa96b66cda7bd5454f186c9599e69b7632656548d8cde415eefb0cdc"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/data_access_verification.mjs",
+      "bytes": 2436,
+      "sha256": "f148aeb19eab5b86403dd0b8557936838a775b28ed464f98fe25df1b5c6ef247"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/google_revocation.mjs",
+      "bytes": 5004,
+      "sha256": "03e6c8ca81be2ac2c94a6ead5fb41e2a51a3409cce5d3eaa634c9f70e1dc6cde"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/google_credential_store.mjs",
+      "bytes": 3203,
+      "sha256": "83b8fbc96b6dfbe43975996a0185b79b086fd647ff059cf9f2307a8cbf415399"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/erased_file_probe.mjs",
+      "bytes": 3242,
+      "sha256": "9ffdb3276a5deaf7c233b3b245daadfb3e346982a364b8ed0a6372e2e142b599"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/erasure_evidence.mjs",
+      "bytes": 4907,
+      "sha256": "dbeb67710d6dbe12cf71df1779c0fa23ea263814f4ded89e71aa0b5310d83ca4"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/subject_access_probe.mjs",
+      "bytes": 3970,
+      "sha256": "ebffcae018ce14539060e62186fbf48010c457cbb9015c315d50cdf751c87d3b"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/server_guard_probe.mjs",
+      "bytes": 1942,
+      "sha256": "e8d6e32b26098aefd7f98f7319573d158e6df3172b1010eb4d9b17a0450d2415"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/deployment_probe.mjs",
+      "bytes": 1487,
+      "sha256": "b9900170b5eaae74ae1ad123047ba841fb1e3f4c20ffb78ccb83ed7ac750ae57"
+    },
+    {
+      "path": "account-deletion-worker/account-deletion/google_revocation_evidence.mjs",
+      "bytes": 3067,
+      "sha256": "cb5946dd3b8eeb05f615c0d573f6a8c9c0b6764206f79c114d019157ac1ae9dd"
+    }
+  ]
+}

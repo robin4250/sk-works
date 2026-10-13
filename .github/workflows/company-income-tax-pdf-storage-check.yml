@@ -1,0 +1,34 @@
+name: Company income tax private PDF Storage SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*company_income_tax_table_registry.sql'
+      - 'supabase/migrations/*company_income_tax_private_pdf_storage.sql'
+      - 'supabase/tests/company_income_tax*bootstrap.sql'
+      - 'tool/verify_company_income_tax_pdf_storage.mjs'
+      - '.github/workflows/company-income-tax-pdf-storage-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*company_income_tax_table_registry.sql'
+      - 'supabase/migrations/*company_income_tax_private_pdf_storage.sql'
+      - 'supabase/tests/company_income_tax*bootstrap.sql'
+      - 'tool/verify_company_income_tax_pdf_storage.mjs'
+      - '.github/workflows/company-income-tax-pdf-storage-check.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-private-pdf-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-income-pdf" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Check harness syntax
+        run: node --check tool/verify_company_income_tax_pdf_storage.mjs
+      - name: Exercise exact staged registry and private Storage policies
+        run: node tool/verify_company_income_tax_pdf_storage.mjs "$RUNNER_TEMP/sko-income-pdf/node_modules/@electric-sql/pglite/dist/index.js"

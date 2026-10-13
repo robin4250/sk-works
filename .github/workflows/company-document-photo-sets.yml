@@ -1,0 +1,23 @@
+name: Company Document Photo Sets SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261010222245_company_document_photo_sets.sql'
+      - 'tool/verify_company_document_photo_sets.mjs'
+      - '.github/workflows/company-document-photo-sets.yml'
+permissions:
+  contents: read
+jobs:
+  photo-set-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned disposable SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-document-photos" --save-exact --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - name: Check persistence, legacy compatibility and Storage access
+        run: node tool/verify_company_document_photo_sets.mjs "$RUNNER_TEMP/sko-document-photos/node_modules/@electric-sql/pglite/dist/index.js"

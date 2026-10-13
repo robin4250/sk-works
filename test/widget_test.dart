@@ -1,0 +1,21 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sk_works/main.dart';
+
+void main() {
+  testWidgets('SKO admin home uses finalized dashboard labels', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
+    await tester.pump();
+
+    expect(find.text('SKO'), findsWidgets);
+    expect(find.text('本日の出勤'), findsWidgets);
+    expect(find.text('出勤状況を確認'), findsOneWidget);
+    expect(find.text('出勤・人区管理'), findsNothing);
+    expect(find.text('社員資格書類'), findsOneWidget);
+    expect(find.text('社員データ'), findsNothing);
+    expect(find.text('請求書'), findsOneWidget);
+    expect(find.text('現場管理'), findsOneWidget);
+  });
+}

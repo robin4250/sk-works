@@ -1,0 +1,99 @@
+name: Route billing quantity Postgres races
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/route_customer_day_billing_allocations_schema.sql'
+      - 'tool/verify_route_billing_quantity_allocations.mjs'
+      - 'tool/verify_route_billing_quantity_postgres_races.mjs'
+      - 'tool/verify_route_billing_invoice_integration.mjs'
+      - 'tool/verify_route_billing_invoice_postgres_races.mjs'
+      - 'supabase/tests/route_billing_invoice_integration.sql'
+      - 'supabase/tests/route_billing_submission_contract.sql'
+      - 'tool/verify_route_billing_submission_contract.mjs'
+      - 'tool/verify_route_billing_production_migration.mjs'
+      - 'supabase/tests/fixtures/route_invoice_foundation_20261012.json'
+      - 'supabase/migrations/20261012053842_route_customer_billing_connection.sql'
+      - '.github/workflows/route-billing-quantity-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/tests/route_customer_day_billing_allocations_schema.sql'
+      - 'tool/verify_route_billing_quantity_allocations.mjs'
+      - 'tool/verify_route_billing_quantity_postgres_races.mjs'
+      - 'tool/verify_route_billing_invoice_integration.mjs'
+      - 'tool/verify_route_billing_invoice_postgres_races.mjs'
+      - 'supabase/tests/route_billing_invoice_integration.sql'
+      - 'supabase/tests/route_billing_submission_contract.sql'
+      - 'tool/verify_route_billing_submission_contract.mjs'
+      - 'tool/verify_route_billing_production_migration.mjs'
+      - 'supabase/tests/fixtures/route_invoice_foundation_20261012.json'
+      - 'supabase/migrations/20261012053842_route_customer_billing_connection.sql'
+      - '.github/workflows/route-billing-quantity-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  billing-quantity-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: billing-quantity-fixture
+          POSTGRES_DB: sko_billing_quantity_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_billing_quantity_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_BILLING_RACE_DATABASE_URL: postgres://postgres:billing-quantity-fixture@127.0.0.1:5432/sko_billing_quantity_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated Postgres client
+        run: npm install --prefix "$RUNNER_TEMP/billing-quantity-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify actual allocation and approval races
+        run: node tool/verify_route_billing_quantity_postgres_races.mjs "$RUNNER_TEMP/billing-quantity-runtime/node_modules/pg/lib/index.js"
+  route-invoice-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: route-invoice-fixture
+          POSTGRES_DB: sko_route_invoice_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_route_invoice_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_ROUTE_INVOICE_RACE_DATABASE_URL: postgres://postgres:route-invoice-fixture@127.0.0.1:5432/sko_route_invoice_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated database clients
+        run: npm install --prefix "$RUNNER_TEMP/route-invoice-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3 @electric-sql/pglite@0.3.14
+      - name: Verify route quantities and current invoice calculation
+        run: node tool/verify_route_billing_invoice_integration.mjs "$RUNNER_TEMP/route-invoice-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify checked checkout submissions and stale rejection
+        run: node tool/verify_route_billing_submission_contract.mjs "$RUNNER_TEMP/route-invoice-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify full production migration and existing invoice guards
+        run: node tool/verify_route_billing_production_migration.mjs "$RUNNER_TEMP/route-invoice-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify real approval and finalization races
+        run: node tool/verify_route_billing_invoice_postgres_races.mjs "$RUNNER_TEMP/route-invoice-runtime/node_modules/pg/lib/index.js"

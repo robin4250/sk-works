@@ -1,0 +1,35 @@
+name: Generation setting notification source probe
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*generation_setting_issue_first_notification.sql'
+      - 'supabase/tests/generation_setting_issue*.sql'
+      - 'tool/verify_generation_setting_issue_notification*.mjs'
+      - '.github/workflows/generation-setting-issue-notification-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  notification-source:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_notification_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_notification_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --package-lock=false @electric-sql/pglite@0.3.14 pg@8.16.3
+      - run: node tool/verify_generation_setting_issue_notification.mjs
+      - run: node tool/verify_generation_setting_issue_notification_pg17.mjs
+        env:
+          SKO_NOTIFICATION_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_notification_fixture

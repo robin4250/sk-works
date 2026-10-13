@@ -1,0 +1,32 @@
+name: Resident tax effective month SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*resident_tax_effective_month.sql'
+      - 'supabase/tests/resident_tax_effective_month_access_fixture.sql'
+      - 'tool/verify_resident_tax_effective_month.mjs'
+      - '.github/workflows/resident-tax-effective-month-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*resident_tax_effective_month.sql'
+      - 'supabase/tests/resident_tax_effective_month_access_fixture.sql'
+      - 'tool/verify_resident_tax_effective_month.mjs'
+      - '.github/workflows/resident-tax-effective-month-check.yml'
+permissions:
+  contents: read
+jobs:
+  actual-payroll-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-resident-tax" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Check harness syntax
+        run: node --check tool/verify_resident_tax_effective_month.mjs
+      - name: Exercise exact calculator and financial normalization
+        run: node tool/verify_resident_tax_effective_month.mjs "$RUNNER_TEMP/sko-resident-tax/node_modules/@electric-sql/pglite/dist/index.js"

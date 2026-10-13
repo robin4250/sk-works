@@ -1,0 +1,38 @@
+name: Official payroll rate candidates SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*official_payroll_rate_candidates.sql'
+      - 'supabase/migrations/*company_payroll_rate_registry.sql'
+      - 'supabase/tests/company_payroll_rate_registry_bootstrap.sql'
+      - 'tool/verify_official_payroll_rate_candidates.mjs'
+      - 'supabase/functions/fetch-company-payroll-rates/**'
+      - '.github/workflows/official-payroll-rate-candidates-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*official_payroll_rate_candidates.sql'
+      - 'supabase/migrations/*company_payroll_rate_registry.sql'
+      - 'supabase/tests/company_payroll_rate_registry_bootstrap.sql'
+      - 'tool/verify_official_payroll_rate_candidates.mjs'
+      - 'supabase/functions/fetch-company-payroll-rates/**'
+      - '.github/workflows/official-payroll-rate-candidates-check.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-official-candidates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-official-rates" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - name: Check syntax
+        run: node --check tool/verify_official_payroll_rate_candidates.mjs
+      - name: Verify publication and explicit application with exact migrations
+        run: node tool/verify_official_payroll_rate_candidates.mjs "$RUNNER_TEMP/sko-official-rates/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify official HTML parsers and authenticated handler
+        run: node --experimental-strip-types --test supabase/functions/fetch-company-payroll-rates/*_test.mjs

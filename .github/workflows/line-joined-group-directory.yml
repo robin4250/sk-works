@@ -1,0 +1,29 @@
+name: LINE Joined Group Directory
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/line-group-directory-refresh/**'
+      - 'supabase/functions/line-webhook/**'
+      - 'supabase/migrations/*line_joined_group_directory.sql'
+      - 'lib/features/chat/line_joined_groups_page.dart'
+      - 'tool/verify_line_joined_groups.mjs'
+      - '.github/workflows/line-joined-group-directory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/line-group-directory-refresh/**'
+      - 'supabase/functions/line-webhook/**'
+      - 'supabase/migrations/*line_joined_group_directory.sql'
+      - 'tool/verify_line_joined_groups.mjs'
+jobs:
+  directory-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test supabase/functions/line-webhook/handler_test.mjs supabase/functions/line-group-directory-refresh/handler_test.mjs
+      - run: |
+          npm install --prefix "$RUNNER_TEMP/line-directory" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_line_joined_groups.mjs "$RUNNER_TEMP/line-directory/node_modules/@electric-sql/pglite/dist/index.js"

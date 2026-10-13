@@ -1,0 +1,44 @@
+name: Vehicle Usage SQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*vehicle_active_driver_claims.sql'
+      - 'supabase/migrations/*vehicle_meter_snapshots.sql'
+      - 'supabase/migrations/20261008124940_gps_shift_work_date_evidence.sql'
+      - 'supabase/tests/vehicle_active_driver_assertions.sql'
+      - 'supabase/tests/vehicle_rollout_serialization_assertions.sql'
+      - 'tool/verify_vehicle_active_driver.mjs'
+      - 'supabase/tests/vehicle_meter_snapshots_assertions.sql'
+      - 'tool/verify_vehicle_meter_snapshots.mjs'
+      - '.github/workflows/vehicle-usage-sql-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*vehicle_active_driver_claims.sql'
+      - 'supabase/migrations/*vehicle_meter_snapshots.sql'
+      - 'supabase/tests/vehicle_active_driver_assertions.sql'
+      - 'supabase/tests/vehicle_rollout_serialization_assertions.sql'
+      - 'tool/verify_vehicle_active_driver.mjs'
+      - 'supabase/tests/vehicle_meter_snapshots_assertions.sql'
+      - 'tool/verify_vehicle_meter_snapshots.mjs'
+      - '.github/workflows/vehicle-usage-sql-check.yml'
+
+concurrency:
+  group: vehicle-usage-sql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated vehicle driver claims
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-sql-runtime" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_vehicle_active_driver.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/verify_vehicle_meter_snapshots.mjs "$RUNNER_TEMP/sko-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"

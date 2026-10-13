@@ -1,0 +1,27 @@
+name: Successful clock-in manager notifications
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*notify_management_of_manual_clock_in.sql'
+      - 'tool/verify_manual_clock_in_notifications_sql.mjs'
+      - '.github/workflows/manual-clock-in-notifications.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*notify_management_of_manual_clock_in.sql'
+      - 'tool/verify_manual_clock_in_notifications_sql.mjs'
+      - '.github/workflows/manual-clock-in-notifications.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/clock-in-notifications" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - name: Verify successful save, rollback, duplicate delivery and recipient boundaries
+        run: node tool/verify_manual_clock_in_notifications_sql.mjs "$RUNNER_TEMP/clock-in-notifications/node_modules/@electric-sql/pglite/dist/index.js"

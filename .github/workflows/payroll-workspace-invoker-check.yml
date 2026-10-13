@@ -1,0 +1,49 @@
+name: Payroll workspace INVOKER access
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261011053144_payroll_review_workspace_execute.sql'
+      - 'tool/verify_payroll_workspace_invoker.mjs'
+      - '.github/workflows/payroll-workspace-invoker-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261011053144_payroll_review_workspace_execute.sql'
+      - 'tool/verify_payroll_workspace_invoker.mjs'
+      - '.github/workflows/payroll-workspace-invoker-check.yml'
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/payroll-invoker" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: node tool/verify_payroll_workspace_invoker.mjs "$RUNNER_TEMP/payroll-invoker/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261011053144_payroll_review_workspace_execute.sql
+  postgres17:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: payroll_invoker_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/payroll-invoker" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify actual INVOKER call and scoped minimal grant
+        env:
+          FIXTURE_DATABASE_URL: postgres://postgres:fixture@localhost:5432/payroll_invoker_fixture
+        run: node tool/verify_payroll_workspace_invoker.mjs "$RUNNER_TEMP/payroll-invoker/node_modules/pg/lib/index.js" supabase/migrations/20261011053144_payroll_review_workspace_execute.sql --postgres

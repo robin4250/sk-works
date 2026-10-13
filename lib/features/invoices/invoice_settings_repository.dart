@@ -1,0 +1,210 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/supabase_backend.dart';
+
+class InvoiceSettingsData {
+  const InvoiceSettingsData({
+    required this.companyName,
+    required this.taxRate,
+    required this.welfareRate,
+    required this.templateTitle,
+    required this.footerNote,
+    required this.bankName,
+    required this.bankBranch,
+    required this.bankAccountType,
+    required this.bankAccountNumber,
+    required this.bankAccountHolder,
+    this.companyPostalCode = '',
+    this.companyAddress = '',
+    this.companyPhone = '',
+    this.companyFax = '',
+    this.invoiceSubject = '',
+    this.invoiceContactName = '',
+    this.paymentDueText = '',
+    this.companyLogoBase64 = '',
+    this.companySealBase64 = '',
+    this.companySealEnabled = true,
+  });
+
+  final String companyName;
+  final double taxRate;
+  final double welfareRate;
+  final String templateTitle;
+  final String footerNote;
+  final String bankName;
+  final String bankBranch;
+  final String bankAccountType;
+  final String bankAccountNumber;
+  final String bankAccountHolder;
+  final String companyPostalCode;
+  final String companyAddress;
+  final String companyPhone;
+  final String companyFax;
+  final String invoiceSubject;
+  final String invoiceContactName;
+  final String paymentDueText;
+  final String companyLogoBase64;
+  final String companySealBase64;
+  final bool companySealEnabled;
+}
+
+class InvoiceSettingsRepository {
+  InvoiceSettingsRepository._(this._client);
+  InvoiceSettingsRepository.forTesting(this._client);
+
+  final SupabaseClient _client;
+
+  static InvoiceSettingsRepository? maybeCreate() {
+    if (!SupabaseBackend.isInitialized) return null;
+    final client = SupabaseBackend.client;
+    if (client.auth.currentUser == null) return null;
+    return InvoiceSettingsRepository._(client);
+  }
+
+  Future<String> _companyIdForManage() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('ログインが必要です。');
+
+    final rows = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+
+    final permissions = await _client.rpc('current_feature_permissions');
+    final map = permissions is Map
+        ? Map<String, dynamic>.from(permissions)
+        : const <String, dynamic>{};
+
+    if (map['can_manage_invoices'] != true) {
+      throw StateError('請求書設定を変更する権限がありません。');
+    }
+
+    return rows.first['company_id'] as String;
+  }
+
+  Future<InvoiceSettingsData> load() async {
+    final companyId = await _companyIdForManage();
+
+    final companyRows = await _client
+        .from('companies')
+        .select(
+          'name, postal_code, address, phone, fax, company_seal_enabled, '
+          'tax_rate, default_welfare_rate, '
+          'invoice_template_title, invoice_footer_note',
+        )
+        .eq('id', companyId)
+        .limit(1);
+
+    if (companyRows.isEmpty) {
+      throw StateError('会社情報が見つかりません。');
+    }
+
+    final company = Map<String, dynamic>.from(companyRows.first);
+
+    final billingRows = await _client
+        .from('company_private_billing_settings')
+        .select(
+          'bank_name, bank_branch, bank_account_type, '
+          'bank_account_number, bank_account_holder, '
+          'invoice_subject, invoice_contact_name, payment_due_text, '
+          'invoice_logo_base64, invoice_seal_base64',
+        )
+        .eq('company_id', companyId)
+        .limit(1);
+
+    final billing = billingRows.isEmpty
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(billingRows.first);
+
+    return InvoiceSettingsData(
+      companyName: company['name']?.toString() ?? '',
+      companySealEnabled: company['company_seal_enabled'] != false,
+      taxRate: (company['tax_rate'] as num?)?.toDouble() ?? 10,
+      welfareRate:
+          (company['default_welfare_rate'] as num?)?.toDouble() ?? 0,
+      templateTitle:
+          company['invoice_template_title']?.toString() ?? '請求書',
+      footerNote: company['invoice_footer_note']?.toString() ?? '',
+      bankName: billing['bank_name']?.toString() ?? '',
+      bankBranch: billing['bank_branch']?.toString() ?? '',
+      bankAccountType:
+          billing['bank_account_type']?.toString() ?? '普通',
+      bankAccountNumber:
+          billing['bank_account_number']?.toString() ?? '',
+      bankAccountHolder:
+          billing['bank_account_holder']?.toString() ?? '',
+      companyPostalCode: company['postal_code']?.toString() ?? '',
+      companyAddress: company['address']?.toString() ?? '',
+      companyPhone: company['phone']?.toString() ?? '',
+      companyFax: company['fax']?.toString() ?? '',
+      invoiceSubject: billing['invoice_subject']?.toString() ?? '',
+      invoiceContactName:
+          billing['invoice_contact_name']?.toString() ?? '',
+      paymentDueText: billing['payment_due_text']?.toString() ?? '',
+      companyLogoBase64: billing['invoice_logo_base64']?.toString() ?? '',
+      companySealBase64: billing['invoice_seal_base64']?.toString() ?? '',
+    );
+  }
+
+  Future<InvoiceSettingsData> loadForDocument() async {
+    final raw = await _client.rpc('invoice_document_settings');
+    final row = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+    return InvoiceSettingsData(
+      companyName: row['company_name']?.toString() ?? '',
+      companySealEnabled: row['company_seal_enabled'] != false,
+      taxRate: (row['tax_rate'] as num?)?.toDouble() ?? 10,
+      welfareRate: (row['welfare_rate'] as num?)?.toDouble() ?? 0,
+      templateTitle: row['template_title']?.toString() ?? '請求書',
+      footerNote: row['footer_note']?.toString() ?? '',
+      bankName: row['bank_name']?.toString() ?? '',
+      bankBranch: row['bank_branch']?.toString() ?? '',
+      bankAccountType: row['bank_account_type']?.toString() ?? '普通',
+      bankAccountNumber: row['bank_account_number']?.toString() ?? '',
+      bankAccountHolder: row['bank_account_holder']?.toString() ?? '',
+      companyPostalCode: row['company_postal_code']?.toString() ?? '',
+      companyAddress: row['company_address']?.toString() ?? '',
+      companyPhone: row['company_phone']?.toString() ?? '',
+      companyFax: row['company_fax']?.toString() ?? '',
+      invoiceSubject: row['invoice_subject']?.toString() ?? '',
+      invoiceContactName: row['invoice_contact_name']?.toString() ?? '',
+      paymentDueText: row['payment_due_text']?.toString() ?? '',
+      companyLogoBase64: row['invoice_logo_base64']?.toString() ?? '',
+      companySealBase64: row['invoice_seal_base64']?.toString() ?? '',
+    );
+  }
+
+  Future<void> save(InvoiceSettingsData value) async {
+    await _companyIdForManage();
+
+    await _client.rpc(
+      'save_invoice_settings_v2',
+      params: {
+        'p_tax_rate': value.taxRate,
+        'p_welfare_rate': value.welfareRate,
+        'p_template_title': value.templateTitle,
+        'p_footer_note': value.footerNote,
+        'p_bank_name': value.bankName,
+        'p_bank_branch': value.bankBranch,
+        'p_bank_account_type': value.bankAccountType,
+        'p_bank_account_number': value.bankAccountNumber,
+        'p_bank_account_holder': value.bankAccountHolder,
+        'p_invoice_subject': value.invoiceSubject,
+        'p_invoice_contact_name': value.invoiceContactName,
+        'p_payment_due_text': value.paymentDueText,
+      },
+    );
+
+    await _client.rpc(
+      'save_invoice_branding',
+      params: {
+        'p_logo_base64': value.companyLogoBase64,
+        'p_seal_base64': value.companySealBase64,
+      },
+    );
+  }
+}

@@ -1,0 +1,217 @@
+{
+  "gross_pay": 300000,
+  "deductions": 64945,
+  "net_pay": 235055,
+  "detail": {
+    "pay_type": "monthly",
+    "交通費": 0,
+    "住民税": 12000,
+    "基本給": 300000,
+    "所得税": 6220,
+    "支払日": 25,
+    "rate_formula": {
+      "base_mode": "hourly",
+      "overtime_multiplier": 1.25
+    },
+    "休出日数": 0,
+    "出勤日数": 0,
+    "夜間時間": 0,
+    "家族手当": 0,
+    "早出手当": 0,
+    "早出時間": 0,
+    "月固定給": 300000,
+    "有給単価": 0,
+    "有給日数": 0,
+    "残業手当": 0,
+    "残業時間": 0,
+    "給与方式": "月給",
+    "custom_earnings": [],
+    "hourly_rate_yen": 1500,
+    "tax_calculation": {
+      "rates": [
+        {
+          "value": {
+            "kind": "health_insurance",
+            "label": "health_insurance",
+            "total": 10000000,
+            "source": {
+              "url": "https://example.test/fixture",
+              "publisher": "Synthetic fixture",
+              "applicability": {
+                "business": "fixture"
+              },
+              "document_hash": "fixture-only"
+            },
+            "employee": 5000000,
+            "employer": 5000000,
+            "payment_month": "2026-10-01",
+            "payroll_month": "2026-09-01",
+            "insurance_month": "2026-09-01"
+          },
+          "item_id": "health_insurance",
+          "version": 1,
+          "base_yen": 300000,
+          "employee_yen": 15000,
+          "insurance_month": "2026-09-01"
+        },
+        {
+          "value": {
+            "kind": "nursing_insurance",
+            "label": "nursing_insurance",
+            "total": 1620000,
+            "source": {
+              "url": "https://example.test/fixture",
+              "publisher": "Synthetic fixture",
+              "applicability": {
+                "business": "fixture"
+              },
+              "document_hash": "fixture-only"
+            },
+            "employee": 810000,
+            "employer": 810000,
+            "payment_month": "2026-10-01",
+            "payroll_month": "2026-09-01",
+            "insurance_month": "2026-09-01"
+          },
+          "item_id": "nursing_insurance",
+          "version": 1,
+          "base_yen": 300000,
+          "employee_yen": 2430,
+          "insurance_month": "2026-09-01"
+        },
+        {
+          "value": {
+            "kind": "pension_insurance",
+            "label": "pension_insurance",
+            "total": 18300000,
+            "source": {
+              "url": "https://example.test/fixture",
+              "publisher": "Synthetic fixture",
+              "applicability": {
+                "business": "fixture"
+              },
+              "document_hash": "fixture-only"
+            },
+            "employee": 9150000,
+            "employer": 9150000,
+            "payment_month": "2026-10-01",
+            "payroll_month": "2026-09-01",
+            "insurance_month": "2026-09-01"
+          },
+          "item_id": "pension_insurance",
+          "version": 1,
+          "base_yen": 300000,
+          "employee_yen": 27450,
+          "insurance_month": "2026-09-01"
+        },
+        {
+          "value": {
+            "kind": "employment_insurance",
+            "label": "employment_insurance",
+            "total": 1000000,
+            "source": {
+              "url": "https://example.test/fixture",
+              "publisher": "Synthetic fixture",
+              "applicability": {
+                "business": "fixture"
+              },
+              "document_hash": "fixture-only"
+            },
+            "employee": 500000,
+            "employer": 500000,
+            "payment_month": "2026-10-01",
+            "payroll_month": "2026-09-01",
+            "insurance_month": "2026-09-01"
+          },
+          "item_id": "employment_insurance",
+          "version": 1,
+          "base_yen": 300000,
+          "employee_yen": 1500,
+          "insurance_month": "2026-09-01"
+        },
+        {
+          "value": {
+            "kind": "child_support",
+            "label": "child_support",
+            "total": 230000,
+            "source": {
+              "url": "https://example.test/fixture",
+              "publisher": "Synthetic fixture",
+              "applicability": {
+                "business": "fixture"
+              },
+              "document_hash": "fixture-only"
+            },
+            "employee": 115000,
+            "employer": 115000,
+            "payment_month": "2026-10-01",
+            "payroll_month": "2026-09-01",
+            "insurance_month": "2026-09-01"
+          },
+          "item_id": "child_support",
+          "version": 1,
+          "base_yen": 300000,
+          "employee_yen": 345,
+          "insurance_month": "2026-09-01"
+        }
+      ],
+      "premiums": {
+        "介護保険料": 2430,
+        "健康保険料": 15000,
+        "雇用保険料": 1500,
+        "厚生年金保険": 27450,
+        "子ども・子育て支援金": 345
+      },
+      "conditions": {
+        "health": true,
+        "nursing": true,
+        "pension": true,
+        "birth_date": "1986-10-01",
+        "dependents": 0,
+        "employment": true,
+        "income_mode": "koh",
+        "child_support": true,
+        "insurance_mode": "rates",
+        "health_base_yen": 300000,
+        "non_taxable_yen": 0,
+        "pension_base_yen": 300000,
+        "employment_excluded_yen": 0,
+        "additional_social_deduction_yen": 0
+      },
+      "deductions": 64945,
+      "social_yen": 46725,
+      "income_table": "nta-monthly-2026-c583c9c3",
+      "payment_date": "2026-10-25",
+      "income_tax_yen": 6220,
+      "conditions_start": "2026-09-01",
+      "condition_version": 2,
+      "calculator_version": "payroll-tax-20261010-v1",
+      "income_tax_base_yen": 253275,
+      "gross_with_adjustments": 300000
+    },
+    "その他控除": 0,
+    "介護保険料": 2430,
+    "健康保険料": 15000,
+    "有給内訳額": 0,
+    "有給支給額": 0,
+    "雇用保険料": 1500,
+    "custom_deductions": [],
+    "厚生年金保険": 27450,
+    "resident_tax_source": {
+      "mode": "legacy",
+      "amount_yen": 12000
+    },
+    "company_seal_snapshot": {
+      "name": "Original Company",
+      "style": "legacy",
+      "version": 1
+    },
+    "custom_earnings_total": 0,
+    "計算元選択あり": false,
+    "paid_leave_wage_contract": 1,
+    "出勤に基づく支給額": 0,
+    "計算用1日基本ベース": 0,
+    "子ども・子育て支援金": 345,
+    "company_seal_enabled": false
+  }
+}

@@ -1,0 +1,25 @@
+name: Staged attendance SQL union
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['supabase/**', 'tool/verify_staged_attendance_union.mjs', 'tool/fixtures/**', '.github/workflows/staged-attendance-union.yml']
+  push:
+    branches: [main]
+    paths: ['supabase/**', 'tool/verify_staged_attendance_union.mjs', 'tool/fixtures/**', '.github/workflows/staged-attendance-union.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  actual-union:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-union" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Validate deployed migration identity and combined actual RPCs
+        run: node tool/verify_staged_attendance_union.mjs "$RUNNER_TEMP/sko-union/node_modules/@electric-sql/pglite/dist/index.js"

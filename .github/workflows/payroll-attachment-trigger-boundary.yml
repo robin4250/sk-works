@@ -1,0 +1,39 @@
+name: Payroll attachment registered trigger boundary
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/payroll_*attachment*fixture.sql'
+      - 'supabase/tests/payroll_registered_notification_sink_fixture.sql'
+      - 'supabase/tests/payroll_parent_cascade_dependency_fixture.sql'
+      - 'supabase/tests/payroll_notification_finalization_sink_fixture.sql'
+      - 'tool/verify_payroll_attachment_trigger_boundary.mjs'
+      - 'tool/payroll_attachment_native_pg17_runtime.mjs'
+      - 'tool/payroll_notification_finalization_pg17_race.mjs'
+      - '.github/workflows/payroll-attachment-trigger-boundary.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_payroll_attachment_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_payroll_attachment_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm install --no-save --package-lock=false --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - run: node tool/verify_payroll_attachment_trigger_boundary.mjs
+      - run: node tool/verify_payroll_attachment_trigger_boundary.mjs
+        env:
+          PGLITE_MODULE_PATH: ./payroll_attachment_native_pg17_runtime.mjs
+          SKO_PAYROLL_ATTACHMENT_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_attachment_fixture

@@ -1,0 +1,32 @@
+name: Company payroll rate registry SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*company_payroll_rate_registry.sql'
+      - 'supabase/tests/company_payroll_rate_registry_bootstrap.sql'
+      - 'tool/verify_company_payroll_rate_registry.mjs'
+      - '.github/workflows/company-payroll-rate-registry-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*company_payroll_rate_registry.sql'
+      - 'supabase/tests/company_payroll_rate_registry_bootstrap.sql'
+      - 'tool/verify_company_payroll_rate_registry.mjs'
+      - '.github/workflows/company-payroll-rate-registry-check.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-rate-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/sko-rate-registry" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Check harness syntax
+        run: node --check tool/verify_company_payroll_rate_registry.mjs
+      - name: Exercise exact staged migration and non-owner access
+        run: node tool/verify_company_payroll_rate_registry.mjs "$RUNNER_TEMP/sko-rate-registry/node_modules/@electric-sql/pglite/dist/index.js"

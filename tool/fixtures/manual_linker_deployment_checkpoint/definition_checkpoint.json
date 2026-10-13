@@ -1,0 +1,12 @@
+{
+  "scope": "FUNCTION CODE ONLY; not DB or Storage backup",
+  "definition": "CREATE OR REPLACE FUNCTION private.link_daily_report_attendance_evidence(p_report_id uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid:=auth.uid();\n  v_company uuid;\n  v_site uuid;\n  v_route uuid;\n  v_date date;\n  v_count integer;\n  v_start timestamptz;\n  v_end timestamptz;\nbegin\n  select d.company_id,d.site_id,d.route_assignment_id,d.report_date\n  into v_company,v_site,v_route,v_date\n  from public.daily_reports d\n  where d.id=p_report_id\n  limit 1;\n\n  if v_company is null then raise exception '日報を確認できません'; end if;\n  if not exists(\n    select 1 from public.company_members m\n    where m.company_id=v_company and m.user_id=v_user\n  ) then raise exception '日報を確認する権限がありません'; end if;\n\n  v_start:=v_date::timestamp at time zone 'Asia/Tokyo';\n  v_end:=(v_date+1)::timestamp at time zone 'Asia/Tokyo';\n\n  update public.attendance_verifications a\n  set daily_report_id=p_report_id\n  where a.company_id=v_company\n    and a.site_id is not distinct from v_site\n    and a.route_assignment_id is not distinct from v_route\n    and coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date)=v_date\n    and a.photo_storage_path is not null\n    and a.daily_report_id is null;\n\n  get diagnostics v_count=row_count;\n  return v_count;\nend;\n$function$\n",
+  "md5": "603bf463640ba1c7c840c798231f1a7b",
+  "owner": "postgres",
+  "acl": null,
+  "security_definer": true,
+  "config": [
+    "search_path=\"\""
+  ]
+}
+

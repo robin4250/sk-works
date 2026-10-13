@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sk_works/main.dart';
+
+void main() {
+  Future<void> pumpHome(WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
+    await tester.pump();
+  }
+
+  testWidgets('admin home routes through employee resources to people module', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    expect(find.text('社員データ'), findsNothing);
+    await tester.ensureVisible(find.text('社員資格書類'));
+    await tester.pump();
+    expect(find.text('社員資格書類').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('社員資格書類'));
+    await tester.pumpAndSettle();
+    expect(find.text('社員データ'), findsOneWidget);
+    await tester.ensureVisible(find.text('社員データ'));
+    await tester.pump();
+    await tester.tap(find.text('社員データ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('新規登録'), findsOneWidget);
+  });
+
+  testWidgets('admin home routes to invoice module', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    expect(find.text('請求書'), findsOneWidget);
+    await tester.ensureVisible(find.text('請求書'));
+    await tester.pump();
+    await tester.tap(find.text('請求書'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('請求作成'), findsOneWidget);
+  });
+
+  testWidgets('admin home routes to settings module', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    await tester.tap(find.text('メニュー'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('設定'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('設定'), findsOneWidget);
+    await tester.tap(find.text('設定'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('フローティングヘルプ'), findsOneWidget);
+    expect(find.text('設定を保存'), findsNothing);
+  });
+
+  testWidgets('footer exposes five primary destinations', (tester) async {
+    await pumpHome(tester);
+
+    expect(find.text('ホーム'), findsOneWidget);
+    expect(find.text('出勤表'), findsOneWidget);
+    expect(find.text('現場'), findsOneWidget);
+    expect(find.text('チャット'), findsOneWidget);
+    expect(find.text('メニュー'), findsOneWidget);
+  });
+
+  testWidgets('menu exposes secondary functions', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    await tester.tap(find.text('メニュー'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReorderableListView), findsOneWidget);
+    for (final label in ['日報', '従業員登録', 'プロフィール', 'ヘルプ', '資格登録', '社員資格書類']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    expect(find.text('初回登録'), findsNothing);
+    expect(find.text('個別給与設定'), findsNothing);
+    await tester.tap(find.text('社員資格書類'));
+    await tester.pumpAndSettle();
+    expect(find.text('社員データ'), findsOneWidget);
+    expect(find.text('従業員資格'), findsOneWidget);
+    expect(find.text('必要書類'), findsOneWidget);
+  });
+}
