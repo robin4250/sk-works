@@ -10,11 +10,7 @@ class _RealHttpOverrides extends HttpOverrides {}
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('billing site choices preserve explicit daily rate and exclude other methods', () {
-    expect(await repository.pending(), isEmpty);
-        pendingRows = [{'id': 'reviewable-A', 'status': 'pending'}];
-        expect((await repository.pending()).single.id, 'reviewable-A');
-        expect(calls, isEmpty); // Discovery never approves or creates quantities.
-        final request = RouteBillingQuantityRequest({
+    final request = RouteBillingQuantityRequest({
       'site_options': [
         {'site_id': 'daily', 'unit_price_yen': 25000, 'man_day_method': true},
         {'site_id': 'fixed', 'unit_price_yen': 0, 'man_day_method': false},
@@ -87,6 +83,10 @@ void main() {
         final repository = RouteBillingQuantityApprovalRepository.forTesting(
           client,
         );
+        expect(await repository.pending(), isEmpty);
+        pendingRows = [{'id': 'reviewable-A', 'status': 'pending'}];
+        expect((await repository.pending()).single.id, 'reviewable-A');
+        expect(calls, isEmpty); // Discovery never approves or creates quantities.
         final request = RouteBillingQuantityRequest({
           'id': 'request-A',
           'customer_id': 'customer-A',
