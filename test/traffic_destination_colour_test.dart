@@ -24,16 +24,17 @@ void main() {
           try { return (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer.asUint8List(); }
           finally { image.dispose(); }
         });
-        var coloured = 0, opaque = 0;
+        var coloured = 0, opaque = 0, silver = 0;
         final palette = <int>{};
         for (var i = 0; i < pixels!.length; i += 4) {
           final r = pixels[i], g = pixels[i + 1], b = pixels[i + 2], a = pixels[i + 3];
           if (a < 230) continue;
           opaque++;
+          if (r > 170 && (r - g).abs() + (g - b).abs() <= 2) silver++;
           palette.add((r << 16) | (g << 8) | b);
           final matches = switch(destination) {
             TrafficDestination.nearestStation => r > b + 30 && b > g + 30,
-            TrafficDestination.trainTransfer => r > g + 50 && b > g + 50 && (r - b).abs() < 50,
+            TrafficDestination.trainTransfer => g > r + 30 && g > b + 20,
             TrafficDestination.busStop => g > r + 30 && g > b + 20,
           };
           if (enabled && matches) coloured++;
@@ -41,7 +42,8 @@ void main() {
         }
         expect(opaque, greaterThan(40), reason: 'The sign must actually render at compact size');
         if (enabled) {
-          expect(coloured, greaterThan(20), reason: 'Station burgundy, train purple and bus green remain recognizable');
+          expect(coloured, greaterThan(20), reason: 'Station burgundy, train green stripe and bus green remain recognizable');
+          if (destination == TrafficDestination.trainTransfer) expect(silver, greaterThan(20), reason: 'The side-view train keeps its silver body');
           expect(palette.length, greaterThan(1), reason: 'Vehicle body and sign details must remain distinguishable');
         } else { expect(coloured, 0); }
       }
