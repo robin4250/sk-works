@@ -39,7 +39,7 @@ class _TrafficSignPainter extends CustomPainter {
     canvas.save();
     canvas.scale(size.width / 24, size.height / 24);
     final accent = switch (destination) {
-      TrafficDestination.nearestStation => const Color(0xffc86d12),
+      TrafficDestination.nearestStation => const Color(0xff6554b8),
       TrafficDestination.trainTransfer => const Color(0xff176ac4),
       TrafficDestination.busStop => const Color(0xff23784b),
     };
