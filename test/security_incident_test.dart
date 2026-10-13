@@ -10,7 +10,7 @@ import '../lib/features/security/security_incident_report.dart';
 Map<String, dynamic> fixture() => {
   'version': 1,
   'incidents': [
-    {
+    <String, dynamic>{
       'incident_id': '00000000-0000-4000-8000-000000000001',
       'correlation_id': '00000000-0000-4000-8000-000000000002',
       'detected_at': '2026-10-14T00:00:00Z',
@@ -150,6 +150,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('要調査'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('印刷'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('印刷'), findsOneWidget);
     expect(find.text('保存・共有'), findsOneWidget);
     expect(find.textContaining('SECRET'), findsNothing);
