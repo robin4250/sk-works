@@ -364,7 +364,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     final actor = _repository?.currentUserId;
     final scope = _readScope;
     if (!_readVisible || actor == null || scope == null || !scope.startsWith('$actor/') ||
-        _selectedGroupId != groupId || _messages.isEmpty) return;
+        _selectedGroupId != groupId || _messages.isEmpty) {
+      return;
+    }
     // Persist the newest message actually received, not wall clock time: a
     // concurrent/newly arriving message must remain unread until displayed.
     final dates = _messages.map((m) => DateTime.tryParse(m['sent_at']?.toString() ?? ''))
