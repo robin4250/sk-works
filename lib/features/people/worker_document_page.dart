@@ -158,6 +158,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
           ),
         ],
       ),
+      bottomNavigationBar: ResourceRegistrationFooter(
+        label: '書類を登録',
+        onPressed: _loading || _error != null || !_canManageStatuses || workerId == null ||
+          !_workers.any((row) => row['id']?.toString() == workerId) ||
+          !visibleRequirements.any((row) => (row['id']?.toString() ?? '').isNotEmpty)
+          ? null : _registerForSelectedWorker,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -273,7 +280,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         : _requirements.isEmpty
                         ? const _EmptyState(onAddDefaults: null)
                         : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             itemCount: visibleRequirements.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
@@ -719,6 +726,32 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('追加できませんでした: $error')));
     }
+  }
+
+  Future<void> _registerForSelectedWorker() async {
+    final repository = _repository;
+    final workerId = _selectedWorkerId;
+    final actor = _loadedActorId;
+    if (repository == null || actor == null || workerId == null ||
+        !_canManageStatuses || _loading) { return; }
+    bool sameScope() => mounted && actor == repository.actorId &&
+      workerId == _selectedWorkerId && _canManageStatuses;
+    if (!sameScope()) { return; }
+    final options = _requirements.where((row) =>
+      workerDocumentMatchesScope(row['scope'], _scope) &&
+      (row['id']?.toString() ?? '').isNotEmpty).toList(growable: false);
+    if (options.isEmpty) { return; }
+    final chosen = await chooseRegisteredDocumentRequirement(context, [
+      for (final row in options) ResourceRegistrationOption(
+        id: row['id'].toString(), title: row['name']?.toString() ?? '書類'),
+    ], isCurrentScope: sameScope);
+    if (!sameScope() || chosen == null) { return; }
+    final matches = options.where((row) => row['id']?.toString() == chosen).toList();
+    if (matches.length != 1) { return; }
+    final rows = _statuses.where((row) => row['worker_id']?.toString() == workerId &&
+      row['requirement_id']?.toString() == chosen).toList(growable: false);
+    if (rows.length > 1) { return; }
+    await _editStatus(matches.single, rows.isEmpty ? null : rows.single);
   }
 
   Future<void> _editStatus(

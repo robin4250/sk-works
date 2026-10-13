@@ -279,3 +279,54 @@ Future<void> showResourceAttachments(BuildContext context, {
     ],
   )),
 ));
+
+class ResourceRegistrationFooter extends StatelessWidget {
+  const ResourceRegistrationFooter({super.key, required this.label, required this.onPressed});
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(color: Colors.white,
+    child: SafeArea(top: false, child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: SizedBox(width: double.infinity,
+        height: (15 * MediaQuery.textScalerOf(context).scale(1) * 1.3 + 16)
+          .clamp(52.0, double.infinity).toDouble(),
+        child: FilledButton.icon(onPressed: onPressed,
+          icon: const Icon(Icons.note_add_outlined, size: 22),
+          label: Text(SkoLanguageController.tr(label), maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          style: FilledButton.styleFrom(shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12))),
+        ),
+      ),
+    )),
+  );
+}
+
+class ResourceRegistrationOption {
+  const ResourceRegistrationOption({required this.id, required this.title});
+  final String id, title;
+}
+
+Future<String?> chooseRegisteredDocumentRequirement(BuildContext context,
+  List<ResourceRegistrationOption> options, {bool Function()? isCurrentScope}) async {
+  final selected = await showDialog<String>(
+  context: context, builder: (context) => AlertDialog(
+    title: Text(SkoLanguageController.tr('登録する書類を選択')),
+    content: SizedBox(width: 360, height: 320, child: ListView(
+      children: [for (final option in options) ListTile(
+        title: Tooltip(message: option.title, child: Text(option.title,
+          maxLines: 1, overflow: TextOverflow.ellipsis)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.pop(context, option.id),
+      )],
+    )),
+    actions: [TextButton(onPressed: () => Navigator.pop(context),
+      child: Text(SkoLanguageController.tr('キャンセル')))],
+  ),
+);
+  if (isCurrentScope != null && !isCurrentScope()) { return null; }
+  return selected;
+}

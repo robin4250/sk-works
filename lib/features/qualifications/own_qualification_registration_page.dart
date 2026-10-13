@@ -595,10 +595,10 @@ class _OwnQualificationRegistrationPageState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || _masters.isEmpty ? null : _addQualification,
-        icon: const Icon(Icons.add_card_outlined),
-        label: const Text('資格登録'),
+      bottomNavigationBar: ResourceRegistrationFooter(
+        label: '資格を登録',
+        onPressed: _loading || _masters.isEmpty || _worker == null
+          ? null : _addQualification,
       ),
       body: SafeArea(
         child: _loading
@@ -679,7 +679,7 @@ class _OwnQualificationRegistrationPageState
                     child: qualifications.isEmpty
                         ? const Center(child: Text('登録済みの資格はありません'))
                         : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             itemCount: qualifications.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),

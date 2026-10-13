@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
 import 'package:sk_works/features/common/data_date_labels.dart';
+import 'package:sk_works/features/shared/resource_registration_card.dart';
 
 class _MemoryPhoto extends XFile {
   _MemoryPhoto(this.bytes) : super('license.jpg');
@@ -119,7 +120,7 @@ Future<void> _open(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.byType(FloatingActionButton));
+  await tester.tap(find.widgetWithText(FilledButton, '書類を登録'));
   await tester.pumpAndSettle();
 }
 
@@ -391,7 +392,7 @@ void main() {
       expect(find.text('自分の書類を登録しました'), findsNothing);
       expect(
         tester
-            .widget<FloatingActionButton>(find.byType(FloatingActionButton))
+            .widget<ResourceRegistrationFooter>(find.byType(ResourceRegistrationFooter))
             .onPressed,
         isNull,
       );

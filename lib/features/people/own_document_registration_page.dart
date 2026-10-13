@@ -476,7 +476,8 @@ class _OwnDocumentRegistrationPageState
             '見出し・一覧・登録フォームの文字を小さめに揃えています。iPhoneの文字サイズ設定による拡大は利用できます。'
             '\n\n写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
             '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
-            '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '一覧の「確認・編集」で、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '小さい画像・PDFを押すと、その場で拡大できます。下の「書類を登録」から既存の書類を登録します。'
             '写真の選択や撮影をキャンセルした場合は保存しません。'
             '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
             '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
@@ -530,12 +531,10 @@ class _OwnDocumentRegistrationPageState
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _loading || _saving || _requirements.isEmpty
-              ? null
-              : _registerDocument,
-          icon: const Icon(Icons.note_add_outlined),
-          label: const Text('書類登録', style: TextStyle(fontSize: 14)),
+        bottomNavigationBar: ResourceRegistrationFooter(
+          label: '書類を登録',
+          onPressed: _loading || _saving || _requirements.isEmpty || _worker == null
+            ? null : _registerDocument,
         ),
         body: SafeArea(
           child: _loading
@@ -584,7 +583,7 @@ class _OwnDocumentRegistrationPageState
                     ),
                     Expanded(
                       child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         itemCount: requirements.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {

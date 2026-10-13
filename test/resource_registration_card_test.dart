@@ -12,6 +12,56 @@ ResourceRegistrationCard card(List<ResourceAttachment> attachments, {String titl
     registered: registered, attachments: attachments, onAction: () {});
 
 void main() {
+  testWidgets('shared registration footer keeps full width and position for both labels', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final scale in [1.0, 1.3, 2.0]) {
+      Rect? geometry;
+      for (final label in ['書類を登録', '資格を登録']) {
+        var presses = 0;
+        await tester.pumpWidget(MaterialApp(home: MediaQuery(
+          data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
+          child: Scaffold(body: const SizedBox(), bottomNavigationBar: SizedBox(width: 320,
+            child: ResourceRegistrationFooter(label: label, onPressed: () => presses++))))));
+        final button = find.byType(FilledButton);
+        final rect = tester.getRect(button);
+        geometry ??= rect;
+        expect(rect, geometry);
+        expect(rect.width, 288);
+        expect(rect.height, greaterThanOrEqualTo(52));
+        await tester.tap(button);
+        expect(presses, 1);
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+  testWidgets('document picker returns existing item only and cancels changed worker scope', (tester) async {
+    var current = true;
+    final edited = <String>[];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (context) =>
+      TextButton(onPressed: () async {
+        final id = await chooseRegisteredDocumentRequirement(context, const [
+          ResourceRegistrationOption(id: 'health', title: '健康診断書'),
+          ResourceRegistrationOption(id: 'license', title: '運転免許証'),
+        ], isCurrentScope: () => current);
+        if (id != null) { edited.add(id); }
+      }, child: const Text('書類を登録'))))));
+    await tester.tap(find.text('書類を登録'));
+    await tester.pumpAndSettle();
+    expect(find.text('新しい書類を登録'), findsNothing);
+    await tester.tap(find.text('運転免許証'));
+    await tester.pumpAndSettle();
+    expect(edited, ['license']);
+    await tester.tap(find.text('書類を登録'));
+    await tester.pumpAndSettle();
+    current = false;
+    await tester.tap(find.text('健康診断書'));
+    await tester.pumpAndSettle();
+    expect(edited, ['license']);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('zero document has no spare thumbnail; one and two are real slots', (tester) async {
     for (var count = 0; count <= 2; count++) {
       await tester.pumpWidget(host(card(List.generate(count,

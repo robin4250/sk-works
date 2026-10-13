@@ -172,12 +172,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || !_canManageWorkerQualifications
-            ? null
-            : _addQualification,
-        icon: const Icon(Icons.add_card),
-        label: const Text('資格登録'),
+      bottomNavigationBar: ResourceRegistrationFooter(
+        label: '資格を登録',
+        onPressed: _loading || !_canManageWorkerQualifications || _masters.isEmpty || _workers.isEmpty
+          ? null : _addQualification,
       ),
       body: SafeArea(
         child: Column(
@@ -261,7 +259,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   : null,
                             )
                           : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (context, index) {
