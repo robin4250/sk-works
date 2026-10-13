@@ -52,6 +52,14 @@ Map<String, dynamic> fixture() => {
   ],
 };
 void main() {
+  test('unknown generation is retained as unavailable evidence', () {
+    final data = fixture();
+    ((data['incidents'] as List).single['events'] as List).single['generation'] = null;
+    final record = SecurityIncident.parseResponse(data).single;
+    expect(record.events.single.generation, isNull);
+    expect(record.reportLines(false).join(), contains('世代 未取得'));
+    expect(jsonDecode(SecurityIncidentReportData(record).json)['events'][0]['generation'], isNull);
+  });
   test(
     'empty evidence is explicitly incomplete rather than an invented timestamp',
     () {
