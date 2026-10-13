@@ -16,7 +16,10 @@ class _Fixture {
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool denySeal = false;
   bool denyPermissions = false;
+  bool signedCheckoutContract = false;
+  bool signOutOnContract = false;
   Object? pendingQuantity;
+  Object? pendingSource;
   bool zeroAmount = false;
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -75,6 +78,14 @@ class _Fixture {
       response = denyPermissions
           ? {'code': '42501', 'message': 'unavailable permission lookup'}
           : {'can_manage_invoices': true};
+    } else if (path == '/rest/v1/rpc/route_checkout_billing_contract') {
+      if (signOutOnContract) await client.auth.signOut();
+      if (!signedCheckoutContract) request.response.statusCode = 404;
+      response = signedCheckoutContract
+          ? {'contract_version': 1, 'separate_quantity_approval_required': false}
+          : {'code': 'PGRST202', 'message': 'optional contract unavailable'};
+    } else if (path == '/rest/v1/rpc/refresh_signed_checkout_invoices') {
+      response = {'contract_version': 1, 'checked_customer_periods': 1};
     } else if (path == '/rest/v1/rpc/invoice_document_settings') {
       if (denySeal) {
         request.response.statusCode = 403;
@@ -91,6 +102,7 @@ class _Fixture {
         'invoice_seal_frozen': false, 'snapshot': {
           'customer_name': '検証取引先', 'customer_address': '検証住所',
           if (pendingQuantity != null) 'route_quantity_pending': pendingQuantity,
+          if (pendingSource != null) 'route_source_pending': pendingSource,
           'sites': [{'site_id': 'site-1', 'site_name': '検証現場', 'lines': [
             {'label': '通常作業', 'quantity': 2, 'unit_price': 20000, 'amount': 40000}
           ], 'subtotal': 40000}]
@@ -148,5 +160,39 @@ void main() {
         !request.uri.path.contains('/rpc/')).isEmpty, isTrue);
   });
 
+  test('source-pending state is distinct from old approval state and ready zero', () async {
+    fixture.zeroAmount = true;
+    fixture.pendingQuantity = false;
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    for (final value in [true, 'true', false, 'false', null]) {
+      fixture.pendingSource = value;
+      final invoice = (await repository.loadAll()).single;
+      expect(invoice.routeQuantityPending, isFalse);
+      expect(invoice.routeSourcePending, value == true || value == 'true');
+      expect(invoice.amountPending, value == true || value == 'true');
+      expect(invoice.grandTotalYen, 0);
+    }
+  });
+  test('authenticated refresh requires supported contract and financial permission', () async {
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    await repository.refreshSignedCheckoutInvoices();
+    expect(fixture.requests.any((r) => r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
+    fixture.requests.clear();
+    fixture.signedCheckoutContract = true;
+    await repository.refreshSignedCheckoutInvoices();
+    final refresh = fixture.requests.singleWhere((r) => r.uri.path.endsWith('/refresh_signed_checkout_invoices'));
+    expect(jsonDecode(utf8.decode(refresh.body)), {'p_company_id': _company});
+    fixture.requests.clear();
+    fixture.denyPermissions = true;
+    await repository.refreshSignedCheckoutInvoices();
+    expect(fixture.requests.any((r) => r.uri.path.endsWith('/route_checkout_billing_contract') || r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
+  });
+  test('session change while reading capability prevents the refresh write', () async {
+    fixture.signedCheckoutContract = true;
+    fixture.signOutOnContract = true;
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    await expectLater(repository.refreshSignedCheckoutInvoices(), throwsStateError);
+    expect(fixture.requests.any((r) => r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
+  });
 }
 

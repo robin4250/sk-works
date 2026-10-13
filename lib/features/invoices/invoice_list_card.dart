@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 
-/// Displays saved amounts only when the saved quantity status is ready.
+/// Displays saved amounts only when signed sources and quantity status are ready.
 class InvoiceListCard extends StatelessWidget {
   const InvoiceListCard({
     super.key,
@@ -19,7 +19,7 @@ class InvoiceListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final english = SkoLanguageController.isEnglish;
-    final pending = invoice.routeQuantityPending;
+    final pending = invoice.amountPending;
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -46,7 +46,9 @@ class InvoiceListCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       pending
-                          ? (english ? 'Quantity approval pending' : '請求数量の承認待ち')
+                          ? (invoice.routeSourcePending
+                              ? (english ? 'Checkout report or billing settings pending' : '退勤日報・請求設定の確認待ち')
+                              : (english ? 'Quantity approval pending' : '請求数量の承認待ち'))
                           : (english
                                 ? '${invoice.siteCalculations.length} sites'
                                 : '${invoice.siteCalculations.length}現場'),
