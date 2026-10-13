@@ -3,6 +3,7 @@ import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -13,6 +14,7 @@ import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
 import 'invoice_preview_raster.dart';
 import 'invoice_preview_failure.dart';
+import 'invoice_native_pdf_view.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
 
@@ -1190,6 +1192,7 @@ class _InvoicePdfZoomView extends StatefulWidget {
 }
 
 class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
+  bool get _nativeInvoicePreview => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
   final TransformationController _pdfZoom = TransformationController();
   late Future<List<Uint8List>> _pages;
   bool _isZoomed = false;
@@ -1199,7 +1202,7 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
   @override
   void initState() {
     super.initState();
-    _pages = _rasterPages();
+    if (!_nativeInvoicePreview) _pages = _rasterPages();
     _pdfZoom.addListener(_readScale);
   }
 
@@ -1207,7 +1210,7 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
   void didUpdateWidget(covariant _InvoicePdfZoomView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.pdfBytes, widget.pdfBytes)) {
-      _pages = _rasterPages();
+      if (!_nativeInvoicePreview) _pages = _rasterPages();
       _pdfZoom.value = Matrix4.identity();
     }
   }
@@ -1253,7 +1256,9 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => _nativeInvoicePreview
+      ? InvoiceNativePdfView(pdfBytes: widget.pdfBytes)
+      : Column(
     children: [
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
