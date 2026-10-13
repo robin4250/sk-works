@@ -454,12 +454,23 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                     child: Text('利用月　${_month.year}年${_month.month}月'),
                   ),
                   for (final claim in _history)
+                    Card(color: Colors.white, elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12))),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     ListTile(
                       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
                         claim: claim,
                         onEdit: editable && _changes != null && !claim.withdrawn ? () async {
                           await _changeClaim(claim, withdraw: false);
                           if (detailContext.mounted && _pendingChange == null && _error == null) Navigator.pop(detailContext);
+                        } : null,
+                        onDelete: editable && _changes != null && !claim.withdrawn ? () async {
+                          await _changeClaim(claim, withdraw: true);
+                          if (detailContext.mounted && _pendingChange == null && _error == null &&
+                              _history.any((item) => item.id == claim.id && item.withdrawn)) {
+                            Navigator.pop(detailContext);
+                          }
                         } : null,
                         onHistory: _access is! ExpenseSubmissionRepository ? null : () async {
                           try {
@@ -472,34 +483,36 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                           }
                         },
                       ))),
-                      title: Text(claim.description),
+                      leading: CircleAvatar(radius: 17, backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: .09),
+                        child: Icon(Icons.receipt_long_outlined, size: 22, color: Theme.of(context).colorScheme.primary)),
+                      title: Text(claim.description, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
                       subtitle: Text(
                         '${_label(claim.incurredOn)}　${expenseClaimStatusLabel(claim)}'
-                        '${claim.settlement == null ? '' : '\n${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'}',
+                        '${claim.settlement == null ? '\n精算方法：未設定' : '\n${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'}',
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('${claim.amountYen}円'),
-                          if (_changes != null && !claim.withdrawn)
-                            PopupMenuButton<String>(
-                              tooltip: '編集・削除',
-                              enabled: editable,
-                              onSelected: (action) => _changeClaim(
-                                claim,
-                                withdraw: action == 'withdraw',
-                              ),
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(value: 'edit', child: Text('編集')),
-                                PopupMenuItem(
-                                  value: 'withdraw',
-                                  child: Text('削除'),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
+                      trailing: Text('${claim.amountYen}円'),
                     ),
+                    if (_changes != null && !claim.withdrawn)
+                      Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Row(children: [
+                          Expanded(child: OutlinedButton.icon(
+                            onPressed: editable ? () => _changeClaim(claim, withdraw: false) : null,
+                            icon: const Icon(Icons.edit_outlined),
+                            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48),
+                              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            label: const Text('編集'))),
+                          const SizedBox(width: 12),
+                          Expanded(child: OutlinedButton.icon(
+                            onPressed: editable ? () => _changeClaim(claim, withdraw: true) : null,
+                            icon: const Icon(Icons.delete_outline),
+                            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48),
+                              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              foregroundColor: Theme.of(context).colorScheme.error),
+                            label: const Text('削除'))),
+                        ])),
+                    ])),
                   if (_history.isNotEmpty)
                     TextButton(
                       onPressed: () => Navigator.of(context).push(

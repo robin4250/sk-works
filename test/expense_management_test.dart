@@ -280,8 +280,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.widgetWithText(TextButton, '承認'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, '承認'));
     await tester.pump();
+    expect(access.calls, 1);
     access.actor = 'other';
     access.response!.complete();
     await tester.pumpAndSettle();

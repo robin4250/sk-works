@@ -97,7 +97,6 @@ void main() {
   testWidgets('personal menu edits to pending and withdrawal remains visible without edit controls', (tester) async {
     final access=_Access();final changes=_Changes(access);
     await _open(tester,access,changes:changes);
-    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
     await tester.tap(find.text('編集'));await tester.pumpAndSettle();
     final fields=find.descendant(of:find.byType(AlertDialog),matching:find.byType(TextField));
     await tester.enterText(fields.at(0),'○○現場用の養生テープ3巻');
@@ -106,19 +105,18 @@ void main() {
     expect(changes.commands.single.parameters['p_revision'],1);
     expect(find.text('○○現場用の養生テープ3巻'),findsOneWidget);
     expect(access.revised!.single.approval,ExpenseApproval.pending);
-    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
     await tester.tap(find.text('削除'));await tester.pumpAndSettle();
     expect(changes.commands.length,1);
     await tester.tap(find.text('削除する'));await tester.pumpAndSettle();
     expect(changes.commands.last.parameters['p_revision'],2);
     expect(find.textContaining('取り下げ（削除済み）'),findsOneWidget);
-    expect(find.byTooltip('編集・削除'),findsNothing);
+    expect(find.text('編集'),findsNothing);
+    expect(find.text('削除'),findsNothing);
     expect(tester.takeException(),isNull);
   });
   testWidgets('uncertain edit blocks new submission and retries fixed command', (tester) async {
     final access=_Access();final changes=_Changes(access)..fail=true;
     await _open(tester,access,changes:changes);
-    await tester.tap(find.byTooltip('編集・削除'));await tester.pumpAndSettle();
     await tester.tap(find.text('編集'));await tester.pumpAndSettle();
     await tester.tap(find.text('変更して再申請'));await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'申請する')).onPressed,isNull);
@@ -220,4 +218,36 @@ void main() {
       expect(claims.forMonth(DateTime(2026, 10)).entries, isEmpty);
     },
   );
+  testWidgets('personal history exposes edit and delete with settlement and cancellation makes no writes', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final access = _Access();
+    final changes = _Changes(access);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)), child: child!),
+      home: ExpensePersonalPage(access: access, changes: changes),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('削除'));
+    await tester.pumpAndSettle();
+    expect(find.text('編集'), findsOneWidget);
+    expect(find.textContaining('精算方法：未設定'), findsOneWidget);
+    await tester.tap(find.text('削除')); await tester.pumpAndSettle();
+    expect(find.text('経費申請を削除'), findsOneWidget);
+    expect(changes.commands, isEmpty);
+    await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
+    expect(changes.commands, isEmpty);
+    await tester.ensureVisible(find.text('却下された交通費'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('却下された交通費')); await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('削除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除')); await tester.pumpAndSettle();
+    await tester.tap(find.text('キャンセル')); await tester.pumpAndSettle();
+    expect(find.text('経費の承認・振り分け'), findsOneWidget);
+    expect(changes.commands, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
 }
