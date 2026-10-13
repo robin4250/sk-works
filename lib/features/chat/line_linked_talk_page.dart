@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
+import 'line_received_messages_list.dart';
 import '../help/menu_help_catalog.dart';
 class LineLinkedTalkPage extends StatefulWidget {
  const LineLinkedTalkPage({super.key,required this.targetGroupId,required this.directoryId,required this.name});
@@ -41,5 +42,5 @@ class _LineLinkedTalkPageState extends State<LineLinkedTalkPage> with WidgetsBin
    actions:[TextButton(onPressed:()=>Navigator.pop(context),child:Text(SkoLanguageController.tr('閉じる')))]));
  }
  @override
- Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(widget.name),actions:[IconButton(onPressed:_help,icon:const Icon(Icons.help_outline),tooltip:SkoLanguageController.tr('使い方')),IconButton(onPressed:_load,icon:const Icon(Icons.refresh),tooltip:SkoLanguageController.tr('再読み込み'))]),body:_loading?const Center(child:CircularProgressIndicator()):_error!=null?Center(child:Padding(padding:const EdgeInsets.all(16),child:Text(SkoLanguageController.tr(_error!)))):_rows.isEmpty?Center(child:Text(SkoLanguageController.tr('このグループの受信テキストはまだありません。'))):ListView.separated(padding:const EdgeInsets.all(16),itemCount:_rows.length,separatorBuilder:(_,__)=>const SizedBox(height:12),itemBuilder:(context,index){final row=_rows[index];final at=DateTime.tryParse(row['sent_at']?.toString()??'')?.toLocal();return Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('${row['sender_display_name']??'LINE'}${at==null?'':'  ${at.year}/${at.month}/${at.day} ${at.hour.toString().padLeft(2,'0')}:${at.minute.toString().padLeft(2,'0')}'}',style:Theme.of(context).textTheme.labelMedium),const SizedBox(height:8),SelectableText(row['body']?.toString()??'')]))); }));
+ Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(widget.name),actions:[IconButton(onPressed:_help,icon:const Icon(Icons.help_outline),tooltip:SkoLanguageController.tr('使い方')),IconButton(onPressed:_load,icon:const Icon(Icons.refresh),tooltip:SkoLanguageController.tr('再読み込み'))]),body:_loading?const Center(child:CircularProgressIndicator()):_error!=null?Center(child:Padding(padding:const EdgeInsets.all(16),child:Text(SkoLanguageController.tr(_error!)))):_rows.isEmpty?Center(child:Text(SkoLanguageController.tr('このグループの受信テキストはまだありません。'))):LineReceivedMessagesList(rows: _rows));
 }
