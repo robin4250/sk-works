@@ -65,11 +65,11 @@ Storageの署名URLは発行後の期限内に再利用され得るため、発�
 | 項目 | 確認できた根拠 | 残り・判断 |
 | --- | --- | --- |
 | 二次認証UI | `secondary_protected_page.dart` は画面のロック状態を持ち、background/inactiveで再ロック。`secondary_auth_lifecycle_contract_test.dart` / `secondary_auth_route_contract_test.dart`。 | 既存検査は主にソース契約。重要RPCへ直接接続した時も短命な再認証証跡が必須か、実SQL・検証用JWTで確認する。UIだけをサーバー再認証の証拠にしない。 |
-| 第二パスワード試行制限 | `20260919193000_add_secure_admin_onboarding.sql` の5回/5分、bcrypt、認証必須。 | 最新本番定義・並列失敗試行・制限中アカウント・リセットAPIの再認証条件を確認する。古いmigrationだけで最新本番を安全と断定しない。 |
+| 第二パスワード試行制限 | `20260919193000_add_secure_admin_onboarding.sql` の5回/5分、bcrypt、認証必須。本番 `set_secondary_password` / `verify_secondary_password` は匿名不可・認証済み実行可能で、最新定義を読取済み。 | 本体に直接のaccount制限検査がないことは確認したが、Data APIの事前検査・間接helper/RLSによる拒否は別。並列失敗試行・制限中アカウント・リセットAPIの再認証条件を隔離fixtureと実HTTPで確認し、古いmigrationや文字列有無だけで安全/欠陥を断定しない。 |
 | 初回QR | `create-employee-invite/index.ts` のQRは招待ID・電話番号・初期passwordを含む。招待foundationに14日の期限がある。 | 短命nonce・単回消費・再発行時失効の契約は今回未確認。招待期限とAuthパスワード寿命は別。QR/初期passwordを資料・ログ・テスト成果物へ実値保存しない。 |
 | セッション | SDKのログイン、actor切替検査、制限中アカウントを拒否する既存helperがある。 | 失効・logout・端末変更・削除制限中に旧JWTが残る場合のサーバー拒否を否定テストする。JWT期限内の利用を即時失効と誤認しない。 |
-| 秘密・ログ | Secret Scan、天気の汎用エラー、LINEの署名/サーバー鍵分離。 | `create-employee-invite/index.ts` に上流Authエラー本文の `console.error` が残る。個人情報を含み得るためstatusだけへの縮小候補。本番ログの実内容は読んでいない。 |
-| 初回セットアップ | #997の配布設定は既存account制限に接続済み。 | `mark_admin_initial_setup_step` 等の旧sourceはroleのみの検査。最新本番の制限判定は未照合。初回ログインを壊さず、必要なら対象を絞って対策する。 |
+| 秘密・ログ | Secret Scan、天気の汎用エラー、LINEの署名/サーバー鍵分離。 | 参照mainの `create-employee-invite/index.ts` は上流Authエラー本文を `console.error` へ出していた。#1002でstatusだけへの縮小と合成本文の非露出検査を追加中。本番ログの実内容は読んでいない。 |
+| 初回セットアップ | #997の配布設定は既存account制限に接続済み。`mark_admin_initial_setup_step` 本番定義/ACLも読取済み。 | 同本体はrole検査を持ち、直接のaccount制限検査はない。間接helper/RLS/Data APIの事前検査は未検証。初回ログインを壊さず、隔離否定テストで必要性を確かめて対象を絞る。 |
 | WAF・rate | LINE上流通信制限・署名検査がある。Supabase直通の境界はRLS/RPCに依存。 | 実IP/actor単位のrate、試行制限、直接API経路での迂回拒否、監視・誤検知解除は未完了。通信timeoutをWAF完成と扱わない。 |
 | バックアップ | iPhone導入前のソースバックアップ手順がある。 | 本番DB/Storage/認証の復元演習は別。実復旧試験・保存期間・権限・手動解除の記録が必要。 |
 
