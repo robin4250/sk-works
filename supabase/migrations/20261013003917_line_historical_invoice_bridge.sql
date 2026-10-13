@@ -200,7 +200,7 @@ begin
  if total is null or total<0 or total>2147483647 then raise exception 'Invoice total unavailable' using errcode='22023';end if;
  data:=jsonb_build_object('invoice_id',invoice.id,'quote_id',q.id,'customer_name',invoice.snapshot->>'customer_name','previous_expense_amount_yen',invoice.snapshot->'expense_extra_amount_yen','expense_extra_amount_yen',component->'amount_yen','expense_extra_claims',component->'claims','subtotal',invoice.subtotal,'tax',invoice.tax,'welfare',invoice.welfare_amount,'grand_total',total,'invoice_fingerprint',baseline);
  fingerprint:=md5(data::text);data:=data||jsonb_build_object('fingerprint',fingerprint);
- if not p_confirmed then return data;end if;
+ if p_confirmed is distinct from true then return data;end if;
  if p_preview_fingerprint is distinct from fingerprint then raise exception 'Invoice or expenses changed; preview again' using errcode='40001';end if;
  update public.invoices set grand_total=total::integer,snapshot=invoice.snapshot||jsonb_build_object('grand_total',total,'expense_extra_amount_yen',component->'amount_yen','expense_extra_claims',component->'claims','expense_extra_source_version',1),updated_at=now() where id=invoice.id and company_id=q.company_id;
  select md5((to_jsonb(i)-'updated_at')::text) into baseline from public.invoices i where i.id=invoice.id;
