@@ -65,6 +65,12 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     });
 
     try {
+      Object? refreshError;
+      try {
+        await repository.refreshSignedCheckoutInvoices();
+      } catch (error) {
+        refreshError = error;
+      }
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageFinancials(),
@@ -74,6 +80,13 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       final canManage = values[1] as bool;
       final pendingRouteQuantity = values[2] as bool;
       if (!mounted) return;
+      if (refreshError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.isEnglish
+              ? 'Could not refresh signed checkout billing. Showing saved invoices; try refreshing again.'
+              : '退勤日報からの請求更新を確認できませんでした。保存済み請求書を表示します。再読み込みしてください。'),
+        ));
+      }
       setState(() {
         _invoices
           ..clear()
@@ -335,7 +348,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      visible.any((invoice) => invoice.routeQuantityPending)
+                                      visible.any((invoice) => invoice.amountPending)
                                           ? (SkoLanguageController.isEnglish
                                                 ? '${visible.length} invoices / Total pending quantity approval'
                                                 : '年間 ${visible.length}件 / 合計未確定（数量承認待ち）')
@@ -412,13 +425,17 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   }
 
   Future<void> _openPreview(InvoiceCalculationResult invoice) async {
-    if (invoice.routeQuantityPending) {
+    if (invoice.amountPending) {
       final english = SkoLanguageController.isEnglish;
       final review = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(english ? 'Invoice amount pending' : '請求額は未確定です'),
-          content: Text(english
+          content: Text(invoice.routeSourcePending
+              ? (english
+                  ? 'The signed checkout report, actual visited customers or registered rates are not ready. Check the checkout report and billing settings, then refresh. A separate route quantity approval is not required. This is not a confirmed zero amount.'
+                  : '退勤日報の署名・実際の訪問先・登録単価などを確認できていません。退勤日報と請求設定を確認して再読み込みしてください。別のルート請求数量承認は不要です。0円で確定した請求書ではありません。')
+              : english
               ? 'Route billing quantity is awaiting approval. Confirm the billing site, quantity and unit price before approving. This is not a confirmed zero amount.'
               : 'ルート請求数量の承認待ちです。請求に使用する現場・数量・単価を確認して承認すると、請求額が再計算されます。0円で確定した請求書ではありません。'),
           actions: [
@@ -426,7 +443,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
               onPressed: () => Navigator.pop(context, false),
               child: Text(english ? 'Close' : '閉じる'),
             ),
-            if (_hasPendingRouteQuantity)
+            if (_hasPendingRouteQuantity && !invoice.routeSourcePending)
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
                 child: Text(english ? 'Review Quantity' : '請求数量を確認'),
@@ -449,7 +466,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     List<InvoiceCalculationResult> invoices,
   ) async {
     if (invoices.isEmpty) return;
-    final pending = invoices.where((invoice) => invoice.routeQuantityPending);
+    final pending = invoices.where((invoice) => invoice.amountPending);
     if (pending.isNotEmpty) {
       await _openPreview(pending.first);
       return;

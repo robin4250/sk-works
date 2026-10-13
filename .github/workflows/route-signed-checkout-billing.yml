@@ -1,0 +1,33 @@
+name: Signed checkout customer billing
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
+      - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/fixtures/route_signed_checkout/**'
+      - '.github/workflows/route-signed-checkout-billing.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
+      - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/fixtures/route_signed_checkout/**'
+      - '.github/workflows/route-signed-checkout-billing.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-checkout-billing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated pinned SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/signed-billing-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify actual signed checkout and invoice SQL
+        run: node tool/verify_route_signed_checkout_billing.mjs "$RUNNER_TEMP/signed-billing-runtime/node_modules/@electric-sql/pglite/dist/index.js"
