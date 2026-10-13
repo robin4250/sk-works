@@ -124,7 +124,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
       title: const Text('経費の承認・振り分け'),
       content: SingleChildScrollView(
         child: Text(
-          '${widget.reviewFlowEnabled ? '承認・却下→負担先→精算方法→メモ→最終確認の順に進みます。却下はメモから最終確認へ進みます。「確定」まで保存しません。精算対象月は申請月です。支払済み・現金精算・給与精算・立替精算を区別して保存します。\n\n' : ''}'
+          '${widget.reviewFlowEnabled ? '承認状態・負担先は一覧上部の選択欄で絞り込めます。承認済みでも精算方法が未設定なら「精算方法を設定」から確認して設定します。承認・却下→負担先→精算方法→メモ→最終確認の順に進みます。却下はメモから最終確認へ進みます。「確定」まで保存しません。精算対象月は申請月です。支払済み・現金精算・給与精算・立替精算を区別して保存します。\n\n' : ''}'
           '一覧では利用月と申請者・内容・金額を確認します。\n\n'
           '${widget.reviewFlowEnabled ? '' : '管理者・サブ管理者は承認時に現金精算／給料精算を選び、「承認して保存」を押します。精算対象月は申請月です。承認済みで未設定の申請は「精算方法を設定」から選択します。承認後に「振り分け」で負担先と会社を選びます。\n\n'}'
           '3. 「すべて」は全状態の履歴です。負担先と承認状態を組み合わせて絞り込めます。'
@@ -312,7 +312,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
             ),
             if (claim.settlement != null)
               Text('${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'),
-            if (claim.settlement == null) const Text('精算方法：未設定'),
+            if (claim.settlement == null) const Text('精算方法：未設定（現金・給与などを選択）'),
             const SizedBox(height: 8),
             if (claim.receiptObjectPath != null) ...[
               SizedBox(height: 80, child: Align(alignment: Alignment.centerLeft,
@@ -362,7 +362,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               !(widget.allowSettlementSetup && claim.settlement == null))
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    child: Text(widget.reviewFlowEnabled ? '承認・却下を選ぶ' : claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
+                    child: Text(approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : widget.reviewFlowEnabled ? '承認・却下を選ぶ' : '承認'),
                   ),
                   if (!widget.reviewFlowEnabled) TextButton(
                     style: TextButton.styleFrom(minimumSize: const Size(112, 48),
@@ -419,6 +419,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
         .toList();
     final amount = approved.fold<int>(0, (sum, c) => sum + c.amountYen);
     return Scaffold(
+      backgroundColor: const Color(0xfff5f7fa),
       appBar: AppBar(
         toolbarHeight: kToolbarHeight,
         title: Text(widget.applicantId == null ? '経費の承認・振り分け' : '個人の経費申請'),
@@ -444,34 +445,27 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                     children: [
                       const Text('まず申請内容を確認し、承認または却下します。'),
                       const SizedBox(height: 12),
-                      const Text('承認状態'),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          for (final filter in _ReviewFilter.values)
-                            ChoiceChip(
-                              label: Text(_filterLabel(filter)),
-                              selected: _filter == filter,
-                              onSelected: (_) =>
-                                  setState(() => _filter = filter),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      const Text('負担先で絞り込む'),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          for (final kind in ExpenseList.values)
-                            ChoiceChip(
-                              label: Text(
-                                '${_listLabel(kind)}（${scope.forList(kind).length}）',
-                              ),
-                              selected: _list == kind,
-                              onSelected: (_) => setState(() => _list = kind),
-                            ),
-                        ],
-                      ),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(child: DropdownButtonFormField<_ReviewFilter>(
+                          key: const ValueKey('expense-status-filter'),
+                          initialValue: _filter,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: '承認状態', border: OutlineInputBorder()),
+                          items: [for (final filter in _ReviewFilter.values)
+                            DropdownMenuItem(value: filter, child: Text(_filterLabel(filter)))],
+                          onChanged: (value) { if (value != null) setState(() => _filter = value); },
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: DropdownButtonFormField<ExpenseList>(
+                          key: const ValueKey('expense-burden-filter'),
+                          initialValue: _list,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: '負担先', border: OutlineInputBorder()),
+                          items: [for (final kind in ExpenseList.values)
+                            DropdownMenuItem(value: kind, child: Text('${_listLabel(kind)}（${scope.forList(kind).length}）', overflow: TextOverflow.ellipsis))],
+                          onChanged: (value) { if (value != null) setState(() => _list = value); },
+                        )),
+                      ]),
                       const SizedBox(height: 12),
                       Text(
                         '表示：${visible.length}件 / この負担先の承認済み：${approved.length}件・$amount円',
