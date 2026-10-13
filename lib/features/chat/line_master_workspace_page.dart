@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'line_historical_invoice_page.dart';
-import 'line_talk_page.dart';
+import 'line_joined_groups_page.dart';
 
 /// Three entries over existing LINE data; this screen grants no permissions.
 class LineMasterWorkspacePage extends StatefulWidget {
@@ -142,7 +142,7 @@ class _LineMasterWorkspacePageState extends State<LineMasterWorkspacePage> {
         if (_master) ...[
           _entry('line-master-chat', Icons.chat_bubble_outline, 'チャット',
             '連携済みLINEグループの投稿者・日時・本文',
-            widget.talkBuilder ?? (_) => const LineTalkPage()),
+            widget.talkBuilder ?? (_) => const LineJoinedGroupsPage()),
           _entry('line-master-invoices', Icons.receipt_long_outlined, '請求書',
             '月別の確認済み候補・保存履歴・正式下書き',
             widget.invoiceBuilder ?? (_) => const LineHistoricalInvoicePage()),

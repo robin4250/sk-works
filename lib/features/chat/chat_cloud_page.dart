@@ -25,10 +25,14 @@ class ChatCloudPage extends StatefulWidget {
     super.key,
     this.viewerOnlyFriends = false,
     this.showGroupsInitially = false,
+    this.createGroupInitially = false,
+    this.initialLineDirectoryId,
   });
 
   final bool viewerOnlyFriends;
   final bool showGroupsInitially;
+  final bool createGroupInitially;
+  final String? initialLineDirectoryId;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -71,6 +75,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
   int _summaryGeneration = 0;
   String? _readScope;
   bool _refreshingList = false;
+  bool _initialGroupCreationOpened = false;
   bool _chatForeground = true;
 
   bool get _readVisible => mounted && _chatForeground &&
@@ -208,6 +213,11 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
 
       await _refreshUnreadCounts(groups);
       await _subscribeSelected();
+      if (mounted && repository.currentUserId == actor &&
+          widget.createGroupInitially && !_initialGroupCreationOpened) {
+        _initialGroupCreationOpened = true;
+        await _createCustomGroup();
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -770,6 +780,26 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     String? createdId;
     Map<String, dynamic>? selectedLine;
     var lineLinked = false;
+    var lineConfirmed = false;
+    if (create && widget.initialLineDirectoryId != null) {
+      try {
+        final sources = await repository.loadJoinedLineGroups(
+          newGroupCompanyId: creationCompanyId);
+        final matches = sources.where((source) =>
+          source['id']?.toString() == widget.initialLineDirectoryId &&
+          source['joined'] == true && source['can_select'] == true);
+        if (!mounted || repository.currentUserId != actor || matches.length != 1) {
+          controller.dispose();
+          return;
+        }
+        selectedLine = Map<String, dynamic>.from(matches.single);
+      } catch (_) {
+        controller.dispose();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(SkoLanguageController.tr('LINEトークを追加できませんでした。権限と連携先を再確認してください。'))));
+        return;
+      }
+    }
     var busy = false;
     String? error;
     await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
@@ -801,7 +831,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
                 title:Text(SkoLanguageController.tr('LINEトークを追加しますか？')),
                 content:Text('$companyName\n${controller.text.trim()}\n${source['display_name'] ?? SkoLanguageController.tr('グループ名未取得')}'),
                 actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(context,true),child:Text(SkoLanguageController.tr('追加')))]));
-              if(confirm==true && dialogContext.mounted && repository.currentUserId==actor) update(() { selectedLine = source; lineLinked = false; });
+              if(confirm==true && dialogContext.mounted && repository.currentUserId==actor) update(() { selectedLine = source; lineLinked = false; lineConfirmed = true; });
             } catch(_) { if(dialogContext.mounted) update(()=>error='会社を確認できませんでした。'); }
           }, icon: const Icon(Icons.add_link), label: Text(selectedLine?['display_name']?.toString() ?? SkoLanguageController.tr('LINEトークを追加'))),
           if (error != null) Text(SkoLanguageController.tr(error!), style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -814,6 +844,37 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             try {
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               if (create && ((await repository.membership()).companyId!=creationCompanyId || repository.currentUserId!=actor)) throw StateError('会社を確認できませんでした。');
+              if (create && selectedLine != null && !lineLinked) {
+                final sources = await repository.loadJoinedLineGroups(
+                  newGroupCompanyId: creationCompanyId);
+                final matches = sources.where((source) =>
+                  source['id'] == selectedLine!['id'] &&
+                  source['joined'] == true && source['can_select'] == true);
+                if (repository.currentUserId != actor || matches.length != 1) {
+                  throw StateError('LINE source or session changed');
+                }
+                selectedLine = Map<String, dynamic>.from(matches.single);
+                if (!lineConfirmed) {
+                  final companyName = await repository.lineLinkCompanyName(
+                    creationCompanyId: creationCompanyId);
+                  if (!dialogContext.mounted || repository.currentUserId != actor) return;
+                  final confirm = await showDialog<bool>(context: dialogContext,
+                    builder: (context) => AlertDialog(
+                      title: Text(SkoLanguageController.tr('LINEトークを追加しますか？')),
+                      content: Text('$companyName\n${controller.text.trim()}\n${selectedLine!['display_name'] ?? SkoLanguageController.tr('グループ名未取得')}'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false),
+                          child: const Text('戻る')),
+                        FilledButton(onPressed: () => Navigator.pop(context, true),
+                          child: Text(SkoLanguageController.tr('追加'))),
+                      ]));
+                  if (confirm != true) { update(() => busy = false); return; }
+                  if (repository.currentUserId != actor) {
+                    throw StateError('Session changed');
+                  }
+                  lineConfirmed = true;
+                }
+              }
               if (create && createdId == null) createdId = await repository.createCustomGroup(controller.text);
               if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
               final id = create ? createdId! : selected!['id'].toString();
