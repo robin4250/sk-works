@@ -1336,12 +1336,8 @@ const englishLanguagePack = LanguagePack(
     "確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。": "No verified invoice candidates. Import LINE candidates, compare them and save.",
     "表示できるLINEグループがありません。連携状態を確認してください。": "No available LINE groups. Check the link status.",
     "チャットは連携済みLINEグループの受信データを表示します。未連携のグループを作成済みとして表示しません。請求書は対象月の確認済み候補と保存履歴を確認します。単価設定は過去月の人工・残業・早出・手当の単価を入力し、履歴小計として保存します。実人数と延べ人工は別です。保存は通常請求書の発行と別で、正式下書きは取引先と税・福利費を確認して作成します。現在の現場単価や給与は変更しません。": "Chat displays received data from linked LINE groups. Unlinked groups are not shown as created. Invoices shows verified monthly candidates and saved history. Unit Rates saves past-month labor, overtime, early-work and allowance rates as a historical subtotal. Unique people and total labor days are distinct. Saving a subtotal does not issue an invoice. Confirm the customer, tax and welfare costs to create an official draft. Current site rates and payroll remain unchanged.",
-    "チャット": "Chat",
-    "請求書": "Invoices",
     "単価設定": "Unit Rates",
     "使い方": "Help",
-    "閉じる": "Close",
-    "再読み込み": "Reload",
   },
 );
 
