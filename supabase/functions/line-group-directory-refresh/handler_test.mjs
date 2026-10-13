@@ -45,7 +45,7 @@ test('malformed or unusable maps safely fall back; missing keys do not leak or c
   let calls=0;
   const response=await createDirectoryRefreshHandler({env:n=>config[n],fetcher:async()=>{calls++;throw Error('private-fixture');}})(request());
   assert.equal(response.status,503);assert.equal(calls,0);assert.equal(await response.text(),'Directory configuration unavailable');
-  config.SUPABASE_ANON_KEY='legacy-public';config.SUPABASE_SERVICE_ROLE_KEY='legacy-service';
+  Object.assign(config,{SUPABASE_ANON_KEY:'legacy-public',SUPABASE_SERVICE_ROLE_KEY:'legacy-service'});
   const denied=await createDirectoryRefreshHandler({env:n=>config[n],fetcher:async()=>new Response('',{status:401})})(request());
   assert.equal(denied.status,401);
  }
