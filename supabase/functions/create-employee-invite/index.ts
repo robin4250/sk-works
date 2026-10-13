@@ -286,6 +286,7 @@ Deno.serve(async (req: Request) => {
 
   let persistedWorkerId: string | null = workerId;
   let linkedExistingWorker = false;
+  let newWorkerCreated = false;
   let persistenceStage = "worker";
   let persistenceStatus: number | null = null;
   try {
@@ -324,6 +325,7 @@ Deno.serve(async (req: Request) => {
         persistenceStatus = workerResponse.status;
         throw new Error("employee worker persistence failed");
       }
+      newWorkerCreated = true;
       const workers = await workerResponse.json();
       persistedWorkerId = workers?.[0]?.id ?? null;
     }
@@ -433,25 +435,36 @@ Deno.serve(async (req: Request) => {
   } catch {
     // Never log upstream details or exception text: either may contain personal data.
     console.error("employee invite persistence failed", persistenceStage, persistenceStatus);
-    if (persistedWorkerId) {
-      if (linkedExistingWorker) {
-        await serviceFetch(
-          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
-          {
-            method: "PATCH",
-            body: JSON.stringify({ user_id: null }),
-          },
+    // Existing employees must never be deleted when a link attempt fails.
+    // Undo only this attempt's successful linkage; concurrent reassignment wins.
+    if (persistedWorkerId && (linkedExistingWorker || newWorkerCreated)) {
+      try {
+        const cleanupResponse = await serviceFetch(
+          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId) +
+            "&user_id=eq." + encodeURIComponent(authUserId),
+          linkedExistingWorker
+            ? { method: "PATCH", body: JSON.stringify({ user_id: null }) }
+            : { method: "DELETE" },
         );
-      } else {
-        await serviceFetch(
-          "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId),
-          { method: "DELETE" },
-        );
+        if (!cleanupResponse.ok) {
+          console.error("employee invite worker cleanup failed", cleanupResponse.status);
+        }
+      } catch {
+        console.error("employee invite worker cleanup failed");
       }
     }
-    await serviceFetch("/auth/v1/admin/users/" + encodeURIComponent(authUserId), {
-      method: "DELETE",
-    });
+    // A failed worker cleanup must not skip cleanup of the Auth user created here.
+    try {
+      const cleanupResponse = await serviceFetch(
+        "/auth/v1/admin/users/" + encodeURIComponent(authUserId),
+        { method: "DELETE" },
+      );
+      if (!cleanupResponse.ok) {
+        console.error("employee invite auth cleanup failed", cleanupResponse.status);
+      }
+    } catch {
+      console.error("employee invite auth cleanup failed");
+    }
     return json({ error: "従業員登録を保存できませんでした。" }, 500);
   }
 });
