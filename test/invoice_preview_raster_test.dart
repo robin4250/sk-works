@@ -25,4 +25,37 @@ void main() {
     final failure = StateError('native rendering unavailable');
     await expectLater(collectInvoicePreviewPages(Stream<Uint8List>.error(failure)), throwsA(same(failure)));
   });
+  test('invalid dimensions, malformed RGBA and transparent native pages never encode', () async {
+    var encoded = 0;
+    Future<Uint8List> encode() async { encoded++; return Uint8List.fromList([1]); }
+    for (final input in [
+      (width: 0, height: 1, pixels: Uint8List(0)),
+      (width: -1, height: 1, pixels: Uint8List(4)),
+      (width: 1, height: 0, pixels: Uint8List(0)),
+      (width: 1, height: 1, pixels: Uint8List(3)),
+      (width: 1, height: 1, pixels: Uint8List(5)),
+      (width: 2, height: 1, pixels: Uint8List(8)),
+      (width: 1, height: 1, pixels: Uint8List.fromList([255, 255, 255, 0])),
+    ]) {
+      await expectLater(encodeInvoicePreviewRaster(
+        width: input.width, height: input.height, pixels: input.pixels, encode: encode,
+      ), throwsStateError);
+    }
+    expect(encoded, 0);
+  });
+  test('opaque white and sparse visible RGBA pages retain the exact encoder output', () async {
+    final png = Uint8List.fromList([137, 80, 78, 71]);
+    for (final pixels in [
+      Uint8List.fromList([255, 255, 255, 255]),
+      Uint8List.fromList([0, 0, 0, 0, 12, 24, 36, 1]),
+    ]) {
+      var encoded = 0;
+      final result = await encodeInvoicePreviewRaster(
+        width: pixels.length ~/ 4, height: 1, pixels: pixels,
+        encode: () async { encoded++; return png; },
+      );
+      expect(encoded, 1);
+      expect(result, same(png));
+    }
+  });
 }

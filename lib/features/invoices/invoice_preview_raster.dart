@@ -24,3 +24,27 @@ Future<List<Uint8List>> collectInvoicePreviewPages(
   }
   return pages;
 }
+
+/// Printing supplies raw RGBA pixels. A failed native drawing context may return
+/// a correctly sized, wholly transparent page that still encodes as valid PNG.
+Future<Uint8List> encodeInvoicePreviewRaster({
+  required int width,
+  required int height,
+  required Uint8List pixels,
+  required Future<Uint8List> Function() encode,
+}) async {
+  if (width <= 0 || height <= 0 || pixels.length != width * height * 4) {
+    throw StateError(SkoLanguageController.tr('PDFのページを描画できませんでした。再試行してください。'));
+  }
+  var visible = false;
+  for (var alpha = 3; alpha < pixels.length; alpha += 4) {
+    if (pixels[alpha] != 0) {
+      visible = true;
+      break;
+    }
+  }
+  if (!visible) {
+    throw StateError(SkoLanguageController.tr('PDFのページを描画できませんでした。再試行してください。'));
+  }
+  return encode();
+}

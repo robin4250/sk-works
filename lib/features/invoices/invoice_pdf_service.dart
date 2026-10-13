@@ -1213,7 +1213,10 @@ class _InvoicePdfZoomViewState extends State<_InvoicePdfZoomView> {
   }
 
   Future<List<Uint8List>> _rasterPages() => collectInvoicePreviewPages(
-    Printing.raster(widget.pdfBytes, dpi: 120).asyncMap((page) => page.toPng()),
+    Printing.raster(widget.pdfBytes, dpi: 120).asyncMap((page) => encodeInvoicePreviewRaster(
+      width: page.width, height: page.height, pixels: page.pixels,
+      encode: page.toPng,
+    )),
   );
 
   void _retryRaster() {
