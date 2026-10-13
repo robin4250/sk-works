@@ -35,8 +35,9 @@ class SecurityIncident {
       throw const FormatException('Security records unavailable');
     }
     final rows = response['incidents'] as List;
-    if (rows.length > 100)
+    if (rows.length > 100) {
       throw const FormatException('Security records unavailable');
+    }
     return List.unmodifiable(
       rows.map((row) {
         if (row is! Map ||
@@ -71,8 +72,9 @@ class SecurityIncident {
             last != events.last.at ||
             from.isAfter(first) ||
             to.isBefore(last) ||
-            to.isBefore(from))
+            to.isBefore(from)) {
           throw const FormatException('Security records unavailable');
+        }
         return SecurityIncident(
           id: _id(row['incident_id']),
           correlationId: _id(row['correlation_id']),
@@ -177,8 +179,9 @@ class SecurityIncidentEvent {
 }
 
 String _enum(dynamic value, Set<String> values) {
-  if (value is! String || !values.contains(value))
+  if (value is! String || !values.contains(value)) {
     throw const FormatException('Security records unavailable');
+  }
   return value;
 }
 
@@ -193,8 +196,9 @@ String _id(dynamic value) {
 }
 
 DateTime _date(dynamic value) {
-  if (value is! String || !RegExp(r'(Z|[+-]\d\d:\d\d)$').hasMatch(value))
+  if (value is! String || !RegExp(r'(Z|[+-]\d\d:\d\d)$').hasMatch(value)) {
     throw const FormatException('Security records unavailable');
+  }
   return DateTime.parse(value).toUtc();
 }
 
