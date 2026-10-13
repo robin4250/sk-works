@@ -7,7 +7,8 @@ import 'chat_cloud_repository.dart';
 
 /// Stage one is a read-only view of saved LINE posts. It does not create attendance.
 class LineTalkPage extends StatefulWidget {
-  const LineTalkPage({super.key});
+  const LineTalkPage({super.key, this.initialGroupId});
+  final String? initialGroupId;
 
   @override
   State<LineTalkPage> createState() => _LineTalkPageState();
@@ -53,6 +54,11 @@ class _LineTalkPageState extends State<LineTalkPage> {
         _loading = false;
         _error = null;
       });
+      final initial = widget.initialGroupId;
+      if (initial != null && _selected == null) {
+        final matching=data.groups.where((group)=>group['id']?.toString()==initial);
+        if(matching.length==1) await _open(matching.single);
+      }
     } catch (_) {
       if (mounted) setState(() { _loading = false; _error = 'LINEトークを読み込めませんでした。再読み込みしてください。'; });
     }
@@ -210,3 +216,4 @@ class _LineTalkPageState extends State<LineTalkPage> {
     });
   }
 }
+

@@ -93,3 +93,14 @@ test('image events are not falsely displayed as text posts', async () => {
   assert.equal((await f.handler(request([{ ...event, message: { type: 'image', id: 'image-one' } }]))).status, 200);
   assert.equal(f.chats.size, 0);
 });
+
+test('signed join and leave record real names; room and bad signatures never discover',async()=>{
+ const observations=[];const handler=createLineWebhookHandler({env:n=>({LINE_CHANNEL_SECRET:secret,LINE_CHANNEL_ACCESS_TOKEN:'fixture-token',SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-key'})[n],logger:{error(){}},fetch:async(url,init)=>{
+ if(url.startsWith('https://api.line.me/'))return json({groupId:'line-group',groupName:'Actual LINE name'});
+ const path=url.split('/rest/v1/')[1];if(path==='rpc/observe_line_joined_group')observations.push(JSON.parse(init.body));return json(true);
+ }});
+ assert.equal((await handler(request([{...event,type:'join',message:undefined}]))).status,200);assert.equal(observations[0].p_display_name,'Actual LINE name');assert.equal(observations[0].p_joined,true);
+ assert.equal((await handler(request([{...event,type:'leave',message:undefined}]))).status,200);assert.equal(observations[1].p_joined,false);
+ assert.equal((await handler(request([{...event,type:'join',source:{type:'room',roomId:'room'}}]))).status,200);assert.equal(observations.length,2);
+ assert.equal((await handler(request([event],'bad'))).status,401);assert.equal(observations.length,2);
+});

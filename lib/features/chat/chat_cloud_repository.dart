@@ -492,6 +492,53 @@ class ChatCloudRepository {
     return Map<String, dynamic>.from(row);
   }
 
+  Future<String> lineLinkCompanyName() async {
+    final actor=currentUserId;
+    final member=await membership();
+    final rows=await _client.from('companies').select('name').eq('id',member.companyId).limit(1);
+    if(actor==null || currentUserId!=actor || rows.length!=1) throw StateError('会社を確認できませんでした。');
+    final name=rows.single['name']?.toString().trim();
+    if(name==null || name.isEmpty) throw StateError('会社を確認できませんでした。');
+    return name;
+  }
+
+  Future<bool> canRefreshLineDirectory() async {
+    final actor=currentUserId;
+    final result=await _client.rpc('is_current_user_master_admin');
+    if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+    return result==true;
+  }
+  Future<void> refreshLineDirectory() async {
+    final actor=currentUserId;
+    String? cursor;
+    var unavailable=0;
+    do {
+      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+      final response=await _client.functions.invoke('line-group-directory-refresh', body: {'after':cursor});
+      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+      final data=response.data;
+      if(data is! Map) throw StateError('参加状況を更新できませんでした。');
+      unavailable+=(data['unavailable'] as num?)?.toInt() ?? 0;
+      cursor=data['next_cursor']?.toString();
+    } while(cursor!=null);
+    if(unavailable>0) throw StateError('一部の参加状況を確認できませんでした。');
+  }
+
+
+  Future<List<Map<String, dynamic>>> loadJoinedLineGroups({String? targetGroupId, String? newGroupCompanyId}) async {
+    final actor = currentUserId;
+    final raw = await _client.rpc('line_joined_group_workspace', params: {'p_target_group_id': targetGroupId, 'p_new_company_id': newGroupCompanyId});
+    if (actor == null || currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    return raw is List ? raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : const [];
+  }
+
+  Future<void> linkLineSource(String groupId, String directoryId) async {
+    final actor=currentUserId;
+    if(actor==null) throw StateError('ログインが必要です。');
+    await _client.rpc('link_line_source_to_chat', params: {'p_group_id': groupId, 'p_directory_id': directoryId});
+    if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+  }
+
   Future<Map<String, dynamic>> beginLineBindingClaim(String groupId) async {
     final response = await _client.rpc(
       'begin_line_group_claim',
@@ -884,3 +931,4 @@ class ChatConversationSummary {
   final int unread;
   final String? body, sentAt;
 }
+

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
 
 import '../../data/supabase_backend.dart';
 import 'chat_cloud_repository.dart';
@@ -6,6 +7,7 @@ import 'line_import_page.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_import_repository.dart';
 import 'line_talk_page.dart';
+import 'line_joined_groups_page.dart';
 
 class LineTalkHubPage extends StatefulWidget {
   const LineTalkHubPage({super.key});
@@ -50,6 +52,8 @@ class _LineTalkHubPageState extends State<LineTalkHubPage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('LINEトーク'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
     body: ListView(padding: const EdgeInsets.all(16), children: [
+      OutlinedButton.icon(onPressed: () => _open(const LineJoinedGroupsPage()), icon: const Icon(Icons.groups_outlined), label: Text(SkoLanguageController.tr('参加済みグループ一覧'))),
+      const SizedBox(height: 12),
       FilledButton.icon(onPressed: () => _open(const LineTalkPage()), icon: const Icon(Icons.chat_bubble_outline), label: const Text('トーク')),
       if (_features.attendance) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineImportPage(target: 'attendance')), icon: const Icon(Icons.calendar_month), label: const Text('出勤表'))],
       if (_features.invoice && _canViewInvoice) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineImportPage(target: 'invoice')), icon: const Icon(Icons.receipt_long_outlined), label: const Text('請求書'))],
@@ -59,4 +63,5 @@ class _LineTalkHubPageState extends State<LineTalkHubPage> {
     ]),
   );
 }
+
 
