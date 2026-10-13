@@ -468,7 +468,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                         onDelete: editable && _changes != null && !claim.withdrawn ? () async {
                           await _changeClaim(claim, withdraw: true);
                           if (detailContext.mounted && _pendingChange == null && _error == null &&
-                              _history.any((item) => item.id == claim.id && item.withdrawn)) Navigator.pop(detailContext);
+                              _history.any((item) => item.id == claim.id && item.withdrawn)) {
+                            Navigator.pop(detailContext);
+                          }
                         } : null,
                         onHistory: _access is! ExpenseSubmissionRepository ? null : () async {
                           try {
