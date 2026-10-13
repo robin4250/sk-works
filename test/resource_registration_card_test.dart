@@ -59,13 +59,15 @@ void main() {
   testWidgets('a failed load can retry instead of reusing the failed future', (tester) async {
     var requests = 0;
     await tester.pumpWidget(host(card([ResourceAttachment(label: '表面', path: 'front',
-      loadBytes: () async { requests++; throw StateError('Unavailable'); })])));
+      loadBytes: () { requests++; throw StateError('Unavailable'); })])));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(ResourceAttachmentThumbnail));
     await tester.pumpAndSettle();
     await tester.tap(find.text('再試行'));
     await tester.pumpAndSettle();
     expect(requests, 2);
+    expect(find.text('読込不可'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
   testWidgets('retry retained after card removal cannot update a disposed thumbnail', (tester) async {
     var requests = 0;

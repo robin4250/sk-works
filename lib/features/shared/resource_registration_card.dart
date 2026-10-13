@@ -181,9 +181,9 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       _original = null;
       return null;
     }
-    _original = widget.attachment.loadBytes!();
+    _original = Future<Uint8List>.sync(widget.attachment.loadBytes!);
     final original = _original!;
-    return (() async {
+    final content = (() async {
       final bytes = await original;
       if (!_isPdf(bytes)) return (bytes, bytes, false);
       Uint8List? thumbnail;
@@ -195,6 +195,10 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       } catch (_) { /* The original PDF stays available for full-page preview. */ }
       return (bytes, thumbnail, true);
     })();
+    // A retry can fail before the next frame attaches FutureBuilder's listener.
+    // Observe that error now; the same failed future still drives its error UI.
+    content.ignore();
+    return content;
   }
 
   Future<void> _open() async {
