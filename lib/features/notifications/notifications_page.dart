@@ -25,6 +25,7 @@ import '../sites/site_share_approval_page.dart';
 import '../sites/site_information_approvals_page.dart';
 import '../operations/vehicle_route_page.dart';
 import '../people/people_cloud_page.dart';
+import '../route_billing/route_billing_quantity_approvals_page.dart';
 import '../people/worker_personnel_change_approvals_page.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -242,6 +243,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
 /// Known notification routes reuse the same protected pages as the home menu.
 /// Repositories in each destination retain their existing access checks and RLS.
 Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMonth}) => switch (item.actionKey) {
+  'route_billing_quantity_request' =>
+    RouteBillingQuantityApprovalsPage(initialRequestId: item.actionId),
   'attendance_today' => const TodayAttendancePage(),
   'document_register' => const OwnDocumentRegistrationPage(),
   'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),

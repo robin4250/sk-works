@@ -61,6 +61,11 @@ class AttentionCenterRepository {
           availableActionKeys: availableActionKeys,
         ));
       }),
+      readSource('route_billing_quantity', () async {
+        items.addAll(mapRouteBillingQuantityAttention(
+          await _client.rpc('pending_route_billing_quantity_rows'),
+        ));
+      }),
       readSource('generation_settings', () async {
         items.addAll(mapGenerationAttention(
           await _client.rpc('current_generation_setting_attention'),
@@ -163,6 +168,29 @@ List<AttentionCenterItem> mapGenerationAttention(Object? raw,
           'action_key': row['action_key'], 'action_id': row['action_id']},
         deadline: _date(row['deadline']), evidenceRank: 10,
         actionable: _canOpen(_text(row['action_key']), availableActionKeys),
+      ),
+  ];
+}
+
+/// This RPC returns only pending requests the authenticated actor can review.
+/// Approval access is independent of home shortcut visibility.
+List<AttentionCenterItem> mapRouteBillingQuantityAttention(Object? raw) {
+  if (raw is! List) return const [];
+  final uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+  return [for (final row in raw)
+    if (row is Map && row['status'] == 'pending' &&
+        uuid.hasMatch(row['id']?.toString() ?? ''))
+      AttentionCenterItem(
+        id: row['id'].toString(), source: 'route_billing_quantity',
+        title: 'ルート請求数量の承認待ち',
+        body: _text(row['worker_name']) ?? '',
+        state: AttentionCenterState.pending,
+        actionKey: 'route_billing_quantity_request',
+        actionId: row['id'].toString(),
+        targetName: _text(row['customer_name']),
+        targetDate: _date(row['work_date']),
+        createdAt: _date(row['created_at']),
+        evidenceRank: 10, actionable: true,
       ),
   ];
 }
