@@ -25,6 +25,10 @@ try {
  assert.equal(initial.detail.unit_resolution.items[0].amount_yen,250);
  const before=initial.revision;await db.query('select private.refresh_automatic_payroll($1,$2,$3)',[cid,wid,month]);assert.equal((await statement()).revision,before);
  await actor(editor);assert.deepEqual((await state()).items,saved.items);
+ // One invalid item rolls the entire settings + quantity transaction back.
+ await assert.rejects(save(1,[{...saved.items[0],quantity:'99'},item('earning','hour','Invalid later item',100,{source:'manual_hours',quantity:'-1'})]),/explicit monthly hours/);
+ assert.equal((await state()).items[0].quantity,2.5);
+ assert.equal((await state()).version,1);
  await assert.rejects(save(0,saved.items),/version conflict/);
  for(const id of [viewer,outsider,'']){await actor(id);await assert.rejects(save(1,saved.items),/access denied/);}
  await actor(viewer);assert.equal((await state()).can_edit,false);
@@ -43,15 +47,22 @@ try {
  await actor(editor);const changed=await save(1,saved.items.map(x=>x.id===saved.items[0].id?{...x,source:'overtime_hours',quantity:null}:x));
  assert.equal(changed.resolved.items[0].quantity,3);
  const earned=await statement();assert.equal(earned.detail.unit_resolution.items[0].amount_yen,300);
+ // Existing automatic tax conditions use the unit-augmented gross and deductions.
+ await actor(editor);
+ const profile={insurance_mode:'fixed',health:false,pension:false,employment:false,child_support:false,nursing:false,birth_date:null,health_base_yen:0,pension_base_yen:0,income_mode:'koh',dependents:0,non_taxable_yen:0,employment_excluded_yen:0,additional_social_deduction_yen:0};
+ await db.query('select public.save_worker_payroll_tax_conditions($1,$2,$3,0,$4::jsonb,true)',[cid,wid,month,JSON.stringify(profile)]);
+ const taxed=await statement();
+ const expectedIncome=(await db.query("select payroll_tax_private.monthly_income_tax('2026-10-25',$1,'koh',0) amount",[taxed.gross_pay])).rows[0].amount;
+ assert.equal(taxed.detail['所得税'],expectedIncome);assert.equal(taxed.deductions,425+expectedIncome);
  // Future month retains a missing explicit quantity as null and blocks finalization.
  await db.query('select private.refresh_automatic_payroll($1,$2,$3)',[cid,wid,'2026-10-01']);
  const future=(await db.query("select * from public.payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[cid,wid])).rows[0];
  assert.equal(future.calculation_blocked,true);assert.equal(future.detail.unit_resolution.items[1].quantity,null);assert.equal(future.detail.unit_resolution.items[1].amount_yen,null);
  // Finalize through the genuine existing review/immutable snapshot contract.
  await db.query('insert into public.payroll_confirmers(company_id,user_id,position) values($1,$2,1)',[cid,owner]);
- await db.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[earned.id,owner,earned.revision]);
+ await db.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[taxed.id,owner,taxed.revision]);
  await actor(owner);
- const finalized=(await db.query('select public.finalize_payroll_statement($1,$2,true) result',[earned.id,earned.revision])).rows[0].result;
+ const finalized=(await db.query('select public.finalize_payroll_statement($1,$2,true) result',[taxed.id,taxed.revision])).rows[0].result;
  assert.equal(finalized.finalized,true);assert.equal(finalized.snapshot.detail.unit_resolution.items[0].amount_yen,300);
  const frozen=await statement();
  await actor(editor);await assert.rejects(save(2,changed.items),/finalized\/manual/);assert.deepEqual(await statement(),frozen);

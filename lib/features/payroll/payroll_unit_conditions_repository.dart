@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 import 'payroll_unit_item_editor.dart';
 
@@ -58,8 +59,13 @@ class PayrollUnitConditions {
 }
 
 class PayrollUnitConditionsRepository {
-  PayrollUnitConditionsRepository(this._client);
+  PayrollUnitConditionsRepository(SupabaseClient client)
+    : _client = client,
+      _actor = (() => client.auth.currentUser?.id);
+  @visibleForTesting
+  PayrollUnitConditionsRepository.forTesting(this._client, this._actor);
   final SupabaseClient _client;
+  final String? Function() _actor;
   Future<bool> available() async {
     try {
       return await _client.rpc('payroll_unit_conditions_contract_version') == 1;
@@ -73,7 +79,7 @@ class PayrollUnitConditionsRepository {
     String workerId,
     String month,
   ) async {
-    final actor = _client.auth.currentUser?.id;
+    final actor = _actor();
     if (actor == null) throw StateError('Session unavailable');
     final raw = await _client.rpc(
       'payroll_unit_conditions',
@@ -83,8 +89,9 @@ class PayrollUnitConditionsRepository {
         'p_month': month,
       },
     );
-    if (_client.auth.currentUser?.id != actor)
+    if (_actor() != actor) {
       throw StateError('Session changed');
+    }
     final value = PayrollUnitConditions.fromJson(raw);
     if (value.month != month) throw StateError('Payroll month changed');
     return value;
@@ -96,9 +103,10 @@ class PayrollUnitConditionsRepository {
     PayrollUnitConditions current,
     List<PayrollUnitItemDraft> items,
   ) async {
-    final actor = _client.auth.currentUser?.id;
-    if (actor == null || !current.canEdit)
+    final actor = _actor();
+    if (actor == null || !current.canEdit) {
       throw StateError('Payroll edit unavailable');
+    }
     final raw = await _client.rpc(
       'save_payroll_unit_conditions',
       params: {
@@ -120,8 +128,9 @@ class PayrollUnitConditionsRepository {
         ],
       },
     );
-    if (_client.auth.currentUser?.id != actor)
+    if (_actor() != actor) {
       throw StateError('Session changed');
+    }
     final value = PayrollUnitConditions.fromJson(raw);
     if (value.month != current.month) throw StateError('Payroll month changed');
     return value;
