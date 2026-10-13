@@ -3,6 +3,7 @@ import '../../data/supabase_backend.dart';
 import 'chat_cloud_repository.dart';
 import 'line_historical_invoice_model.dart';
 import 'line_historical_invoice_repository.dart';
+import 'line_historical_invoice_bridge_page.dart';
 
 class LineHistoricalInvoicePage extends StatefulWidget {
   const LineHistoricalInvoicePage({super.key});
@@ -143,7 +144,9 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
         for (final raw in saved) ExpansionTile(title: Text('保存 ${raw['created_at']}'), children: [
           ListTile(title: Text('小計 ${raw['snapshot']['subtotal']}円'),
             subtitle: Text('対象月 ${raw['snapshot']['month']} ／ 実人数 ${raw['snapshot']['people']}人 ／ 延べ ${raw['snapshot']['man_days']}人工\n通常請求書は未発行')),
+          OutlinedButton.icon(onPressed: _busy ? null : () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => LineHistoricalInvoiceBridgePage(quoteId: raw['id'].toString()))), icon: const Icon(Icons.receipt_long_outlined), label: const Text('正式請求の下書きへ')),
         ]),
       ]));
   }
 }
+
