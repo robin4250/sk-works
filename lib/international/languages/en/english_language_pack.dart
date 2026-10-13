@@ -1242,7 +1242,6 @@ const englishLanguagePack = LanguagePack(
     '表面': 'Front',
     '裏面': 'Back',
     '確認・編集': 'View / Edit',
-    '未取得': 'Unavailable',
     '読込不可': 'Could Not Load',
     '詳細を確認': 'View Details',
     'PDFを表示できませんでした。': 'Could not display the PDF.',
