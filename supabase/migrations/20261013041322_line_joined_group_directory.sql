@@ -6,7 +6,7 @@ create table private.line_joined_groups (
 );
 -- Existing bindings prove identity/ownership, not current bot membership.
 insert into private.line_joined_groups(line_group_id,display_name,joined,observed_at,observed_event_id)
-select line_group_id,display_name,null,coalesce(updated_at,created_at),'existing-binding:'||id::text from public.line_group_bindings where nullif(line_group_id,'') is not null;
+select line_group_id,display_name,null,coalesce(updated_at,discovered_at),'existing-binding:'||id::text from public.line_group_bindings where nullif(line_group_id,'') is not null;
 create table private.line_chat_source_links (
  group_id uuid not null references public.communication_groups(id) on delete cascade,
  directory_id uuid not null references private.line_joined_groups(id),
