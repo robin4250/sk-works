@@ -1,9 +1,17 @@
-// Disposable PGlite only. No production connection or credentials.
+// Disposable PGlite / loopback PostgreSQL 17 only. No production connection or credentials.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {setupPayrollScopeFixture} from './payroll_scope_fixture_setup.mjs';
-const {PGlite}=await import(process.argv[2]);
-const db=new PGlite();const read=p=>fs.readFileSync(p,'utf8');
+let db;let pg;
+if(process.argv[3]==='postgres') {
+ pg=(await import(process.argv[2])).default;
+ const url=new URL(process.env.SKO_UNIT_FIXTURE_URL??'');
+ if(!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/sko_unit_fixture') throw Error('only the disposable loopback unit fixture is allowed');
+ pg.types.setTypeParser(20,Number);pg.types.setTypeParser(1700,Number);
+ const client=new pg.Client({connectionString:url.href});await client.connect();
+ db={query:(...args)=>client.query(...args),exec:sql=>client.query(sql),close:()=>client.end()};
+} else {const {PGlite}=await import(process.argv[2]);db=new PGlite();}
+const read=p=>fs.readFileSync(p,'utf8');
 const cid='10000000-0000-0000-0000-000000000001',wid='40000000-0000-0000-0000-000000000001';
 const owner='00000000-0000-0000-0000-000000000001',editor='00000000-0000-0000-0000-000000000002',viewer='00000000-0000-0000-0000-000000000003',outsider='00000000-0000-0000-0000-000000000004';
 const month='2026-09-01';
@@ -58,11 +66,38 @@ try {
  await db.query('select private.refresh_automatic_payroll($1,$2,$3)',[cid,wid,'2026-10-01']);
  const future=(await db.query("select * from public.payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[cid,wid])).rows[0];
  assert.equal(future.calculation_blocked,true);assert.equal(future.detail.unit_resolution.items[1].quantity,null);assert.equal(future.detail.unit_resolution.items[1].amount_yen,null);
+ await db.query('select private.refresh_automatic_payroll($1,$2,$3)',[cid,wid,'2026-10-01']);
+ assert.equal((await db.query('select revision from public.payroll_statements where id=$1',[future.id])).rows[0].revision,future.revision,'unchanged missing quantity does not invalidate reviews repeatedly');
+ await actor(editor);await save(2,changed.items,'2026-10-01');
+ await db.exec('reset role');
+ assert.equal((await db.query('select calculation_blocked from public.payroll_statements where id=$1',[future.id])).rows[0].calculation_blocked,false,'explicitly entered month quantity clears unit block');
  // Finalize through the genuine existing review/immutable snapshot contract.
  await db.query('insert into public.payroll_confirmers(company_id,user_id,position) values($1,$2,1)',[cid,owner]);
  await db.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[taxed.id,owner,taxed.revision]);
- await actor(owner);
- const finalized=(await db.query('select public.finalize_payroll_statement($1,$2,true) result',[taxed.id,taxed.revision])).rows[0].result;
+ let finalized;
+ if(pg) {
+  const first=new pg.Client({connectionString:process.env.SKO_UNIT_FIXTURE_URL}),second=new pg.Client({connectionString:process.env.SKO_UNIT_FIXTURE_URL});
+  await first.connect();await second.connect();
+  try {
+   await first.query('begin');await first.query("select set_config('request.jwt.claim.sub',$1,true)",[owner]);
+   await first.query('select 1 from public.workers where company_id=$1 and id=$2 for update',[cid,wid]);
+   await second.query("select set_config('request.jwt.claim.sub',$1,false)",[editor]);await second.query('set role authenticated');
+   const waiting=second.query('select public.save_payroll_unit_conditions($1,$2,$3,$4,$5::jsonb)',[cid,wid,month,2,JSON.stringify(changed.items)]).then(()=>({ok:true}),error=>({error}));
+   let observed=false;
+   for(let n=0;n<30;n++) {
+    const row=(await db.query('select wait_event_type from pg_stat_activity where pid=$1',[second.processID])).rows[0];
+    if(row?.wait_event_type==='Lock'){observed=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,50));
+   }
+   assert.equal(observed,true,'unit writer waits for the existing worker scope before checking immutable payroll');
+   finalized=(await first.query('select public.finalize_payroll_statement($1,$2,true) result',[taxed.id,taxed.revision])).rows[0].result;
+   await first.query('commit');
+   const raced=await waiting;assert.match(raced.error?.message??'',/finalized\/manual/);
+  } finally {await first.query('rollback');await first.end();await second.end();}
+ } else {
+  await actor(owner);
+  finalized=(await db.query('select public.finalize_payroll_statement($1,$2,true) result',[taxed.id,taxed.revision])).rows[0].result;
+ }
  assert.equal(finalized.finalized,true);assert.equal(finalized.snapshot.detail.unit_resolution.items[0].amount_yen,300);
  const frozen=await statement();
  await actor(editor);await assert.rejects(save(2,changed.items),/finalized\/manual/);assert.deepEqual(await statement(),frozen);

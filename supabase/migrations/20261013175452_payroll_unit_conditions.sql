@@ -34,9 +34,13 @@ begin
  or private.payroll_settings_allowed(cid,wid,operation) is distinct from true then
   raise exception 'payroll access denied' using errcode='42501';
  end if;
- perform 1 from public.companies where id=cid for share;
+ perform 1 from public.companies where id=cid for key share;
  if not found then raise exception 'payroll access denied' using errcode='42501';end if;
- perform 1 from public.workers where id=wid and company_id=cid for share;
+ if operation='edit' then
+  perform 1 from public.workers where id=wid and company_id=cid for update;
+ else
+  perform 1 from public.workers where id=wid and company_id=cid for share;
+ end if;
  if not found then raise exception 'payroll access denied' using errcode='42501';end if;
 end $$;
 
@@ -116,6 +120,19 @@ begin
  perform payroll_unit_private.require_access(cid,wid,'edit');
  if p_month is null or p_month<>date_trunc('month',p_month)::date or p_expected_version is null
  or p_items is null or jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)>100 then raise exception 'invalid unit conditions';end if;
+ -- Match the formal calculator order before modifying conditions. Every affected
+ -- existing month is locked in date order so concurrent finalization cannot win
+ -- between the immutable-state check and saving a quantity.
+ perform pg_advisory_xact_lock_shared(hashtextextended(cid::text||':payroll-rate-registry',0));
+ for period in
+  select month from (
+   select p_month as month union select period_start from public.payroll_statements
+   where company_id=cid and worker_id=wid and period_start>=p_month
+    and automatic_calculation and workflow_state='draft'
+  ) affected order by month
+ loop
+  perform pg_advisory_xact_lock(hashtextextended(cid::text||wid::text||period.month::text,0));
+ end loop;
  perform pg_advisory_xact_lock(hashtextextended(cid::text||wid::text||':unit-conditions',0));
  select * into prior from payroll_unit_private.conditions where company_id=cid and worker_id=wid
  and starts_on<=p_month order by starts_on desc limit 1;
