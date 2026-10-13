@@ -18,6 +18,23 @@ Map<String, dynamic> fixture() => {
       'missing_before': true,
       'missing_after': false,
       'event_count': 1,
+      'record_version': 1,
+      'saved_at': '2026-10-14T00:02:00Z',
+      'first_seen': '2026-10-14T00:00:00Z',
+      'last_seen': '2026-10-14T00:00:00Z',
+      'source_provenance': 'synthetic_fixture',
+      'correlation_confidence': 'synthetic_source_only',
+      'reason_code': 'decoy_lure_touched',
+      'timezone': 'UTC',
+      'source_tracking': 'unavailable',
+      'audit': [
+        {
+          'action': 'imported',
+          'at': '2026-10-14T00:02:00Z',
+          'operator': 'self_master',
+          'record_version': 1,
+        },
+      ],
       'events': [
         {
           'sequence': 1,
