@@ -728,7 +728,9 @@ class _OwnQualificationRegistrationPageState
                                 onAction: unregistered
                                   ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
                                   : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
-                                onOpenDetail: unregistered ? null : () => _previewPhotos(row, title),
+                                onOpenDetail: unregistered
+                                  ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
+                                  : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
                               );
                             },
                           ),

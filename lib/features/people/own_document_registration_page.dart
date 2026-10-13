@@ -622,8 +622,7 @@ class _OwnDocumentRegistrationPageState
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                             attachments: attachments,
                             onAction: action,
-                            onOpenDetail: paths.isEmpty ? action : () => showResourceAttachments(
-                              context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                            onOpenDetail: action,
                           );
                         },
                       ),
