@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/home/weather_forecast_gateway.dart';
 
@@ -58,6 +59,10 @@ void main() {
     expect(result.snapshot.forecastSummaryTemperatureCelsius, 10.5);
     expect(result.snapshot.currentTemperatureCelsius, isNull);
     expect(weatherCondition('openweather:800').label, '晴れ');
+    expect(weatherCondition('openweather:800').icon, Icons.wb_sunny);
+    expect(weatherCondition('weatherkit:Clear').icon, Icons.wb_sunny);
+    expect(weatherCondition('openweather:500').icon, Icons.umbrella);
+    expect(weatherCondition('weatherkit:HeavyRain').icon, Icons.umbrella);
     expect(weatherCondition('weatherkit:Snow').label, '雪');
     expect(weatherCondition('openweather:741').label, '霧');
     expect(weatherCondition('openweather:781').label, '未取得');

@@ -4,7 +4,7 @@ import 'expense_settlement_choice.dart';
 /// not save, approve, reimburse or change any payroll/invoice amount.
 enum ExpenseApproval { pending, approved, rejected }
 
-enum ExpenseCategory { unallocated, ownCompany, subcontractor, customer }
+enum ExpenseCategory { unallocated, ownCompany, subcontractor, customer, other }
 
 enum ExpenseList { allocation, ownCompany, subcontractor, customer }
 
@@ -51,6 +51,7 @@ class ExpenseClaim {
     this.revision = 1,
     this.withdrawn = false,
     this.settlement,
+    this.reviewedAt, this.reviewedBy, this.reviewMemo, this.receiptObjectPath, this.reviewedByName,
   }) : incurredOn = DateTime.utc(
          incurredOn.year,
          incurredOn.month,
@@ -86,6 +87,8 @@ class ExpenseClaim {
   final bool withdrawn;
   final ExpenseAllocation allocation;
   final ExpenseSettlementChoice? settlement;
+  final DateTime? reviewedAt;
+  final String? reviewedBy, reviewMemo, receiptObjectPath, reviewedByName;
 
   /// A candidate only. Period, payment and immutable snapshot rules belong to
   /// the future persistence contract, not to this display model.
@@ -106,6 +109,7 @@ class ExpenseClaim {
         revision: revision,
         withdrawn: withdrawn,
         settlement: settlement,
+        reviewedAt: reviewedAt, reviewedBy: reviewedBy, reviewedByName: reviewedByName, reviewMemo: reviewMemo, receiptObjectPath: receiptObjectPath,
       );
 
   /// An already approved claim is not silently reassigned by a duplicate event.
@@ -145,7 +149,9 @@ class ExpenseClaim {
       revision == other.revision &&
       withdrawn == other.withdrawn &&
       (settlement == null ? other.settlement == null : other.settlement != null && settlement!.sameAs(other.settlement!)) &&
-      allocation.sameAs(other.allocation);
+      reviewedAt == other.reviewedAt && reviewedBy == other.reviewedBy &&
+      reviewedByName == other.reviewedByName && reviewMemo == other.reviewMemo &&
+      receiptObjectPath == other.receiptObjectPath && allocation.sameAs(other.allocation);
 }
 
 /// Drafts cannot be supplied to submitted-claim lists or PDF details.
@@ -249,6 +255,7 @@ String expenseCategoryLabel(ExpenseCategory category) => switch (category) {
   ExpenseCategory.ownCompany => '自社',
   ExpenseCategory.subcontractor => '下請け・協力会社',
   ExpenseCategory.customer => '取引先',
+  ExpenseCategory.other => 'その他（承認のみ）',
 };
 
 String expenseClaimStatusLabel(ExpenseClaim claim) => claim.withdrawn ? '取り下げ（削除済み）' : expenseApprovalLabel(claim.approval);

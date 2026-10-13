@@ -29,6 +29,7 @@ import 'features/approvals/approvals_hub_page.dart';
 import 'features/auth/secondary_protected_page.dart';
 import 'features/chat/chat_cloud_page.dart';
 import 'features/chat/line_history_preview_page.dart';
+import 'features/chat/line_talk_hub_page.dart';
 import 'features/chat/today_line_attendance_page.dart';
 import 'features/companies/trade_company_page.dart';
 import 'features/companies/trade_company_repository.dart';
@@ -1229,6 +1230,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 'attendance_management':
         page = const AttendanceManagementPage();
         break;
+      case 'line_talk':
+        page = const LineTalkHubPage();
+        break;
       case 'today_line':
         page = const TodayLineAttendancePage();
         break;
@@ -1462,6 +1466,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           key: 'albums',
           label: SkoLanguageController.tr('アルバム'),
           icon: Icons.photo_album_outlined,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
+      _MenuAction(
+          key: 'line_talk',
+          label: SkoLanguageController.tr('LINEトーク'),
+          icon: Icons.chat_bubble_outline,
+          homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
       if (_isAdmin &&

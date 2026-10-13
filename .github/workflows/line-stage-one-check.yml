@@ -1,0 +1,29 @@
+name: LINE Stage One Contracts
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/line-webhook/**'
+      - 'lib/features/chat/line_talk_page.dart'
+      - 'lib/features/chat/chat_cloud_repository.dart'
+      - 'tool/verify_line_stage_one_sql.mjs'
+      - '.github/workflows/line-stage-one-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/line-webhook/**'
+      - 'tool/verify_line_stage_one_sql.mjs'
+      - '.github/workflows/line-stage-one-check.yml'
+jobs:
+  webhook-receive-and-retry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify signed webhook, persistence failures, binding and replay
+        run: node --test supabase/functions/line-webhook/handler_test.mjs
+      - name: Verify actual original production conflict key with disposable Postgres
+        run: |
+          npm install --prefix "$RUNNER_TEMP/line-stage-one" --save-exact @electric-sql/pglite@0.3.14
+          node tool/verify_line_stage_one_sql.mjs "$RUNNER_TEMP/line-stage-one/node_modules/@electric-sql/pglite/dist/index.js"

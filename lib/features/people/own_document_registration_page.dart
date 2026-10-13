@@ -201,100 +201,106 @@ class _OwnDocumentRegistrationPageState
 
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('自分の書類を登録'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '登録者：${_worker?['name'] ?? '本人'}',
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+      builder: (dialogContext) => Theme(
+        data: _registrationTheme(dialogContext),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('自分の書類を登録'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '登録者：${_worker?['name'] ?? '本人'}',
+                      style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: requirementId,
-                  decoration: const InputDecoration(labelText: '書類種類'),
-                  items: [
-                    for (final row in candidates)
-                      DropdownMenuItem<String>(
-                        value: row['id']?.toString(),
-                        child: Text(row['name']?.toString() ?? '書類'),
-                      ),
-                  ],
-                  onChanged: (value) => setDialogState(() {
-                    requirementId = value;
-                    attachPhoto = false;
-                  }),
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('有効期限'),
-                  subtitle: Text(
-                    expiresAt == null
-                        ? '未設定'
-                        : '${expiresAt!.year}/${expiresAt!.month.toString().padLeft(2, '0')}/${expiresAt!.day.toString().padLeft(2, '0')}',
-                  ),
-                  trailing: const Icon(Icons.calendar_month_outlined),
-                  onTap: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: dialogContext,
-                      initialDate: expiresAt ?? now,
-                      firstDate: DateTime(1950),
-                      lastDate: DateTime(now.year + 30),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => expiresAt = picked);
-                    }
-                  },
-                ),
-                TextField(
-                  controller: notes,
-                  decoration: const InputDecoration(labelText: '備考'),
-                  maxLines: 2,
-                ),
-                if (!photoEditingAvailable)
-                  const Text(
-                    '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
-                  ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('写真を添付する'),
-                  value: attachPhoto,
-                  onChanged:
-                      !photoEditingAvailable &&
-                          workerDocumentPaths(_statusFor(requirementId ?? ''))
-                              .isNotEmpty
-                      ? null
-                      : (value) =>
-                            setDialogState(() => attachPhoto = value ?? false),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('キャンセル'),
-            ),
-            FilledButton(
-              onPressed: requirementId == null
-                  ? null
-                  : () => Navigator.pop(dialogContext, {
-                      'requirementId': requirementId,
-                      'expiresAt': expiresAt,
-                      'notes': notes.text.trim(),
-                      'attachPhoto': attachPhoto,
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: requirementId,
+                    decoration: const InputDecoration(labelText: '書類種類'),
+                    items: [
+                      for (final row in candidates)
+                        DropdownMenuItem<String>(
+                          value: row['id']?.toString(),
+                          child: Text(row['name']?.toString() ?? '書類'),
+                        ),
+                    ],
+                    onChanged: (value) => setDialogState(() {
+                      requirementId = value;
+                      attachPhoto = false;
                     }),
-              child: const Text('登録'),
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('有効期限'),
+                    subtitle: Text(
+                      expiresAt == null
+                          ? '未設定'
+                          : '${expiresAt!.year}/${expiresAt!.month.toString().padLeft(2, '0')}/${expiresAt!.day.toString().padLeft(2, '0')}',
+                    ),
+                    trailing: const Icon(Icons.calendar_month_outlined),
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: dialogContext,
+                        initialDate: expiresAt ?? now,
+                        firstDate: DateTime(1950),
+                        lastDate: DateTime(now.year + 30),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => expiresAt = picked);
+                      }
+                    },
+                  ),
+                  TextField(
+                    controller: notes,
+                    decoration: const InputDecoration(labelText: '備考'),
+                    maxLines: 2,
+                  ),
+                  if (!photoEditingAvailable)
+                    const Text(
+                      '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
+                    ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('写真を添付する'),
+                    value: attachPhoto,
+                    onChanged:
+                        !photoEditingAvailable &&
+                            workerDocumentPaths(_statusFor(requirementId ?? ''))
+                                .isNotEmpty
+                        ? null
+                        : (value) =>
+                              setDialogState(() => attachPhoto = value ?? false),
+                  ),
+                ],
+              ),
             ),
-          ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                onPressed: requirementId == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, {
+                        'requirementId': requirementId,
+                        'expiresAt': expiresAt,
+                        'notes': notes.text.trim(),
+                        'attachPhoto': attachPhoto,
+                      }),
+                child: const Text('登録'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -334,20 +340,23 @@ class _OwnDocumentRegistrationPageState
       if (draft['attachPhoto'] == true) {
         final source = await showModalBottomSheet<ImageSource>(
           context: context,
-          builder: (sheetContext) => SafeArea(
-            child: Wrap(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.photo_camera_outlined),
-                  title: const Text('カメラで撮影'),
-                  onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library_outlined),
-                  title: const Text('写真から選ぶ'),
-                  onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
-                ),
-              ],
+          builder: (sheetContext) => Theme(
+            data: _registrationTheme(sheetContext),
+            child: SafeArea(
+              child: Wrap(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.photo_camera_outlined),
+                    title: const Text('カメラで撮影'),
+                    onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.photo_library_outlined),
+                    title: const Text('写真から選ぶ'),
+                    onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -414,29 +423,63 @@ class _OwnDocumentRegistrationPageState
     }
   }
 
+  ThemeData _registrationTheme(BuildContext context) {
+    final theme = Theme.of(context);
+    final text = theme.textTheme;
+    return theme.copyWith(
+      textTheme: text.copyWith(
+        titleLarge: text.titleLarge?.copyWith(fontSize: 18),
+        titleMedium: text.titleMedium?.copyWith(fontSize: 14),
+        titleSmall: text.titleSmall?.copyWith(fontSize: 13),
+        bodyLarge: text.bodyLarge?.copyWith(fontSize: 14),
+        bodyMedium: text.bodyMedium?.copyWith(fontSize: 14),
+        bodySmall: text.bodySmall?.copyWith(fontSize: 12),
+        labelLarge: text.labelLarge?.copyWith(fontSize: 14),
+        labelMedium: text.labelMedium?.copyWith(fontSize: 12),
+        labelSmall: text.labelSmall?.copyWith(fontSize: 11),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: (theme.textButtonTheme.style ?? const ButtonStyle()).copyWith(
+          minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+          textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 14)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: (theme.filledButtonTheme.style ?? const ButtonStyle()).copyWith(
+          minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+          textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 14)),
+        ),
+      ),
+    );
+  }
+
   void _showRegistrationHelp() {
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('自分の書類を登録'),
-        content: const Text(
-          '写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
-          '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
-          '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
-          '写真の選択や撮影をキャンセルした場合は保存しません。'
-          '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
-          '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
-          'すでに保存した写真は、この画面の差し替えで削除しません。'
-          '\n\n新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。'
-          'その他の書類は写真の送信停止中です。保存済み写真の確認はできます。'
-          '失敗表示が出た場合は登録完了ではありません。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('閉じる'),
+      builder: (context) => Theme(
+        data: _registrationTheme(context),
+        child: AlertDialog(
+          title: const Text('自分の書類を登録'),
+          content: const Text(
+            '見出し・一覧・登録フォームの文字を小さめに揃えています。iPhoneの文字サイズ設定による拡大は利用できます。'
+            '\n\n写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
+            '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
+            '一覧の書類をタップすると、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '写真の選択や撮影をキャンセルした場合は保存しません。'
+            '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
+            '送信結果が不明な場合は、書類一覧を再読み込みして確認してください。'
+            'すでに保存した写真は、この画面の差し替えで削除しません。'
+            '\n\n新しい写真の送信は、会社が試験登録を許可した運転免許証に限られます。'
+            'その他の書類は写真の送信停止中です。保存済み写真の確認はできます。'
+            '失敗表示が出た場合は登録完了ではありません。',
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('閉じる'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -454,109 +497,104 @@ class _OwnDocumentRegistrationPageState
         })
         .toList(growable: false);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '書類登録',
-          style: TextStyle(fontWeight: FontWeight.w900),
+    return Theme(
+      data: _registrationTheme(context),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            '書類登録',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '書類登録のヘルプ',
+              onPressed: _showRegistrationHelp,
+              icon: const Icon(Icons.help_outline),
+            ),
+            IconButton(
+              tooltip: '再読み込み',
+              onPressed: _loading || _saving ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
-        actions: [
-          IconButton(
-            tooltip: '書類登録のヘルプ',
-            onPressed: _showRegistrationHelp,
-            icon: const Icon(Icons.help_outline),
-          ),
-          IconButton(
-            tooltip: '再読み込み',
-            onPressed: _loading || _saving ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || _saving || _requirements.isEmpty
-            ? null
-            : _registerDocument,
-        icon: const Icon(Icons.note_add_outlined),
-        label: const Text('書類登録'),
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? Center(child: Text(_error!, textAlign: TextAlign.center))
-            : Column(
-                children: [
-                  Card(
-                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.person_outline),
-                      ),
-                      title: Text(
-                        _worker?['name']?.toString() ?? '本人',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      subtitle: const Text('ログイン中の本人の書類だけを表示します'),
-                    ),
-                  ),
-                  if (_repository is OwnDocumentPhotoGateway &&
-                      !(_repository as OwnDocumentPhotoGateway)
-                          .photoEditingAvailable)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: Text(
-                        '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。現在の試験登録は会社が許可した運転免許証に限られます。',
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _loading || _saving || _requirements.isEmpty
+              ? null
+              : _registerDocument,
+          icon: const Icon(Icons.note_add_outlined),
+          label: const Text('書類登録', style: TextStyle(fontSize: 14)),
+        ),
+        body: SafeArea(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? Center(child: Text(_error!, textAlign: TextAlign.center))
+              : Column(
+                  children: [
+                    Card(
+                      margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.person_outline),
+                        ),
+                        title: Text(
+                          _worker?['name']?.toString() ?? '本人',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: const Text(
+                          'ログイン中の本人の書類だけを表示します',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: '書類種類で検索',
+                    if (_repository is OwnDocumentPhotoGateway &&
+                        !(_repository as OwnDocumentPhotoGateway)
+                            .photoEditingAvailable)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。現在の試験登録は会社が許可した運転免許証に限られます。',
+                        ),
                       ),
-                      onChanged: (value) => setState(() => _query = value),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                      child: TextField(
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search),
+                          hintText: '書類種類で検索',
+                        ),
+                        onChanged: (value) => setState(() => _query = value),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
-                      itemCount: requirements.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 6),
-                      itemBuilder: (context, index) {
-                        final requirement = requirements[index];
-                        final id = requirement['id']?.toString() ?? '';
-                        final status = _statusFor(id);
-                        final paths = workerDocumentPaths(status);
-                        final needsRegistration =
-                            status == null ||
-                            (paths.isEmpty &&
-                                _repository is OwnDocumentPhotoGateway &&
-                                !(_repository as OwnDocumentPhotoGateway)
-                                    .photoEditingAvailable);
-                        final label =
-                            status?['status']?.toString() == 'verified'
-                            ? '確認済み'
-                            : status?['status']?.toString() == 'submitted'
-                            ? '提出済み'
-                            : '未登録';
-                        return Card(
-                          child: ListTile(
-                            onTap: _saving
-                                ? null
-                                : needsRegistration
-                                ? () => _registerDocument(
-                                    initialRequirementId: id,
-                                  )
-                                : _repository is OwnDocumentPhotoGateway
-                                ? () => _editPhotos(status)
-                                : null,
-                            trailing: TextButton(
-                              onPressed: _saving
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                        itemCount: requirements.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (context, index) {
+                          final requirement = requirements[index];
+                          final id = requirement['id']?.toString() ?? '';
+                          final status = _statusFor(id);
+                          final paths = workerDocumentPaths(status);
+                          final needsRegistration =
+                              status == null ||
+                              (paths.isEmpty &&
+                                  _repository is OwnDocumentPhotoGateway &&
+                                  !(_repository as OwnDocumentPhotoGateway)
+                                      .photoEditingAvailable);
+                          final label =
+                              status?['status']?.toString() == 'verified'
+                              ? '確認済み'
+                              : status?['status']?.toString() == 'submitted'
+                              ? '提出済み'
+                              : '未登録';
+                          return Card(
+                            child: ListTile(
+                              onTap: _saving
                                   ? null
                                   : needsRegistration
                                   ? () => _registerDocument(
@@ -564,49 +602,62 @@ class _OwnDocumentRegistrationPageState
                                     )
                                   : _repository is OwnDocumentPhotoGateway
                                   ? () => _editPhotos(status)
-                                  : () => _registerDocument(
-                                      initialRequirementId: id,
-                                    ),
-                              child: Text(
-                                needsRegistration
-                                    ? '登録する'
-                                    : _repository is OwnDocumentPhotoGateway &&
-                                          !(_repository
-                                                  as OwnDocumentPhotoGateway)
-                                              .photoEditingAvailable
-                                    ? '写真を確認'
-                                    : '写真を追加・編集',
+                                  : null,
+                              trailing: TextButton(
+                                onPressed: _saving
+                                    ? null
+                                    : needsRegistration
+                                    ? () => _registerDocument(
+                                        initialRequirementId: id,
+                                      )
+                                    : _repository is OwnDocumentPhotoGateway
+                                    ? () => _editPhotos(status)
+                                    : () => _registerDocument(
+                                        initialRequirementId: id,
+                                      ),
+                                child: Text(
+                                  needsRegistration
+                                      ? '登録する'
+                                      : _repository is OwnDocumentPhotoGateway &&
+                                            !(_repository
+                                                    as OwnDocumentPhotoGateway)
+                                                .photoEditingAvailable
+                                      ? '写真を確認'
+                                      : '写真を追加・編集',
+                                ),
+                              ),
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.description_outlined),
+                              ),
+                              title: Text(
+                                requirement['name']?.toString() ?? '書類',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                [
+                                  label,
+                                  workerDocumentScopeLabel(requirement['scope']),
+                                  if ((status?['expires_at']?.toString() ?? '')
+                                      .isNotEmpty)
+                                    '期限 ${status!['expires_at']}',
+                                  if (paths.isNotEmpty)
+                                    '画像あり${paths.length > 1 ? '（${paths.length}枚）' : ''}'
+                                  else if (status?['status'] == 'submitted')
+                                    '写真未添付',
+                                ].join(' / '),
+                                style: const TextStyle(fontSize: 12),
                               ),
                             ),
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.description_outlined),
-                            ),
-                            title: Text(
-                              requirement['name']?.toString() ?? '書類',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            subtitle: Text(
-                              [
-                                label,
-                                workerDocumentScopeLabel(requirement['scope']),
-                                if ((status?['expires_at']?.toString() ?? '')
-                                    .isNotEmpty)
-                                  '期限 ${status!['expires_at']}',
-                                if (paths.isNotEmpty)
-                                  '画像あり${paths.length > 1 ? '（${paths.length}枚）' : ''}'
-                                else if (status?['status'] == 'submitted')
-                                  '写真未添付',
-                              ].join(' / '),
-                            ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+        ),
       ),
     );
   }

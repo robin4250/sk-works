@@ -1,0 +1,22 @@
+name: Trade directory system customer filter
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261012231746_hide_unassigned_invoice_customers_from_trade_directory.sql'
+      - 'tool/verify_trade_directory_system_customer_filter.mjs'
+      - '.github/workflows/trade-directory-system-customer-filter.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261012231746_hide_unassigned_invoice_customers_from_trade_directory.sql'
+      - 'tool/verify_trade_directory_system_customer_filter.mjs'
+jobs:
+  verify-marker-scope-and-preservation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/trade-directory-filter" --save-exact @electric-sql/pglite@0.3.14
+      - run: node tool/verify_trade_directory_system_customer_filter.mjs "$RUNNER_TEMP/trade-directory-filter/node_modules/@electric-sql/pglite/dist/index.js"

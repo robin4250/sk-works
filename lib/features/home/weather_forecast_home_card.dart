@@ -201,10 +201,10 @@ class _WeatherReferenceInformation extends StatelessWidget {
     if (value == null) return Icons.help_outline;
     if (data.selectedDay == 0 && value.currentSummary != null) {
       final currentIcons = <String, IconData>{
-        '晴れ': Icons.wb_sunny_outlined,
+        '晴れ': Icons.wb_sunny,
         '曇り': Icons.cloud_outlined,
         '雷': Icons.thunderstorm_outlined,
-        '雨': Icons.water_drop_outlined,
+        '雨': Icons.umbrella,
         '雪': Icons.ac_unit,
         '霧': Icons.blur_on,
       };
@@ -225,7 +225,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
     return Column(children: [
       Expanded(flex: 4, child: Row(children: [
-        Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: colors.primary),
+        Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
         const SizedBox(width: 4),
         Expanded(flex: 4, child: LayoutBuilder(builder: (context, constraints) => FittedBox(
           fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
@@ -251,7 +251,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
         return Expanded(child: Semantics(label: '$hour${SkoLanguageController.tr('時')} ${value?.summary ?? SkoLanguageController.tr('未取得')}',
           child: FittedBox(fit: BoxFit.scaleDown, child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('$hour${SkoLanguageController.tr('時')}', style: const TextStyle(fontSize: 8, height: 1.1)),
-            Icon(value?.icon ?? Icons.help_outline, key: ValueKey('weather-home-hour-$hour'), size: 15, color: colors.primary),
+            Icon(value?.icon ?? Icons.help_outline, key: ValueKey('weather-home-hour-$hour'), size: 15, color: weatherConditionIconColor(value?.icon ?? Icons.help_outline, colors)),
             Text(value?.rainProbability == null ? '—' : '${value?.rainProbability}%', style: const TextStyle(fontSize: 8, height: 1.1)),
           ]))));
       }))),

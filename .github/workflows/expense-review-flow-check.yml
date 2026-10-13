@@ -1,0 +1,59 @@
+name: Expense review flow and receipt contracts
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*expense_atomic_review_flow.sql'
+      - 'supabase/migrations/*expense_receipt_camera_attachments.sql'
+      - 'lib/features/expenses/**'
+      - 'test/expense_review_flow_test.dart'
+      - 'test/expense_camera_submission_test.dart'
+      - 'tool/verify_expense_review_flow*.mjs'
+      - 'tool/verify_expense_receipt_attachments.mjs'
+      - '.github/workflows/expense-review-flow-check.yml'
+permissions:
+  contents: read
+jobs:
+  postgres-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        mode: [flow, receipts]
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: expense-review-fixture
+          POSTGRES_DB: sko_expense_review_flow_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_expense_review_flow_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_EXPENSE_REVIEW_DATABASE_URL: postgres://postgres:expense-review-fixture@127.0.0.1:5432/sko_expense_review_flow_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/expense-review-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - run: node tool/verify_expense_review_flow_postgres.mjs "$RUNNER_TEMP/expense-review-runtime/node_modules/pg/lib/index.js" "${{ matrix.mode }}"
+  widgets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/expense_review_flow_test.dart test/expense_camera_submission_test.dart test/expense_settlement_choice_test.dart test/expense_personal_page_test.dart test/expense_claims_page_test.dart
