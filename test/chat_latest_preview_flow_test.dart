@@ -283,6 +283,7 @@ void main() {
       final server = (await tester.runAsync(
         () => HttpServer.bind(InternetAddress.loopbackIPv4, 0),
       ))!;
+      await tester.runAsync(() async {
       server.listen((request) async {
         Object data;
         if (request.uri.path == '/auth/v1/token') {
@@ -335,6 +336,7 @@ void main() {
         request.response.headers.contentType = ContentType.json;
         request.response.write(jsonEncode(data));
         await request.response.close();
+      });
       });
       final client = (await tester.runAsync(() async => SupabaseClient(
         'http://127.0.0.1:${server.port}',
