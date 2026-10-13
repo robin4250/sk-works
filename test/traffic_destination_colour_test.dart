@@ -32,16 +32,16 @@ void main() {
           opaque++;
           palette.add((r << 16) | (g << 8) | b);
           final matches = switch(destination) {
-            TrafficDestination.nearestStation => b > r + 40 && r > g + 10,
-            TrafficDestination.trainTransfer => b > r + 50 && b > g + 30,
+            TrafficDestination.nearestStation => (r - g).abs() + (g - b).abs() <= 2,
+            TrafficDestination.trainTransfer => r > g + 50 && b > g + 50 && (r - b).abs() < 50,
             TrafficDestination.busStop => g > r + 30 && g > b + 20,
           };
-          if (matches) coloured++;
+          if (enabled && matches) coloured++;
           if (!enabled) expect((r - g).abs() + (g - b).abs(), lessThanOrEqualTo(2));
         }
         expect(opaque, greaterThan(40), reason: 'The sign must actually render at compact size');
         if (enabled) {
-          expect(coloured, greaterThan(20), reason: 'Station indigo, train blue and bus green remain recognizable');
+          expect(coloured, greaterThan(20), reason: 'Station grey, train purple and bus green remain recognizable');
           expect(palette.length, greaterThan(1), reason: 'Vehicle body and sign details must remain distinguishable');
         } else { expect(coloured, 0); }
       }

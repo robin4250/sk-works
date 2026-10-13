@@ -39,13 +39,13 @@ class _TrafficSignPainter extends CustomPainter {
     canvas.save();
     canvas.scale(size.width / 24, size.height / 24);
     final accent = switch (destination) {
-      TrafficDestination.nearestStation => const Color(0xff6554b8),
-      TrafficDestination.trainTransfer => const Color(0xff176ac4),
-      TrafficDestination.busStop => const Color(0xff23784b),
+      TrafficDestination.nearestStation => const Color(0xff686868),
+      TrafficDestination.trainTransfer => const Color(0xff9c27b0),
+      TrafficDestination.busStop => const Color(0xff2e7d32),
     };
     final color = enabled ? accent : disabledColor;
     final body = Paint()..color = enabled ? Color.lerp(accent, Colors.white, .82)! : disabledColor;
-    final detail = Paint()..color = enabled ? const Color(0xff35465a) : disabledColor;
+    final detail = Paint()..color = enabled ? const Color(0xff454545) : disabledColor;
     final line = Paint()
       ..color = color
       ..strokeWidth = 1.6
