@@ -471,7 +471,17 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     if (repository == null) return;
     try {
       final actor = repository.currentUserId;
-      final groups = await repository.loadGroups();
+      final member = await repository.membership();
+      if (_readScope != '$actor/${member.companyId}') {
+        await _load();
+        return;
+      }
+      var groups = await repository.loadGroups();
+      if (widget.viewerOnlyFriends) {
+        final friendIds = _friends.map((f) => f['user_id']?.toString()).whereType<String>().toSet();
+        groups = groups.where((group) => group['group_type'] == 'direct' &&
+          friendIds.contains(group['direct_other_user_id']?.toString())).toList();
+      }
       final priorities = await repository.prioritizedSiteGroupIds();
       if (!mounted || repository.currentUserId != actor) return;
       setState(() {
