@@ -33,6 +33,10 @@ try {
  const blocked=await mint('synthetic-replacement');await admin('insert into private.fixture_account_restrictions values($1)',[actor]);await rejected(change(a,blocked));await rejected(mint('synthetic-replacement'));await admin('delete from private.fixture_account_restrictions');
  const revoked=await mint('synthetic-replacement');await admin('delete from auth.sessions where id=$1',[session]);await rejected(change(a,revoked));await admin('insert into auth.sessions values($1,$2)',[session,actor]);
  const stale=await mint('synthetic-replacement'),fresh=await mint('synthetic-replacement');await change(a,fresh,'synthetic-newer');await rejected(change(a,stale));
+ // The new issuing path preserves the existing attempt lock; primary recovery
+ // can restore a locked secondary credential through the trusted issuer.
+ for(let i=0;i<5;i++)assert.equal(await mint("synthetic-wrong"),null);
+ await assert.rejects(mint("synthetic-newer"),/temporarily locked/);
  // Primary proof can only be minted by the trusted service issuer, not a client.
  await context(a,actor,session,'service_role');const primary=(await a.query('select public.secondary_candidate_issue_after_server_primary($1,$2) v',[actor,session])).rows[0].v;
  await context(a);await change(a,primary,'synthetic-primary-restored');
