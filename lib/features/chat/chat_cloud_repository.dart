@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -16,6 +17,9 @@ class ChatCloudRepository {
     if (client.auth.currentUser == null) return null;
     return ChatCloudRepository._(client);
   }
+
+  @visibleForTesting
+  factory ChatCloudRepository.forTesting(SupabaseClient client) => ChatCloudRepository._(client);
 
   String? get currentUserId => _client.auth.currentUser?.id;
 
@@ -110,6 +114,19 @@ class ChatCloudRepository {
       if (groupId != null) bindingsByGroup[groupId] = binding;
     }
 
+    final photoByGroup = <String, Map<String, dynamic>>{};
+    try {
+      final rawPhotos = await _client.rpc('custom_chat_group_photo_workspace');
+      if (rawPhotos is List) {
+        for (final row in rawPhotos.whereType<Map>()) {
+          photoByGroup[row['group_id'].toString()] = Map<String, dynamic>.from(row);
+        }
+      }
+    } on PostgrestException catch (error) {
+      // Older servers remain usable until this additive migration is deployed.
+      if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+    }
+
     final myId = currentUserId;
     final groups = <Map<String, dynamic>>[];
 
@@ -151,10 +168,17 @@ class ChatCloudRepository {
         }
       }
 
+      final photo = photoByGroup[groupId];
+      final customPath = photo?['storage_path']?.toString();
+      if (customPath != null && customPath.isNotEmpty) {
+        try { avatarUrl = await _client.storage.from('custom-chat-photos').createSignedUrl(customPath, 3600); }
+        catch (_) { avatarUrl = null; }
+      }
       groups.add({
         ...group,
         'display_name': displayName,
         'avatar_url': avatarUrl,
+        'can_edit_group_photo': photo?['can_edit'] == true,
         'direct_other_user_id': directOtherUserId,
         'line_binding_present': binding != null,
         'line_binding_enabled': binding?['status'] == 'active',
@@ -687,28 +711,37 @@ class ChatCloudRepository {
     );
   }
 
-  Future<Map<String, int>> loadUnreadCounts(
-    Map<String, DateTime> lastReadByGroup,
-  ) async {
-    final userId = currentUserId;
-    if (userId == null) return const {};
-    final result = <String, int>{};
+  Future<Map<String, int>> loadUnreadCounts(Map<String, DateTime> lastReadByGroup) async =>
+      (await loadConversationSummaries(lastReadByGroup)).map((id, summary) => MapEntry(id, summary.unread));
 
+  Future<Map<String, ChatConversationSummary>> loadConversationSummaries(Map<String, DateTime> lastReadByGroup) async {
+    final actor = currentUserId;
+    if (actor == null) return const {};
+    final blocked = await loadBlockedUserIds();
+    final result = <String, ChatConversationSummary>{};
     for (final entry in lastReadByGroup.entries) {
-      final rows = await _client
-          .from('chat_messages')
-          .select('id,sender_user_id,sent_at')
-          .eq('communication_group_id', entry.key)
-          .gt('sent_at', entry.value.toUtc().toIso8601String())
-          .limit(100);
-      result[entry.key] = rows.where((row) {
-        final sender = row['sender_user_id']?.toString();
-        return sender != null && sender != userId;
-      }).length;
+      // Both queries are subject to the existing group/message RLS. No service key.
+      final latestQuery = _client.from('chat_messages')
+          .select('id,body,sender_user_id,sent_at').eq('communication_group_id', entry.key);
+      final latest = await (blocked.isEmpty ? latestQuery : latestQuery.not('sender_user_id', 'in',
+          '(${blocked.join(',')})')).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
+      var count = 0;
+      for (var offset = 0; ; offset += 1000) {
+        final rows = await _client.from('chat_messages').select('id,sender_user_id,sent_at')
+            .eq('communication_group_id', entry.key)
+            .gt('sent_at', entry.value.toUtc().toIso8601String())
+            .order('sent_at').order('id').range(offset, offset + 999);
+        count += rows.where((row) {final sender = row['sender_user_id']?.toString();
+          return sender != null && sender != actor && !blocked.contains(sender);}).length;
+        if (rows.length < 1000) break;
+      }
+      if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+      result[entry.key] = ChatConversationSummary(unread: count,
+        body: latest.isEmpty ? null : latest.first['body']?.toString(),
+        sentAt: latest.isEmpty ? null : latest.first['sent_at']?.toString());
     }
     return result;
   }
-
 
   Future<Map<String, dynamic>> loadFriendWorkspace() async {
     final raw = await _client.rpc('sko_friend_workspace');
@@ -775,6 +808,21 @@ class ChatCloudRepository {
     return id;
   }
 
+  Future<void> saveCustomGroupPhoto(String groupId, Uint8List bytes) async {
+    final actor = currentUserId;
+    if (actor == null) throw StateError('ログインが必要です。');
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) throw StateError('写真は5MB以下で選択してください。');
+    final png = bytes.length >= 8 && bytes[0] == 137 && bytes[1] == 80 && bytes[2] == 78 && bytes[3] == 71;
+    final jpeg = bytes.length >= 3 && bytes[0] == 255 && bytes[1] == 216 && bytes[2] == 255;
+    if (!png && !jpeg) throw StateError('JPEGまたはPNGの写真を選択してください。');
+    final path = '$groupId/$actor/${DateTime.now().microsecondsSinceEpoch}.${png ? 'png' : 'jpg'}';
+    await _client.storage.from('custom-chat-photos').uploadBinary(path, bytes,
+      fileOptions: FileOptions(contentType: png ? 'image/png' : 'image/jpeg', upsert: false));
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    await _client.rpc('set_custom_chat_group_photo', params: {'p_group_id': groupId, 'p_storage_path': path});
+    // Never replace/delete the currently committed photo before metadata succeeds.
+  }
+
   Future<void> inviteFriendToGroup({
     required String groupId,
     required String friendUserId,
@@ -829,4 +877,11 @@ class ChatCloudRepository {
     );
   }
 
+}
+
+
+class ChatConversationSummary {
+  const ChatConversationSummary({required this.unread, this.body, this.sentAt});
+  final int unread;
+  final String? body, sentAt;
 }

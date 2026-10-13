@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../../international/language_controller.dart';
 import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_page.dart';
+import 'chat_list_widgets.dart';
 
 enum _ChatTab { all, friends, site, groups, partner }
 
@@ -31,7 +33,7 @@ class ChatCloudPage extends StatefulWidget {
   State<ChatCloudPage> createState() => _ChatCloudPageState();
 }
 
-class _ChatCloudPageState extends State<ChatCloudPage> {
+class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserver {
   final _repository = ChatCloudRepository.maybeCreate();
   final _composer = TextEditingController();
   final _scrollController = ScrollController();
@@ -64,6 +66,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   bool _appNotificationSoundEnabled = true;
   final Map<String, String?> _lastObservedMessageIdByGroup = <String, String?>{};
   String? _error;
+  Timer? _listRefreshTimer;
+  int _summaryGeneration = 0;
+  String? _readScope;
+  bool _refreshingList = false;
 
   Map<String, dynamic>? get _selectedGroup {
     final id = _selectedGroupId;
@@ -77,6 +83,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _listRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshList());
     if (widget.showGroupsInitially) {
       _tab = _ChatTab.groups;
     }
@@ -112,6 +120,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _listRefreshTimer?.cancel();
     _subscription?.cancel();
     _composer.dispose();
     _scrollController.dispose();
@@ -134,6 +144,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     });
 
     try {
+      final actor = repository.currentUserId;
+      final member = await repository.membership();
+      final scope = '$actor/${member.companyId}';
       final canManagePartnerChat = await repository.canManagePartnerChat();
       var groups = await repository.loadGroups();
       var priorities = await repository.prioritizedSiteGroupIds();
@@ -171,8 +184,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
           ? previous
           : null;
 
-      if (!mounted) return;
+      if (!mounted || repository.currentUserId != actor) return;
       setState(() {
+        if (_readScope != scope) _unreadCounts = const {};
+        _readScope = scope;
         _canManagePartnerChat = canManagePartnerChat;
         if (!_canManagePartnerChat && _tab == _ChatTab.partner) {
           _tab = _ChatTab.all;
@@ -209,9 +224,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _error = null;
     });
 
+    final watchingActor = repository.currentUserId;
     _subscription = repository.watchMessages(id).listen(
       (messages) {
-        if (!mounted) return;
+        if (!mounted || repository.currentUserId != watchingActor || _selectedGroupId != id) return;
         final latest = messages.isEmpty ? null : messages.last;
         final latestId = latest?['id']?.toString();
         final previousId = _lastObservedMessageIdByGroup[id];
@@ -267,7 +283,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _positionInitialMessages = true;
       _appearance = appearance;
       _chatChromeVisible = true;
-      _unreadCounts = {..._unreadCounts, id: 0};
+
     });
     await _subscribeSelected();
   }
@@ -320,35 +336,67 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     _edgeTriggered = false;
   }
 
-  Future<void> _markRead(String groupId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'sko_chat_last_read_$groupId',
-      DateTime.now().toUtc().toIso8601String(),
-    );
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshList();
   }
 
-  Future<void> _refreshUnreadCounts(
-    List<Map<String, dynamic>> groups,
-  ) async {
+  Future<void> _refreshList() async {
+    if (_refreshingList || _loading || _repository == null) return;
+    _refreshingList = true;
+    try { await _loadGroupsOnly(); await _refreshUnreadCounts(_groups); }
+    finally { _refreshingList = false; }
+  }
+
+  String _readKey(String scope, String groupId) => 'sko_chat_last_read_v2_$scope/$groupId';
+
+  Future<void> _markRead(String groupId) async {
+    final actor = _repository?.currentUserId;
+    final scope = _readScope;
+    if (actor == null || scope == null || !scope.startsWith('$actor/') ||
+        _selectedGroupId != groupId || _messages.isEmpty) return;
+    // Persist the newest message actually received, not wall clock time: a
+    // concurrent/newly arriving message must remain unread until displayed.
+    final dates = _messages.map((m) => DateTime.tryParse(m['sent_at']?.toString() ?? ''))
+        .whereType<DateTime>().toList()..sort();
+    if (dates.isEmpty) return;
+    final receivedThrough = dates.last.toUtc();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted || _repository?.currentUserId != actor || _readScope != scope || _selectedGroupId != groupId) return;
+    final key = _readKey(scope, groupId);
+    final previous = DateTime.tryParse(prefs.getString(key) ?? '');
+    if (previous == null || receivedThrough.isAfter(previous)) {
+      await prefs.setString(key, receivedThrough.toIso8601String());
+    }
+    if (!mounted || _repository?.currentUserId != actor || _readScope != scope) return;
+    await _refreshUnreadCounts(_groups);
+  }
+
+  Future<void> _refreshUnreadCounts(List<Map<String, dynamic>> groups) async {
     final repository = _repository;
-    if (repository == null || groups.isEmpty) return;
+    final scope = _readScope;
+    final actor = repository?.currentUserId;
+    if (repository == null || actor == null || scope == null || !scope.startsWith('$actor/')) return;
+    final generation = ++_summaryGeneration;
     final prefs = await SharedPreferences.getInstance();
     final lastRead = <String, DateTime>{};
-    final fallback = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     for (final group in groups) {
       final id = group['id']?.toString() ?? '';
       if (id.isEmpty) continue;
-      final raw = prefs.getString('sko_chat_last_read_$id');
-      lastRead[id] = DateTime.tryParse(raw ?? '') ?? fallback;
+      // Legacy unscoped markers are left intact, but never reused by an actor.
+      lastRead[id] = DateTime.tryParse(prefs.getString(_readKey(scope, id)) ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     }
     try {
-      final counts = await repository.loadUnreadCounts(lastRead);
-      if (!mounted) return;
-      setState(() => _unreadCounts = counts);
-    } catch (_) {
-      // Unread badges are supplemental and must not block chat loading.
-    }
+      final summaries = await repository.loadConversationSummaries(lastRead);
+      if (!mounted || generation != _summaryGeneration || repository.currentUserId != actor || _readScope != scope) return;
+      setState(() {
+        _unreadCounts = {for (final entry in summaries.entries) entry.key: entry.value.unread};
+        _groups = [for (final group in _groups) {...group,
+          'last_message_body': summaries[group['id']?.toString()]?.body,
+          'last_message_at': summaries[group['id']?.toString()]?.sentAt}];
+      });
+    } catch (_) { /* Retain successfully read summaries if optional refresh fails. */ }
   }
 
   bool _isNearBottom() {
@@ -367,7 +415,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       _positionInitialMessages = false;
       await _markRead(groupId);
       if (!mounted) return;
-      setState(() => _unreadCounts = {..._unreadCounts, groupId: 0});
+
     });
   }
 
@@ -422,9 +470,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     final repository = _repository;
     if (repository == null) return;
     try {
+      final actor = repository.currentUserId;
       final groups = await repository.loadGroups();
       final priorities = await repository.prioritizedSiteGroupIds();
-      if (!mounted) return;
+      if (!mounted || repository.currentUserId != actor) return;
       setState(() {
         _groups = groups;
         _prioritizedSiteGroupIds = priorities;
@@ -676,48 +725,61 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   Future<void> _createCustomGroup() async {
+    await _editGroupPhoto(create: true);
+  }
+
+  Future<void> _editGroupPhoto({bool create = false}) async {
     final repository = _repository;
-    if (repository == null) return;
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('グループチャット作成'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'グループ名',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('作成'),
-          ),
-        ],
-      ),
-    );
+    final selected = _selectedGroup;
+    if (repository == null || (!create && selected?['can_edit_group_photo'] != true)) return;
+    final actor = repository.currentUserId;
+    final controller = TextEditingController(text: create ? '' : selected?['name']?.toString());
+    Uint8List? photo;
+    String? createdId;
+    var busy = false;
+    String? error;
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (context, update) => AlertDialog(
+        title: Text(create ? 'グループチャット作成' : 'グループ設定'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (create) TextField(controller: controller, enabled: !busy && createdId == null,
+            decoration: const InputDecoration(labelText: 'グループ名', border: OutlineInputBorder())),
+          const SizedBox(height: 12),
+          CircleAvatar(radius: 40, child: photo != null
+            ? ClipOval(child: Image.memory(photo!, width:80,height:80,fit:BoxFit.cover))
+            : !create && selected?['avatar_url'] != null
+              ? ClipOval(child: Image.network(selected!['avatar_url'].toString(),width:80,height:80,fit:BoxFit.cover, errorBuilder:(_,__,___)=>const Icon(Icons.groups_outlined,size:36)))
+              : const Icon(Icons.groups_outlined,size:36)),
+          TextButton.icon(onPressed: busy ? null : () async {
+            final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
+            if (picked == null) return;
+            final bytes = await picked.readAsBytes();
+            if (!dialogContext.mounted || repository.currentUserId != actor) return;
+            update(() { photo = bytes; error = null; });
+          }, icon: const Icon(Icons.camera_alt_outlined), label: const Text('写真を変更')),
+          if (error != null) Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ])),
+        actions: [TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('戻る')),
+          FilledButton(onPressed: busy ? null : () async {
+            if (create && controller.text.trim().isEmpty) return;
+            if (!create && photo == null) return;
+            update(() { busy = true; error = null; });
+            try {
+              if (repository.currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+              final id = create ? createdId ??= await repository.createCustomGroup(controller.text) : selected!['id'].toString();
+              if (photo != null) await repository.saveCustomGroupPhoto(id, photo!);
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              await _load();
+              if (mounted && repository.currentUserId == actor) await _selectGroup(id);
+            } catch (_) {
+              if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。写真を保持して再試行できます。'; });
+            }
+          }, child: Text(create ? '作成' : '保存'))],
+      )));
     controller.dispose();
-    if (name == null || name.trim().isEmpty || !mounted) return;
-    try {
-      final id = await repository.createCustomGroup(name);
-      await _load();
-      if (!mounted) return;
-      await _selectGroup(id);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('グループを作成できませんでした: $error')),
-      );
-    }
+    // A successful group creation followed by a cancelled photo retry remains accessible.
+    if (createdId != null && mounted) await _load();
   }
 
   Future<void> _inviteFriendToSelectedGroup() async {
@@ -1006,8 +1068,20 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
     }
   }
 
+  Iterable<Map<String, dynamic>> get _accessibleListGroups => _groups.where((group) {
+    if (group['group_type'] == 'partner' && !_canManagePartnerChat) return false;
+    if (_hiddenGroupIds.contains(group['id']?.toString())) return false;
+    return !_blockedUserIds.contains(group['direct_other_user_id']?.toString());
+  });
+
+  int _tabUnread(_ChatTab tab) => chatUnreadTotal(switch (tab) {
+    _ChatTab.all => _allGroups, _ChatTab.friends => _friendGroups,
+    _ChatTab.site => _siteGroups, _ChatTab.groups => _customGroups,
+    _ChatTab.partner => _partnerGroups,
+  }, _unreadCounts);
+
   List<Map<String, dynamic>> get _allGroups {
-    final groups = List<Map<String, dynamic>>.from(_groups);
+    final groups = _accessibleListGroups.toList();
     groups.sort(
       (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
     );
@@ -1016,7 +1090,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   List<Map<String, dynamic>> get _siteGroups {
     final groups =
-        _groups.where((g) => g['group_type'] == 'site').toList();
+        _accessibleListGroups.where((g) => g['group_type'] == 'site').toList();
     final order = {
       for (var i = 0; i < _prioritizedSiteGroupIds.length; i++)
         _prioritizedSiteGroupIds[i]: i,
@@ -1032,7 +1106,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   List<Map<String, dynamic>> get _directGroups {
     final groups =
-        _groups.where((g) => g['group_type'] == 'direct').toList();
+        _accessibleListGroups.where((g) => g['group_type'] == 'direct').toList();
     groups.sort(
       (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
     );
@@ -1052,7 +1126,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   List<Map<String, dynamic>> get _customGroups {
-    final groups = _groups.where((group) {
+    final groups = _accessibleListGroups.where((group) {
       final id = group['id']?.toString() ?? '';
       return group['group_type'] == 'company' &&
           group['participants_only'] == true &&
@@ -1071,7 +1145,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
 
   List<Map<String, dynamic>> get _partnerGroups {
     final groups =
-        _groups.where((g) => g['group_type'] == 'partner').toList();
+        _accessibleListGroups.where((g) => g['group_type'] == 'partner').toList();
     groups.sort(
       (a, b) => _lastActivity(b).compareTo(_lastActivity(a)),
     );
@@ -1079,7 +1153,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
   }
 
   DateTime _lastActivity(Map<String, dynamic> group) =>
-      DateTime.tryParse(group['last_activity_at']?.toString() ?? '') ??
+      DateTime.tryParse((group['last_message_at'] ?? group['last_activity_at'])?.toString() ?? '') ??
       DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
@@ -1178,12 +1252,16 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
             PopupMenuButton<String>(
               tooltip: SkoLanguageController.tr('トーク機能'),
               onSelected: (value) {
+                if (value == 'group_settings') _editGroupPhoto();
                 if (value == 'notes') _openNotes();
                 if (value == 'albums') _openAlbums();
                 if (value == 'block') _toggleBlockSelectedDirect();
                 if (value == 'appearance') _openAppearance();
               },
               itemBuilder: (_) => [
+                if (selected['can_edit_group_photo'] == true)
+                  const PopupMenuItem(value: 'group_settings', child: ListTile(
+                    leading: Icon(Icons.settings_outlined), title: Text('グループ設定'))),
                 PopupMenuItem(
                   value: 'notes',
                   child: ListTile(
@@ -1336,20 +1414,15 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.fade,
-            softWrap: false,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-              color: selected
-                  ? scheme.onPrimaryContainer
-                  : scheme.onSurfaceVariant,
-            ),
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 11,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)),
+            if (_tabUnread(tab) > 0) ...[
+              const SizedBox(height: 3), ChatUnreadBadge(count: _tabUnread(tab)),
+            ],
+          ]),
         ),
       ),
     );
@@ -1729,45 +1802,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> {
       separatorBuilder: (_, __) => const SizedBox(height: 7),
       itemBuilder: (context, index) {
         final group = groups[index];
-        final selected =
-            group['id']?.toString() == _selectedGroupId;
-
         final card = Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundImage: group['avatar_url'] == null
-                  ? null
-                  : NetworkImage(group['avatar_url'].toString()),
-              child: group['avatar_url'] == null
-                  ? Icon(
-                      group['group_type'] == 'site'
-                          ? Icons.business_outlined
-                          : Icons.groups_outlined,
-                    )
-                  : null,
-            ),
-            title: Text(
-              group['display_name']?.toString() ??
-                  group['name']?.toString() ??
-                  '',
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              group['archived_at'] != null
-                  ? 'アーカイブ済み / \${_activityText(_lastActivity(group))}'
-                  : _activityText(_lastActivity(group)),
-            ),
-            trailing: _unreadCounts[group['id']?.toString()] != null &&
-                    (_unreadCounts[group['id']?.toString()] ?? 0) > 0
-                ? Badge(
-                    label: Text(
-                      (_unreadCounts[group['id']?.toString()] ?? 0).toString(),
-                    ),
-                    child: const Icon(Icons.chat_bubble_outline),
-                  )
-                : selected
-                    ? const Icon(Icons.chat_bubble)
-                    : const Icon(Icons.chevron_right),
+          child: ChatConversationTile(
+            name: group['display_name']?.toString() ?? group['name']?.toString() ?? '',
+            preview: group['last_message_body']?.toString() ?? SkoLanguageController.tr('まだ会話はありません'),
+            time: group['last_message_at'] == null ? '' : _activityText(_lastActivity(group)),
+            unreadCount: _unreadCounts[group['id']?.toString()] ?? 0,
+            avatarUrl: group['avatar_url']?.toString(),
+            icon: group['group_type'] == 'site' ? Icons.business_outlined : Icons.groups_outlined,
             onTap: () => _selectGroup(group['id'].toString()),
           ),
         );
@@ -1982,3 +2024,4 @@ class _MessageBubble extends StatelessWidget {
     return '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
+
