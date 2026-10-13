@@ -190,39 +190,42 @@ void main() {
     ]);
     expect(rows.first['id'], 'b');
   });
-  test('real SDK message stream requests ASC and normalizes descending server rows', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    var receivedOrder = '';
-    server.listen((request) async {
-      Object data = [];
-      if (request.uri.path.endsWith('/chat_messages')) {
-        receivedOrder = request.uri.queryParameters['order'] ?? '';
-        data = [
-          {'id': 'b', 'sent_at': newAt, 'body': 'Newest'},
-          {'id': 'a', 'sent_at': oldAt, 'body': 'Oldest'},
-        ];
+  test(
+    'real SDK message stream requests ASC and normalizes descending server rows',
+    () => HttpOverrides.runWithHttpOverrides(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      var receivedOrder = '';
+      server.listen((request) async {
+        Object data = [];
+        if (request.uri.path.endsWith('/chat_messages')) {
+          receivedOrder = request.uri.queryParameters['order'] ?? '';
+          data = [
+            {'id': 'b', 'sent_at': newAt, 'body': 'Newest'},
+            {'id': 'a', 'sent_at': oldAt, 'body': 'Oldest'},
+          ];
+        }
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode(data));
+        await request.response.close();
+      });
+      final client = SupabaseClient(
+        'http://127.0.0.1:${server.port}',
+        'fixture',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+      );
+      try {
+        final rows = await ChatCloudRepository.forTesting(client)
+            .watchMessages(groupId)
+            .first
+            .timeout(const Duration(seconds: 5));
+        expect(receivedOrder, 'sent_at.asc');
+        expect(rows.map((row) => row['body']), ['Oldest', 'Newest']);
+      } finally {
+        await client.dispose();
+        await server.close(force: true);
       }
-      request.response.headers.contentType = ContentType.json;
-      request.response.write(jsonEncode(data));
-      await request.response.close();
-    });
-    final client = SupabaseClient(
-      'http://127.0.0.1:${server.port}',
-      'fixture',
-      authOptions: const AuthClientOptions(autoRefreshToken: false),
-    );
-    try {
-      final rows = await ChatCloudRepository.forTesting(client)
-          .watchMessages(groupId)
-          .first
-          .timeout(const Duration(seconds: 5));
-      expect(receivedOrder, 'sent_at.asc');
-      expect(rows.map((row) => row['body']), ['Oldest', 'Newest']);
-    } finally {
-      await client.dispose();
-      await server.close(force: true);
-    }
-  });
+    }, _RealHttp()),
+  );
   test('existing-group LINE help matches both UI entries and keeps English guidance', () {
     for (final key in ['chat', 'line_talk']) {
       final item = MenuHelpCatalog.items.firstWhere((item) => item.key == key);
