@@ -70,8 +70,9 @@ class SecurityIncident {
         }
         _enum(row['reason_code'], const {'decoy_lure_touched'});
         _enum(row['timezone'], const {'UTC'});
-        if (to.isBefore(from))
+        if (to.isBefore(from)) {
           throw const FormatException('Security records unavailable');
+        }
         if (events.isEmpty) {
           if (first != null ||
               last != null ||

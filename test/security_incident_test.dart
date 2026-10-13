@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/security/security_incident.dart';
-import '../lib/features/security/security_incident_page.dart';
-import '../lib/features/security/security_incident_report.dart';
+import 'package:sk_works/features/security/security_incident.dart';
+import 'package:sk_works/features/security/security_incident_page.dart';
+import 'package:sk_works/features/security/security_incident_report.dart';
 
 Map<String, dynamic> fixture() => {
   'version': 1,
