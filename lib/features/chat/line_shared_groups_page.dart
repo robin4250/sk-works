@@ -96,7 +96,9 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
       if (mounted && generation == _loadGeneration) {
         setState(() {
           _groups = const [];
-          _error = 'グループを読み込めませんでした。再読み込みしてください。';
+          _error = _repository?.actor == null
+              ? 'SKOへのログインが必要です。'
+              : 'グループを読み込めませんでした。再読み込みしてください。';
         });
       }
     }
