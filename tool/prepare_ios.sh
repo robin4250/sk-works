@@ -720,12 +720,31 @@ private final class SkoInvoicePdfViewFactory: NSObject, FlutterPlatformViewFacto
   }
 }
 
+private final class SkoInvoicePDFView: PDFView {
+  private var fittedWidth: CGFloat = 0
+  private var fittedScale: CGFloat = 0
+  func resetFit() { fittedWidth = 0; fittedScale = 0; setNeedsLayout() }
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    guard document != nil, bounds.width > 0, abs(bounds.width - fittedWidth) > 0.5 else { return }
+    let fit = scaleFactorForSizeToFit
+    guard fit.isFinite && fit > 0 else { return }
+    let relative = fittedScale > 0 ? min(5, max(1, scaleFactor / fittedScale)) : 1
+    fittedWidth = bounds.width
+    fittedScale = fit
+    autoScales = false
+    minScaleFactor = fit
+    maxScaleFactor = fit * 5
+    scaleFactor = fit * relative
+  }
+}
+
 private final class SkoInvoicePdfPlatformView: NSObject, FlutterPlatformView {
-  private let pdfView: PDFView
+  private let pdfView: SkoInvoicePDFView
   private let channel: FlutterMethodChannel
   private var scaleObserver: NSObjectProtocol?
   init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger) {
-    pdfView = PDFView(frame: frame)
+    pdfView = SkoInvoicePDFView(frame: frame)
     channel = FlutterMethodChannel(name: "sko.invoice_pdf_view/\(viewId)", binaryMessenger: messenger)
     super.init()
     pdfView.displayMode = .singlePageContinuous
@@ -742,6 +761,7 @@ private final class SkoInvoicePdfPlatformView: NSObject, FlutterPlatformView {
           result(FlutterError(code: "invalid_pdf", message: "Cannot open invoice PDF", details: nil))
           return
         }
+        self.pdfView.resetFit()
         self.pdfView.document = document
         self.pdfView.autoScales = true
         self.pdfView.layoutIfNeeded()
