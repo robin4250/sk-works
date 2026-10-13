@@ -748,6 +748,7 @@ class _DraggableHomeCard extends StatelessWidget {
             data: keyName,
             lowerLeadingHandle: keyName == 'weather_forecast',
             upperLeadingHandle: keyName == 'traffic_guidance',
+            bodyLongPress: keyName == 'weather_forecast' || keyName == 'traffic_guidance',
             feedbackWidth: MediaQuery.sizeOf(context).width - 32,
             child: child,
           ),
@@ -791,7 +792,7 @@ class _HomeReorderSurface extends StatelessWidget {
         )
       else
         child,
-      Positioned(
+      if (!bodyLongPress) Positioned(
         top: lowerLeadingHandle ? 8 : upperLeadingHandle ? 10 : 0,
         right: lowerLeadingHandle || upperLeadingHandle ? null : 0,
         left: lowerLeadingHandle ? 44 : upperLeadingHandle ? 10 : null,

@@ -13,6 +13,31 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 void main() {
+  testWidgets('unavailable conditions use a question mark while sourced cloud survives missing numbers', (tester) async {
+    final date = DateTime(2026, 10, 12);
+    final state = ValueNotifier(WeatherForecastViewData(baseDate: date,
+      snapshot: WeatherForecastSnapshot(locationLabel: '会社周辺', updatedAt: date,
+        forecastDate: date, sourceLabel: 'OpenWeather',
+        hours: [
+          WeatherForecastHour(hour: 0, summary: SkoLanguageController.tr('未取得'), icon: Icons.cloud_outlined),
+          WeatherForecastHour(hour: 3, summary: SkoLanguageController.tr('曇り'), icon: Icons.cloud_outlined),
+        ],
+      ),
+    ));
+    addTearDown(state.dispose);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: WeatherForecastHomeCard(state: state))));
+    expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-0'))).icon, Icons.help_outline);
+    expect(tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-3'))).icon, Icons.cloud_outlined);
+    await tester.tap(find.byKey(const ValueKey('weather-home-frame')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WeatherForecastDetailPage), findsOneWidget);
+    // The detail header is a generic cloud; only the 3h sourced forecast adds a second.
+    expect(find.byIcon(Icons.cloud_outlined), findsNWidgets(2));
+    expect(find.byIcon(Icons.help_outline), findsNWidgets(9));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('home and detail share orange sun and blue umbrella in both languages', (tester) async {
     final original = SkoLanguageController.pack.value;
     addTearDown(() => SkoLanguageController.pack.value = original);
@@ -80,10 +105,14 @@ void main() {
         currentTemperatureCelsius: 99, currentSummary: '現在晴れ',
         forecastSummaryTemperatureCelsius: 18, forecastSummaryHour: 12, forecastSummary: '雨'));
     expect(data.temperatureLabel, '18℃');
+    final precise = WeatherForecastViewData(baseDate: DateTime(2026, 10, 12),
+      snapshot: WeatherForecastSnapshot(locationLabel: '現場', updatedAt: DateTime(2026, 10, 12),
+        forecastDate: DateTime(2026, 10, 12), sourceLabel: 'OpenWeather', currentTemperatureCelsius: 22.08));
+    expect(precise.temperatureLabel, '22.1℃');
     expect(data.summaryLabel, '12時の予報：雨');
     expect(data.status, isNot(contains('現在晴れ')));
   });
-  testWidgets('live attribution stays inside the frame and clear of its reorder handle', (tester) async {
+  testWidgets('live attribution stays inside the frame without a dotted handle', (tester) async {
     tester.view.physicalSize = const Size(320, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -105,12 +134,9 @@ void main() {
       ),
     ))));
     await tester.pump();
-    final handle = tester.getRect(find.byKey(const ValueKey('home-reorder-weather_forecast')));
+    expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
     final frame = tester.getRect(find.byKey(const ValueKey('weather-home-frame')));
     final source = tester.getRect(find.widgetWithText(TextButton, 'OpenWeather'));
-    expect(frame.contains(handle.topLeft), isTrue);
-    expect(frame.contains(handle.bottomRight), isTrue);
-    expect(handle.overlaps(source), isFalse);
     expect(frame.contains(source.topLeft), isTrue);
     expect(frame.contains(source.bottomRight), isTrue);
     expect(tester.getSize(find.byType(WeatherForecastHomeCard)).height, frame.height);
@@ -157,12 +183,23 @@ void main() {
             tester.getSize(find.byKey(const ValueKey('attention-baseline'))).height);
           final footer = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('weather-location-explanation')));
           expect(footer.didExceedMaxLines, isFalse, reason: '$language / $scale');
-          final info = tester.getRect(find.byKey(const ValueKey('weather-summary-precipitation')));
+          final info = tester.getRect(find.byKey(ValueKey(data.snapshot != null
+              ? 'weather-summary-precipitation' : 'weather-summary-condition')));
           expect(tester.getRect(find.byKey(const ValueKey('weather-location-explanation'))).top, greaterThanOrEqualTo(info.bottom));
           if (data.snapshot != null && language == 'ja') {
             expect(find.text('12時 20%'), findsOneWidget);
             expect(find.textContaining('20℃'), findsOneWidget);
-            expect(find.text('最高 — / 最低 —'), findsOneWidget);
+            expect(find.text('最高 — / 最低 —'), findsNothing);
+            final temperature = tester.widget<Text>(find.byKey(const ValueKey('weather-summary-temperature')));
+            expect(temperature.style!.fontSize, 18);
+            final regionRect = tester.getRect(find.byKey(const ValueKey('weather-summary-region')));
+            final temperatureRect = tester.getRect(find.byKey(const ValueKey('weather-summary-temperature')));
+            expect(regionRect.overlaps(temperatureRect), isFalse);
+            final centers = [for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24])
+              tester.getCenter(find.byKey(ValueKey('weather-home-hour-$hour'))).dx];
+            for (var i = 2; i < centers.length; i++) {
+              expect(centers[i] - centers[i - 1], closeTo(centers[1] - centers[0], 0.1));
+            }
             for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24]) {
               expect(find.byKey(ValueKey('weather-home-hour-$hour')), findsOneWidget);
             }
@@ -179,7 +216,7 @@ void main() {
     }
   });
 
-  testWidgets('weather reorder handle does not steal the next-day button', (
+  testWidgets('weather arrows stay tappable and the body long press reorders without opening detail', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 1000);
@@ -227,15 +264,13 @@ void main() {
       ),
     );
     await tester.pump();
-    final handle = find.byKey(const ValueKey('home-reorder-weather_forecast'));
+    expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
     final next = find.byTooltip('次の日の天気');
-    expect(tester.getRect(handle).overlaps(tester.getRect(next)), isFalse);
     final frame = find.byKey(const ValueKey('weather-home-frame'));
     final previous = find.byTooltip('前の日の天気');
     final cardRect = tester.getRect(frame);
     expect(tester.getRect(previous).left - cardRect.left, lessThanOrEqualTo(6));
     expect(cardRect.right - tester.getRect(next).right, lessThanOrEqualTo(16));
-    expect(tester.getRect(previous).overlaps(tester.getRect(handle)), isFalse);
     expect((tester.getCenter(find.text('今日 10/12')).dx - cardRect.center.dx).abs(), lessThanOrEqualTo(16));
 
     await tester.tap(next);
@@ -248,13 +283,14 @@ void main() {
         (widget) => widget is DragTarget<String>,
       ),
     );
-    final gesture = await tester.startGesture(tester.getCenter(handle));
+    final gesture = await tester.startGesture(tester.getCenter(frame));
     await tester.pump(const Duration(milliseconds: 650));
     await gesture.moveTo(tester.getCenter(target));
     await tester.pump(const Duration(milliseconds: 150));
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 150));
     expect(reordered, ['weather_forecast:attendance_today']);
+    expect(find.byType(WeatherForecastDetailPage), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

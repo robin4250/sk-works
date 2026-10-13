@@ -35,6 +35,14 @@ class WeatherForecastHour {
   final int? rainProbability;
 }
 
+/// A default icon on an unavailable source condition is not a cloudy forecast.
+IconData weatherForecastHourIcon(WeatherForecastHour? hour) {
+  final summary = hour?.summary.trim() ?? '';
+  return summary.isEmpty || summary == SkoLanguageController.tr('未取得')
+      ? Icons.help_outline
+      : hour!.icon;
+}
+
 /// A reusable card; it never invents a location or fetches weather itself.
 class WeatherForecastCard extends StatelessWidget {
   const WeatherForecastCard({
@@ -69,7 +77,7 @@ class WeatherForecastCard extends StatelessWidget {
   static const helpText =
       '出勤前は登録済みの自宅周辺、出勤後は登録済みの現場周辺を表示します。自宅住所の登録前は会社周辺です。'
       '表示地域と更新日時を確認してください。選択日0〜24時の3時間ごとの天気・気温・降水確率を表示します。'
-      '左右の矢印で今日・明日・明後日を切り替えられます。最高・最低気温は未取得のため「—」です。'
+      '左右の矢印で今日・明日・明後日を切り替えられます。最高・最低気温は取得していないため表示しません。'
       '晴れはオレンジ色の太陽、雨は青色の傘で表示します。'
       '降水確率は表示時刻の予報です。時間の列は横にスクロールできます。未取得の値は「未取得」または「—」と表示します。'
       '取得に失敗した場合、表示済みの予報は更新日時とともに残ります。更新ボタンで再取得できます。';
@@ -167,9 +175,9 @@ class WeatherForecastCard extends StatelessWidget {
                             Text('$hour${SkoLanguageController.tr('時')}'),
                             const SizedBox(height: 6),
                             Icon(
-                              _at(hour)?.icon ?? Icons.cloud_outlined,
+                              weatherForecastHourIcon(_at(hour)),
                               color: weatherConditionIconColor(
-                                _at(hour)?.icon ?? Icons.cloud_outlined,
+                                weatherForecastHourIcon(_at(hour)),
                                 colors,
                               ),
                             ),

@@ -44,10 +44,10 @@ void main() {
       for (final key in keys) {
         final button = find.byKey(ValueKey('home-button-$key'));
         expect(tester.getSize(button), original[key], reason: '$key keeps its original cell size');
-        final handle = find.byKey(ValueKey('home-reorder-$key'));
-        expect(tester.getRect(button).inflate(3).contains(tester.getCenter(handle)), isTrue,
-            reason: '$key handle remains within the button');
+        expect(find.byKey(ValueKey('home-reorder-$key')), findsNothing,
+            reason: '$key reorders from its body without a dotted handle');
       }
+      expect(find.byIcon(Icons.drag_indicator), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

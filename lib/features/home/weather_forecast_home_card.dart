@@ -52,7 +52,7 @@ class WeatherForecastViewData {
     if (temperature == null || !temperature.isFinite) {
       return SkoLanguageController.tr('未取得');
     }
-    return '${temperature == temperature.roundToDouble() ? temperature.toStringAsFixed(0) : temperature}℃';
+    return '${temperature == temperature.roundToDouble() ? temperature.toStringAsFixed(0) : temperature.toStringAsFixed(1)}℃';
   }
 
   double? get summaryTemperature => selectedDay == 0 && forecast?.currentTemperatureCelsius != null
@@ -173,9 +173,9 @@ class WeatherForecastHomeCard extends StatelessWidget {
               SizedBox(height: 44, child: Stack(clipBehavior: Clip.none, children: [
                 Positioned(left: 0, top: 0, width: 44, height: 44, child: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: true)),
                 Align(alignment: Alignment.centerRight, child: _WeatherHomeDayArrow(data: data, onSelectDay: onSelectDay, backward: false)),
-                Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 72), child: FittedBox(fit: BoxFit.scaleDown,
+                Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 52), child: FittedBox(fit: BoxFit.scaleDown,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${data.compactDayLabel} ${data.date.month}/${data.date.day}', style: const TextStyle(fontSize: 11, height: 1.1)),
+                    Text('${data.compactDayLabel} ${data.date.month}/${data.date.day}', style: const TextStyle(fontSize: 12, height: 1.1, fontWeight: FontWeight.w700)),
                     if (data.forecast != null && data.attribution.isNotEmpty && onOpenAttribution != null)
                       WeatherAttribution(metadata: data.attribution, onOpen: onOpenAttribution!, compact: true)
                     else Text(SkoLanguageController.tr('天気予報'), style: const TextStyle(fontSize: 9, height: 1.1)),
@@ -213,7 +213,7 @@ class _WeatherReferenceInformation extends StatelessWidget {
       }
       return Icons.help_outline;
     }
-    return at(value.forecastSummaryHour ?? 12)?.icon ?? Icons.help_outline;
+    return weatherForecastHourIcon(at(value.forecastSummaryHour ?? 12));
   }
   @override
   Widget build(BuildContext context) {
@@ -227,37 +227,51 @@ class _WeatherReferenceInformation extends StatelessWidget {
       Expanded(flex: 4, child: Row(children: [
         Icon(summaryIcon, key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
         const SizedBox(width: 4),
-        Expanded(flex: 4, child: LayoutBuilder(builder: (context, constraints) => FittedBox(
+        Expanded(child: LayoutBuilder(builder: (context, constraints) => FittedBox(
           fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-          child: SizedBox(width: constraints.maxWidth, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(region, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, height: 1.1)),
-          FittedBox(fit: BoxFit.scaleDown, child: Text('${SkoLanguageController.tr('最高')} — / ${SkoLanguageController.tr('最低')} —',
-            key: const ValueKey('weather-daily-extrema'), style: const TextStyle(fontSize: 9, height: 1.1))),
-          Text(forecast == null ? data.status : '${data.summaryLabel ?? SkoLanguageController.tr('未取得')} ${data.temperatureLabel}',
-            key: const ValueKey('weather-summary-temperature'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 8, height: 1.1)),
-        ]))))),
-        Expanded(flex: 3, child: FittedBox(fit: BoxFit.scaleDown, child: Column(children: [
+          child: SizedBox(width: constraints.maxWidth, child: Column(
+            mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(region, key: const ValueKey('weather-summary-region'),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, height: 1.1, fontWeight: FontWeight.w700)),
+              Text(forecast == null ? data.status : data.summaryLabel ?? SkoLanguageController.tr('未取得'),
+                key: const ValueKey('weather-summary-condition'), maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, height: 1.1)),
+            ],
+          )),
+        ))),
+        if (forecast != null) ...[
+        const SizedBox(width: 6),
+        SizedBox(width: 52, child: FittedBox(fit: BoxFit.scaleDown, child: Text(
+          data.temperatureLabel,
+          key: const ValueKey('weather-summary-temperature'),
+          style: const TextStyle(fontSize: 18, height: 1.1, fontWeight: FontWeight.w700),
+        ))),
+        const SizedBox(width: 6),
+        SizedBox(width: 58, child: FittedBox(fit: BoxFit.scaleDown, child: Column(children: [
           Text(SkoLanguageController.tr('降水確率'), style: const TextStyle(fontSize: 9, height: 1.1)),
           Text(chance == null ? '—' : '$summaryHour${SkoLanguageController.tr('時')} $chance%',
             key: const ValueKey('weather-summary-precipitation'), style: TextStyle(fontSize: 12, height: 1.1, color: colors.primary)),
         ]))),
-        if (radarAvailable) SizedBox(width: 58, child: TextButton(onPressed: onOpenRadar,
+        if (radarAvailable) SizedBox(width: 44, child: TextButton(onPressed: onOpenRadar,
           style: TextButton.styleFrom(padding: const EdgeInsets.all(2), minimumSize: const Size(44, 32)),
           child: FittedBox(fit: BoxFit.scaleDown, child: Text(SkoLanguageController.tr('雨雲レーダー'), style: const TextStyle(fontSize: 9))))),
+        ],
       ])),
-      Expanded(flex: 4, child: Row(children: List.generate(9, (index) {
+      Expanded(flex: 5, child: Row(children: List.generate(9, (index) {
         final hour = index * 3;
         final value = at(hour);
         return Expanded(child: Semantics(label: '$hour${SkoLanguageController.tr('時')} ${value?.summary ?? SkoLanguageController.tr('未取得')}',
           child: FittedBox(fit: BoxFit.scaleDown, child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('$hour${SkoLanguageController.tr('時')}', style: const TextStyle(fontSize: 8, height: 1.1)),
-            Icon(value?.icon ?? Icons.help_outline, key: ValueKey('weather-home-hour-$hour'), size: 15, color: weatherConditionIconColor(value?.icon ?? Icons.help_outline, colors)),
-            Text(value?.rainProbability == null ? '—' : '${value?.rainProbability}%', style: const TextStyle(fontSize: 8, height: 1.1)),
+            Text('$hour${SkoLanguageController.tr('時')}', style: const TextStyle(fontSize: 9, height: 1.1)),
+            Icon(weatherForecastHourIcon(value), key: ValueKey('weather-home-hour-$hour'), size: 16, color: weatherConditionIconColor(weatherForecastHourIcon(value), colors)),
+            Text(value?.rainProbability == null ? '—' : '${value?.rainProbability}%', style: const TextStyle(fontSize: 9, height: 1.1)),
           ]))));
       }))),
       if (data.rainApproachMessage != null) FittedBox(fit: BoxFit.scaleDown, child: Text(data.rainApproachMessage!, style: const TextStyle(fontSize: 8))),
       FittedBox(fit: BoxFit.scaleDown, child: Text(SkoLanguageController.tr('出勤前：自宅周辺 ／ 出勤後：現場周辺の天気を表示'),
-        key: const ValueKey('weather-location-explanation'), style: const TextStyle(fontSize: 8, height: 1.1))),
+        key: const ValueKey('weather-location-explanation'), style: const TextStyle(fontSize: 9, height: 1.1))),
     ]);
   }
 }
