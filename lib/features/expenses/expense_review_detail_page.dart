@@ -42,10 +42,10 @@ class ExpenseReviewDetailPage extends StatelessWidget {
         ),
       )),
     ]), body: ListView(padding: const EdgeInsets.all(16), children: [
-      Card(margin: EdgeInsets.zero, elevation: 0,
+      Card(margin: EdgeInsets.zero, elevation: 1, color: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colors.outlineVariant)),
-        child: Padding(padding: const EdgeInsets.all(16), child: Column(
+          side: BorderSide(color: colors.primary.withValues(alpha: .12))),
+        child: Padding(padding: const EdgeInsets.all(12), child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Align(alignment: Alignment.centerRight, child: Chip(
               avatar: Icon(statusIcon, size: 20, color: statusColor),
@@ -70,8 +70,9 @@ class ExpenseReviewDetailPage extends StatelessWidget {
           ]),
         )),
       const SizedBox(height: 16),
-      Card(margin: EdgeInsets.zero, elevation: 0, color: colors.surfaceContainerLow,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      Card(margin: EdgeInsets.zero, elevation: 1, color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colors.primary.withValues(alpha: .12))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           detailRow(statusIcon, '承認', status, statusRow: true),
           if (approved) ...[
@@ -92,7 +93,9 @@ class ExpenseReviewDetailPage extends StatelessWidget {
         ])),
       const SizedBox(height: 24),
       OutlinedButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined),
-        style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+        style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
         label: const Text('内容を修正する')),
       if (onDelete != null) ...[
         const SizedBox(height: 8),

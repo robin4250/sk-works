@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'expense_claim.dart';
+import 'expense_receipt_preview.dart';
 
 enum _ReviewFilter { all, pending, approved, rejected, withdrawn }
 
@@ -277,11 +278,22 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
         !_busy && !claim.withdrawn && widget.canDecide?.call(claim) != false;
     return Card(
       key: ValueKey(claim.id),
+      color: Colors.white, elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12))),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(children: [
+              CircleAvatar(radius: 17, backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: .09),
+                child: Icon(Icons.receipt_long_outlined, size: 22, color: Theme.of(context).colorScheme.primary)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(claim.description,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87))),
+            ]),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 12,
               runSpacing: 4,
@@ -291,7 +303,8 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                   '${claim.amountYen}円',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
-                Chip(label: Text(expenseClaimStatusLabel(claim))),
+                Chip(label: Text(expenseClaimStatusLabel(claim), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                  visualDensity: VisualDensity.compact),
               ],
             ),
             Text(
@@ -301,10 +314,11 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
               Text('${claim.approval == ExpenseApproval.approved ? '精算予定' : '前回の精算設定'}：${claim.settlement!.label} / ${claim.settlement!.month.year}年${claim.settlement!.month.month}月'),
             if (claim.settlement == null) const Text('精算方法：未設定'),
             const SizedBox(height: 8),
-            Text(
-              claim.description,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            if (claim.receiptObjectPath != null) ...[
+              SizedBox(height: 80, child: Align(alignment: Alignment.centerLeft,
+                child: ExpenseReceiptPreview(objectPath: claim.receiptObjectPath!))),
+              const SizedBox(height: 8),
+            ],
             TextButton(
               onPressed: widget.applicantId != null
                   ? null
@@ -334,6 +348,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                 children: [
                   TextButton(
                     style: TextButton.styleFrom(
+                      minimumSize: const Size(112, 48),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -356,7 +373,10 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         : () => _request(generation, () => onReject(claim)),
                     child: const Text('却下'),
                   ),
-                  if (widget.onOpenDetail != null) OutlinedButton(onPressed: _busy ? null : () => widget.onOpenDetail!(claim), child: const Text('詳細・履歴')),
+                  if (widget.onOpenDetail != null) OutlinedButton(style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(112, 48),
+                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), onPressed: _busy ? null : () => widget.onOpenDetail!(claim), child: const Text('詳細・履歴')),
                   if (approved && !widget.reviewFlowEnabled) OutlinedButton(
                     onPressed:
                         _busy ||
