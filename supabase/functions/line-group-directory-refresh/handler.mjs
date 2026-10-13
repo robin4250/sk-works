@@ -1,7 +1,16 @@
+function defaultKey(env, name, legacy) {
+ try {
+  const raw=env(name);
+  const value=raw?JSON.parse(raw)?.default:null;
+  if(typeof value==='string' && value.trim())return value;
+ } catch { /* Malformed injected maps may still have a valid legacy key. */ }
+ const value=env(legacy);
+ return typeof value==='string' && value.trim()?value:null;
+}
 export function createDirectoryRefreshHandler({env,fetcher=fetch,now=()=>new Date()}) {
  return async request=>{
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405});
-  const base=env('SUPABASE_URL'),publicKey=env('SUPABASE_ANON_KEY'),serviceKey=env('SUPABASE_SERVICE_ROLE_KEY'),token=env('LINE_CHANNEL_ACCESS_TOKEN');
+  const base=env('SUPABASE_URL'),publicKey=defaultKey(env,'SUPABASE_PUBLISHABLE_KEYS','SUPABASE_ANON_KEY'),serviceKey=defaultKey(env,'SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY'),token=env('LINE_CHANNEL_ACCESS_TOKEN');
   const authorization=request.headers.get('authorization');
   if(!authorization?.startsWith('Bearer '))return new Response('Authentication required',{status:401});
   if(!base||!publicKey||!serviceKey||!token)return new Response('Directory configuration unavailable',{status:503});
@@ -16,7 +25,8 @@ export function createDirectoryRefreshHandler({env,fetcher=fetch,now=()=>new Dat
    await json(`${base}/rest/v1/rpc/line_joined_group_workspace`,{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:'{}'});
    const input=await request.json().catch(()=>({}));
    const after=input?.after??null;if(after!==null&&(typeof after!=='string'||! /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(after)))return new Response('Invalid cursor',{status:400});
-   const headers={apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,'Content-Type':'application/json'};
+   // Opaque secret keys authenticate via apikey, never as a user JWT.
+   const headers={apikey:serviceKey,'Content-Type':'application/json',...(!serviceKey.startsWith('sb_secret_')?{Authorization:`Bearer ${serviceKey}`}:{})};
    const ids=await json(`${base}/rest/v1/rpc/line_known_group_ids`,{method:'POST',headers,body:JSON.stringify({p_after:after})});
    if(!Array.isArray(ids)||ids.length>8)throw Error('Directory unavailable');
    let checked=0,unavailable=0;
