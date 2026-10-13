@@ -1,0 +1,38 @@
+name: LINE chat outbound contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/line-chat-dispatch/**'
+      - 'supabase/migrations/*line_chat_outbound.sql'
+      - 'tool/verify_line_chat_outbound.mjs'
+      - '.github/workflows/line-chat-outbound.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/line-chat-dispatch/**'
+      - 'supabase/migrations/*line_chat_outbound.sql'
+permissions:
+  contents: read
+jobs:
+  outbound:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: sko_line_outbound
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --prefix /tmp/sko-line-outbound --no-save pg@8.13.1
+      - run: node --test supabase/functions/line-chat-dispatch/handler_test.mjs
+      - run: node tool/verify_line_chat_outbound.mjs /tmp/sko-line-outbound/node_modules/pg/lib/index.js
+        env:
+          SKO_LINE_OUTBOUND_TEST_DB_URL: postgres://postgres:fixture@127.0.0.1:5432/sko_line_outbound
