@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/notifications/app_notification_repository.dart';
 import 'package:sk_works/features/notifications/attention_center_item.dart';
@@ -37,6 +38,44 @@ void main() {
     expect(routeAwareNotificationBadgeCount([], pending), 1);
     expect(routeAwareNotificationBadgeCount([notice], pending), 1);
     expect(routeAwareNotificationBadgeCount([], []), 0);
+  });
+
+  test('account change clears the badge and discards a late response', () async {
+    final state = NotificationBadgeRefresh();
+    String? actor = 'actor-a';
+    final pending = mapRouteBillingQuantityAttention(rows);
+    await state.refresh(currentActor: () => actor, loadUnread: () async => [],
+      loadPending: () async => pending);
+    expect(state.count, 1);
+    final delayed = Completer<List<AppNotificationRecord>>();
+    final old = state.refresh(currentActor: () => actor,
+      loadUnread: () => delayed.future, loadPending: () async => pending);
+    actor = 'actor-b';
+    await state.refresh(currentActor: () => actor, loadUnread: () async => [],
+      loadPending: () async => []);
+    expect(state.count, 0);
+    delayed.complete([]);
+    await old;
+    expect(state.count, 0);
+    actor = null;
+    await state.refresh(currentActor: () => actor, loadUnread: () async => [],
+      loadPending: () async => pending);
+    expect(state.count, 0);
+  });
+
+  test('overlapping polls do not duplicate reads or count updates', () async {
+    final state = NotificationBadgeRefresh();
+    final delayed = Completer<List<AppNotificationRecord>>();
+    var calls = 0;
+    Future<List<AppNotificationRecord>> unread() { calls++; return delayed.future; }
+    final first = state.refresh(currentActor: () => 'actor',
+      loadUnread: unread, loadPending: () async => mapRouteBillingQuantityAttention(rows));
+    await state.refresh(currentActor: () => 'actor',
+      loadUnread: unread, loadPending: () async => []);
+    expect(calls, 1);
+    delayed.complete([]);
+    await first;
+    expect(state.count, 1);
   });
 
   test('approved, missing and malformed rows never become synthetic pending tasks', () {
