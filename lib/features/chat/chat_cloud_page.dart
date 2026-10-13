@@ -89,6 +89,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   bool _initialConversationOpened = false;
   final Map<String, ({String groupId, String state})> _lineDispatch = {};
   final Set<String> _lineDispatchBusy = {};
+  final Map<String, String> _lineDispatchPreviews = {};
   bool _chatForeground = true;
 
   bool get _readVisible =>
@@ -213,6 +214,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _unreadCounts = const {};
           _lineDispatch.clear();
           _lineDispatchBusy.clear();
+          _lineDispatchPreviews.clear();
         }
         _readScope = scope;
         _canManagePartnerChat = canManagePartnerChat;
@@ -636,6 +638,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     // reinsertion, suppress LINE dispatch, or retain the composer draft.
     if (!mounted || repository.currentUserId != actor) return;
     if (_selectedGroupId == id) _composer.clear();
+    if (_groups.any((group) => group['id'] == id && group['line_origin'] != null)) {
+      _lineDispatchPreviews[messageId] = text;
+    }
     unawaited(_refreshGroupSummary(id).catchError((Object _) {}));
     await _dispatchSavedMessage(id, messageId);
   }
@@ -679,6 +684,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         }
         _lineDispatch[messageId] = (groupId: groupId, state: status);
       }
+      _lineDispatchPreviews.removeWhere((id, _) => !_lineDispatch.containsKey(id));
     });
   }
 
@@ -2317,40 +2323,68 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                       ),
                     ),
             ),
-            for (final delivery in _lineDispatch.entries.where(
-              (entry) => entry.value.groupId == _selectedGroupId,
+            if (_lineDispatch.values.any(
+              (value) => value.groupId == _selectedGroupId,
             ))
-              Padding(
-                key: ValueKey('line-dispatch-${delivery.key}'),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        SkoLanguageController.tr(
-                          delivery.value.state == 'accepted'
-                              ? 'LINE受付済み（配信確認はLINE側で）'
-                              : 'SKO保存済み・LINE送信未確認',
-                        ),
-                      ),
-                    ),
-                    if (![
-                      'accepted',
-                      'expired',
-                      'too_long',
-                      'ambiguous',
-                    ].contains(delivery.value.state))
-                      TextButton(
-                        key: ValueKey('line-retry-${delivery.key}'),
-                        onPressed: _lineDispatchBusy.contains(delivery.key)
-                            ? null
-                            : () => _dispatchSavedMessage(
-                                delivery.value.groupId,
-                                delivery.key,
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 120),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final delivery in _lineDispatch.entries.where(
+                        (entry) => entry.value.groupId == _selectedGroupId,
+                      ))
+                        Padding(
+                          key: ValueKey('line-dispatch-${delivery.key}'),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_lineDispatchPreviews[delivery.key] !=
+                                        null)
+                                      Text(
+                                        _lineDispatchPreviews[delivery.key]!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    Text(
+                                      SkoLanguageController.tr(
+                                        delivery.value.state == 'accepted'
+                                            ? 'LINE受付済み（配信確認はLINE側で）'
+                                            : 'SKO保存済み・LINE送信未確認',
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                        child: Text(SkoLanguageController.tr('LINE再試行')),
-                      ),
-                  ],
+                              if (![
+                                'accepted',
+                                'expired',
+                                'too_long',
+                                'ambiguous',
+                              ].contains(delivery.value.state))
+                                TextButton(
+                                  key: ValueKey('line-retry-${delivery.key}'),
+                                  onPressed:
+                                      _lineDispatchBusy.contains(delivery.key)
+                                      ? null
+                                      : () => _dispatchSavedMessage(
+                                          delivery.value.groupId,
+                                          delivery.key,
+                                        ),
+                                  child: Text(
+                                    SkoLanguageController.tr('LINE再試行'),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             if (_chatChromeVisible)

@@ -9,6 +9,7 @@ import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 class SurfaceRepository implements ChatCloudRepository {
   int writes = 0;
   bool failSavedSummary = false;
+  bool allUnknown = false;
   Completer<void>? retryGate;
   final dispatches = <String>[];
   final messages = StreamController<List<Map<String, dynamic>>>.broadcast();
@@ -87,7 +88,7 @@ class SurfaceRepository implements ChatCloudRepository {
         dispatches.where((id) => id == messageId).length > 1) {
       await retryGate?.future;
     }
-    return dispatches.length == 1 ? 'unknown' : 'accepted';
+    return allUnknown || dispatches.length == 1 ? 'unknown' : 'accepted';
   }
 
   @override
@@ -212,4 +213,37 @@ void main() {
       },
     );
   }
+  testWidgets(
+    'many unresolved posts stay individually retryable without overflowing composer',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = SurfaceRepository()..allUnknown = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatCloudPage(repository: repo, initialGroupId: 'line-only'),
+        ),
+      );
+      await settle(tester);
+      for (var i = 1; i <= 5; i++) {
+        await tester.enterText(find.byType(TextField), 'Post $i');
+        await tester.tap(find.byTooltip('送信'));
+        await settle(tester);
+      }
+      expect(repo.writes, 5);
+      expect(repo.dispatches.length, 5);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('line-retry-saved-message-5')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('line-retry-saved-message-5')),
+      );
+      await settle(tester);
+      expect(repo.writes, 5);
+      expect(repo.dispatches.last, 'saved-message-5');
+      await tester.pumpWidget(const SizedBox());
+      unawaited(repo.messages.close());
+      await tester.pumpAndSettle();
+    },
+  );
 }
