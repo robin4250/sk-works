@@ -4,6 +4,7 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
+import 'invoice_empty_state.dart';
 import 'invoice_approval_repository.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_pdf_service.dart';
@@ -332,13 +333,9 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                         ),
                       Expanded(
                         child: visible.isEmpty
-                            ? Center(
-                                child: Text(
-                                  SkoLanguageController.isEnglish ? 'No invoices for this period.' : 'この期間の請求書はありません',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                            ? InvoiceEmptyState(
+                                onReload: _load,
+                                showGenerationGuidance: _canManageSettings,
                               )
                             : RefreshIndicator(
                                 onRefresh: _load,
