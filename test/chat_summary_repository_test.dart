@@ -1,6 +1,6 @@
 import 'dart:convert';import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';import 'package:supabase_flutter/supabase_flutter.dart';
-import '../lib/features/chat/chat_cloud_repository.dart';
+import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 class _RealHttp extends HttpOverrides {}
 void main(){TestWidgetsFlutterBinding.ensureInitialized();
  test('summaries paginate beyond 100, exclude self and blocked sender, and preserve source body/time',()=>HttpOverrides.runWithHttpOverrides(()async{

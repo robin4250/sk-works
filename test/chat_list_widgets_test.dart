@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/chat/chat_list_widgets.dart';
+import 'package:sk_works/features/chat/chat_list_widgets.dart';
 
 void main() {
   test('tab totals deduplicate groups and ignore zero counts', () {

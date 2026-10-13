@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -346,7 +345,9 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     if (_chatForeground) {
       _refreshList();
       final group = _selectedGroupId;
-      if (group != null && _isNearBottom()) _markRead(group);
+      if (group != null && _isNearBottom()) {
+        _markRead(group);
+      }
     }
   }
 
