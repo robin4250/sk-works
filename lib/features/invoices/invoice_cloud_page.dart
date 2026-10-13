@@ -5,6 +5,8 @@ import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_empty_state.dart';
+import '../route_billing/route_billing_quantity_approval_repository.dart';
+import '../route_billing/route_billing_quantity_approvals_page.dart';
 import 'invoice_approval_repository.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_pdf_service.dart';
@@ -31,6 +33,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
 
   bool _loading = true;
   bool _canManageSettings = false;
+  bool _hasPendingRouteQuantity = false;
   String? _error;
   _InvoiceBrowseMode _browseMode = _InvoiceBrowseMode.all;
   _InvoicePeriodMode _periodMode = _InvoicePeriodMode.month;
@@ -64,15 +67,18 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageFinancials(),
+        _hasReviewableRouteQuantity(),
       ]);
       final rows = values[0] as List<InvoiceCalculationResult>;
       final canManage = values[1] as bool;
+      final pendingRouteQuantity = values[2] as bool;
       if (!mounted) return;
       setState(() {
         _invoices
           ..clear()
           ..addAll(rows);
         _canManageSettings = canManage;
+        _hasPendingRouteQuantity = pendingRouteQuantity;
         _loading = false;
         if (_companyFilter != null &&
             !_companies.contains(_companyFilter)) {
@@ -114,6 +120,26 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
         _error = error.toString();
       });
     }
+  }
+
+  Future<bool> _hasReviewableRouteQuantity() async {
+    final repository = RouteBillingQuantityApprovalRepository.maybeCreate();
+    if (repository == null) return false;
+    try {
+      // The existing RPC returns only requests the actor can actually review.
+      // Do not infer route approval permission from daily-report edit access.
+      return (await repository.pending()).isNotEmpty;
+    } catch (_) {
+      // Optional approval discovery must not hide saved invoices.
+      return false;
+    }
+  }
+
+  Future<void> _openRouteQuantityApprovals() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RouteBillingQuantityApprovalsPage()),
+    );
+    if (mounted) await _load();
   }
 
   List<String> get _companies {
@@ -212,6 +238,17 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                 ? _ErrorState(message: _error!, onRetry: _load)
                 : Column(
                     children: [
+                      if (_hasPendingRouteQuantity)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: OutlinedButton.icon(
+                            onPressed: _openRouteQuantityApprovals,
+                            icon: const Icon(Icons.fact_check_outlined),
+                            label: Text(SkoLanguageController.isEnglish
+                                ? 'Review Route Billing Quantity'
+                                : 'ルート請求数量の承認'),
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                         child: SegmentedButton<_InvoiceBrowseMode>(
