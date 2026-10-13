@@ -740,7 +740,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
     String? error;
     await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
       builder: (context, update) => AlertDialog(
-        title: Text(create ? 'グループチャット作成' : 'グループ設定'),
+        title: Text(SkoLanguageController.tr(create ? 'グループチャット作成' : 'グループ設定')),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (create) TextField(controller: controller, enabled: !busy && createdId == null,
             decoration: const InputDecoration(labelText: 'グループ名', border: OutlineInputBorder())),
@@ -756,8 +756,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             final bytes = await picked.readAsBytes();
             if (!dialogContext.mounted || repository.currentUserId != actor) return;
             update(() { photo = bytes; error = null; });
-          }, icon: const Icon(Icons.camera_alt_outlined), label: const Text('写真を変更')),
-          if (error != null) Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          }, icon: const Icon(Icons.camera_alt_outlined), label: Text(SkoLanguageController.tr('写真を変更'))),
+          if (error != null) Text(SkoLanguageController.tr(error!), style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ])),
         actions: [TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('戻る')),
           FilledButton(onPressed: busy ? null : () async {
@@ -775,7 +775,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             } catch (_) {
               if (dialogContext.mounted) update(() { busy = false; error = '保存できませんでした。写真を保持して再試行できます。'; });
             }
-          }, child: Text(create ? '作成' : '保存'))],
+          }, child: Text(SkoLanguageController.tr(create ? '作成' : '保存')))],
       )));
     controller.dispose();
     // A successful group creation followed by a cancelled photo retry remains accessible.
@@ -1260,8 +1260,8 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
               },
               itemBuilder: (_) => [
                 if (selected['can_edit_group_photo'] == true)
-                  const PopupMenuItem(value: 'group_settings', child: ListTile(
-                    leading: Icon(Icons.settings_outlined), title: Text('グループ設定'))),
+                  PopupMenuItem(value: 'group_settings', child: ListTile(
+                    leading: const Icon(Icons.settings_outlined), title: Text(SkoLanguageController.tr('グループ設定')))),
                 PopupMenuItem(
                   value: 'notes',
                   child: ListTile(
