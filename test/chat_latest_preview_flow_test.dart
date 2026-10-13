@@ -140,11 +140,11 @@ void main() {
     'an event refreshes only its group and an old actor response is ignored',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final client = SupabaseClient(
+      final client = (await tester.runAsync(() async => SupabaseClient(
         'https://fixture.invalid',
         'fixture',
         authOptions: const AuthClientOptions(autoRefreshToken: false),
-      );
+      )))!;
       final repository = _TargetRepository(
         ChatCloudRepository.forTesting(client),
       );
@@ -246,7 +246,7 @@ void main() {
             .watchMessages(groupId)
             .first
             .timeout(const Duration(seconds: 5));
-        expect(receivedOrder, 'sent_at.asc');
+        expect(receivedOrder, 'sent_at.asc.nullslast');
         expect(rows.map((row) => row['body']), ['Oldest', 'Newest']);
       } finally {
         await client.dispose();
@@ -336,11 +336,11 @@ void main() {
         request.response.write(jsonEncode(data));
         await request.response.close();
       });
-      final client = SupabaseClient(
+      final client = (await tester.runAsync(() async => SupabaseClient(
         'http://127.0.0.1:${server.port}',
         'fixture',
         authOptions: const AuthClientOptions(autoRefreshToken: false),
-      );
+      )))!;
       final repository = _Repository(ChatCloudRepository.forTesting(client));
       try {
         await tester.runAsync(
@@ -450,11 +450,11 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       // No backend is used: this test only follows the existing target-group route.
-      final client = SupabaseClient(
+      final client = (await tester.runAsync(() async => SupabaseClient(
         'https://fixture.invalid',
         'fixture',
         authOptions: const AuthClientOptions(autoRefreshToken: false),
-      );
+      )))!;
       final repository = _Repository(ChatCloudRepository.forTesting(client));
       await tester.pumpWidget(
         MaterialApp(
