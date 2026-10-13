@@ -153,7 +153,7 @@ class SecurityIncident {
         ? 'Detection alone does not confirm an attack. No message bodies, personal information or secrets are included.'
         : '検知のみで攻撃と断定しません。本文・個人情報・秘密情報は含みません。',
     for (final event in events)
-      '${event.sequence} | ${event.at.toUtc().toIso8601String()} | ${event.label(english)} | ${english ? 'Generation' : '世代'} ${event.generation}',
+      '${event.sequence} | ${event.at.toUtc().toIso8601String()} | ${event.label(english)} | ${english ? 'Generation' : '世代'} ${event.generation ?? (english ? 'Unavailable' : '未取得')}',
   ];
 }
 
@@ -164,15 +164,17 @@ class SecurityIncidentEvent {
     this.kind,
     this.generation,
   );
-  final int sequence, generation;
+  final int sequence;
+  final int? generation;
   final DateTime at;
   final String kind;
   static SecurityIncidentEvent parse(dynamic row) {
     if (row is! Map ||
         row['sequence'] is! int ||
-        row['generation'] is! int ||
+        (row['generation'] != null && row['generation'] is! int) ||
         (row['sequence'] as int) < 1 ||
-        (row['generation'] as int) < 1) {
+        (row['generation'] != null &&
+            ((row['generation'] as int) < 1 || (row['generation'] as int) > 1000000))) {
       throw const FormatException('Security records unavailable');
     }
     return SecurityIncidentEvent(
@@ -182,7 +184,7 @@ class SecurityIncidentEvent {
         'current_lure_touched',
         'retired_lure_touched',
       }),
-      row['generation'] as int,
+      row['generation'] as int?,
     );
   }
 
