@@ -38,7 +38,7 @@ void main() {
       final result = await Process.run('python', ['-c', r'''
 import fitz,json,sys
 pdf=fitz.open(sys.argv[1])
-print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'links':len(p.get_links()),'link_targets':[x.get('page',-1) for x in p.get_links()],'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf],ensure_ascii=False))
+print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text(),'isolated_step_numbers':[line for line in p.get_text().splitlines() if __import__('re').fullmatch(r'\d+[.．]',line.strip())],'links':len(p.get_links()),'link_targets':[x.get('page',-1) for x in p.get_links()],'spans':[{'text':s['text'],'bbox':s['bbox']} for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]} for p in pdf],ensure_ascii=False))
 ''', file.path]);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       final pages = (jsonDecode(result.stdout.toString()) as List<dynamic>).cast<Map<String, dynamic>>();
@@ -64,6 +64,8 @@ print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text
       }
       for (var index = 0; index < pages.length; index++) {
         final page = pages[index];
+        expect(page['isolated_step_numbers'] as List<dynamic>, isEmpty,
+          reason: 'A step number must stay with the instruction text.');
         expect(page['width'] as num, closeTo(595.2756, .02));
         expect(page['height'] as num, closeTo(841.8898, .02));
         final text = normalize(page['text'] as String);

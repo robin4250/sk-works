@@ -91,7 +91,7 @@ class ManualPdfService {
         pw.SizedBox(height: 12),
         for (var i = 0; i < sections.length; i++)
           pw.Link(destination: 'feature-$i', child: pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 5),
+            padding: const pw.EdgeInsets.symmetric(vertical: 4),
             child: pw.Text('${i + 1}. ${sections[i].title}',
               style: const pw.TextStyle(color: PdfColors.blue700)),
           )),
@@ -119,7 +119,7 @@ class ManualPdfService {
           pw.SizedBox(height: 12),
           pw.Text('操作手順', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
           for (var step = 0; step < section.steps.length; step++) ...[
-            pw.Text('${step + 1}. ${section.steps[step]}', overflow: pw.TextOverflow.span),
+            pw.Text('${step + 1}.${section.steps[step]}', overflow: pw.TextOverflow.span),
             pw.SizedBox(height: 10),
           ],
           pw.SizedBox(height: 12),
