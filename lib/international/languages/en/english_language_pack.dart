@@ -1292,5 +1292,7 @@ const englishLanguagePack = LanguagePack(
     "設定・通知音・動かせるヘルプ": "Settings, Notification Sounds and Movable Help",
     "社員データと個人情報の変更承認": "Employee Details and Personal Information Change Approval",
     "LINE参加グループ一覧と通常グループへの追加": "Participating LINE Groups and Links to Normal Groups",
+    "個別給与設定の確認・登録": "View and Save Individual Payroll Settings",
+    "給与調整の対象日と登録・修正": "Payroll Adjustment Dates, Registration and Changes",
   },
 );
