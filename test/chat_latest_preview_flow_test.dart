@@ -208,10 +208,7 @@ void main() {
                   event[1],
                   event[2],
                   'phx_reply',
-                  {
-                    'status': 'ok',
-                    'response': {'postgres_changes': []},
-                  },
+                  {'status': 'ok', 'response': <String, dynamic>{}},
                 ]),
               );
             } else if (event is Map) {
@@ -220,10 +217,7 @@ void main() {
                   'topic': event['topic'],
                   'event': 'phx_reply',
                   'ref': event['ref'],
-                  'payload': {
-                    'status': 'ok',
-                    'response': {'postgres_changes': []},
-                  },
+                  'payload': {'status': 'ok', 'response': <String, dynamic>{}},
                 }),
               );
             }
