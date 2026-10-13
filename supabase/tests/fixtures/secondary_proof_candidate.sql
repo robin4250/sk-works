@@ -15,7 +15,8 @@ create function private.secondary_candidate_context(p_actor uuid,p_session uuid)
 returns void language plpgsql security definer set search_path='' as $$
 begin
  if p_actor is null or p_session is null then raise exception 'verified session required' using errcode='42501';end if;
- perform 1 from auth.sessions where id=p_session and user_id=p_actor for share;
+ perform 1 from auth.sessions where id=p_session and user_id=p_actor
+  and (not_after is null or not_after>clock_timestamp()) for share;
  if not found then raise exception 'session unavailable' using errcode='42501';end if;
  if exists(select 1 from private.fixture_account_restrictions where user_id=p_actor) then
   raise exception 'account restricted' using errcode='42501';

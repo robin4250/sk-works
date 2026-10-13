@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'tool/verify_secondary_proof_candidate.mjs'
+      - 'tool/secondary_primary_proof_candidate_test.mjs'
+      - 'supabase/tests/fixtures/secondary_primary_proof_handler.mjs'
       - 'supabase/tests/fixtures/secondary_proof_*.sql'
       - 'docs/security/SECONDARY_PROOF_CANDIDATE_20261014.md'
       - '.github/workflows/secondary-proof-candidate.yml'
@@ -28,6 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: node --test tool/secondary_primary_proof_candidate_test.mjs
       - run: npm install --prefix /tmp/secondary-review-deps --no-audit --no-fund pg@8.16.3
       - run: node tool/verify_secondary_proof_candidate.mjs /tmp/secondary-review-deps/node_modules/pg/lib/index.js
         env:
