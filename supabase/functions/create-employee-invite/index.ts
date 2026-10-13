@@ -286,6 +286,8 @@ Deno.serve(async (req: Request) => {
 
   let persistedWorkerId: string | null = workerId;
   let linkedExistingWorker = false;
+  let persistenceStage = "worker";
+  let persistenceStatus: number | null = null;
   try {
     if (existingWorker && persistedWorkerId) {
       const workerResponse = await serviceFetch(
@@ -300,7 +302,10 @@ Deno.serve(async (req: Request) => {
           }),
         },
       );
-      if (!workerResponse.ok) throw new Error(await workerResponse.text());
+      if (!workerResponse.ok) {
+        persistenceStatus = workerResponse.status;
+        throw new Error("employee worker persistence failed");
+      }
       linkedExistingWorker = true;
     } else {
       const workerResponse = await serviceFetch("/rest/v1/workers?select=id", {
@@ -315,12 +320,16 @@ Deno.serve(async (req: Request) => {
           user_id: authUserId,
         }),
       });
-      if (!workerResponse.ok) throw new Error(await workerResponse.text());
+      if (!workerResponse.ok) {
+        persistenceStatus = workerResponse.status;
+        throw new Error("employee worker persistence failed");
+      }
       const workers = await workerResponse.json();
       persistedWorkerId = workers?.[0]?.id ?? null;
     }
     if (!persistedWorkerId) throw new Error("worker id missing");
 
+    persistenceStage = "invite";
     const inviteResponse = await serviceFetch(
       "/rest/v1/employee_registration_invites",
       {
@@ -339,7 +348,10 @@ Deno.serve(async (req: Request) => {
         }),
       },
     );
-    if (!inviteResponse.ok) throw new Error(await inviteResponse.text());
+    if (!inviteResponse.ok) {
+      persistenceStatus = inviteResponse.status;
+      throw new Error("employee invite persistence failed");
+    }
 
     const invites = await inviteResponse.json();
     const inviteId = invites?.[0]?.id;
@@ -418,8 +430,9 @@ Deno.serve(async (req: Request) => {
       testFlightUrl,
       deliveryMessage,
     });
-  } catch (error) {
-    console.error("employee invite persistence failed", error);
+  } catch {
+    // Never log upstream details or exception text: either may contain personal data.
+    console.error("employee invite persistence failed", persistenceStage, persistenceStatus);
     if (persistedWorkerId) {
       if (linkedExistingWorker) {
         await serviceFetch(
@@ -442,3 +455,4 @@ Deno.serve(async (req: Request) => {
     return json({ error: "従業員登録を保存できませんでした。" }, 500);
   }
 });
+
