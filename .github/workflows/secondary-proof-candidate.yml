@@ -1,0 +1,34 @@
+name: Secondary proof design candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_secondary_proof_candidate.mjs'
+      - 'supabase/tests/fixtures/secondary_proof_*.sql'
+      - 'docs/security/SECONDARY_PROOF_CANDIDATE_20261014.md'
+      - '.github/workflows/secondary-proof-candidate.yml'
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: sko_secondary_proof_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/secondary-review-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/verify_secondary_proof_candidate.mjs /tmp/secondary-review-deps/node_modules/pg/lib/index.js
+        env:
+          SKO_SECONDARY_PROOF_FIXTURE_URL: postgres://postgres:synthetic_fixture_only@127.0.0.1:5432/sko_secondary_proof_fixture
