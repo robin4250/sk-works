@@ -46,6 +46,13 @@ const targetOnly='00000000-0000-0000-0000-000000000025';
 const linkedRows=(await call('select public.line_linked_talk($1,$2) value',[targetOnly,directory])).rows[0].value;
 assert.equal(linkedRows.length,1);assert.equal(linkedRows[0].body,'Original body');assert.equal((await call('select count(*) n from public.chat_messages')).rows[0].n,1);
 const visible=(await call('select public.line_joined_group_workspace($1) value',[targetOnly])).rows[0].value;assert.equal(visible.length,1);assert.equal(visible[0].read_target_group_id,targetOnly);assert.equal(visible[0].can_link,false);
+// Explicit invited friends in another company keep existing target membership semantics.
+await db.exec("delete from company_members where user_id='00000000-0000-0000-0000-000000000002';insert into company_members values('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000002','worker');");
+assert.equal((await call('select public.line_joined_group_workspace($1) value',[targetOnly])).rows[0].value.length,1);
+assert.equal((await call('select public.line_linked_talk($1,$2) value',[targetOnly,directory])).rows[0].value.length,1);
+await assert.rejects(call('select public.line_linked_talk($1,$2)',[target,directory]),/access required/);
+await db.exec("update line_group_bindings set company_id='00000000-0000-0000-0000-000000000012'");await assert.rejects(call('select public.line_linked_talk($1,$2)',[targetOnly,directory]),/source link required/);
+await db.exec("update line_group_bindings set company_id='00000000-0000-0000-0000-000000000011'");
 await db.exec("set test.blocked='true'");await assert.rejects(call('select public.line_linked_talk($1,$2)',[targetOnly,directory]),/access required/);await assert.rejects(call('select public.line_joined_group_workspace($1)',[targetOnly]),/authentication/);await db.exec("set test.blocked='false'");
 await db.exec("update line_group_bindings set status='disabled'");assert.equal((await call('select public.line_linked_talk($1,$2) value',[targetOnly,directory])).rows[0].value.length,1);
 await db.exec("delete from communication_group_members");await assert.rejects(call('select public.line_linked_talk($1,$2)',[targetOnly,directory]),/access required/);
