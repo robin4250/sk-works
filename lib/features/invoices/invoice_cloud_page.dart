@@ -5,6 +5,7 @@ import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_empty_state.dart';
+import 'invoice_list_card.dart';
 import '../route_billing/route_billing_quantity_approval_repository.dart';
 import '../route_billing/route_billing_quantity_approvals_page.dart';
 import 'invoice_approval_repository.dart';
@@ -334,7 +335,13 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      SkoLanguageController.isEnglish ? 'Year total: ${visible.length} invoices / ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}' : '年間 ${visible.length}件 / 合計 ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}',
+                                      visible.any((invoice) => invoice.routeQuantityPending)
+                                          ? (SkoLanguageController.isEnglish
+                                                ? '${visible.length} invoices / Total pending quantity approval'
+                                                : '年間 ${visible.length}件 / 合計未確定（数量承認待ち）')
+                                          : (SkoLanguageController.isEnglish
+                                                ? 'Year total: ${visible.length} invoices / ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}'
+                                                : '年間 ${visible.length}件 / 合計 ${_yen(visible.fold<int>(0, (sum, invoice) => sum + invoice.grandTotalYen))}'),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -385,68 +392,14 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                                   itemBuilder: (context, index) {
                                     final invoice = visible[index];
                                     final month = _invoiceMonth(invoice);
-                                    return Card(
-                                      child: InkWell(
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                        onTap: () =>
-                                            _openPreview(invoice),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Row(
-                                            children: [
-                                              const CircleAvatar(
-                                                child: Icon(
-                                                  Icons.receipt_long_outlined,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      invoice.customerId,
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        fontSize: 16,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 3),
-                                                    Text(
-                                                      month == null
-                                                          ? invoice
-                                                              .billingPeriod
-                                                          : (SkoLanguageController.isEnglish ? '${month.month}/${month.year}' : '${month.year}年${month.month}月'),
-                                                    ),
-                                                    const SizedBox(height: 5),
-                                                    Text(
-                                                      SkoLanguageController.isEnglish ? '${invoice.siteCalculations.length} sites' : '${invoice.siteCalculations.length}現場',
-                                                      style: Theme.of(context)
-                                                          .textTheme
-                                                          .bodySmall,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Text(
-                                                _yen(invoice.grandTotalYen),
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleMedium
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                    ),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              const Icon(Icons.chevron_right),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                                    return InvoiceListCard(
+                                      invoice: invoice,
+                                      periodLabel: month == null
+                                          ? invoice.billingPeriod
+                                          : (SkoLanguageController.isEnglish
+                                                ? '${month.month}/${month.year}'
+                                                : '${month.year}年${month.month}月'),
+                                      onTap: () => _openPreview(invoice),
                                     );
                                   },
                                 ),
@@ -459,6 +412,31 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   }
 
   Future<void> _openPreview(InvoiceCalculationResult invoice) async {
+    if (invoice.routeQuantityPending) {
+      final english = SkoLanguageController.isEnglish;
+      final review = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(english ? 'Invoice amount pending' : '請求額は未確定です'),
+          content: Text(english
+              ? 'Route billing quantity is awaiting approval. Confirm the billing site, quantity and unit price before approving. This is not a confirmed zero amount.'
+              : 'ルート請求数量の承認待ちです。請求に使用する現場・数量・単価を確認して承認すると、請求額が再計算されます。0円で確定した請求書ではありません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(english ? 'Close' : '閉じる'),
+            ),
+            if (_hasPendingRouteQuantity)
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(english ? 'Review Quantity' : '請求数量を確認'),
+              ),
+          ],
+        ),
+      );
+      if (review == true && mounted) await _openRouteQuantityApprovals();
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => InvoicePreviewPage(invoice: invoice),
@@ -471,6 +449,11 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     List<InvoiceCalculationResult> invoices,
   ) async {
     if (invoices.isEmpty) return;
+    final pending = invoices.where((invoice) => invoice.routeQuantityPending);
+    if (pending.isNotEmpty) {
+      await _openPreview(pending.first);
+      return;
+    }
     final title = SkoLanguageController.isEnglish ? '${_period.year} Invoices' : '${_period.year}年 請求書';
 
     try {
@@ -836,3 +819,4 @@ String _yen(int value) {
   }
   return '${negative ? '-' : ''}¥$buffer';
 }
+
