@@ -141,6 +141,11 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                         onPressed: _saving ? null : () => _moveMonth(-1),
                         icon: const Icon(Icons.chevron_left),
                       ),
+                      if (!_value!.canEdit)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(tr('閲覧のみ')),
+                        ),
                       Expanded(
                         child: Text(
                           '${_month.year}/${_month.month} ${tr('対象月')}',

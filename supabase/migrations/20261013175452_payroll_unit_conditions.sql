@@ -109,7 +109,10 @@ begin
  left join payroll_unit_private.quantities q on q.company_id=cid and q.worker_id=wid
  and q.item_id=(item->>'id')::uuid and q.month=p_month;
  return jsonb_build_object('version',coalesce(config.version,0),'month',p_month,'items',items,
- 'can_edit',private.payroll_settings_allowed(cid,wid,'edit'),'resolved',payroll_unit_private.resolve(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date));
+ 'can_edit',private.payroll_settings_allowed(cid,wid,'edit') and not exists(
+  select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+   and (ps.workflow_state<>'draft' or not ps.automatic_calculation)
+ ),'resolved',payroll_unit_private.resolve(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date));
 end $$;
 
 create function payroll_unit_private.save_conditions(cid uuid,wid uuid,p_month date,p_expected_version bigint,p_items jsonb)

@@ -100,6 +100,7 @@ try {
  }
  assert.equal(finalized.finalized,true);assert.equal(finalized.snapshot.detail.unit_resolution.items[0].amount_yen,300);
  const frozen=await statement();
- await actor(editor);await assert.rejects(save(2,changed.items),/finalized\/manual/);assert.deepEqual(await statement(),frozen);
+ await actor(editor);assert.equal((await state()).can_edit,false,'frozen payroll is visibly read-only, not a failed editable form');
+ await assert.rejects(save(2,changed.items),/finalized\/manual/);assert.deepEqual(await statement(),frozen);
  console.log('PASS unit settings 6 bases, save/reload, quantity identity, direct amounts, taxes, stale version, reviewer scope, day dedup, source hours, missing future quantity, frozen manual payroll');
 } finally {await db.close();}
