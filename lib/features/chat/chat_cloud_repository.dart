@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,7 +19,8 @@ class ChatCloudRepository {
   }
 
   @visibleForTesting
-  factory ChatCloudRepository.forTesting(SupabaseClient client) => ChatCloudRepository._(client);
+  factory ChatCloudRepository.forTesting(SupabaseClient client) =>
+      ChatCloudRepository._(client);
 
   String? get currentUserId => _client.auth.currentUser?.id;
 
@@ -63,8 +65,7 @@ class ChatCloudRepository {
 
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final value = await membership();
-    final canManageLineBinding =
-        value.role == 'owner' || value.role == 'admin';
+    final canManageLineBinding = value.role == 'owner' || value.role == 'admin';
 
     final groupRows = await _client
         .from('communication_groups')
@@ -118,7 +119,9 @@ class ChatCloudRepository {
       final rawPhotos = await _client.rpc('custom_chat_group_photo_workspace');
       if (rawPhotos is List) {
         for (final row in rawPhotos.whereType<Map>()) {
-          photoByGroup[row['group_id'].toString()] = Map<String, dynamic>.from(row);
+          photoByGroup[row['group_id'].toString()] = Map<String, dynamic>.from(
+            row,
+          );
         }
       }
     } on PostgrestException catch (error) {
@@ -148,7 +151,8 @@ class ChatCloudRepository {
         directOtherUserId = otherId.isEmpty ? null : otherId;
         final profile = profileByUser[otherId];
         final friend = friendByUser[otherId];
-        displayName = profile?['display_name']?.toString() ??
+        displayName =
+            profile?['display_name']?.toString() ??
             friend?['display_name']?.toString() ??
             '個別トーク';
         avatarPath = profile?['avatar_storage_path']?.toString();
@@ -170,8 +174,13 @@ class ChatCloudRepository {
       final photo = photoByGroup[groupId];
       final customPath = photo?['storage_path']?.toString();
       if (customPath != null && customPath.isNotEmpty) {
-        try { avatarUrl = await _client.storage.from('custom-chat-photos').createSignedUrl(customPath, 3600); }
-        catch (_) { avatarUrl = null; }
+        try {
+          avatarUrl = await _client.storage
+              .from('custom-chat-photos')
+              .createSignedUrl(customPath, 3600);
+        } catch (_) {
+          avatarUrl = null;
+        }
       }
       groups.add({
         ...group,
@@ -190,44 +199,77 @@ class ChatCloudRepository {
     return groups;
   }
 
-  Future<({List<Map<String, dynamic>> groups, List<Map<String, dynamic>> linkable, bool canManage})> loadLineTalkGroups() async {
+  Future<
+    ({
+      List<Map<String, dynamic>> groups,
+      List<Map<String, dynamic>> linkable,
+      bool canManage,
+    })
+  >
+  loadLineTalkGroups() async {
     final member = await membership();
     final canManage = member.role == 'owner' || member.role == 'admin';
     final groups = await loadGroups();
     // Query through existing chat RLS: workers need no new binding permissions.
     final receivedIds = <String>{};
     for (var offset = 0; ; offset += 1000) {
-      final received = await _client.from('chat_messages')
-          .select('id, communication_group_id').eq('origin', 'line')
-          .order('id').range(offset, offset + 999);
-      receivedIds.addAll(received.map((row) => row['communication_group_id'].toString()));
+      final received = await _client
+          .from('chat_messages')
+          .select('id, communication_group_id')
+          .eq('origin', 'line')
+          .order('id')
+          .range(offset, offset + 999);
+      receivedIds.addAll(
+        received.map((row) => row['communication_group_id'].toString()),
+      );
       if (received.length < 1000) break;
     }
     return (
-      groups: groups.where((group) => receivedIds.contains(group['id']?.toString()) || group['line_binding_enabled'] == true).toList(growable: false),
-      linkable: canManage ? groups.where((group) => group['group_type'] != 'direct' && group['line_binding_enabled'] != true).toList(growable: false) : const <Map<String, dynamic>>[],
+      groups: groups
+          .where(
+            (group) =>
+                receivedIds.contains(group['id']?.toString()) ||
+                group['line_binding_enabled'] == true,
+          )
+          .toList(growable: false),
+      linkable: canManage
+          ? groups
+                .where(
+                  (group) =>
+                      group['group_type'] != 'direct' &&
+                      group['line_binding_enabled'] != true,
+                )
+                .toList(growable: false)
+          : const <Map<String, dynamic>>[],
       canManage: canManage,
     );
   }
 
   Stream<List<Map<String, dynamic>>> watchLineTalkMessages(String groupId) {
-    return _client.from('chat_messages').stream(primaryKey: ['id'])
-        .eq('communication_group_id', groupId).asyncMap((_) async {
-      final messages = <String, Map<String, dynamic>>{};
-      // Stream notifications trigger a paged read so the REST default row cap
-      // cannot silently truncate a long saved LINE conversation.
-      for (var offset = 0; ; offset += 1000) {
-        final rows = await _client.from('chat_messages')
-            .select('id, body, sender_display_name, sent_at, origin')
-            .eq('communication_group_id', groupId).eq('origin', 'line')
-            .order('sent_at').order('id').range(offset, offset + 999);
-        for (final row in rows) {
-          messages[row['id'].toString()] = Map<String, dynamic>.from(row);
-        }
-        if (rows.length < 1000) break;
-      }
-      return messages.values.toList(growable: false);
-    });
+    return _client
+        .from('chat_messages')
+        .stream(primaryKey: ['id'])
+        .eq('communication_group_id', groupId)
+        .asyncMap((_) async {
+          final messages = <String, Map<String, dynamic>>{};
+          // Stream notifications trigger a paged read so the REST default row cap
+          // cannot silently truncate a long saved LINE conversation.
+          for (var offset = 0; ; offset += 1000) {
+            final rows = await _client
+                .from('chat_messages')
+                .select('id, body, sender_display_name, sent_at, origin')
+                .eq('communication_group_id', groupId)
+                .eq('origin', 'line')
+                .order('sent_at')
+                .order('id')
+                .range(offset, offset + 999);
+            for (final row in rows) {
+              messages[row['id'].toString()] = Map<String, dynamic>.from(row);
+            }
+            if (rows.length < 1000) break;
+          }
+          return messages.values.toList(growable: false);
+        });
   }
 
   Future<List<Map<String, dynamic>>> loadSites() async {
@@ -260,10 +302,7 @@ class ChatCloudRepository {
         }
       }
 
-      list.add({
-        ...row,
-        'avatar_url': avatarUrl,
-      });
+      list.add({...row, 'avatar_url': avatarUrl});
     }
     return list;
   }
@@ -362,7 +401,8 @@ class ChatCloudRepository {
         !result.any((row) => row['user_id']?.toString() == currentUser.id)) {
       result.add({
         'user_id': currentUser.id,
-        'display_name': currentUser.userMetadata?['display_name']?.toString() ??
+        'display_name':
+            currentUser.userMetadata?['display_name']?.toString() ??
             currentUser.phone ??
             currentUser.email ??
             '自分',
@@ -381,9 +421,9 @@ class ChatCloudRepository {
         final byRecent = bDate.compareTo(aDate);
         if (byRecent != 0) return byRecent;
       }
-      return (a['display_name'] ?? '')
-          .toString()
-          .compareTo((b['display_name'] ?? '').toString());
+      return (a['display_name'] ?? '').toString().compareTo(
+        (b['display_name'] ?? '').toString(),
+      );
     });
     return result;
   }
@@ -492,74 +532,135 @@ class ChatCloudRepository {
     return Map<String, dynamic>.from(row);
   }
 
-  Future<String?> lineLinkCompanyName({String? groupId, String? creationCompanyId}) async {
-    final actor=currentUserId;
-    if(actor==null || (groupId==null && creationCompanyId==null)) throw StateError('会社を確認できませんでした。');
-    final companyId=groupId==null ? creationCompanyId! : await _groupCompanyId(groupId);
-    if(groupId==null && (await membership()).companyId!=companyId) throw StateError('会社を確認できませんでした。');
-    final rows=await _client.from('companies').select('name').eq('id',companyId).limit(1);
-    if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
-    final currentCompany=groupId==null ? (await membership()).companyId : await _groupCompanyId(groupId);
-    if(currentUserId!=actor || currentCompany!=companyId) throw StateError('会社を確認できませんでした。');
-    final name=rows.length==1 ? rows.single['name']?.toString().trim() : null;
-    if(groupId==null && (name==null || name.isEmpty)) throw StateError('会社を確認できませんでした。');
-    return name==null || name.isEmpty ? null : name;
+  Future<String?> lineLinkCompanyName({
+    String? groupId,
+    String? creationCompanyId,
+  }) async {
+    final actor = currentUserId;
+    if (actor == null || (groupId == null && creationCompanyId == null))
+      throw StateError('会社を確認できませんでした。');
+    final companyId = groupId == null
+        ? creationCompanyId!
+        : await _groupCompanyId(groupId);
+    if (groupId == null && (await membership()).companyId != companyId)
+      throw StateError('会社を確認できませんでした。');
+    final rows = await _client
+        .from('companies')
+        .select('name')
+        .eq('id', companyId)
+        .limit(1);
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    final currentCompany = groupId == null
+        ? (await membership()).companyId
+        : await _groupCompanyId(groupId);
+    if (currentUserId != actor || currentCompany != companyId)
+      throw StateError('会社を確認できませんでした。');
+    final name = rows.length == 1
+        ? rows.single['name']?.toString().trim()
+        : null;
+    if (groupId == null && (name == null || name.isEmpty))
+      throw StateError('会社を確認できませんでした。');
+    return name == null || name.isEmpty ? null : name;
   }
 
   Future<bool> canRefreshLineDirectory() async {
-    final actor=currentUserId;
-    final result=await _client.rpc('is_current_user_master_admin');
-    if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
-    return result==true;
-  }
-  Future<void> refreshLineDirectory() async {
-    final actor=currentUserId;
-    String? cursor;
-    var unavailable=0;
-    do {
-      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
-      final response=await _client.functions.invoke('line-group-directory-refresh', body: {'after':cursor});
-      if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
-      final data=response.data;
-      if(data is! Map) throw StateError('参加状況を更新できませんでした。');
-      unavailable+=(data['unavailable'] as num?)?.toInt() ?? 0;
-      cursor=data['next_cursor']?.toString();
-    } while(cursor!=null);
-    if(unavailable>0) throw StateError('一部の参加状況を確認できませんでした。');
-  }
-
-
-  Future<List<Map<String, dynamic>>> loadJoinedLineGroups({String? targetGroupId, String? newGroupCompanyId}) async {
     final actor = currentUserId;
-    final raw = await _client.rpc('line_joined_group_workspace', params: {'p_target_group_id': targetGroupId, 'p_new_company_id': newGroupCompanyId});
-    if (actor == null || currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-    return raw is List ? raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : const [];
+    final result = await _client.rpc('is_current_user_master_admin');
+    if (actor == null || currentUserId != actor)
+      throw StateError('ログイン状態が変わりました。');
+    return result == true;
   }
 
-  Future<List<Map<String,dynamic>>> loadLinkedLineMessages(String groupId, String directoryId) async {
-    final actor=currentUserId;
-    final rows=<Map<String,dynamic>>[];
-    String? afterAt,afterId;
-    while(true) {
-      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
-      final raw=await _client.rpc('line_linked_talk',params:{'p_target_group_id':groupId,'p_directory_id':directoryId,'p_after_at':afterAt,'p_after_id':afterId});
-      if(currentUserId!=actor || raw is! List) throw StateError('受信トークを読み込めませんでした。');
-      final page=raw.whereType<Map>().map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
+  Future<void> refreshLineDirectory() async {
+    final actor = currentUserId;
+    String? cursor;
+    var unavailable = 0;
+    do {
+      if (actor == null || currentUserId != actor)
+        throw StateError('ログイン状態が変わりました。');
+      final response = await _client.functions.invoke(
+        'line-group-directory-refresh',
+        body: {'after': cursor},
+      );
+      if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+      final data = response.data;
+      if (data is! Map) throw StateError('参加状況を更新できませんでした。');
+      unavailable += (data['unavailable'] as num?)?.toInt() ?? 0;
+      cursor = data['next_cursor']?.toString();
+    } while (cursor != null);
+    if (unavailable > 0) throw StateError('一部の参加状況を確認できませんでした。');
+  }
+
+  Future<List<Map<String, dynamic>>> loadJoinedLineGroups({
+    String? targetGroupId,
+    String? newGroupCompanyId,
+  }) async {
+    final actor = currentUserId;
+    final raw = await _client.rpc(
+      'line_joined_group_workspace',
+      params: {
+        'p_target_group_id': targetGroupId,
+        'p_new_company_id': newGroupCompanyId,
+      },
+    );
+    if (actor == null || currentUserId != actor)
+      throw StateError('ログイン状態が変わりました。');
+    return raw is List
+        ? raw
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+        : const [];
+  }
+
+  Future<List<Map<String, dynamic>>> loadLinkedLineMessages(
+    String groupId,
+    String directoryId,
+  ) async {
+    final actor = currentUserId;
+    final rows = <Map<String, dynamic>>[];
+    String? afterAt, afterId;
+    while (true) {
+      if (actor == null || currentUserId != actor)
+        throw StateError('ログイン状態が変わりました。');
+      final raw = await _client.rpc(
+        'line_linked_talk',
+        params: {
+          'p_target_group_id': groupId,
+          'p_directory_id': directoryId,
+          'p_after_at': afterAt,
+          'p_after_id': afterId,
+        },
+      );
+      if (currentUserId != actor || raw is! List)
+        throw StateError('受信トークを読み込めませんでした。');
+      final page = raw
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
       rows.addAll(page);
-      if(page.length<200) break;
-      final last=page.last;
-      final nextAt=last['sent_at']?.toString(),nextId=last['id']?.toString();
-      if(nextAt==null || nextId==null || (nextAt==afterAt && nextId==afterId)) throw StateError('受信トークを読み込めませんでした。');
-      afterAt=nextAt;afterId=nextId;
+      if (page.length < 200) break;
+      final last = page.last;
+      final nextAt = last['sent_at']?.toString(),
+          nextId = last['id']?.toString();
+      if (nextAt == null ||
+          nextId == null ||
+          (nextAt == afterAt && nextId == afterId))
+        throw StateError('受信トークを読み込めませんでした。');
+      afterAt = nextAt;
+      afterId = nextId;
     }
     return rows;
   }
 
   Future<void> linkLineSource(String groupId, String directoryId) async {
-    final actor=currentUserId;
-    if(actor==null) throw StateError('ログインが必要です。');
-    await _client.rpc('link_line_source_to_chat', params: {'p_group_id': groupId, 'p_directory_id': directoryId});
-    if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+    final actor = currentUserId;
+    if (actor == null) throw StateError('ログインが必要です。');
+    await _client.rpc(
+      'link_line_source_to_chat',
+      params: {'p_group_id': groupId, 'p_directory_id': directoryId},
+    );
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
   }
 
   Future<Map<String, dynamic>> beginLineBindingClaim(String groupId) async {
@@ -584,14 +685,51 @@ class ChatCloudRepository {
     );
   }
 
+  /// Realtime supplies only a changed group's identity. Summaries are re-read
+  /// through the actor's existing RLS; no message body is copied into a cache.
+  Stream<String> watchConversationChanges() {
+    final actor = currentUserId;
+    if (actor == null) return const Stream.empty();
+    late final RealtimeChannel channel;
+    late final StreamController<String> controller;
+    controller = StreamController<String>(
+      onListen: () {
+        channel = _client
+            .channel(
+              'chat-summary-$actor-${DateTime.now().microsecondsSinceEpoch}',
+            )
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'chat_messages',
+              callback: (payload) {
+                if (controller.isClosed || currentUserId != actor) return;
+                final ids = {
+                  payload.newRecord['communication_group_id'],
+                  payload.oldRecord['communication_group_id'],
+                }.whereType<String>();
+                for (final id in ids) {
+                  if (id.isNotEmpty) controller.add(id);
+                }
+              },
+            )
+            .subscribe();
+      },
+      onCancel: () async {
+        await _client.removeChannel(channel);
+      },
+    );
+    return controller.stream;
+  }
+
   Stream<List<Map<String, dynamic>>> watchMessages(String groupId) {
     return _client
         .from('chat_messages')
         .stream(primaryKey: ['id'])
         .eq('communication_group_id', groupId)
-        .order('sent_at')
+        .order('sent_at', ascending: true)
         .asyncMap((rows) async {
-          final messages = List<Map<String, dynamic>>.from(rows);
+          final messages = normalizeChatMessageOrder(rows);
           if (messages.isEmpty) return messages;
 
           final ids = messages.map((row) => row['id'].toString()).toList();
@@ -617,9 +755,7 @@ class ChatCloudRepository {
               row['signed_url'] = null;
             }
 
-            attachmentsByMessage
-                .putIfAbsent(messageId, () => [])
-                .add(row);
+            attachmentsByMessage.putIfAbsent(messageId, () => []).add(row);
           }
 
           return [
@@ -628,7 +764,7 @@ class ChatCloudRepository {
                 ...message,
                 'attachments':
                     attachmentsByMessage[message['id']?.toString()] ??
-                        const <Map<String, dynamic>>[],
+                    const <Map<String, dynamic>>[],
               },
           ];
         });
@@ -706,13 +842,12 @@ class ChatCloudRepository {
         'uploaded_by': user.id,
       });
 
-      await _client.storage.from(_attachmentBucket).uploadBinary(
+      await _client.storage
+          .from(_attachmentBucket)
+          .uploadBinary(
             storagePath,
             bytes,
-            fileOptions: FileOptions(
-              upsert: false,
-              contentType: mimeType,
-            ),
+            fileOptions: FileOptions(upsert: false, contentType: mimeType),
           );
     } catch (_) {
       // Keep metadata in place until Storage cleanup runs because the
@@ -723,10 +858,10 @@ class ChatCloudRepository {
         // The upload may have failed before an object was created.
       }
       try {
-        await _client.from('chat_attachments').delete().eq(
-              'storage_path',
-              storagePath,
-            );
+        await _client
+            .from('chat_attachments')
+            .delete()
+            .eq('storage_path', storagePath);
       } catch (_) {
         // Best effort; the original attachment error remains primary.
       }
@@ -764,8 +899,7 @@ class ChatCloudRepository {
     final rows = raw is List ? raw : const <dynamic>[];
     return {
       for (final item in rows)
-        if (item is Map && item['user_id'] != null)
-          item['user_id'].toString(),
+        if (item is Map && item['user_id'] != null) item['user_id'].toString(),
     };
   }
 
@@ -780,34 +914,56 @@ class ChatCloudRepository {
     );
   }
 
-  Future<Map<String, int>> loadUnreadCounts(Map<String, DateTime> lastReadByGroup) async =>
-      (await loadConversationSummaries(lastReadByGroup)).map((id, summary) => MapEntry(id, summary.unread));
+  Future<Map<String, int>> loadUnreadCounts(
+    Map<String, DateTime> lastReadByGroup,
+  ) async =>
+      (await loadConversationSummaries(lastReadByGroup))
+          .map((id, summary) => MapEntry(id, summary.unread));
 
-  Future<Map<String, ChatConversationSummary>> loadConversationSummaries(Map<String, DateTime> lastReadByGroup) async {
+  Future<Map<String, ChatConversationSummary>> loadConversationSummaries(
+    Map<String, DateTime> lastReadByGroup,
+  ) async {
     final actor = currentUserId;
     if (actor == null) return const {};
     final blocked = await loadBlockedUserIds();
     final result = <String, ChatConversationSummary>{};
     for (final entry in lastReadByGroup.entries) {
       // Both queries are subject to the existing group/message RLS. No service key.
-      final latestQuery = _client.from('chat_messages')
-          .select('id,body,sender_user_id,sent_at').eq('communication_group_id', entry.key);
-      final latest = await (blocked.isEmpty ? latestQuery : latestQuery.or(
-          'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})')).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
+      final latestQuery = _client
+          .from('chat_messages')
+          .select('id,body,sender_user_id,sent_at')
+          .eq('communication_group_id', entry.key);
+      final latest =
+          await (blocked.isEmpty
+                  ? latestQuery
+                  : latestQuery.or(
+                      'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})',
+                    ))
+              .order('sent_at', ascending: false)
+              .order('id', ascending: false)
+              .limit(1);
       var count = 0;
       for (var offset = 0; ; offset += 1000) {
-        final rows = await _client.from('chat_messages').select('id,sender_user_id,sent_at')
+        final rows = await _client
+            .from('chat_messages')
+            .select('id,sender_user_id,sent_at')
             .eq('communication_group_id', entry.key)
             .gt('sent_at', entry.value.toUtc().toIso8601String())
-            .order('sent_at').order('id').range(offset, offset + 999);
-        count += rows.where((row) {final sender = row['sender_user_id']?.toString();
-          return sender != actor && !blocked.contains(sender);}).length;
+            .order('sent_at')
+            .order('id')
+            .range(offset, offset + 999);
+        count += rows.where((row) {
+          final sender = row['sender_user_id']?.toString();
+          return sender != actor && !blocked.contains(sender);
+        }).length;
         if (rows.length < 1000) break;
       }
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-      result[entry.key] = ChatConversationSummary(unread: count,
+      result[entry.key] = ChatConversationSummary(
+        unread: count,
         body: latest.isEmpty ? null : latest.first['body']?.toString(),
-        sentAt: latest.isEmpty ? null : latest.first['sent_at']?.toString());
+        sentAt: latest.isEmpty ? null : latest.first['sent_at']?.toString(),
+      );
     }
     return result;
   }
@@ -841,20 +997,13 @@ class ChatCloudRepository {
   }) async {
     await _client.rpc(
       'respond_sko_friend_request',
-      params: {
-        'p_request_id': requestId,
-        'p_accept': accept,
-      },
+      params: {'p_request_id': requestId, 'p_accept': accept},
     );
   }
 
   Future<void> removeFriend(String userId) async {
-    await _client.rpc(
-      'remove_sko_friend',
-      params: {'p_user': userId},
-    );
+    await _client.rpc('remove_sko_friend', params: {'p_user': userId});
   }
-
 
   Future<List<Map<String, dynamic>>> loadPendingGroupInvites() async {
     final raw = await _client.rpc('my_chat_group_invites');
@@ -880,15 +1029,37 @@ class ChatCloudRepository {
   Future<void> saveCustomGroupPhoto(String groupId, Uint8List bytes) async {
     final actor = currentUserId;
     if (actor == null) throw StateError('ログインが必要です。');
-    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) throw StateError('写真は5MB以下で選択してください。');
-    final png = bytes.length >= 8 && bytes[0] == 137 && bytes[1] == 80 && bytes[2] == 78 && bytes[3] == 71;
-    final jpeg = bytes.length >= 3 && bytes[0] == 255 && bytes[1] == 216 && bytes[2] == 255;
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024)
+      throw StateError('写真は5MB以下で選択してください。');
+    final png =
+        bytes.length >= 8 &&
+        bytes[0] == 137 &&
+        bytes[1] == 80 &&
+        bytes[2] == 78 &&
+        bytes[3] == 71;
+    final jpeg =
+        bytes.length >= 3 &&
+        bytes[0] == 255 &&
+        bytes[1] == 216 &&
+        bytes[2] == 255;
     if (!png && !jpeg) throw StateError('JPEGまたはPNGの写真を選択してください。');
-    final path = '$groupId/$actor/${DateTime.now().microsecondsSinceEpoch}.${png ? 'png' : 'jpg'}';
-    await _client.storage.from('custom-chat-photos').uploadBinary(path, bytes,
-      fileOptions: FileOptions(contentType: png ? 'image/png' : 'image/jpeg', upsert: false));
+    final path =
+        '$groupId/$actor/${DateTime.now().microsecondsSinceEpoch}.${png ? 'png' : 'jpg'}';
+    await _client.storage
+        .from('custom-chat-photos')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            contentType: png ? 'image/png' : 'image/jpeg',
+            upsert: false,
+          ),
+        );
     if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-    await _client.rpc('set_custom_chat_group_photo', params: {'p_group_id': groupId, 'p_storage_path': path});
+    await _client.rpc(
+      'set_custom_chat_group_photo',
+      params: {'p_group_id': groupId, 'p_storage_path': path},
+    );
     // Never replace/delete the currently committed photo before metadata succeeds.
   }
 
@@ -898,10 +1069,7 @@ class ChatCloudRepository {
   }) async {
     await _client.rpc(
       'invite_friend_to_chat_group',
-      params: {
-        'p_group_id': groupId,
-        'p_friend_user_id': friendUserId,
-      },
+      params: {'p_group_id': groupId, 'p_friend_user_id': friendUserId},
     );
   }
 
@@ -911,10 +1079,7 @@ class ChatCloudRepository {
   }) async {
     final raw = await _client.rpc(
       'respond_chat_group_invite',
-      params: {
-        'p_invite_id': inviteId,
-        'p_accept': accept,
-      },
+      params: {'p_invite_id': inviteId, 'p_accept': accept},
     );
     return raw?.toString() ?? '';
   }
@@ -932,10 +1097,7 @@ class ChatCloudRepository {
   }) async {
     await _client.rpc(
       'remove_custom_chat_group_member',
-      params: {
-        'p_group_id': groupId,
-        'p_user_id': userId,
-      },
+      params: {'p_group_id': groupId, 'p_user_id': userId},
     );
   }
 
@@ -945,9 +1107,7 @@ class ChatCloudRepository {
       params: {'p_group_id': groupId},
     );
   }
-
 }
-
 
 class ChatConversationSummary {
   const ChatConversationSummary({required this.unread, this.body, this.sentAt});
@@ -955,3 +1115,21 @@ class ChatConversationSummary {
   final String? body, sentAt;
 }
 
+/// Normalize snapshots and incremental events to chronological order.
+/// Stream.order supports one column; ID makes equal timestamps deterministic.
+List<Map<String, dynamic>> normalizeChatMessageOrder(
+  List<Map<String, dynamic>> rows,
+) {
+  final result = List<Map<String, dynamic>>.of(rows);
+  result.sort((a, b) {
+    final left = DateTime.tryParse(a['sent_at']?.toString() ?? '');
+    final right = DateTime.tryParse(b['sent_at']?.toString() ?? '');
+    final byTime = left == null
+        ? (right == null ? 0 : -1)
+        : (right == null ? 1 : left.compareTo(right));
+    return byTime != 0
+        ? byTime
+        : (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? '');
+  });
+  return result;
+}

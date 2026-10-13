@@ -24,6 +24,9 @@ class _Repository implements ChatCloudRepository {
   _Repository(this.delegate);
   final ChatCloudRepository delegate;
   final messages = StreamController<List<Map<String, dynamic>>>.broadcast();
+  final changes = StreamController<String>.broadcast();
+  @override
+  Stream<String> watchConversationChanges() => changes.stream;
   final rows = List<Map<String, dynamic>>.generate(
     200,
     (index) => {
@@ -101,6 +104,52 @@ Future<void> advance(WidgetTester tester) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('message order compares instants and breaks ties by ID without mutating input', () {
+    final rows = [
+      {'id': 'b', 'sent_at': '2026-10-14T05:00:00+09:00'},
+      {'id': 'z', 'sent_at': '2026-10-13T19:59:00Z'},
+      {'id': 'a', 'sent_at': '2026-10-13T20:00:00Z'},
+    ];
+    expect(normalizeChatMessageOrder(rows).map((row) => row['id']), [
+      'z',
+      'a',
+      'b',
+    ]);
+    expect(rows.first['id'], 'b');
+  });
+  test('real SDK message stream requests ASC and normalizes descending server rows', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var receivedOrder = '';
+    server.listen((request) async {
+      Object data = [];
+      if (request.uri.path.endsWith('/chat_messages')) {
+        receivedOrder = request.uri.queryParameters['order'] ?? '';
+        data = [
+          {'id': 'b', 'sent_at': newAt, 'body': 'Newest'},
+          {'id': 'a', 'sent_at': oldAt, 'body': 'Oldest'},
+        ];
+      }
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode(data));
+      await request.response.close();
+    });
+    final client = SupabaseClient(
+      'http://127.0.0.1:${server.port}',
+      'fixture',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+    );
+    try {
+      final rows = await ChatCloudRepository.forTesting(client)
+          .watchMessages(groupId)
+          .first
+          .timeout(const Duration(seconds: 5));
+      expect(receivedOrder, 'sent_at.asc');
+      expect(rows.map((row) => row['body']), ['Oldest', 'Newest']);
+    } finally {
+      await client.dispose();
+      await server.close(force: true);
+    }
+  });
   test('existing-group LINE help matches both UI entries and keeps English guidance', () {
     for (final key in ['chat', 'line_talk']) {
       final item = MenuHelpCatalog.items.firstWhere((item) => item.key == key);
@@ -213,12 +262,19 @@ void main() {
         );
         await tester.tap(find.text('Existing SKO group'));
         await advance(tester);
+        expect(
+          tester.getTopLeft(find.text('Older 198')).dy,
+          lessThan(tester.getTopLeft(find.text('Previous latest')).dy),
+        );
+        final requestsBeforeTyping = latestRequests;
+        await tester.enterText(find.byType(TextField), 'Draft only');
+        await tester.pump(const Duration(seconds: 30));
+        await advance(tester);
+        expect(latestRequests, requestsBeforeTyping);
         // Stay away from the newest post: this must refresh the list preview
         // without marking an unseen incoming post as read.
-        final scrolling = tester.state<ScrollableState>(
-          find.byType(Scrollable).first,
-        );
-        scrolling.position.jumpTo(600);
+        final scrolling = tester.widget<ListView>(find.byType(ListView).first);
+        scrolling.controller!.jumpTo(600);
         await tester.pump();
         final requestsBefore = latestRequests;
         newest = {
@@ -261,10 +317,7 @@ void main() {
         // the fresh HTTP summary is still in flight.
         holdLatest = true;
         latestGate = Completer<void>();
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-        tester.binding.handleAppLifecycleStateChanged(
-          AppLifecycleState.resumed,
-        );
+        await tester.tap(find.byTooltip('再読み込み'));
         await advance(tester);
         expect(
           tester
@@ -275,10 +328,12 @@ void main() {
         latestGate.complete();
         await advance(tester);
       } finally {
-        if (latestGate != null && !latestGate.isCompleted)
+        if (latestGate != null && !latestGate.isCompleted) {
           latestGate.complete();
+        }
         await tester.pumpWidget(const SizedBox());
         await repository.messages.close();
+        await repository.changes.close();
         await tester.runAsync(() => client.dispose());
         await tester.runAsync(() => server.close(force: true));
       }
