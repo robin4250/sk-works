@@ -168,6 +168,16 @@ class _SecurityIncidentDetailPageState
     extends State<SecurityIncidentDetailPage> {
   bool _busy = false;
   late final _report = SecurityIncidentReportData(widget.record);
+  final _repository = SecurityIncidentRepository.maybeCreate();
+  late final String? _actor = _repository?.currentActor;
+  Future<void> _authorizeExport() async {
+    final repository = _repository;
+    if (repository == null) throw StateError('Unavailable');
+    await repository.authorizeExport(_report, _actor);
+    if (!mounted || repository.currentActor != _actor)
+      throw StateError('Unavailable');
+  }
+
   bool get _english => SkoLanguageController.isEnglish;
   String _text(String japanese, String english) =>
       _english ? english : japanese;
@@ -175,10 +185,12 @@ class _SecurityIncidentDetailPageState
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      await _authorizeExport();
       final bytes = await SecurityIncidentReport.build(
         _report,
         english: _english,
       );
+      await _authorizeExport();
       if (!mounted) return;
       final name = 'SKO-security-${widget.record.id}.pdf';
       if (print) {
@@ -200,6 +212,8 @@ class _SecurityIncidentDetailPageState
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      await _authorizeExport();
+      if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       await SharePlus.instance.share(
         ShareParams(
