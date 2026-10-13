@@ -504,6 +504,8 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                             onPressed: editable ? () => _changeClaim(claim, withdraw: true) : null,
                             icon: const Icon(Icons.delete_outline),
                             style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48),
+                              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               foregroundColor: Theme.of(context).colorScheme.error),
                             label: const Text('削除'))),
                         ])),

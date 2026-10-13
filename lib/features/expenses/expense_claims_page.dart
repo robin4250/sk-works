@@ -365,6 +365,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                     child: Text(widget.reviewFlowEnabled ? '承認・却下を選ぶ' : claim.approval == ExpenseApproval.approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
                   ),
                   if (!widget.reviewFlowEnabled) TextButton(
+                    style: TextButton.styleFrom(minimumSize: const Size(112, 48),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                     onPressed:
                         !canDecide ||
                             onReject == null ||
@@ -378,6 +381,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), onPressed: _busy ? null : () => widget.onOpenDetail!(claim), child: const Text('詳細・履歴')),
                   if (approved && !widget.reviewFlowEnabled) OutlinedButton(
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(112, 48),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                     onPressed:
                         _busy ||
                             !approved ||
