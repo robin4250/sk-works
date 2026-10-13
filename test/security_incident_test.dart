@@ -53,6 +53,25 @@ Map<String, dynamic> fixture() => {
 };
 void main() {
   test(
+    'empty evidence is explicitly incomplete rather than an invented timestamp',
+    () {
+      final data = fixture();
+      final row = (data['incidents'] as List).single as Map;
+      row['events'] = [];
+      row['event_count'] = 0;
+      row['first_seen'] = null;
+      row['last_seen'] = null;
+      final record = SecurityIncident.parseResponse(data).single;
+      expect(
+        SecurityIncidentReportData(record).lines(false).join(),
+        contains('未収集'),
+      );
+      row['collection_status'] = 'complete';
+      expect(() => SecurityIncident.parseResponse(data), throwsFormatException);
+    },
+  );
+
+  test(
     'PDF lines and JSON use the same immutable incident snapshot and digest',
     () {
       final record = SecurityIncident.parseResponse(fixture()).single;
