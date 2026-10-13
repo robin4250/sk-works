@@ -27,19 +27,22 @@ class ChatCloudPage extends StatefulWidget {
     this.showGroupsInitially = false,
     this.createGroupInitially = false,
     this.initialLineDirectoryId,
+    this.repository,
   });
 
   final bool viewerOnlyFriends;
   final bool showGroupsInitially;
   final bool createGroupInitially;
   final String? initialLineDirectoryId;
+  @visibleForTesting
+  final ChatCloudRepository? repository;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
 }
 
 class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserver {
-  final _repository = ChatCloudRepository.maybeCreate();
+  late final _repository = widget.repository ?? ChatCloudRepository.maybeCreate();
   final _composer = TextEditingController();
   final _scrollController = ScrollController();
   final _picker = ImagePicker();
@@ -272,6 +275,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
         } else if (_isNearBottom()) {
           _scrollToBottom();
           _markRead(id);
+        } else {
+          // Refresh the preview even while reading older messages, without
+          // marking an unseen new post as read.
+          _refreshUnreadCounts(_groups);
         }
       },
       onError: (Object error) {
@@ -323,6 +330,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
       _positionInitialMessages = false;
       _chatChromeVisible = true;
     });
+    await _refreshUnreadCounts(_groups);
   }
 
   void _chatPointerDown(PointerDownEvent event) {
@@ -366,7 +374,7 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
   Future<void> _refreshList() async {
     if (_refreshingList || _loading || _repository == null) return;
     _refreshingList = true;
-    try { await _loadGroupsOnly(); await _refreshUnreadCounts(_groups); }
+    try { await _loadGroupsOnly(); }
     finally { _refreshingList = false; }
   }
 
@@ -508,10 +516,14 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
       }
       final priorities = await repository.prioritizedSiteGroupIds();
       if (!mounted || repository.currentUserId != actor) return;
+      final previous = {for (final group in _groups) group['id']: group};
       setState(() {
-        _groups = groups;
+        _groups = [for (final group in groups) {...group,
+          'last_message_body': previous[group['id']]?['last_message_body'],
+          'last_message_at': previous[group['id']]?['last_message_at']}];
         _prioritizedSiteGroupIds = priorities;
       });
+      await _refreshUnreadCounts(_groups);
     } catch (_) {}
   }
 
@@ -827,6 +839,10 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
             if (!dialogContext.mounted || repository.currentUserId != actor) return;
             update(() { photo = bytes; error = null; });
           }, icon: const Icon(Icons.camera_alt_outlined), label: Text(SkoLanguageController.tr('写真を変更'))),
+          if (!create) OutlinedButton.icon(onPressed: busy ? null : () async {
+            Navigator.pop(dialogContext);
+            await _addLineToSelectedGroup();
+          }, icon: const Icon(Icons.add_link), label: Text(SkoLanguageController.tr('LINEトークを追加'))),
           if (create) OutlinedButton.icon(onPressed: busy ? null : () async {
             final source = await Navigator.of(dialogContext).push<Map<String,dynamic>>(MaterialPageRoute(builder: (_) => LineJoinedGroupsPage(selectOnly: true, newGroupCompanyId:creationCompanyId)));
             if (!dialogContext.mounted || repository.currentUserId != actor || source == null) return;
@@ -1390,12 +1406,16 @@ class _ChatCloudPageState extends State<ChatCloudPage> with WidgetsBindingObserv
               tooltip: SkoLanguageController.tr('トーク機能'),
               onSelected: (value) {
                 if (value == 'group_settings') _editGroupPhoto();
+                if (value == 'add_line') _addLineToSelectedGroup();
                 if (value == 'notes') _openNotes();
                 if (value == 'albums') _openAlbums();
                 if (value == 'block') _toggleBlockSelectedDirect();
                 if (value == 'appearance') _openAppearance();
               },
               itemBuilder: (_) => [
+                if (_isCustomGroup(selected) && selected['can_edit_group_photo'] == true)
+                  PopupMenuItem(value: 'add_line', child: ListTile(
+                    leading: const Icon(Icons.add_link), title: Text(SkoLanguageController.tr('LINEトークを追加')))),
                 if (selected['can_edit_group_photo'] == true)
                   PopupMenuItem(value: 'group_settings', child: ListTile(
                     leading: const Icon(Icons.settings_outlined), title: Text(SkoLanguageController.tr('グループ設定')))),
