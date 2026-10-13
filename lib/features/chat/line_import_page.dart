@@ -8,8 +8,10 @@ import 'line_import_draft.dart';
 import 'line_import_repository.dart';
 
 class LineImportPage extends StatefulWidget {
-  const LineImportPage({super.key, required this.target});
+  const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth});
   final String target;
+  final String? initialGroupId;
+  final DateTime? initialMonth;
   @override
   State<LineImportPage> createState() => _LineImportPageState();
 }
@@ -29,7 +31,12 @@ class _LineImportPageState extends State<LineImportPage> {
   Map<String, dynamic>? _pending;
 
   @override
-  void initState() { super.initState(); _initialize(); }
+  void initState() {
+    super.initState();
+    final month = widget.initialMonth;
+    if (month != null) _month = DateTime(month.year, month.month);
+    _initialize();
+  }
   @override
   void dispose() { _note.dispose(); super.dispose(); }
   String get _title => widget.target == 'attendance' ? 'LINE出勤表' : 'LINE請求書';
@@ -42,7 +49,8 @@ class _LineImportPageState extends State<LineImportPage> {
     try {
       final groups = await _chat.loadGroups();
       if (!mounted) return;
-      setState(() { _groups = groups.where((group) => group['group_type'] != 'direct').toList(); _groupId = _groups.isEmpty ? null : _groups.first['id'].toString(); });
+      setState(() { _groups = groups.where((group) => group['group_type'] != 'direct').toList(); _groupId = _groups.any((g) => g['id'].toString() == widget.initialGroupId)
+          ? widget.initialGroupId : _groups.isEmpty ? null : _groups.first['id'].toString(); });
       await _load();
     } catch (_) {
       if (mounted) setState(() { _busy = false; _error = 'LINEのグループを読み込めませんでした。'; });
