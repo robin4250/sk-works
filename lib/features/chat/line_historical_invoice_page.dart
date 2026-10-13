@@ -128,7 +128,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
   }
   Future<void> _openImport() async {
     await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-      const LineImportPage(target: 'invoice')));
+      LineImportPage(target: 'invoice', initialGroupId: _group, initialMonth: _month)));
     if (mounted) await _load();
   }
   Widget _field(LineHistoricalGroup g, String unit, String label, String formula) => Padding(
