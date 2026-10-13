@@ -45,9 +45,13 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
     try {
       final loader =
           widget.loadRecords ?? SecurityIncidentRepository.maybeCreate()?.load;
-      if (loader == null) throw StateError('Unavailable');
+      if (loader == null) {
+        throw StateError('Unavailable');
+      }
       final records = await loader();
-      if (!mounted || generation != _generation) return;
+      if (!mounted || generation != _generation) {
+        return;
+      }
       setState(() {
         _records = records;
         _loading = false;
@@ -55,10 +59,14 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
       final id = widget.incidentId;
       if (id != null) {
         final matches = records.where((record) => record.id == id);
-        if (matches.length == 1) await _open(matches.single);
+        if (matches.length == 1) {
+          await _open(matches.single);
+        }
       }
     } catch (_) {
-      if (!mounted || generation != _generation) return;
+      if (!mounted || generation != _generation) {
+        return;
+      }
       setState(() {
         _failed = true;
         _loading = false;
@@ -172,17 +180,22 @@ class _SecurityIncidentDetailPageState
   late final String? _actor = _repository?.currentActor;
   Future<void> _authorizeExport() async {
     final repository = _repository;
-    if (repository == null) throw StateError('Unavailable');
-    await repository.authorizeExport(_report, _actor);
-    if (!mounted || repository.currentActor != _actor)
+    if (repository == null) {
       throw StateError('Unavailable');
+    }
+    await repository.authorizeExport(_report, _actor);
+    if (!mounted || repository.currentActor != _actor) {
+      throw StateError('Unavailable');
+    }
   }
 
   bool get _english => SkoLanguageController.isEnglish;
   String _text(String japanese, String english) =>
       _english ? english : japanese;
   Future<void> _export(bool print) async {
-    if (_busy) return;
+    if (_busy) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _authorizeExport();
@@ -191,7 +204,9 @@ class _SecurityIncidentDetailPageState
         english: _english,
       );
       await _authorizeExport();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       final name = 'SKO-security-${widget.record.id}.pdf';
       if (print) {
         await Printing.layoutPdf(name: name, onLayout: (_) async => bytes);
@@ -199,21 +214,28 @@ class _SecurityIncidentDetailPageState
         await Printing.sharePdf(bytes: bytes, filename: name);
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('出力できませんでした。', 'Export failed.'))),
         );
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   Future<void> _shareJson() async {
-    if (_busy) return;
+    if (_busy) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _authorizeExport();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       final box = context.findRenderObject() as RenderBox?;
       await SharePlus.instance.share(
         ShareParams(
@@ -231,12 +253,15 @@ class _SecurityIncidentDetailPageState
         ),
       );
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('出力できませんでした。', 'Export failed.'))),
         );
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
