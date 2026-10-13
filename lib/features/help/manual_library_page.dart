@@ -80,6 +80,22 @@ class ManualLibraryPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            Card(child: ExpansionTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: Text(SkoLanguageController.tr('パンフレットの機能別目次')),
+              children: [
+                for (var i = 0; i < ManualContent.pamphlet.length; i++)
+                  ListTile(
+                    leading: Text('${i + 1}'),
+                    title: Text(SkoLanguageController.tr(ManualContent.pamphlet[i].title)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ManualChapterPage(section: ManualContent.pamphlet[i], number: i + 1),
+                    )),
+                  ),
+              ],
+            )),
+            const SizedBox(height: 16),
             Text(
               SkoLanguageController.tr('機能別目次'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(

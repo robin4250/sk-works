@@ -17,6 +17,21 @@ void main() {
     expect(find.text(ManualContent.general[1].title), findsNothing);
   });
 
+  testWidgets('brochure contents shares the same feature reader and PDF entry', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ManualLibraryPage(role: ManualRole.general)));
+    final contents = find.text('パンフレットの機能別目次');
+    await tester.scrollUntilVisible(contents, 200);
+    await tester.tap(contents);
+    await tester.pumpAndSettle();
+    final entry = find.widgetWithText(ListTile, ManualContent.pamphlet.first.title);
+    await tester.scrollUntilVisible(entry, 200);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    expect(find.byType(ManualChapterPage), findsOneWidget);
+    expect(find.text('この機能のPDFを開く'), findsOneWidget);
+    expect(find.text(ManualContent.pamphlet.first.support), findsOneWidget);
+  });
+
   test('role sections keep existing order and append new features', () {
     expect(ManualContent.general[9].title, 'プロフィール・ヘルプ・印刷');
     expect(ManualContent.subAdmin[10].title, 'サブ管理者の役割');
