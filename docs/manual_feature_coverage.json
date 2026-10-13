@@ -339,7 +339,10 @@
       "sources": [
         "lib/features/chat/line_talk_hub_page.dart",
         "lib/features/chat/line_import_page.dart",
-        "lib/features/chat/line_historical_invoice_bridge_page.dart"
+        "lib/features/chat/line_historical_invoice_bridge_page.dart",
+        "lib/features/chat/line_joined_groups_page.dart",
+        "lib/features/chat/line_linked_talk_page.dart",
+        "lib/features/chat/chat_cloud_repository.dart"
       ]
     },
     {

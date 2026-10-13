@@ -18,6 +18,7 @@ const handler = createLineWebhookHandler({ env, logger: { error() {} }, fetch: a
   try {
     if (path.startsWith('line_webhook_events')) {
       await db.query('insert into line_webhook_events values($1,$2::jsonb) on conflict(webhook_event_id) do nothing', [row.webhook_event_id, JSON.stringify(row.raw_event)]);
+    } else if (path==='rpc/observe_line_joined_group') { return new Response(null,{status:200});
     } else if (path.startsWith('line_group_bindings')) {
       return Response.json([{ company_id: 'company-one', communication_group_id: 'group-one' }]);
     } else if (path.startsWith('chat_messages')) {
@@ -30,7 +31,7 @@ const handler = createLineWebhookHandler({ env, logger: { error() {} }, fetch: a
   } catch { return new Response('DB error', { status: 400 }); }
 } });
 const event = { webhookEventId: 'fixture-event', type: 'message', timestamp: 1791820800000,
-  source: { groupId: 'fixture-group', userId: 'fixture-sender' }, message: { type: 'text', id: 'fixture-message', text: '保存する投稿' } };
+  source: { type: 'group', groupId: 'fixture-group', userId: 'fixture-sender' }, message: { type: 'text', id: 'fixture-message', text: '保存する投稿' } };
 const request = () => {
   const body = JSON.stringify({ events: [event] });
   return new Request('https://fixture.invalid', { method: 'POST', body,
@@ -50,3 +51,4 @@ assert.equal(new Date(saved[0].sent_at).toISOString(), new Date(event.timestamp)
 assert.equal((await db.query('select count(*)::int n from line_webhook_events')).rows[0].n, 1);
 await db.close();
 console.log('LINE stage one: original text persisted, partial failure recovered, duplicate delivery stored exactly once.');
+
