@@ -158,6 +158,7 @@ void main() {
       radarSupported: true, rainForecastAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
       rainReferenceAt: DateTime.now().toUtc(), rainLocalHour: 9, rainLocalMinute: 5,
       hours: const [WeatherForecastHour(hour: 12, summary: '晴れ', rainProbability: 20)]);
+    var radarOpened = 0;
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
       for (final scale in [1.0, 1.3, 1.6]) {
@@ -175,7 +176,7 @@ void main() {
             child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
               HomeInformationCard(key: const ValueKey('attention-baseline'), icon: Icons.info_outline,
                 title: '要対応', details: '必要書類を登録してください', onTap: () {}),
-              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () {}),
+              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () => radarOpened++),
             ])),
           ))));
           await tester.pump();
@@ -195,6 +196,17 @@ void main() {
             final regionRect = tester.getRect(find.byKey(const ValueKey('weather-summary-region')));
             final temperatureRect = tester.getRect(find.byKey(const ValueKey('weather-summary-temperature')));
             expect(regionRect.overlaps(temperatureRect), isFalse);
+            expect(temperatureRect.left - regionRect.right, inInclusiveRange(0, 5));
+            final radar = find.byKey(const ValueKey('weather-home-radar'));
+            expect(tester.getSize(radar).width, 78);
+            expect(tester.getSize(radar).height, 32);
+            final radarText = tester.widget<Text>(find.descendant(of: radar, matching: find.byType(Text)));
+            expect(radarText.style!.fontSize, 11);
+            final beforeRadar = radarOpened;
+            await tester.tap(radar);
+            await tester.pump();
+            expect(radarOpened, beforeRadar + 1);
+            expect(find.byType(WeatherForecastDetailPage), findsNothing);
             final centers = [for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24])
               tester.getCenter(find.byKey(ValueKey('weather-home-hour-$hour'))).dx];
             for (var i = 2; i < centers.length; i++) {

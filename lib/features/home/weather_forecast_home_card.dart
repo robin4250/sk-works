@@ -224,39 +224,48 @@ class _WeatherReferenceInformation extends StatelessWidget {
     final chance = at(summaryHour)?.rainProbability;
     final radarAvailable = forecast?.radarSupported == true && onOpenRadar != null;
     return Column(children: [
-      Expanded(flex: 4, child: Row(children: [
-        Icon(weatherConditionDisplayIcon(summaryIcon), key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
-        const SizedBox(width: 4),
-        Expanded(child: LayoutBuilder(builder: (context, constraints) => FittedBox(
+      SizedBox(height: 32, child: Row(children: [
+        Expanded(child: FittedBox(
           fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-          child: SizedBox(width: constraints.maxWidth, child: Column(
-            mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(region, key: const ValueKey('weather-summary-region'),
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, height: 1.1, fontWeight: FontWeight.w700)),
-              Text(forecast == null ? data.status : data.summaryLabel ?? SkoLanguageController.tr('未取得'),
-                key: const ValueKey('weather-summary-condition'), maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10, height: 1.1)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(weatherConditionDisplayIcon(summaryIcon), key: const ValueKey('weather-summary-icon'), size: 25, color: weatherConditionIconColor(summaryIcon, colors)),
+            const SizedBox(width: 4),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 72), child: Column(
+              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(region, key: const ValueKey('weather-summary-region'),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, height: 1.1, fontWeight: FontWeight.w700)),
+                Text(forecast == null ? data.status : data.summaryLabel ?? SkoLanguageController.tr('未取得'),
+                  key: const ValueKey('weather-summary-condition'), maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, height: 1.1)),
+              ],
+            )),
+            if (forecast != null) ...[
+              const SizedBox(width: 4),
+              Text(data.temperatureLabel, key: const ValueKey('weather-summary-temperature'),
+                style: const TextStyle(fontSize: 18, height: 1.1, fontWeight: FontWeight.w700)),
             ],
-          )),
-        ))),
+          ]),
+        )),
         if (forecast != null) ...[
-        const SizedBox(width: 6),
-        SizedBox(width: 52, child: FittedBox(fit: BoxFit.scaleDown, child: Text(
-          data.temperatureLabel,
-          key: const ValueKey('weather-summary-temperature'),
-          style: const TextStyle(fontSize: 18, height: 1.1, fontWeight: FontWeight.w700),
-        ))),
-        const SizedBox(width: 6),
-        SizedBox(width: 58, child: FittedBox(fit: BoxFit.scaleDown, child: Column(children: [
-          Text(SkoLanguageController.tr('降水確率'), style: const TextStyle(fontSize: 9, height: 1.1)),
-          Text(chance == null ? '—' : '$summaryHour${SkoLanguageController.tr('時')} $chance%',
-            key: const ValueKey('weather-summary-precipitation'), style: TextStyle(fontSize: 12, height: 1.1, color: colors.primary)),
-        ]))),
-        if (radarAvailable) SizedBox(width: 44, child: TextButton(onPressed: onOpenRadar,
-          style: TextButton.styleFrom(padding: const EdgeInsets.all(2), minimumSize: const Size(44, 32)),
-          child: FittedBox(fit: BoxFit.scaleDown, child: Text(SkoLanguageController.tr('雨雲レーダー'), style: const TextStyle(fontSize: 9))))),
+          const SizedBox(width: 4),
+          SizedBox(width: 58, child: FittedBox(fit: BoxFit.scaleDown, child: Column(children: [
+            Text(SkoLanguageController.tr('降水確率'), style: const TextStyle(fontSize: 10, height: 1.1)),
+            Text(chance == null ? '—' : '$summaryHour${SkoLanguageController.tr('時')} $chance%',
+              key: const ValueKey('weather-summary-precipitation'), style: TextStyle(fontSize: 12, height: 1.1, color: colors.primary)),
+          ]))),
+          if (radarAvailable) ...[
+            const SizedBox(width: 4),
+            SizedBox(width: 78, height: 32, child: TextButton(
+              key: const ValueKey('weather-home-radar'),
+              onPressed: onOpenRadar,
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 2),
+                minimumSize: const Size(78, 32), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              child: FittedBox(fit: BoxFit.scaleDown, child: Text(
+                SkoLanguageController.tr('雨雲レーダー'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600))),
+            )),
+          ],
         ],
       ])),
       Expanded(flex: 5, child: Row(children: List.generate(9, (index) {
