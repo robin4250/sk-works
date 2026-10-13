@@ -38,15 +38,15 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('home and detail share orange sun and blue umbrella in both languages', (tester) async {
+  testWidgets('home and detail share orange sun and blue open umbrella in both languages', (tester) async {
     final original = SkoLanguageController.pack.value;
     addTearDown(() => SkoLanguageController.pack.value = original);
     final date = DateTime(2026, 10, 12);
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
       for (final symbol in [
-        (label: '晴れ', icon: Icons.wb_sunny, color: Colors.orange),
-        (label: '雨', icon: Icons.umbrella, color: Colors.blue),
+        (label: '晴れ', icon: Icons.wb_sunny, displayIcon: Icons.wb_sunny, color: Colors.orange),
+        (label: '雨', icon: Icons.umbrella, displayIcon: Icons.beach_access, color: Colors.blue),
       ]) {
         final snapshot = WeatherForecastSnapshot(
           locationLabel: '会社周辺', updatedAt: date, forecastDate: date,
@@ -61,10 +61,10 @@ void main() {
           state: state,
         ))));
         final summary = tester.widget<Icon>(find.byKey(const ValueKey('weather-summary-icon')));
-        expect(summary.icon, symbol.icon);
+        expect(summary.icon, symbol.displayIcon);
         expect(summary.color, symbol.color);
         final hour = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-12')));
-        expect(hour.icon, symbol.icon);
+        expect(hour.icon, symbol.displayIcon);
         expect(hour.color, symbol.color);
         final missing = tester.widget<Icon>(find.byKey(const ValueKey('weather-home-hour-0')));
         expect(missing.icon, Icons.help_outline);
@@ -72,9 +72,9 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('weather-home-frame')));
         await tester.pumpAndSettle();
         expect(find.byType(WeatherForecastDetailPage), findsOneWidget);
-        expect(find.byIcon(symbol.icon), findsOneWidget);
+        expect(find.byIcon(symbol.displayIcon), findsOneWidget);
         // The supplied 12h slot can be outside the horizontal viewport.
-        for (final icon in tester.widgetList<Icon>(find.byIcon(symbol.icon))) {
+        for (final icon in tester.widgetList<Icon>(find.byIcon(symbol.displayIcon))) {
           expect(icon.color, symbol.color);
         }
         expect(tester.takeException(), isNull);
@@ -158,6 +158,7 @@ void main() {
       radarSupported: true, rainForecastAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
       rainReferenceAt: DateTime.now().toUtc(), rainLocalHour: 9, rainLocalMinute: 5,
       hours: const [WeatherForecastHour(hour: 12, summary: '晴れ', rainProbability: 20)]);
+    var radarOpened = 0;
     for (final language in ['ja', 'en']) {
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve(language);
       for (final scale in [1.0, 1.3, 1.6]) {
@@ -175,7 +176,7 @@ void main() {
             child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
               HomeInformationCard(key: const ValueKey('attention-baseline'), icon: Icons.info_outline,
                 title: '要対応', details: '必要書類を登録してください', onTap: () {}),
-              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () {}),
+              WeatherForecastHomeCard(state: state, onOpenAttribution: (_) {}, onSelectDay: (_) {}, onOpenRadar: () => radarOpened++),
             ])),
           ))));
           await tester.pump();
@@ -195,6 +196,19 @@ void main() {
             final regionRect = tester.getRect(find.byKey(const ValueKey('weather-summary-region')));
             final temperatureRect = tester.getRect(find.byKey(const ValueKey('weather-summary-temperature')));
             expect(regionRect.overlaps(temperatureRect), isFalse);
+            expect(temperatureRect.left - regionRect.right, inInclusiveRange(0, 5));
+            final radar = find.byKey(const ValueKey('weather-home-radar'));
+            expect(tester.getSize(radar).width, 78);
+            expect(tester.getSize(radar).height, greaterThanOrEqualTo(32));
+            final radarText = tester.widget<Text>(find.descendant(of: radar, matching: find.byType(Text)));
+            expect(radarText.style!.fontSize, 11);
+            expect(find.ancestor(of: find.descendant(of: radar, matching: find.byType(Text)), matching: find.byType(FittedBox)), findsNothing);
+            expect(tester.renderObject<RenderParagraph>(find.descendant(of: radar, matching: find.byType(Text))).didExceedMaxLines, isFalse);
+            final beforeRadar = radarOpened;
+            await tester.tap(radar);
+            await tester.pump();
+            expect(radarOpened, beforeRadar + 1);
+            expect(find.byType(WeatherForecastDetailPage), findsNothing);
             final centers = [for (final hour in [0, 3, 6, 9, 12, 15, 18, 21, 24])
               tester.getCenter(find.byKey(ValueKey('weather-home-hour-$hour'))).dx];
             for (var i = 2; i < centers.length; i++) {
