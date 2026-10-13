@@ -88,12 +88,26 @@ print(json.dumps([{'width':p.rect.width,'height':p.rect.height,'text':p.get_text
     final chapter = File('$output/manual_beta_long_chapter.pdf');
     await chapter.writeAsBytes(await ManualPdfService.buildChapter(longChapter,
       regularFont: font, boldFont: font));
-    final inspection = await Process.run('python', ['-c',
-      'import fitz,json,sys; p=fitz.open(sys.argv[1]); print(json.dumps({"pages":len(p),"text":"".join(x.get_text() for x in p),"links":sum(len(x.get_links()) for x in p),"targets":[a.get("page",-1) for x in p for a in x.get_links()]},ensure_ascii=False))',
-      chapter.path]);
+    final inspection = await Process.run('python', ['-c', r'''
+import fitz,json,re,sys
+pdf=fitz.open(sys.argv[1])
+ignore={re.sub(r'\s+','',x) for x in sys.argv[2:]}
+def body(page):
+    return '\n'.join(line for line in page.get_text().splitlines()
+        if re.sub(r'\s+','',line) not in ignore
+        and not re.fullmatch(r'\d+\s*/\s*\d+',line.strip()))
+spans=[s for page in pdf for b in page.get_text('dict')['blocks']
+       for line in b.get('lines',[]) for s in line['spans']]
+print(json.dumps({'pages':len(pdf),'text':''.join(body(page) for page in pdf),
+    'links':sum(len(page.get_links()) for page in pdf),
+    'targets':[a.get('page',-1) for page in pdf for a in page.get_links()],
+    'bounds_ok':all(s['bbox'][0]>=35 and s['bbox'][1]>=35 and
+                   s['bbox'][2]<=560.3 and s['bbox'][3]<=806.9 for s in spans)},ensure_ascii=False))
+''', chapter.path, 'SKO ベータ版 / ${longChapter.title}', ManualVersion.label]);
     expect(inspection.exitCode, 0, reason: inspection.stderr.toString());
     final detail = jsonDecode(inspection.stdout.toString()) as Map<String, dynamic>;
     expect(detail['pages'] as int, greaterThan(2));
+    expect(detail['bounds_ok'], isTrue);
     expect(detail['links'] as int, greaterThanOrEqualTo(2));
     for (final target in (detail['targets'] as List<dynamic>).cast<int>()) {
       expect(target, inInclusiveRange(0, (detail['pages'] as int) - 1));
