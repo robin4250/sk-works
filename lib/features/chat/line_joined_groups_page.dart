@@ -49,10 +49,12 @@ class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with Widget
       if(!mounted || generation!=_generation || repository.currentUserId!=actor) return;
       setState(() { _rows=rows; _master=master; _loading=false; _error=null; });
     } catch(_) {
-      if(mounted && generation==_generation) setState(() {
-        if(repository.currentUserId!=actor) _rows=const [];
-        _loading=false; _error='参加グループを読み込めませんでした。再読み込みしてください。';
-      });
+      if(mounted && generation==_generation) {
+        setState(() {
+          if(repository.currentUserId!=actor) _rows=const [];
+          _loading=false; _error='参加グループを読み込めませんでした。再読み込みしてください。';
+        });
+      }
     }
   }
   Future<void> _refresh() async {

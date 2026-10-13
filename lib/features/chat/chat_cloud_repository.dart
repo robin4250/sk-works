@@ -515,7 +515,7 @@ class ChatCloudRepository {
     do {
       if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
       final response=await _client.functions.invoke('line-group-directory-refresh', body: {'after':cursor});
-      if(actor==null || currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
+      if(currentUserId!=actor) throw StateError('ログイン状態が変わりました。');
       final data=response.data;
       if(data is! Map) throw StateError('参加状況を更新できませんでした。');
       unavailable+=(data['unavailable'] as num?)?.toInt() ?? 0;
