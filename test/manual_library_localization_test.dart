@@ -23,10 +23,11 @@ void main() {
     expect(find.text('Manual for Employee'), findsOneWidget);
     expect(find.text('SKO v${ManualVersion.appVersion} / Beta / ${ManualVersion.revisionDate}'), findsOneWidget);
     expect(find.text('The PDF is in Japanese.'), findsOneWidget);
-    expect(find.textContaining('10 pages.'), findsOneWidget);
+    expect(find.textContaining('${ManualContent.general.length} feature chapters'), findsOneWidget);
     expect(find.text('Open Employee Manual PDF'), findsOneWidget);
-    expect(ManualContent.forRole(ManualRole.general).length, 10);
-    expect(ManualContent.forRole(ManualRole.subAdmin).length, 15);
-    expect(ManualContent.forRole(ManualRole.admin).length, 20);
+    expect(ManualContent.forRole(ManualRole.general).length, greaterThan(10));
+    expect(ManualContent.forRole(ManualRole.subAdmin).length, greaterThan(15));
+    expect(ManualContent.forRole(ManualRole.admin).length, greaterThan(20));
   });
 }
+

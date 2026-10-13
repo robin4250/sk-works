@@ -50,7 +50,7 @@ class ManualLibraryPage extends StatelessWidget {
                     )),
                     const SizedBox(height: 8),
                     Text(SkoLanguageController.trParams(
-                      '{count}ページ構成です。画面内でも読めて、A4 PDFとしてプレビュー・印刷・共有できます。',
+                      '{count}章を機能別に読めます。PDFのページ数は内容に合わせて増えます。',
                       {'count': sections.length},
                     )),
                     Text(SkoLanguageController.tr('PDFは日本語版です。')),
@@ -73,7 +73,7 @@ class ManualLibraryPage extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.menu_book_outlined),
-                      label: Text(SkoLanguageController.tr('SKOパンフレット 20ページを開く')),
+                      label: Text(SkoLanguageController.tr('SKOベータ版パンフレットを開く')),
                     ),
                   ],
                 ),
@@ -81,11 +81,23 @@ class ManualLibraryPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              SkoLanguageController.tr('画面で読む'),
+              SkoLanguageController.tr('機能別目次'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
             ),
+            const SizedBox(height: 8),
+            for (var i = 0; i < sections.length; i++)
+              ListTile(
+                leading: Text('${i + 1}'),
+                title: Text(SkoLanguageController.tr(sections[i].title)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ManualChapterPage(section: sections[i], number: i + 1),
+                )),
+              ),
+            const SizedBox(height: 16),
+            Text(SkoLanguageController.tr('画面で読む')),
             const SizedBox(height: 8),
             for (var i = 0; i < sections.length; i++) ...[
               _ManualSectionCard(
@@ -105,16 +117,19 @@ class _ManualSectionCard extends StatelessWidget {
   const _ManualSectionCard({
     required this.number,
     required this.section,
+    this.initiallyExpanded = false,
   });
 
   final int number;
   final ManualSection section;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     return Card(
       child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
         leading: CircleAvatar(
           child: Text(
             '$number',
@@ -157,6 +172,13 @@ class _ManualSectionCard extends StatelessWidget {
               ),
               title: Text(SkoLanguageController.tr(section.steps[i])),
             ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ManualPdfPreviewPage.chapter(section: section),
+            )),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: Text(SkoLanguageController.tr('この機能のPDFを開く')),
+          ),
           const Divider(),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -169,6 +191,27 @@ class _ManualSectionCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+class ManualChapterPage extends StatelessWidget {
+  const ManualChapterPage({super.key, required this.section, required this.number});
+  final ManualSection section;
+  final int number;
+
+  @override
+  Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(SkoLanguageController.tr(section.title))),
+      body: SafeArea(child: ListView(padding: const EdgeInsets.all(16),
+        children: [
+          Text(ManualVersion.revisionLabel),
+          const SizedBox(height: 8),
+          _ManualSectionCard(number: number, section: section, initiallyExpanded: true),
+        ])),
     );
   }
 }

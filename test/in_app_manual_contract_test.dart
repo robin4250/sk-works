@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/help/manual_content.dart';
 
 void main() {
-  test('role manuals keep requested page counts', () {
-    expect(ManualContent.general.length, 10);
-    expect(ManualContent.subAdmin.length, 15);
-    expect(ManualContent.admin.length, 20);
-    expect(ManualContent.pamphlet.length, 20);
+  test('feature chapters grow without fixed brochure or role page caps', () {
+    expect(ManualContent.general.length, greaterThan(10));
+    expect(ManualContent.subAdmin.length, greaterThan(15));
+    expect(ManualContent.admin.length, greaterThan(20));
+    expect(ManualContent.pamphlet.length, greaterThan(20));
   });
 
   test('admin manual does not inherit sub-admin-only restrictions', () {
@@ -67,7 +67,7 @@ void main() {
     expect(source, contains('⭕ ここを押す'));
     expect(source, contains('サポート・補足'));
     expect(source, contains('PDFを開く'));
-    expect(source, contains('SKOパンフレット 20ページを開く'));
+    expect(source, contains('SKOベータ版パンフレットを開く'));
   });
 
   test('manual PDF supports A4 preview printing and sharing', () {
@@ -93,3 +93,4 @@ void main() {
     expect(app, contains('ManualContent.fromMembershipRole(_identity.role)'));
   });
 }
+
