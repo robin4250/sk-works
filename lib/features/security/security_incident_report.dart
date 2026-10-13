@@ -38,6 +38,7 @@ class SecurityIncidentReportData {
     'collection_status': record.collectionStatus,
     'missing_before': record.missingBefore,
     'missing_after': record.missingAfter,
+    'event_count': record.events.length,
     'events': [
       for (final e in record.events)
         {
@@ -58,6 +59,11 @@ class SecurityIncidentReportData {
   List<String> lines(bool english) => [
     ...record.reportLines(english),
     '${english ? 'Report version' : '記録書式の版'}: 1 / ${record.recordVersion}',
+    '${english ? 'Record type' : '記録区分'}: ${record.recordVersion > 1 ? (english ? 'Continuation' : '継続記録') : (english ? 'Initial record' : '初回記録')}',
+    '${english ? 'Collected events' : '収集済み回数'}: ${record.events.length}',
+    english
+        ? 'Counts refer only to collected events, not an inferred lifetime total.'
+        : '回数は収集済みイベント数です。未収集の累積回数は推測していません。',
     '${english ? 'First / last (UTC)' : '初回／最終 (UTC)'}: ${record.firstSeen.toIso8601String()} / ${record.lastSeen.toIso8601String()}',
     '${english ? 'Saved (UTC)' : '保管日時 (UTC)'}: ${record.savedAt.toIso8601String()}',
     '${english ? 'Generated (UTC)' : '作成日時 (UTC)'}: ${generatedAt.toIso8601String()}',
