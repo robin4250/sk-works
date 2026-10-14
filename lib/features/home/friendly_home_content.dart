@@ -968,6 +968,7 @@ class _HomeActionTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
       final isSubAdmin = item.access == HomeShortcutAccess.subAdmin;
     final isViewer = item.access == HomeShortcutAccess.viewer;
+    final hasDoubleBorder = isViewer || item.key == 'payment_certificates';
     final isAdmin = item.access == HomeShortcutAccess.admin;
     final background = scheme.surfaceContainerLowest;
     final borderColor = scheme.primary;
@@ -1049,7 +1050,7 @@ class _HomeActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: dragging ? null : () => onOpen(item.key),
           child: Container(
-            padding: EdgeInsets.all(compact ? (isViewer ? 5 : 8) : 14),
+            padding: EdgeInsets.all(compact ? (hasDoubleBorder ? 5 : 8) : 14),
             decoration: BoxDecoration(
               border: borderWidth > 0
                   ? Border.all(color: borderColor, width: borderWidth)
@@ -1061,7 +1062,7 @@ class _HomeActionTile extends StatelessWidget {
         ),
       );
 
-      if (isViewer && item.key != 'employee_resources') {
+      if (hasDoubleBorder && item.key != 'employee_resources') {
         core = Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
@@ -1114,3 +1115,4 @@ class _HomeAction {
   final IconData icon;
   final HomeShortcutAccess access;
 }
+
