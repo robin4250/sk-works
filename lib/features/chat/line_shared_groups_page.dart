@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
+import 'chat_group_delete_confirmation.dart';
 
 import 'line_joined_groups_page.dart';
 import 'line_shared_groups_repository.dart';
@@ -76,7 +77,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
 
   Future<void> _openGroup(String id) async {
     await widget.onOpenGroup(id);
-    if (mounted) await _refreshPreview(id);
+    if (mounted) await _load();
   }
 
   Future<void> _load() async {
@@ -167,6 +168,28 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     }
   }
 
+  Future<void> _deleteGroup(Map<String, dynamic> group) async {
+    final repository = _repository;
+    final actor = repository?.actor;
+    final id = group['group_id']?.toString();
+    if (_busy || repository == null || actor == null || id == null ||
+        group['can_delete_group'] != true) return;
+    setState(() => _busy = true);
+    try {
+      final confirmed = await confirmChatGroupDeletion(context,
+        name: group['name']?.toString() ?? '', lineLinked: true);
+      if (!mounted || !confirmed || repository.actor != actor) return;
+      await repository.deleteGroup(id);
+      if (mounted && repository.actor == actor) await _load();
+    } catch (_) {
+      if (mounted && repository.actor == actor) {
+        setState(() => _error = '削除結果を確認できませんでした。再読み込みしてグループと権限を確認してください。');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -210,7 +233,13 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
               subtitle: Text(group['last_message_body']?.toString() ??
                 SkoLanguageController.tr('まだ会話はありません'),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (group['can_delete_group'] == true)
+                  IconButton(key: ValueKey('line-delete-group-${group['group_id']}'),
+                    tooltip: 'グループを削除', icon: const Icon(Icons.delete_outline),
+                    onPressed: _busy ? null : () => _deleteGroup(group)),
+                const Icon(Icons.chevron_right),
+              ]),
               onTap: () => _openGroup(group['group_id'].toString()),
             ),
           ),
