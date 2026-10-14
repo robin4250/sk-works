@@ -177,7 +177,9 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     final actor = repository?.actor;
     final id = group['group_id']?.toString();
     if (_busy || repository == null || actor == null || id == null ||
-        group['can_delete_group'] != true) return;
+        group['can_delete_group'] != true) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       final confirmed = await confirmChatGroupDeletion(context,

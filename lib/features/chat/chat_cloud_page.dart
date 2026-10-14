@@ -2630,7 +2630,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final actor = repository?.currentUserId;
     final id = group['id']?.toString();
     if (_deletingGroup || repository == null || actor == null || id == null ||
-        !_isCustomGroup(group) || group['can_delete_group'] != true) return;
+        !_isCustomGroup(group) || group['can_delete_group'] != true) {
+      return;
+    }
     setState(() => _deletingGroup = true);
     try {
       final confirmed = await confirmChatGroupDeletion(context,
