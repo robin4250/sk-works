@@ -43,6 +43,21 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
       }
     }
   }
+  // Recheck after resolving names to IDs: an old edited row has an ID,
+  // while a newly imported copy initially has only the worker's name.
+  final counts = <String, int>{};
+  String workerDay(Map<String, dynamic> row) =>
+    '${row['work_date']}:${row['worker_id'] ?? row['worker_name']}';
+  for (final row in rows.where((row) => row['excluded'] != true)) {
+    final key = workerDay(row);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  for (final row in rows.where((row) => row['excluded'] != true)) {
+    if ((counts[workerDay(row)] ?? 0) > 1) {
+      row['confirmed'] = false;
+      row['review_reason'] = '同日の作業員が複数行あります。重複・複数現場を確認してください。';
+    }
+  }
   final used = rows.map((r) => r['source_message_id']).toSet();
   final sources = history.where((source) {
     final at = DateTime.tryParse(source['sent_at']?.toString() ?? '')?.toLocal();

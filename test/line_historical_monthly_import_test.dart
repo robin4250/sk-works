@@ -2,6 +2,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
 
 void main() {
+  test('resolved new rows cannot bypass review alongside an already edited worker ID', () {
+    final first = lineHistorySources(
+      '2026/09/01\n08:10\t投稿者\t9月1日\n現場A 山田\n現場A 定時');
+    final later = lineHistorySources(
+      '2026/09/01\n08:15\t別の投稿者\t9月1日\n現場A 山田\n現場A 定時');
+    final refs = <Map<String, dynamic>>[{'id': 'worker', 'name': '山田'}];
+    final initial = lineMonthlyCandidates(first, DateTime(2026, 9), workers: refs);
+    final corrected = {...initial.rows.single, 'man_days': .5, 'confirmed': true};
+    final merged = lineMonthlyCandidates([...first, ...later], DateTime(2026, 9),
+      previous: [corrected], workers: refs);
+    expect(merged.rows, hasLength(2));
+    expect(merged.rows.every((row) => row['worker_id'] == 'worker'), isTrue);
+    expect(merged.rows.every((row) => row['confirmed'] == false), isTrue);
+    expect(merged.rows.first['man_days'], .5);
+  });
+
   test('two previously edited copies remain available for explicit duplicate review', () {
     final history = <String, dynamic>{
       'id': 'history-copy', 'body': '9月1日\n現場A 山田\n現場A 定時',
