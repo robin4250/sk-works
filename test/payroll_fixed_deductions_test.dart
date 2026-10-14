@@ -67,7 +67,7 @@ Future<void> mount(WidgetTester t, _Backend b, {
       legacySocialAmount: 12345,
       residentTax: const Text('登録済みの住民税'),
     ),
-  )))));
+  ))));
   await t.pumpAndSettle();
 }
 

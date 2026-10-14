@@ -37,6 +37,7 @@ try {
  assert.equal((await db.query("select to_regnamespace('payroll_tax_private') n")).rows[0].n,null);
  await db.exec(originalCalculator);
  await db.exec(read('supabase/migrations/20261010030208_connect_payroll_tax_calculation.sql'));
+ await db.exec(read('supabase/migrations/20261013175452_payroll_unit_conditions.sql'));
  await db.exec(read('supabase/migrations/20261014033249_payroll_fixed_deduction_overrides.sql'));
  // All 231 official rows: lower endpoint, upper endpoint minus one, 8 koh columns and otsu.
  const official=JSON.parse(read('test/fixtures/nta_monthly_2026.json'));
