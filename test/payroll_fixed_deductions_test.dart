@@ -56,6 +56,9 @@ class _Backend {
 
 Finder amount(String key) => find.byKey(ValueKey('fixed-deduction-$key-amount'));
 Finder card(String key) => find.byKey(ValueKey('fixed-deduction-$key'));
+String? helper(WidgetTester t, String key) => t.widget<TextField>(
+  find.descendant(of: amount(key), matching: find.byType(TextField)),
+).decoration?.helperText;
 
 Future<void> _mount(WidgetTester t, _Backend b, {
   PayrollDeductionStatementReader? reader,
@@ -92,7 +95,7 @@ void main() {
     await _mount(t, b);
     for (final item in fixedPayrollDeductions) {
       final field = t.widget<TextFormField>(amount(item.$1));
-      expect(field.decoration!.helperText, '計算条件未設定');
+      expect(helper(t, item.$1), '計算条件未設定');
       expect(field.controller!.text, isEmpty);
       expect(field.enabled, isFalse);
     }
@@ -105,10 +108,10 @@ void main() {
       'deduction_overrides': {'income_tax': 1234},
     };
     await _mount(t, b);
-    expect(t.widget<TextFormField>(amount('income_tax')).decoration!.helperText,
+    expect(helper(t, 'income_tax'),
         '手入力修正');
     for (final key in fixedPayrollDeductions.skip(1).map((i) => i.$1)) {
-      expect(t.widget<TextFormField>(amount(key)).decoration!.helperText,
+      expect(helper(t, key),
           '一括固定額設定（個別計算なし）');
     }
     final reset = find.descendant(of: card('income_tax'),
@@ -116,7 +119,7 @@ void main() {
     await t.tap(reset);
     await t.pumpAndSettle();
     expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1000');
-    expect(t.widget<TextFormField>(amount('income_tax')).decoration!.helperText,
+    expect(helper(t, 'income_tax'),
         '固定額設定');
     expect(b.writes, 0);
   });
