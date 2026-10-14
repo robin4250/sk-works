@@ -21,7 +21,7 @@ export async function checkHttp(db,{uid,other,cid,report}){
  let ready=false;
  for(let i=0;i<30;i++){try{if((await call(token(uid))).status===200){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,1000));}
  assert.equal(ready,true,'real PostgREST schema ready');
- assert.equal((await call()).status,403);
+ assert.equal((await call()).status,401);
  assert.equal((await call(token(uid,{exp:1}))).status,401);
  assert.equal((await call(token(uid,{},'wrong-synthetic-signing-secret-32-chars'))).status,401);
  assert.equal((await call(token(crypto.randomUUID()))).status,400);
