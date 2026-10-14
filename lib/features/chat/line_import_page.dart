@@ -11,6 +11,7 @@ import 'line_import_repository.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_historical_amount_preview.dart';
+import '../invoices/invoice_pdf_service.dart';
 
 class LineImportPage extends StatelessWidget {
   const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
@@ -449,6 +450,10 @@ class _LineImportPageState extends State<_LineImportPageContent> {
             Text('未確認 ${estimate.pendingRows}行 ／ 数量・手当・重複などの要確認で計算対象外 ${estimate.incompleteRows}行。未振り分けの原文・訂正は別途照合してください。'),
             for (final site in estimate.sites) Text('${site.name}：${site.total}円（作業・手当 ${site.base}円＋福利 ${site.welfare}円＋税 ${site.tax}円）'),
             const Text('正式請求の確定額ではありません。表を修正すると再計算します。'),
+            OutlinedButton.icon(onPressed: _busy || estimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(
+                invoices: [estimate.invoice(_month)], title: 'SKO請求書・参考／未確認'))),
+              icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('SKO請求書の書式で参考金額を確認')),
           ]))),
         Text('確認済み集計', style: Theme.of(context).textTheme.titleMedium),
         if (totals.isEmpty) const Text('確認済みの候補はありません。'),

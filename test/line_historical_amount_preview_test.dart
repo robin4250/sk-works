@@ -18,6 +18,11 @@ void main() {
     expect(result.total, 62049);
     expect(result.pendingRows, 1);
     expect(result.incompleteRows, 0);
+    final invoice = result.invoice(DateTime(2026, 9));
+    expect(invoice.grandTotalYen, result.total);
+    expect(invoice.siteCalculations.single.lines.map((line) => line.label), containsAll(['残業', 'PC手当', '鉄骨手当']));
+    expect(invoice.invoiceId, isEmpty);
+    expect(invoice.invoiceNumber, '参考・未確認');
   });
   test('unknown quantity, allowance or duplicate is excluded rather than priced at zero', () {
     final result = lineHistoricalAmountPreview([
@@ -47,5 +52,12 @@ void main() {
     ], DateTime(2026, 9));
     expect(draft.rows.single['allowance_names'], ['鉄骨手当']);
     expect(lineHistoricalAmountPreview(draft.rows).sites.single.base, 35800);
+  });
+  test('night and holiday reference rates follow the existing SKO formulas', () {
+    expect(lineHistoricalDefaultDayRate('night'), 49200);
+    expect(lineHistoricalDefaultDayRate('holiday'), 44280);
+    final preview = lineHistoricalAmountPreview([{...row(ot: 1), 'work_category': 'night'}]);
+    expect(preview.sites.single.base, 56888);
+    expect(preview.invoice(DateTime(2026, 9)).grandTotalYen, preview.total);
   });
 }
