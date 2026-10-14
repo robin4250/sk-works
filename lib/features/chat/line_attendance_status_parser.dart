@@ -1,3 +1,5 @@
+import 'line_history_parser.dart';
+
 class LineAttendanceStatus {
   const LineAttendanceStatus({
     required this.siteName,
@@ -26,7 +28,7 @@ class LineAttendanceStatusParser {
   List<LineAttendanceStatus> parse(String body) {
     final statuses = <LineAttendanceStatus>[];
 
-    for (final rawLine in body
+    for (final rawLine in lineBodyForReading(body)
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
         .split('\n')) {

@@ -1,4 +1,5 @@
 import 'line_release_access.dart';
+import '../../domain/rate_formula_settings.dart';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'chat_cloud_repository.dart';
@@ -83,12 +84,12 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
       final lines = snapshot['lines'] as List? ?? [];
       for (final group in summary) {
         _siteNames.putIfAbsent(group.siteId, () => TextEditingController(
-          text: lineHistoricalFormalSiteName(snapshot, group.siteId) ?? group.siteName));
+          text: lineHistoricalFormalSiteName(snapshot, group.siteId) ?? _formalName(rows, group)));
         final matching = lines.where((line) => line['site_id'] == group.siteId &&
           line['work_category'] == group.category).toList();
         if (matching.length != 1 || matching.single['rates'] is! Map) continue;
         final rates = matching.single['rates'] as Map;
-        for (final unit in ['day', 'overtime', 'early', ...group.allowances.keys.map((name) => 'allowance:$name')]) {
+        for (final unit in ['day', 'overtime', 'early', ...<String>{'PC手当', '鉄骨手当', ...group.allowances.keys}.map((name) => 'allowance:$name')]) {
           final allowances = rates['allowances'];
           final value = unit.startsWith('allowance:')
               ? (allowances is Map ? allowances[unit.substring(10)] : null)
@@ -104,7 +105,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
     finally { if (mounted) setState(() => _busy = false); }
   }
   String _key(LineHistoricalGroup g, String unit) => '${g.siteId}:${g.category}:$unit';
-  TextEditingController _controller(LineHistoricalGroup g, String unit) => _rates.putIfAbsent(_key(g, unit), TextEditingController.new);
+  TextEditingController _controller(LineHistoricalGroup g, String unit) => _rates.putIfAbsent(_key(g, unit), () => TextEditingController(text: unit == 'day' ? '32800' : unit == 'overtime' || unit == 'early' ? const RateFormulaSettings().overtime(_rate(g, 'day') ?? 32800).toString() : unit == 'allowance:PC' || unit == 'allowance:PC手当' || unit == 'allowance:鉄骨' || unit == 'allowance:鉄骨手当' ? '3000' : ''));
   int? _rate(LineHistoricalGroup g, String unit) => historicalUnitRate(_controller(g, unit).text);
   int? _subtotal(LineHistoricalGroup g) {
     final day = _rate(g, 'day'), ot = _rate(g, 'overtime'), early = _rate(g, 'early');
@@ -128,7 +129,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         'site_id': g.siteId, 'site_name': _siteNames[g.siteId]!.text.trim(),
         'work_category': g.category, 'day': _rate(g, 'day'),
         'overtime': _rate(g, 'overtime'), 'early': _rate(g, 'early'),
-        'allowances': {for (final name in g.allowances.keys) name: _rate(g, 'allowance:$name')},
+        'allowances': {for (final name in <String>{'PC手当', '鉄骨手当', ...g.allowances.keys}) name: _rate(g, 'allowance:$name')},
       }];
       _pending = _repository!.command(_group!, _month, _data, rates);
     }
@@ -178,6 +179,44 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
       LineHistoricalMonthlyImportPage(groupId: group)));
     if (mounted) await _load();
   }
+  String _formalName(List<Map<String, dynamic>> rows, LineHistoricalGroup group) {
+    final names = rows.where((row) => row['site_id'] == group.siteId)
+      .map((row) => row['formal_site_name']?.toString().trim() ?? '')
+      .where((name) => name.isNotEmpty).toSet();
+    return names.length == 1 ? names.single : group.siteName;
+  }
+
+  Future<void> _openSiteRates(String siteId) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+      StatefulBuilder(builder: (context, refresh) => Scaffold(
+        appBar: AppBar(title: const Text('現場別単価設定')),
+        body: ListView(padding: const EdgeInsets.all(16), children: [
+          TextField(controller: _siteNames[siteId], maxLength: 200,
+            decoration: const InputDecoration(labelText: '正式現場名（請求書へ表示）'),
+            onChanged: (_) => _edited = true),
+          for (final g in _summary.where((g) => g.siteId == siteId)) ...[
+            Text('${g.siteName} ／ ${g.category}'),
+            TextField(controller: _controller(g, 'day'), keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '1日単価（円）'),
+              onChanged: (_) {
+                final day = _rate(g, 'day');
+                _controller(g, 'overtime').text = day == null ? '' : const RateFormulaSettings().overtime(day).toString();
+                setState(() => _edited = true);
+                refresh(() {});
+              }),
+            TextField(controller: _controller(g, 'overtime'), readOnly: true,
+              decoration: const InputDecoration(labelText: '残業単価（円／時間・自動計算）', helperText: '1日単価 ÷ 8 × 1.25')),
+            if (g.early > 0) _field(g, 'early', '早出単価（円／時間）', '${g.early}時間 × 単価'),
+            for (final a in <String, int>{'PC手当': 0, '鉄骨手当': 0, ...g.allowances}.entries)
+              _field(g, 'allowance:${a.key}', '${a.key}（円／日）', '${a.value}日 × 単価'),
+            const SizedBox(height: 16),
+          ],
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('入力を反映して現場一覧へ')),
+          const Text('一覧の「履歴小計を保存」で、この月の各現場の設定を保存します。'),
+        ])))));
+    if (mounted) setState(() {});
+  }
+
   Widget _field(LineHistoricalGroup g, String unit, String label, String formula) => Padding(
     padding: const EdgeInsets.only(top: 8), child: TextField(controller: _controller(g, unit),
       enabled: !_busy && _pending == null, keyboardType: TextInputType.number,
@@ -222,26 +261,13 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         if (!_busy && _error == null && _data.isNotEmpty && _summary.isEmpty) Text(_tr('確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。')),
         if (!_busy && _error == null && _groups.isEmpty) Text(_tr('表示できるLINEグループがありません。連携状態を確認してください。')),
         if (widget.editingRates) for (final entry in _siteNames.entries)
-          Card(child: Padding(padding: const EdgeInsets.all(12),
-            child: TextField(controller: entry.value,
-              enabled: !_busy && _pending == null, maxLength: 200,
-              decoration: const InputDecoration(labelText: '現場の正式名称（請求書へ表示）'),
-              onChanged: (_) => setState(() => _edited = true)))),
-        for (final g in _summary) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${_siteNames[g.siteId]?.text ?? g.siteName} ／ ${g.category}', style: Theme.of(context).textTheme.titleMedium),
-          Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工'),
-          if (widget.editingRates) _field(g, 'day', '1日単価（円／人工）', '${g.manDays}人工 × 単価'),
-          if (widget.editingRates && g.overtime > 0) _field(g, 'overtime', '残業単価（円／時間）', '${g.overtime}時間 × 単価'),
-          if (widget.editingRates && g.early > 0) _field(g, 'early', '早出単価（円／時間）', '${g.early}時間 × 単価'),
-          if (widget.editingRates) for (final a in g.allowances.entries) _field(g, 'allowance:${a.key}', '${a.key}（円／回）', '${a.value}回 × 単価'),
-          if (widget.editingRates) ...[
-            const SizedBox(height: 8),
-            Text(_subtotal(g) == null ? '単価未入力' : '履歴小計 ${_subtotal(g)}円'),
-          ] else ...[
-            Text('残業 ${g.overtime}時間 ／ 早出 ${g.early}時間'),
-            for (final a in g.allowances.entries) Text('${a.key} ${a.value}回'),
-          ],
-        ]))),
+          Card(child: ListTile(title: Text(entry.value.text),
+            subtitle: const Text('正式現場名・1日単価・残業自動計算・手当単価'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _busy || _pending != null ? null : () => _openSiteRates(entry.key))),
+        if (!widget.editingRates) for (final g in _summary)
+          Card(child: ListTile(title: Text('${_siteNames[g.siteId]?.text ?? g.siteName} ／ ${g.category}'),
+            subtitle: Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工\n残業 ${g.overtime}時間 ／ 早出 ${g.early}時間'))),
         if (widget.editingRates) FilledButton(onPressed: _busy || _summary.isEmpty ? null : _save,
           child: Text(_pending == null ? '履歴小計を保存' : '同じ保存を再送')),
         const SizedBox(height: 20), const Text('保存済み履歴（現在単価で再計算しません）'),

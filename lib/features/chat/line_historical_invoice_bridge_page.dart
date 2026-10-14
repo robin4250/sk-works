@@ -20,7 +20,7 @@ class _LineHistoricalInvoiceBridgePageContent extends StatefulWidget {
 }
 class _LineHistoricalInvoiceBridgePageState extends State<_LineHistoricalInvoiceBridgePageContent> {
   final _repository = LineHistoricalInvoiceBridgeRepository.maybeCreate();
-  final _tax = TextEditingController();
+  final _tax = TextEditingController(text: '10');
   final _names = <String, TextEditingController>{};
   final _welfare = <String, TextEditingController>{};
   final _customers = <String, String>{};
@@ -49,7 +49,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<_LineHistoricalInvoice
         final matches = rows.where((r) => r['site_id'] == site).toList();
         final row = matches.isEmpty ? null : matches.first;
         _names[site] = TextEditingController(text: lineHistoricalFormalSiteName(quote, site) ?? row?['site_name']?.toString() ?? '');
-        _welfare[site] = TextEditingController();
+        _welfare[site] = TextEditingController(text: '15');
       }
       setState(() { _formVersion++; _data = data; _sites = sites; _preview = null; _previewParams = null; _pending = null; _created = null; _termsConfirmed = false; _previewConfirmed = false; _edited = false; });
     } catch (_) { if (mounted) setState(() => _error = '保存済み履歴・Master権限・接続を確認してください。'); }

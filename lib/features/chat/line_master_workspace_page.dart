@@ -6,8 +6,9 @@ import '../../international/language_controller.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_joined_groups_page.dart';
 import 'line_import_page.dart';
+import 'line_source_upload_page.dart';
 
-/// Four entries over existing LINE data; this screen grants no permissions.
+/// Four billing entries plus the existing chat; this screen grants no permissions.
 class LineMasterWorkspacePage extends StatelessWidget {
   const LineMasterWorkspacePage({
     super.key,
@@ -16,15 +17,16 @@ class LineMasterWorkspacePage extends StatelessWidget {
     this.invoiceBuilder,
     this.ratesBuilder,
     this.monthlyBuilder,
+    this.uploadBuilder,
   });
 
   @visibleForTesting
   final Future<bool> Function()? masterCheck;
   @visibleForTesting
-  final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder;
+  final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder, uploadBuilder;
 
   @override
-  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineMasterWorkspacePageContent(masterCheck: masterCheck, talkBuilder: talkBuilder, invoiceBuilder: invoiceBuilder, ratesBuilder: ratesBuilder, monthlyBuilder: monthlyBuilder));
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineMasterWorkspacePageContent(masterCheck: masterCheck, talkBuilder: talkBuilder, invoiceBuilder: invoiceBuilder, ratesBuilder: ratesBuilder, monthlyBuilder: monthlyBuilder, uploadBuilder: uploadBuilder));
 }
 
 class _LineMasterWorkspacePageContent extends StatefulWidget {
@@ -34,12 +36,13 @@ class _LineMasterWorkspacePageContent extends StatefulWidget {
     this.invoiceBuilder,
     this.ratesBuilder,
     this.monthlyBuilder,
+    this.uploadBuilder,
   });
 
   @visibleForTesting
   final Future<bool> Function()? masterCheck;
   @visibleForTesting
-  final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder;
+  final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder, uploadBuilder;
 
   @override
   State<_LineMasterWorkspacePageContent> createState() =>
@@ -121,7 +124,7 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
     builder: (context) => AlertDialog(
       title: Text(_tr('LINEマスター権限')),
       content: SingleChildScrollView(child: Text(_tr(
-        'チャットは参加済み一覧からグループを選び、未連携の場合は通常SKOグループへ連携して受信データを開きます。未連携のグループを作成済みとして表示しません。請求書は対象月の確認済み候補と保存履歴を確認します。単価設定は過去月の人工・残業・早出・手当の単価を入力し、履歴小計として保存します。実人数と延べ人工は別です。保存は通常請求書の発行と別で、正式下書きは取引先と税・福利費を確認して作成します。現在の現場単価や給与は変更しません。月別の表は左右にスワイプして月を切り替え、行を押して手入力で修正します。書き出しTXT・ZIPと連携チャットの受信データを同じ月間表へ再取込できます。',
+        'チャットは参加済み一覧からグループを選び、未連携の場合は通常SKOグループへ連携して受信データを開きます。未連携のグループを作成済みとして表示しません。請求書は対象月の確認済み候補と保存履歴を確認します。単価設定は過去月の人工・残業・早出・手当の単価を入力し、履歴小計として保存します。実人数と延べ人工は別です。保存は通常請求書の発行と別で、正式下書きは取引先と税・福利費を確認して作成します。現在の現場単価や給与は変更しません。月別の表は左右にスワイプして月を切り替え、行を押して手入力で修正します。元データ取込でTXT・ZIPをアップロードすると月別表へ候補を自動保存します。読み取れない投稿は月別表の要確認・未振り分け欄で元本文を見ながら手入力します。手直し済み内容は再取込でも保持し、正式請求書は確認後に作成します。',
       ))),
       actions: [TextButton(
         onPressed: () => Navigator.pop(context),
@@ -170,6 +173,9 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
           _entry('line-master-rates', Icons.price_change_outlined, '単価設定',
             '対象月の人工・残業・早出・手当の履歴単価',
             widget.ratesBuilder ?? (_) => const LineHistoricalInvoicePage.rates()),
+          _entry('line-master-upload', Icons.upload_file_outlined, '元データ取込',
+            'TXT・ZIPを読み取り、月別表へ自動入力',
+            widget.uploadBuilder ?? (_) => const LineSourceUploadPage()),
           _entry('line-master-monthly', Icons.table_view_outlined, '月別の表',
             '月をスライド・手入力修正・チャットとTXT・ZIPの再取込',
             widget.monthlyBuilder ?? (_) => const LineImportPage.monthly()),

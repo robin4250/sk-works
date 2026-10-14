@@ -139,3 +139,19 @@ List<Map<String, dynamic>> lineCanonicalImportPosts(
   }
   return sources.where((s) => !suppressed.contains(s['id'])).toList(growable: false);
 }
+
+/// Include every month supplied in the file, retaining the original empty months.
+List<DateTime> lineHistoryMonthsForSources(List<Map<String, dynamic>> sources) {
+  var first = DateTime(2024);
+  var last = DateTime(DateTime.now().year, DateTime.now().month);
+  for (final source in sources) {
+    final at = DateTime.tryParse(source['sent_at']?.toString() ?? '')?.toLocal();
+    if (at == null || at.year < 1900 || at.year > 2100) continue;
+    final month = DateTime(at.year, at.month);
+    if (month.isBefore(first)) first = month;
+    if (month.isAfter(last)) last = month;
+  }
+  final count = (last.year - first.year) * 12 + last.month - first.month + 1;
+  return List.unmodifiable(List.generate(count,
+    (index) => DateTime(first.year, first.month + index)));
+}

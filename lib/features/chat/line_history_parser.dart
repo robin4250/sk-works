@@ -109,3 +109,12 @@ class LineHistoryParser {
     );
   }
 }
+
+/// Decode LINE export quoting for extraction only; retain the original body.
+String lineBodyForReading(String body) {
+  final text = body.trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return text.substring(1, text.length - 1).replaceAll('""', '"');
+  }
+  return body;
+}

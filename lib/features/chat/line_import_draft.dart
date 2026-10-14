@@ -28,7 +28,7 @@ class LineImportDraft {
         unreadable.add(id);
         continue;
       }
-      final body = source['body'] as String;
+      final body = lineBodyForReading(source['body'] as String);
       // DateTime rolls impossible dates forward. Never silently import that rollover.
       var first = body.trim().split('\n').first;
       const fullDigits = '０１２３４５６７８９';

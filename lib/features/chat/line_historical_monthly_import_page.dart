@@ -25,7 +25,7 @@ class _LineHistoricalMonthlyImportPageContent extends StatefulWidget {
 class _LineHistoricalMonthlyImportPageState
     extends State<_LineHistoricalMonthlyImportPageContent> {
   final _repository = LineImportRepository.maybeCreate();
-  final _months = lineHistoryImportMonths();
+  List<DateTime> _months = lineHistoryImportMonths();
   final _commands = <String, Map<String, dynamic>>{};
   final _status = <String, String>{};
   final _counts = <String, int>{};
@@ -58,6 +58,7 @@ class _LineHistoricalMonthlyImportPageState
     } finally { if (mounted) setState(() => _busy = false); }
   }
   Future<void> _pick() async {
+    var prepared = false;
     setState(() { _busy = true; _error = null; });
     try {
       final file = await FilePicker.pickFile(
@@ -75,9 +76,10 @@ class _LineHistoricalMonthlyImportPageState
       if (fileHistory.isEmpty) throw const FormatException('No LINE messages');
       final received = await _repository!.sources(widget.groupId);
       final history = lineMergeImportSources(received, fileHistory);
+      final months = lineHistoryMonthsForSources(history);
       final counts = <String, int>{};
       final sourceCounts = <String, int>{};
-      for (final month in _months) {
+      for (final month in months) {
         await Future<void>.delayed(Duration.zero);
         if (!mounted) return;
         final candidates = lineMonthlyCandidates(history, month);
@@ -86,16 +88,18 @@ class _LineHistoricalMonthlyImportPageState
       }
       if (!mounted) return;
       setState(() {
-        _history = history; _fileName = file.name; _counts.clear();
+        _months = months; _history = history; _fileName = file.name; _counts.clear();
         _counts.addAll(counts); _sourceCounts.clear(); _sourceCounts.addAll(sourceCounts);
         _commands.clear(); _status.clear(); _error = null;
       });
+      prepared = true;
     } catch (_) {
       if (mounted) {
         setState(() =>
           _error = '5MB以下のUTF-8 LINE書き出しテキストを選択してください。');
       }
     } finally { if (mounted) setState(() => _busy = false); }
+    if (prepared && mounted && _enabled) await _save();
   }
   Future<void> _receive() async {
     if (_repository == null || _commands.isNotEmpty) return;
@@ -189,20 +193,20 @@ class _LineHistoricalMonthlyImportPageState
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('LINE月別表の取込')),
+    appBar: AppBar(title: const Text('元データ取込')),
     body: ListView(padding: const EdgeInsets.all(16), children: [
-      Text('2024年1月〜${_months.last.year}年${_months.last.month}月（過去33ヶ月と追加月）'),
+      Text('${_months.first.year}年${_months.first.month}月〜${_months.last.year}年${_months.last.month}月'),
       const SizedBox(height: 8),
-      const Text('LINEの書き出しファイルを一度選び、月別の候補として保存します。各月を開いて作業員・現場・数量を照合してから、単価設定と請求書へ進んでください。再取込は変わっていない投稿の修正を保持し、変わった投稿を要確認に戻します。'),
+      const Text('LINEの書き出しファイルを選ぶと、含まれる全期間を月別表の候補として自動保存します。正式請求書の確定・発行はしません。各月を開いて作業員・現場・数量を照合してから、単価設定と請求書へ進んでください。再取込は変わっていない投稿の修正を保持し、変わった投稿を要確認に戻します。'),
       const SizedBox(height: 12),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!,
         style: TextStyle(color: Theme.of(context).colorScheme.error)),
       if (!_enabled) OutlinedButton(onPressed: _busy || _repository == null ? null : _enable,
         child: const Text('マスター設定で請求書取込を有効にする')),
-      OutlinedButton.icon(onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _pick,
+      OutlinedButton.icon(onPressed: _busy || !_enabled || _commands.isNotEmpty || _repository == null ? null : _pick,
         icon: const Icon(Icons.file_open_outlined),
-        label: Text(_fileName ?? 'LINE書き出しファイル（TXT・ZIP）を選択')),
+        label: Text(_fileName ?? 'TXT・ZIPをアップロードして月別表へ自動入力')),
       OutlinedButton.icon(
         onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _receive,
         icon: const Icon(Icons.sync),

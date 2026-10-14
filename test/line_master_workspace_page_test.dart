@@ -7,7 +7,7 @@ import 'package:sk_works/international/languages/en/english_language_pack.dart';
 import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
 
 void main() {
-  testWidgets('master workspace has four entries and keeps 320px layout readable',
+  testWidgets('master workspace has four billing entries plus chat and keeps 320px layout readable',
       (tester) async {
     tester.view.physicalSize = const Size(320, 800);
     tester.view.devicePixelRatio = 1;
@@ -25,6 +25,7 @@ void main() {
     expect(find.byKey(const ValueKey('line-master-invoices')), findsOneWidget);
     expect(find.byKey(const ValueKey('line-master-rates')), findsOneWidget);
     expect(find.byKey(const ValueKey('line-master-monthly')), findsOneWidget);
+    expect(find.byKey(const ValueKey('line-master-upload')), findsOneWidget);
     expect(find.text('すみだ建設出勤'), findsNothing);
     expect(tester.takeException(), isNull);
   });
