@@ -4,6 +4,8 @@ on:
     paths:
       - 'supabase/migrations/20261014061009_master_self_operation_audit.sql'
       - 'tool/security/master_self_audit_sql_check.mjs'
+      - 'tool/security/master_self_audit_pg_adapter.mjs'
+      - 'tool/security/master_self_audit_fixture_dependencies/**'
       - 'lib/features/security/master_self*'
       - 'test/master_self*'
       - '.github/workflows/master-self-audit.yml'
@@ -15,8 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm install --prefix /tmp/sko-master-audit --no-save --ignore-scripts @electric-sql/pglite@0.3.14
-      - run: node tool/security/master_self_audit_sql_check.mjs /tmp/sko-master-audit/node_modules/@electric-sql/pglite/dist/index.js
+      - run: npm ci --prefix tool/security/master_self_audit_fixture_dependencies --ignore-scripts
+      - run: node tool/security/master_self_audit_sql_check.mjs file://$PWD/tool/security/master_self_audit_fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
   postgres:
     runs-on: ubuntu-latest
     services:
@@ -24,7 +26,7 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: fixture-only
-          POSTGRES_DB: sko_incident_fixture
+          POSTGRES_DB: sko_master_self_audit_fixture
         ports:
           - 5432:5432
         options: >-
@@ -37,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
-      - run: node tool/security/master_self_audit_sql_check.mjs "file://$PWD/tool/security/incident_pg_adapter.mjs"
+      - run: npm ci --prefix tool/security/master_self_audit_fixture_dependencies --ignore-scripts
+      - run: node tool/security/master_self_audit_sql_check.mjs "file://$PWD/tool/security/master_self_audit_pg_adapter.mjs"
         env:
-          SKO_INCIDENT_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_incident_fixture
+          SKO_MASTER_SELF_AUDIT_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_master_self_audit_fixture
