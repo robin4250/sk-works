@@ -102,6 +102,25 @@ void main() {
     await tester.pumpWidget(const SizedBox()); access.dispose();
   });
 
+  testWidgets('a LINE modal above ordinary SKO closes and discards text on revocation', (tester) async {
+    var allowed = true;
+    final access = LineReleaseAccess(read: () async => allowed,
+      currentActor: () => 'a', actorChanges: const Stream.empty(),
+      observeLifecycle: false, pollInterval: Duration.zero);
+    await tester.pumpWidget(LineReleaseScope(access: access,
+      child: MaterialApp(home: Builder(builder: (context) => Scaffold(
+        body: TextButton(onPressed: () => showDialog<void>(context: context,
+          builder: (_) => const LineReleaseOverlay(child: AlertDialog(
+            content: Text('private LINE modal text')))), child: const Text('ordinary SKO')))))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ordinary SKO')); await tester.pumpAndSettle();
+    expect(find.text('private LINE modal text'), findsOneWidget);
+    allowed = false; await access.refresh(); await tester.pumpAndSettle();
+    expect(find.text('private LINE modal text', skipOffstage: false), findsNothing);
+    expect(find.text('ordinary SKO'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); access.dispose();
+  });
+
   test('unavailable LINE removes received bodies while preserving ordinary SKO', () {
     final rows = <Map<String, dynamic>>[
       {'id':'s', 'body':'SKO text', 'origin':'sk_works'},

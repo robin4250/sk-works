@@ -193,7 +193,13 @@ class LineReleaseOverlay extends StatelessWidget {
     final access = LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
     if (access == null) return const SizedBox.shrink();
     return AnimatedBuilder(animation: access, builder: (context, _) {
-      if (!access.available) return const SizedBox.shrink();
+      if (!access.available) {
+        final route = ModalRoute.of(context);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (route?.isActive == true) route!.navigator?.removeRoute(route);
+        });
+        return const SizedBox.shrink();
+      }
       return Offstage(offstage: !access.visible, child: child);
     });
   }
