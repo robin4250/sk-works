@@ -79,7 +79,10 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
   Future<void> _open(SecurityIncident record) => Navigator.of(context)
       .push<void>(
         MaterialPageRoute(
-          builder: (_) => SecurityIncidentDetailPage(record: record),
+          builder: (_) => MasterProtectedPage(
+            title: _text('記録の詳細', 'Record details'),
+            child: SecurityIncidentDetailPage(record: record),
+          ),
         ),
       );
   void _help() => showDialog<void>(

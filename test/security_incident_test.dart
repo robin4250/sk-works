@@ -150,13 +150,11 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: SecurityIncidentPage(
-          loadRecords: () async => SecurityIncident.parseResponse(fixture()),
+        home: SecurityIncidentDetailPage(
+          record: SecurityIncident.parseResponse(fixture()).single,
         ),
       ),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('要調査'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('印刷'),
