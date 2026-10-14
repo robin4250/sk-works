@@ -1,0 +1,41 @@
+name: Master recovery verification
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*master_recovery*.sql'
+      - 'lib/features/settings/master_recovery_repository.dart'
+      - 'tool/security/master_recovery_verification_test.mjs'
+      - '.github/workflows/master-recovery-verification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*master_recovery*.sql'
+      - 'lib/features/settings/master_recovery_repository.dart'
+      - 'tool/security/master_recovery_verification_test.mjs'
+      - '.github/workflows/master-recovery-verification.yml'
+permissions:
+  contents: read
+jobs:
+  postgres-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_recovery_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_recovery_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_RECOVERY_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_recovery_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/master_recovery_verification_test.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

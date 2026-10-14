@@ -96,6 +96,9 @@ class MasterRecoveryRepository {
     );
     final data =
         raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    if (data['error'] != null) {
+      throw StateError(data['error'].toString());
+    }
     return MasterRecoveryVerificationState(
       primaryVerified: data['primary_verified'] == true,
       secondaryVerified: data['secondary_verified'] == true,
