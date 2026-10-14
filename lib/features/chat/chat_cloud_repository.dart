@@ -215,8 +215,8 @@ class ChatCloudRepository {
         'direct_other_user_id': directOtherUserId,
         'line_binding_present': lineAvailable && binding != null,
         'line_binding_enabled': lineAvailable && binding?['status'] == 'active',
-        'line_binding_id': lineAvailable ? binding?['id'] : null,
-        'line_binding_name': lineAvailable ? binding?['display_name'] : null,
+        'line_binding_id': lineAvailable ? (binding?['id']) : null,
+        'line_binding_name': lineAvailable ? (binding?['display_name']) : null,
         'line_binding_can_manage': lineAvailable && canManageLineBinding,
       });
     }

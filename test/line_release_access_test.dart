@@ -21,6 +21,15 @@ class _CachedBodyState extends State<_CachedBody> {
 }
 
 void main() {
+  test('capability schema rejects unavailable, malformed and future versions', () {
+    expect(LineReleaseRepository.responseAvailable({'version':1,'available':true}), true);
+    for (final value in [null, [], true, {'available':true},
+      {'version':2,'available':true}, {'version':1.0,'available':true},
+      {'version':1,'available':'true'}, {'version':1,'available':false}]) {
+      expect(LineReleaseRepository.responseAvailable(value), false);
+    }
+  });
+
   testWidgets('a direct LINE entry is fail closed without a backend', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: LineTalkHubPage()));
     expect(find.text('LINEトークは現在利用できません。'), findsOneWidget);
@@ -29,9 +38,11 @@ void main() {
 
   testWidgets('revocation disposes cached text and requires fresh child construction', (tester) async {
     final actors = StreamController<String?>.broadcast(sync: true);
-    var actor = 'a', allowed = true, disposed = 0;
+    const actor = 'a';
+    var allowed = true;
+    var disposed = 0;
     final access = LineReleaseAccess(read: () async => allowed,
-      currentActor: () => actor, actorChanges: actors.stream, observeLifecycle: false);
+      currentActor: () => actor, actorChanges: actors.stream, observeLifecycle: false, pollInterval: Duration.zero);
     await tester.pumpWidget(LineReleaseScope(access: access,
       child: MaterialApp(home: LineReleaseBoundary(builder: (_) => _CachedBody(() => disposed++)))));
     await tester.pumpAndSettle();
@@ -50,7 +61,7 @@ void main() {
     String? actor = 'a';
     final pending = <Completer<bool>>[];
     final access = LineReleaseAccess(read: () { final c = Completer<bool>(); pending.add(c); return c.future; },
-      currentActor: () => actor, actorChanges: actors.stream, observeLifecycle: false);
+      currentActor: () => actor, actorChanges: actors.stream, observeLifecycle: false, pollInterval: Duration.zero);
     expect(access.available, false);
     actor = 'b'; actors.add(actor);
     actor = 'a'; actors.add(actor);
@@ -66,7 +77,7 @@ void main() {
   testWidgets('read errors revoke existing permission and purge child', (tester) async {
     var fail = false;
     final access = LineReleaseAccess(read: () async { if (fail) throw StateError('offline'); return true; },
-      currentActor: () => 'a', actorChanges: const Stream.empty(), observeLifecycle: false);
+      currentActor: () => 'a', actorChanges: const Stream.empty(), observeLifecycle: false, pollInterval: Duration.zero);
     await tester.pumpWidget(LineReleaseScope(access: access,
       child: MaterialApp(home: LineReleaseBoundary(builder: (_) => const Text('secret received body')))));
     await tester.pumpAndSettle(); expect(find.text('secret received body'), findsOneWidget);
@@ -78,7 +89,7 @@ void main() {
   testWidgets('background return hides old text until fresh server verification', (tester) async {
     var pending = Completer<bool>()..complete(true);
     final access = LineReleaseAccess(read: () => pending.future,
-      currentActor: () => 'a', actorChanges: const Stream.empty(), observeLifecycle: false);
+      currentActor: () => 'a', actorChanges: const Stream.empty(), observeLifecycle: false, pollInterval: Duration.zero);
     await tester.pumpWidget(LineReleaseScope(access: access,
       child: MaterialApp(home: LineReleaseBoundary(builder: (_) => const Text('LINE body')))));
     await tester.pumpAndSettle(); expect(find.text('LINE body'), findsOneWidget);

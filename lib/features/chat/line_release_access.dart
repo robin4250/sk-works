@@ -13,13 +13,15 @@ class LineReleaseRepository {
   Stream<String?> get actorChanges => client.auth.onAuthStateChange
       .map((state) => state.session?.user.id).distinct();
 
+  static bool responseAvailable(Object? value) => value is Map &&
+      value['version'] is int && value['version'] == 1 && value['available'] == true;
+
   Future<bool> available() async {
     final expected = actor;
     if (expected == null) return false;
     try {
       final value = await client.rpc('line_release_capability');
-      return actor == expected && value is Map &&
-          value['version'] == 1 && value['available'] == true;
+      return actor == expected && responseAvailable(value);
     } catch (_) {
       return false;
     }
@@ -34,7 +36,9 @@ class LineReleaseAccess extends ChangeNotifier with WidgetsBindingObserver {
     _actor = currentActor();
     _actors = actorChanges.listen(_actorChanged, onError: (Object _) => _revoke());
     if (_observeLifecycle) WidgetsBinding.instance.addObserver(this);
-    _timer = Timer.periodic(pollInterval, (_) => refresh());
+    if (pollInterval > Duration.zero) {
+      _timer = Timer.periodic(pollInterval, (_) => refresh());
+    }
     unawaited(refresh());
   }
   final Future<bool> Function() read;
@@ -44,7 +48,8 @@ class LineReleaseAccess extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<String?>? _actors;
   Timer? _timer;
   String? _actor;
-  int _generation = 0;
+  int _generation = 0, _revision = 0;
+  int get revision => _revision;
   bool _disposed = false, _allowed = false, _foreground = true, _checking = true;
   bool get available => !_disposed && _allowed && _actor != null && currentActor() == _actor;
   bool get visible => available && _foreground && !_checking;
@@ -60,6 +65,7 @@ class LineReleaseAccess extends ChangeNotifier with WidgetsBindingObserver {
   }
   void _revoke() {
     _generation++;
+    _revision++;
     _allowed = false;
     _checking = false;
     if (!_disposed) notifyListeners();
@@ -82,6 +88,7 @@ class LineReleaseAccess extends ChangeNotifier with WidgetsBindingObserver {
     bool result;
     try { result = await read(); } catch (_) { result = false; }
     if (_disposed || generation != _generation || currentActor() != expected) return;
+    if (_allowed && !result) _revision++;
     _allowed = result;
     _checking = false;
     notifyListeners();
@@ -117,17 +124,47 @@ class LineReleaseScope extends InheritedWidget {
 
 /// The protected child is created only after confirmation; revocation disposes
 /// its entire state, including cached text, previews, drafts and async readers.
-class LineReleaseBoundary extends StatelessWidget {
+class LineReleaseBoundary extends StatefulWidget {
   const LineReleaseBoundary({super.key, required this.builder});
   final WidgetBuilder builder;
   @override
+  State<LineReleaseBoundary> createState() => _LineReleaseBoundaryState();
+}
+class _LineReleaseBoundaryState extends State<LineReleaseBoundary> {
+  LineReleaseAccess? _access;
+  ModalRoute<dynamic>? _route;
+  NavigatorState? _navigator;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    _navigator = Navigator.maybeOf(context);
+    final next = LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
+    if (!identical(next, _access)) {
+      _access?.removeListener(_changed);
+      _access = next;
+      _access?.addListener(_changed);
+    }
+  }
+  void _changed() {
+    // Dialogs/pickers opened from a LINE page are separate Navigator routes.
+    // Remove those routes too so a revoked parent's old data cannot remain above it.
+    final route = _route;
+    if (mounted && _access?.available != true && route?.isActive == true) {
+      _navigator?.popUntil((candidate) => identical(candidate, route));
+    }
+  }
+  @override
+  void dispose() { _access?.removeListener(_changed); super.dispose(); }
+  @override
   Widget build(BuildContext context) {
-    final access = LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
+    final access = _access;
     if (access == null) return const _UnavailableLine();
     return AnimatedBuilder(animation: access, builder: (context, _) {
       if (!access.available) return const _UnavailableLine();
       return Stack(children: [
-        Offstage(offstage: !access.visible, child: builder(context)),
+        Offstage(offstage: !access.visible, child: KeyedSubtree(
+          key: ValueKey(access.revision), child: widget.builder(context))),
         if (!access.visible) const _UnavailableLine(),
       ]);
     });

@@ -5,7 +5,7 @@ import 'package:sk_works/features/chat/line_talk_hub_page.dart';
 import 'package:sk_works/features/chat/line_shared_groups_page.dart';
 
 void main() {
-  testWidgets('public talk remains available when paid import features are unavailable', (tester) async {
+  testWidgets('confirmed LINE capability remains independent of optional import features', (tester) async {
     await tester.pumpWidget(const LineTestApp(home: LineTalkHubPage()));
     await tester.pump();
     expect(find.text('トーク'), findsOneWidget);
