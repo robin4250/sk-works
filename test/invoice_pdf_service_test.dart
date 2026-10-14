@@ -89,12 +89,9 @@ void main() {
       ],
     );
     final text = InvoicePdfService.buildTextSnapshot([rates]);
-    expect('福利厚生費'.allMatches(text), hasLength(2));
-    expect(text, contains('福利厚生費（3%）'));
-    expect(text, contains('福利厚生費（1.5%）'));
-    expect(text, contains('¥3,000'));
-    expect(text, contains('¥1,500'));
-    expect(text, contains('計 ¥204,500'));
+    expect('福利厚生費'.allMatches(text), hasLength(1));
+    expect(text, contains('福利厚生費 ¥4,500'));
+    expect(text, contains('小計 ¥200,000'));
     expect(text, contains('消費税 ¥20,450'));
     expect(text, contains('請求合計 ¥224,950'));
   });

@@ -107,8 +107,8 @@ void main() {
         final text = result.stdout.toString();
         expect(text, contains('零額現場'));
         expect(text, contains('零額明細'));
-        expect(text, contains('合'));
-        expect(text, contains('差'));
+        expect(text, contains('小計'));
+        expect(text, contains('支払金額'));
         expect(text, isNot(matches(RegExp(r'(^|\n)\s*[¥￥]?0(?:円)?\s*(\n|$)'))));
         expect(text, isNot(contains('¥')));
         expect(text, isNot(contains('0日')));

@@ -1,4 +1,5 @@
 import '../shared/trade_document_actor_boundary.dart';
+import '../shared/document_display_totals.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
@@ -204,15 +205,10 @@ class InvoicePdfService {
       }
       for (final site in invoice.siteCalculations) {
         buffer.writeln(site.siteName);
-        for (final line in site.lines) {
+        for (final line in site.lines.where((line) => !isInvoiceChargeLine(line))) {
           buffer.writeln(
             '${_displayLineLabel(line, site)} ${_quantity(line.quantity)} × '
             '${_visibleYen(line.unitPriceYen)} = ${_visibleYen(line.amountYen)}',
-          );
-        }
-        if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
-          buffer.writeln(
-            '${_welfareLabel(site.welfareRateBps)} ${_yen(site.welfareAmountYen)}',
           );
         }
         if (site.manualAdjustmentYen != 0) {
@@ -222,8 +218,10 @@ class InvoicePdfService {
       if (invoice.expenseExtraAmountYen != 0) {
         buffer.writeln('別途経費（原額） ${_yen(invoice.expenseExtraAmountYen)}');
       }
+      final totals = DocumentDisplayTotals.invoice(invoice);
       buffer
-        ..writeln('${invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）'} ${_visibleYen(invoice.subtotalYen)}')
+        ..writeln('小計 ${_visibleYen(totals.workSubtotal)}')
+        ..writeln('福利厚生費 ${_visibleYen(totals.welfare)}')
         ..writeln('消費税 ${_visibleYen(invoice.taxYen)}')
         ..writeln('合計(税込) ${_visibleYen(invoice.grandTotalYen)}')
         ..writeln('請求合計 ${_visibleYen(invoice.grandTotalYen)}');
@@ -250,8 +248,9 @@ class InvoicePdfService {
   static List<_InvoiceFormRow> _detailRows(InvoiceCalculationResult invoice) {
     final rows = <_InvoiceFormRow>[];
     for (final site in invoice.siteCalculations) {
-      for (var i = 0; i < site.lines.length; i++) {
-        final line = site.lines[i];
+      final details = site.lines.where((line) => !isInvoiceChargeLine(line)).toList();
+      for (var i = 0; i < details.length; i++) {
+        final line = details[i];
         rows.add(
           _InvoiceFormRow(
             siteName: line.siteLabel.trim().isNotEmpty
@@ -265,17 +264,6 @@ class InvoicePdfService {
                 ? _visiblePriceText(line.unitPriceText!)
                 : _visibleNumber(line.unitPriceYen),
             amount: _visibleNumber(line.amountYen),
-          ),
-        );
-      }
-      if (site.welfareAmountYen != 0 && !site.lines.any(_isWelfareLine)) {
-        rows.add(
-          _InvoiceFormRow(
-            siteName: '〃',
-            content: _welfareLabel(site.welfareRateBps),
-            quantity: '',
-            unitPrice: '${_quantity(site.welfareRateBps / 100)}%',
-            amount: _number(site.welfareAmountYen),
           ),
         );
       }
@@ -636,34 +624,36 @@ class InvoicePdfService {
       text(note, 64, 688, 260, size: 5.5, h: 42, maxLines: 5);
     }
     box(344, 674.8898, right - 344, 63);
-    final totals = [invoice.subtotalYen, invoice.taxYen, invoice.grandTotalYen];
+    final display = DocumentDisplayTotals.invoice(invoice);
+    final totals = [display.workSubtotal, display.welfare, display.tax, display.total];
     final labels = [
-      invoice.expenseExtraAmountYen == 0 ? '小計（税抜）' : '小計（経費除く）',
+      '小計',
+      '福利厚生費',
       invoice.taxRateBps == 0
           ? '消費税'
           : '消費税（${_quantity(invoice.taxRateBps / 100)}%）',
       'ご請求金額（税込）',
     ];
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
       text(
         labels[i],
         354,
-        683 + i * 21,
+        679 + i * 15,
         100,
         size: 6.5,
-        color: i == 2 ? blue : ink,
+        color: i == 3 ? blue : ink,
       );
       text(
-        i == 2 ? _visibleYen(totals[i]) : _visibleNumber(totals[i]),
+        i == 3 ? _visibleYen(totals[i]) : _visibleNumber(totals[i]),
         453,
-        i == 2 ? 720 : 684 + i * 21,
+        679 + i * 15,
         104.2756,
-        size: i == 2 ? 14 : 7.5,
-        letterSpacing: (i == 2 ? 14 : 7.5) * .1065,
-        baseline: i == 2 ? 732.8898 : 690.8898 + i * 21,
-        bold: i == 2,
+        size: i == 3 ? 11 : 7.5,
+        letterSpacing: (i == 3 ? 11 : 7.5) * .1065,
+        baseline: 687 + i * 15,
+        bold: i == 3,
         align: pw.TextAlign.right,
-        h: 21,
+        h: 15,
       );
     }
     box(28, 744.8898, right - 28, 70);
@@ -1526,45 +1516,8 @@ class _ExactInvoiceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = <_InvoiceFormRow>[];
-    for (final site in invoice.siteCalculations) {
-      for (var index = 0; index < site.lines.length; index++) {
-        final line = site.lines[index];
-        final siteLabel = line.siteLabel.trim().isNotEmpty
-            ? line.siteLabel
-            : index == 0
-            ? site.siteName
-            : '〃';
-        final work = line.displayWorkContent.trim();
-        final sub = siteLabel == '〃' && work.isNotEmpty;
-        rows.add(
-          _InvoiceFormRow(
-            siteName: sub ? '〃　$work' : siteLabel,
-            content: sub ? '' : (work.isEmpty ? '通常作業' : work),
-            quantity: line.quantity == 0
-                ? ''
-                : InvoicePdfService._quantity(line.quantity),
-            unitPrice: (line.unitPriceText ?? '').trim().isNotEmpty
-                ? line.unitPriceText!.trim()
-                : line.unitPriceYen == 0
-                ? ''
-                : InvoicePdfService._number(line.unitPriceYen),
-            amount: InvoicePdfService._number(line.amountYen),
-          ),
-        );
-      }
-      if (site.manualAdjustmentYen != 0) {
-        rows.add(
-          _InvoiceFormRow(
-            siteName: '〃　（値引き・調整）',
-            content: '',
-            quantity: '',
-            unitPrice: '',
-            amount: InvoicePdfService._number(site.manualAdjustmentYen),
-          ),
-        );
-      }
-    }
+    final rows = InvoicePdfService._detailRows(invoice);
+    final totals = DocumentDisplayTotals.invoice(invoice);
     while (rows.length < 35) {
       rows.add(const _InvoiceFormRow.empty());
     }
@@ -1840,11 +1793,10 @@ class _ExactInvoiceScreen extends StatelessWidget {
                     width: 315,
                     child: Column(
                       children: [
-                        _summary(invoice.expenseExtraAmountYen == 0 ? '計' : '計（経費除く）', invoice.subtotalYen),
+                        _summary('小計', totals.workSubtotal),
+                        _summary('福利厚生費', totals.welfare),
                         _summary('消費税', invoice.taxYen),
-                        if (invoice.expenseExtraAmountYen != 0)
-                          _summary('別途経費（原額）', invoice.expenseExtraAmountYen),
-                        _summary('合計(税込)', invoice.grandTotalYen, strong: true),
+                        _summary('請求金額（税込）', invoice.grandTotalYen, strong: true),
                       ],
                     ),
                   ),

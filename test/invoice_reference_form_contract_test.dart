@@ -14,7 +14,8 @@ void main() {
     expect(source, contains("'人数'"));
     expect(source, contains("'単価（円）'"));
     expect(source, contains("'金額（円）'"));
-    expect(source, contains("'小計（税抜）'"));
+    expect(source, contains("'小計'"));
+    expect(source, contains("'福利厚生費'"));
     expect(source, contains("PdfColor.fromHex('#138BE1')"));
   });
 }

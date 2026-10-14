@@ -180,11 +180,11 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
       final text = ((report['pages'] as List).single as Map)['text'] as String;
       for (final value in [
         '通常作業',
-        '福利厚生費（1.5%）',
+        '福利厚生費',
         '値引き・調整',
         '735',
         '-1,000',
-        '49,735',
+        '49,000',
         '4,974',
         '54,709',
       ]) {
@@ -248,7 +248,7 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
     final text = page['text'] as String;
     expect(text, contains('金額未設定現場'));
     expect(text, contains('通常作業'));
-    expect(text, contains('小計（税抜）'));
+    expect(text, contains('小計'));
     expect(text, isNot(contains('¥0')));
     expect(RegExp(r'^0$', multiLine: true).hasMatch(text), isFalse);
     final lines = (page['horizontal_lines'] as List).cast<num>();
@@ -294,19 +294,17 @@ print(json.dumps({'pages':[{'width':p.rect.width,'height':p.rect.height,'text':p
       ]),
     );
     final text = ((report['pages'] as List).single as Map)['text'] as String;
-    expect('福利厚生費'.allMatches(text), hasLength(2));
-    expect(text, contains('福利厚生費（3%）'));
-    expect(text, contains('福利厚生費（1.5%）'));
-    expect(text, contains('3,000'));
-    expect(text, contains('1,500'));
-    expect(text, contains('204,500'));
+    expect('福利厚生費'.allMatches(text), hasLength(1));
+    expect(text, contains('4,500'));
+    expect(text, contains('200,000'));
     expect(text, contains('20,450'));
     expect(text, contains('224,950'));
     final page = (report['pages'] as List).single as Map;
     final prices = (page['unit_price_spans'] as List)
         .map((span) => (span as Map)['text'])
         .toList();
-    expect(prices, containsAll(['3%', '1.5%']));
+    expect(prices, isNot(contains('3%')));
+    expect(prices, isNot(contains('1.5%')));
     expect(page['paper_rgba'], [255, 255, 255, 255]);
   }, skip: skipReason);
   test(

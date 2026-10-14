@@ -1,4 +1,5 @@
 import '../shared/trade_document_actor_boundary.dart';
+import '../shared/document_display_totals.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import 'payment_order_pdf.dart';
@@ -89,7 +90,13 @@ class PaymentCertificatePdfService {
     pw.Font sealFont,
     pw.Font fallbackFont,
   ) {
-    final baseAmount = record.grossAmount - record.expenseExtraAmountYen;
+    final welfare = record.lines.where((line) => isDocumentWelfareLabel(line.workContent))
+        .fold<int>(0, (sum, line) => sum + line.amountYen);
+    final tax = record.lines.where((line) => isDocumentTaxLabel(line.workContent))
+        .fold<int>(0, (sum, line) => sum + line.amountYen);
+    final display = DocumentDisplayTotals(workSubtotal: record.grossAmount - welfare - tax,
+      welfare: welfare, tax: tax, total: record.netAmount);
+    final baseAmount = display.workSubtotal - record.expenseExtraAmountYen;
     final lines = [
       if (record.lines.isEmpty && (!record.expenseCost.isCurrent || baseAmount != 0))
             PaymentCertificateLine(
@@ -99,7 +106,7 @@ class PaymentCertificatePdfService {
               unitPriceYen: baseAmount,
               amountYen: baseAmount,
             ),
-      ...record.lines,
+      ...record.lines.where((line) => !isDocumentWelfareLabel(line.workContent) && !isDocumentTaxLabel(line.workContent)),
       if (record.expenseExtraAmountYen != 0)
         PaymentCertificateLine(
           siteName: '経費', workContent: '別途経費（原額）', quantityLabel: '一式',
@@ -107,9 +114,6 @@ class PaymentCertificatePdfService {
           amountYen: record.expenseExtraAmountYen,
         ),
     ];
-
-    final gross = record.grossAmount;
-    final balance = record.netAmount;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -260,33 +264,25 @@ class PaymentCertificatePdfService {
                   _cell(_number(line.amountYen), right: true),
                 ],
               ),
-            pw.TableRow(
+            for (final item in [
+              ('小計', display.workSubtotal), ('福利厚生費', display.welfare), ('消費税', display.tax),
+            ]) pw.TableRow(
               children: [
                 _cell(''),
-                _cell('合　　計', right: true, bold: true),
+                _cell(item.$1, right: true),
                 _cell(''),
                 _cell(''),
-                _cell(_number(gross), right: true, bold: true),
+                _cell(_number(item.$2), right: true),
               ],
             ),
-            if (record.deductions != 0)
-              pw.TableRow(
-                children: [
-                  _cell(''),
-                  _cell('控　　除', right: true),
-                  _cell(''),
-                  _cell(''),
-                  _cell(_number(-record.deductions), right: true),
-                ],
-              ),
             pw.TableRow(
               children: [
                 _cell(''),
-                _cell('差　引　残　高', right: true, bold: true),
+                _cell('支払金額', right: true, bold: true),
                 _cell(''),
                 _cell(''),
                 _cell(
-                  balance == 0 ? '' : '¥${_number(balance)}',
+                  display.total == 0 ? '' : '¥${_number(display.total)}',
                   right: true,
                   bold: true,
                   fontSize: 10,
@@ -295,6 +291,12 @@ class PaymentCertificatePdfService {
             ),
           ],
         ),
+        if (record.deductions != 0) pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 5),
+          child: pw.Text('控除 ${_number(-record.deductions)}円（支払金額に反映済み）', style: const pw.TextStyle(fontSize: 8))),
+        if (record.lines.isEmpty && record.grossAmount != 0) pw.Text(
+          '※福利厚生費・消費税の内訳は保存されていません。保存済みの支払金額を表示しています。',
+          style: const pw.TextStyle(fontSize: 7)),
         pw.Spacer(),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
