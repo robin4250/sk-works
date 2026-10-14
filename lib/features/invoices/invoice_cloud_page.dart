@@ -5,6 +5,7 @@ import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
 import 'invoice_cloud_repository.dart';
 import 'invoice_empty_state.dart';
+import 'invoice_pending_dialog.dart';
 import 'invoice_list_card.dart';
 import '../route_billing/route_billing_quantity_approval_repository.dart';
 import '../route_billing/route_billing_quantity_approvals_page.dart';
@@ -35,6 +36,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   bool _loading = true;
   bool _canManageSettings = false;
   bool _hasPendingRouteQuantity = false;
+  bool _routeQuantityCheckFailed = false;
   String? _error;
   _InvoiceBrowseMode _browseMode = _InvoiceBrowseMode.all;
   _InvoicePeriodMode _periodMode = _InvoicePeriodMode.month;
@@ -137,6 +139,7 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   }
 
   Future<bool> _hasReviewableRouteQuantity() async {
+    _routeQuantityCheckFailed = false;
     final repository = RouteBillingQuantityApprovalRepository.maybeCreate();
     if (repository == null) return false;
     try {
@@ -144,7 +147,8 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
       // Do not infer route approval permission from daily-report edit access.
       return (await repository.pending()).isNotEmpty;
     } catch (_) {
-      // Optional approval discovery must not hide saved invoices.
+      // Keep saved invoices readable, but distinguish failed discovery.
+      _routeQuantityCheckFailed = true;
       return false;
     }
   }
@@ -426,32 +430,21 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
 
   Future<void> _openPreview(InvoiceCalculationResult invoice) async {
     if (invoice.amountPending) {
-      final english = SkoLanguageController.isEnglish;
-      final review = await showDialog<bool>(
+      final action = await showDialog<InvoicePendingAction>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(english ? 'Invoice amount pending' : '請求額は未確定です'),
-          content: Text(invoice.routeSourcePending
-              ? (english
-                  ? 'The signed checkout report, actual visited customers or registered rates are not ready. Check the checkout report and billing settings, then refresh. A separate route quantity approval is not required. This is not a confirmed zero amount.'
-                  : '退勤日報の署名・実際の訪問先・登録単価などを確認できていません。退勤日報と請求設定を確認して再読み込みしてください。別のルート請求数量承認は不要です。0円で確定した請求書ではありません。')
-              : english
-              ? 'Route billing quantity is awaiting approval. Confirm the billing site, quantity and unit price before approving. This is not a confirmed zero amount.'
-              : 'ルート請求数量の承認待ちです。請求に使用する現場・数量・単価を確認して承認すると、請求額が再計算されます。0円で確定した請求書ではありません。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(english ? 'Close' : '閉じる'),
-            ),
-            if (_hasPendingRouteQuantity && !invoice.routeSourcePending)
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(english ? 'Review Quantity' : '請求数量を確認'),
-              ),
-          ],
+        builder: (_) => InvoicePendingDialog(
+          english: SkoLanguageController.isEnglish,
+          routeSourcePending: invoice.routeSourcePending,
+          canReviewQuantity: _hasPendingRouteQuantity,
+          quantityCheckFailed: _routeQuantityCheckFailed,
         ),
       );
-      if (review == true && mounted) await _openRouteQuantityApprovals();
+      if (!mounted) return;
+      if (action == InvoicePendingAction.review) {
+        await _openRouteQuantityApprovals();
+      } else if (action == InvoicePendingAction.reload) {
+        await _load();
+      }
       return;
     }
     await Navigator.of(context).push(
