@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_import_page.dart';
+import 'line_history_file_decoder.dart';
 import 'line_import_repository.dart';
 
 /// Saves reviewable monthly drafts through the existing authenticated contract.
@@ -53,7 +53,7 @@ class _LineHistoricalMonthlyImportPageState
     setState(() { _busy = true; _error = null; });
     try {
       final file = await FilePicker.pickFile(
-        type: FileType.custom, allowedExtensions: ['txt']);
+        type: FileType.custom, allowedExtensions: ['txt', 'zip']);
       if (file == null || !mounted) return;
       final length = await file.length();
       if (length != null && length > 5 * 1024 * 1024) {
@@ -63,7 +63,7 @@ class _LineHistoricalMonthlyImportPageState
       if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
         throw const FormatException('Empty or too large');
       }
-      final fileHistory = lineHistorySources(utf8.decode(bytes));
+      final fileHistory = lineHistorySources(decodeLineHistoryFile(bytes, file.name));
       if (fileHistory.isEmpty) throw const FormatException('No LINE messages');
       final received = await _repository!.sources(widget.groupId);
       final history = lineMergeImportSources(received, fileHistory);
@@ -194,7 +194,7 @@ class _LineHistoricalMonthlyImportPageState
         child: const Text('マスター設定で請求書取込を有効にする')),
       OutlinedButton.icon(onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _pick,
         icon: const Icon(Icons.file_open_outlined),
-        label: Text(_fileName ?? 'LINE書き出しファイルを選択')),
+        label: Text(_fileName ?? 'LINE書き出しファイル（TXT・ZIP）を選択')),
       OutlinedButton.icon(
         onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _receive,
         icon: const Icon(Icons.sync),
