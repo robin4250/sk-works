@@ -39,6 +39,14 @@ assert.equal((await save(acceptance,0,inv,'2026-10-14T12:00:00Z','invoice')).row
 await db.exec(`reset role;update invoices set updated_at='2026-10-14T13:00:00Z',status='finalized' where id='${inv}';set role authenticated;`);
 assert.equal((await call('invoice',inv,'2026-10-14T13:00:00Z')).attachment.payload.kind,'acceptance');
 await assert.rejects(save(acceptance,1,inv,'2026-10-14T13:00:00Z','invoice'),/確定/);
+if(db.concurrentSave){
+ const next=await call('payment_certificate',pc2,'1');
+ const candidate={...payload,...next.defaults,issue_date:'2026-11-01',period_start:'2026-11-01',period_end:'2026-11-30',work_name:'翌月工事',work_address:'東京',payment_conditions:'翌月末払い',notes:'',tax_amount_yen:20000,
+   issuer:{...next.defaults.issuer,representative_name:'甲代表'},counterparty:{...next.defaults.counterparty,corporate_number:'9876543210987'}};
+ const raced=await db.concurrentSave(a,['payment_certificate',pc2,'1',0,candidate]);
+ assert.equal(raced.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(raced.filter(r=>r.status==='rejected'&&r.reason.code==='40001').length,3);
+}
 await db.exec(`set test.blocked='true'`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/ログイン/);
 await db.exec(`set test.blocked='false';set test.uid=''`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'));
 await db.exec('reset role;set role anon');await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/permission denied/);

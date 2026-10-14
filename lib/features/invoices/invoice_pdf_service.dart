@@ -1,3 +1,4 @@
+import '../shared/trade_document_actor_boundary.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
@@ -47,6 +48,8 @@ class InvoicePdfService {
     pw.Font? boldFont,
     Map<String, List<InvoiceApprovalRecord>>? approvalsByInvoice,
   }) async {
+    final lease = TradeDocumentActorLease();
+    try {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
@@ -130,7 +133,10 @@ class InvoicePdfService {
         }
       }
     }
-    return document.save();
+    final bytes = await document.save();
+    lease.verify();
+    return bytes;
+    } finally { lease.dispose(); }
   }
 
   static Future<bool> printInvoices(
@@ -150,13 +156,17 @@ class InvoicePdfService {
     String? body,
     InvoiceSettingsData? settings,
   }) async {
+    final lease = TradeDocumentActorLease();
+    try {
     final bytes = await buildPdf(invoices, title: title, settings: settings);
-    return Printing.sharePdf(
+    lease.verify();
+    return await Printing.sharePdf(
       bytes: bytes,
       filename: fileNameFor(invoices, title: title),
       subject: subject,
       body: body,
     );
+    } finally { lease.dispose(); }
   }
 
   static String fileNameFor(
@@ -975,6 +985,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   late Future<_InvoicePreviewData> _previewData;
   int _previewRevision = 0;
   bool _approving = false;
+  final _actorLease = TradeDocumentActorLease();
+
+  @override
+  void dispose() { _actorLease.dispose(); super.dispose(); }
 
   @override
   void initState() {
@@ -1160,7 +1174,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return TradeDocumentActorBoundary(child: Scaffold(
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
         actions: [
@@ -1287,14 +1301,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => Printing.layoutPdf(
+                              onPressed: () { _actorLease.verify(); return Printing.layoutPdf(
                                 name: InvoicePdfService.fileNameFor(
                                   widget.invoices,
                                   title: widget.title,
                                 ),
                                 format: PdfPageFormat.a4,
-                                onLayout: (_) async => pdfBytes,
-                              ),
+                                onLayout: (_) async { _actorLease.verify(); return pdfBytes; },
+                              ); },
                               icon: const Icon(Icons.print_outlined),
                               label: const Text('印刷'),
                             ),
@@ -1302,13 +1316,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () => Printing.sharePdf(
+                              onPressed: () { _actorLease.verify(); return Printing.sharePdf(
                                 bytes: pdfBytes,
                                 filename: InvoicePdfService.fileNameFor(
                                   widget.invoices,
                                   title: widget.title,
                                 ),
-                              ),
+                              ); },
                               icon: const Icon(Icons.ios_share_outlined),
                               label: Text(SkoLanguageController.tr('保存・共有')),
                             ),
@@ -1324,7 +1338,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
           );
         },
       ),
-    );
+    ));
   }
 }
 

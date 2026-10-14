@@ -26,6 +26,7 @@ void main() {
           'representative_name': long ? List.filled(40, '代表').join() : '受注 太郎',
         },
         'counterparty': {'name': long ? List.filled(20, '株式会社発注').join() : '株式会社発注'},
+        if (long) 'notes': List.filled(60, '備考条件確認済み。').join(),
         'company_seal_enabled': true,
         'company_seal_snapshot': {'version': 1, 'style': 'legacy', 'name': '株式会社受注'},
       },

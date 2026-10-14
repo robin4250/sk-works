@@ -44,6 +44,11 @@ jobs:
                   assert '注文請書' in text and '2026年10月15日' in text and '2026年10月16日' in text, (path, text)
                   assert '株式会社発注' in text and '株式会社受注' in text
                   assert '9876543210987' in text and '御中' in text
+                  assert '2026-10月分' in text and '代表者名' in text
+                  if path.stem.endswith('-long'):
+                      assert '備考条件確認済み。' * 60 in text
+                      assert '追加条件を確認します。' * 30 in text
+                      assert '代表' * 40 in text
                   if expected == 2:
                       first = ''.join(doc[0].get_text().split())
                       assert '請求書' in first and '注文請書' not in first
