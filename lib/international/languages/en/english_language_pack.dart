@@ -1388,6 +1388,8 @@ const englishLanguagePack = LanguagePack(
     "連携してトークを開く": "Connect and Open Talk",
     "既存の連携先・設定を確認してください。": "Check the existing link and its settings.",
     "LINEグループの連携・投稿者・日時・本文": "Link a LINE group and view its sender, date and text",
+    '月別の表': 'Monthly Table',
+    '月をスライド・手入力修正・チャットとTXT・ZIPの再取込': 'Swipe months, edit rows and reimport chat, TXT or ZIP data',
   },
 );
 

@@ -7,9 +7,16 @@ import 'line_history_parser.dart';
 import 'line_import_draft.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
+import 'line_historical_monthly_import_page.dart';
 
 class LineImportPage extends StatefulWidget {
-  const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth});
+  const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
+  const LineImportPage.monthly({super.key, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : target = 'invoice', monthlyTable = true;
+  final bool monthlyTable;
+  @visibleForTesting
+  final LineImportRepository? repositoryOverride;
+  @visibleForTesting
+  final Future<List<Map<String, dynamic>>> Function()? groupsLoader;
   final String target;
   final String? initialGroupId;
   final DateTime? initialMonth;
@@ -18,7 +25,7 @@ class LineImportPage extends StatefulWidget {
 }
 
 class _LineImportPageState extends State<LineImportPage> {
-  final _repository = LineImportRepository.maybeCreate();
+  late final _repository = widget.repositoryOverride ?? LineImportRepository.maybeCreate();
   final _chat = ChatCloudRepository.maybeCreate();
   final _note = TextEditingController();
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
@@ -40,15 +47,15 @@ class _LineImportPageState extends State<LineImportPage> {
   }
   @override
   void dispose() { _note.dispose(); super.dispose(); }
-  String get _title => widget.target == 'attendance' ? 'LINE出勤表' : 'LINE請求書';
+  String get _title => widget.monthlyTable ? 'LINE月別の表' : widget.target == 'attendance' ? 'LINE出勤表' : 'LINE請求書';
 
   Future<void> _initialize() async {
-    if (_repository == null || _chat == null) {
+    if (_repository == null || (_chat == null && widget.groupsLoader == null)) {
       setState(() { _busy = false; _error = 'ログインを確認してください。'; });
       return;
     }
     try {
-      final groups = await _chat.loadGroups();
+      final groups = await (widget.groupsLoader?.call() ?? _chat!.loadGroups());
       if (!mounted) return;
       setState(() { _groups = groups.where((group) => group['group_type'] != 'direct').toList(); _groupId = _groups.any((g) => g['id'].toString() == widget.initialGroupId)
           ? widget.initialGroupId : _groups.isEmpty ? null : _groups.first['id'].toString(); });
@@ -58,12 +65,15 @@ class _LineImportPageState extends State<LineImportPage> {
     }
   }
 
+  int _loadGeneration = 0;
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final month = _month;
     final id = _groupId;
     if (id == null) { setState(() => _busy = false); return; }
     setState(() { _busy = true; _error = null; });
     try {
-      final data = await _repository!.load(id, widget.target, _month);
+      final data = await _repository!.load(id, widget.target, month);
       final canEdit = data['can_edit'] == true;
       final features = LineImportFeatures.fromJson(data['features']);
       final refs = canEdit ? await _repository.references(id) : (workers: <Map<String, dynamic>>[], sites: <Map<String, dynamic>>[]);
@@ -75,12 +85,12 @@ class _LineImportPageState extends State<LineImportPage> {
       final previous = [for (final row in data['candidate_rows'] as List)
         Map<String, dynamic>.from(row as Map)];
       final prepared = lineMonthlyCandidates(lineMergeImportSources(existing, received),
-        _month, previous: previous, workers: refs.workers, sites: refs.sites);
+        month, previous: previous, workers: refs.workers, sites: refs.sites);
       final oldKeys = existing.map(lineSourceFingerprint).toSet();
       final newKeys = prepared.sources.map(lineSourceFingerprint).toSet();
       final changed = received.isNotEmpty &&
         (oldKeys.length != newKeys.length || !oldKeys.containsAll(newKeys));
-      if (!mounted || _groupId != id) return;
+      if (!mounted || generation != _loadGeneration || _groupId != id || _month != month) return;
       setState(() {
         _canEdit = canEdit; _enabled = widget.target == 'attendance' ? features.attendance : features.invoice;
         _workers = refs.workers; _sites = refs.sites; _apply(data);
@@ -94,7 +104,7 @@ class _LineImportPageState extends State<LineImportPage> {
         _busy = false;
       });
     } catch (_) {
-      if (mounted) setState(() { _busy = false; _error = '取込データを読み込めませんでした。権限と接続を確認してください。'; });
+      if (mounted && generation == _loadGeneration) setState(() { _busy = false; _error = '取込データを読み込めませんでした。権限と接続を確認してください。'; });
     }
   }
 
@@ -295,6 +305,53 @@ class _LineImportPageState extends State<LineImportPage> {
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
+  bool get _monthLocked => _busy || _dirty || _pending != null || _formalPending != null;
+
+  Future<void> _changeMonth(int delta) async {
+    if (_busy) return;
+    if (_monthLocked) {
+      _show('入力中の内容を保存してから月を切り替えてください。');
+      return;
+    }
+    final next = DateTime(_month.year, _month.month + delta);
+    final now = DateTime.now();
+    if (next.isBefore(DateTime(2024)) || next.isAfter(DateTime(now.year, now.month))) return;
+    FocusScope.of(context).unfocus();
+    setState(() { _month = next; _workerFilter = null; });
+    await _load();
+  }
+
+  Future<void> _openMonthlyImport() async {
+    final group = _groupId;
+    if (group == null || _monthLocked) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+      LineHistoricalMonthlyImportPage(groupId: group)));
+    if (mounted) await _load();
+  }
+
+  Widget _monthlyNavigation() => GestureDetector(
+    key: const ValueKey('line-month-swipe'),
+    behavior: HitTestBehavior.opaque,
+    onHorizontalDragEnd: (details) {
+      final velocity = details.primaryVelocity ?? 0;
+      if (velocity.abs() >= 150) _changeMonth(velocity < 0 ? 1 : -1);
+    },
+    child: Column(children: [
+      Row(children: [
+        IconButton(key: const ValueKey('line-month-previous'),
+          tooltip: '前の月', onPressed: _busy ? null : () => _changeMonth(-1),
+          icon: const Icon(Icons.chevron_left)),
+        Expanded(child: Text('${_month.year}年${_month.month}月',
+          textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge)),
+        IconButton(key: const ValueKey('line-month-next'),
+          tooltip: '次の月', onPressed: _busy ? null : () => _changeMonth(1),
+          icon: const Icon(Icons.chevron_right)),
+      ]),
+      const Text('左右にスワイプして月を切り替え'),
+      Text(_dirty ? '未保存の変更があります・保存して月を切り替え' : '保存版 $_revision'),
+    ]),
+  );
+
   void _show(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(_title),
     content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
@@ -312,11 +369,19 @@ class _LineImportPageState extends State<LineImportPage> {
         if (_busy) const LinearProgressIndicator(),
         DropdownButtonFormField<String>(initialValue: _groupId, items: [for (final group in _groups) DropdownMenuItem(value: group['id'].toString(), child: Text(group['display_name']?.toString() ?? group['name'].toString()))],
           onChanged: _busy || _dirty || _pending != null || _formalPending != null ? null : (id) { setState(() => _groupId = id); _load(); }, decoration: const InputDecoration(labelText: 'LINEグループ')),
-        ListTile(contentPadding: EdgeInsets.zero, title: Text('${_month.year}年${_month.month}月'), subtitle: Text(_dirty ? '未保存の変更があります' : '保存版 $_revision'),
+        if (widget.monthlyTable) _monthlyNavigation(),
+        if (!widget.monthlyTable) ListTile(contentPadding: EdgeInsets.zero, title: Text('${_month.year}年${_month.month}月'), subtitle: Text(_dirty ? '未保存の変更があります' : '保存版 $_revision'),
           trailing: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _busy || _dirty || _pending != null || _formalPending != null ? null : () async {
             final day = await showDatePicker(context: context, initialDate: _month, firstDate: DateTime(2000), lastDate: DateTime(DateTime.now().year + 1, 12, 31));
             if (day != null && mounted) { setState(() => _month = DateTime(day.year, day.month)); _load(); }
           })),
+        if (widget.monthlyTable) ...[
+          const SizedBox(height: 12),
+          const Text('連携チャットと書き出しデータをまとめた月間表です。行を押して手入力で修正できます。'),
+          OutlinedButton.icon(onPressed: _monthLocked || _groupId == null ? null : _openMonthlyImport,
+            icon: const Icon(Icons.file_open_outlined), label: const Text('TXT・ZIPと受信データを月間表へ入れ直す')),
+          if (_canEdit) FilledButton(onPressed: _busy || !_enabled ? null : _save, child: Text(_pending == null ? '月間表を保存' : '同じ内容を再送')),
+        ],
         if (!_enabled) const Text('この追加機能はマスター設定でOFFです。保存データは残っています。'),
         if (editable) Wrap(spacing: 8, runSpacing: 8, children: [OutlinedButton.icon(onPressed: _reimport, icon: const Icon(Icons.sync), label: const Text('受信トークを再取込')),
           OutlinedButton.icon(onPressed: _history, icon: const Icon(Icons.paste), label: const Text('過去履歴を貼付'))]),
@@ -371,3 +436,4 @@ class _LineImportPageState extends State<LineImportPage> {
       ]));
   }
 }
+
