@@ -8,7 +8,7 @@ void main() {
     final context = tester.element(find.byType(SizedBox).first);
     SkoScrollChromeController.visible.value = true;
     addTearDown(() => SkoScrollChromeController.visible.value = true);
-    const metrics = FixedScrollMetrics(
+    final metrics = FixedScrollMetrics(
       minScrollExtent: 0, maxScrollExtent: 1000, pixels: 100,
       viewportDimension: 600, axisDirection: AxisDirection.down,
       devicePixelRatio: 1,
