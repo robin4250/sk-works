@@ -63,6 +63,10 @@ class LineSharedGroupsRepository {
   Future<ChatConversationSummary?> preview(String groupId) async {
     final expected = actor;
     _check(expected);
+    final visible = await client.from('communication_groups').select('id')
+      .eq('id', groupId).limit(1);
+    _check(expected);
+    if (visible.isEmpty) return null;
     final result = await ChatCloudRepository.forClient(client)
       .loadConversationPreviews([groupId]);
     _check(expected);
