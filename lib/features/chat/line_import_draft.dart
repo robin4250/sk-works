@@ -107,7 +107,7 @@ class LineImportDraft {
           'early_hours': status?.earlyHours ?? 0.0,
           'night_work': status?.isNightWork ?? false,
           'work_category': status?.isHolidayWork == true ? (status?.isNightWork == true ? 'holiday_night' : 'holiday') : status?.isNightWork == true ? 'night' : 'day',
-          'allowance_names': <String>[],
+          'allowance_names': <String>[...?status?.allowanceNames],
           'steel_allowance': status?.hasSteelAllowance ?? false,
           'confirmed': false,
           'review_reason': old != null ? '元の投稿が変わりました。修正内容を確認してください。' : '作業員・現場・数量を確認してください。',

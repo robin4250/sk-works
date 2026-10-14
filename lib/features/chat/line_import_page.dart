@@ -402,7 +402,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   void _show(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(_title),
-    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
+    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。指定初期単価の参考請求額を表示し、数量を修正すると再計算します。数量不明・不明手当・重複疑いは対象外件数を表示します。正式な金額は現場別単価を保存し、請求書の正式下書きプレビューで確認します。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
 
   @override

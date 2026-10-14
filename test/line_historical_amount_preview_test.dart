@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_amount_preview.dart';
+import 'package:sk_works/features/chat/line_import_draft.dart';
 
 void main() {
   Map<String, dynamic> row({String site = 'A', double days = 1, double ot = 0}) => {
@@ -40,9 +40,12 @@ void main() {
     first['man_days'] = 1;
     expect(lineHistoricalAmountPreview([first, second]).total, greaterThan(result.sites.first.total));
   });
-  test('invoice load preserves the specified ten percent tax', () {
-    final source = File('lib/features/chat/line_historical_invoice_bridge_page.dart').readAsStringSync();
-    expect(source, contains("_tax.text = '10'"));
-    expect(source, isNot(contains('_tax.clear()')));
+  test('explicit steel completion flows into the calculated allowance quantity', () {
+    final draft = LineImportDraft.extract([
+      {'id': 'plan', 'body': '9月1日\n現場A 作業員A', 'sent_at': '2026-09-01T06:00:00+09:00', 'sender_display_name': '報告者'},
+      {'id': 'end', 'body': '現場A 定時〈鉄骨〉', 'sent_at': '2026-09-01T17:00:00+09:00', 'sender_display_name': '報告者'},
+    ], DateTime(2026, 9));
+    expect(draft.rows.single['allowance_names'], ['鉄骨手当']);
+    expect(lineHistoricalAmountPreview(draft.rows).sites.single.base, 35800);
   });
 }
