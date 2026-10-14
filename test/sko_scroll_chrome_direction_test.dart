@@ -19,7 +19,7 @@ void main() {
     void update(double delta, {bool finger = true}) {
       SkoScrollChromeController.handle(ScrollUpdateNotification(
         metrics: metrics, context: context, scrollDelta: delta,
-        dragDetails: finger ? DragUpdateDetails(delta: Offset(0, -delta)) : null,
+        dragDetails: finger ? DragUpdateDetails(globalPosition: Offset.zero, delta: Offset(0, -delta)) : null,
       ));
     }
     for (var i = 0; i < 8; i++) {
