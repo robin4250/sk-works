@@ -1,3 +1,5 @@
+import '../shared/trade_document_attachment_editor_page.dart';
+import '../shared/trade_document_template_settings_page.dart';
 import '../shared/related_action_footer.dart';
 import 'site_payment_certificates_repository.dart';
 import 'site_payment_agreement_page.dart';
@@ -294,7 +296,14 @@ class _PaymentCertificatePreviewPageState
               : '支払証明書',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
+            TextButton(onPressed:()async{
+              final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
+                subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
+              if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
+            },child:const Text('注文書')),
+          const SkoNotificationBell()],
       ),
       body: Column(children: [
         Expanded(child: PdfPreview(
@@ -752,6 +761,7 @@ class _PartnerPaymentSettingsPageState
                           Text(SkoLanguageController.tr('支払証明書の単価・税率・福利厚生費率は、選択した下請け会社のこの設定を使用します。社員の給与単価とは別に管理します。')),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SitePaymentAgreementPage())), icon: const Icon(Icons.handshake_outlined), label: const Text('現場別の支払金額調整')),
+                          const TradeDocumentTemplateSettingsButton(subjectKind:'payment_certificate'),
                           _sectionTitle('基準単価'),
                           SegmentedButton<bool>(
                             segments: [

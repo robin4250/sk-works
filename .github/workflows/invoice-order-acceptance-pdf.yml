@@ -1,0 +1,59 @@
+name: Invoice order acceptance PDF proof
+on:
+  pull_request:
+    paths:
+      - 'lib/features/invoices/**'
+      - 'lib/features/shared/trade_document*'
+      - 'test/invoice_order_acceptance_pdf_test.dart'
+      - '.github/workflows/invoice-order-acceptance-pdf.yml'
+  push:
+    branches: [main, 'feat/invoice-order-*', 'feat/payment-order-*']
+    paths:
+      - 'lib/features/invoices/**'
+      - 'lib/features/shared/trade_document*'
+      - 'test/invoice_order_acceptance_pdf_test.dart'
+      - '.github/workflows/invoice-order-acceptance-pdf.yml'
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/invoice_order_acceptance_pdf_test.dart
+        env:
+          SKO_PDF_OUTPUT_DIR: build/invoice-acceptance-proof
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Check actual page order, date, parties and invoice amounts
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          paths = list(Path('build/invoice-acceptance-proof').glob('*.pdf'))
+          assert len(paths) == 3, paths
+          for path in paths:
+              with fitz.open(path) as doc:
+                  expected = 2 if path.stem == 'invoice-with-acceptance' else 1
+                  assert len(doc) == expected, (path, len(doc))
+                  page = doc[-1]
+                  text = ''.join(page.get_text().split())
+                  assert '注文請書' in text and '2026年10月15日' in text and '2026年10月16日' in text, (path, text)
+                  assert '株式会社発注' in text and '株式会社受注' in text
+                  assert '9876543210987' in text and '御中' in text
+                  if expected == 2:
+                      first = ''.join(doc[0].get_text().split())
+                      assert '請求書' in first and '注文請書' not in first
+                      assert '110,000' in first and '100,000' in first and '10,000' in first, first
+                  for index, rendered in enumerate(doc):
+                      for block in rendered.get_text('blocks'):
+                          assert block[0] >= -1 and block[1] >= -1 and block[2] <= rendered.rect.width+1 and block[3] <= rendered.rect.height+1, (path, index, block[:4])
+                      rendered.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(path.with_name(f'{path.stem}-{index+1}.png'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: invoice-acceptance-pdf-proof
+          path: build/invoice-acceptance-proof/

@@ -1,3 +1,7 @@
+import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_attachment_repository.dart';
+import '../shared/trade_document_attachment_editor_page.dart';
+import 'invoice_order_acceptance_pdf.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -35,6 +39,7 @@ class InvoicePdfService {
   static Future<Uint8List> buildPdf(
     List<InvoiceCalculationResult> invoices, {
     Map<String, ExpenseDocumentDetails>? expenseDetailsByInvoice,
+    Map<String, TradeDocumentAttachment?>? acceptanceByInvoice,
     String? title,
     InvoiceSettingsData? settings,
     PdfPageFormat format = PdfPageFormat.a4,
@@ -59,6 +64,15 @@ class InvoicePdfService {
     );
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      final attachmentRepository = TradeDocumentAttachmentRepository.maybeCreate();
+      final acceptance = acceptanceByInvoice?.containsKey(invoice.invoiceId) == true
+          ? acceptanceByInvoice![invoice.invoiceId]
+          : invoice.invoiceId.isEmpty || invoice.documentUpdatedAt == null ||
+              attachmentRepository == null
+          ? null
+          : await attachmentRepository.load(
+              subjectKind: 'invoice', subjectId: invoice.invoiceId,
+              sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
       if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
         throw StateError('別途経費の内訳と請求書金額が一致しません。再読み込みしてください。');
@@ -107,6 +121,10 @@ class InvoicePdfService {
             ),
           ),
         );
+        if (pageIndex == 0 && acceptance != null) {
+          await InvoiceOrderAcceptancePdf.append(document, acceptance,
+            regularFont: regular, boldFont: bold);
+        }
         if (pageIndex == 0 && expenses != null) {
           ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
         }
@@ -1143,7 +1161,30 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title ?? '請求書PDFプレビュー')),
+      appBar: AppBar(
+        title: Text(widget.title ?? '請求書PDFプレビュー'),
+        actions: [
+          if (_singleInvoice?.invoiceId.isNotEmpty == true &&
+              _singleInvoice?.documentUpdatedAt != null)
+            TextButton(
+              onPressed: () async {
+                final invoice = _singleInvoice!;
+                final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+                  builder: (_) => TradeDocumentAttachmentEditorPage(
+                    subjectKind: 'invoice', subjectId: invoice.invoiceId,
+                    sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
+                ));
+                if (saved == true && mounted) {
+                  setState(() {
+                    _previewRevision++;
+                    _previewData = _buildPreviewData();
+                  });
+                }
+              },
+              child: const Text('注文請書'),
+            ),
+        ],
+      ),
       body: FutureBuilder<_InvoicePreviewData>(
         future: _previewData,
         builder: (context, snapshot) {
