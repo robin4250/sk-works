@@ -14,6 +14,7 @@ import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
 import 'master_operations_dashboard_page.dart';
+import '../security/security_incident_page.dart';
 import 'master_protected_page.dart';
 import 'master_recovery_contacts_page.dart';
 
@@ -366,6 +367,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.policy_outlined),
+                              title: const Text('セキュリティ記録'),
+                              subtitle: const Text('検知・収集状態・調査記録を確認'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: 'セキュリティ記録',
+                                    child: SecurityIncidentPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.widgets_outlined),
