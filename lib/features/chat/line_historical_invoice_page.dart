@@ -12,6 +12,7 @@ import 'line_historical_invoice_bridge_page.dart';
 import 'line_import_page.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_historical_monthly_import_page.dart';
+import 'line_import_repository.dart';
 import '../../international/language_controller.dart';
 
 class LineHistoricalInvoicePage extends StatelessWidget {
@@ -43,6 +44,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
   final _siteNames = <String, TextEditingController>{};
   List<Map<String, dynamic>> _groups = [];
   List<LineHistoricalGroup> _summary = [];
+  List<Map<String, dynamic>> _candidateRows = [];
   Map<String, dynamic> _data = {};
   Map<String, dynamic>? _pending;
   String? _group, _error;
@@ -73,9 +75,18 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
   }
   Future<void> _load() async {
     if (_group == null) { setState(() => _busy = false); return; }
-    setState(() { _busy = true; _error = null; _data = {}; _summary = []; });
+    setState(() { _busy = true; _error = null; _data = {}; _summary = []; _candidateRows = []; });
     try {
-      final data = await _repository!.load(_group!, _month);
+      final workspace = await LineImportRepository.maybeCreate()!.load(_group!, 'invoice', _month);
+      if (workspace['can_edit'] != true || !LineImportFeatures.fromJson(workspace['features']).invoice) {
+        throw StateError('請求書取込の権限とON設定を確認してください。');
+      }
+      final candidates = [for (final row in workspace['candidate_rows'] as List)
+        Map<String, dynamic>.from(row as Map)];
+      final now = DateTime.now();
+      final data = _month.isBefore(DateTime(now.year, now.month))
+        ? await _repository!.load(_group!, _month)
+        : <String, dynamic>{'rows': <Map<String, dynamic>>[], 'saved': <Map<String, dynamic>>[]};
       final rows = [for (final row in data['rows'] as List) Map<String, dynamic>.from(row as Map)];
       final summary = historicalGroups(rows);
       if (!mounted) return;
@@ -103,7 +114,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
           }
         }
       }
-      setState(() { _data = data; _summary = summary; _pending = null; _edited = false; });
+      setState(() { _data = data; _summary = summary; _candidateRows = candidates; _pending = null; _edited = false; });
     } catch (_) { if (mounted) setState(() => _error = '確認済み過去月データを取得できませんでした。権限・接続・元データを確認してください。'); }
     finally { if (mounted) setState(() => _busy = false); }
   }
@@ -234,6 +245,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
     final people = <String>{for (final g in _summary) ...g.workers}.length;
     final days = _summary.fold<double>(0, (n, g) => n + g.manDays);
     final saved = _data['saved'] as List? ?? [];
+    final candidateEstimate = lineHistoricalAmountPreview(_candidateRows);
     final bases = <String, int>{};
     var complete = _summary.isNotEmpty;
     for (final group in _summary) {
@@ -285,6 +297,15 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         if (_busy) const LinearProgressIndicator(),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (_data.isNotEmpty) Text('実人数 $people人 ／ 延べ ${days.toStringAsFixed(1)}人工', style: Theme.of(context).textTheme.titleMedium),
+        if (_data.isNotEmpty && _summary.isEmpty && _candidateRows.isNotEmpty) Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(candidateEstimate.sites.isEmpty ? '請求金額：数量の確認が必要です' : '現在の読取数量による参考請求額 ${candidateEstimate.total}円', style: Theme.of(context).textTheme.titleLarge),
+            Text('未確認 ${candidateEstimate.pendingRows}行 ／ 計算対象外 ${candidateEstimate.incompleteRows}行。指定初期単価・福利15%・消費税10%。全件確定額ではありません。'),
+            const Text('数量・正式現場名は月別表で修正できます。現場別変更単価と登録経費は確認後の正式下書きプレビューへ反映します。'),
+            OutlinedButton.icon(onPressed: _busy || candidateEstimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(invoices: [candidateEstimate.invoice(_month)], title: 'SKO請求書・参考／未確認'))),
+              icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('SKO請求書の書式で読取金額を確認')),
+          ]))),
         if (_data.isNotEmpty && complete) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
           crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('入力単価による参考請求額 ${reference?.grandTotalYen}円', style: Theme.of(context).textTheme.titleLarge),
