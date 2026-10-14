@@ -144,7 +144,7 @@ void main() {
     expect(pdf, contains('while (rows.length < 35)'));
     expect(pdf, isNot(contains('child: _ExactInvoiceScreen(')));
     expect(pdf, contains('請求書プレビューを生成できませんでした'));
-    expect(pdf, contains('onLayout: (_) async => pdfBytes'));
+    expect(pdf, contains('onLayout: (_) async { _actorLease.verify(); return pdfBytes; }'));
     expect(pdf, contains('bytes: pdfBytes'));
   });
 }

@@ -66,7 +66,7 @@ void main() {
       invoicePreview,
       contains('Printing.raster(widget.pdfBytes, dpi: 120)'),
     );
-    expect(invoicePreview, contains('onLayout: (_) async => pdfBytes'));
+    expect(invoicePreview, contains('onLayout: (_) async { _actorLease.verify(); return pdfBytes; }'));
     expect(invoicePreview, contains('bytes: pdfBytes'));
     expect(invoicePreview, contains('while (rows.length < 35)'));
     expect(invoicePreview, isNot(contains('child: _ExactInvoiceScreen(')));
