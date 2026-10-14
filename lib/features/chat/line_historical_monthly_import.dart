@@ -58,7 +58,8 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
       row['review_reason'] = '同日の作業員が複数行あります。重複・複数現場を確認してください。';
     }
   }
-  final used = rows.map((r) => r['source_message_id']).toSet();
+  final used = <dynamic>{for (final row in rows) row['source_message_id'],
+    for (final row in rows) if (row['completion_source_message_id'] != null) row['completion_source_message_id']};
   final sources = history.where((source) {
     final at = DateTime.tryParse(source['sent_at']?.toString() ?? '')?.toLocal();
     return used.contains(source['id']) ||

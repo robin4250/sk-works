@@ -19,7 +19,30 @@ void main() {
     expect(source['body'], body);
     expect(draft.rows.first['source_fingerprint'], lineSourceFingerprint(source));
   });
-  test('all supplied earlier months remain selectable', () {
+  test('separate same-sender completion retains both original messages', () {
+    final sources = [
+      <String, dynamic>{'id': 'plan', 'body': '9月30日（水）\n現場A 作業員A、作業員B', 'sent_at': '2026-10-02T06:00:00+09:00', 'sender_display_name': '報告者'},
+      <String, dynamic>{'id': 'end', 'body': '現場A 定時', 'sent_at': '2026-10-02T06:01:00+09:00', 'sender_display_name': '報告者'},
+    ];
+    final result = lineMonthlyCandidates(sources, DateTime(2026, 9));
+    expect(result.rows, hasLength(2));
+    expect(result.rows.first['man_days'], 1);
+    expect(result.rows.first['completion_source_message_id'], 'end');
+    expect(result.sources.map((s) => s['id']), containsAll(['plan', 'end']));
+    final corrected = {...result.rows.first, 'confirmed': true};
+    sources[1]['body'] = '現場A 残業2';
+    final changed = lineMonthlyCandidates(sources, DateTime(2026, 9), previous: [corrected]);
+    expect(changed.rows.first['confirmed'], false);
+    expect(changed.rows.first['overtime_hours'], 2);
+  });
+  test('other sender completion cannot set quantities', () {
+    final draft = LineImportDraft.extract([
+      {'id': 'plan', 'body': '9月30日\n現場A 作業員A', 'sent_at': '2026-10-02T06:00:00+09:00', 'sender_display_name': 'A'},
+      {'id': 'end', 'body': '現場A 定時', 'sent_at': '2026-10-02T06:01:00+09:00', 'sender_display_name': 'B'},
+    ], DateTime(2026, 9));
+    expect(draft.rows.single['man_days'], isNull);
+  });
+  test('all supplied earlier months remain selectable' , () {
     final months = lineHistoryMonthsForSources([
       {'sent_at': '2019-10-02T06:00:00+09:00'},
       {'sent_at': '2026-10-14T06:00:00+09:00'},
