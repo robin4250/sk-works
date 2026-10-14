@@ -841,6 +841,8 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                const Icon(Icons.groups_rounded, color: Color(0xFF1976D2)),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     SkoLanguageController.tr('本日の出勤'),
