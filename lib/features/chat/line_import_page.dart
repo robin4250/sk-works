@@ -5,6 +5,7 @@ import '../daily_reports/signature_capture_page.dart';
 import 'chat_cloud_repository.dart';
 import 'line_history_parser.dart';
 import 'line_import_draft.dart';
+import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 
 class LineImportPage extends StatefulWidget {
@@ -66,10 +67,31 @@ class _LineImportPageState extends State<LineImportPage> {
       final canEdit = data['can_edit'] == true;
       final features = LineImportFeatures.fromJson(data['features']);
       final refs = canEdit ? await _repository.references(id) : (workers: <Map<String, dynamic>>[], sites: <Map<String, dynamic>>[]);
+      final enabled = widget.target == 'attendance' ? features.attendance : features.invoice;
+      final received = canEdit && enabled ? await _repository.sources(id) : <Map<String, dynamic>>[];
+      final existing = [for (final source in data['source_messages'] as List)
+        <String, dynamic>{...Map<String, dynamic>.from(source as Map),
+          'source_type': source['source_type'] ?? data['source_kind']}];
+      final previous = [for (final row in data['candidate_rows'] as List)
+        Map<String, dynamic>.from(row as Map)];
+      final prepared = lineMonthlyCandidates(lineMergeImportSources(existing, received),
+        _month, previous: previous, workers: refs.workers, sites: refs.sites);
+      final oldKeys = existing.map(lineSourceFingerprint).toSet();
+      final newKeys = prepared.sources.map(lineSourceFingerprint).toSet();
+      final changed = received.isNotEmpty &&
+        (oldKeys.length != newKeys.length || !oldKeys.containsAll(newKeys));
       if (!mounted || _groupId != id) return;
       setState(() {
         _canEdit = canEdit; _enabled = widget.target == 'attendance' ? features.attendance : features.invoice;
-        _workers = refs.workers; _sites = refs.sites; _apply(data); _busy = false;
+        _workers = refs.workers; _sites = refs.sites; _apply(data);
+        if (changed) {
+          _sources = prepared.sources; _rows = prepared.rows;
+          final types = prepared.sources.map((source) => source['source_type']).toSet();
+          _sourceKind = types.length > 1 ? 'mixed' : types.isEmpty ? 'received' : types.single.toString();
+          _unreadable = prepared.unreadableSourceIds.length;
+          _comparisonConfirmed = false; _dirty = true;
+        }
+        _busy = false;
       });
     } catch (_) {
       if (mounted) setState(() { _busy = false; _error = '取込データを読み込めませんでした。権限と接続を確認してください。'; });
@@ -89,25 +111,16 @@ class _LineImportPageState extends State<LineImportPage> {
   }
 
   void _extract(List<Map<String, dynamic>> sources, String kind) {
-    final draft = LineImportDraft.extract(sources, _month, previous: _rows);
-    final rows = [for (final row in draft.rows) Map<String, dynamic>.from(row)];
-    for (final row in rows) {
-      if (row['worker_id'] == null) {
-        final matching = _workers.where((worker) => worker['name'] == row['worker_name']).toList();
-        if (matching.length == 1) row['worker_id'] = matching.single['id'];
-      }
-      if (row['site_id'] == null) {
-        final matching = _sites.where((site) => site['name'] == row['site_name']).toList();
-        if (matching.length == 1) { row['site_id'] = matching.single['id']; row['customer_id'] = matching.single['customer_id']; }
-      }
-    }
-    final used = rows.map((row) => row['source_message_id'].toString()).toSet();
-    final relevant = sources.where((source) {
-      final at = DateTime.tryParse(source['sent_at']?.toString() ?? '')?.toLocal();
-      return used.contains(source['id']) || (draft.unreadableSourceIds.contains(source['id']) && at?.year == _month.year && at?.month == _month.month);
-    }).toList();
-    final types = relevant.map((source) => source['source_type']?.toString() ?? kind).toSet();
-    setState(() { _sources = relevant; _rows = rows; _sourceKind = types.length > 1 ? 'mixed' : types.isEmpty ? kind : types.single; _unreadable = draft.unreadableSourceIds.length; _comparisonConfirmed = false; _dirty = true; });
+    final prepared = lineMonthlyCandidates(sources, _month,
+      previous: _rows, workers: _workers, sites: _sites);
+    final types = prepared.sources.map((source) =>
+      source['source_type']?.toString() ?? kind).toSet();
+    setState(() {
+      _sources = prepared.sources; _rows = prepared.rows;
+      _sourceKind = types.length > 1 ? 'mixed' : types.isEmpty ? kind : types.single;
+      _unreadable = prepared.unreadableSourceIds.length;
+      _comparisonConfirmed = false; _dirty = true;
+    });
   }
 
   Future<void> _reimport() async {
@@ -117,7 +130,7 @@ class _LineImportPageState extends State<LineImportPage> {
       final sources = await _repository!.sources(_groupId!);
       if (mounted) {
         final savedHistory = _sources.where((source) => source['source_type'] == 'history' || (source['source_type'] == null && _sourceKind == 'history'));
-        _extract([...savedHistory, ...sources], 'received');
+        _extract(lineMergeImportSources(savedHistory.toList(), sources), 'received');
       }
     } catch (_) {
       if (mounted) _show('受信した投稿を読み込めませんでした。');

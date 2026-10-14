@@ -34,6 +34,7 @@ class _LineHistoricalMonthlyImportPageState
     try {
       final features = await _repository?.features();
       if (mounted) setState(() => _enabled = features?.invoice == true);
+      if (_enabled && mounted && _commands.isEmpty) await _receive();
     } catch (_) {
       if (mounted) setState(() => _error = '取込設定とログイン状態を確認してください。');
     }
@@ -43,6 +44,7 @@ class _LineHistoricalMonthlyImportPageState
     try {
       final result = await _repository!.setEnabled('invoice', true);
       if (mounted) setState(() => _enabled = result.invoice);
+      if (_enabled && mounted) await _receive();
     } catch (_) {
       if (mounted) setState(() => _error = 'マスター権限と取込設定を確認してください。');
     } finally { if (mounted) setState(() => _busy = false); }
@@ -61,8 +63,10 @@ class _LineHistoricalMonthlyImportPageState
       if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
         throw const FormatException('Empty or too large');
       }
-      final history = lineHistorySources(utf8.decode(bytes));
-      if (history.isEmpty) throw const FormatException('No LINE messages');
+      final fileHistory = lineHistorySources(utf8.decode(bytes));
+      if (fileHistory.isEmpty) throw const FormatException('No LINE messages');
+      final received = await _repository!.sources(widget.groupId);
+      final history = lineMergeImportSources(received, fileHistory);
       final counts = <String, int>{};
       final sourceCounts = <String, int>{};
       for (final month in _months) {
@@ -85,17 +89,44 @@ class _LineHistoricalMonthlyImportPageState
       }
     } finally { if (mounted) setState(() => _busy = false); }
   }
+  Future<void> _receive() async {
+    if (_repository == null || _commands.isNotEmpty) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final received = await _repository.sources(widget.groupId);
+      final retainedHistory = _history.where(
+        (source) => source['source_type'] == 'history').toList();
+      final history = lineMergeImportSources(received, retainedHistory);
+      final counts = <String, int>{}, sourceCounts = <String, int>{};
+      for (final month in _months) {
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted) return;
+        final result = lineMonthlyCandidates(history, month);
+        counts[_key(month)] = result.rows.length;
+        sourceCounts[_key(month)] = result.sources.length;
+      }
+      if (mounted) setState(() {
+        _history = history; _counts.clear(); _counts.addAll(counts);
+        _sourceCounts.clear(); _sourceCounts.addAll(sourceCounts); _status.clear();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _error = '連携LINEの受信データを取得できませんでした。接続と権限を確認してください。');
+    } finally { if (mounted) setState(() => _busy = false); }
+  }
   Future<void> _save() async {
     final repository = _repository;
     if (repository == null || _history.isEmpty || !_enabled) return;
     setState(() { _busy = true; _error = null; });
     try {
       final refs = await repository.references(widget.groupId);
+      final received = await repository.sources(widget.groupId);
+      final incoming = lineMergeImportSources(_history, received);
       for (final month in _months) {
         if (!mounted) return;
         final key = _key(month);
         // A partial September/October file must never clear unrelated months.
-        if ((_sourceCounts[key] ?? 0) == 0 || _status[key] == '保存済み') continue;
+        if (lineMonthlyCandidates(incoming, month).sources.isEmpty ||
+            _status[key] == '保存済み') continue;
         setState(() => _status[key] = '保存中');
         try {
           if (!_commands.containsKey(key)) {
@@ -106,7 +137,7 @@ class _LineHistoricalMonthlyImportPageState
             final existing = [for (final source in workspace['source_messages'] as List)
               <String, dynamic>{...Map<String, dynamic>.from(source as Map),
                 'source_type': source['source_type'] ?? workspace['source_kind']}];
-            final merged = lineMergeImportSources(existing, _history,
+            final merged = lineMergeImportSources(existing, incoming,
               replaceHistory: _replaceHistory);
             final prepared = lineMonthlyCandidates(merged, month,
               previous: previous, workers: refs.workers, sites: refs.sites);
@@ -119,6 +150,7 @@ class _LineHistoricalMonthlyImportPageState
               note: workspace['note_comparison']?.toString() ?? '', confirmed: false);
           }
           await repository.save(_commands[key]!);
+          _commands.remove(key);
           if (mounted) setState(() => _status[key] = '保存済み');
         } on PostgrestException catch (error) {
           if (['22023', '40001', '42501'].contains(error.code)) {
@@ -156,9 +188,15 @@ class _LineHistoricalMonthlyImportPageState
         style: TextStyle(color: Theme.of(context).colorScheme.error)),
       if (!_enabled) OutlinedButton(onPressed: _busy || _repository == null ? null : _enable,
         child: const Text('マスター設定で請求書取込を有効にする')),
-      OutlinedButton.icon(onPressed: _busy ? null : _pick,
+      OutlinedButton.icon(onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _pick,
         icon: const Icon(Icons.file_open_outlined),
         label: Text(_fileName ?? 'LINE書き出しファイルを選択')),
+      OutlinedButton.icon(
+        onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _receive,
+        icon: const Icon(Icons.sync),
+        label: const Text('連携LINEの受信データを更新'),
+      ),
+      const Text('受信済みの投稿も同じ月別表に含めます。ファイルと一致する投稿はまとめ、曖昧な重複は要確認にします。'),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('対象月の過去履歴を入れ替える'),
@@ -168,14 +206,14 @@ class _LineHistoricalMonthlyImportPageState
           (value) => setState(() => _replaceHistory = value),
       ),
       FilledButton(onPressed: _busy || !_enabled || _history.isEmpty ? null : _save,
-        child: const Text('ファイルの対象月を保存・未確認分を再送')),
+        child: const Text('ファイル・受信データの対象月を保存・未確認分を再送')),
       const SizedBox(height: 12),
       for (final month in _months) Card(child: ListTile(
         title: Text('${month.year}年${month.month}月'),
         subtitle: Text((_counts.containsKey(_key(month)) ?
-          '候補 ${_counts[_key(month)]}件 ／ ' : '') +
+          '今回の投稿から候補 ${_counts[_key(month)]}件 ／ ' : '') +
           (_status[_key(month)] ?? ((_sourceCounts[_key(month)] ?? 0) == 0 && _history.isNotEmpty
-            ? 'このファイルに対象投稿なし・保存済みデータを維持' : '月別表を開いて確認・入れ直し'))),
+            ? '今回のファイル・受信データに対象投稿なし・保存版を維持' : '月別表を開いて確認・入れ直し'))),
         trailing: const Icon(Icons.chevron_right),
         onTap: _busy ? null : () => _open(month))),
     ]),

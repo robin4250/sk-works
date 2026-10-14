@@ -2,6 +2,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
 
 void main() {
+  test('received and exported copies count once and retain the saved history correction', () {
+    const body = '9月1日\n現場A 山田\n現場A 定時';
+    final history = <String, dynamic>{
+      'id': 'history-copy', 'body': body, 'sent_at': '2026-09-01T08:10:00Z',
+      'sender_display_name': '投稿者', 'source_type': 'history',
+    };
+    final received = <String, dynamic>{
+      ...history, 'id': 'received-copy', 'source_type': 'received',
+      'sent_at': '2026-09-01T08:10:20Z',
+    };
+    final initial = lineMonthlyCandidates([history], DateTime(2026, 9));
+    final corrected = {...initial.rows.single, 'man_days': .5, 'confirmed': true};
+    final merged = lineMonthlyCandidates([history, received], DateTime(2026, 9),
+      previous: [corrected]);
+    expect(merged.sources, hasLength(2));
+    expect(merged.rows, hasLength(1));
+    expect(merged.rows.single['source_message_id'], 'history-copy');
+    expect(merged.rows.single['man_days'], .5);
+    expect(merged.rows.single['confirmed'], true);
+    final firstImport = lineMonthlyCandidates([history, received], DateTime(2026, 9));
+    expect(firstImport.rows.single['source_message_id'], 'received-copy');
+    expect(firstImport.rows.single['confirmed'], false);
+  });
+  test('ambiguous repeated received posts are retained for review', () {
+    final base = <String, dynamic>{
+      'body': '9月1日\n現場A 山田\n現場A 定時',
+      'sent_at': '2026-09-01T08:10:00Z', 'sender_display_name': '投稿者',
+    };
+    final result = lineMonthlyCandidates([
+      {...base, 'id': 'one', 'source_type': 'received'},
+      {...base, 'id': 'two', 'source_type': 'received'},
+      {...base, 'id': 'history', 'source_type': 'history'},
+    ], DateTime(2026, 9));
+    expect(result.rows, hasLength(3));
+    expect(result.rows.every((row) => row['confirmed'] == false), isTrue);
+  });
+
   test('supplement window includes October without dropping the 33 original months', () {
     final months = lineHistoryImportMonths(through: DateTime(2026, 10, 14));
     expect(months, hasLength(34));
