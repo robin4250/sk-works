@@ -75,7 +75,7 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
       icon: Badge(
         isLabelVisible: _badge.count > 0,
         label: Text(_badge.count > 99 ? '99+' : '${_badge.count}'),
-        child: const Icon(Icons.notifications_outlined),
+        child: const Icon(Icons.notifications_outlined, color: Color(0xFFFBC02D)),
       ),
     );
   }
