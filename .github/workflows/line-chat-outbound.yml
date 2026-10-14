@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/functions/line-chat-dispatch/**'
       - 'supabase/migrations/*line_chat_outbound.sql'
+      - 'supabase/migrations/*line_sender_native_attribution.sql'
       - 'tool/verify_line_chat_outbound.mjs'
       - '.github/workflows/line-chat-outbound.yml'
   push:
@@ -11,6 +12,7 @@ on:
     paths:
       - 'supabase/functions/line-chat-dispatch/**'
       - 'supabase/migrations/*line_chat_outbound.sql'
+      - 'supabase/migrations/*line_sender_native_attribution.sql'
 permissions:
   contents: read
 jobs:
