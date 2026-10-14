@@ -5,10 +5,14 @@ create function auth.uid()returns uuid language sql as $$select nullif(current_s
 create function private.account_access_allowed()returns boolean language sql as $$select coalesce(current_setting('test.blocked',true),'false')<>'true'$$;
 create table companies(id uuid primary key,name text,address text,corporate_number text,company_seal_enabled boolean,company_seal_style text);
 create table company_members(company_id uuid,user_id uuid,role text);
+create function private.has_company_feature(cid uuid,feature text)returns boolean language sql as $$
+ select exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid()) and
+ case feature when 'can_view_invoices' then coalesce(current_setting('test.invoice_view',true),'true')='true'
+ when 'can_manage_invoices' then coalesce(current_setting('test.invoice_manage',true),'true')='true' else false end $$;
 create table partner_companies(id uuid primary key,company_id uuid,name text,address text,president_name text);
 create table customers(id uuid primary key,company_id uuid,name text,billing_name text,billing_address text);
 create table payment_certificates(id uuid primary key,company_id uuid,partner_company_id uuid,period_start date,period_end date,revision int,status text,finalized_at timestamptz,gross_amount int,snapshot jsonb,calculation_blocked boolean default false);
-create table invoices(id uuid primary key,company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,updated_at timestamptz,status text,finalized_at timestamptz,grand_total int,tax int,snapshot jsonb,calculation_blocked boolean default false);
+create table invoices(id uuid primary key,company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,updated_at timestamptz,status text,finalized_at timestamptz,grand_total int,tax int,snapshot jsonb,calculation_blocked boolean default false,approval_finalized_at timestamptz,invoice_seal_frozen boolean default false);
 create function private.document_company_seal_snapshot(jsonb,uuid,boolean)returns jsonb language sql as $$select jsonb_build_object('company_seal_snapshot',jsonb_build_object('version',1,'style','legacy','name',name))from public.companies where id=$2$$;
 grant usage on schema private,auth to authenticated;`);
 await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_monthly_trade_document_attachment.sql',import.meta.url),'utf8'));
@@ -22,8 +26,11 @@ const call=async(kind,id,rev)=>(await db.query('select public.trade_document_att
 let w=await call('payment_certificate',pc,'1');assert.equal(w.attachment,null);assert.equal(w.defaults.tax_amount_yen,null);
 const payload={...w.defaults,issue_date:'2026-10-15',work_name:'当月工事',work_address:'東京都',tax_amount_yen:10000,intro_text:'工事を発注します。',payment_conditions:'完了確認後、翌月末までに振込',notes:'',issuer:{...w.defaults.issuer,representative_name:'甲代表'},counterparty:{...w.defaults.counterparty,corporate_number:'9876543210987'}};
 const save=(data=payload,version=0,id=pc,rev='1',kind='payment_certificate')=>db.query('select public.save_trade_document_attachment($1,$2,$3,$4,$5) result',[kind,id,rev,version,data]);
-for(const data of [{...payload,tax_amount_yen:null},{...payload,tax_amount_yen:'10000'},{...payload,period_start:'2026-09-30'},{...payload,tax_amount_yen:110001},{...payload,month:'2026-09'},{...payload,kind:'acceptance'},{...payload,total_amount_yen:1},{...payload,issue_date:null}])await assert.rejects(save(data));
+for(const data of [{...payload,tax_amount_yen:null},{...payload,tax_amount_yen:'10000'},{...payload,period_start:'2026-09-30'},{...payload,tax_amount_yen:110001},{...payload,month:'2026-09'},{...payload,kind:'acceptance'},{...payload,total_amount_yen:1},{...payload,issue_date:null},{...payload,issuer:{...payload.issuer,corporate_number:'123'}}])await assert.rejects(save(data));
 for(const actor of [m,v,o]){await db.exec(`set test.uid='${actor}'`);await assert.rejects(save());}
+await db.exec(`set test.uid='${v}'`);await assert.rejects(call('payment_certificate',pc,'1'),/権限/);
+await assert.rejects(db.query('select public.trade_document_template($1,$2)',['payment_certificate',c]),/権限/);
+await db.exec(`set test.uid='${m}'`);assert.equal((await call('payment_certificate',pc,'1')).can_manage,false);
 await db.exec(`set test.uid='${a}'`);const first=(await save()).rows[0].result;assert.equal(first.version,1);
 assert.deepEqual((await call('payment_certificate',pc,'1')).attachment,first);assert.equal((await call('payment_certificate',pc2,'1')).attachment,null);
 await assert.rejects(save(),/更新/);await assert.rejects(db.query('select * from private.trade_document_attachments'),/permission denied/);
@@ -44,11 +51,19 @@ await db.exec('reset role');
 assert.deepEqual((await db.query('select payload from private.trade_document_attachment_history where subject_id=$1 and version=1',[pc])).rows[0].payload,first.payload);
 await db.exec('set role authenticated');
 
+await db.exec("set test.invoice_view='false'");await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/権限/);
+await db.exec("set test.invoice_view='true';set test.invoice_manage='false'");
+assert.equal((await call('invoice',inv,'2026-10-14T12:00:00Z')).can_manage,false);
+await assert.rejects(db.query('select public.trade_document_template($1,$2)',['invoice',c]),/権限/);
+await db.exec("set test.invoice_manage='true'");
 w=await call('invoice',inv,'2026-10-14T12:00:00.000Z');assert.equal(w.defaults.tax_amount_yen,10000);
 const acceptance={...w.defaults,order_date:'2026-10-15',issue_date:'2026-10-16',acceptance_text:'条件通り承諾します。',notes:'',issuer:{...w.defaults.issuer,representative_name:'乙代表'},counterparty:{...w.defaults.counterparty,corporate_number:'9876543210987',representative_name:'甲代表'}};
+await db.exec("set test.invoice_manage='false'");await assert.rejects(save(acceptance,0,inv,'2026-10-14T12:00:00Z','invoice'),/管理者/);
+await db.exec("set test.invoice_manage='true'");
 assert.equal((await save(acceptance,0,inv,'2026-10-14T12:00:00Z','invoice')).rows[0].result.payload.kind,'acceptance');
-await db.exec(`reset role;update invoices set updated_at='2026-10-14T13:00:00Z',status='finalized' where id='${inv}';set role authenticated;`);
+await db.exec(`reset role;update invoices set updated_at='2026-10-14T13:00:00Z',approval_finalized_at=now(),invoice_seal_frozen=true,snapshot=jsonb_build_object('company_seal_snapshot',jsonb_build_object('version',1,'style','legacy','name','変更後')) where id='${inv}';set role authenticated;`);
 assert.equal((await call('invoice',inv,'2026-10-14T13:00:00Z')).attachment.payload.kind,'acceptance');
+assert.equal((await call('invoice',inv,'2026-10-14T13:00:00Z')).source_locked,true);
 await assert.rejects(save(acceptance,1,inv,'2026-10-14T13:00:00Z','invoice'),/確定/);
 if(db.concurrentSave){
  const next=await call('payment_certificate',pc2,'1');
@@ -60,11 +75,15 @@ if(db.concurrentSave){
 }
 const zero=await call('payment_certificate',pc0,'1');
 const explicitZero={...payload,...zero.defaults,issue_date:'2026-12-01',work_name:'零額の明示確認',work_address:'東京',payment_conditions:'合意額を確認',notes:'',tax_amount_yen:0,
- issuer:{...zero.defaults.issuer,representative_name:'甲代表'},counterparty:{...zero.defaults.counterparty,corporate_number:'9876543210987'}};
+ issuer:{name:zero.defaults.issuer.name,address:'',corporate_number:'',representative_name:''},counterparty:{name:zero.defaults.counterparty.name,address:'',corporate_number:'',representative_name:''}};
 await db.exec(`reset role;update payment_certificates set calculation_blocked=true where id='${pc0}';set role authenticated;`);
 await assert.rejects(save(explicitZero,0,pc0,'1'),/未確定/);
 await db.exec(`reset role;update payment_certificates set calculation_blocked=false where id='${pc0}';set role authenticated;`);
 assert.equal((await save(explicitZero,0,pc0,'1')).rows[0].result.payload.tax_amount_yen,0);
+await db.exec(`set test.uid='${m}'`);
+assert.equal((await db.query('select public.trade_document_template($1,$2) result',['payment_certificate',c])).rows[0].result.can_manage,true);
+await db.query('select public.trade_document_template($1,$2,$3,$4)',['payment_certificate',c,1,{notes:'設定管理者の編集'}]);
+await db.exec(`set test.uid='${a}'`);
 await db.exec(`set test.blocked='true'`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/ログイン/);
 await db.exec(`set test.blocked='false';set test.uid=''`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'));
 await db.exec('reset role;set role anon');await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/permission denied/);

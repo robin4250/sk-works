@@ -108,14 +108,17 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _input('tax_amount_yen','うち消費税等（円・要確認）',max:10),
         _input('payment_conditions','支払条件（期限も入力）',max:400,lines:4),
       ]else _input('acceptance_text','承諾文（{order_date} は注文書日に置換）',max:400,lines:4),
+      if(_order)OutlinedButton.icon(onPressed:_canEdit&&!_saving?(){
+        _fields['notes']!.text='・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';
+      }:null,icon:const Icon(Icons.edit_note),label:const Text('見本の特記事項を入れる')),
       _input('notes','その他特記事項（任意）',max:600,lines:5),
-      const Text('工事の許可要否や責任条件は自動判定しません。実際の合意内容を確認して入力してください。'),
+      const Text('特記事項は実際の合意内容に合わせて編集できます。'),
       for(final party in ['issuer','counterparty'])...[
         const SizedBox(height:16),Text(party=='issuer'?(_order?'甲・発注者（自社）':'乙・受注者（自社）'):(_order?'乙・受注者（下請け会社）':'甲・発注者（請求先）'),style:Theme.of(context).textTheme.titleMedium),
         _input('$party.name','社名',max:120,readOnly:party=='issuer'),
-        if(_order||party=='issuer')...[_input('$party.address','住所',max:240,lines:2),
-        _input('$party.corporate_number','法人番号（13桁）',max:13),
-        _input('$party.representative_name','代表者名',max:80)],
+        if(_order||party=='issuer')...[_input('$party.address','住所（任意）',max:240,lines:2),
+        _input('$party.corporate_number','法人番号（任意・13桁）',max:13),
+        _input('$party.representative_name','代表者名（任意）',max:80)],
       ],
       const Text('角印は会社で設定済みの印影・表示設定を保存します。'),
       if(_error!=null)Text(_error!,style:TextStyle(color:Theme.of(context).colorScheme.error)),

@@ -72,10 +72,11 @@ class InvoiceOrderAcceptancePdf {
           _field('法人番号', issuer['corporate_number'], compact: compact),
           pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
             pw.Expanded(child: _field('代表者名', issuer['representative_name'], compact: compact)),
-            if (sealEnabled) CompanySealPdf.build(
+            if (sealEnabled) pw.SizedBox(width: 16),
+            if (sealEnabled) pw.SizedBox(width:64,height:64,child:CompanySealPdf.build(
               seal.registeredName(issuer['name'].toString()),
               size: 64, font: font, fallbackFont: regularFont,
-              style: seal.style, companyId: seal.companyId),
+              style: seal.style, companyId: seal.companyId)),
           ]),
         ],
       ),

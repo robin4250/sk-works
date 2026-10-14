@@ -54,6 +54,10 @@ class _TemplateState extends State<TradeDocumentTemplateSettingsPage> {
  body:!_ready?Center(child:Text(_error??'読み込み中…')):_revoked?const Center(child:Text('開き直してください。')):
  ListView(padding:const EdgeInsets.all(16),children:[
  const Text('新しく作る月次別添の既定値です。保存済みの注文書・注文請書には変更を反映しません。'),const SizedBox(height:16),
+ if(widget.subjectKind=='payment_certificate')OutlinedButton.icon(
+  onPressed:_canManage&&!_saving?(){_controllers['notes']!.text='・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';}:null,
+  icon:const Icon(Icons.edit_note),label:const Text('見本の特記事項を入れる')),
+
  for(final key in widget.subjectKind=='invoice'?['acceptance_text','notes']:['intro_text','payment_conditions','notes'])
  Padding(padding:const EdgeInsets.only(bottom:16),child:TextField(controller:_controllers[key],enabled:_canManage&&!_saving,maxLines:5,
  maxLength:key=='notes'?600:400,decoration:InputDecoration(border:const OutlineInputBorder(),labelText:{'intro_text':'注文書の冒頭文','acceptance_text':'承諾文（{order_date}を注文書日に置換）','payment_conditions':'支払条件','notes':'その他特記事項'}[key]))),

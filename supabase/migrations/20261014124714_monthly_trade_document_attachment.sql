@@ -28,16 +28,18 @@ alter table private.trade_document_templates enable row level security;
 revoke all on private.trade_document_templates from public,anon,authenticated,service_role;
 create function private.trade_document_template(p_kind text,p_company uuid,p_expected_version integer default null,p_payload jsonb default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare role_name text; saved private.trade_document_templates; item text;
+declare role_name text; can_manage boolean; saved private.trade_document_templates; item text;
 begin
  if auth.uid() is null or not private.account_access_allowed() then raise exception 'ログインが必要です。' using errcode='42501'; end if;
  select role::text into role_name from public.company_members where user_id=auth.uid() and company_id=p_company;
- if role_name is null or role_name not in ('owner','admin','manager','viewer') or p_kind not in ('payment_certificate','invoice') then
+ if p_kind='invoice' then can_manage:=coalesce(private.has_company_feature(p_company,'can_manage_invoices'),false);
+ else can_manage:=coalesce(role_name in ('owner','admin','manager'),false); end if;
+ if role_name is null or not can_manage or p_kind not in ('payment_certificate','invoice') then
   raise exception '設定の閲覧権限がありません。' using errcode='42501'; end if;
  perform pg_advisory_xact_lock(hashtextextended('trade-template:'||p_kind||':'||p_company::text,0));
  select * into saved from private.trade_document_templates where company_id=p_company and subject_kind=p_kind;
  if p_payload is not null then
-  if role_name not in ('owner','admin') then raise exception '管理者のみ変更できます。' using errcode='42501'; end if;
+  if not can_manage then raise exception '管理者のみ変更できます。' using errcode='42501'; end if;
   if p_expected_version is null or p_expected_version<>coalesce(saved.version,0) then raise exception '設定を再読込してください。' using errcode='40001'; end if;
   if jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>8192 then raise exception '設定内容を確認してください。' using errcode='22023'; end if;
   for item in select jsonb_object_keys(p_payload) loop
@@ -48,7 +50,7 @@ begin
   insert into private.trade_document_templates values(p_company,p_kind,coalesce(saved.version,0)+1,p_payload)
    on conflict(company_id,subject_kind) do update set version=excluded.version,payload=excluded.payload returning * into saved;
  end if;
- return jsonb_build_object('version',coalesce(saved.version,0),'payload',coalesce(saved.payload,'{}'::jsonb),'can_manage',role_name in ('owner','admin'));
+ return jsonb_build_object('version',coalesce(saved.version,0),'payload',coalesce(saved.payload,'{}'::jsonb),'can_manage',can_manage);
 end $$;
 revoke all on function private.trade_document_template(text,uuid,integer,jsonb) from public,anon,service_role;
 grant execute on function private.trade_document_template(text,uuid,integer,jsonb) to authenticated;
@@ -60,8 +62,8 @@ grant execute on function public.trade_document_template(text,uuid,integer,jsonb
 create function private.trade_document_source(p_kind text,p_subject uuid,p_source_revision text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare cid uuid; counter_id uuid; start_day date; end_day date; rev text; st text;
- final_at timestamptz; is_blocked boolean; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;
- company public.companies; role_name text; result jsonb;
+ final_at timestamptz; is_blocked boolean; extra_locked boolean:=false; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;
+ company public.companies; role_name text; can_read boolean; can_manage boolean; result jsonb;
 begin
  if auth.uid() is null or not private.account_access_allowed() then
   raise exception 'ログインが必要です。' using errcode='42501'; end if;
@@ -70,12 +72,19 @@ begin
   into cid,counter_id,start_day,end_day,rev,st,final_at,total,source_snapshot,is_blocked
   from public.payment_certificates where id=p_subject for share;
  elsif p_kind='invoice' then
-  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot,calculation_blocked
-  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot,is_blocked
+  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot,calculation_blocked,(approval_finalized_at is not null or invoice_seal_frozen)
+  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot,is_blocked,extra_locked
   from public.invoices where id=p_subject for share;
  else raise exception '書類の種類を確認してください。' using errcode='22023'; end if;
  select role::text into role_name from public.company_members where company_id=cid and user_id=auth.uid();
- if cid is null or role_name is null or role_name not in ('owner','admin','manager','viewer') then
+ if p_kind='invoice' then
+  can_read:=coalesce(private.has_company_feature(cid,'can_view_invoices'),false);
+  can_manage:=coalesce(private.has_company_feature(cid,'can_manage_invoices'),false);
+ else
+  can_read:=coalesce(role_name in ('owner','admin','manager'),false);
+  can_manage:=coalesce(role_name in ('owner','admin'),false);
+ end if;
+ if cid is null or role_name is null or not can_read then
   raise exception '書類の閲覧権限がありません。' using errcode='42501'; end if;
  if (p_kind='invoice' and rev::timestamptz is distinct from p_source_revision::timestamptz)
  or (p_kind='payment_certificate' and rev is distinct from p_source_revision) then
@@ -95,8 +104,8 @@ begin
  end if;
  if counter is null then raise exception '相手先の会社を確認できません。' using errcode='22023'; end if;
  result:=jsonb_build_object('company_id',cid,'source_revision',rev,
-  'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',source_snapshot)::text),'month',to_char(start_day,'YYYY-MM'),
-  'can_manage',role_name in ('owner','admin'),'source_blocked',coalesce(is_blocked,false),'source_locked',st<>'draft' or final_at is not null,
+  'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',case when p_kind='invoice' then source_snapshot-'company_seal_snapshot' else source_snapshot end)::text),'month',to_char(start_day,'YYYY-MM'),
+  'can_manage',can_manage,'template_can_view',case when p_kind='invoice' then can_manage else can_read end,'source_blocked',coalesce(is_blocked,false),'source_locked',st<>'draft' or final_at is not null or coalesce(extra_locked,false),
   'defaults',jsonb_build_object('version',1,'kind',case when p_kind='invoice' then 'acceptance' else 'order' end,
    'month',to_char(start_day,'YYYY-MM'),'period_start',date_trunc('month',start_day)::date,
    'period_end',(date_trunc('month',start_day)+interval '1 month - 1 day')::date,
@@ -117,7 +126,7 @@ begin
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject;
  if saved.subject_id is not null and saved.company_id<>(source->>'company_id')::uuid then
   raise exception '別添書類の会社が一致しません。' using errcode='42501'; end if;
- return source||jsonb_build_object('source_changed',saved.subject_id is not null and (saved.source_fingerprint<>source->>'source_fingerprint' or to_char(saved.month,'YYYY-MM')<>source->>'month'),'template',coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb),'attachment',case when saved.subject_id is null then null else
+ return source||jsonb_build_object('source_changed',saved.subject_id is not null and (saved.source_fingerprint<>source->>'source_fingerprint' or to_char(saved.month,'YYYY-MM')<>source->>'month'),'template',case when source->>'template_can_view'='true' then coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb) else '{}'::jsonb end,'attachment',case when saved.subject_id is null then null else
   jsonb_build_object('version',saved.version,'payload',saved.payload) end);
 end $$;
 revoke all on function private.trade_document_attachment_workspace(text,uuid,text) from public,anon,service_role;
@@ -152,10 +161,10 @@ begin
   foreach field in array (case when p_kind='invoice' and party='counterparty' then array['name'] else array['name','address','corporate_number','representative_name'] end) loop
    max_len:=case field when 'name' then 120 when 'address' then 240 when 'corporate_number' then 13 else 80 end;
    if jsonb_typeof(p_payload->party->field) is distinct from 'string' or
-    length(btrim(p_payload->party->>field))=0 or length(p_payload->party->>field)>max_len then
+    (field='name' and length(btrim(p_payload->party->>field))=0) or length(p_payload->party->>field)>max_len then
     raise exception '会社情報の未入力・文字数を確認してください。' using errcode='22023'; end if;
   end loop;
-  if not(p_kind='invoice' and party='counterparty') and p_payload->party->>'corporate_number' !~ '^[0-9]{13}$' then
+  if not(p_kind='invoice' and party='counterparty') and coalesce(p_payload->party->>'corporate_number','')<>'' and p_payload->party->>'corporate_number' !~ '^[0-9]{13}$' then
    raise exception '法人番号は13桁で入力してください。' using errcode='22023'; end if;
  end loop;
  -- Seal ownership and style are server-owned. The registered issuer cannot be renamed here.

@@ -53,6 +53,12 @@ jobs:
                       first = ''.join(doc[0].get_text().split())
                       assert '請求書' in first and '注文請書' not in first
                       assert '110,000' in first and '100,000' in first and '10,000' in first, first
+                  for block in page.get_text('dict')['blocks']:
+                      if block['type']==0:
+                          for line in block['lines']:
+                              for span in line['spans']:
+                                  if '代表代表' in span['text']:
+                                      assert span['bbox'][2] <= page.rect.width-48-64-12,(path,span)
                   for index, rendered in enumerate(doc):
                       for block in rendered.get_text('blocks'):
                           assert block[0] >= -1 and block[1] >= -1 and block[2] <= rendered.rect.width+1 and block[3] <= rendered.rect.height+1, (path, index, block[:4])
