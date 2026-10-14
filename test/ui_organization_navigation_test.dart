@@ -57,7 +57,7 @@ void main() {
       MaterialApp(home: PayrollReviewPage(onOpenSettings: () => opened = true)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('個別給与設定'));
+    await tester.tap(find.byKey(const ValueKey('payroll-individual-settings-entry')));
     expect(opened, isTrue);
   });
   testWidgets(
