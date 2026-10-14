@@ -7,6 +7,8 @@ import 'line_import_page.dart';
 import 'line_master_workspace_page.dart';
 import 'line_import_repository.dart';
 import 'line_talk_page.dart';
+import 'line_shared_groups_page.dart';
+import 'chat_cloud_page.dart';
 import 'line_joined_groups_page.dart';
 
 class LineTalkHubPage extends StatefulWidget {
@@ -54,7 +56,10 @@ class _LineTalkHubPageState extends State<LineTalkHubPage> {
     body: ListView(padding: const EdgeInsets.all(16), children: [
       OutlinedButton.icon(onPressed: () => _open(const LineJoinedGroupsPage()), icon: const Icon(Icons.groups_outlined), label: Text(SkoLanguageController.tr('参加済みグループ一覧'))),
       const SizedBox(height: 12),
-      FilledButton.icon(onPressed: () => _open(const LineTalkPage()), icon: const Icon(Icons.chat_bubble_outline), label: const Text('トーク')),
+      FilledButton.icon(onPressed: () => _open(LineSharedGroupsPage(
+        onOpenGroup: (id) => _open(ChatCloudPage(initialGroupId: id)),
+        onOpenSavedTalks: () => _open(const LineTalkPage()),
+      )), icon: const Icon(Icons.chat_bubble_outline), label: const Text('トーク')),
       if (_features.attendance) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineImportPage(target: 'attendance')), icon: const Icon(Icons.calendar_month), label: const Text('出勤表'))],
       if (_features.invoice && _canViewInvoice) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineImportPage(target: 'invoice')), icon: const Icon(Icons.receipt_long_outlined), label: const Text('請求書'))],
       if (_isMaster) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineMasterWorkspacePage()), icon: const Icon(Icons.admin_panel_settings_outlined), label: Text(SkoLanguageController.tr('マスター権限')))],
