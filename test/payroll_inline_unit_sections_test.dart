@@ -14,7 +14,7 @@ class _Units implements PayrollUnitConditionsRepository {
   Future<PayrollUnitConditions> load(String company, String worker, String month) async =>
     PayrollUnitConditions(version: 0, month: month, canEdit: true, items: [
       PayrollUnitItemDraft(id: worker, section: PayrollItemSection.earning,
-        unit: PayrollItemUnit.hour, name: '${worker}条件', rate: '100', quantity: '2'),
+        unit: PayrollItemUnit.hour, name: '$worker 条件', rate: '100', quantity: '2'),
     ]);
   @override
   Future<PayrollUnitConditions> save(String company, String worker,
@@ -43,14 +43,14 @@ void main() {
     expect(repository.savedWorker, 'A');
     await tester.pumpWidget(page('B'));
     await tester.pumpAndSettle();
-    expect(find.text('B条件'), findsOneWidget);
+    expect(find.text('B 条件'), findsOneWidget);
     repository.gate.complete(PayrollUnitConditions(
       version: 1, month: repository.savedMonth!, canEdit: true, items: [
         const PayrollUnitItemDraft(id: 'A', section: PayrollItemSection.earning,
           unit: PayrollItemUnit.hour, name: 'A条件', rate: '100', quantity: '2'),
       ]));
     await tester.pumpAndSettle();
-    expect(find.text('B条件'), findsOneWidget);
+    expect(find.text('B 条件'), findsOneWidget);
     expect(find.text('A条件'), findsNothing);
     expect(tester.takeException(), isNull);
   });
