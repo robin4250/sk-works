@@ -1868,31 +1868,54 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             return Padding(
               key: ValueKey('menu_${item.key}'),
               padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.drag_handle),
-                  title: Text(
-                    item.label,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  subtitle: Text('${SkoLanguageController.tr('利用権限')}：${item.accessLabel}'),
-                  onTap: () => _openHomeAction(item.key),
-                  trailing: Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (item.homeEligible)
-                        IconButton(
-                          tooltip: '2行表示時の改行位置',
-                          onPressed: () => _editHomeLabel(item),
-                          icon: const Icon(Icons.edit_note_outlined),
+              child: Container(
+                decoration: item.key == 'payment_certificates'
+                    ? BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 1.8,
                         ),
-                      Switch(
-                        value: !_hiddenHomeActionKeys.contains(item.key),
-                        onChanged: (value) =>
-                            _setHomeActionVisible(item.key, value),
-                      ),
-                    ],
+                        borderRadius: BorderRadius.circular(23),
+                      )
+                    : null,
+                child: Card(
+                  margin: item.key == 'payment_certificates'
+                      ? const EdgeInsets.all(3)
+                      : null,
+                  shape: item.key == 'payment_certificates'
+                      ? RoundedRectangleBorder(
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 1.8,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        )
+                      : null,
+                  child: ListTile(
+                    leading: const Icon(Icons.drag_handle),
+                    title: Text(
+                      item.label,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text('${SkoLanguageController.tr('利用権限')}：${item.accessLabel}'),
+                    onTap: () => _openHomeAction(item.key),
+                    trailing: Wrap(
+                      spacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (item.homeEligible)
+                          IconButton(
+                            tooltip: '2行表示時の改行位置',
+                            onPressed: () => _editHomeLabel(item),
+                            icon: const Icon(Icons.edit_note_outlined),
+                          ),
+                        Switch(
+                          value: !_hiddenHomeActionKeys.contains(item.key),
+                          onChanged: (value) =>
+                              _setHomeActionVisible(item.key, value),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2097,3 +2120,4 @@ class _ModuleDisabledPage extends StatelessWidget {
     );
   }
 }
+
