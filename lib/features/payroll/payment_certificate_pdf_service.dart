@@ -1,3 +1,4 @@
+import '../shared/trade_document_actor_boundary.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import 'payment_order_pdf.dart';
@@ -23,6 +24,8 @@ class PaymentCertificatePdfService {
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final actorLease=TradeDocumentActorLease();
+    try {
     final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
     if (record.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
       throw StateError('別途経費の内訳と支払証明書金額が一致しません。再読み込みしてください。');
@@ -67,7 +70,10 @@ class PaymentCertificatePdfService {
     if (expenses != null) {
       ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
     }
-    return document.save();
+    final bytes=await document.save();
+    actorLease.verify();
+    return bytes;
+    }finally{actorLease.dispose();}
   }
 
   static Future<bool> printCertificate(PaymentCertificateRecord record) {

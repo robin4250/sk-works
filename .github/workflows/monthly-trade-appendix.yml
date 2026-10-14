@@ -1,10 +1,10 @@
 name: Monthly trade appendix SQL and PDF
 on:
   pull_request:
-    paths: ['lib/features/shared/trade_document*', 'lib/features/payroll/payment*', 'supabase/migrations/*monthly_trade_document_attachment.sql', 'tool/verify_trade_document_attachment.mjs', 'test/payment_order_pdf_test.dart', '.github/workflows/monthly-trade-appendix.yml']
+    paths: ['lib/features/shared/trade_document*', 'lib/features/payroll/payment*', 'supabase/migrations/*monthly_trade_document_attachment.sql', 'tool/verify_trade_document_attachment.mjs', 'tool/trade_document_pg_adapter.mjs', 'test/payment_order_pdf_test.dart', '.github/workflows/monthly-trade-appendix.yml']
   push:
     branches: [main, 'feat/payment-order-*']
-    paths: ['lib/features/shared/trade_document*', 'lib/features/payroll/payment*', 'supabase/migrations/*monthly_trade_document_attachment.sql', 'tool/verify_trade_document_attachment.mjs', 'test/payment_order_pdf_test.dart', '.github/workflows/monthly-trade-appendix.yml']
+    paths: ['lib/features/shared/trade_document*', 'lib/features/payroll/payment*', 'supabase/migrations/*monthly_trade_document_attachment.sql', 'tool/verify_trade_document_attachment.mjs', 'tool/trade_document_pg_adapter.mjs', 'test/payment_order_pdf_test.dart', '.github/workflows/monthly-trade-appendix.yml']
 jobs:
   sql:
     runs-on: ubuntu-latest
@@ -14,6 +14,24 @@ jobs:
         with: {node-version: '22'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node tool/verify_trade_document_attachment.mjs ./security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_trade_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/verify_trade_document_attachment.mjs ./trade_document_pg_adapter.mjs
   pdf:
     runs-on: ubuntu-latest
     steps:
@@ -32,12 +50,14 @@ jobs:
           from pathlib import Path
           for path in Path('build/payment-order-proof').glob('*.pdf'):
               with fitz.open(path) as doc:
-                  assert len(doc)==(1 if path.stem=='payment-legacy' else 2), (path,len(doc))
-                  assert '支払証明書' in doc[0].get_text(),path
-                  if len(doc)==2:
+                  assert len(doc)==(1 if path.stem=='payment-legacy' else 3 if path.stem=='payment-expenses' else 2), (path,len(doc))
+                  assert '支払証明書' in ''.join(doc[0].get_text().split()),path
+                  if len(doc)>=2:
                       text=''.join(doc[1].get_text().split())
                       for expected in ['注文書','2026-10','110,000','10,000','甲・発注者','乙・受注者']:
                           assert expected in text,(path,expected,text)
+                  if len(doc)==3:
+                      assert '経費' in ''.join(doc[2].get_text().split()),path
                   for index,page in enumerate(doc):
                       for block in page.get_text('dict')['blocks']:
                           if block['type']==0:
@@ -48,4 +68,5 @@ jobs:
                       page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(path.with_name(f'{path.stem}-{index+1}.png'))
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with: {name: monthly-payment-order-proof, path: build/payment-order-proof/}

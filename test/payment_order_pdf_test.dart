@@ -1,3 +1,6 @@
+import 'package:sk_works/features/expenses/expense_claim.dart';
+import 'package:sk_works/features/expenses/expense_detail_pdf.dart';
+import 'package:sk_works/features/expenses/expense_document_repository.dart';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/company_seal_pdf.dart';
@@ -23,9 +26,13 @@ void main(){
   final record=PaymentCertificateRecord(id:'fixture',partnerCompanyName:'株式会社下請',payerCompanyName:'株式会社発注',
    periodStart:DateTime(2026,10,1),periodEnd:DateTime(2026,10,31),grossAmount:110000,deductions:0,netAmount:110000,status:'draft',revision:1,payerCompanySealEnabled:false);
   final output=Platform.environment['SKO_PDF_OUTPUT_DIR'];
-  for(final variant in ['legacy','order','long']){
+  final expenses=ExpenseDocumentDetails(kind:ExpenseDocument.paymentCertificate,documentId:'fixture',subjectId:'partner',month:DateTime(2026,10),
+    claims:ExpenseClaims(companyId:'company',claims:[ExpenseClaim(id:'expense',companyId:'company',applicantId:'worker',applicantName:'検証者',
+      incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,1),description:'経費の実頁順検証',amountYen:500,
+      approval:ExpenseApproval.approved,allocation:ExpenseAllocation(ExpenseCategory.subcontractor,counterpartyId:'partner',counterpartyName:'株式会社下請'))]));
+  for(final variant in ['legacy','order','long','expenses']){
    final bytes=await PaymentCertificatePdfService.buildPdf(record,regularFont:font,boldFont:font,
-     orderAttachment:variant=='legacy'?null:order(long:variant=='long'));
+     orderAttachment:variant=='legacy'?null:order(long:variant=='long'),expenseDetails:variant=='expenses'?expenses:null);
    expect(bytes.length,greaterThan(1000));
    if(output!=null){Directory(output).createSync(recursive:true);File('$output/payment-$variant.pdf').writeAsBytesSync(bytes);}
   }

@@ -22,7 +22,7 @@ const call=async(kind,id,rev)=>(await db.query('select public.trade_document_att
 let w=await call('payment_certificate',pc,'1');assert.equal(w.attachment,null);assert.equal(w.defaults.tax_amount_yen,null);
 const payload={...w.defaults,issue_date:'2026-10-15',work_name:'当月工事',work_address:'東京都',tax_amount_yen:10000,intro_text:'工事を発注します。',payment_conditions:'完了確認後、翌月末までに振込',notes:'',issuer:{...w.defaults.issuer,representative_name:'甲代表'},counterparty:{...w.defaults.counterparty,corporate_number:'9876543210987'}};
 const save=(data=payload,version=0,id=pc,rev='1',kind='payment_certificate')=>db.query('select public.save_trade_document_attachment($1,$2,$3,$4,$5) result',[kind,id,rev,version,data]);
-for(const data of [{...payload,tax_amount_yen:null},{...payload,tax_amount_yen:110001},{...payload,month:'2026-09'},{...payload,kind:'acceptance'},{...payload,total_amount_yen:1},{...payload,issue_date:null}])await assert.rejects(save(data));
+for(const data of [{...payload,tax_amount_yen:null},{...payload,tax_amount_yen:'10000'},{...payload,period_start:'2026-09-30'},{...payload,tax_amount_yen:110001},{...payload,month:'2026-09'},{...payload,kind:'acceptance'},{...payload,total_amount_yen:1},{...payload,issue_date:null}])await assert.rejects(save(data));
 for(const actor of [m,v,o]){await db.exec(`set test.uid='${actor}'`);await assert.rejects(save());}
 await db.exec(`set test.uid='${a}'`);const first=(await save()).rows[0].result;assert.equal(first.version,1);
 assert.deepEqual((await call('payment_certificate',pc,'1')).attachment,first);assert.equal((await call('payment_certificate',pc2,'1')).attachment,null);
@@ -32,10 +32,13 @@ assert.deepEqual((await call('payment_certificate',pc,'1')).attachment,first);
 await db.query('select public.trade_document_template($1,$2,$3,$4)',['payment_certificate',c,0,{notes:'新しい月の条件'}]);
 assert.deepEqual((await call('payment_certificate',pc,'1')).attachment,first);assert.equal((await call('payment_certificate',pc2,'1')).template.notes,'新しい月の条件');
 await db.exec(`reset role;update payment_certificates set status='finalized' where id='${pc}';set role authenticated;`);await assert.rejects(save({...payload,notes:'変更'},1),/確定/);
-await db.exec(`reset role;update payment_certificates set revision=2 where id='${pc}';set role authenticated;`);await assert.rejects(call('payment_certificate',pc,'1'),/更新/);await assert.rejects(call('payment_certificate',pc,'2'),/再確認/);
+await db.exec(`reset role;update payment_certificates set revision=2,gross_amount=220000 where id='${pc}';set role authenticated;`);await assert.rejects(call('payment_certificate',pc,'1'),/更新/);await assert.rejects(call('payment_certificate',pc,'2'),/再確認/);
 w=await call('invoice',inv,'2026-10-14T12:00:00.000Z');assert.equal(w.defaults.tax_amount_yen,10000);
 const acceptance={...w.defaults,order_date:'2026-10-15',issue_date:'2026-10-16',acceptance_text:'条件通り承諾します。',notes:'',issuer:{...w.defaults.issuer,representative_name:'乙代表'},counterparty:{...w.defaults.counterparty,corporate_number:'9876543210987',representative_name:'甲代表'}};
 assert.equal((await save(acceptance,0,inv,'2026-10-14T12:00:00Z','invoice')).rows[0].result.payload.kind,'acceptance');
+await db.exec(`reset role;update invoices set updated_at='2026-10-14T13:00:00Z',status='finalized' where id='${inv}';set role authenticated;`);
+assert.equal((await call('invoice',inv,'2026-10-14T13:00:00Z')).attachment.payload.kind,'acceptance');
+await assert.rejects(save(acceptance,1,inv,'2026-10-14T13:00:00Z','invoice'),/確定/);
 await db.exec(`set test.blocked='true'`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/ログイン/);
 await db.exec(`set test.blocked='false';set test.uid=''`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'));
 await db.exec('reset role;set role anon');await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/permission denied/);

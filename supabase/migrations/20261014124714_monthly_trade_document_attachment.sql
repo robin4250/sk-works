@@ -3,7 +3,7 @@ begin;
 create table private.trade_document_attachments (
  subject_kind text not null check(subject_kind in ('payment_certificate','invoice')),
  subject_id uuid not null,company_id uuid not null references public.companies(id),
- source_revision text not null,month date not null check(extract(day from month)=1),
+ source_revision text not null,source_fingerprint text not null,month date not null check(extract(day from month)=1),
  version integer not null check(version>0),payload jsonb not null,
  created_by uuid not null,created_at timestamptz not null default now(),
  updated_by uuid not null,updated_at timestamptz not null default now(),
@@ -86,7 +86,8 @@ begin
   from public.customers where id=counter_id and company_id=cid;
  end if;
  if counter is null then raise exception '相手先の会社を確認できません。' using errcode='22023'; end if;
- result:=jsonb_build_object('company_id',cid,'source_revision',rev,'month',to_char(start_day,'YYYY-MM'),
+ result:=jsonb_build_object('company_id',cid,'source_revision',rev,
+  'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',source_snapshot)::text),'month',to_char(start_day,'YYYY-MM'),
   'can_manage',role_name in ('owner','admin'),'source_locked',st<>'draft' or final_at is not null,
   'defaults',jsonb_build_object('version',1,'kind',case when p_kind='invoice' then 'acceptance' else 'order' end,
    'month',to_char(start_day,'YYYY-MM'),'period_start',date_trunc('month',start_day)::date,
@@ -107,7 +108,7 @@ begin
  source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject;
  if saved.subject_id is not null and (saved.company_id<>(source->>'company_id')::uuid or
-  saved.source_revision<>source->>'source_revision' or to_char(saved.month,'YYYY-MM')<>source->>'month') then
+  saved.source_fingerprint<>source->>'source_fingerprint' or to_char(saved.month,'YYYY-MM')<>source->>'month') then
   raise exception '元帳票変更後の別添は再確認が必要です。' using errcode='40001'; end if;
  return source||jsonb_build_object('template',coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb),'attachment',case when saved.subject_id is null then null else
   jsonb_build_object('version',saved.version,'payload',saved.payload) end);
@@ -132,7 +133,7 @@ begin
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject for update;
  if p_expected_version is null or p_expected_version<>coalesce(saved.version,0) then
   raise exception '別添書類が更新されています。開き直してください。' using errcode='40001'; end if;
- if saved.subject_id is not null and (source->>'source_locked'='true' or saved.source_revision<>source->>'source_revision') then
+ if saved.subject_id is not null and (source->>'source_locked'='true' or saved.source_fingerprint<>source->>'source_fingerprint') then
   raise exception '確定済み又は元帳票変更後の別添は変更できません。' using errcode='55000'; end if;
  if jsonb_typeof(p_payload) is distinct from 'object' or octet_length(p_payload::text)>16384 then
   raise exception '入力内容が長すぎます。' using errcode='22023'; end if;
@@ -140,13 +141,13 @@ begin
  or p_payload->>'month' is distinct from source->>'month' then
   raise exception '書類の種類・対象月が一致しません。' using errcode='22023'; end if;
  foreach party in array array['issuer','counterparty'] loop
-  foreach field in array array['name','address','corporate_number','representative_name'] loop
+  foreach field in array (case when p_kind='invoice' and party='counterparty' then array['name'] else array['name','address','corporate_number','representative_name'] end) loop
    max_len:=case field when 'name' then 120 when 'address' then 240 when 'corporate_number' then 13 else 80 end;
    if jsonb_typeof(p_payload->party->field) is distinct from 'string' or
     length(btrim(p_payload->party->>field))=0 or length(p_payload->party->>field)>max_len then
     raise exception '会社情報の未入力・文字数を確認してください。' using errcode='22023'; end if;
   end loop;
-  if p_payload->party->>'corporate_number' !~ '^[0-9]{13}$' then
+  if not(p_kind='invoice' and party='counterparty') and p_payload->party->>'corporate_number' !~ '^[0-9]{13}$' then
    raise exception '法人番号は13桁で入力してください。' using errcode='22023'; end if;
  end loop;
  -- Seal ownership and style are server-owned. The registered issuer cannot be renamed here.
@@ -160,6 +161,8 @@ begin
    raise exception '文面は400文字以内にしてください。' using errcode='22023'; end if;
  end loop;
  if p_kind='invoice' then
+  if jsonb_typeof(p_payload->'acceptance_text') is distinct from 'string' or length(btrim(p_payload->>'acceptance_text'))=0 then
+   raise exception '承諾文を確認してください。' using errcode='22023'; end if;
   if p_payload->>'order_date' !~ '^\d{4}-\d{2}-\d{2}$' or p_payload->>'order_date' is null then
    raise exception '受領注文書日を入力してください。' using errcode='22023'; end if;
   ordered:=(p_payload->>'order_date')::date;
@@ -170,11 +173,16 @@ begin
     or length(p_payload->>field)>(case when field='payment_conditions' then 400 else 240 end) then
     raise exception '工事・工期・支払条件を確認してください。' using errcode='22023'; end if;
   end loop;
-  if (p_payload->>'period_start')::date>(p_payload->>'period_end')::date then
+  if p_payload->>'period_start' !~ '^\d{4}-\d{2}-\d{2}$' or p_payload->>'period_end' !~ '^\d{4}-\d{2}-\d{2}$' or
+   to_char((p_payload->>'period_start')::date,'YYYY-MM')<>source->>'month' or
+   to_char((p_payload->>'period_end')::date,'YYYY-MM')<>source->>'month' or
+   (p_payload->>'period_start')::date>(p_payload->>'period_end')::date then
    raise exception '工期の開始・終了を確認してください。' using errcode='22023'; end if;
+  if jsonb_typeof(p_payload->'total_amount_yen') is distinct from 'number' or jsonb_typeof(p_payload->'tax_amount_yen') is distinct from 'number' then
+   raise exception '請負代金・消費税額を数字で入力してください。' using errcode='22023'; end if;
   total:=(p_payload->>'total_amount_yen')::numeric; tax:=(p_payload->>'tax_amount_yen')::numeric;
   if total is null or tax is null or total<0 or tax<0 or tax>total or total<>trunc(total) or tax<>trunc(tax)
-   or total>2147483647 or total is distinct from (source->'defaults'->>'total_amount_yen')::numeric then
+   or total>2147483647 or (source->'defaults'->>'tax_amount_yen' is not null and tax is distinct from (source->'defaults'->>'tax_amount_yen')::numeric) or total is distinct from (source->'defaults'->>'total_amount_yen')::numeric then
    raise exception '当月の請負代金と消費税額を確認してください。' using errcode='22023'; end if;
  end if;
  if jsonb_typeof(p_payload->'notes') is distinct from 'string' or length(p_payload->>'notes')>600 then
@@ -182,8 +190,8 @@ begin
  value:=(p_payload-'company_seal_snapshot'-'company_seal_enabled')||jsonb_build_object(
   'company_seal_snapshot',source->'defaults'->'company_seal_snapshot',
   'company_seal_enabled',source->'defaults'->'company_seal_enabled');
- insert into private.trade_document_attachments(subject_kind,subject_id,company_id,source_revision,month,version,payload,created_by,updated_by)
- values(p_kind,p_subject,(source->>'company_id')::uuid,source->>'source_revision',((source->>'month')||'-01')::date,
+ insert into private.trade_document_attachments(subject_kind,subject_id,company_id,source_revision,source_fingerprint,month,version,payload,created_by,updated_by)
+ values(p_kind,p_subject,(source->>'company_id')::uuid,source->>'source_revision',source->>'source_fingerprint',((source->>'month')||'-01')::date,
   coalesce(saved.version,0)+1,value,auth.uid(),auth.uid())
  on conflict(subject_kind,subject_id) do update set payload=excluded.payload,version=excluded.version,updated_by=excluded.updated_by,updated_at=now()
  returning * into saved;

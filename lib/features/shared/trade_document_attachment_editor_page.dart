@@ -26,9 +26,11 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
     !(_version>0&&_workspace?['source_locked']==true);
   bool get _order=>widget.subjectKind=='payment_certificate';
   @override void initState(){super.initState();
-    if(SupabaseBackend.isInitialized) _subscription=SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+    if(SupabaseBackend.isInitialized) {
+      _subscription=SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
       if(!_sameActor&&!_revoked&&mounted) setState(() {_revoked=true;_payload={};_error='ログイン情報が変わりました。開き直してください。';});
     },onError:(_){if(mounted)setState(()=>_revoked=true);});
+    }
     _load();
   }
   Future<void> _load() async {
@@ -108,9 +110,9 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       for(final party in ['issuer','counterparty'])...[
         const SizedBox(height:16),Text(party=='issuer'?(_order?'甲・発注者（自社）':'乙・受注者（自社）'):(_order?'乙・受注者（下請け会社）':'甲・発注者（請求先）'),style:Theme.of(context).textTheme.titleMedium),
         _input('$party.name','社名',max:120,readOnly:party=='issuer'),
-        _input('$party.address','住所',max:240,lines:2),
+        if(_order||party=='issuer')...[_input('$party.address','住所',max:240,lines:2),
         _input('$party.corporate_number','法人番号（13桁）',max:13),
-        _input('$party.representative_name','代表者名',max:80),
+        _input('$party.representative_name','代表者名',max:80)],
       ],
       const Text('角印は会社で設定済みの印影・表示設定を保存します。'),
       if(_error!=null)Text(_error!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
