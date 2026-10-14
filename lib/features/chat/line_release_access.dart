@@ -196,7 +196,7 @@ class LineReleaseOverlay extends StatelessWidget {
       if (!access.available) {
         final route = ModalRoute.of(context);
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (route?.isActive == true) route!.navigator?.removeRoute(route);
+          if (route != null && route.isActive) route.navigator?.removeRoute(route);
         });
         return const SizedBox.shrink();
       }
