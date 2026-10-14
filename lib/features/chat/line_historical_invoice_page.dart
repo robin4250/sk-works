@@ -5,6 +5,8 @@ import 'line_historical_invoice_model.dart';
 import 'line_historical_invoice_repository.dart';
 import 'line_historical_invoice_bridge_page.dart';
 import 'line_import_page.dart';
+import 'line_historical_monthly_import.dart';
+import 'line_historical_monthly_import_page.dart';
 import '../../international/language_controller.dart';
 
 class LineHistoricalInvoicePage extends StatefulWidget {
@@ -21,6 +23,7 @@ class LineHistoricalInvoicePage extends StatefulWidget {
 class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
   final _repository = LineHistoricalInvoiceRepository.maybeCreate();
   final _rates = <String, TextEditingController>{};
+  final _siteNames = <String, TextEditingController>{};
   List<Map<String, dynamic>> _groups = [];
   List<LineHistoricalGroup> _summary = [];
   Map<String, dynamic> _data = {};
@@ -36,7 +39,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
     _initialize();
   }
   @override
-  void dispose() { for (final c in _rates.values) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [..._rates.values, ..._siteNames.values]) { c.dispose(); } super.dispose(); }
   Future<void> _initialize() async {
     if (_repository == null) { setState(() { _busy = false; _error = 'Masterでログインしてください。'; }); return; }
     try {
@@ -59,8 +62,28 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
       final rows = [for (final row in data['rows'] as List) Map<String, dynamic>.from(row as Map)];
       final summary = historicalGroups(rows);
       if (!mounted) return;
-      for (final c in _rates.values) { c.dispose(); }
-      _rates.clear();
+      for (final c in [..._rates.values, ..._siteNames.values]) { c.dispose(); }
+      _rates.clear(); _siteNames.clear();
+      final saved = data['saved'] as List? ?? [];
+      final snapshot = saved.isEmpty ? <String, dynamic>{}
+          : Map<String, dynamic>.from(saved.first['snapshot'] as Map);
+      final lines = snapshot['lines'] as List? ?? [];
+      for (final group in summary) {
+        _siteNames.putIfAbsent(group.siteId, () => TextEditingController(
+          text: lineHistoricalFormalSiteName(snapshot, group.siteId) ?? group.siteName));
+        final matching = lines.where((line) => line['site_id'] == group.siteId &&
+          line['work_category'] == group.category).toList();
+        if (matching.length != 1 || matching.single['rates'] is! Map) continue;
+        final rates = matching.single['rates'] as Map;
+        for (final unit in ['day', 'overtime', 'early', ...group.allowances.keys.map((name) => 'allowance:' + name)]) {
+          final value = unit.startsWith('allowance:')
+              ? (rates['allowances'] as Map?)?[unit.substring(10)] : rates[unit];
+          if (value is num && value.isFinite && value == value.truncateToDouble() &&
+              historicalUnitRate(value.toInt().toString()) != null) {
+            _rates[_key(group, unit)] = TextEditingController(text: value.toInt().toString());
+          }
+        }
+      }
       setState(() { _data = data; _summary = summary; _pending = null; _edited = false; });
     } catch (_) { if (mounted) setState(() => _error = '確認済み過去月データを取得できませんでした。権限・接続・元データを確認してください。'); }
     finally { if (mounted) setState(() => _busy = false); }
@@ -82,11 +105,13 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
   Future<void> _save() async {
     if (!widget.editingRates) return;
     if (_pending == null) {
-      if (_summary.isEmpty || _summary.any((g) => _subtotal(g) == null)) {
-        setState(() => _error = '実数量のある項目の単価を入力してください。空欄を0円として保存しません。'); return;
+      if (_summary.isEmpty || _summary.any((g) => _subtotal(g) == null ||
+          _siteNames[g.siteId]!.text.trim().isEmpty || _siteNames[g.siteId]!.text.trim().length > 200)) {
+        setState(() => _error = '現場の正式名称と実数量のある項目の単価を入力してください。空欄を0円として保存しません。'); return;
       }
       final rates = [for (final g in _summary) <String, dynamic>{
-        'site_id': g.siteId, 'work_category': g.category, 'day': _rate(g, 'day'),
+        'site_id': g.siteId, 'site_name': _siteNames[g.siteId]!.text.trim(),
+        'work_category': g.category, 'day': _rate(g, 'day'),
         'overtime': _rate(g, 'overtime'), 'early': _rate(g, 'early'),
         'allowances': {for (final name in g.allowances.keys) name: _rate(g, 'allowance:$name')},
       }];
@@ -131,6 +156,13 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
       LineImportPage(target: 'invoice', initialGroupId: _group, initialMonth: _month)));
     if (mounted) await _load();
   }
+  Future<void> _openMonthlyImport() async {
+    final group = _group;
+    if (group == null) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+      LineHistoricalMonthlyImportPage(groupId: group)));
+    if (mounted) await _load();
+  }
   Widget _field(LineHistoricalGroup g, String unit, String label, String formula) => Padding(
     padding: const EdgeInsets.only(top: 8), child: TextField(controller: _controller(g, unit),
       enabled: !_busy && _pending == null, keyboardType: TextInputType.number,
@@ -142,12 +174,17 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
     final days = _summary.fold<double>(0, (n, g) => n + g.manDays);
     final saved = _data['saved'] as List? ?? [];
     return Scaffold(appBar: AppBar(title: Text(_tr(widget.editingRates ? 'LINE単価設定' : 'LINE月別請求書')), actions: [
-      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
+      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('2024年1月〜2026年9月の33ヶ月は書き出しファイルから月別候補へ再取込できます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(_tr(widget.editingRates
           ? '確認済みの過去月候補へ単価を入力し、履歴小計として保存します。空欄は0円にしません。現在の現場単価・給与は変更しません。'
           : '対象月の確認済み候補と保存した履歴小計を確認します。単価は「単価設定」で入力します。正式下書きは保存履歴から開きます。')),
+        if (!widget.editingRates) Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: OutlinedButton.icon(onPressed: _busy || _group == null ? null : _openMonthlyImport,
+            icon: const Icon(Icons.table_view_outlined),
+            label: const Text('33ヶ月の月別表・ファイルを入れ直し'))),
         if (!widget.editingRates) Padding(
           padding: const EdgeInsets.only(top: 12),
           child: OutlinedButton.icon(onPressed: _busy ? null : _openImport,
@@ -169,10 +206,16 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
         if (_data.isNotEmpty) Text('実人数 $people人 ／ 延べ ${days.toStringAsFixed(1)}人工', style: Theme.of(context).textTheme.titleMedium),
         if (!_busy && _error == null && _data.isNotEmpty && _summary.isEmpty) Text(_tr('確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。')),
         if (!_busy && _error == null && _groups.isEmpty) Text(_tr('表示できるLINEグループがありません。連携状態を確認してください。')),
+        if (widget.editingRates) for (final entry in _siteNames.entries)
+          Card(child: Padding(padding: const EdgeInsets.all(12),
+            child: TextField(controller: entry.value,
+              enabled: !_busy && _pending == null, maxLength: 200,
+              decoration: const InputDecoration(labelText: '現場の正式名称（請求書へ表示）'),
+              onChanged: (_) => setState(() => _edited = true)))),
         for (final g in _summary) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${g.siteName} ／ ${g.category}', style: Theme.of(context).textTheme.titleMedium),
+          Text('${_siteNames[g.siteId]?.text ?? g.siteName} ／ ${g.category}', style: Theme.of(context).textTheme.titleMedium),
           Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工'),
-          if (widget.editingRates) _field(g, 'day', '人工単価（円／人工）', '${g.manDays}人工 × 単価'),
+          if (widget.editingRates) _field(g, 'day', '1日単価（円／人工）', '${g.manDays}人工 × 単価'),
           if (widget.editingRates && g.overtime > 0) _field(g, 'overtime', '残業単価（円／時間）', '${g.overtime}時間 × 単価'),
           if (widget.editingRates && g.early > 0) _field(g, 'early', '早出単価（円／時間）', '${g.early}時間 × 単価'),
           if (widget.editingRates) for (final a in g.allowances.entries) _field(g, 'allowance:${a.key}', '${a.key}（円／回）', '${a.value}回 × 単価'),
