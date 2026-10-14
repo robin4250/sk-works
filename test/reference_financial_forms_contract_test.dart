@@ -46,7 +46,8 @@ void main() {
     expect(pdf, contains('工事代金支払明細書'));
     expect(pdf, contains('作　業　所　名'));
     expect(pdf, contains('工　事　内　容'));
-    expect(pdf, contains('差　引　残　高'));
+    expect(pdf, contains('小計'));
+    expect(pdf, contains('福利厚生費'));
     expect(migration, contains('security definer'));
     expect(migration, contains('revoke all on function'));
     expect(migration, contains('to authenticated'));

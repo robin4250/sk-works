@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/invoice_engine.dart';
+import '../shared/document_display_totals.dart';
 
 class InvoicePage extends StatefulWidget {
   const InvoicePage({super.key});
@@ -138,7 +139,7 @@ class _InvoicePageState extends State<InvoicePage> {
               for (final site in invoice.siteCalculations) ...[
                 Text(site.siteName, style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                for (final line in site.lines)
+                for (final line in site.lines.where((line) => !isInvoiceChargeLine(line)))
                   Row(
                     children: [
                       Expanded(child: Text(line.label)),
@@ -154,25 +155,20 @@ class _InvoicePageState extends State<InvoicePage> {
                       Text(_yen(site.manualAdjustmentYen)),
                     ],
                   ),
-                if (site.welfareAmountYen != 0)
-                  Row(
-                    children: [
-                      const Expanded(child: Text('法定福利費相当')),
-                      Text(_yen(site.welfareAmountYen)),
-                    ],
-                  ),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: Text('現場小計 ${_yen(site.subtotalYen)}'),
+                  child: Text('現場小計 ${_yen(site.subtotalYen - site.welfareAmountYen)}'),
                 ),
                 const Divider(height: 24),
               ],
               Row(
                 children: [
                   const Expanded(child: Text('小計')),
-                  Text(_yen(invoice.subtotalYen)),
+                  Text(_yen(DocumentDisplayTotals.invoice(invoice).workSubtotal)),
                 ],
               ),
+              Row(children: [const Expanded(child: Text('福利厚生費')),
+                Text(_yen(DocumentDisplayTotals.invoice(invoice).welfare))]),
               Row(
                 children: [
                   const Expanded(child: Text('消費税')),

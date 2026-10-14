@@ -45,7 +45,8 @@ void main() {
       expect(source, contains("'数　量'"));
       expect(source, contains("'単　価'"));
       expect(source, contains("'支払金額'"));
-      expect(source, contains("'差　引　残　高'"));
+      expect(source, contains("'小計'"));
+      expect(source, contains("'福利厚生費'"));
     },
   );
 }
