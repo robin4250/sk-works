@@ -90,6 +90,13 @@ class LineHistoryParser {
         continue;
       }
 
+      // A timestamped LINE system event is not part of the preceding body.
+      if (RegExp(r'^\d{1,2}:\d{2}\t').hasMatch(line)) {
+        flushPending();
+        ignoredLineCount += 1;
+        continue;
+      }
+
       if (pendingTimestamp != null) {
         pendingBody
           ..write('\n')
@@ -108,4 +115,13 @@ class LineHistoryParser {
       ignoredLineCount: ignoredLineCount,
     );
   }
+}
+
+/// Decode LINE export quoting for extraction only; retain the original body.
+String lineBodyForReading(String body) {
+  final text = body.trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return text.substring(1, text.length - 1).replaceAll('""', '"');
+  }
+  return body;
 }

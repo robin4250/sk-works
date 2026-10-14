@@ -21,6 +21,31 @@ class LineImportDraft {
     final result = <Map<String, dynamic>>[];
     final unreadable = <String>[];
     final previousById = {for (final row in previous) row['row_id']: row};
+    final ordered = sources.asMap().entries.toList()..sort((a, b) {
+      final at = DateTime.tryParse(a.value['sent_at']?.toString() ?? '');
+      final bt = DateTime.tryParse(b.value['sent_at']?.toString() ?? '');
+      final order = at == null || bt == null ? 0 : at.compareTo(bt);
+      return order == 0 ? a.key.compareTo(b.key) : order;
+    });
+    final completionBySource = <String, Map<String, dynamic>>{};
+    for (var i = 0; i < ordered.length; i++) {
+      final source = ordered[i].value;
+      final body = source['body'];
+      if (body is! String || !_hasWorkDate(body)) continue;
+      final sender = source['sender_display_name'];
+      if (sender is! String || sender.trim().isEmpty) continue;
+      final matches = <Map<String, dynamic>>[];
+      for (var next = i + 1; next < ordered.length; next++) {
+        final candidate = ordered[next].value;
+        if (candidate['sender_display_name'] != sender) continue;
+        final report = candidate['body'];
+        if (report is! String) continue;
+        if (_hasWorkDate(report) || lineBodyForReading(report).trim().startsWith('訂正')) break;
+        if (const LineAttendanceStatusParser().parse(report).isNotEmpty) matches.add(candidate);
+      }
+      // Multiple reports cannot be safely chosen without manual review.
+      if (matches.length == 1) completionBySource[source['id'].toString()] = matches.single;
+    }
     for (final source in sources) {
       final id = source['id']?.toString() ?? '';
       final timestamp = DateTime.tryParse(source['sent_at']?.toString() ?? '');
@@ -28,7 +53,7 @@ class LineImportDraft {
         unreadable.add(id);
         continue;
       }
-      final body = source['body'] as String;
+      final body = lineBodyForReading(source['body'] as String);
       // DateTime rolls impossible dates forward. Never silently import that rollover.
       var first = body.trim().split('\n').first;
       const fullDigits = '０１２３４５６７８９';
@@ -49,7 +74,11 @@ class LineImportDraft {
       final candidates = const LineAttendanceCandidateParser().parseMessages([
         LineHistoryMessage(timestamp: timestamp.toLocal(), sender: source['sender_display_name']?.toString() ?? 'LINE', body: body),
       ]);
-      final statuses = const LineAttendanceStatusParser().parse(body);
+      final ownStatuses = const LineAttendanceStatusParser().parse(body);
+      final completion = ownStatuses.isEmpty ? completionBySource[id] : null;
+      final completionFingerprint = completion == null ? null : lineSourceFingerprint(completion);
+      final statuses = ownStatuses.isNotEmpty ? ownStatuses : completion == null
+        ? const <LineAttendanceStatus>[] : const LineAttendanceStatusParser().parse(completion['body'] as String);
       if (candidates.isEmpty) {
         unreadable.add(id);
         continue;
@@ -60,7 +89,7 @@ class LineImportDraft {
         if (candidate.workDate.year != month.year || candidate.workDate.month != month.month) continue;
         final rowId = '$id:$index';
         final old = previousById[rowId];
-        if (old != null && old['source_fingerprint'] == fingerprint) {
+        if (old != null && old['source_fingerprint'] == fingerprint && old['completion_source_fingerprint'] == completionFingerprint) {
           result.add(Map<String, dynamic>.from(old));
           continue;
         }
@@ -68,6 +97,8 @@ class LineImportDraft {
         final status = matching.length == 1 ? matching.single : null;
         result.add({
           'row_id': rowId, 'source_message_id': id, 'source_fingerprint': fingerprint,
+          if (completion != null) 'completion_source_message_id': completion['id'],
+          if (completion != null) 'completion_source_fingerprint': completionFingerprint,
           'work_date': '${candidate.workDate.year.toString().padLeft(4, '0')}-${candidate.workDate.month.toString().padLeft(2, '0')}-${candidate.workDate.day.toString().padLeft(2, '0')}',
           'worker_name': candidate.workerName, 'site_name': candidate.siteName,
           'worker_id': null, 'site_id': null, 'customer_id': null,
@@ -83,6 +114,17 @@ class LineImportDraft {
         });
       }
     }
+    for (final old in previous.where((row) => row['row_id']?.toString().startsWith('manual:') == true)) {
+      final date = DateTime.tryParse(old['work_date']?.toString() ?? '');
+      if (date == null || date.year != month.year || date.month != month.month) continue;
+      final matches = sources.where((s) => s['id'] == old['source_message_id']).toList();
+      if (matches.length != 1) continue;
+      final fingerprint = lineSourceFingerprint(matches.single);
+      result.add({...old, if (fingerprint != old['source_fingerprint']) ...{
+        'source_fingerprint': fingerprint, 'confirmed': false,
+        'review_reason': '元の投稿が変わりました。手入力した内容を確認してください。',
+      }});
+    }
     result.sort((a, b) => '${a['work_date']}:${a['worker_name']}:${a['row_id']}'.compareTo('${b['work_date']}:${b['worker_name']}:${b['row_id']}'));
     final keys = <String, int>{};
     for (final row in result) {
@@ -97,6 +139,13 @@ class LineImportDraft {
       }
     }
     return LineImportDraft(List.unmodifiable(result), List.unmodifiable(unreadable));
+  }
+
+  static bool _hasWorkDate(String body) {
+    var first = lineBodyForReading(body).trim().split('\n').first;
+    const full = '０１２３４５６７８９';
+    for (var i = 0; i < full.length; i++) { first = first.replaceAll(full[i], '$i'); }
+    return RegExp(r'^(?:(\d{4})[/.年])?(\d{1,2})[/.月](\d{1,2})日?(?:[（(][^）)]*[）)])?').hasMatch(first);
   }
 
   static List<Map<String, dynamic>> aggregate(List<Map<String, dynamic>> rows, {required bool bySite}) {

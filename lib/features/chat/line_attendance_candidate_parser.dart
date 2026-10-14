@@ -31,7 +31,7 @@ class LineAttendanceCandidateParser {
     final candidates = <LineAttendanceCandidate>[];
 
     for (final message in messages) {
-      final lines = message.body
+      final lines = lineBodyForReading(message.body)
           .replaceAll('\r\n', '\n')
           .replaceAll('\r', '\n')
           .split('\n')

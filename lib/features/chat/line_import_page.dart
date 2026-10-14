@@ -188,9 +188,28 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     if (parsed.ignoredLineCount > 0) _show('解析できない行が${parsed.ignoredLineCount}行あります。元の履歴を確認してください。');
   }
 
+  Future<void> _assignSource(Map<String, dynamic> source) async {
+    final row = <String, dynamic>{
+      'row_id': 'manual:${DateTime.now().microsecondsSinceEpoch}',
+      'source_message_id': source['id'],
+      'source_fingerprint': lineSourceFingerprint(source),
+      'work_date': '${_month.year}-${_month.month.toString().padLeft(2, '0')}-01',
+      'man_days': null, 'overtime_hours': null, 'early_hours': null,
+      'work_category': 'day', 'allowance_names': <String>[],
+      'confirmed': false, 'review_reason': '元本文から手入力してください。',
+    };
+    setState(() => _rows = [..._rows, row]);
+    await _edit(_rows.length - 1);
+    if (!mounted) return;
+    if (_rows.any((r) => r['row_id'] == row['row_id'] && r['confirmed'] != true)) {
+      setState(() => _rows = _rows.where((r) => r['row_id'] != row['row_id']).toList());
+    }
+  }
+
   Future<void> _edit(int index) async {
     final row = Map<String, dynamic>.from(_rows[index]);
     final date = TextEditingController(text: row['work_date']?.toString() ?? '');
+    final formalName = TextEditingController(text: row['formal_site_name']?.toString() ?? '');
     final days = TextEditingController(text: row['man_days']?.toString() ?? '');
     final overtime = TextEditingController(text: row['overtime_hours']?.toString() ?? '0');
     final early = TextEditingController(text: row['early_hours']?.toString() ?? '0');
@@ -209,6 +228,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
         DropdownButtonFormField<String>(initialValue: _sites.any((item) => item['id'] == site) ? site : null,
           items: [for (final item in _sites) DropdownMenuItem(value: item['id'].toString(), child: Text(item['name'].toString()))],
           onChanged: (value) => site = value, decoration: const InputDecoration(labelText: '現場')),
+        TextField(controller: formalName, maxLength: 200, decoration: const InputDecoration(labelText: '正式現場名（請求書へ反映）')),
         TextField(controller: days, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: '人工（1 または 0.5）')),
         TextField(controller: overtime, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: '残業時間')),
         TextField(controller: early, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: '早出時間')),
@@ -232,11 +252,11 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           }
           if (steel && allowance.text.trim().isEmpty) { update(() => validation = 'PC・鉄骨手当の登録名を入力してください。'); return; }
           final w = _workers.singleWhere((item) => item['id'] == worker), s = _sites.singleWhere((item) => item['id'] == site);
-          Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'],
+          Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'], 'formal_site_name': formalName.text.trim(),
             'man_days': quantity, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
         }, child: const Text('確認済みにする'))],
     )));
-    date.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
+    date.dispose(); formalName.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
     if (edited != null && mounted) setState(() { _rows[index] = edited; _comparisonConfirmed = false; _dirty = true; });
   }
 
@@ -430,7 +450,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
             child: DataTable(showCheckboxColumn: false,
               columns: const [
                 DataColumn(label: Text('日付')), DataColumn(label: Text('作業員')),
-                DataColumn(label: Text('現場')), DataColumn(label: Text('人工')),
+                DataColumn(label: Text('現場（LINE表記）')), DataColumn(label: Text('正式現場名')), DataColumn(label: Text('人工')),
                 DataColumn(label: Text('残業時間')), DataColumn(label: Text('早出時間')),
                 DataColumn(label: Text('手当')),
               ],
@@ -440,12 +460,26 @@ class _LineImportPageState extends State<_LineImportPageContent> {
                   DataCell(Text(row['work_date']?.toString() ?? '')),
                   DataCell(Text(row['worker_name']?.toString() ?? '')),
                   DataCell(Text(row['site_name']?.toString() ?? '')),
+                  DataCell(Text(row['formal_site_name']?.toString() ?? '未入力')),
                   DataCell(Text(row['man_days']?.toString() ?? '要確認')),
                   DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
                   DataCell(Text(row['early_hours']?.toString() ?? '要確認')),
                   DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),
                 ],
               )])),
+        ],
+        if (_canEdit) ...[
+          const SizedBox(height: 16),
+          Text('要確認・未振り分け', style: Theme.of(context).textTheme.titleMedium),
+          const Text('元本文を確認して手入力できます。1つの投稿から複数行を追加する場合も、投稿を開いて振り分けます。'),
+          for (final source in _sources) ExpansionTile(
+            title: Text('${source['sent_at']} ／ ${source['sender_display_name'] ?? 'LINE'}'),
+            subtitle: Text(_rows.any((r) => r['source_message_id'] == source['id']) ? '候補あり・追加や訂正を確認' : '未振り分け・内容を確認'),
+            children: [
+              SelectableText(source['body']?.toString() ?? ''),
+              TextButton.icon(onPressed: editable ? () => _assignSource(source) : null,
+                icon: const Icon(Icons.add), label: const Text('この投稿から行を追加・振り分け')),
+            ]),
         ],
         const Divider(), Text('明細 ${shown.length}件', style: Theme.of(context).textTheme.titleMedium),
         for (var index = 0; index < _rows.length; index++) if (_workerFilter == null || _rows[index]['worker_id'] == _workerFilter) Card(child: ListTile(
