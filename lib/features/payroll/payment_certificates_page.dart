@@ -779,7 +779,13 @@ class _PartnerPaymentSettingsPageState
                                 : '未設定でも支払証明書は0円の下書きとして生成されます。設定後は自動で再計算されます。',
                           ),
                           const SizedBox(height: 14),
-                          _sectionTitle('計算式'),
+                          ExpansionTile(
+                            key: const PageStorageKey('payment-certificate-formulas'),
+                            title: Text(SkoLanguageController.tr('計算式'),
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                            maintainState: true,
+                            tilePadding: EdgeInsets.zero,
+                            children: [
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(12),
@@ -810,8 +816,16 @@ class _PartnerPaymentSettingsPageState
                               ),
                             ),
                           ),
+                            ],
+                          ),
                           const SizedBox(height: 14),
-                          _sectionTitle('自動計算単価 / 直接入力'),
+                          ExpansionTile(
+                            key: const PageStorageKey('payment-certificate-rates'),
+                            title: Text(SkoLanguageController.tr('自動計算単価 / 直接入力'),
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                            maintainState: true,
+                            tilePadding: EdgeInsets.zero,
+                            children: [
                           _rateField(
                             _overtime,
                             '残業 1時間単価',
@@ -859,6 +873,8 @@ class _PartnerPaymentSettingsPageState
                             '休日夜勤残業 1時間単価',
                             formula.holidayNightOvertime(daily),
                             formula.holidayNightOvertimeFormula(daily),
+                          ),
+                            ],
                           ),
                           const SizedBox(height: 14),
                           _sectionTitle('手当'),
