@@ -79,6 +79,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('残業 直接入力'), findsNothing);
       expect(find.textContaining('最終更新日：2026/10/12'), findsOneWidget);
+      expect(find.text('時間単位'), findsOneWidget);
+      expect(find.text('日にち単位'), findsOneWidget);
+      expect(find.text('月単位'), findsOneWidget);
       final earningName = find.widgetWithText(TextFormField, '支給1 名称');
       await tester.ensureVisible(earningName);
       await tester.enterText(earningName, '未保存支給');
@@ -86,6 +89,13 @@ void main() {
         find.widgetWithText(TextFormField, '支給1 金額'),
         '00321',
       );
+      await tester.ensureVisible(find.text('時間単位'));
+      await tester.tap(find.text('時間単位'));
+      await tester.pumpAndSettle();
+      expect(earningName, findsNothing);
+      await tester.tap(find.text('月単位'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextFormField>(earningName).controller!.text, '未保存支給');
       final tabs = find.byType(SegmentedButton<bool>);
       await tester.ensureVisible(tabs);
       await tester.tap(find.descendant(of: tabs, matching: find.text('控除')));

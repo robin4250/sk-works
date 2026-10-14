@@ -176,7 +176,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
     final days = _summary.fold<double>(0, (n, g) => n + g.manDays);
     final saved = _data['saved'] as List? ?? [];
     return Scaffold(appBar: AppBar(title: Text(_tr(widget.editingRates ? 'LINE単価設定' : 'LINE月別請求書')), actions: [
-      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('2024年1月〜2026年9月の33ヶ月は書き出しファイルから月別候補へ再取込できます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
+      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(_tr(widget.editingRates
@@ -186,7 +186,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
           padding: const EdgeInsets.only(top: 12),
           child: OutlinedButton.icon(onPressed: _busy || _group == null ? null : _openMonthlyImport,
             icon: const Icon(Icons.table_view_outlined),
-            label: const Text('33ヶ月の月別表・ファイルを入れ直し'))),
+            label: const Text('月別表・ファイル取込と受信データ'))),
         if (!widget.editingRates) Padding(
           padding: const EdgeInsets.only(top: 12),
           child: OutlinedButton.icon(onPressed: _busy ? null : _openImport,

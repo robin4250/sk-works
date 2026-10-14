@@ -15,6 +15,7 @@ import 'payroll_draft_keep_alive.dart';
 import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
 import 'payroll_unit_conditions_page.dart';
+import 'payroll_unit_item_editor.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
   const IndividualPayrollSettingsPage({super.key, this.repository});
@@ -64,6 +65,9 @@ class _IndividualPayrollSettingsPageState
   bool _loading = true;
   bool _saving = false;
   bool _showDeductions = false;
+  PayrollItemUnit _earningUnit = PayrollItemUnit.month;
+  PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
+  final _unitPanelKey = GlobalKey();
   final _scrollController = ScrollController();
   final _addedItemKey = GlobalKey();
   bool _paidLeaveWagesAvailable = false;
@@ -454,7 +458,8 @@ class _IndividualPayrollSettingsPageState
               ),
       ),
       bottomNavigationBar:
-          _loading || _error != null || workspace?.canView != true
+          _loading || _error != null || workspace?.canView != true ||
+              (_showDeductions ? _deductionUnit : _earningUnit) != PayrollItemUnit.month
           ? null
           : SafeArea(
               top: false,
@@ -552,19 +557,6 @@ class _IndividualPayrollSettingsPageState
                     },
                   ),
                   const SizedBox(height: 12),
-                  if (_workerId != null && _repository != null &&
-                      (workspace.companyId ?? _settingValues['company_id']) is String)
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.calculate_outlined),
-                      label: Text(SkoLanguageController.tr('単位別の支給・控除')),
-                      onPressed: _saving ? null : () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(builder: (_) => PayrollUnitConditionsPage(
-                          repository: _repository.unitConditions,
-                          companyId: (workspace.companyId ?? _settingValues['company_id']) as String,
-                          workerId: _workerId!,
-                        )),
-                      ),
-                    ),
                   PayrollDraftKeepAlive(
                     key: ValueKey('payroll-rate-${_workerId ?? ''}'),
                     child: RateFormulaEditorCard(
@@ -1032,6 +1024,32 @@ class _IndividualPayrollSettingsPageState
     );
   }
 
+  Widget _inlineUnitSettings(String title) {
+    final worker = _workerId;
+    final company = _workspace?.companyId ?? _settingValues['company_id'];
+    if (worker == null || company is! String || _repository == null) {
+      return const SizedBox.shrink();
+    }
+    try {
+      return PayrollUnitConditionsPage(
+        key: _unitPanelKey,
+        embedded: true,
+        repository: _repository.unitConditions,
+        companyId: company, workerId: worker,
+        section: title == '支給' ? PayrollItemSection.earning : PayrollItemSection.deduction,
+        unit: title == '支給' ? _earningUnit : _deductionUnit,
+        onValidationSelection: (section, unit) => setState(() {
+          _showDeductions = section == PayrollItemSection.deduction;
+          if (_showDeductions) { _deductionUnit = unit; }
+          else { _earningUnit = unit; }
+        }),
+      );
+    } catch (_) {
+      // An injected legacy-only repository keeps its existing monthly fields.
+      return const SizedBox.shrink();
+    }
+  }
+
   Widget _moneySection({
     required String title,
     required IconData icon,
@@ -1059,8 +1077,34 @@ class _IndividualPayrollSettingsPageState
             ),
           ],
         ),
-        const Divider(height: 24),
-        ...children,
+        const SizedBox(height: 10),
+        Row(children: [
+          for (final unit in PayrollItemUnit.values)
+            Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: (title == '支給' ? _earningUnit : _deductionUnit) == unit
+                    ? Colors.blue.shade700 : null,
+                  foregroundColor: (title == '支給' ? _earningUnit : _deductionUnit) == unit
+                    ? Colors.white : null),
+                onPressed: _saving ? null : () => setState(() {
+                  if (title == '支給') { _earningUnit = unit; }
+                  else { _deductionUnit = unit; }
+                }),
+                child: Text(SkoLanguageController.tr(switch (unit) {
+                  PayrollItemUnit.hour => '時間単位',
+                  PayrollItemUnit.day => '日にち単位',
+                  PayrollItemUnit.month => '月単位',
+                })),
+              ))),
+        ]),
+        const Divider(height: 20),
+        Offstage(
+          offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+        ),
+        if ((title == '控除') == _showDeductions) _inlineUnitSettings(title),
+
       ],
     ),
   );
