@@ -18,7 +18,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
   String? _error;
   bool _saving=false;
   int _version=0;
-  late final String? _actor=SupabaseBackend.isInitialized?SupabaseBackend.client.auth.currentUser?.id:null;
+  String? _actor;
   StreamSubscription<dynamic>? _subscription;
   bool get _sameActor=>_actor!=null&&SupabaseBackend.isInitialized&&SupabaseBackend.client.auth.currentUser?.id==_actor;
   bool _revoked=false;
@@ -26,6 +26,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
     !(_version>0&&_workspace?['source_locked']==true);
   bool get _order=>widget.subjectKind=='payment_certificate';
   @override void initState(){super.initState();
+    _actor=SupabaseBackend.isInitialized?SupabaseBackend.client.auth.currentUser?.id:null;
     if(SupabaseBackend.isInitialized) {
       _subscription=SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
       if(!_sameActor&&!_revoked&&mounted) setState(() {_revoked=true;_payload={};_error='ログイン情報が変わりました。開き直してください。';});

@@ -1301,7 +1301,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () { _actorLease.verify(); return Printing.layoutPdf(
+                              onPressed: () async { _actorLease.verify(); await Printing.layoutPdf(
                                 name: InvoicePdfService.fileNameFor(
                                   widget.invoices,
                                   title: widget.title,
@@ -1316,7 +1316,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () { _actorLease.verify(); return Printing.sharePdf(
+                              onPressed: () async { _actorLease.verify(); await Printing.sharePdf(
                                 bytes: pdfBytes,
                                 filename: InvoicePdfService.fileNameFor(
                                   widget.invoices,
