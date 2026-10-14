@@ -267,7 +267,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
           detailMode: InvoiceDetailMode.siteBreakdownOnInvoice, sites: [site], taxRateBps: 1000).taxYen),
     ) : null;
     return Scaffold(appBar: AppBar(title: Text(_tr(widget.editingRates ? 'LINE単価設定' : 'LINE月別請求書')), actions: [
-      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
+      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('取込済みの未確認数量でも指定初期単価の参考金額を表示し、既存SKO請求書の書式で確認できます。残業・早出だけの報告は1人工を仮置きと明示し、確認済みにはしません。現場別単価は確認済みの表から編集でき、保存済み帳票の金額は変更しません。過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(_tr(widget.editingRates
@@ -301,6 +301,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
           padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(candidateEstimate.sites.isEmpty ? '請求金額：数量の確認が必要です' : '現在の読取数量による参考請求額 ${candidateEstimate.total}円', style: Theme.of(context).textTheme.titleLarge),
             Text('未確認 ${candidateEstimate.pendingRows}行 ／ 計算対象外 ${candidateEstimate.incompleteRows}行。指定初期単価・福利15%・消費税10%。全件確定額ではありません。'),
+            Text('残業・早出報告から1人工を仮置き ${_candidateRows.where((row) => row['excluded'] != true && row['man_days_inferred'] == true).length}行。半日・訂正・未振り分けの原文も月別表で確認してください。'),
             const Text('数量・正式現場名は月別表で修正できます。現場別変更単価と登録経費は確認後の正式下書きプレビューへ反映します。'),
             OutlinedButton.icon(onPressed: _busy || candidateEstimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
               MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(invoices: [candidateEstimate.invoice(_month)], title: 'SKO請求書・参考／未確認'))),

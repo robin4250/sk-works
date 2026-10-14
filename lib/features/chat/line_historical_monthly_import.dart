@@ -9,12 +9,16 @@ List<DateTime> lineHistoricalMonths() => List.unmodifiable(
 List<Map<String, dynamic>> lineHistorySources(String text) {
   final parsed = const LineHistoryParser().parse(text.replaceFirst('\uFEFF', ''));
   final unique = <String, Map<String, dynamic>>{};
+  final occurrences = <String, int>{};
   for (final message in parsed.messages) {
     final source = <String, dynamic>{
       'body': message.body, 'sent_at': message.timestamp.toUtc().toIso8601String(),
       'sender_display_name': message.sender, 'source_type': 'history',
     };
-    final id = 'history:${lineSourceFingerprint(source)}';
+    final base = 'history:${lineSourceFingerprint(source)}';
+    final occurrence = (occurrences[base] ?? 0) + 1;
+    occurrences[base] = occurrence;
+    final id = occurrence == 1 ? base : '$base:$occurrence';
     source['id'] = id;
     unique[id] = source;
   }

@@ -255,7 +255,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           if (steel && allowance.text.trim().isEmpty) { update(() => validation = 'PC・鉄骨手当の登録名を入力してください。'); return; }
           final w = _workers.singleWhere((item) => item['id'] == worker), s = _sites.singleWhere((item) => item['id'] == site);
           Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'], 'formal_site_name': formalName.text.trim(),
-            'man_days': quantity, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
+            'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
         }, child: const Text('確認済みにする'))],
     )));
     date.dispose(); formalName.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
@@ -446,8 +446,9 @@ class _LineImportPageState extends State<_LineImportPageContent> {
         if (_canEdit && _enabled && widget.target == 'invoice' && _rows.isNotEmpty) Card(child: Padding(
           padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(estimate.sites.isEmpty ? '参考請求額：数量の確認が必要です' : '読取数量の参考請求額 ${estimate.total}円', style: Theme.of(context).textTheme.titleMedium),
-            const Text('指定初期単価での参考計算・月全体。日32800円／残業・早出5125円／PC・鉄骨各3000円／福利15%／税10%。現場別に変更・保存した単価と登録経費は、正式下書きの金額プレビューで反映します。'),
+            const Text('指定初期単価での参考計算・月全体。通常日32800円／通常残業・早出5125円／PC・鉄骨各3000円／福利15%／税10%。現場別に変更・保存した単価と登録経費は、正式下書きの金額プレビューで反映します。'),
             Text('未確認 ${estimate.pendingRows}行 ／ 数量・手当・重複などの要確認で計算対象外 ${estimate.incompleteRows}行。未振り分けの原文・訂正は別途照合してください。'),
+            Text('残業・早出報告から1人工を仮置きした行 ${_rows.where((row) => row['excluded'] != true && row['man_days_inferred'] == true).length}件：表で確認・修正してください。'),
             for (final site in estimate.sites) Text('${site.name}：${site.total}円（作業・手当 ${site.base}円＋福利 ${site.welfare}円＋税 ${site.tax}円）'),
             const Text('正式請求の確定額ではありません。表を修正すると再計算します。'),
             OutlinedButton.icon(onPressed: _busy || estimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
@@ -476,7 +477,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
                   DataCell(Text(row['worker_name']?.toString() ?? '')),
                   DataCell(Text(row['site_name']?.toString() ?? '')),
                   DataCell(Text(row['formal_site_name']?.toString() ?? '未入力')),
-                  DataCell(Text(row['man_days']?.toString() ?? '要確認')),
+                  DataCell(Text(row['man_days'] == null ? '要確認' : '${row['man_days']}${row['man_days_inferred'] == true ? '（仮）' : ''}')),
                   DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
                   DataCell(Text(row['early_hours']?.toString() ?? '要確認')),
                   DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),

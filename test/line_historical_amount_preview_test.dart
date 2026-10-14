@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_amount_preview.dart';
 import 'package:sk_works/features/chat/line_import_draft.dart';
+import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
 
 void main() {
   Map<String, dynamic> row({String site = 'A', double days = 1, double ot = 0}) => {
@@ -59,5 +60,28 @@ void main() {
     final preview = lineHistoricalAmountPreview([{...row(ot: 1), 'work_category': 'night'}]);
     expect(preview.sites.single.base, 56888);
     expect(preview.invoice(DateTime(2026, 9)).grandTotalYen, preview.total);
+  });
+  test('identical completion posts in one minute remain attached to different plans', () {
+    final sources = lineHistorySources('2026/09/28(月)\n06:24\t報告者\t"9月22日\n現場A 作業員A"\n06:24\t報告者\t現場A 定時\n06:24\t報告者\t"9月23日\n現場A 作業員A"\n06:24\t報告者\t現場A 定時');
+    expect(sources, hasLength(4));
+    final rows = lineMonthlyCandidates(sources, DateTime(2026, 9)).rows;
+    expect(rows, hasLength(2));
+    expect(rows.map((row) => row['man_days']), everyElement(1));
+    expect(rows.map((row) => row['completion_source_message_id']).toSet(), hasLength(2));
+  });
+  test('night suffix on a work date is retained in the monthly calculation', () {
+    final sources = lineHistorySources('2026/09/28(月)\n06:22\t報告者\t"9月21日（月）夜勤\n現場A 作業員A"\n06:22\t報告者\t現場A 定時〈夜勤〉');
+    final rows = lineMonthlyCandidates(sources, DateTime(2026, 9)).rows;
+    expect(rows.single['work_category'], 'night');
+    expect(lineHistoricalAmountPreview(rows).sites.single.base, 49200);
+  });
+  test('overtime completion gives an explicitly unconfirmed one-day assumption', () {
+    final rows = LineImportDraft.extract([
+      {'id': 'source', 'body': '9月1日\n現場A 作業員A\n現場A 残業2', 'sent_at': '2026-09-01T17:00:00+09:00', 'sender_display_name': '報告者'},
+    ], DateTime(2026, 9)).rows;
+    expect(rows.single['man_days'], 1);
+    expect(rows.single['man_days_inferred'], true);
+    expect(rows.single['confirmed'], false);
+    expect(lineHistoricalAmountPreview(rows).sites.single.base, 43050);
   });
 }

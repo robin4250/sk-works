@@ -60,7 +60,7 @@ class LineImportDraft {
       for (var digit = 0; digit < fullDigits.length; digit++) {
         first = first.replaceAll(fullDigits[digit], '$digit');
       }
-      final dateMatch = RegExp(r'^(?:(\d{4})[/.年])?(\d{1,2})[/.月](\d{1,2})日?(?:[（(][^）)]*[）)])?$').firstMatch(first);
+      final dateMatch = RegExp(r'^(?:(\d{4})[/.年])?(\d{1,2})[/.月](\d{1,2})日?(?:[（(][^）)]*[）)])?(?:[ 　]*夜勤)?$').firstMatch(first);
       if (dateMatch != null) {
         final year = int.parse(dateMatch.group(1) ?? '${timestamp.toLocal().year}');
         final m = int.parse(dateMatch.group(2)!);
@@ -95,6 +95,8 @@ class LineImportDraft {
         }
         final matching = statuses.where((status) => status.siteName == candidate.siteName).toList();
         final status = matching.length == 1 ? matching.single : null;
+        final inferredDay = status != null && !status.isRegularTime &&
+          (status.overtimeHours > 0 || status.earlyHours > 0);
         result.add({
           'row_id': rowId, 'source_message_id': id, 'source_fingerprint': fingerprint,
           if (completion != null) 'completion_source_message_id': completion['id'],
@@ -102,7 +104,8 @@ class LineImportDraft {
           'work_date': '${candidate.workDate.year.toString().padLeft(4, '0')}-${candidate.workDate.month.toString().padLeft(2, '0')}-${candidate.workDate.day.toString().padLeft(2, '0')}',
           'worker_name': candidate.workerName, 'site_name': candidate.siteName,
           'worker_id': null, 'site_id': null, 'customer_id': null,
-          'man_days': status?.isRegularTime == true ? 1.0 : null,
+          'man_days': status?.isRegularTime == true || inferredDay ? 1.0 : null,
+          'man_days_inferred': inferredDay,
           'overtime_hours': status?.overtimeHours ?? 0.0,
           'early_hours': status?.earlyHours ?? 0.0,
           'night_work': status?.isNightWork ?? false,
@@ -110,7 +113,9 @@ class LineImportDraft {
           'allowance_names': <String>[...?status?.allowanceNames],
           'steel_allowance': status?.hasSteelAllowance ?? false,
           'confirmed': false,
-          'review_reason': old != null ? '元の投稿が変わりました。修正内容を確認してください。' : '作業員・現場・数量を確認してください。',
+          'review_reason': old != null ? '元の投稿が変わりました。修正内容を確認してください。' : inferredDay
+            ? '残業・早出の報告から1人工を仮置きしています。半日・人数・数量を確認してください。'
+            : '作業員・現場・数量を確認してください。',
         });
       }
     }
