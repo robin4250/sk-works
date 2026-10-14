@@ -25,22 +25,30 @@ insert into private.line_joined_groups(line_group_id,joined) values('Csynthetic'
 insert into chat_messages(company_id,communication_group_id,sender_user_id,origin,body,sender_display_name) values('${company}','${group}','${u}','sk_works','old history','Stored sender');
 set test.actor='${u}';`);
 await db.exec(await readFile(new URL('../supabase/migrations/20261013204634_line_chat_outbound.sql',import.meta.url),'utf8'));
+// Persist a legacy queue entry before upgrading; never rewrite a retry payload.
+const legacy=(await db.query(`insert into chat_messages(company_id,communication_group_id,sender_user_id,origin,body,sender_display_name) values('${company}','${group}','${u}','sk_works','legacy queued text','本人') returning id`)).rows[0].id;
+const legacyBefore=(await db.query('select to_jsonb(o) v from private.line_chat_outbox o where message_id=$1',[legacy])).rows[0].v;
+assert.equal(legacyBefore.sender_name,'本人 from SKO');
+await db.exec(await readFile(new URL('../supabase/migrations/20261014050537_line_sender_native_attribution.sql',import.meta.url),'utf8'));
+assert.deepEqual((await db.query('select to_jsonb(o) v from private.line_chat_outbox o where message_id=$1',[legacy])).rows[0].v,legacyBefore);
+await db.query('delete from chat_messages where id=$1',[legacy]);
+
 assert.equal((await db.query('select count(*) n from private.line_chat_outbox')).rows[0].n,0);
 const q=(s,p=[])=>db.query(s,p);const role=async r=>db.exec(`set role ${r}`);const post=async(origin='sk_works',body='new text',target=group,sender=u)=>{await role('postgres');return (await q('insert into chat_messages(company_id,communication_group_id,sender_user_id,origin,body,sender_display_name) values($1,$2,$3,$4,$5,$6) returning id',[company,target,sender,origin,body,'😀'.repeat(12)])).rows[0].id;};
 const prep=async id=>{await role('authenticated');return (await q('select public.prepare_line_chat_dispatch($1) v',[id])).rows[0].v;};
 const claim=async ticket=>{await role('service_role');return (await q('select public.claim_line_chat_dispatch($1,$2) v',[ticket,u])).rows[0].v;};
 const finish=async(c,state)=>{await role('service_role');return (await q('select public.finish_line_chat_dispatch($1,$2,$3) v',[c.outbox_id,c.lease_id,state])).rows[0].v;};
-const id=await post();let p=await prep(id);const c=await claim(p.ticket);assert.equal(c.state,'claimed');assert.equal(c.body,'new text');assert.equal(c.sender_name,'😀'.repeat(5)+' from SKO');assert.ok(c.sender_name.length<=20);
+const id=await post();let p=await prep(id);const c=await claim(p.ticket);assert.equal(c.state,'claimed');assert.equal(c.body,'new text');assert.equal(c.sender_name,'😀'.repeat(10));assert.ok(c.sender_name.length<=20);
 await assert.rejects(claim(p.ticket));await role('service_role');await assert.rejects(q('select public.claim_line_chat_dispatch($1,$2)',[p.ticket,other]));assert.equal(await finish(c,'unknown'),true);
 p=await prep(id);assert.equal((await claim(p.ticket)).state,'busy');
 await role('postgres');await q("update private.line_chat_outbox set next_attempt_at=now()-interval '1 second' where message_id=$1",[id]);
 await role('authenticated');await q("select public.line_chat_sender_preferences($1,'nickname','New name')",[group]);
 p=await prep(id);const retry=await claim(p.ticket);assert.equal(retry.retry_key,c.retry_key);assert.equal(retry.sender_name,c.sender_name);assert.equal(retry.body,c.body);assert.equal(await finish(c,'accepted'),false);assert.equal(await finish(retry,'accepted'),true);assert.equal((await prep(id)).state,'accepted');
-let n=await post();await role('postgres');await q("set test.actor='"+other+"'");await assert.rejects(prep(n));await role('postgres');await q("set test.actor='"+u+"'");
+let n=await post();await role('postgres');assert.equal((await q('select sender_name from private.line_chat_outbox where message_id=$1',[n])).rows[0].sender_name,'New name');await q("set test.actor='"+other+"'");await assert.rejects(prep(n));await role('postgres');await q("set test.actor='"+u+"'");
 p=await prep(n);await role('postgres');await q("insert into private.account_deletion_access_restrictions values($1)",[u]);await assert.rejects(claim(p.ticket));await role('postgres');await q('delete from private.account_deletion_access_restrictions');
 p=await prep(n);await role('postgres');await q("update line_group_bindings set status='disabled'");await assert.rejects(claim(p.ticket));await role('postgres');await q("update line_group_bindings set status='active'");
 await role('postgres');const before=(await q('select count(*) n from private.line_chat_outbox')).rows[0].n;await post('line');await post('import');await post('sk_works','x',group,other);const longPost=await post('sk_works','😀'.repeat(2501));assert.equal((await prep(longPost)).state,'too_long');await role('postgres');assert.equal((await q('select count(*) n from private.line_chat_outbox')).rows[0].n,before);
-await role('authenticated');await q("select public.line_chat_sender_preferences($1,'company')",[group]);n=await post();p=await prep(n);const companyClaim=await claim(p.ticket);assert.equal(companyClaim.sender_name,'Registered from SKO');await finish(companyClaim,'rejected');assert.equal((await prep(n)).state,'rejected');
+await role('authenticated');await q("select public.line_chat_sender_preferences($1,'company')",[group]);n=await post();p=await prep(n);const companyClaim=await claim(p.ticket);assert.equal(companyClaim.sender_name,'Registered company');await finish(companyClaim,'rejected');assert.equal((await prep(n)).state,'rejected');
 await role('postgres');await q('insert into private.line_chat_source_links select $1,$2,id from private.line_joined_groups',[secondary,company]);n=await post('sk_works','secondary text',secondary);p=await prep(n);assert.equal((await claim(p.ticket)).to,'Csynthetic');
 await role('postgres');await q("insert into line_group_bindings(company_id,communication_group_id,line_group_id,status) values($1,null,'Csecond','active')",[company]);await q("insert into private.line_joined_groups(line_group_id,joined) values('Csecond',true)");await q("insert into private.line_chat_source_links select $1,$2,id from private.line_joined_groups where line_group_id='Csecond'",[secondary,company]);n=await post('sk_works','ambiguous',secondary);assert.equal((await prep(n)).state,'ambiguous');
 n=await post();p=await prep(n);const exp=await claim(p.ticket);await role('postgres');await q("update private.line_chat_outbox set first_attempt_at=now()-interval '24 hours',lease_until=now()-interval '1 second' where id=$1",[exp.outbox_id]);p=await prep(n);assert.equal((await claim(p.ticket)).state,'expired');
