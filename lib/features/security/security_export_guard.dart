@@ -3,11 +3,12 @@
 Future<void> authorizeSecurityExport({
   required String? actor,
   required String? Function() currentActor,
+  required bool Function() isActive,
   required Future<bool> Function() reauthenticate,
   required Future<void> Function() authorizeSnapshot,
 }) async {
   void checkActor() {
-    if (actor == null || currentActor() != actor) {
+    if (!isActive() || actor == null || currentActor() != actor) {
       throw StateError('Security export unavailable');
     }
   }

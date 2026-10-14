@@ -326,6 +326,7 @@ class _SecurityIncidentExportActionState
       Future<void> authorize() => authorizeSecurityExport(
         actor: widget.actor,
         currentActor: () => repository.currentActor,
+        isActive: () => mounted,
         // This widget exists only after the fresh master challenge succeeds.
         reauthenticate: () async => true,
         authorizeSnapshot: () =>
