@@ -13,6 +13,7 @@ import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
+import 'chat_group_delete_confirmation.dart';
 import 'chat_friends_page.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
@@ -2099,6 +2100,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                           tooltip: SkoLanguageController.tr('トーク機能'),
                           onSelected: (value) {
                             if (value == 'group_settings') _editGroupPhoto();
+                            if (value == 'delete_group') _deleteCustomGroup(selected);
                             if (value == 'line_sender') _editLineSender();
                             if (value == 'add_line') _addLineToSelectedGroup();
                             if (value == 'notes') _openNotes();
@@ -2107,6 +2109,10 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             if (value == 'appearance') _openAppearance();
                           },
                           itemBuilder: (_) => [
+                            if (_isCustomGroup(selected) && selected['can_delete_group'] == true)
+                              PopupMenuItem(value: 'delete_group', enabled: !_deletingGroup,
+                                child: ListTile(leading: const Icon(Icons.delete_outline),
+                                  title: Text(SkoLanguageController.isEnglish ? 'Delete group' : 'グループを削除'))),
                             if (selected['line_origin'] != null)
                               PopupMenuItem(
                                 value: 'line_sender',
@@ -2617,6 +2623,40 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     return false;
   }
 
+  bool _deletingGroup = false;
+
+  Future<void> _deleteCustomGroup(Map<String, dynamic> group) async {
+    final repository = _repository;
+    final actor = repository?.currentUserId;
+    final id = group['id']?.toString();
+    if (_deletingGroup || repository == null || actor == null || id == null ||
+        !_isCustomGroup(group) || group['can_delete_group'] != true) {
+      return;
+    }
+    setState(() => _deletingGroup = true);
+    try {
+      final confirmed = await confirmChatGroupDeletion(context,
+        name: group['display_name']?.toString() ?? group['name']?.toString() ?? '',
+        lineLinked: group['line_origin'] != null || group['line_binding_present'] == true);
+      if (!mounted || !confirmed || repository.currentUserId != actor) return;
+      await repository.deleteCustomGroup(id);
+      if (!mounted || repository.currentUserId != actor) return;
+      if (_selectedGroupId == id) await _closeConversation();
+      if (!mounted) return;
+      await _load();
+      if (mounted && widget.initialGroupId == id && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted && repository.currentUserId == actor) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('グループを削除できませんでした: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _deletingGroup = false);
+    }
+  }
+
   Future<void> _showCustomGroupLeftActions(Map<String, dynamic> group) async {
     final groupId = group['id']?.toString() ?? '';
     if (groupId.isEmpty) return;
@@ -2631,6 +2671,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               title: const Text('非表示'),
               onTap: () => Navigator.pop(sheetContext, 'hide'),
             ),
+            if (group['can_delete_group'] == true)
             ListTile(
               leading: Icon(
                 Icons.delete_outline,
@@ -2654,34 +2695,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       await _saveListPreference('hidden', _hiddenGroupIds);
       return;
     }
-    if (action == 'delete') {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('グループを削除しますか？'),
-          content: const Text('この操作は元に戻せません。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('戻る'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('削除'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-      try {
-        await _repository?.deleteCustomGroup(groupId);
-        await _load();
-      } catch (error) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('グループを削除できませんでした: $error')));
-      }
-    }
+    if (action == 'delete') await _deleteCustomGroup(group);
   }
 
   Future<void> _showCustomGroupRightActions(Map<String, dynamic> group) async {

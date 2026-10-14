@@ -4,6 +4,7 @@ on:
     paths:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
+      - 'lib/features/chat/chat_group_delete_confirmation.dart'
       - 'test/chat_line_surface_flow_test.dart'
       - 'test/line_shared_chat_list_test.dart'
       - 'test/line_talk_hub_page_test.dart'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
+      - 'lib/features/chat/chat_group_delete_confirmation.dart'
       - 'test/chat_line_surface_flow_test.dart'
       - 'test/line_shared_chat_list_test.dart'
       - 'test/line_talk_hub_page_test.dart'

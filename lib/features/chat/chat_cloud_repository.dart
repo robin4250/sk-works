@@ -203,6 +203,7 @@ class ChatCloudRepository {
         'display_name': displayName,
         'avatar_url': avatarUrl,
         'can_edit_group_photo': photo?['can_edit'] == true,
+        'can_delete_group': group['created_by'] != null && photo?['can_edit'] == true,
         'direct_other_user_id': directOtherUserId,
         'line_binding_present': binding != null,
         'line_binding_enabled': binding?['status'] == 'active',

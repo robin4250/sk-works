@@ -25,14 +25,36 @@ class LineSharedGroupsRepository {
     _check(expected);
     if (value is! List) throw StateError('Group metadata unavailable');
     final rows = value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final deletable = <String>{};
+    try {
+      final photos = await client.rpc('custom_chat_group_photo_workspace');
+      _check(expected);
+      if (photos is List) {
+        for (final row in photos.whereType<Map>()) {
+          if (row['can_edit'] == true && row['group_id'] is String) {
+            deletable.add(row['group_id'] as String);
+          }
+        }
+      }
+    } catch (_) {
+      _check(expected); // Unknown permissions hide deletion; talk remains available.
+    }
     final previews = await ChatCloudRepository.forClient(client)
       .loadConversationPreviews(rows.map((row) => row['group_id'].toString()));
     _check(expected);
     return [for (final row in rows) {
       ...row,
+      'can_delete_group': deletable.contains(row['group_id']),
       'last_message_body': previews[row['group_id']]?.body,
       'last_message_at': previews[row['group_id']]?.sentAt,
     }];
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    final expected = actor;
+    _check(expected);
+    await client.rpc('delete_custom_chat_group', params: {'p_group_id': groupId});
+    _check(expected);
   }
 
   Stream<String> watchChanges() =>
@@ -41,6 +63,10 @@ class LineSharedGroupsRepository {
   Future<ChatConversationSummary?> preview(String groupId) async {
     final expected = actor;
     _check(expected);
+    final visible = await client.from('communication_groups').select('id')
+      .eq('id', groupId).limit(1);
+    _check(expected);
+    if (visible.isEmpty) return null;
     final result = await ChatCloudRepository.forClient(client)
       .loadConversationPreviews([groupId]);
     _check(expected);

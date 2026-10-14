@@ -6,7 +6,7 @@ import 'package:sk_works/international/languages/en/english_language_pack.dart';
 import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
 
 void main() {
-  testWidgets('master workspace has three entries and keeps 320px layout readable',
+  testWidgets('master workspace has four entries and keeps 320px layout readable',
       (tester) async {
     tester.view.physicalSize = const Size(320, 800);
     tester.view.devicePixelRatio = 1;
@@ -23,6 +23,7 @@ void main() {
     expect(find.byKey(const ValueKey('line-master-chat')), findsOneWidget);
     expect(find.byKey(const ValueKey('line-master-invoices')), findsOneWidget);
     expect(find.byKey(const ValueKey('line-master-rates')), findsOneWidget);
+    expect(find.byKey(const ValueKey('line-master-monthly')), findsOneWidget);
     expect(find.text('すみだ建設出勤'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -39,6 +40,7 @@ void main() {
     expect(find.text('Chat'), findsOneWidget);
     expect(find.text('Invoices'), findsOneWidget);
     expect(find.text('Unit Rates'), findsOneWidget);
+    expect(find.text('Monthly Table'), findsOneWidget);
   });
 
   testWidgets('non-master cannot see or open master entries', (tester) async {
@@ -58,20 +60,23 @@ void main() {
       talkBuilder: (_) => const Scaffold(body: Text('received-source-page')),
       invoiceBuilder: (_) => const Scaffold(body: Text('monthly-invoice-page')),
       ratesBuilder: (_) => const Scaffold(body: Text('historical-rates-page')),
+      monthlyBuilder: (_) => const Scaffold(body: Text('editable-monthly-page')),
     )));
     await tester.pumpAndSettle();
     for (final entry in const {
       'line-master-chat': 'received-source-page',
       'line-master-invoices': 'monthly-invoice-page',
       'line-master-rates': 'historical-rates-page',
+      'line-master-monthly': 'editable-monthly-page',
     }.entries) {
+      await tester.ensureVisible(find.byKey(ValueKey(entry.key)));
       await tester.tap(find.byKey(ValueKey(entry.key)));
       await tester.pumpAndSettle();
       expect(find.text(entry.value), findsOneWidget);
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
     }
-    expect(checks, 7);
+    expect(checks, 9);
   });
 
   testWidgets('master revoked before navigation never builds protected page',
@@ -99,3 +104,4 @@ void main() {
     expect(rates.initialMonth, month);
   });
 }
+

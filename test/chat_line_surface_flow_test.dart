@@ -8,6 +8,8 @@ import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 
 class SurfaceRepository implements ChatCloudRepository {
   int writes = 0;
+  bool canDeleteGroup = false;
+  final deletedGroups = <String>[];
   String? actorId = 'actor';
   bool mapped = true;
   bool failSavedSummary = false;
@@ -30,6 +32,7 @@ class SurfaceRepository implements ChatCloudRepository {
       'display_name': 'LINE only',
       'group_type': 'company',
       'participants_only': true,
+      'can_delete_group': canDeleteGroup,
       'line_origin': mapped ? 'line' : null,
     },
     {
@@ -38,9 +41,12 @@ class SurfaceRepository implements ChatCloudRepository {
       'display_name': 'Shared group',
       'group_type': 'company',
       'participants_only': true,
+      'can_delete_group': canDeleteGroup,
       'line_origin': 'sko',
     },
-  ];
+  ].where((group) => !deletedGroups.contains(group['id'])).toList();
+  @override
+  Future<void> deleteCustomGroup(String id) async { deletedGroups.add(id); }
   @override
   Future<List<String>> prioritizedSiteGroupIds() async => [];
   @override
@@ -304,4 +310,42 @@ void main() {
       },
     );
   }
+  testWidgets('SKO conversation menu exposes authorized deletion and closes the deleted conversation', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final repo = SurfaceRepository()..canDeleteGroup = true;
+    await tester.pumpWidget(MaterialApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
+    await settle(tester);
+    await tester.tap(find.byTooltip('トーク機能'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('グループを削除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('戻る'));
+    await tester.pumpAndSettle();
+    expect(repo.deletedGroups, isEmpty);
+    await tester.tap(find.byTooltip('トーク機能'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('グループを削除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('グループを削除'));
+    await settle(tester);
+    expect(repo.deletedGroups, ['shared']);
+    expect(find.text('Old message'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    unawaited(repo.messages.close());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('ordinary participants do not receive a group deletion menu', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final repo = SurfaceRepository();
+    await tester.pumpWidget(MaterialApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
+    await settle(tester);
+    await tester.tap(find.byTooltip('トーク機能'));
+    await tester.pumpAndSettle();
+    expect(find.text('グループを削除'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    unawaited(repo.messages.close());
+    await tester.pumpAndSettle();
+  });
+
 }

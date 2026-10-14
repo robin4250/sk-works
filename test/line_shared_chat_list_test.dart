@@ -9,18 +9,20 @@ import 'package:sk_works/features/chat/line_talk_hub_page.dart';
 
 class _Groups implements LineSharedGroupsRepository {
   String? actorId = 'actor';
+  bool removed = false;
   final requested = <String>[];
   Completer<void>? gate;
   @override
   String? get actor => actorId;
   @override
   Future<List<Map<String, dynamic>>> groups() async => [
-    {'group_id': 'a', 'name': 'Group A', 'last_message_body': 'Previous A'},
+    if (!removed) {'group_id': 'a', 'name': 'Group A', 'last_message_body': 'Previous A'},
     {'group_id': 'b', 'name': 'Group B', 'last_message_body': 'Previous B'},
   ];
   @override
   Future<ChatConversationSummary?> preview(String id) async {
     requested.add(id);
+    if (removed && id == 'a') return null;
     await gate?.future;
     return const ChatConversationSummary(unread: 0, body: 'Latest A',
       sentAt: '2026-10-14T00:00:00Z');
@@ -75,4 +77,15 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await changes.close();
   });
+  testWidgets('returning from a deleted shared chat removes it from the LINE list', (tester) async {
+    final repo = _Groups();
+    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(
+      repository: repo, onOpenGroup: (_) async { repo.removed = true; })));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Group A'));
+    await tester.pumpAndSettle();
+    expect(find.text('Group A'), findsNothing);
+    expect(find.text('Group B'), findsOneWidget);
+  });
+
 }
