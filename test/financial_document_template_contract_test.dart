@@ -17,7 +17,9 @@ void main() {
     expect(source, contains("'数量'"));
     expect(source, contains("'単価'"));
     expect(source, contains("'請求金額'"));
-    expect(source, contains("'合計(税込)'"));
+    expect(source, contains("'小計'"));
+    expect(source, contains("'福利厚生費'"));
+    expect(source, contains("'ご請求金額（税込）'"));
   });
 
   test('payroll PDF uses adopted A4 payroll statement template', () {
