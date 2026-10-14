@@ -210,6 +210,7 @@ class _RequiredDocumentAttentionCardState
       opacity: _pulse,
       child: HomeInformationCard(
         icon: Icons.notifications_active_outlined,
+        leading: const Text('⚠️', style: TextStyle(fontSize: 25, height: 1)),
         title: SkoLanguageController.tr('要対応'),
         details: widget.attention.notificationPreviews.join('\n'),
         trailing: FittedBox(
@@ -412,7 +413,7 @@ class _PersonalAttendanceCard extends StatelessWidget {
                   const SizedBox(height: 9),
                   OutlinedButton.icon(
                     onPressed: () => onOpen('attendance_method_vehicle'),
-                    icon: const Icon(Icons.tune_outlined, color: Color(0xFF7B4BA8)),
+                    icon: const Text('🚶 🚙', style: TextStyle(fontSize: 20, height: 1)),
                     label: Text(SkoLanguageController.tr('出勤方法と車両を選択')),
                   ),
                   if (vehicleRoutesEnabled && hasActiveRouteShift) ...[
