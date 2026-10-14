@@ -63,7 +63,11 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     try {
       final ChatConversationSummary? preview = await repository.preview(id);
       if (!mounted || repository.actor != actor || _loadGeneration != scope ||
-          _previewGenerations[id] != generation || preview == null) {
+          _previewGenerations[id] != generation) {
+        return;
+      }
+      if (preview == null) {
+        await _load(); // A removed group must disappear after returning from its chat.
         return;
       }
       setState(() {
@@ -77,7 +81,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
 
   Future<void> _openGroup(String id) async {
     await widget.onOpenGroup(id);
-    if (mounted) await _load();
+    if (mounted) await _refreshPreview(id);
   }
 
   Future<void> _load() async {
