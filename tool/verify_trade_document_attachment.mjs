@@ -75,7 +75,7 @@ if(db.concurrentSave){
 }
 const zero=await call('payment_certificate',pc0,'1');
 const explicitZero={...payload,...zero.defaults,issue_date:'2026-12-01',work_name:'零額の明示確認',work_address:'東京',payment_conditions:'合意額を確認',notes:'',tax_amount_yen:0,
- issuer:{name:zero.defaults.issuer.name,address:'',corporate_number:'',representative_name:''},counterparty:{name:zero.defaults.counterparty.name,address:'',corporate_number:'',representative_name:''}};
+ issuer:{name:zero.defaults.issuer.name,address:null,corporate_number:null,representative_name:null},counterparty:{name:zero.defaults.counterparty.name,address:'',corporate_number:'',representative_name:''}};
 await db.exec(`reset role;update payment_certificates set calculation_blocked=true where id='${pc0}';set role authenticated;`);
 await assert.rejects(save(explicitZero,0,pc0,'1'),/未確定/);
 await db.exec(`reset role;update payment_certificates set calculation_blocked=false where id='${pc0}';set role authenticated;`);

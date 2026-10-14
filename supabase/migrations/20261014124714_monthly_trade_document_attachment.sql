@@ -159,6 +159,9 @@ begin
   raise exception '書類の種類・対象月が一致しません。' using errcode='22023'; end if;
  foreach party in array array['issuer','counterparty'] loop
   foreach field in array (case when p_kind='invoice' and party='counterparty' then array['name'] else array['name','address','corporate_number','representative_name'] end) loop
+   if field<>'name' and (p_payload->party->field is null or jsonb_typeof(p_payload->party->field)='null') then
+    p_payload:=jsonb_set(p_payload,array[party,field],'""'::jsonb,true);
+   end if;
    max_len:=case field when 'name' then 120 when 'address' then 240 when 'corporate_number' then 13 else 80 end;
    if jsonb_typeof(p_payload->party->field) is distinct from 'string' or
     (field='name' and length(btrim(p_payload->party->>field))=0) or length(p_payload->party->>field)>max_len then
