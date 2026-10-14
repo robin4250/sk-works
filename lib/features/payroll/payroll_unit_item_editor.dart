@@ -405,7 +405,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
 
   static String _unitLabel(PayrollItemUnit unit) => switch (unit) {
     PayrollItemUnit.hour => '時間単位',
-    PayrollItemUnit.day => '日にち単位',
+    PayrollItemUnit.day => '日単位',
     PayrollItemUnit.month => '月単位',
   };
 

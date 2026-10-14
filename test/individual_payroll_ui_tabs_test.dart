@@ -7,9 +7,10 @@ import 'package:sk_works/widgets/rate_formula_editor_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _Repository extends IndividualPayrollSettingsRepository {
-  _Repository(this.client, {this.edit = true}) : super.forTesting(client);
+  _Repository(this.client, {this.edit = true, this.initial}) : super.forTesting(client);
   final SupabaseClient client;
   final bool edit;
+  final Map<String, dynamic>? initial;
   Map<String, dynamic>? saved;
   @override
   Future<IndividualPayrollWorkspace> loadWorkspace() async =>
@@ -30,7 +31,7 @@ class _Repository extends IndividualPayrollSettingsRepository {
         workerId: workerId,
         updatedAt: DateTime(2026, 10, 12, 7, 30),
         values:
-            saved ??
+            saved ?? initial ??
             {
               'pay_type': 'daily',
               'day_daily': 10000,
@@ -80,7 +81,7 @@ void main() {
       expect(find.text('残業 直接入力'), findsNothing);
       expect(find.textContaining('最終更新日：2026/10/12'), findsOneWidget);
       expect(find.text('時間単位'), findsOneWidget);
-      expect(find.text('日にち単位'), findsOneWidget);
+      expect(find.text('日単位'), findsOneWidget);
       expect(find.text('月単位'), findsOneWidget);
       final earningName = find.widgetWithText(TextFormField, '支給1 名称');
       await tester.ensureVisible(earningName);
@@ -143,6 +144,91 @@ void main() {
       expect(repository.saved!['resident_tax_monthly'], 6789);
       expect(repository.saved!['day_overtime'], 2000);
       expect(repository.saved!['night_early'], 2300);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+
+  testWidgets(
+    'daily legacy allowances stay daily and monthly optional rows migrate once',
+    (tester) async {
+      final repository = _Repository(client, initial: {
+        'pay_type': 'daily', 'day_daily': 10000,
+        'allowance_name_1': 'PC', 'allowance_1': 2500,
+        'allowance_name_2': '鉄骨', 'allowance_2': 2500,
+        'family_monthly': 2000, 'transport_monthly': 3000,
+        'custom_earnings': [
+          {'name': '家族手当', 'amount_yen': 1000},
+          {'name': '交通費', 'amount_yen': 500},
+        ],
+        'custom_deductions': <Map<String, dynamic>>[],
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: IndividualPayrollSettingsPage(repository: repository),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextFormField, '手当1 名称'), findsNothing);
+      expect(find.text('家族手当・月額（既存設定）'), findsNothing);
+      expect(find.text('交通費・月額'), findsNothing);
+      final familyName = find.widgetWithText(TextFormField, '支給1 名称');
+      final familyAmount = find.widgetWithText(TextFormField, '支給1 金額');
+      final transportName = find.widgetWithText(TextFormField, '支給2 名称');
+      final transportAmount = find.widgetWithText(TextFormField, '支給2 金額');
+      expect(tester.widget<TextFormField>(familyName).controller!.text, '家族手当');
+      expect(tester.widget<TextFormField>(familyAmount).controller!.text, '3000');
+      expect(tester.widget<TextFormField>(transportName).controller!.text, '交通費');
+      expect(tester.widget<TextFormField>(transportAmount).controller!.text, '3500');
+      expect(repository.saved, isNull); // Reading alone never writes settings.
+
+      await tester.ensureVisible(find.text('日単位'));
+      await tester.tap(find.text('日単位'));
+      await tester.pumpAndSettle();
+      expect(familyName, findsNothing);
+      final allowanceName = find.widgetWithText(TextFormField, '手当1 名称');
+      final allowanceAmount = find.widgetWithText(TextFormField, '手当1 金額');
+      await tester.ensureVisible(allowanceName);
+      expect(tester.widget<TextFormField>(allowanceName).controller!.text, 'PC');
+      expect(tester.widget<TextFormField>(allowanceAmount).controller!.text, '2500');
+      await tester.enterText(allowanceAmount, '2600');
+      await tester.ensureVisible(find.text('手当1〜3を登録'));
+      await tester.tap(find.text('手当1〜3を登録'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確定して保存'));
+      await tester.pumpAndSettle();
+      expect(repository.saved!['allowance_1'], 2600);
+      expect(repository.saved!['allowance_name_1'], 'PC');
+      expect(repository.saved!['allowance_2'], 2500);
+      expect(repository.saved!['family_monthly'], 0);
+      expect(repository.saved!['transport_monthly'], 0);
+      expect(repository.saved!['custom_earnings'], [
+        {'name': '家族手当', 'amount_yen': 3000},
+        {'name': '交通費', 'amount_yen': 3500},
+      ]);
+      await tester.ensureVisible(find.text('月単位'));
+      await tester.tap(find.text('月単位'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, '手当1 名称'), findsNothing);
+      expect(tester.widget<TextFormField>(familyAmount).controller!.text, '3000');
+      expect(tester.widget<TextFormField>(transportAmount).controller!.text, '3500');
+
+      // These are ordinary editable/deletable monthly entries after reload.
+      await tester.ensureVisible(transportName);
+      await tester.enterText(transportName, '通勤補助');
+      final remove = find.widgetWithText(TextButton, 'この支給を削除').first;
+      await tester.ensureVisible(remove);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '登録'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確定して保存'));
+      await tester.pumpAndSettle();
+      expect(repository.saved!['custom_earnings'], [
+        {'name': '通勤補助', 'amount_yen': 3500},
+      ]);
+      expect(repository.saved!['family_monthly'], 0);
+      expect(repository.saved!['transport_monthly'], 0);
+      expect(find.text('家族手当'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

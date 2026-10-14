@@ -211,9 +211,14 @@ class _IndividualPayrollSettingsPageState
         ..addAll(
           _customMoneyDrafts(
             setting.values['custom_earnings'],
-            defaults: const ['勤続手当', '役職手当', '家族手当', '働き方手当'],
+            defaults: const ['勤続手当', '役職手当', '家族手当', '交通費', '働き方手当'],
           ),
         );
+      // Stage legacy monthly amounts in the flexible list. The old columns
+      // are cleared in the same existing upsert as the new list, only on save.
+      // Reopening a saved list cannot add the legacy amounts a second time.
+      _includeLegacyMonthlyEarning('family_monthly', '家族手当');
+      _includeLegacyMonthlyEarning('transport_monthly', '交通費');
       _customDeductions
         ..clear()
         ..addAll(
@@ -636,7 +641,7 @@ class _IndividualPayrollSettingsPageState
                       child: _moneySection(
                         title: '支給',
                         icon: Icons.add_circle_outline,
-                        children: [
+                        dailyChildren: [
                           _sectionTitle(SkoLanguageController.tr('手当')),
                           for (var i = 1; i <= 3; i++) ...[
                             TextFormField(
@@ -656,21 +661,20 @@ class _IndividualPayrollSettingsPageState
                               SkoLanguageController.trParams('手当{number} 金額', {
                                 'number': i,
                               }),
+                              suffixText: '円／日',
                             ),
                           ],
-                          _amountField(
-                            'family_monthly',
-                            SkoLanguageController.tr('家族手当・月額（既存設定）'),
+                          Text(SkoLanguageController.tr(
+                            '勤怠でこの手当を選択した日数に応じて支給します。',
+                          )),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: workspace.canEdit && !_saving ? _save : null,
+                            icon: const Icon(Icons.save_outlined),
+                            label: Text(SkoLanguageController.tr('手当1〜3を登録')),
                           ),
-                          Text(
-                            SkoLanguageController.tr(
-                              'この金額と追加支給の「家族手当」は別項目として合算されます。不要な既存分は0円に変更できます。',
-                            ),
-                          ),
-                          _amountField(
-                            'transport_monthly',
-                            SkoLanguageController.tr('交通費・月額'),
-                          ),
+                        ],
+                        children: [
                           SizedBox(height: 12),
                           _sectionTitle(SkoLanguageController.tr('追加支給')),
                           for (var i = 0; i < _customEarnings.length; i++)
@@ -893,6 +897,22 @@ class _IndividualPayrollSettingsPageState
     setState(() {});
   }
 
+  void _includeLegacyMonthlyEarning(String key, String name) {
+    final amount = int.parse(_controllers[key]!.text);
+    if (amount > 0) {
+      final index = _customEarnings.indexWhere(
+        (item) => item.name.text.trim() == name,
+      );
+      if (index < 0) {
+        _customEarnings.add(_CustomMoneyDraft(name: name, amountYen: amount));
+      } else {
+        final item = _customEarnings[index];
+        item.amount.text = (int.parse(item.amount.text) + amount).toString();
+      }
+    }
+    _controllers[key]!.text = '0';
+  }
+
   List<_CustomMoneyDraft> _customMoneyDrafts(
     Object? raw, {
     required List<String> defaults,
@@ -1054,6 +1074,7 @@ class _IndividualPayrollSettingsPageState
     required String title,
     required IconData icon,
     required List<Widget> children,
+    List<Widget> dailyChildren = const [],
   }) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
@@ -1093,7 +1114,7 @@ class _IndividualPayrollSettingsPageState
                 }),
                 child: Text(SkoLanguageController.tr(switch (unit) {
                   PayrollItemUnit.hour => '時間単位',
-                  PayrollItemUnit.day => '日にち単位',
+                  PayrollItemUnit.day => '日単位',
                   PayrollItemUnit.month => '月単位',
                 })),
               ))),
@@ -1103,6 +1124,14 @@ class _IndividualPayrollSettingsPageState
           offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
         ),
+        if (dailyChildren.isNotEmpty)
+          Offstage(
+            offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.day,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: dailyChildren,
+            ),
+          ),
         if ((title == '控除') == _showDeductions) _inlineUnitSettings(title),
 
       ],
