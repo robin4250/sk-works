@@ -25,10 +25,8 @@ void main() {
           needsQualification: false,
         ),
         moduleEnabled: (_) => false,
-        visibleHomeKeys: const {'payroll', 'company_tax_rates', 'expense_claims'},
+        visibleHomeKeys: const {'payroll', 'expense_claims'},
         shortcuts: [
-          if (role == 'viewer' || role == 'admin' || role == 'owner')
-            const HomeShortcut('company_tax_rates', '税率設定', Icons.percent_outlined, access: HomeShortcutAccess.viewer),
           const HomeShortcut('payroll', '給与明細', Icons.payments_outlined),
           const HomeShortcut('expense_claims', '経費', Icons.receipt_long_outlined),
         ],
@@ -47,26 +45,12 @@ void main() {
   );
 
   for (final role in ['viewer', 'admin', 'owner']) {
-    testWidgets('$role can open tax rates directly from TOP', (tester) async {
+    testWidgets('$role has no standalone tax shortcut on TOP', (tester) async {
       await tester.pumpWidget(home(role));
-      expect(find.text('税率設定'), findsOneWidget);
+      expect(find.text('税率設定'), findsNothing);
       final grid = tester.widget<GridView>(find.byType(GridView));
       final tiles = (grid.childrenDelegate as SliverChildListDelegate).children;
-      expect(tiles, hasLength(3));
-      expect(tester.getSize(find.byWidget(tiles[0])), tester.getSize(find.byWidget(tiles[1])));
-      final borders = tester.widgetList<Container>(
-        find.descendant(of: find.byWidget(tiles[0]), matching: find.byType(Container)),
-      ).where((container) => container.decoration is BoxDecoration &&
-          (container.decoration! as BoxDecoration).border != null);
-      expect(borders, hasLength(2));
-      await tester.tap(find.text('税率設定'));
-      await tester.pumpAndSettle();
-      expect(find.byType(CompanyPayrollRatesHomePage), findsOneWidget);
-      // Missing session must remain a recoverable page, never admin settings.
-      expect(find.text('再試行'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.byType(FriendlyHomeContent), findsOneWidget);
+      expect(tiles, hasLength(2));
       expect(tester.takeException(), isNull);
     });
   }

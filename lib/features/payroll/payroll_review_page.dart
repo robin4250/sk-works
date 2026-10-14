@@ -7,9 +7,10 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings});
+  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates});
 
   final VoidCallback? onOpenSettings;
+  final VoidCallback? onOpenTaxRates;
 
   final DateTime? initialMonth;
 
@@ -145,8 +146,31 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
       ),
       body: SafeArea(
         child: Column(children: [
-          if (widget.onOpenSettings != null)
-            Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 0), child: OutlinedButton.icon(onPressed: widget.onOpenSettings, icon: const Icon(Icons.manage_accounts_outlined), label: Text(SkoLanguageController.tr('個別給与設定')))),
+          if (widget.onOpenSettings != null || widget.onOpenTaxRates != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: Row(children: [
+                Expanded(child: SizedBox(height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('payroll-tax-rates-entry'),
+                    onPressed: widget.onOpenTaxRates,
+                    icon: const Icon(Icons.percent_outlined, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(SkoLanguageController.tr('税率設定'), maxLines: 1)),
+                  ),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: SizedBox(height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('payroll-individual-settings-entry'),
+                    onPressed: widget.onOpenSettings,
+                    icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1)),
+                  ),
+                )),
+              ]),
+            ),
           Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
