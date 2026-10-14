@@ -1,3 +1,6 @@
+import '../shared/trade_document_actor_boundary.dart';
+import '../shared/trade_document_attachment_editor_page.dart';
+import '../shared/trade_document_template_settings_page.dart';
 import '../shared/related_action_footer.dart';
 import 'site_payment_certificates_repository.dart';
 import 'site_payment_agreement_page.dart';
@@ -258,9 +261,12 @@ class _PaymentCertificatePreviewPageState
   Future<void> _saveOrShare() async {
     if (_sharing) return;
     final record = widget.record;
+    final actorLease=TradeDocumentActorLease();
     setState(() => _sharing = true);
     try {
       final bytes = await _pdfBytes.get(() => PaymentCertificatePdfService.buildPdf(record));
+      actorLease.verify();
+      if(!mounted)throw StateError('画面を開き直してください。');
       await Printing.sharePdf(bytes: bytes,
         filename: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf');
     } catch (error) {
@@ -269,6 +275,7 @@ class _PaymentCertificatePreviewPageState
           content: Text(SkoLanguageController.isEnglish ? 'Could not open save/share: $error' : '保存・共有を開けませんでした: $error')));
       }
     } finally {
+      actorLease.dispose();
       if (mounted) setState(() => _sharing = false);
     }
   }
@@ -286,7 +293,7 @@ class _PaymentCertificatePreviewPageState
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final record = widget.record;
-    return Scaffold(
+    return TradeDocumentActorBoundary(child:Scaffold(
       appBar: AppBar(
         title: Text(
           SkoLanguageController.isEnglish
@@ -294,7 +301,14 @@ class _PaymentCertificatePreviewPageState
               : '支払証明書',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
+            TextButton(onPressed:()async{
+              final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
+                subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
+              if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
+            },child:const Text('注文書')),
+          const SkoNotificationBell()],
       ),
       body: Column(children: [
         Expanded(child: PdfPreview(
@@ -326,7 +340,7 @@ class _PaymentCertificatePreviewPageState
           ]),
         )),
       ]),
-    );
+    ));
   }
 }
 
@@ -752,6 +766,7 @@ class _PartnerPaymentSettingsPageState
                           Text(SkoLanguageController.tr('支払証明書の単価・税率・福利厚生費率は、選択した下請け会社のこの設定を使用します。社員の給与単価とは別に管理します。')),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SitePaymentAgreementPage())), icon: const Icon(Icons.handshake_outlined), label: const Text('現場別の支払金額調整')),
+                          const TradeDocumentTemplateSettingsButton(subjectKind:'payment_certificate'),
                           _sectionTitle('基準単価'),
                           SegmentedButton<bool>(
                             segments: [

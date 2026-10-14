@@ -1,3 +1,7 @@
+import '../shared/trade_document_actor_boundary.dart';
+import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_attachment_repository.dart';
+import 'payment_order_pdf.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -15,10 +19,13 @@ class PaymentCertificatePdfService {
   static Future<Uint8List> buildPdf(
     PaymentCertificateRecord record, {
     ExpenseDocumentDetails? expenseDetails,
+    TradeDocumentAttachment? orderAttachment,
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    final actorLease=TradeDocumentActorLease();
+    try {
     final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
     if (record.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
       throw StateError('別途経費の内訳と支払証明書金額が一致しません。再読み込みしてください。');
@@ -50,10 +57,23 @@ class PaymentCertificatePdfService {
       ),
     );
 
+    final savedOrder = orderAttachment ?? (record.isPreview || record.isAgreementSnapshot ||
+        !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id) ? null :
+        await TradeDocumentAttachmentRepository.maybeCreate()?.load(subjectKind:'payment_certificate',
+          subjectId:record.id,sourceRevision:record.revision.toString()));
+    if(savedOrder!=null){
+      if(savedOrder.payload['month']!='${record.periodStart.year}-${record.periodStart.month.toString().padLeft(2,'0')}') {
+        throw StateError('注文書の対象月が一致しません。');
+      }
+      await PaymentOrderPdf.append(document,savedOrder,regularFont:regular,boldFont:bold);
+    }
     if (expenses != null) {
       ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
     }
-    return document.save();
+    final bytes=await document.save();
+    actorLease.verify();
+    return bytes;
+    }finally{actorLease.dispose();}
   }
 
   static Future<bool> printCertificate(PaymentCertificateRecord record) {

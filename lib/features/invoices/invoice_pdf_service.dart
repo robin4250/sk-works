@@ -1,3 +1,8 @@
+import '../shared/trade_document_actor_boundary.dart';
+import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_attachment_repository.dart';
+import '../shared/trade_document_attachment_editor_page.dart';
+import 'invoice_order_acceptance_pdf.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -35,6 +40,7 @@ class InvoicePdfService {
   static Future<Uint8List> buildPdf(
     List<InvoiceCalculationResult> invoices, {
     Map<String, ExpenseDocumentDetails>? expenseDetailsByInvoice,
+    Map<String, TradeDocumentAttachment?>? acceptanceByInvoice,
     String? title,
     InvoiceSettingsData? settings,
     PdfPageFormat format = PdfPageFormat.a4,
@@ -42,6 +48,8 @@ class InvoicePdfService {
     pw.Font? boldFont,
     Map<String, List<InvoiceApprovalRecord>>? approvalsByInvoice,
   }) async {
+    final lease = TradeDocumentActorLease();
+    try {
     if (invoices.isEmpty) {
       throw ArgumentError.value(invoices, 'invoices', 'must not be empty');
     }
@@ -59,6 +67,15 @@ class InvoicePdfService {
     );
     final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
+      final attachmentRepository = TradeDocumentAttachmentRepository.maybeCreate();
+      final acceptance = acceptanceByInvoice?.containsKey(invoice.invoiceId) == true
+          ? acceptanceByInvoice![invoice.invoiceId]
+          : invoice.invoiceId.isEmpty || invoice.documentUpdatedAt == null ||
+              attachmentRepository == null
+          ? null
+          : await attachmentRepository.load(
+              subjectKind: 'invoice', subjectId: invoice.invoiceId,
+              sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
       if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
         throw StateError('別途経費の内訳と請求書金額が一致しません。再読み込みしてください。');
@@ -107,12 +124,19 @@ class InvoicePdfService {
             ),
           ),
         );
+        if (pageIndex == 0 && acceptance != null) {
+          await InvoiceOrderAcceptancePdf.append(document, acceptance,
+            regularFont: regular, boldFont: bold);
+        }
         if (pageIndex == 0 && expenses != null) {
           ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
         }
       }
     }
-    return document.save();
+    final bytes = await document.save();
+    lease.verify();
+    return bytes;
+    } finally { lease.dispose(); }
   }
 
   static Future<bool> printInvoices(
@@ -132,13 +156,17 @@ class InvoicePdfService {
     String? body,
     InvoiceSettingsData? settings,
   }) async {
+    final lease = TradeDocumentActorLease();
+    try {
     final bytes = await buildPdf(invoices, title: title, settings: settings);
-    return Printing.sharePdf(
+    lease.verify();
+    return await Printing.sharePdf(
       bytes: bytes,
       filename: fileNameFor(invoices, title: title),
       subject: subject,
       body: body,
     );
+    } finally { lease.dispose(); }
   }
 
   static String fileNameFor(
@@ -957,6 +985,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   late Future<_InvoicePreviewData> _previewData;
   int _previewRevision = 0;
   bool _approving = false;
+  final _actorLease = TradeDocumentActorLease();
+
+  @override
+  void dispose() { _actorLease.dispose(); super.dispose(); }
 
   @override
   void initState() {
@@ -1142,8 +1174,31 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.title ?? '請求書PDFプレビュー')),
+    return TradeDocumentActorBoundary(child: Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title ?? '請求書PDFプレビュー'),
+        actions: [
+          if (_singleInvoice?.invoiceId.isNotEmpty == true &&
+              _singleInvoice?.documentUpdatedAt != null)
+            TextButton(
+              onPressed: () async {
+                final invoice = _singleInvoice!;
+                final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+                  builder: (_) => TradeDocumentAttachmentEditorPage(
+                    subjectKind: 'invoice', subjectId: invoice.invoiceId,
+                    sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
+                ));
+                if (saved == true && mounted) {
+                  setState(() {
+                    _previewRevision++;
+                    _previewData = _buildPreviewData();
+                  });
+                }
+              },
+              child: const Text('注文請書'),
+            ),
+        ],
+      ),
       body: FutureBuilder<_InvoicePreviewData>(
         future: _previewData,
         builder: (context, snapshot) {
@@ -1246,14 +1301,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => Printing.layoutPdf(
+                              onPressed: () async { _actorLease.verify(); await Printing.layoutPdf(
                                 name: InvoicePdfService.fileNameFor(
                                   widget.invoices,
                                   title: widget.title,
                                 ),
                                 format: PdfPageFormat.a4,
-                                onLayout: (_) async => pdfBytes,
-                              ),
+                                onLayout: (_) async { _actorLease.verify(); return pdfBytes; },
+                              ); },
                               icon: const Icon(Icons.print_outlined),
                               label: const Text('印刷'),
                             ),
@@ -1261,13 +1316,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () => Printing.sharePdf(
+                              onPressed: () async { _actorLease.verify(); await Printing.sharePdf(
                                 bytes: pdfBytes,
                                 filename: InvoicePdfService.fileNameFor(
                                   widget.invoices,
                                   title: widget.title,
                                 ),
-                              ),
+                              ); },
                               icon: const Icon(Icons.ios_share_outlined),
                               label: Text(SkoLanguageController.tr('保存・共有')),
                             ),
@@ -1283,7 +1338,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
           );
         },
       ),
-    );
+    ));
   }
 }
 

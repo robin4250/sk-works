@@ -12,7 +12,7 @@ void main() {
       expect(s, contains('child: _InvoicePdfZoomView('));
       expect(s, contains('Printing.raster(widget.pdfBytes, dpi: 120)'));
       expect(s, isNot(contains('child: _ExactInvoiceScreen(')));
-      expect(s, contains('onLayout: (_) async => pdfBytes'));
+      expect(s, contains('onLayout: (_) async { _actorLease.verify(); return pdfBytes; }'));
       expect(s, contains('bytes: pdfBytes'));
       expect(s, contains('while (rows.length < 35)'));
       expect(s, contains('pageIndex * 35'));

@@ -15,7 +15,7 @@ void main() {
       expect(s, contains('for (final page in snapshot.data!)'));
       expect(s, contains('minScale: 1'));
       expect(s, contains('maxScale: 5'));
-      expect(s, contains('onLayout: (_) async => pdfBytes'));
+      expect(s, contains('onLayout: (_) async { _actorLease.verify(); return pdfBytes; }'));
       expect(s, contains('bytes: pdfBytes'));
       expect(s, isNot(contains('child: _ExactInvoiceScreen(')));
     },
