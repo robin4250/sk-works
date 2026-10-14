@@ -16,6 +16,9 @@ import '../attendance/today_attendance_page.dart';
 import '../payroll/payroll_review_repository.dart';
 import '../payroll/payment_certificates_page.dart';
 import '../settings/settings_page.dart';
+import '../settings/master_protected_page.dart';
+import '../security/security_incident_page.dart';
+import '../security/security_actor_boundary.dart';
 import '../sites/admin_site_financial_page.dart';
 import '../attendance/paid_leave_approvals_page.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
@@ -277,6 +280,12 @@ Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMo
   'payment_certificate_settings' => SecondaryProtectedPage(
     title: SkoLanguageController.tr('支払証明書設定'),
     child: const PartnerPaymentSettingsPage(),
+  ),
+  'master_security_incident' => MasterProtectedPage(
+    title: 'セキュリティ記録',
+    child: SecurityActorBoundary(
+      child: SecurityIncidentPage(incidentId: item.actionId),
+    ),
   ),
   'settings' => const SettingsPage(),
   _ => null,
