@@ -1,0 +1,34 @@
+name: LINE historical monthly import regressions
+on:
+  pull_request:
+    paths:
+      - 'lib/features/chat/line_historical*'
+      - 'lib/features/chat/line_import_page.dart'
+      - 'test/line_historical_monthly_import_test.dart'
+      - '.github/workflows/line-historical-monthly-import.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/chat/line_historical*'
+      - 'lib/features/chat/line_import_page.dart'
+      - 'test/line_historical_monthly_import_test.dart'
+      - '.github/workflows/line-historical-monthly-import.yml'
+permissions:
+  contents: read
+concurrency:
+  group: line-history-import-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  monthly-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter test test/line_historical_monthly_import_test.dart test/line_import_draft_test.dart test/line_historical_invoice_model_test.dart test/line_historical_invoice_bridge_model_test.dart test/line_master_workspace_page_test.dart test/line_historical_hub_entries_test.dart --reporter expanded

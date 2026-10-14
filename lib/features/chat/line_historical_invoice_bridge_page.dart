@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../invoices/invoice_cloud_page.dart';
 import 'line_historical_invoice_bridge_model.dart';
 import 'line_historical_invoice_bridge_repository.dart';
+import 'line_historical_monthly_import.dart';
 
 class LineHistoricalInvoiceBridgePage extends StatefulWidget {
   const LineHistoricalInvoiceBridgePage({super.key, required this.quoteId});
@@ -39,7 +40,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
       for (final site in sites) {
         final matches = rows.where((r) => r['site_id'] == site).toList();
         final row = matches.isEmpty ? null : matches.first;
-        _names[site] = TextEditingController(text: row?['site_name']?.toString() ?? '');
+        _names[site] = TextEditingController(text: lineHistoricalFormalSiteName(quote, site) ?? row?['site_name']?.toString() ?? '');
         _welfare[site] = TextEditingController();
       }
       setState(() { _formVersion++; _data = data; _sites = sites; _preview = null; _previewParams = null; _pending = null; _created = null; _termsConfirmed = false; _previewConfirmed = false; _edited = false; });

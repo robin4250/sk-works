@@ -284,7 +284,7 @@ class _LineImportPageState extends State<LineImportPage> {
 
   void _show(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(_title),
-    content: const SingleChildScrollView(child: Text('受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
+    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
 
   @override
@@ -316,6 +316,28 @@ class _LineImportPageState extends State<LineImportPage> {
         Text('確認済み集計', style: Theme.of(context).textTheme.titleMedium),
         if (totals.isEmpty) const Text('確認済みの候補はありません。'),
         for (final total in totals) ListTile(contentPadding: EdgeInsets.zero, title: Text(total['name'].toString()), subtitle: Text('人工 ${total['man_days']} ／ 残業 ${total['overtime_hours']}時間 ／ 早出 ${total['early_hours']}時間')),
+        if (widget.target == 'invoice' && shown.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('月別表（行を押して確認・修正）'),
+          SingleChildScrollView(scrollDirection: Axis.horizontal,
+            child: DataTable(showCheckboxColumn: false,
+              columns: const [
+                DataColumn(label: Text('日付')), DataColumn(label: Text('作業員')),
+                DataColumn(label: Text('現場')), DataColumn(label: Text('人工')),
+                DataColumn(label: Text('残業時間')), DataColumn(label: Text('手当')),
+              ],
+              rows: [for (final row in shown) DataRow(
+                onSelectChanged: editable ? (_) => _edit(_rows.indexOf(row)) : null,
+                cells: [
+                  DataCell(Text(row['work_date']?.toString() ?? '')),
+                  DataCell(Text(row['worker_name']?.toString() ?? '')),
+                  DataCell(Text(row['site_name']?.toString() ?? '')),
+                  DataCell(Text(row['man_days']?.toString() ?? '要確認')),
+                  DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
+                  DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),
+                ],
+              )])),
+        ],
         const Divider(), Text('明細 ${shown.length}件', style: Theme.of(context).textTheme.titleMedium),
         for (var index = 0; index < _rows.length; index++) if (_workerFilter == null || _rows[index]['worker_id'] == _workerFilter) Card(child: ListTile(
           title: Text('${_rows[index]['work_date']}  ${_rows[index]['worker_name']}'),
