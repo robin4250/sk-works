@@ -10,7 +10,7 @@ class SecurityActorBoundary extends StatefulWidget {
   const SecurityActorBoundary({
     super.key,
     required this.child,
-    @visibleForTesting this.initialActor,
+    this.initialActor,
     @visibleForTesting this.actorChanges,
   });
 
@@ -33,7 +33,8 @@ class _SecurityActorBoundaryState extends State<SecurityActorBoundary> {
     final initialized = SupabaseBackend.isInitialized;
     _actor = widget.initialActor ??
         (initialized ? SupabaseBackend.client.auth.currentUser?.id : null);
-    _revoked = _actor == null;
+    _revoked = _actor == null ||
+        (initialized && SupabaseBackend.client.auth.currentUser?.id != _actor);
     final changes = widget.actorChanges ??
         (initialized
             ? SupabaseBackend.client.auth.onAuthStateChange

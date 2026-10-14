@@ -29,6 +29,7 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
   bool _loading = true, _failed = false;
   List<SecurityIncident> _records = const [];
   int _generation = 0;
+  String? _recordActor;
   bool get _english => SkoLanguageController.isEnglish;
   String _text(String japanese, String english) =>
       _english ? english : japanese;
@@ -46,8 +47,9 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
       _records = const [];
     });
     try {
-      final loader =
-          widget.loadRecords ?? SecurityIncidentRepository.maybeCreate()?.load;
+      final repository = SecurityIncidentRepository.maybeCreate();
+      final actor = repository?.currentActor;
+      final loader = widget.loadRecords ?? repository?.load;
       if (loader == null) {
         throw StateError('Unavailable');
       }
@@ -57,6 +59,7 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
       }
       setState(() {
         _records = records;
+        _recordActor = actor;
         _loading = false;
       });
       final id = widget.incidentId;
@@ -83,6 +86,7 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
           builder: (_) => MasterProtectedPage(
             title: _text('記録の詳細', 'Record details'),
             child: SecurityActorBoundary(
+              initialActor: _recordActor,
               child: SecurityIncidentDetailPage(record: record),
             ),
           ),
@@ -206,6 +210,7 @@ class _SecurityIncidentDetailPageState
         builder: (_) => MasterProtectedPage(
           title: _text('セキュリティ記録の出力', 'Export security record'),
           child: SecurityActorBoundary(
+            initialActor: _actor,
             child: _SecurityIncidentExportAction(
               report: _report,
               actor: _actor,
