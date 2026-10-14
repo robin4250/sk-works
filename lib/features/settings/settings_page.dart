@@ -15,6 +15,7 @@ import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
 import 'master_operations_dashboard_page.dart';
 import '../security/security_incident_page.dart';
+import '../security/security_actor_boundary.dart';
 import 'master_protected_page.dart';
 import 'master_recovery_contacts_page.dart';
 
@@ -377,7 +378,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 MaterialPageRoute(
                                   builder: (_) => const MasterProtectedPage(
                                     title: 'セキュリティ記録',
-                                    child: SecurityIncidentPage(),
+                                    child: SecurityActorBoundary(child: SecurityIncidentPage()),
                                   ),
                                 ),
                               ),

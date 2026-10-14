@@ -18,6 +18,7 @@ import '../payroll/payment_certificates_page.dart';
 import '../settings/settings_page.dart';
 import '../settings/master_protected_page.dart';
 import '../security/security_incident_page.dart';
+import '../security/security_actor_boundary.dart';
 import '../sites/admin_site_financial_page.dart';
 import '../attendance/paid_leave_approvals_page.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
@@ -282,7 +283,9 @@ Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMo
   ),
   'master_security_incident' => MasterProtectedPage(
     title: 'セキュリティ記録',
-    child: SecurityIncidentPage(incidentId: item.actionId),
+    child: SecurityActorBoundary(
+      child: SecurityIncidentPage(incidentId: item.actionId),
+    ),
   ),
   'settings' => const SettingsPage(),
   _ => null,

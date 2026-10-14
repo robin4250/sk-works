@@ -10,6 +10,7 @@ import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import '../settings/master_protected_page.dart';
 import 'security_export_guard.dart';
+import 'security_actor_boundary.dart';
 import 'security_incident.dart';
 import 'security_incident_repository.dart';
 import 'security_incident_report.dart';
@@ -81,7 +82,9 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
         MaterialPageRoute(
           builder: (_) => MasterProtectedPage(
             title: _text('記録の詳細', 'Record details'),
-            child: SecurityIncidentDetailPage(record: record),
+            child: SecurityActorBoundary(
+              child: SecurityIncidentDetailPage(record: record),
+            ),
           ),
         ),
       );
@@ -202,11 +205,13 @@ class _SecurityIncidentDetailPageState
       MaterialPageRoute(
         builder: (_) => MasterProtectedPage(
           title: _text('セキュリティ記録の出力', 'Export security record'),
-          child: _SecurityIncidentExportAction(
-            report: _report,
-            actor: _actor,
-            kind: kind,
-            english: _english,
+          child: SecurityActorBoundary(
+            child: _SecurityIncidentExportAction(
+              report: _report,
+              actor: _actor,
+              kind: kind,
+              english: _english,
+            ),
           ),
         ),
       ),
