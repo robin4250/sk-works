@@ -23,6 +23,7 @@ void main() {
 
   testWidgets('stage one help describes binding, text scope, and no attendance or invoice import', (tester) async {
     await tester.pumpWidget(const LineTestApp(home: LineTalkPage()));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('使い方'));
     await tester.pumpAndSettle();
     expect(find.text('LINEトークの使い方'), findsOneWidget);

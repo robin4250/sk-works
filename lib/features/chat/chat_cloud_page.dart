@@ -841,7 +841,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       final result = await showDialog<({String mode, String nickname})>(
         context: context,
         builder: (context) => StatefulBuilder(
-          builder: (context, update) => AlertDialog(
+          builder: (context, update) => LineReleaseOverlay(guardLine: true, child: AlertDialog(
             title: Text(SkoLanguageController.tr('LINE送信名')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -892,7 +892,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                 child: Text(SkoLanguageController.tr('保存')),
               ),
             ],
-          ),
+          )),
         ),
       );
       nickname.dispose();
@@ -1308,7 +1308,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => LineReleaseOverlay(guardLine: selectedLine != null, child: AlertDialog(
           title: Text(
             SkoLanguageController.tr(create ? 'グループチャット作成' : 'グループ設定'),
           ),
@@ -1607,7 +1607,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               child: Text(SkoLanguageController.tr(create ? '作成' : '保存')),
             ),
           ],
-        ),
+        )),
       ),
     );
     controller.dispose();
@@ -1752,7 +1752,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
+        builder: (sheetContext) => LineReleaseOverlay(guardLine: lineSources.isNotEmpty, child: SafeArea(
           child: SizedBox(
             height: MediaQuery.sizeOf(sheetContext).height * 0.72,
             child: Column(
@@ -1942,7 +1942,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               ],
             ),
           ),
-        ),
+        )),
       );
     } catch (error) {
       if (!mounted) return;

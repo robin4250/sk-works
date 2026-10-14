@@ -180,3 +180,21 @@ class _UnavailableLine extends StatelessWidget {
       child: Text('LINEトークは現在利用できません。'))),
   );
 }
+
+/// Modal routes are siblings of the protected page, so protect their contents
+/// explicitly too. Ordinary SKO-only dialogs can opt out of this LINE boundary.
+class LineReleaseOverlay extends StatelessWidget {
+  const LineReleaseOverlay({super.key, required this.child, this.guardLine = true});
+  final Widget child;
+  final bool guardLine;
+  @override
+  Widget build(BuildContext context) {
+    if (!guardLine) return child;
+    final access = LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
+    if (access == null) return const SizedBox.shrink();
+    return AnimatedBuilder(animation: access, builder: (context, _) {
+      if (!access.available) return const SizedBox.shrink();
+      return Offstage(offstage: !access.visible, child: child);
+    });
+  }
+}
