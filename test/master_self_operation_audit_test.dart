@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/security/master_self_operation_audit.dart';
+import 'package:sk_works/features/security/master_self_operation_audit.dart';
 
 Map<String, Object> response({bool auth = false}) => {
   'version': 1,

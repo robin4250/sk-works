@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/security/master_self_audit_snapshot.dart';
-import '../lib/features/security/master_self_operation_audit.dart';
+import 'package:sk_works/features/security/master_self_audit_snapshot.dart';
+import 'package:sk_works/features/security/master_self_operation_audit.dart';
 
 void main() {
   final cutoff = DateTime.utc(2026, 10, 14, 1);

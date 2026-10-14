@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/security/master_self_audit_page.dart';
-import '../lib/features/security/master_self_audit_repository.dart';
-import '../lib/features/security/master_self_operation_audit.dart';
+import 'package:sk_works/features/security/master_self_audit_page.dart';
+import 'package:sk_works/features/security/master_self_audit_repository.dart';
+import 'package:sk_works/features/security/master_self_operation_audit.dart';
 
 void main() {
   testWidgets(
