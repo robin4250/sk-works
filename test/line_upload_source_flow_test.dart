@@ -6,7 +6,7 @@ import 'package:sk_works/domain/rate_formula_settings.dart';
 
 void main() {
   test('quoted export is read without replacing original evidence', () {
-    final body = '\"9月30日（水）\n現場A 作業員A、作業員B\n現場A 定時\"';
+    final body = '"9月30日（水）\n現場A 作業員A、作業員B\n現場A 定時"';
     final source = <String, dynamic>{
       'id': 'example', 'body': body, 'sent_at': '2026-10-02T06:00:00+09:00',
       'sender_display_name': '報告者', 'source_type': 'history',
