@@ -76,8 +76,10 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
         if (matching.length != 1 || matching.single['rates'] is! Map) continue;
         final rates = matching.single['rates'] as Map;
         for (final unit in ['day', 'overtime', 'early', ...group.allowances.keys.map((name) => 'allowance:' + name)]) {
+          final allowances = rates['allowances'];
           final value = unit.startsWith('allowance:')
-              ? (rates['allowances'] as Map?)?[unit.substring(10)] : rates[unit];
+              ? (allowances is Map ? allowances[unit.substring(10)] : null)
+              : rates[unit];
           if (value is num && value.isFinite && value == value.truncateToDouble() &&
               historicalUnitRate(value.toInt().toString()) != null) {
             _rates[_key(group, unit)] = TextEditingController(text: value.toInt().toString());
