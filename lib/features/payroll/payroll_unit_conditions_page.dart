@@ -93,6 +93,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       setState(() {
         _value = value;
         _loading = false;
+        _saving = false;
       });
     } catch (_) {
       if (!mounted || generation != _generation) return;
@@ -163,15 +164,22 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     enableQuantitySources: true,
                     showDailyReportOption: false,
                     onRegister: (items) async {
+                      final generation = _generation;
+                      final company = widget.companyId;
+                      final worker = widget.workerId;
+                      final current = _value!;
                       setState(() => _saving = true);
                       try {
                         final saved = await widget.repository.save(
-                          widget.companyId,
-                          widget.workerId,
-                          _value!,
+                          company,
+                          worker,
+                          current,
                           items,
                         );
-                        if (!mounted || !context.mounted) return;
+                        if (!mounted || !context.mounted || generation != _generation ||
+                            widget.companyId != company || widget.workerId != worker) {
+                          return;
+                        }
                         setState(() => _value = saved);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -179,7 +187,9 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                           ),
                         );
                       } finally {
-                        if (mounted) setState(() => _saving = false);
+                        if (mounted && generation == _generation) {
+                          setState(() => _saving = false);
+                        }
                       }
                     },
                   ),
