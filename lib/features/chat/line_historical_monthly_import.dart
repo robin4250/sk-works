@@ -61,3 +61,27 @@ String? lineHistoricalFormalSiteName(Map<String, dynamic> snapshot, String siteI
   }
   return names.length == 1 ? names.single : null;
 }
+
+/// Keep the original 33 months and allow later months, including this October.
+List<DateTime> lineHistoryImportMonths({DateTime? through}) {
+  final end = through ?? DateTime.now();
+  final count = (end.year - 2024) * 12 + end.month;
+  return List.unmodifiable(List.generate(count < 33 ? 33 : count,
+    (index) => DateTime(2024, index + 1)));
+}
+
+/// File supplements keep prior posts; explicit replacement keeps received posts.
+List<Map<String, dynamic>> lineMergeImportSources(
+    List<Map<String, dynamic>> existing, List<Map<String, dynamic>> incoming,
+    {bool replaceHistory = false}) {
+  final merged = <String, Map<String, dynamic>>{};
+  for (final source in [
+    ...existing.where((source) =>
+      !replaceHistory || source['source_type'] == 'received'),
+    ...incoming,
+  ]) {
+    final id = source['id']?.toString();
+    if (id != null && id.isNotEmpty) merged[id] = source;
+  }
+  return merged.values.toList(growable: false);
+}
