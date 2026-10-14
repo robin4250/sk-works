@@ -63,6 +63,11 @@ Future<void> _mount(WidgetTester tester, _Repository repository) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _reveal(WidgetTester tester, Finder finder, {double delta = 250}) async {
+  await tester.scrollUntilVisible(finder, delta, scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('swipe switches months and reimport opens the same group', (tester) async {
     final repository = _Repository();
@@ -84,12 +89,12 @@ void main() {
     final repository = _Repository()..failSave = true;
     await _mount(tester, repository);
     final note = find.widgetWithText(TextField, 'LINEノートの集計・照合メモ');
-    await tester.ensureVisible(note);
+    await _reveal(tester, note);
     await tester.enterText(note, '手入力で照合');
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     final month = find.byKey(const ValueKey('line-month-swipe'));
-    await tester.ensureVisible(month);
+    await _reveal(tester, month, delta: -250);
     await tester.fling(month, const Offset(200, 0), 600);
     await tester.pumpAndSettle();
     expect(repository.months.length, 1);
@@ -113,7 +118,7 @@ void main() {
     final repository = _Repository();
     await _mount(tester, repository);
     final date = find.text('2026-09-01');
-    await tester.ensureVisible(date);
+    await _reveal(tester, date);
     await tester.tap(date);
     await tester.pumpAndSettle();
     final overtime = find.widgetWithText(TextField, '残業時間');
@@ -123,7 +128,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('確認済みにする'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('月間表を保存'));
+    await _reveal(tester, find.text('月間表を保存'), delta: -250);
     await tester.tap(find.text('月間表を保存'));
     await tester.pumpAndSettle();
     final rows = repository.saves.single['p_rows'] as List;
@@ -137,7 +142,7 @@ void main() {
     await _mount(tester, _Repository(editable: false));
     expect(find.text('月間表を保存'), findsNothing);
     final date = find.text('2026-09-01');
-    await tester.ensureVisible(date);
+    await _reveal(tester, date);
     await tester.tap(date);
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
