@@ -227,6 +227,17 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
     final people = <String>{for (final g in _summary) ...g.workers}.length;
     final days = _summary.fold<double>(0, (n, g) => n + g.manDays);
     final saved = _data['saved'] as List? ?? [];
+    final bases = <String, int>{};
+    var complete = _summary.isNotEmpty;
+    for (final group in _summary) {
+      final amount = _subtotal(group);
+      if (amount == null) { complete = false; continue; }
+      bases[group.siteId] = (bases[group.siteId] ?? 0) + amount;
+    }
+    final estimatedTotal = bases.values.fold<int>(0, (sum, base) {
+      final welfare = (base * 15 / 100).round();
+      return sum + base + welfare + ((base + welfare) * 10 / 100).round();
+    });
     return Scaffold(appBar: AppBar(title: Text(_tr(widget.editingRates ? 'LINE単価設定' : 'LINE月別請求書')), actions: [
       IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
@@ -258,6 +269,12 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         if (_busy) const LinearProgressIndicator(),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (_data.isNotEmpty) Text('実人数 $people人 ／ 延べ ${days.toStringAsFixed(1)}人工', style: Theme.of(context).textTheme.titleMedium),
+        if (_data.isNotEmpty && complete) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('入力単価による参考請求額 $estimatedTotal円', style: Theme.of(context).textTheme.titleLarge),
+            const Text('現場別の入力単価＋福利15%＋消費税10%。登録経費は含みません。正式下書きの金額プレビューで対象月の条件と経費を確認してください。'),
+            for (final entry in bases.entries) Text('${_siteNames[entry.key]?.text ?? entry.key}：作業・手当小計 ${entry.value}円'),
+          ]))),
         if (!_busy && _error == null && _data.isNotEmpty && _summary.isEmpty) Text(_tr('確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。')),
         if (!_busy && _error == null && _groups.isEmpty) Text(_tr('表示できるLINEグループがありません。連携状態を確認してください。')),
         if (widget.editingRates) for (final entry in _siteNames.entries)
@@ -267,7 +284,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
             onTap: _busy || _pending != null ? null : () => _openSiteRates(entry.key))),
         if (!widget.editingRates) for (final g in _summary)
           Card(child: ListTile(title: Text('${_siteNames[g.siteId]?.text ?? g.siteName} ／ ${g.category}'),
-            subtitle: Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工\n残業 ${g.overtime}時間 ／ 早出 ${g.early}時間'))),
+            subtitle: Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工\n残業 ${g.overtime}時間 ／ 早出 ${g.early}時間\n作業・手当小計 ${_subtotal(g)?.toString() ?? '単価を確認'}円'))),
         if (widget.editingRates) FilledButton(onPressed: _busy || _summary.isEmpty ? null : _save,
           child: Text(_pending == null ? '履歴小計を保存' : '同じ保存を再送')),
         const SizedBox(height: 20), const Text('保存済み履歴（現在単価で再計算しません）'),

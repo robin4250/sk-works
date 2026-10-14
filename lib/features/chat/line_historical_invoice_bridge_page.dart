@@ -43,7 +43,7 @@ class _LineHistoricalInvoiceBridgePageState extends State<_LineHistoricalInvoice
       final sites = <String>{for (final line in quote['lines'] as List) line['site_id'].toString()}.toList();
       if (!mounted) return;
       for (final c in [..._names.values, ..._welfare.values]) { c.dispose(); }
-      _names.clear(); _welfare.clear(); _customers.clear(); _tax.clear();
+      _names.clear(); _welfare.clear(); _customers.clear(); _tax.text = '10';
       final rows = quote['rows'] as List;
       for (final site in sites) {
         final matches = rows.where((r) => r['site_id'] == site).toList();

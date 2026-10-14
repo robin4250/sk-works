@@ -10,6 +10,7 @@ import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
+import 'line_historical_amount_preview.dart';
 
 class LineImportPage extends StatelessWidget {
   const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
@@ -352,7 +353,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     }
     final next = DateTime(_month.year, _month.month + delta);
     final now = DateTime.now();
-    if (next.isBefore(DateTime(2024)) || next.isAfter(DateTime(now.year, now.month))) return;
+    if (next.isBefore(DateTime(1900)) || next.isAfter(DateTime(now.year, now.month))) return;
     FocusScope.of(context).unfocus();
     setState(() { _month = next; _workerFilter = null; });
     await _load();
@@ -410,6 +411,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     final shown = _rows.where((row) => _workerFilter == null || row['worker_id'] == _workerFilter).toList();
     final workerOptions = <String, String>{for (final row in _rows) if (row['worker_id'] is String) row['worker_id'] as String: row['worker_name'].toString()};
     final totals = LineImportDraft.aggregate(shown, bySite: widget.target == 'invoice');
+    final estimate = lineHistoricalAmountPreview(_rows);
     return Scaffold(appBar: AppBar(title: Text(_title), actions: [IconButton(onPressed: _help, icon: const Icon(Icons.help_outline), tooltip: '使い方'),
       IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: _error != null ? Center(child: Text(_error!)) : ListView(padding: const EdgeInsets.all(16), children: [
@@ -440,6 +442,14 @@ class _LineImportPageState extends State<_LineImportPageContent> {
         if (widget.target == 'invoice') Text(widget.monthlyTable
           ? '照合して保存した月間表から、その月の単価設定と請求書へ進みます。'
           : '請求書はこの月の確認済み全員分を作成します。'),
+        if (_canEdit && _enabled && widget.target == 'invoice' && _rows.isNotEmpty) Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(estimate.sites.isEmpty ? '参考請求額：数量の確認が必要です' : '読取数量の参考請求額 ${estimate.total}円', style: Theme.of(context).textTheme.titleMedium),
+            const Text('指定初期単価での参考計算・月全体。日32800円／残業・早出5125円／PC・鉄骨各3000円／福利15%／税10%。現場別に変更・保存した単価と登録経費は、正式下書きの金額プレビューで反映します。'),
+            Text('未確認 ${estimate.pendingRows}行 ／ 数量・手当・重複などの要確認で計算対象外 ${estimate.incompleteRows}行。未振り分けの原文・訂正は別途照合してください。'),
+            for (final site in estimate.sites) Text('${site.name}：${site.total}円（作業・手当 ${site.base}円＋福利 ${site.welfare}円＋税 ${site.tax}円）'),
+            const Text('正式請求の確定額ではありません。表を修正すると再計算します。'),
+          ]))),
         Text('確認済み集計', style: Theme.of(context).textTheme.titleMedium),
         if (totals.isEmpty) const Text('確認済みの候補はありません。'),
         for (final total in totals) ListTile(contentPadding: EdgeInsets.zero, title: Text(total['name'].toString()), subtitle: Text('人工 ${total['man_days']} ／ 残業 ${total['overtime_hours']}時間 ／ 早出 ${total['early_hours']}時間')),
