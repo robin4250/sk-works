@@ -402,7 +402,8 @@ class _LineImportPageState extends State<LineImportPage> {
               columns: const [
                 DataColumn(label: Text('日付')), DataColumn(label: Text('作業員')),
                 DataColumn(label: Text('現場')), DataColumn(label: Text('人工')),
-                DataColumn(label: Text('残業時間')), DataColumn(label: Text('手当')),
+                DataColumn(label: Text('残業時間')), DataColumn(label: Text('早出時間')),
+                DataColumn(label: Text('手当')),
               ],
               rows: [for (final row in shown) DataRow(
                 onSelectChanged: editable ? (_) => _edit(_rows.indexOf(row)) : null,
@@ -412,6 +413,7 @@ class _LineImportPageState extends State<LineImportPage> {
                   DataCell(Text(row['site_name']?.toString() ?? '')),
                   DataCell(Text(row['man_days']?.toString() ?? '要確認')),
                   DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
+                  DataCell(Text(row['early_hours']?.toString() ?? '要確認')),
                   DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),
                 ],
               )])),
