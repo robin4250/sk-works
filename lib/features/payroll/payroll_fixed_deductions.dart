@@ -233,6 +233,21 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       raw is Map && raw.length == expected.length &&
       expected.entries.every((e) => raw[e.key] == e.value);
 
+  String _amountStatus(String key) {
+    if (_manual.contains(key)) return '手入力修正';
+    if (_busy) return '計算結果を確認中';
+    if (_error != null) return '計算結果未確認';
+    if (_profile == null) return '計算条件未設定';
+    if (key == 'income_tax' && _profile!['income_mode'] == 'fixed') {
+      return _controllers[key]!.text.isEmpty
+          ? '固定額設定・給与計算待ち' : '固定額設定';
+    }
+    if (key != 'income_tax' && _profile!['insurance_mode'] == 'fixed') {
+      return '一括固定額設定（個別計算なし）';
+    }
+    return _controllers[key]!.text.isEmpty ? '給与計算待ち' : '自動計算';
+  }
+
   Future<void> _formula(String key, String title) async {
     final formula = switch (key) {
       'income_tax' => '支給額から非課税額・社会保険料等を差し引き、適用する所得税月額表・甲欄／乙欄・扶養人数で計算します。',
@@ -281,8 +296,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
                     (item.$1 == 'income_tax' || _profile?['insurance_mode'] == 'rates'),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(labelText: item.$2, suffixText: '円',
-                  helperText: _manual.contains(item.$1) ? '手入力修正'
-                    : _controllers[item.$1]!.text.isEmpty ? '給与計算待ち' : '自動計算',
+                  helperText: _amountStatus(item.$1),
                   border: const OutlineInputBorder()),
                 onChanged: (_) => setState(() { _manual.add(item.$1); _dirty = true; }),
               ),
@@ -322,3 +336,4 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     ],
   );
 }
+

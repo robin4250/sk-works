@@ -12,9 +12,11 @@ class _Backend {
   Map<String, dynamic> value = Map.of(initialProfile);
   Map<String, dynamic>? sent;
   bool edit = true, failSave = false;
+  bool hasConditions = true;
   Map<String, dynamic> get response => {
     'company_id': 'company', 'worker_id': 'worker', 'can_edit': edit,
-    'items': [{'starts_on': month, 'version': version, 'value': value}],
+    'items': hasConditions
+        ? [{'starts_on': month, 'version': version, 'value': value}] : [],
   };
   Future<dynamic> rpc(String name, Map<String, dynamic> params) async {
     if (name == 'payroll_deduction_overrides_contract_version') return 1;
@@ -85,6 +87,40 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('unset conditions are not described as waiting automatic calculation', (t) async {
+    final b = _Backend()..hasConditions = false;
+    await _mount(t, b);
+    for (final item in fixedPayrollDeductions) {
+      final field = t.widget<TextFormField>(amount(item.$1));
+      expect(field.decoration!.helperText, '計算条件未設定');
+      expect(field.controller!.text, isEmpty);
+      expect(field.enabled, isFalse);
+    }
+    expect(b.writes, 0);
+  });
+
+  testWidgets('fixed settings are not labelled automatic and manual corrections stay explicit', (t) async {
+    final b = _Backend()..value = {
+      'insurance_mode': 'fixed', 'income_mode': 'fixed',
+      'deduction_overrides': {'income_tax': 1234},
+    };
+    await _mount(t, b);
+    expect(t.widget<TextFormField>(amount('income_tax')).decoration!.helperText,
+        '手入力修正');
+    for (final key in fixedPayrollDeductions.skip(1).map((i) => i.$1)) {
+      expect(t.widget<TextFormField>(amount(key)).decoration!.helperText,
+          '一括固定額設定（個別計算なし）');
+    }
+    final reset = find.descendant(of: card('income_tax'),
+        matching: find.text('自動計算に戻す'));
+    await t.tap(reset);
+    await t.pumpAndSettle();
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1000');
+    expect(t.widget<TextFormField>(amount('income_tax')).decoration!.helperText,
+        '固定額設定');
+    expect(b.writes, 0);
+  });
+
   testWidgets('fixed order, generated amounts, explicit zero and restore automatic', (t) async {
     final b = _Backend();
     await _mount(t, b);
@@ -151,3 +187,4 @@ void main() {
     expect(t.takeException(), isNull);
   });
 }
+
