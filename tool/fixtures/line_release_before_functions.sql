@@ -293,3 +293,77 @@ end $function$
 ;
 revoke all on function private.line_shared_chat_groups() from public,anon,authenticated,service_role;
 grant execute on function private.line_shared_chat_groups() to authenticated;
+CREATE OR REPLACE FUNCTION private.chat_report_queue()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+ select coalesce(jsonb_agg(jsonb_build_object('id',r.id,'sender_name',r.sender_name,'body',r.body_snapshot,'reason',r.reason,'created_at',r.created_at,'status',r.status) order by r.created_at),'[]') from private.chat_reports r where exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin'))
+$function$
+;
+revoke all on function private.chat_report_queue() from public,anon,authenticated,service_role;
+grant execute on function private.chat_report_queue() to authenticated;
+CREATE OR REPLACE FUNCTION private.content_review_payload(p_kind text, p_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare payload jsonb;
+begin
+ if not exists(select 1 from private.content_reviews r where kind=p_kind and content_id=p_id
+  and review_required and private.content_reviewer(company_id) and private.chat_sender_visible(author_id)) then return null; end if;
+ case p_kind
+  when 'message' then select jsonb_build_object('text',body,'files','[]'::jsonb) into payload from public.chat_messages where id=p_id;
+  when 'attachment' then select jsonb_build_object('text',original_filename,'files',jsonb_build_array(jsonb_build_object('bucket','chat-attachments','path',storage_path,'name',original_filename))) into payload from public.chat_attachments where id=p_id;
+  when 'note' then select jsonb_build_object('text',title||E'\n'||coalesce(body,''),'files',(select coalesce(jsonb_agg(f||'{"bucket":"communication-notes"}'::jsonb),'[]'::jsonb) from jsonb_array_elements(attachments) f)) into payload from public.communication_notes where id=p_id;
+  when 'album' then select jsonb_build_object('text',name||E'\n'||coalesce(description,''),'files','[]'::jsonb) into payload from public.communication_albums where id=p_id;
+  when 'photo' then select jsonb_build_object('text',coalesce(caption,''),'files',jsonb_build_array(jsonb_build_object('bucket','communication-albums','path',storage_path,'name',original_filename))) into payload from public.communication_album_items where id=p_id;
+  else return null;
+ end case;
+ return payload;
+end $function$
+;
+revoke all on function private.content_review_payload(text,uuid) from public,anon,authenticated,service_role;
+CREATE OR REPLACE FUNCTION private.report_chat_message(p_message uuid, p_reason text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare m public.chat_messages%rowtype; rid uuid; begin
+ if auth.uid() is null then raise exception 'ログインしてください'; end if;
+ if p_reason is null or p_reason not in ('harassment','inappropriate','personal_data','spam','other') then raise exception '通報理由を選んでください'; end if;
+ select * into m from public.chat_messages where id=p_message;
+ if not found or not private.can_access_communication_group(m.communication_group_id) or not private.chat_message_visible(m.id,m.sender_user_id) then raise exception 'この投稿を確認できません'; end if;
+ if m.sender_user_id=auth.uid() then raise exception '自分の投稿は削除操作を利用してください'; end if;
+ select id into rid from private.chat_reports where reporter_id=auth.uid() and message_id=p_message;
+ if rid is not null then return rid; end if;
+ perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text,791));
+ if (select count(*) from private.chat_reports where reporter_id=auth.uid() and created_at>now()-interval '1 day')>=20 then raise exception '本日の通報上限です。お問い合わせ窓口を利用してください'; end if;
+ insert into private.chat_reports(reporter_id,message_id,company_id,sender_id,sender_name,body_snapshot,reason)
+ values(auth.uid(),m.id,m.company_id,m.sender_user_id,m.sender_display_name,left(m.body,20000),p_reason)
+ on conflict(reporter_id,message_id) do update set message_id=excluded.message_id returning id into rid;
+ return rid;
+end $function$
+;
+revoke all on function private.report_chat_message(uuid,text) from public,anon,authenticated,service_role;
+grant execute on function private.report_chat_message(uuid,text) to authenticated;
+CREATE OR REPLACE FUNCTION private.review_chat_report(p_report uuid, p_hide boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare r private.chat_reports%rowtype; begin
+ select * into r from private.chat_reports where id=p_report for update;
+ if not found or not exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin')) then raise exception '管理者のみ対応できます'; end if;
+ if p_hide then
+   insert into private.chat_hidden_messages(message_id) select id from public.chat_messages where id=r.message_id on conflict do nothing;
+ end if;
+ update private.chat_reports set status=case when p_hide then 'hidden' else 'dismissed' end,reviewed_by=auth.uid(),reviewed_at=now() where id=r.id;
+end $function$
+;
+revoke all on function private.review_chat_report(uuid,boolean) from public,anon,authenticated,service_role;
+grant execute on function private.review_chat_report(uuid,boolean) to authenticated;

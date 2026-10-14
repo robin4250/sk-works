@@ -74,6 +74,10 @@ do $guard$ begin
  if (select md5(prosrc) from pg_proc where oid='private.line_outbound_actor_allowed(uuid,uuid,uuid)'::regprocedure) is distinct from '994e206a2f560cf3aa33f14a466a709b' then raise exception 'LINE release prerequisite changed: private.line_outbound_actor_allowed(uuid,uuid,uuid)'; end if;
  if (select md5(prosrc) from pg_proc where oid='private.create_line_shared_chat_group(uuid,text,text,uuid)'::regprocedure) is distinct from 'c21721e95aff9237fd8768c75e2b8506' then raise exception 'LINE release prerequisite changed: private.create_line_shared_chat_group(uuid,text,text,uuid)'; end if;
  if (select md5(prosrc) from pg_proc where oid='private.line_shared_chat_groups()'::regprocedure) is distinct from 'df8adc7e99e4cc25d521bbb7ae6db49f' then raise exception 'LINE release prerequisite changed: private.line_shared_chat_groups()'; end if;
+ if (select md5(prosrc) from pg_proc where oid='private.chat_report_queue()'::regprocedure) is distinct from '6ce036c42a1527b6a9212b638dbd2361' then raise exception 'LINE release prerequisite changed: private.chat_report_queue()'; end if;
+ if (select md5(prosrc) from pg_proc where oid='private.content_review_payload(text,uuid)'::regprocedure) is distinct from '558bee9d928cf9c6f9cbd3653fb52637' then raise exception 'LINE release prerequisite changed: private.content_review_payload(text,uuid)'; end if;
+ if (select md5(prosrc) from pg_proc where oid='private.report_chat_message(uuid,text)'::regprocedure) is distinct from 'e2262bc2092e21e1cff538b4d82209ce' then raise exception 'LINE release prerequisite changed: private.report_chat_message(uuid,text)'; end if;
+ if (select md5(prosrc) from pg_proc where oid='private.review_chat_report(uuid,boolean)'::regprocedure) is distinct from 'b88d1c02369b0d913f675019ce7e6fc8' then raise exception 'LINE release prerequisite changed: private.review_chat_report(uuid,boolean)'; end if;
 end $guard$;
 CREATE OR REPLACE FUNCTION public.begin_line_group_claim(p_communication_group_id uuid)
  RETURNS TABLE(claim_code text, expires_at timestamp with time zone)
@@ -366,6 +370,79 @@ begin
  from public.communication_groups g left join private.line_chat_group_origins o on o.group_id=g.id
  where g.group_type='company' and g.participants_only and g.archived_at is null and private.can_access_communication_group(g.id)
  and exists(select 1 from private.line_chat_source_links l where l.group_id=g.id and l.company_id=g.company_id)), '[]'::jsonb);
+end $function$
+;
+CREATE OR REPLACE FUNCTION private.chat_report_queue()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+ select coalesce(jsonb_agg(jsonb_build_object('id',r.id,'sender_name',r.sender_name,'body',r.body_snapshot,'reason',r.reason,'created_at',r.created_at,'status',r.status) order by r.created_at),'[]') from private.chat_reports r where (private.line_client_access_allowed() or exists(select 1 from public.chat_messages line_source where line_source.id=r.message_id and line_source.origin<>'line')) and exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin'))
+$function$
+;
+CREATE OR REPLACE FUNCTION private.content_review_payload(p_kind text, p_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare payload jsonb;
+begin
+ if p_kind in ('message','attachment') and not private.line_client_access_allowed() and not exists(select 1 from public.chat_messages line_source where line_source.id=case when p_kind='message' then p_id else (select a.message_id from public.chat_attachments a where a.id=p_id) end and line_source.origin<>'line') then return null; end if;
+
+ if not exists(select 1 from private.content_reviews r where kind=p_kind and content_id=p_id
+  and review_required and private.content_reviewer(company_id) and private.chat_sender_visible(author_id)) then return null; end if;
+ case p_kind
+  when 'message' then select jsonb_build_object('text',body,'files','[]'::jsonb) into payload from public.chat_messages where id=p_id;
+  when 'attachment' then select jsonb_build_object('text',original_filename,'files',jsonb_build_array(jsonb_build_object('bucket','chat-attachments','path',storage_path,'name',original_filename))) into payload from public.chat_attachments where id=p_id;
+  when 'note' then select jsonb_build_object('text',title||E'\n'||coalesce(body,''),'files',(select coalesce(jsonb_agg(f||'{"bucket":"communication-notes"}'::jsonb),'[]'::jsonb) from jsonb_array_elements(attachments) f)) into payload from public.communication_notes where id=p_id;
+  when 'album' then select jsonb_build_object('text',name||E'\n'||coalesce(description,''),'files','[]'::jsonb) into payload from public.communication_albums where id=p_id;
+  when 'photo' then select jsonb_build_object('text',coalesce(caption,''),'files',jsonb_build_array(jsonb_build_object('bucket','communication-albums','path',storage_path,'name',original_filename))) into payload from public.communication_album_items where id=p_id;
+  else return null;
+ end case;
+ return payload;
+end $function$
+;
+CREATE OR REPLACE FUNCTION private.report_chat_message(p_message uuid, p_reason text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare m public.chat_messages%rowtype; rid uuid; begin
+ if not private.line_client_access_allowed() and not exists(select 1 from public.chat_messages line_source where line_source.id=p_message and line_source.origin<>'line') then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+
+ if auth.uid() is null then raise exception 'ログインしてください'; end if;
+ if p_reason is null or p_reason not in ('harassment','inappropriate','personal_data','spam','other') then raise exception '通報理由を選んでください'; end if;
+ select * into m from public.chat_messages where id=p_message;
+ if not found or not private.can_access_communication_group(m.communication_group_id) or not private.chat_message_visible(m.id,m.sender_user_id) then raise exception 'この投稿を確認できません'; end if;
+ if m.sender_user_id=auth.uid() then raise exception '自分の投稿は削除操作を利用してください'; end if;
+ select id into rid from private.chat_reports where reporter_id=auth.uid() and message_id=p_message;
+ if rid is not null then return rid; end if;
+ perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text,791));
+ if (select count(*) from private.chat_reports where reporter_id=auth.uid() and created_at>now()-interval '1 day')>=20 then raise exception '本日の通報上限です。お問い合わせ窓口を利用してください'; end if;
+ insert into private.chat_reports(reporter_id,message_id,company_id,sender_id,sender_name,body_snapshot,reason)
+ values(auth.uid(),m.id,m.company_id,m.sender_user_id,m.sender_display_name,left(m.body,20000),p_reason)
+ on conflict(reporter_id,message_id) do update set message_id=excluded.message_id returning id into rid;
+ return rid;
+end $function$
+;
+CREATE OR REPLACE FUNCTION private.review_chat_report(p_report uuid, p_hide boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare r private.chat_reports%rowtype; begin
+ if not private.line_client_access_allowed() and not exists(select 1 from private.chat_reports line_report join public.chat_messages line_source on line_source.id=line_report.message_id where line_report.id=p_report and line_source.origin<>'line') then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+
+ select * into r from private.chat_reports where id=p_report for update;
+ if not found or not exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin')) then raise exception '管理者のみ対応できます'; end if;
+ if p_hide then
+   insert into private.chat_hidden_messages(message_id) select id from public.chat_messages where id=r.message_id on conflict do nothing;
+ end if;
+ update private.chat_reports set status=case when p_hide then 'hidden' else 'dismissed' end,reviewed_by=auth.uid(),reviewed_at=now() where id=r.id;
 end $function$
 ;
 commit;

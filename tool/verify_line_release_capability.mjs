@@ -20,6 +20,10 @@ create table communication_group_members(group_id uuid,user_id uuid);
 create table private.account_deletion_access_restrictions(user_id uuid);
 create table private.master_admins(user_id uuid primary key,enabled boolean);
 create table private.master_admin_audit_log(actor_user_id uuid,action text,details jsonb);
+create table private.chat_reports(id uuid primary key default gen_random_uuid(),reporter_id uuid,message_id uuid,company_id uuid,sender_id uuid,sender_name text,body_snapshot text,reason text,created_at timestamptz default now(),status text default 'pending',reviewed_by uuid,reviewed_at timestamptz,unique(reporter_id,message_id));
+create table private.chat_hidden_messages(message_id uuid primary key);
+create table private.content_reviews(kind text,content_id uuid,company_id uuid,author_id uuid,review_required boolean);
+create table chat_attachments(id uuid primary key,message_id uuid,original_filename text,storage_path text);
 create table line_group_bindings(id uuid primary key default gen_random_uuid(),company_id uuid,communication_group_id uuid,line_group_id text unique,status text,display_name text,updated_at timestamptz);
 create table private.line_joined_groups(id uuid primary key default gen_random_uuid(),line_group_id text,joined boolean,display_name text,observed_at timestamptz);
 create table private.line_chat_source_links(group_id uuid,company_id uuid,directory_id uuid,linked_by uuid,unique(group_id,directory_id));
@@ -34,6 +38,9 @@ create function private.can_edit_custom_chat_photo(g uuid) returns boolean langu
 create function private.has_company_role(c uuid,r app_role[]) returns boolean language sql stable as $$select exists(select 1 from public.company_members where company_id=c and user_id=auth.uid() and role=any(r))$$;
 create function private.has_company_feature(c uuid,f text) returns boolean language sql stable as $$select exists(select 1 from public.company_members where company_id=c and user_id=auth.uid() and role in ('owner','admin'))$$;
 create function public.can_manage_attendance_corrections(c uuid) returns boolean language sql stable as $$select private.has_company_feature(c,'attendance')$$;
+create function private.content_reviewer(c uuid) returns boolean language sql stable as $$select private.has_company_feature(c,'review')$$;
+create function private.chat_sender_visible(u uuid) returns boolean language sql stable as $$select true$$;
+create function private.chat_message_visible(m uuid,u uuid) returns boolean language sql stable as $$select true$$;
 grant usage on schema public,private,auth to authenticated,anon,service_role;
 grant select,insert on chat_messages to authenticated,service_role;
 grant select on line_group_bindings,line_binding_claims,line_binding_audit to authenticated;
@@ -66,6 +73,12 @@ const retained = async () => (await db.query("select p.oid::regprocedure::text s
 const beforeFns = await retained();
 const authBody = await scalar("select md5(prosrc) v from pg_proc where oid='private.can_access_communication_group(uuid)'::regprocedure");
 const history = await scalar("select md5(jsonb_agg(to_jsonb(m) order by id)::text) v from chat_messages m");
+const lineId=await scalar("select id v from chat_messages where body='Saved LINE'");
+const skoId=await scalar("select id v from chat_messages where body='Saved SKO'");
+await db.exec(`insert into private.chat_reports(reporter_id,message_id,company_id,sender_name,body_snapshot,reason) values('${id(1)}','${lineId}','${id(10)}','Line author','LINE report snapshot','other'),('${id(1)}','${skoId}','${id(10)}','SKO author','SKO report snapshot','other'),('${id(1)}','${id(999)}','${id(10)}','Deleted author','Unknown deleted-source snapshot','other');
+insert into private.content_reviews values('message','${lineId}','${id(10)}',null,true),('message','${skoId}','${id(10)}','${id(2)}',true);
+insert into chat_attachments values('${id(998)}','${lineId}','LINE file','fixture-only-path');
+insert into private.content_reviews values('attachment','${id(998)}','${id(10)}',null,true);`);
 if(process.argv.includes('--drift')) {
  await db.exec(`create or replace function private.line_outbound_actor_allowed(p_actor uuid,p_group uuid,p_company uuid) returns boolean language sql stable security definer set search_path='' as $$select false$$`);
  await assert.rejects(db.exec(readFileSync('supabase/migrations/20261014123518_line_general_release_capability.sql','utf8')),/prerequisite changed/);
@@ -98,6 +111,16 @@ for(const n of [2,3,4,5,6,7]) {
 }
 await actor(2);await role('authenticated');
 assert.equal(await scalar("select count(*)::int v from chat_messages where origin='sk_works'"),2,'Ordinary SKO history remains readable');
+await actor(3);await role('authenticated');
+const reports=await scalar('select private.chat_report_queue() v');
+assert.deepEqual(reports.map(r=>r.body),['SKO report snapshot'],'LINE and unknown deleted-source snapshots stay hidden while OFF');
+await assert.rejects(scalar("select private.report_chat_message($1,'other') v",[lineId]),/LINE is unavailable/);
+const lineReport=await (async()=>{await role('postgres');const rid=await scalar('select id v from private.chat_reports where message_id=$1',[lineId]);await role('authenticated');return rid;})();
+await assert.rejects(db.query('select private.review_chat_report($1,true)',[lineReport]),/LINE is unavailable/);
+await role('postgres');assert.equal(await scalar("select private.content_review_payload('message',$1) v",[lineId]),null);assert.equal(await scalar("select private.content_review_payload('attachment',$1) v",[id(998)]),null);
+assert.equal((await scalar("select private.content_review_payload('message',$1) v",[skoId])).text,'Saved SKO');
+await role('authenticated');assert.ok(await scalar("select private.report_chat_message($1,'other') v",[skoId]));
+await actor(2);await role('authenticated');
 await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),/access required/);
 await role('service_role');await assert.rejects(scalar('select public.claim_line_chat_dispatch($1,$2) v',[ticket,id(2)]),/access required/);
 await role('authenticated');
@@ -105,6 +128,8 @@ const skOnly=(await db.query(`insert into chat_messages(company_id,communication
 await role('postgres');assert.equal(await scalar('select count(*)::int v from private.line_chat_outbox where message_id=$1',[skOnly]),0);
 await actor(1);await role('authenticated');
 assert.equal((await scalar('select public.line_release_capability() v')).available,true);
+assert.ok((await scalar('select private.chat_report_queue() v')).some(r=>r.body==='LINE report snapshot'));
+await role('postgres');assert.equal((await scalar("select private.content_review_payload('message',$1) v",[lineId])).text,'Saved LINE');await role('authenticated');
 assert.equal(await scalar("select count(*)::int v from chat_messages where origin='line'"),1,'Master retains only existing group access');
 await role('postgres');await db.query('insert into private.account_deletion_access_restrictions values($1)',[id(1)]);await role('authenticated');
 assert.equal((await scalar('select public.line_release_capability() v')).available,false,'Master exception never bypasses account restriction');
