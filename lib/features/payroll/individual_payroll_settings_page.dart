@@ -563,7 +563,8 @@ class _IndividualPayrollSettingsPageState
                   ),
                   const SizedBox(height: 12),
                   PayrollDraftKeepAlive(
-                    key: ValueKey('payroll-rate-${_workerId ?? ''}'),
+                    // Rebuild from saved rates even when a fast reload skips a loading frame.
+                    key: ValueKey('payroll-rate-${_workerId ?? ''}-$_loadGeneration'),
                     child: RateFormulaEditorCard(
                       compact: true,
                       title: SkoLanguageController.tr('勤務単価 自動計算'),
