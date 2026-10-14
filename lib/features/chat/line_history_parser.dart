@@ -90,6 +90,13 @@ class LineHistoryParser {
         continue;
       }
 
+      // A timestamped LINE system event is not part of the preceding body.
+      if (RegExp(r'^\d{1,2}:\d{2}\t').hasMatch(line)) {
+        flushPending();
+        ignoredLineCount += 1;
+        continue;
+      }
+
       if (pendingTimestamp != null) {
         pendingBody
           ..write('\n')

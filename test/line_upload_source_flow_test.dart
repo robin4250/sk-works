@@ -51,6 +51,12 @@ void main() {
     expect(months.contains(DateTime(2026, 9)), true);
     expect(months.contains(DateTime(2026, 10)), true);
   });
+  test('cancellation events do not corrupt quoted message boundaries', () {
+    final parsed = const LineHistoryParser().parse('2026/10/02(金)\n06:00\tA\t"9月30日\n現場A 作業員A"\n06:01\t\t送信を取り消しました');
+    expect(parsed.messages, hasLength(1));
+    expect(lineBodyForReading(parsed.messages.single.body), '9月30日\n現場A 作業員A');
+    expect(parsed.ignoredLineCount, 1);
+  });
   test('initial overtime follows the SKO calculation', () {
     expect(const RateFormulaSettings().overtime(32800), 5125);
     expect(const RateFormulaSettings().overtime(32000), 5000);
