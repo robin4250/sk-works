@@ -72,10 +72,12 @@ class _LineTalkHubPageState extends State<LineTalkHubPage> {
           : null;
       });
     } catch (_) {
-      if (mounted && generation == _loadGeneration) setState(() {
-        _features = const LineImportFeatures(); _isMaster = false; _canViewInvoice = false;
-        _error = 'ログイン状態と追加機能の設定を確認してください。';
-      });
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _features = const LineImportFeatures(); _isMaster = false; _canViewInvoice = false;
+          _error = 'ログイン状態と追加機能の設定を確認してください。';
+        });
+      }
     }
   }
   Future<void> _open(Widget page) async {

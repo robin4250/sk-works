@@ -75,7 +75,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
           line['work_category'] == group.category).toList();
         if (matching.length != 1 || matching.single['rates'] is! Map) continue;
         final rates = matching.single['rates'] as Map;
-        for (final unit in ['day', 'overtime', 'early', ...group.allowances.keys.map((name) => 'allowance:' + name)]) {
+        for (final unit in ['day', 'overtime', 'early', ...group.allowances.keys.map((name) => 'allowance:$name')]) {
           final allowances = rates['allowances'];
           final value = unit.startsWith('allowance:')
               ? (allowances is Map ? allowances[unit.substring(10)] : null)

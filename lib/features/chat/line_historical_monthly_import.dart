@@ -13,7 +13,7 @@ List<Map<String, dynamic>> lineHistorySources(String text) {
       'body': message.body, 'sent_at': message.timestamp.toUtc().toIso8601String(),
       'sender_display_name': message.sender, 'source_type': 'history',
     };
-    final id = 'history:' + lineSourceFingerprint(source);
+    final id = 'history:${lineSourceFingerprint(source)}';
     source['id'] = id;
     unique[id] = source;
   }

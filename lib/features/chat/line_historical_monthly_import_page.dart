@@ -73,8 +73,10 @@ class _LineHistoricalMonthlyImportPageState
         _counts.addAll(counts); _commands.clear(); _status.clear(); _error = null;
       });
     } catch (_) {
-      if (mounted) setState(() =>
+      if (mounted) {
+        setState(() =>
           _error = '5MB以下のUTF-8 LINE書き出しテキストを選択してください。');
+      }
     } finally { if (mounted) setState(() => _busy = false); }
   }
   Future<void> _save() async {
@@ -115,8 +117,10 @@ class _LineHistoricalMonthlyImportPageState
           if (['22023', '40001', '42501'].contains(error.code)) {
             _commands.remove(key);
           }
-          if (mounted) setState(() => _status[key] = error.code == '40001'
+          if (mounted) {
+            setState(() => _status[key] = error.code == '40001'
               ? '保存版が変更・再取得して再送' : '入力・権限を確認して再送');
+          }
         } catch (_) {
           // Keep the exact command ID/payload after an ambiguous response.
           if (mounted) setState(() => _status[key] = '未確認・同じ保存を再送');
