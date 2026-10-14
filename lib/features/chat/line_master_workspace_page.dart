@@ -29,7 +29,6 @@ class LineMasterWorkspacePage extends StatelessWidget {
 
 class _LineMasterWorkspacePageContent extends StatefulWidget {
   const _LineMasterWorkspacePageContent({
-    super.key,
     this.masterCheck,
     this.talkBuilder,
     this.invoiceBuilder,

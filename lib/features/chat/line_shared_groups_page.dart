@@ -28,7 +28,6 @@ class LineSharedGroupsPage extends StatelessWidget {
 
 class _LineSharedGroupsPageContent extends StatefulWidget {
   const _LineSharedGroupsPageContent({
-    super.key,
     required this.onOpenGroup,
     this.repository,
     this.onOpenSavedTalks,

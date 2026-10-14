@@ -94,7 +94,7 @@ class _LineTalkHubPageState extends State<_LineTalkHubPageContent> {
       )), icon: const Icon(Icons.chat_bubble_outline), label: const Text('トーク')),
       if (_features.attendance) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineImportPage(target: 'attendance')), icon: const Icon(Icons.calendar_month), label: const Text('出勤表'))],
       if (_isMaster) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => _open(const LineMasterWorkspacePage()), icon: const Icon(Icons.admin_panel_settings_outlined), label: Text(SkoLanguageController.tr('マスター権限')))],
-      const SizedBox(height: 16), const Text('トークは標準機能です。請求書・単価設定・チャット・月別の表は「マスター権限」から開きます。出勤表はマスター設定に応じて表示します。'),
+      const SizedBox(height: 16), const Text('トークは利用が許可されている場合に開けます。請求書・単価設定・チャット・月別の表は「マスター権限」から開きます。出勤表はマスター設定に応じて表示します。'),
       if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!)),
     ]),
   );
