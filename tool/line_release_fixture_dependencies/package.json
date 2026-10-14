@@ -1,0 +1,9 @@
+{
+  "name": "sko-line-release-fixture-dependencies",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.14",
+    "pg": "8.16.3"
+  }
+}
