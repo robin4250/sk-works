@@ -10,10 +10,18 @@ class PayrollUnitConditionsPage extends StatefulWidget {
     required this.repository,
     required this.companyId,
     required this.workerId,
+    this.embedded = false,
+    this.section,
+    this.unit,
+    this.onValidationSelection,
   });
   final PayrollUnitConditionsRepository repository;
   final String companyId;
   final String workerId;
+  final bool embedded;
+  final PayrollItemSection? section;
+  final PayrollItemUnit? unit;
+  final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
   @override
   State<PayrollUnitConditionsPage> createState() =>
       _PayrollUnitConditionsPageState();
@@ -32,6 +40,14 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant PayrollUnitConditionsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workerId != widget.workerId || oldWidget.companyId != widget.companyId) {
+      _load();
+    }
   }
 
   String get _monthKey =>
@@ -77,6 +93,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       setState(() {
         _value = value;
         _loading = false;
+        _saving = false;
       });
     } catch (_) {
       if (!mounted || generation != _generation) return;
@@ -91,6 +108,103 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     String tr(String x) => SkoLanguageController.tr(x);
+    final body = _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(tr(_error!)),
+                  TextButton(onPressed: _load, child: Text(tr('再読み込み'))),
+                ],
+              ),
+            )
+          : Column(
+              mainAxisSize: widget.embedded ? MainAxisSize.min : MainAxisSize.max,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: _saving ? null : () => _moveMonth(-1),
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      if (!_value!.canEdit)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(tr('閲覧のみ')),
+                        ),
+                      Expanded(
+                        child: Text(
+                          '${_month.year}/${_month.month} ${tr('対象月')}',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _saving ? null : () => _moveMonth(1),
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
+                  child: PayrollUnitItemEditor(
+                    embedded: widget.embedded,
+                    section: widget.section,
+                    unit: widget.unit,
+                    onValidationSelection: widget.onValidationSelection,
+                    key: ValueKey(
+                      '${widget.workerId}/${_value!.month}/${_value!.version}',
+                    ),
+                    initialItems: _value!.items,
+                    canEdit: _value!.canEdit,
+                    enableQuantitySources: true,
+                    showDailyReportOption: false,
+                    onRegister: (items) async {
+                      final generation = _generation;
+                      final company = widget.companyId;
+                      final worker = widget.workerId;
+                      final current = _value!;
+                      setState(() => _saving = true);
+                      try {
+                        final saved = await widget.repository.save(
+                          company,
+                          worker,
+                          current,
+                          items,
+                        );
+                        if (!mounted || !context.mounted || generation != _generation ||
+                            widget.companyId != company || widget.workerId != worker) {
+                          return;
+                        }
+                        setState(() => _value = saved);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(tr('単位別設定を保存し、対象月の給与を再計算しました')),
+                          ),
+                        );
+                      } finally {
+                        if (mounted && generation == _generation) {
+                          setState(() => _saving = false);
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
+            );
+    if (widget.embedded) {
+      final hasMonthlyItems = _value?.items.any((item) =>
+          item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
+      return Offstage(
+        offstage: widget.unit == PayrollItemUnit.month && !_loading &&
+            _error == null && !hasMonthlyItems,
+        child: body,
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(tr('単位別の支給・控除')),
@@ -119,79 +233,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(tr(_error!)),
-                  TextButton(onPressed: _load, child: Text(tr('再読み込み'))),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: _saving ? null : () => _moveMonth(-1),
-                        icon: const Icon(Icons.chevron_left),
-                      ),
-                      if (!_value!.canEdit)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(tr('閲覧のみ')),
-                        ),
-                      Expanded(
-                        child: Text(
-                          '${_month.year}/${_month.month} ${tr('対象月')}',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _saving ? null : () => _moveMonth(1),
-                        icon: const Icon(Icons.chevron_right),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: PayrollUnitItemEditor(
-                    key: ValueKey(
-                      '${widget.workerId}/${_value!.month}/${_value!.version}',
-                    ),
-                    initialItems: _value!.items,
-                    canEdit: _value!.canEdit,
-                    enableQuantitySources: true,
-                    showDailyReportOption: false,
-                    onRegister: (items) async {
-                      setState(() => _saving = true);
-                      try {
-                        final saved = await widget.repository.save(
-                          widget.companyId,
-                          widget.workerId,
-                          _value!,
-                          items,
-                        );
-                        if (!mounted || !context.mounted) return;
-                        setState(() => _value = saved);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(tr('単位別設定を保存し、対象月の給与を再計算しました')),
-                          ),
-                        );
-                      } finally {
-                        if (mounted) setState(() => _saving = false);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
+      body: body,
     );
   }
 }
