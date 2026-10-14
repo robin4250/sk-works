@@ -41,6 +41,7 @@ class SurfaceRepository implements ChatCloudRepository {
       'display_name': 'Shared group',
       'group_type': 'company',
       'participants_only': true,
+      'can_delete_group': canDeleteGroup,
       'line_origin': 'sko',
     },
   ].where((group) => !deletedGroups.contains(group['id'])).toList();
