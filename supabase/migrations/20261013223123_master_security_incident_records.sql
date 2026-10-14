@@ -1,7 +1,7 @@
 -- Operator imports sanitized synthetic records. No automatic decoy -> production connection.
 create table private.security_incident_records (
- incident_id uuid not null, record_version integer not null check(record_version between 1 and 16), primary key(incident_id,record_version), company_id uuid not null references public.companies(id),
- recipient_user_id uuid not null references auth.users(id), correlation_id uuid not null,
+ incident_id uuid not null, record_version integer not null check(record_version between 1 and 16), primary key(incident_id,record_version), company_id uuid not null references public.companies(id) on delete cascade,
+ recipient_user_id uuid not null references auth.users(id) on delete cascade, correlation_id uuid not null,
  record jsonb not null, source text not null default 'synthetic_fixture' check(source='synthetic_fixture'),
  saved_at timestamptz not null default clock_timestamp(), expires_at timestamptz not null default clock_timestamp()+interval '7 days'
 );
@@ -9,7 +9,7 @@ create index security_incident_recipient_time on private.security_incident_recor
 create table private.security_incident_notification_outbox (
  incident_id uuid primary key, record_version integer not null default 1 check(record_version=1),
  foreign key(incident_id,record_version) references private.security_incident_records(incident_id,record_version) on delete cascade,
- recipient_user_id uuid not null references auth.users(id), notification_id uuid not null,
+ recipient_user_id uuid not null references auth.users(id) on delete cascade, notification_id uuid not null,
  created_at timestamptz not null default clock_timestamp()
 );
 alter table private.security_incident_records enable row level security;

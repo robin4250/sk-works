@@ -37,5 +37,15 @@ if(db.concurrent){
  console.log('native PG concurrent identical saves: one immutable record and one notification');
 }
 if(process.env.SKO_INCIDENT_POSTGREST_URL){const {checkHttp}=await import('./incident_http_check.mjs');await checkHttp(db,{uid,other,cid,report});}
+// New private evidence must not prevent existing account/company deletion.
+for(const parent of ['company','user']){
+ const user=crypto.randomUUID(),company=crypto.randomUUID(),incident=crypto.randomUUID();
+ await db.query('insert into auth.users values($1)',[user]);await db.query('insert into public.companies values($1)',[company]);
+ await db.query('insert into private.security_incident_records(incident_id,record_version,company_id,recipient_user_id,correlation_id,record)values($1,1,$2,$3,$4,$5::jsonb)',[incident,company,user,crypto.randomUUID(),JSON.stringify(report)]);
+ await db.query('insert into private.security_incident_notification_outbox(incident_id,recipient_user_id,notification_id)values($1,$2,$3)',[incident,user,crypto.randomUUID()]);
+ await db.query(parent==='company'?'delete from public.companies where id=$1':'delete from auth.users where id=$1',[parent==='company'?company:user]);
+ assert.equal((await db.query('select count(*)::int n from private.security_incident_records where incident_id=$1',[incident])).rows[0].n,0);
+ assert.equal((await db.query('select count(*)::int n from private.security_incident_notification_outbox where incident_id=$1',[incident])).rows[0].n,0);
+}
 console.log('incident SQL boundary tests passed: master/account/owner/company, private grants, idempotency, version immutability, metadata validation, one notification');await db.close();
 
