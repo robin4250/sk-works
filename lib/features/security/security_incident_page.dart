@@ -189,107 +189,30 @@ class _SecurityIncidentDetailPageState
     _actor = _repository?.currentActor;
   }
 
-  Future<bool> _reauthenticate() async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const MasterProtectedPage(
-          title: 'セキュリティ記録の出力',
-          child: _SecurityExportAuthenticated(),
-        ),
-      ),
-    );
-    return mounted && result == true;
-  }
-
-  Future<void> _authorizeExport({bool freshAuthentication = false}) async {
-    final repository = _repository;
-    if (repository == null) {
-      throw StateError('Unavailable');
-    }
-    await authorizeSecurityExport(
-      actor: _actor,
-      currentActor: () => repository.currentActor,
-      reauthenticate: freshAuthentication ? _reauthenticate : () async => true,
-      authorizeSnapshot: () => repository.authorizeExport(_report, _actor),
-    );
-    if (!mounted || repository.currentActor != _actor) {
-      throw StateError('Unavailable');
-    }
-  }
-
   bool get _english => SkoLanguageController.isEnglish;
   String _text(String japanese, String english) =>
       _english ? english : japanese;
-  Future<void> _export(bool print) async {
-    if (_busy) {
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await _authorizeExport(freshAuthentication: true);
-      final bytes = await SecurityIncidentReport.build(
-        _report,
-        english: _english,
-      );
-      await _authorizeExport(freshAuthentication: true);
-      if (!mounted) {
-        return;
-      }
-      final name = 'SKO-security-${widget.record.id}.pdf';
-      if (print) {
-        await Printing.layoutPdf(name: name, onLayout: (_) async => bytes);
-      } else {
-        await Printing.sharePdf(bytes: bytes, filename: name);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('出力できませんでした。', 'Export failed.'))),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
 
-  Future<void> _shareJson() async {
+  Future<void> _beginExport(_SecurityExportKind kind) async {
     if (_busy) {
       return;
     }
     setState(() => _busy = true);
-    try {
-      await _authorizeExport();
-      if (!mounted) {
-        return;
-      }
-      final box = context.findRenderObject() as RenderBox?;
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile.fromData(
-              Uint8List.fromList(utf8.encode(_report.json)),
-              mimeType: 'application/json',
-              name: 'SKO-security-${widget.record.id}.json',
-            ),
-          ],
-          fileNameOverrides: ['SKO-security-${widget.record.id}.json'],
-          sharePositionOrigin: box == null
-              ? null
-              : box.localToGlobal(Offset.zero) & box.size,
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MasterProtectedPage(
+          title: _text('セキュリティ記録の出力', 'Export security record'),
+          child: _SecurityIncidentExportAction(
+            report: _report,
+            actor: _actor,
+            kind: kind,
+            english: _english,
+          ),
         ),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('出力できませんでした。', 'Export failed.'))),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      ),
+    );
+    if (mounted) {
+      setState(() => _busy = false);
     }
   }
 
@@ -310,17 +233,17 @@ class _SecurityIncidentDetailPageState
             runSpacing: 8,
             children: [
               OutlinedButton.icon(
-                onPressed: _busy ? null : () => _export(true),
+                onPressed: _busy ? null : () => _beginExport(_SecurityExportKind.print),
                 icon: const Icon(Icons.print_outlined),
                 label: Text(_text('印刷', 'Print')),
               ),
               OutlinedButton.icon(
-                onPressed: _busy ? null : () => _export(false),
+                onPressed: _busy ? null : () => _beginExport(_SecurityExportKind.pdf),
                 icon: const Icon(Icons.save_alt),
                 label: Text(_text('保存・共有', 'Save / share')),
               ),
               OutlinedButton.icon(
-                onPressed: _busy ? null : _shareJson,
+                onPressed: _busy ? null : () => _beginExport(_SecurityExportKind.json),
                 icon: const Icon(Icons.data_object),
                 label: Text(_text('JSON照合データ', 'JSON verification data')),
               ),
@@ -363,27 +286,110 @@ class SecurityIncidentReport {
   }
 }
 
-class _SecurityExportAuthenticated extends StatefulWidget {
-  const _SecurityExportAuthenticated();
+enum _SecurityExportKind { print, pdf, json }
+
+/// Owns the handoff after the fresh MasterProtectedPage challenge. The source
+/// detail may lock during Face ID without disposing this authenticated action.
+class _SecurityIncidentExportAction extends StatefulWidget {
+  const _SecurityIncidentExportAction({
+    required this.report,
+    required this.actor,
+    required this.kind,
+    required this.english,
+  });
+  final SecurityIncidentReportData report;
+  final String? actor;
+  final _SecurityExportKind kind;
+  final bool english;
 
   @override
-  State<_SecurityExportAuthenticated> createState() =>
-      _SecurityExportAuthenticatedState();
+  State<_SecurityIncidentExportAction> createState() =>
+      _SecurityIncidentExportActionState();
 }
 
-class _SecurityExportAuthenticatedState
-    extends State<_SecurityExportAuthenticated> {
+class _SecurityIncidentExportActionState
+    extends State<_SecurityIncidentExportAction> {
+  bool _failed = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        Navigator.of(context).pop(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+  }
+
+  Future<void> _run() async {
+    try {
+      final repository = SecurityIncidentRepository.maybeCreate();
+      if (repository == null) {
+        throw StateError('Unavailable');
       }
-    });
+      Future<void> authorize() => authorizeSecurityExport(
+        actor: widget.actor,
+        currentActor: () => repository.currentActor,
+        // This widget exists only after the fresh master challenge succeeds.
+        reauthenticate: () async => true,
+        authorizeSnapshot: () =>
+            repository.authorizeExport(widget.report, widget.actor),
+      );
+      await authorize();
+      if (!mounted) {
+        return;
+      }
+      final name = 'SKO-security-${widget.report.record.id}';
+      if (widget.kind == _SecurityExportKind.json) {
+        final box = context.findRenderObject() as RenderBox?;
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [
+              XFile.fromData(
+                Uint8List.fromList(utf8.encode(widget.report.json)),
+                mimeType: 'application/json',
+                name: '$name.json',
+              ),
+            ],
+            fileNameOverrides: ['$name.json'],
+            sharePositionOrigin: box == null
+                ? null
+                : box.localToGlobal(Offset.zero) & box.size,
+          ),
+        );
+      } else {
+        final bytes = await SecurityIncidentReport.build(
+          widget.report,
+          english: widget.english,
+        );
+        await authorize();
+        if (!mounted) {
+          return;
+        }
+        if (widget.kind == _SecurityExportKind.print) {
+          await Printing.layoutPdf(
+            name: '$name.pdf',
+            onLayout: (_) async => bytes,
+          );
+        } else {
+          await Printing.sharePdf(bytes: bytes, filename: '$name.pdf');
+        }
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _failed = true);
+      }
+    }
   }
 
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: CircularProgressIndicator()));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.english ? 'Export security record' : 'セキュリティ記録の出力'),
+    ),
+    body: Center(
+      child: _failed
+          ? Text(widget.english ? 'Export failed.' : '出力できませんでした。')
+          : const CircularProgressIndicator(),
+    ),
+  );
 }
