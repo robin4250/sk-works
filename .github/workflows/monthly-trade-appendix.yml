@@ -59,6 +59,11 @@ jobs:
                       text=''.join(doc[1].get_text().split())
                       for expected in ['注文書','2026-10','110,000','10,000','甲・発注者','乙・受注者']:
                           assert expected in text,(path,expected,text)
+                  if path.stem=='payment-long':
+                      assert '発注条件'*100 in text,path
+                      assert '特記事項'*150 in text,path
+                      assert '代表'*40 in text,path
+                      assert '9876543210987' in text,path
                   if len(doc)==3:
                       assert '経費' in ''.join(doc[2].get_text().split()),path
                   for index,page in enumerate(doc):

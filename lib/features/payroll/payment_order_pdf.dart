@@ -26,18 +26,22 @@ class PaymentOrderPdf {
    field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
     pw.Expanded(child:field('代表者名',value['representative_name'])),
     if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,
-      fallbackFont:regularFont,style:seal.style,size:48),]),]);
+      fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);
   document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(36),build:(_)=>pw.Column(
    crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
-    pw.Center(child:pw.Text('注文書',style:pw.TextStyle(font:boldFont,fontSize:22,letterSpacing:5))),
-    pw.SizedBox(height:8),pw.Center(child:text('${p['month']} 月分')),pw.SizedBox(height:14),
-    text(p['intro_text']?.toString()??''),pw.SizedBox(height:14),
+    pw.Center(child:pw.Text('注文書',style:pw.TextStyle(font:boldFont,fontSize:compact?18:22,letterSpacing:5))),
+    pw.SizedBox(height:compact?6:8),pw.Center(child:text('${p['month']} 月分')),pw.SizedBox(height:compact?8:14),
+    text(p['intro_text']?.toString()??''),pw.SizedBox(height:compact?8:14),
     field('1. 工事名',p['work_name']),field('2. 工事場所',p['work_address']),
     field('3. 工期','${p['period_start']} から ${p['period_end']} まで'),
     field('4. 請負代金','金 ${_money(p['total_amount_yen'])}円（うち消費税等 金${_money(p['tax_amount_yen'])}円）'),
     field('5. 支払条件',p['payment_conditions']),field('6. その他特記事項',p['notes']),
-    pw.SizedBox(height:12),pw.Align(alignment:pw.Alignment.centerRight,child:text(p['issue_date'].toString())),
-    pw.SizedBox(height:14),party('（甲・発注者）',issuer,own:true),pw.SizedBox(height:12),party('（乙・受注者）',counter),
+    pw.SizedBox(height:compact?6:12),pw.Align(alignment:pw.Alignment.centerRight,child:text(p['issue_date'].toString())),
+    pw.SizedBox(height:compact?8:14),
+    if(compact)pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
+      pw.Expanded(child:party('（甲・発注者）',issuer,own:true)),pw.SizedBox(width:16),
+      pw.Expanded(child:party('（乙・受注者）',counter)),
+    ])else ...[party('（甲・発注者）',issuer,own:true),pw.SizedBox(height:12),party('（乙・受注者）',counter)],
   ])));
  }
  static String _money(Object? value){
