@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/chat_cloud_repository.dart';
@@ -37,7 +38,7 @@ void main() {
     (tester) async {
       String? opened;
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: LineSharedGroupsPage(
             repository: FakeGroups([
               {'group_id': 'shared', 'name': 'Shared group', 'origin': 'sko'},
@@ -60,7 +61,7 @@ void main() {
     'metadata failure shows error and does not silently present a legacy list',
     (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: LineSharedGroupsPage(
             repository: FakeGroups([], fail: true),
             onOpenGroup: (_) async {},
@@ -74,7 +75,7 @@ void main() {
   );
   testWidgets('LINE group deletion names shared data, cancels safely and refreshes after confirmation', (tester) async {
     final repo = FakeGroups([{'group_id': 'g', 'name': '共有グループ', 'can_delete_group': true}]);
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
     await tester.pumpAndSettle();
     final button = find.byKey(const ValueKey('line-delete-group-g'));
     await tester.tap(button);
@@ -94,7 +95,7 @@ void main() {
   });
 
   testWidgets('unknown deletion permission hides the LINE group delete button', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(
       repository: FakeGroups([{'group_id': 'g', 'name': '共有グループ'}]), onOpenGroup: (_) async {})));
     await tester.pumpAndSettle();
     expect(find.byTooltip('グループを削除'), findsNothing);
@@ -102,7 +103,7 @@ void main() {
 
   testWidgets('changed actor cannot confirm deletion from an old dialog', (tester) async {
     final repo = FakeGroups([{'group_id': 'g', 'name': '共有グループ', 'can_delete_group': true}]);
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('line-delete-group-g')));
     await tester.pumpAndSettle();
@@ -114,7 +115,7 @@ void main() {
 
   testWidgets('server rejection keeps the group and shows deletion could not be confirmed', (tester) async {
     final repo = FakeGroups([{'group_id': 'g', 'name': '共有グループ', 'can_delete_group': true}])..failDelete = true;
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(repository: repo, onOpenGroup: (_) async {})));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('line-delete-group-g')));
     await tester.pumpAndSettle();
@@ -125,3 +126,4 @@ void main() {
   });
 
 }
+

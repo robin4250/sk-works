@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -149,7 +150,7 @@ void main() {
         ChatCloudRepository.forTesting(client),
       );
       await tester.pumpWidget(
-        MaterialApp(home: ChatCloudPage(repository: repository)),
+        LineTestApp(home: ChatCloudPage(repository: repository)),
       );
       await advance(tester);
       repository.requested.clear();
@@ -308,6 +309,8 @@ void main() {
               'created_at': '2026-01-01T00:00:00Z',
             },
           };
+        } else if (request.uri.path.endsWith('/line_release_capability')) {
+          data = {'version':1,'available':true};
         } else if (request.uri.path.endsWith('/chat_block_list')) {
           data = [];
         } else {
@@ -354,7 +357,7 @@ void main() {
           ),
         );
         await tester.pumpWidget(
-          MaterialApp(
+          LineTestApp(
             home: ChatCloudPage(
               showGroupsInitially: true,
               repository: repository,
@@ -462,7 +465,7 @@ void main() {
       )))!;
       final repository = _Repository(ChatCloudRepository.forTesting(client));
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: ChatCloudPage(
             showGroupsInitially: true,
             repository: repository,
@@ -495,3 +498,4 @@ void main() {
     timeout: const Timeout(Duration(seconds: 60)),
   );
 }
+

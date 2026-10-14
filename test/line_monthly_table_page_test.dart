@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -57,7 +58,7 @@ class _Repository extends LineImportRepository {
 }
 
 Future<void> _mount(WidgetTester tester, _Repository repository) async {
-  await tester.pumpWidget(MaterialApp(home: LineImportPage.monthly(
+  await tester.pumpWidget(LineTestApp(home: LineImportPage.monthly(
     initialMonth: DateTime(2026, 9), repositoryOverride: repository,
     groupsLoader: () async => [{'id': 'g', 'name': 'LINE現場'}],
   )));
@@ -167,3 +168,4 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
   });
 }
+

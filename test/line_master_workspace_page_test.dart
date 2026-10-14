@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_master_workspace_page.dart';
@@ -12,7 +13,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(LineTestApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
         child: child!,
@@ -32,7 +33,7 @@ void main() {
     final previous = SkoLanguageController.pack.value;
     SkoLanguageController.pack.value = englishLanguagePack;
     addTearDown(() => SkoLanguageController.pack.value = previous);
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(LineTestApp(
       home: LineMasterWorkspacePage(masterCheck: () async => true),
     ));
     await tester.pumpAndSettle();
@@ -44,7 +45,7 @@ void main() {
   });
 
   testWidgets('non-master cannot see or open master entries', (tester) async {
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(LineTestApp(
       home: LineMasterWorkspacePage(masterCheck: () async => false),
     ));
     await tester.pumpAndSettle();
@@ -55,7 +56,7 @@ void main() {
   testWidgets('each entry opens its own page and rechecks master on return',
       (tester) async {
     var checks = 0;
-    await tester.pumpWidget(MaterialApp(home: LineMasterWorkspacePage(
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(
       masterCheck: () async { checks++; return true; },
       talkBuilder: (_) => const Scaffold(body: Text('received-source-page')),
       invoiceBuilder: (_) => const Scaffold(body: Text('monthly-invoice-page')),
@@ -82,7 +83,7 @@ void main() {
   testWidgets('master revoked before navigation never builds protected page',
       (tester) async {
     var master = true, opened = false;
-    await tester.pumpWidget(MaterialApp(home: LineMasterWorkspacePage(
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(
       masterCheck: () async => master,
       ratesBuilder: (_) { opened = true; return const Scaffold(); },
     )));
@@ -104,4 +105,5 @@ void main() {
     expect(rates.initialMonth, month);
   });
 }
+
 

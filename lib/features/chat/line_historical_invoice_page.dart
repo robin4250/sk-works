@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'chat_cloud_repository.dart';
@@ -9,7 +10,7 @@ import 'line_historical_monthly_import.dart';
 import 'line_historical_monthly_import_page.dart';
 import '../../international/language_controller.dart';
 
-class LineHistoricalInvoicePage extends StatefulWidget {
+class LineHistoricalInvoicePage extends StatelessWidget {
   const LineHistoricalInvoicePage({super.key, this.initialGroupId, this.initialMonth})
       : editingRates = false;
   const LineHistoricalInvoicePage.rates({super.key, this.initialGroupId, this.initialMonth})
@@ -18,9 +19,21 @@ class LineHistoricalInvoicePage extends StatefulWidget {
   final String? initialGroupId;
   final DateTime? initialMonth;
   @override
-  State<LineHistoricalInvoicePage> createState() => _LineHistoricalInvoicePageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => editingRates ? _LineHistoricalInvoicePageContent.rates(initialGroupId: initialGroupId, initialMonth: initialMonth) : _LineHistoricalInvoicePageContent(initialGroupId: initialGroupId, initialMonth: initialMonth));
 }
-class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
+
+class _LineHistoricalInvoicePageContent extends StatefulWidget {
+  const _LineHistoricalInvoicePageContent({this.initialGroupId, this.initialMonth})
+      : editingRates = false;
+  const _LineHistoricalInvoicePageContent.rates({this.initialGroupId, this.initialMonth})
+      : editingRates = true;
+  final bool editingRates;
+  final String? initialGroupId;
+  final DateTime? initialMonth;
+  @override
+  State<_LineHistoricalInvoicePageContent> createState() => _LineHistoricalInvoicePageState();
+}
+class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageContent> {
   final _repository = LineHistoricalInvoiceRepository.maybeCreate();
   final _rates = <String, TextEditingController>{};
   final _siteNames = <String, TextEditingController>{};
@@ -240,4 +253,5 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
       ]));
   }
 }
+
 

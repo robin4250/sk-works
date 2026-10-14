@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,15 +8,22 @@ import 'line_history_file_decoder.dart';
 import 'line_import_repository.dart';
 
 /// Saves reviewable monthly drafts through the existing authenticated contract.
-class LineHistoricalMonthlyImportPage extends StatefulWidget {
+class LineHistoricalMonthlyImportPage extends StatelessWidget {
   const LineHistoricalMonthlyImportPage({super.key, required this.groupId});
   final String groupId;
   @override
-  State<LineHistoricalMonthlyImportPage> createState() =>
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineHistoricalMonthlyImportPageContent(groupId: groupId));
+}
+
+class _LineHistoricalMonthlyImportPageContent extends StatefulWidget {
+  const _LineHistoricalMonthlyImportPageContent({required this.groupId});
+  final String groupId;
+  @override
+  State<_LineHistoricalMonthlyImportPageContent> createState() =>
       _LineHistoricalMonthlyImportPageState();
 }
 class _LineHistoricalMonthlyImportPageState
-    extends State<LineHistoricalMonthlyImportPage> {
+    extends State<_LineHistoricalMonthlyImportPageContent> {
   final _repository = LineImportRepository.maybeCreate();
   final _months = lineHistoryImportMonths();
   final _commands = <String, Map<String, dynamic>>{};
@@ -223,3 +231,4 @@ class _LineHistoricalMonthlyImportPageState
     ]),
   );
 }
+

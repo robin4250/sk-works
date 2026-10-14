@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
@@ -6,7 +7,7 @@ import 'line_talk_page.dart';
 import 'line_linked_talk_page.dart';
 import 'chat_cloud_page.dart';
 
-class LineJoinedGroupsPage extends StatefulWidget {
+class LineJoinedGroupsPage extends StatelessWidget {
   const LineJoinedGroupsPage({super.key, this.targetGroupId, this.selectOnly = false, this.newGroupCompanyId, this.targetGroupName, this.repository});
   final String? targetGroupId;
   final bool selectOnly;
@@ -14,9 +15,20 @@ class LineJoinedGroupsPage extends StatefulWidget {
   @visibleForTesting
   final ChatCloudRepository? repository;
   @override
-  State<LineJoinedGroupsPage> createState() => _LineJoinedGroupsPageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineJoinedGroupsPageContent(targetGroupId: targetGroupId, selectOnly: selectOnly, newGroupCompanyId: newGroupCompanyId, targetGroupName: targetGroupName, repository: repository));
 }
-class _LineJoinedGroupsPageState extends State<LineJoinedGroupsPage> with WidgetsBindingObserver {
+
+class _LineJoinedGroupsPageContent extends StatefulWidget {
+  const _LineJoinedGroupsPageContent({this.targetGroupId, this.selectOnly = false, this.newGroupCompanyId, this.targetGroupName, this.repository});
+  final String? targetGroupId;
+  final bool selectOnly;
+  final String? newGroupCompanyId, targetGroupName;
+  @visibleForTesting
+  final ChatCloudRepository? repository;
+  @override
+  State<_LineJoinedGroupsPageContent> createState() => _LineJoinedGroupsPageState();
+}
+class _LineJoinedGroupsPageState extends State<_LineJoinedGroupsPageContent> with WidgetsBindingObserver {
   late final _repository = widget.repository ?? ChatCloudRepository.maybeCreate();
   List<Map<String,dynamic>> _rows = const [];
   String? _error, _actor;

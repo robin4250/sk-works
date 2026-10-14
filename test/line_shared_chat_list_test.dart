@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +33,7 @@ class _Groups implements LineSharedGroupsRepository {
 }
 void main() {
   testWidgets('LINE Talk opens a list and its group opens the canonical writable chat', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: LineTalkHubPage()));
+    await tester.pumpWidget(const LineTestApp(home: LineTalkHubPage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('トーク'));
     await tester.pumpAndSettle();
@@ -52,7 +53,7 @@ void main() {
     final repo = _Groups();
     final changes = StreamController<String>.broadcast();
     final opened = <String>[];
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(
       repository: repo, groupChanges: changes.stream,
       onOpenGroup: (id) async { opened.add(id); },
     )));
@@ -79,7 +80,7 @@ void main() {
   });
   testWidgets('returning from a deleted shared chat removes it from the LINE list', (tester) async {
     final repo = _Groups();
-    await tester.pumpWidget(MaterialApp(home: LineSharedGroupsPage(
+    await tester.pumpWidget(LineTestApp(home: LineSharedGroupsPage(
       repository: repo, onOpenGroup: (_) async { repo.removed = true; })));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Group A'));
@@ -89,3 +90,4 @@ void main() {
   });
 
 }
+

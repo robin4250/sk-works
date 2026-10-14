@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/chat_cloud_page.dart';
@@ -53,7 +54,7 @@ class _Repository implements ChatCloudRepository {
 
 void main() {
   Future<void> open(WidgetTester tester, _Repository repository) async {
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(LineTestApp(
       home: LineJoinedGroupsPage(repository: repository),
     ));
     await tester.pumpAndSettle();
