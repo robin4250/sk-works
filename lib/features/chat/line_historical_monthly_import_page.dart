@@ -46,17 +46,19 @@ class _LineHistoricalMonthlyImportPageState
     } finally { if (mounted) setState(() => _busy = false); }
   }
   Future<void> _pick() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom, allowedExtensions: ['txt'], withData: true);
-    if (picked == null || !mounted) return;
-    final file = picked.files.single;
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
-      setState(() => _error = '5MB以下のLINE書き出しテキストを選んでください。');
-      return;
-    }
     setState(() { _busy = true; _error = null; });
     try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom, allowedExtensions: ['txt']);
+      if (file == null || !mounted) return;
+      final length = await file.length();
+      if (length != null && length > 5 * 1024 * 1024) {
+        throw const FormatException('File too large');
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+        throw const FormatException('Empty or too large');
+      }
       final history = lineHistorySources(utf8.decode(bytes));
       if (history.isEmpty) throw const FormatException('No LINE messages');
       final counts = <String, int>{};
@@ -65,13 +67,14 @@ class _LineHistoricalMonthlyImportPageState
         if (!mounted) return;
         counts[_key(month)] = lineMonthlyCandidates(history, month).rows.length;
       }
+      if (!mounted) return;
       setState(() {
         _history = history; _fileName = file.name; _counts.clear();
         _counts.addAll(counts); _commands.clear(); _status.clear(); _error = null;
       });
     } catch (_) {
       if (mounted) setState(() =>
-          _error = 'UTF-8のLINE書き出しテキストを読み込めませんでした。元のファイルを確認してください。');
+          _error = '5MB以下のUTF-8 LINE書き出しテキストを選択してください。');
     } finally { if (mounted) setState(() => _busy = false); }
   }
   Future<void> _save() async {

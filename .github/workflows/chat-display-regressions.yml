@@ -1,0 +1,40 @@
+name: Chat display regressions
+on:
+  pull_request:
+    paths:
+      - 'lib/features/chat/**'
+      - 'test/chat_latest_preview_flow_test.dart'
+      - 'test/chat_line_surface_flow_test.dart'
+      - 'test/line_shared_chat_list_test.dart'
+      - 'test/line_talk_hub_page_test.dart'
+      - 'test/line_shared_groups_page_test.dart'
+      - '.github/workflows/chat-display-regressions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/chat/**'
+      - 'test/chat_latest_preview_flow_test.dart'
+      - 'test/chat_line_surface_flow_test.dart'
+      - 'test/line_shared_chat_list_test.dart'
+      - 'test/line_talk_hub_page_test.dart'
+      - 'test/line_shared_groups_page_test.dart'
+      - '.github/workflows/chat-display-regressions.yml'
+permissions:
+  contents: read
+concurrency:
+  group: chat-display-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  latest-and-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter test test/chat_latest_preview_flow_test.dart test/chat_line_surface_flow_test.dart test/line_shared_chat_list_test.dart test/line_talk_hub_page_test.dart test/line_shared_groups_page_test.dart --reporter expanded

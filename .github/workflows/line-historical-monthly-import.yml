@@ -31,4 +31,4 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter test test/line_historical_monthly_import_test.dart test/line_import_draft_test.dart test/line_historical_invoice_model_test.dart test/line_historical_invoice_bridge_model_test.dart test/line_master_workspace_page_test.dart --reporter expanded
+      - run: flutter test test/line_historical_monthly_import_test.dart test/line_import_draft_test.dart test/line_historical_invoice_model_test.dart test/line_historical_invoice_bridge_model_test.dart test/line_master_workspace_page_test.dart test/line_historical_hub_entries_test.dart --reporter expanded

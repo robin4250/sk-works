@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/features/chat/chat_cloud_repository.dart';
 import 'package:sk_works/features/chat/line_shared_groups_page.dart';
 import 'package:sk_works/features/chat/line_shared_groups_repository.dart';
 
-class FakeGroups extends LineSharedGroupsRepository {
-  FakeGroups(this.rows, {this.fail = false})
-    : super(
-        SupabaseClient(
-          'https://example.invalid',
-          'public-test',
-          authOptions: const AuthClientOptions(autoRefreshToken: false),
-        ),
-      );
+class FakeGroups implements LineSharedGroupsRepository {
+  FakeGroups(this.rows, {this.fail = false});
   final List<Map<String, dynamic>> rows;
   final bool fail;
+  @override
+  String? get actor => 'fixture-actor';
   @override
   Future<List<Map<String, dynamic>>> groups() async {
     if (fail) throw StateError('metadata unavailable');
     return rows;
   }
+  @override
+  Future<ChatConversationSummary?> preview(String id) async => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected operation: ${invocation.memberName}');
 }
 
 void main() {

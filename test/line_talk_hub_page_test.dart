@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_talk_hub_page.dart';
+import 'package:sk_works/features/chat/line_shared_groups_page.dart';
 
 void main() {
   testWidgets('public talk remains available when paid import features are unavailable', (tester) async {
@@ -11,6 +12,9 @@ void main() {
     expect(find.text('請求書'), findsNothing);
     await tester.tap(find.text('トーク'));
     await tester.pumpAndSettle();
+    expect(find.byType(LineSharedGroupsPage), findsOneWidget);
+    expect(find.text('LINEグループから作成'), findsOneWidget);
+    expect(find.text('保存済みトーク'), findsOneWidget);
     expect(find.text('SKOへのログインが必要です。'), findsOneWidget);
   });
 }

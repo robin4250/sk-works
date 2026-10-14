@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
+import 'chat_cloud_repository.dart';
 
 import 'line_joined_groups_page.dart';
 import 'line_shared_groups_repository.dart';
@@ -9,9 +13,13 @@ class LineSharedGroupsPage extends StatefulWidget {
     super.key,
     required this.onOpenGroup,
     this.repository,
+    this.onOpenSavedTalks,
+    this.groupChanges,
   });
   final Future<void> Function(String groupId) onOpenGroup;
   final LineSharedGroupsRepository? repository;
+  final Future<void> Function()? onOpenSavedTalks;
+  final Stream<String>? groupChanges;
   @override
   State<LineSharedGroupsPage> createState() => _LineSharedGroupsPageState();
 }
@@ -21,29 +29,76 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
       widget.repository ?? LineSharedGroupsRepository.maybeCreate();
   List<Map<String, dynamic>> _groups = const [];
   bool _busy = false;
+  int _loadGeneration = 0;
+  final Map<String, int> _previewGenerations = {};
+  StreamSubscription<String>? _changes;
   String? _error;
   @override
   void initState() {
     super.initState();
     _load();
+    final changes = widget.groupChanges ??
+      (widget.repository == null ? _repository?.watchChanges() : null);
+    _changes = changes?.listen(_refreshPreview);
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    _changes?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshPreview(String id) async {
+    final repository = _repository;
+    final actor = repository?.actor;
+    final scope = _loadGeneration;
+    if (repository == null || actor == null ||
+        !_groups.any((row) => row['group_id'] == id)) {
+      return;
+    }
+    final generation = (_previewGenerations[id] ?? 0) + 1;
+    _previewGenerations[id] = generation;
+    try {
+      final ChatConversationSummary? preview = await repository.preview(id);
+      if (!mounted || repository.actor != actor || _loadGeneration != scope ||
+          _previewGenerations[id] != generation || preview == null) {
+        return;
+      }
+      setState(() {
+        _groups = [for (final group in _groups)
+          if (group['group_id'] == id) {
+            ...group, 'last_message_body': preview.body, 'last_message_at': preview.sentAt,
+          } else group];
+      });
+    } catch (_) { /* Preserve the last successful preview on transient failure. */ }
+  }
+
+  Future<void> _openGroup(String id) async {
+    await widget.onOpenGroup(id);
+    if (mounted) await _refreshPreview(id);
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final actor = _repository?.actor;
     try {
       final repository = _repository;
       if (repository == null) throw StateError('Login required');
       final rows = await repository.groups();
-      if (mounted) {
+      if (mounted && generation == _loadGeneration && repository.actor == actor) {
         setState(() {
           _groups = rows;
           _error = null;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _groups = const [];
-          _error = 'グループを読み込めませんでした。再読み込みしてください。';
+          _error = _repository?.actor == null
+              ? 'SKOへのログインが必要です。'
+              : 'グループを読み込めませんでした。再読み込みしてください。';
         });
       }
     }
@@ -104,7 +159,7 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
       );
       if (!mounted || repository.actor != actor) return;
       await _load();
-      if (mounted && repository.actor == actor) await widget.onOpenGroup(id);
+      if (mounted && repository.actor == actor) await _openGroup(id);
     } catch (_) {
       if (mounted) setState(() => _error = '作成できませんでした。連携先と権限を確認してください。');
     } finally {
@@ -131,6 +186,14 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
           icon: const Icon(Icons.add),
           label: const Text('LINEグループから作成'),
         ),
+        if (widget.onOpenSavedTalks != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : widget.onOpenSavedTalks,
+            icon: const Icon(Icons.history),
+            label: Text(SkoLanguageController.tr('保存済みトーク')),
+          ),
+        ],
         if (_error != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -144,8 +207,11 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+              subtitle: Text(group['last_message_body']?.toString() ??
+                SkoLanguageController.tr('まだ会話はありません'),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => widget.onOpenGroup(group['group_id'].toString()),
+              onTap: () => _openGroup(group['group_id'].toString()),
             ),
           ),
       ],
