@@ -152,6 +152,10 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
           tax is Map && tax['blocked'] != true &&
           rows.isNotEmpty && tax['condition_version'] == rows.first['version'] &&
           tax['conditions_start'] == rows.first['starts_on'];
+      if (statement?['calculation_blocked'] == true ||
+          (tax is Map && tax['blocked'] == true)) {
+        _error = '給料明細の計算が保留中です。計算条件・料率を確認してください。';
+      }
       final premiums = ready ? tax['premiums'] : null;
       final autoPremiums = ready ? (tax['automatic_premiums'] ?? premiums) : null;
       for (final item in fixedPayrollDeductions) {

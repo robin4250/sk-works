@@ -89,11 +89,11 @@ begin
  if gross<0 or (v->>'income_mode'<>'fixed' and (v->>'non_taxable_yen')::bigint>gross) or (v->>'insurance_mode'='rates' and (v->>'employment')::boolean and (v->>'employment_excluded_yen')::bigint>gross) then
   raise exception '非課税額・雇用保険対象外額が支給額を超えています' using errcode='22023';end if;
  if exists(select 1 from jsonb_array_elements(coalesce(settings->'custom_deductions','[]')) x where coalesce((x->>'amount_yen')::numeric,0)<>0 and (
- (v->>'insurance_mode'='rates' and trim(x->>'name') in ('健康保険料','社会保険','社会保険料','介護保険料','厚生年金保険','厚生年金保険料','雇用保険料','子ども・子育て支援金')) or
+ (v->>'insurance_mode'='rates' and trim(x->>'name') in ('健康保険','健康保険料','社会保険','社会保険料','介護保険','介護保険料','厚生年金','厚生年金保険','厚生年金保険料','雇用保険','雇用保険料','子ども・子育て支援金')) or
  (v->>'income_mode'<>'fixed' and trim(x->>'name')='所得税'))) then
  raise exception '自由控除に同じ税・保険料があります。二重控除を避けるため確認してください' using errcode='22023';end if;
  if exists(select 1 from public.payroll_adjustments a where a.company_id=cid and a.worker_id=wid and a.effective_date between p_start and p_end and a.cancelled_at is null and a.amount_yen<>0 and (
-  (v->>'insurance_mode'='rates' and trim(a.label_snapshot) in ('健康保険料','社会保険','社会保険料','介護保険料','厚生年金保険','厚生年金保険料','雇用保険料','子ども・子育て支援金')) or
+  (v->>'insurance_mode'='rates' and trim(a.label_snapshot) in ('健康保険','健康保険料','社会保険','社会保険料','介護保険','介護保険料','厚生年金','厚生年金保険','厚生年金保険料','雇用保険','雇用保険料','子ども・子育て支援金')) or
   (v->>'income_mode'<>'fixed' and trim(a.label_snapshot)='所得税'))) then
   raise exception '給与調整に同じ税・保険料があります。二重計上を避けるため確認してください' using errcode='22023';end if;
  social:=legacy_social;

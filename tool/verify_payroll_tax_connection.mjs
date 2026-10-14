@@ -142,6 +142,16 @@ try {
  await db.exec('savepoint invalid_fixed_override');
  await assert.rejects(saveTax(4,{...profile,deduction_overrides:{health_insurance:100}}),/個別の自動計算条件/);
  await db.exec('rollback to savepoint invalid_fixed_override;release savepoint invalid_fixed_override');
+ // Fixed-frame names cannot also be charged as flexible deductions.
+ for (const name of ['雇用保険','健康保険','厚生年金','介護保険']) {
+  await db.exec('reset role;savepoint duplicate_fixed_item');
+  await db.query("update public.worker_payroll_settings set custom_deductions=$1::jsonb where company_id=$2 and worker_id=$3",
+    [JSON.stringify([{name,amount_yen:100}]),cid,wid]);
+  const duplicate=await statement(month);
+  assert.equal(duplicate.calculation_blocked,true);
+  assert.match(duplicate.detail.tax_calculation.reason,/自由控除に同じ税・保険料/);
+  await db.exec('rollback to savepoint duplicate_fixed_item;release savepoint duplicate_fixed_item');
+ }
  await db.exec('reset role;rollback');
  fs.mkdirSync('test/fixtures/payroll_tax_connection',{recursive:true});
  fs.writeFileSync('test/fixtures/payroll_tax_connection/automatic.json',JSON.stringify({gross_pay:rated.gross_pay,deductions:rated.deductions,net_pay:rated.net_pay,detail:{...rated.detail,company_seal_enabled:false}},null,2)+'\n');
