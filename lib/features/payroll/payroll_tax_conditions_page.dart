@@ -46,6 +46,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     ])
       key: false,
   };
+  Map<String, dynamic> _deductionOverrides = {};
   String _insurance = 'rates';
   String _income = 'koh';
   bool _initialConditionsConfirmed = false;
@@ -145,6 +146,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _insurance = value['insurance_mode'] as String;
     _income = value['income_mode'] as String;
     _birth.text = value['birth_date'] as String? ?? '';
+    _deductionOverrides = value['deduction_overrides'] is Map
+        ? Map<String, dynamic>.from(value['deduction_overrides'] as Map) : {};
     for (final key in _amounts.keys) {
       _amounts[key]!.text = '${value[key]}';
     }
@@ -156,6 +159,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   void _resetInitialConditions() {
     final today = DateTime.now();
     _month.text = '${today.year}-${today.month.toString().padLeft(2, '0')}';
+    _deductionOverrides = {};
     _insurance = 'rates';
     _income = 'koh';
     _birth.clear();
@@ -221,6 +225,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       'insurance_mode': _insurance,
       'income_mode': _income,
       'birth_date': _birth.text.isEmpty ? null : _birth.text,
+      if (_deductionOverrides.isNotEmpty) 'deduction_overrides': _deductionOverrides,
       ..._flags,
       for (final key in _amounts.keys) key: int.parse(_amounts[key]!.text),
     };
@@ -352,6 +357,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text('月払い給与の所得税と保険料を設定します。住民税は個別の月額設定を使います。'),
+                if (_deductionOverrides.isNotEmpty)
+                  const Text('個別給与設定で保存した手入力修正を保持します。解除は控除の月単位で「自動計算に戻す」を選んでください。'),
                 if (_error != null)
                   Text(
                     _error!,

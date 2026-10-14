@@ -1082,6 +1082,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = const ExpenseHomePage();
         break;
       case 'company_tax_rates':
+        if (!_nestedActionKeys.contains('company_tax_rates')) return;
         page = const CompanyPayrollRatesHomePage();
         break;
       case 'vehicle_select':
@@ -1122,7 +1123,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 'payroll_review':
         page = SecondaryProtectedPage(
           title: '給料一覧',
-          child: PayrollReviewPage(onOpenSettings: (_identity.isManagement || _identity.can('can_manage_payroll_adjustments')) ? () => _openHomeAction('payroll_settings') : null),
+          child: PayrollReviewPage(onOpenSettings: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('payroll_settings') : null,
+            onOpenTaxRates: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('company_tax_rates') : null),
         );
         break;
       case 'payment_certificates':
@@ -1313,6 +1315,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   };
 
   Set<String> get _nestedActionKeys => {
+    if (_identity.isAdmin || _isViewer) 'company_tax_rates',
     if (_moduleEnabled('attendance') &&
         _identity.isManagement &&
         _identity.can('can_manage_attendance') &&
@@ -1334,7 +1337,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ..._menuItems.map((item) => item.key), ..._employeeResourceKeys,
     ..._nestedActionKeys,
     if (_isAdmin) 'initial_registration',
-    if (_identity.isManagement || _identity.can('can_manage_payroll_adjustments')) 'payroll_settings',
+    if (_identity.isAdmin || _isViewer) 'payroll_settings',
     if (_identity.isManagement && _subAdminFeatureEnabled('company_deliveries')) 'company_deliveries',
   };
 
@@ -1346,8 +1349,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _MenuAction(key: 'weather_forecast', label: SkoLanguageController.tr('天気予報'),
         icon: Icons.cloud_outlined, homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
-      if (_identity.isAdmin || _isViewer)
-        _MenuAction(key: 'company_tax_rates', label: SkoLanguageController.tr('税率設定'), icon: Icons.percent_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・閲覧権限')),
       _MenuAction(key: 'expense_claims', label: SkoLanguageController.tr('経費申請'), icon: Icons.receipt_long_outlined, homeEligible: true, accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
       _MenuAction(key: 'tutorial', label: SkoLanguageController.tr('準備ガイド'),
         icon: Icons.school_outlined, homeEligible: false,

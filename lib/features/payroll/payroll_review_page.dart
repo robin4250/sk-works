@@ -7,9 +7,12 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings});
+  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates, this.repository});
 
   final VoidCallback? onOpenSettings;
+  final VoidCallback? onOpenTaxRates;
+  @visibleForTesting
+  final PayrollReviewRepository? repository;
 
   final DateTime? initialMonth;
 
@@ -18,7 +21,7 @@ class PayrollReviewPage extends StatefulWidget {
 }
 
 class _PayrollReviewPageState extends State<PayrollReviewPage> {
-  final _repository = PayrollReviewRepository.maybeCreate();
+  late final PayrollReviewRepository? _repository;
   PayrollReviewWorkspace? _workspace;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   bool _loading = true;
@@ -28,6 +31,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? PayrollReviewRepository.maybeCreate();
     final initial = widget.initialMonth;
     if (initial != null) {
       _month = DateTime(initial.year, initial.month);
@@ -117,7 +121,11 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     bool hidden,
   ) async {
     final repository = _repository;
-    if (repository == null) return;
+    final workspace = _workspace;
+    if (repository == null || workspace == null || !workspace.isAdmin ||
+        !const {'owner', 'admin'}.contains(workspace.role)) {
+      return;
+    }
     await repository.setManagerVisibility(
       workerId: worker.workerId,
       visible: !hidden,
@@ -145,8 +153,31 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
       ),
       body: SafeArea(
         child: Column(children: [
-          if (widget.onOpenSettings != null)
-            Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 0), child: OutlinedButton.icon(onPressed: widget.onOpenSettings, icon: const Icon(Icons.manage_accounts_outlined), label: Text(SkoLanguageController.tr('個別給与設定')))),
+          if (widget.onOpenSettings != null || widget.onOpenTaxRates != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: Row(children: [
+                Expanded(child: SizedBox(height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('payroll-tax-rates-entry'),
+                    onPressed: widget.onOpenTaxRates,
+                    icon: const Icon(Icons.percent_outlined, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(SkoLanguageController.tr('税率設定'), maxLines: 1)),
+                  ),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: SizedBox(height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('payroll-individual-settings-entry'),
+                    onPressed: widget.onOpenSettings,
+                    icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1)),
+                  ),
+                )),
+              ]),
+            ),
           Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
@@ -190,7 +221,8 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 ),
                               ],
                             ),
-                            if (workspace.isAdmin) ...[
+                            if (workspace.isAdmin &&
+                                const {'owner', 'admin'}.contains(workspace.role)) ...[
                               const SizedBox(height: 8),
                               Card(
                                 child: ExpansionTile(

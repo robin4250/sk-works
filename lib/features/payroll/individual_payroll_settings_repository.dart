@@ -122,6 +122,24 @@ class IndividualPayrollSettingsRepository {
     );
   }
 
+  Future<Map<String, dynamic>?> loadMonthlyDeductionStatement(
+    String companyId, String workerId, String month,
+  ) async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) return null;
+    final rows = await _client.from('payroll_statements')
+        .select('company_id,worker_id,period_start,detail,calculation_blocked')
+        .eq('company_id', companyId).eq('worker_id', workerId)
+        .eq('period_start', month).limit(2);
+    if (_client.auth.currentUser?.id != actor) throw StateError('Session changed');
+    if (rows.isEmpty) return null;
+    if (rows.length != 1 || rows.first['company_id'] != companyId ||
+        rows.first['worker_id'] != workerId || rows.first['period_start'] != month) {
+      throw StateError('給与明細の対象が一致しません');
+    }
+    return Map<String, dynamic>.from(rows.first);
+  }
+
   Future<void> saveSetting({
     required String workerId,
     required Map<String, dynamic> values,

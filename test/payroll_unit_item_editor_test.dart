@@ -68,7 +68,7 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('hour-rate')), '1500');
       await tester.tap(find.byType(Checkbox));
       await tester.tap(find.text('控除'));
-      await tester.tap(find.text('日にち単位'));
+      await tester.tap(find.text('日単位'));
       await tester.pumpAndSettle();
       expect(find.text('日割控除'), findsOneWidget);
       await tester.tap(find.text('支給'));
