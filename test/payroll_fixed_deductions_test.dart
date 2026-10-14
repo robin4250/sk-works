@@ -72,8 +72,12 @@ Future<void> mount(WidgetTester t, _Backend b, {
 }
 
 Future<void> save(WidgetTester t) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await t.pumpAndSettle();
   final button = find.widgetWithText(FilledButton, '税・保険料を登録');
   await t.ensureVisible(button);
+  await t.pumpAndSettle();
+  expect(t.widget<FilledButton>(button).onPressed, isNotNull);
   await t.tap(button);
   await t.pumpAndSettle();
   await t.tap(find.text('確認して保存'));
