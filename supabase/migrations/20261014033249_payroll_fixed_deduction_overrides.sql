@@ -48,8 +48,7 @@ begin
   end if;
   for entry in select key,value from jsonb_each(v->'deduction_overrides') loop
    if jsonb_typeof(entry.value) is distinct from 'number'
-     or entry.value::text !~ '^[0-9]{1,10}
-
+     or entry.value::text !~ '^[0-9]{1,10}$'
      or entry.value::text::numeric > 2147483647 then
     raise exception '控除の修正額は0以上の整数で入力してください' using errcode='22023';
    end if;
