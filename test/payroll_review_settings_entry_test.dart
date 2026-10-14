@@ -3,8 +3,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/payroll/payroll_review_page.dart';
 import 'package:sk_works/features/home/company_payroll_rates_home_entry.dart';
+import 'package:sk_works/features/payroll/payroll_review_repository.dart';
+
+class _ReviewRepository implements PayrollReviewRepository {
+  _ReviewRepository(this.role, {this.adminFlag = false});
+  final String role;
+  final bool adminFlag;
+  @override
+  Future<PayrollReviewWorkspace> loadWorkspace(DateTime month) async => PayrollReviewWorkspace(
+    role: role, companyName: 'Test', isAdmin: adminFlag, canConfirm: false,
+    periodStart: month, items: const [], workers: const [
+      PayrollReviewWorkerVisibility(workerId: 'worker', workerName: '社員A', visibleToManager: false),
+    ],
+  );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError('Unexpected payroll write');
+}
+
 
 void main() {
+  for (final role in ['owner', 'admin', 'manager', 'viewer']) {
+    testWidgets('$role only sees the employee visibility control when administrator', (t) async {
+      final admin = role == 'owner' || role == 'admin';
+      await t.pumpWidget(MaterialApp(home: PayrollReviewPage(
+        repository: _ReviewRepository(role, adminFlag: true),
+      )));
+      await t.pumpAndSettle();
+      expect(find.text('給料一覧'), findsOneWidget);
+      expect(find.text('サブ管理者に見せない従業員'), admin ? findsOneWidget : findsNothing);
+      expect(t.takeException(), isNull);
+    });
+  }
+
   testWidgets('payroll list has equal-width entries and opens the existing tax page', (t) async {
     t.view.physicalSize = const Size(320, 720);
     t.view.devicePixelRatio = 1;

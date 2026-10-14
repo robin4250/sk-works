@@ -7,10 +7,12 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates});
+  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates, this.repository});
 
   final VoidCallback? onOpenSettings;
   final VoidCallback? onOpenTaxRates;
+  @visibleForTesting
+  final PayrollReviewRepository? repository;
 
   final DateTime? initialMonth;
 
@@ -19,7 +21,7 @@ class PayrollReviewPage extends StatefulWidget {
 }
 
 class _PayrollReviewPageState extends State<PayrollReviewPage> {
-  final _repository = PayrollReviewRepository.maybeCreate();
+  late final PayrollReviewRepository? _repository;
   PayrollReviewWorkspace? _workspace;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   bool _loading = true;
@@ -29,6 +31,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? PayrollReviewRepository.maybeCreate();
     final initial = widget.initialMonth;
     if (initial != null) {
       _month = DateTime(initial.year, initial.month);
@@ -118,7 +121,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     bool hidden,
   ) async {
     final repository = _repository;
-    if (repository == null) return;
+    final workspace = _workspace;
+    if (repository == null || workspace == null || !workspace.isAdmin ||
+        !const {'owner', 'admin'}.contains(workspace.role)) return;
     await repository.setManagerVisibility(
       workerId: worker.workerId,
       visible: !hidden,
@@ -214,7 +219,8 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 ),
                               ],
                             ),
-                            if (workspace.isAdmin) ...[
+                            if (workspace.isAdmin &&
+                                const {'owner', 'admin'}.contains(workspace.role)) ...[
                               const SizedBox(height: 8),
                               Card(
                                 child: ExpansionTile(
