@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -9,7 +10,7 @@ import 'line_joined_groups_page.dart';
 import 'line_shared_groups_repository.dart';
 
 /// One canonical group is opened from either surface; messages are never copied.
-class LineSharedGroupsPage extends StatefulWidget {
+class LineSharedGroupsPage extends StatelessWidget {
   const LineSharedGroupsPage({
     super.key,
     required this.onOpenGroup,
@@ -22,10 +23,26 @@ class LineSharedGroupsPage extends StatefulWidget {
   final Future<void> Function()? onOpenSavedTalks;
   final Stream<String>? groupChanges;
   @override
-  State<LineSharedGroupsPage> createState() => _LineSharedGroupsPageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineSharedGroupsPageContent(onOpenGroup: onOpenGroup, repository: repository, onOpenSavedTalks: onOpenSavedTalks, groupChanges: groupChanges));
 }
 
-class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
+class _LineSharedGroupsPageContent extends StatefulWidget {
+  const _LineSharedGroupsPageContent({
+    super.key,
+    required this.onOpenGroup,
+    this.repository,
+    this.onOpenSavedTalks,
+    this.groupChanges,
+  });
+  final Future<void> Function(String groupId) onOpenGroup;
+  final LineSharedGroupsRepository? repository;
+  final Future<void> Function()? onOpenSavedTalks;
+  final Stream<String>? groupChanges;
+  @override
+  State<_LineSharedGroupsPageContent> createState() => _LineSharedGroupsPageState();
+}
+
+class _LineSharedGroupsPageState extends State<_LineSharedGroupsPageContent> {
   late final _repository =
       widget.repository ?? LineSharedGroupsRepository.maybeCreate();
   List<Map<String, dynamic>> _groups = const [];
@@ -253,3 +270,4 @@ class _LineSharedGroupsPageState extends State<LineSharedGroupsPage> {
     ),
   );
 }
+

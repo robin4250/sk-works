@@ -1,3 +1,4 @@
+import 'features/chat/line_release_access.dart';
 import 'features/settings/master_feature_controls_repository.dart';
 import 'dart:async';
 import 'dart:io';
@@ -206,6 +207,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _homeWeatherGeneration = 0;
   String? _weatherSnapshotActor;
 
+  final _lineRelease = LineReleaseAccess.maybeCreate();
+  void _lineReleaseChanged() { if (mounted) setState(() {}); }
+
   bool get _isAdmin => _identity.isAdmin;
   bool get _isViewer => _identity.role == 'viewer';
 
@@ -213,6 +217,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lineRelease?.addListener(_lineReleaseChanged);
     _loadHomeData();
     _chromeListener = () {
       if (!mounted) return;
@@ -229,6 +234,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (_chromeListener != null) {
       SkoScrollChromeController.visible.removeListener(_chromeListener!);
     }
+    _lineRelease?.removeListener(_lineReleaseChanged);
     _weatherViewState.dispose();
     GpsAutoAttendanceService.instance.stop();
     super.dispose();
@@ -1469,14 +1475,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           icon: Icons.photo_album_outlined,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      _MenuAction(
+      if (_lineRelease?.visible == true)
+        _MenuAction(
           key: 'line_talk',
           label: SkoLanguageController.tr('LINEトーク'),
           icon: Icons.chat_bubble_outline,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_isAdmin &&
+      if (_lineRelease?.visible == true && _isAdmin &&
           _moduleEnabled('line_bridge'))
         _MenuAction(
           key: 'today_line',
@@ -2120,4 +2127,5 @@ class _ModuleDisabledPage extends StatelessWidget {
     );
   }
 }
+
 

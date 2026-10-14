@@ -1,16 +1,24 @@
+import 'line_release_access.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
 import 'line_received_messages_list.dart';
 import '../help/menu_help_catalog.dart';
-class LineLinkedTalkPage extends StatefulWidget {
+class LineLinkedTalkPage extends StatelessWidget {
  const LineLinkedTalkPage({super.key,required this.targetGroupId,required this.directoryId,required this.name});
  final String targetGroupId,directoryId,name;
  @override
- State<LineLinkedTalkPage> createState()=>_LineLinkedTalkPageState();
+ Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineLinkedTalkPageContent(targetGroupId: targetGroupId, directoryId: directoryId, name: name));
 }
-class _LineLinkedTalkPageState extends State<LineLinkedTalkPage> with WidgetsBindingObserver {
+
+class _LineLinkedTalkPageContent extends StatefulWidget {
+ const _LineLinkedTalkPageContent({required this.targetGroupId,required this.directoryId,required this.name});
+ final String targetGroupId,directoryId,name;
+ @override
+ State<_LineLinkedTalkPageContent> createState()=>_LineLinkedTalkPageState();
+}
+class _LineLinkedTalkPageState extends State<_LineLinkedTalkPageContent> with WidgetsBindingObserver {
  final _repository=ChatCloudRepository.maybeCreate();
  List<Map<String,dynamic>> _rows=const [];
  String? _error,_actor;

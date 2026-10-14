@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,7 +13,7 @@ void main() {
   });
 
   testWidgets('LINE talk requires a real signed-in backend and never fabricates saved posts', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: LineTalkPage()));
+    await tester.pumpWidget(const LineTestApp(home: LineTalkPage()));
     await tester.pump();
     expect(find.text('LINEトーク'), findsOneWidget);
     expect(find.text('SKOへのログインが必要です。'), findsOneWidget);
@@ -21,7 +22,7 @@ void main() {
   });
 
   testWidgets('stage one help describes binding, text scope, and no attendance or invoice import', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: LineTalkPage()));
+    await tester.pumpWidget(const LineTestApp(home: LineTalkPage()));
     await tester.tap(find.byTooltip('使い方'));
     await tester.pumpAndSettle();
     expect(find.text('LINEトークの使い方'), findsOneWidget);

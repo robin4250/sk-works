@@ -1,16 +1,24 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 import '../invoices/invoice_cloud_page.dart';
 import 'line_historical_invoice_bridge_model.dart';
 import 'line_historical_invoice_bridge_repository.dart';
 import 'line_historical_monthly_import.dart';
 
-class LineHistoricalInvoiceBridgePage extends StatefulWidget {
+class LineHistoricalInvoiceBridgePage extends StatelessWidget {
   const LineHistoricalInvoiceBridgePage({super.key, required this.quoteId});
   final String quoteId;
   @override
-  State<LineHistoricalInvoiceBridgePage> createState() => _LineHistoricalInvoiceBridgePageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineHistoricalInvoiceBridgePageContent(quoteId: quoteId));
 }
-class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceBridgePage> {
+
+class _LineHistoricalInvoiceBridgePageContent extends StatefulWidget {
+  const _LineHistoricalInvoiceBridgePageContent({required this.quoteId});
+  final String quoteId;
+  @override
+  State<_LineHistoricalInvoiceBridgePageContent> createState() => _LineHistoricalInvoiceBridgePageState();
+}
+class _LineHistoricalInvoiceBridgePageState extends State<_LineHistoricalInvoiceBridgePageContent> {
   final _repository = LineHistoricalInvoiceBridgeRepository.maybeCreate();
   final _tax = TextEditingController();
   final _names = <String, TextEditingController>{};
@@ -147,3 +155,4 @@ class _LineHistoricalInvoiceBridgePageState extends State<LineHistoricalInvoiceB
       ]));
   }
 }
+

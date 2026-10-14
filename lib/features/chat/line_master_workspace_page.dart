@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
@@ -7,7 +8,7 @@ import 'line_joined_groups_page.dart';
 import 'line_import_page.dart';
 
 /// Four entries over existing LINE data; this screen grants no permissions.
-class LineMasterWorkspacePage extends StatefulWidget {
+class LineMasterWorkspacePage extends StatelessWidget {
   const LineMasterWorkspacePage({
     super.key,
     this.masterCheck,
@@ -23,11 +24,30 @@ class LineMasterWorkspacePage extends StatefulWidget {
   final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder;
 
   @override
-  State<LineMasterWorkspacePage> createState() =>
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineMasterWorkspacePageContent(masterCheck: masterCheck, talkBuilder: talkBuilder, invoiceBuilder: invoiceBuilder, ratesBuilder: ratesBuilder, monthlyBuilder: monthlyBuilder));
+}
+
+class _LineMasterWorkspacePageContent extends StatefulWidget {
+  const _LineMasterWorkspacePageContent({
+    super.key,
+    this.masterCheck,
+    this.talkBuilder,
+    this.invoiceBuilder,
+    this.ratesBuilder,
+    this.monthlyBuilder,
+  });
+
+  @visibleForTesting
+  final Future<bool> Function()? masterCheck;
+  @visibleForTesting
+  final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder;
+
+  @override
+  State<_LineMasterWorkspacePageContent> createState() =>
       _LineMasterWorkspacePageState();
 }
 
-class _LineMasterWorkspacePageState extends State<LineMasterWorkspacePage> {
+class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageContent> {
   bool _loading = true, _master = false;
   String? _error;
 
@@ -159,4 +179,5 @@ class _LineMasterWorkspacePageState extends State<LineMasterWorkspacePage> {
     ),
   );
 }
+
 

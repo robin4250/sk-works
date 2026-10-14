@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 
 import '../attendance/attendance_verification_repository.dart';
@@ -7,14 +8,21 @@ import 'line_attendance_status_parser.dart';
 import 'line_history_parser.dart';
 import 'today_line_attendance_repository.dart';
 
-class TodayLineAttendancePage extends StatefulWidget {
+class TodayLineAttendancePage extends StatelessWidget {
   const TodayLineAttendancePage({super.key});
 
   @override
-  State<TodayLineAttendancePage> createState() => _TodayLineAttendancePageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _TodayLineAttendancePageContent());
 }
 
-class _TodayLineAttendancePageState extends State<TodayLineAttendancePage> {
+class _TodayLineAttendancePageContent extends StatefulWidget {
+  const _TodayLineAttendancePageContent();
+
+  @override
+  State<_TodayLineAttendancePageContent> createState() => _TodayLineAttendancePageState();
+}
+
+class _TodayLineAttendancePageState extends State<_TodayLineAttendancePageContent> {
   final _lineRepository = TodayLineAttendanceRepository.maybeCreate();
   final _referenceRepository = AttendanceVerificationRepository.maybeCreate();
   final _candidateParser = const LineAttendanceCandidateParser();

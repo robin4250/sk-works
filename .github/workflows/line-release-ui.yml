@@ -1,0 +1,29 @@
+name: LINE release UI boundaries
+on:
+  pull_request:
+    paths:
+      - 'lib/features/chat/**'
+      - 'lib/app_v2.dart'
+      - 'test/line_*'
+      - 'test/chat_*'
+      - 'test/support/line_test_app.dart'
+      - '.github/workflows/line-release-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: line-release-ui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  boundary-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter test test/line_release_access_test.dart test/chat_summary_repository_test.dart test/chat_line_surface_flow_test.dart test/chat_latest_preview_flow_test.dart test/line_talk_hub_page_test.dart test/line_joined_groups_page_test.dart test/line_talk_page_test.dart test/line_shared_groups_page_test.dart test/line_shared_chat_list_test.dart test/line_master_workspace_page_test.dart test/line_historical_hub_entries_test.dart test/line_monthly_table_page_test.dart test/line_master_source_setup_test.dart --reporter expanded

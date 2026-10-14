@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,15 +8,23 @@ import 'chat_cloud_repository.dart';
 import 'line_received_messages_list.dart';
 
 /// Stage one is a read-only view of saved LINE posts. It does not create attendance.
-class LineTalkPage extends StatefulWidget {
+class LineTalkPage extends StatelessWidget {
   const LineTalkPage({super.key, this.initialGroupId});
   final String? initialGroupId;
 
   @override
-  State<LineTalkPage> createState() => _LineTalkPageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineTalkPageContent(initialGroupId: initialGroupId));
 }
 
-class _LineTalkPageState extends State<LineTalkPage> {
+class _LineTalkPageContent extends StatefulWidget {
+  const _LineTalkPageContent({this.initialGroupId});
+  final String? initialGroupId;
+
+  @override
+  State<_LineTalkPageContent> createState() => _LineTalkPageState();
+}
+
+class _LineTalkPageState extends State<_LineTalkPageContent> {
   final _repository = ChatCloudRepository.maybeCreate();
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _groups = const [];

@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 
 import 'line_attendance_candidate_parser.dart';
@@ -5,14 +6,21 @@ import 'line_attendance_candidate_validator.dart';
 import 'line_history_parser.dart';
 import 'line_history_summary.dart';
 
-class LineHistoryPreviewPage extends StatefulWidget {
+class LineHistoryPreviewPage extends StatelessWidget {
   const LineHistoryPreviewPage({super.key});
 
   @override
-  State<LineHistoryPreviewPage> createState() => _LineHistoryPreviewPageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineHistoryPreviewPageContent());
 }
 
-class _LineHistoryPreviewPageState extends State<LineHistoryPreviewPage> {
+class _LineHistoryPreviewPageContent extends StatefulWidget {
+  const _LineHistoryPreviewPageContent();
+
+  @override
+  State<_LineHistoryPreviewPageContent> createState() => _LineHistoryPreviewPageState();
+}
+
+class _LineHistoryPreviewPageState extends State<_LineHistoryPreviewPageContent> {
   final _controller = TextEditingController();
   final _parser = const LineHistoryParser();
   final _attendanceParser = const LineAttendanceCandidateParser();

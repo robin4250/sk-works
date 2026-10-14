@@ -1,3 +1,4 @@
+import 'support/line_test_app.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -120,7 +121,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final repo = SurfaceRepository();
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: ChatCloudPage(repository: repo, showGroupsInitially: true),
         ),
       );
@@ -138,7 +139,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final repo = SurfaceRepository();
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: ChatCloudPage(repository: repo, initialGroupId: 'line-only'),
         ),
       );
@@ -169,7 +170,7 @@ void main() {
         SharedPreferences.setMockInitialValues({});
         final repo = SurfaceRepository()..failSavedSummary = true;
         await tester.pumpWidget(
-          MaterialApp(
+          LineTestApp(
             home: ChatCloudPage(repository: repo, initialGroupId: 'line-only'),
           ),
         );
@@ -227,7 +228,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final repo = SurfaceRepository()..allUnknown = true;
       await tester.pumpWidget(
-        MaterialApp(
+        LineTestApp(
           home: ChatCloudPage(repository: repo, initialGroupId: 'line-only'),
         ),
       );
@@ -264,7 +265,7 @@ void main() {
         final repo = SurfaceRepository();
         final actors = StreamController<String?>.broadcast();
         await tester.pumpWidget(
-          MaterialApp(
+          LineTestApp(
             home: ChatCloudPage(
               repository: repo,
               actorChanges: actors.stream,
@@ -313,7 +314,7 @@ void main() {
   testWidgets('SKO conversation menu exposes authorized deletion and closes the deleted conversation', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final repo = SurfaceRepository()..canDeleteGroup = true;
-    await tester.pumpWidget(MaterialApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
+    await tester.pumpWidget(LineTestApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
     await settle(tester);
     await tester.tap(find.byTooltip('トーク機能'));
     await tester.pumpAndSettle();
@@ -338,7 +339,7 @@ void main() {
   testWidgets('ordinary participants do not receive a group deletion menu', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final repo = SurfaceRepository();
-    await tester.pumpWidget(MaterialApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
+    await tester.pumpWidget(LineTestApp(home: ChatCloudPage(repository: repo, initialGroupId: 'shared')));
     await settle(tester);
     await tester.tap(find.byTooltip('トーク機能'));
     await tester.pumpAndSettle();
@@ -349,3 +350,4 @@ void main() {
   });
 
 }
+

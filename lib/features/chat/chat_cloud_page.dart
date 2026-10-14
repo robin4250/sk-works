@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -31,6 +32,7 @@ class ChatCloudPage extends StatefulWidget {
     this.initialGroupId,
     this.repository,
     this.actorChanges,
+    this.lineReleaseAccess,
   });
 
   final bool viewerOnlyFriends;
@@ -42,6 +44,8 @@ class ChatCloudPage extends StatefulWidget {
   final ChatCloudRepository? repository;
   @visibleForTesting
   final Stream<String?>? actorChanges;
+  @visibleForTesting
+  final LineReleaseAccess? lineReleaseAccess;
 
   @override
   State<ChatCloudPage> createState() => _ChatCloudPageState();
@@ -51,6 +55,33 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     with WidgetsBindingObserver {
   late final _repository =
       widget.repository ?? ChatCloudRepository.maybeCreate();
+  LineReleaseAccess? _lineRelease;
+  bool _lastLineAvailable = false;
+  bool get _lineAvailable => _lineRelease?.visible == true;
+
+  void _lineReleaseChanged() {
+    if (!mounted) return;
+    final allowed = _lineRelease?.available == true;
+    if (_lastLineAvailable == allowed) { setState(() {}); return; }
+    _lastLineAvailable = allowed;
+    _dispatchEpoch++;
+    _summaryGenerations.clear();
+    _summaryRefreshes.clear();
+    _summaryPendingGroups.clear();
+    setState(() {
+      _messages = filterLineReleaseMessages(_messages, allowed);
+      _groups = [for (final group in _groups) {
+        ...group, 'last_message_body': null, 'last_message_at': null,
+        if (!allowed) ...{'line_origin': null, 'line_binding_present': false,
+          'line_binding_enabled': false, 'line_binding_id': null,
+          'line_binding_name': null, 'line_binding_can_manage': false},
+      }];
+      _lineDispatch.clear(); _lineDispatchBusy.clear(); _lineDispatchPreviews.clear();
+      _unreadCounts = const {};
+    });
+    unawaited(_load());
+  }
+
   final _composer = TextEditingController();
   final _scrollController = ScrollController();
   final _picker = ImagePicker();
@@ -117,6 +148,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lineRelease = widget.lineReleaseAccess ?? LineReleaseAccess.maybeCreate();
+    _lastLineAvailable = _lineRelease?.available == true;
+    _lineRelease?.addListener(_lineReleaseChanged);
     _watchedActor = _repository?.currentUserId;
     final actorChanges =
         widget.actorChanges ??
@@ -126,6 +160,18 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       _tab = _ChatTab.groups;
     }
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final access = widget.lineReleaseAccess ?? LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
+    if (!identical(access, _lineRelease)) {
+      _lineRelease?.removeListener(_lineReleaseChanged);
+      _lineRelease = access;
+      _lastLineAvailable = access?.available == true;
+      _lineRelease?.addListener(_lineReleaseChanged);
+    }
   }
 
   Future<void> _loadListPreferences() async {
@@ -155,6 +201,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _lineRelease?.removeListener(_lineReleaseChanged);
     _actorSubscription?.cancel();
     _summarySubscription?.cancel();
     _subscription?.cancel();
@@ -204,6 +251,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _load() async {
+    final lineEpoch = _dispatchEpoch;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -261,7 +309,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           ? previous
           : null;
 
-      if (!mounted || repository.currentUserId != actor) return;
+      if (!mounted || repository.currentUserId != actor || _dispatchEpoch != lineEpoch) return;
       setState(() {
         if (_readScope != scope) {
           _dispatchEpoch++;
@@ -336,7 +384,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                 _selectedGroupId != id) {
               return;
             }
-            messages = normalizeChatMessageOrder(messages);
+            messages = normalizeChatMessageOrder(filterLineReleaseMessages(messages, _lineRelease?.available == true));
             final latest = messages.isEmpty ? null : messages.last;
             final latestId = latest?['id']?.toString();
             final previousId = _lastObservedMessageIdByGroup[id];
@@ -778,6 +826,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _editLineSender() async {
+    if (!_lineAvailable) return;
     final repository = _repository;
     final groupId = _selectedGroupId;
     final actor = repository?.currentUserId;
@@ -870,6 +919,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _loadGroupsOnly() async {
+    final lineEpoch = _dispatchEpoch;
     final repository = _repository;
     if (repository == null) return;
     try {
@@ -894,7 +944,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
             .toList();
       }
       final priorities = await repository.prioritizedSiteGroupIds();
-      if (!mounted || repository.currentUserId != actor) return;
+      if (!mounted || repository.currentUserId != actor || _dispatchEpoch != lineEpoch) return;
       final previous = {for (final group in _groups) group['id']: group};
       setState(() {
         _groups = [
@@ -1323,7 +1373,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: Text(SkoLanguageController.tr('写真を変更')),
                 ),
-                if (!create)
+                if (_lineAvailable && !create)
                   OutlinedButton.icon(
                     onPressed: busy
                         ? null
@@ -1334,7 +1384,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                     icon: const Icon(Icons.add_link),
                     label: Text(SkoLanguageController.tr('LINEトークを追加')),
                   ),
-                if (create)
+                if (_lineAvailable && create)
                   OutlinedButton.icon(
                     onPressed: busy
                         ? null
@@ -1566,6 +1616,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _addLineToSelectedGroup() async {
+    if (!_lineAvailable) return;
     final group = _selectedGroup;
     if (!_isCustomGroup(group) || group?['can_edit_group_photo'] != true) {
       return;
@@ -1688,7 +1739,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       if (!mounted) return;
       final customGroup = _isCustomGroup(selectedGroup);
       var lineSources = <Map<String, dynamic>>[];
-      if (customGroup) {
+      if (_lineAvailable && customGroup) {
         try {
           lineSources = (await repository.loadJoinedLineGroups(
             targetGroupId: groupId,
@@ -1715,7 +1766,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
-                if (customGroup &&
+                if (_lineAvailable && customGroup &&
                     selectedGroup?['can_edit_group_photo'] == true)
                   Padding(
                     padding: const EdgeInsets.all(12),
@@ -2113,14 +2164,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                               PopupMenuItem(value: 'delete_group', enabled: !_deletingGroup,
                                 child: ListTile(leading: const Icon(Icons.delete_outline),
                                   title: Text(SkoLanguageController.isEnglish ? 'Delete group' : 'グループを削除'))),
-                            if (selected['line_origin'] != null)
+                            if (_lineAvailable && selected['line_origin'] != null)
                               PopupMenuItem(
                                 value: 'line_sender',
                                 child: Text(
                                   SkoLanguageController.tr('LINE送信名'),
                                 ),
                               ),
-                            if (_isCustomGroup(selected) &&
+                            if (_lineAvailable && _isCustomGroup(selected) &&
                                 selected['can_edit_group_photo'] == true)
                               PopupMenuItem(
                                 value: 'add_line',
@@ -2987,3 +3038,4 @@ class _MessageBubble extends StatelessWidget {
     return '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
+

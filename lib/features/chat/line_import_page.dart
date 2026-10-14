@@ -1,3 +1,4 @@
+import 'line_release_access.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,7 +11,7 @@ import 'line_import_repository.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
 
-class LineImportPage extends StatefulWidget {
+class LineImportPage extends StatelessWidget {
   const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
   const LineImportPage.monthly({super.key, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : target = 'invoice', monthlyTable = true;
   final bool monthlyTable;
@@ -22,10 +23,25 @@ class LineImportPage extends StatefulWidget {
   final String? initialGroupId;
   final DateTime? initialMonth;
   @override
-  State<LineImportPage> createState() => _LineImportPageState();
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => monthlyTable ? _LineImportPageContent.monthly(initialGroupId: initialGroupId, initialMonth: initialMonth, repositoryOverride: repositoryOverride, groupsLoader: groupsLoader) : _LineImportPageContent(target: target, initialGroupId: initialGroupId, initialMonth: initialMonth, repositoryOverride: repositoryOverride, groupsLoader: groupsLoader));
 }
 
-class _LineImportPageState extends State<LineImportPage> {
+class _LineImportPageContent extends StatefulWidget {
+  const _LineImportPageContent({required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
+  const _LineImportPageContent.monthly({this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : target = 'invoice', monthlyTable = true;
+  final bool monthlyTable;
+  @visibleForTesting
+  final LineImportRepository? repositoryOverride;
+  @visibleForTesting
+  final Future<List<Map<String, dynamic>>> Function()? groupsLoader;
+  final String target;
+  final String? initialGroupId;
+  final DateTime? initialMonth;
+  @override
+  State<_LineImportPageContent> createState() => _LineImportPageState();
+}
+
+class _LineImportPageState extends State<_LineImportPageContent> {
   late final _repository = widget.repositoryOverride ?? LineImportRepository.maybeCreate();
   final _chat = ChatCloudRepository.maybeCreate();
   final _note = TextEditingController();
@@ -458,4 +474,5 @@ class _LineImportPageState extends State<LineImportPage> {
       ]));
   }
 }
+
 

@@ -11,6 +11,7 @@ void main(){TestWidgetsFlutterBinding.ensureInitialized();
  if(request.uri.path=='/auth/v1/token'){
  String encode(Object v)=>base64Url.encode(utf8.encode(jsonEncode(v))).replaceAll('=','');
  data={'access_token':'${encode({'alg':'HS256'})}.${encode({'sub':actor,'exp':DateTime.now().millisecondsSinceEpoch~/1000+3600})}.fixture','refresh_token':'fixture','token_type':'bearer','expires_in':3600,'user':{'id':actor,'aud':'authenticated','role':'authenticated','email':'a@example.test','app_metadata':{},'user_metadata':{},'created_at':'2026-01-01T00:00:00Z'}};
+ }else if(request.uri.path.endsWith('/line_release_capability')){data={'version':1,'available':true};
  }else if(request.uri.path.endsWith('/chat_block_list')){data=[{'user_id':blocked}];
  }else if(request.uri.queryParameters['limit']=='1'){expect(request.uri.queryParameters['or'],'(sender_user_id.is.null,sender_user_id.not.in.($blocked))');
  expect(request.uri.queryParameters.containsKey('sender_user_id'),false);
