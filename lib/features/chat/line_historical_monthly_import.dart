@@ -100,7 +100,9 @@ List<Map<String, dynamic>> lineCanonicalImportPosts(
     final body = source['body'];
     final sender = source['sender_display_name'];
     if (at == null || body is! String || sender is! String ||
-        sender.trim().isEmpty) continue;
+        sender.trim().isEmpty) {
+      continue;
+    }
     final key = jsonEncode([at.millisecondsSinceEpoch ~/ 60000,
       sender.trim(), body.replaceAll('\r\n', '\n').trim()]);
     groups.putIfAbsent(key, () => []).add(source);
@@ -114,6 +116,7 @@ List<Map<String, dynamic>> lineCanonicalImportPosts(
     final saved = copies.where((source) => previous.any((row) =>
       row['source_message_id'] == source['id'] &&
       row['source_fingerprint'] == lineSourceFingerprint(source))).toList();
+    if (saved.length > 1) continue;
     final keep = saved.isNotEmpty ? saved.first : received.single;
     for (final copy in copies) {
       if (copy['id'] != keep['id']) suppressed.add(copy['id'].toString());

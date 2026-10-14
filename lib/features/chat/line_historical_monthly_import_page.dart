@@ -105,10 +105,12 @@ class _LineHistoricalMonthlyImportPageState
         counts[_key(month)] = result.rows.length;
         sourceCounts[_key(month)] = result.sources.length;
       }
-      if (mounted) setState(() {
-        _history = history; _counts.clear(); _counts.addAll(counts);
-        _sourceCounts.clear(); _sourceCounts.addAll(sourceCounts); _status.clear();
-      });
+      if (mounted) {
+        setState(() {
+          _history = history; _counts.clear(); _counts.addAll(counts);
+          _sourceCounts.clear(); _sourceCounts.addAll(sourceCounts); _status.clear();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '連携LINEの受信データを取得できませんでした。接続と権限を確認してください。');
     } finally { if (mounted) setState(() => _busy = false); }
@@ -126,7 +128,9 @@ class _LineHistoricalMonthlyImportPageState
         final key = _key(month);
         // A partial September/October file must never clear unrelated months.
         if (lineMonthlyCandidates(incoming, month).sources.isEmpty ||
-            _status[key] == '保存済み') continue;
+            _status[key] == '保存済み') {
+          continue;
+        }
         setState(() => _status[key] = '保存中');
         try {
           if (!_commands.containsKey(key)) {

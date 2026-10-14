@@ -2,6 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
 
 void main() {
+  test('two previously edited copies remain available for explicit duplicate review', () {
+    final history = <String, dynamic>{
+      'id': 'history-copy', 'body': '9月1日\n現場A 山田\n現場A 定時',
+      'sent_at': '2026-09-01T08:10:00Z',
+      'sender_display_name': '投稿者', 'source_type': 'history',
+    };
+    final received = <String, dynamic>{
+      ...history, 'id': 'received-copy', 'source_type': 'received',
+    };
+    final historyRows = lineMonthlyCandidates([history], DateTime(2026, 9)).rows;
+    final receivedRows = lineMonthlyCandidates([received], DateTime(2026, 9)).rows;
+    final prepared = lineMonthlyCandidates([history, received], DateTime(2026, 9),
+      previous: [
+        {...historyRows.single, 'man_days': .5},
+        {...receivedRows.single, 'man_days': 1.0},
+      ]);
+    expect(prepared.rows, hasLength(2));
+    expect(prepared.rows.map((row) => row['man_days']).toSet(), {.5, 1.0});
+    expect(prepared.rows.every((row) => row['confirmed'] == false), isTrue);
+  });
+
   test('received and exported copies count once and retain the saved history correction', () {
     const body = '9月1日\n現場A 山田\n現場A 定時';
     final history = <String, dynamic>{
