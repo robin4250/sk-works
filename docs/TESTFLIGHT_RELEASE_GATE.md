@@ -1,5 +1,14 @@
 # SKO TestFlight Release Gate
 
+## LINE release blocker (updated 2026-10-14)
+
+- LINE talk must remain unavailable to general users in TestFlight and the free public release. This restriction is not yet implemented or verified as a complete release boundary.
+- The existing attendance and invoice switches cover only those optional features. Talk and reception currently remain available; turning off both switches does not satisfy the restriction.
+- Before distribution, verify all entry points (Home/Menu, shared SKO conversations, notifications and direct navigation) and server-side read/send access. Hidden buttons alone are insufficient. Current TestFlight scripts do not verify this LINE restriction.
+- Preserve master-only invoice preparation and saved data. Complete and inspect actual invoices from January 2024 onward through monthly import/review, historical rates and the adopted invoice format.
+- Do not temporarily seal the master workflow before invoice completion and review. Whether sealing occurs before or after TestFlight depends on that review; it does not waive the general-user restriction above.
+- These are outstanding conditions, not evidence that restriction, sealing or distribution is complete. Do not use old draft PR #1000 as the release implementation.
+
 This checklist is intentionally separate from feature development so release checks can run in parallel.
 
 ## Automated gate
