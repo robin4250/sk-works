@@ -43,7 +43,6 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   final _manual = <String>{};
   final _automatic = <String, int?>{};
   Map<String, dynamic>? _profile;
-  Map<String, dynamic>? _statement;
   int _version = 0, _generation = 0;
   bool _busy = true, _allowed = false, _dirty = false, _uncertain = false;
   String? _error, _actor;
@@ -92,7 +91,6 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         oldWidget.workerId != widget.workerId || oldWidget.month != widget.month) {
       _setMonth();
       _profile = null;
-      _statement = null;
       _manual.clear();
       for (final c in _controllers.values) { c.clear(); }
       _load();
@@ -144,7 +142,6 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _checkActor();
       if (!mounted || generation != _generation) return;
       _profile = profile;
-      _statement = statement;
       _version = version;
       _manual
         ..clear()
