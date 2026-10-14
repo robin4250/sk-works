@@ -4,14 +4,14 @@ on:
     paths:
       - 'supabase/migrations/*master_recovery*.sql'
       - 'lib/features/settings/master_recovery_repository.dart'
-      - 'tool/security/master_recovery_verification_test.mjs'
+      - 'tool/security/master_recovery_verification_check.mjs'
       - '.github/workflows/master-recovery-verification.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/*master_recovery*.sql'
       - 'lib/features/settings/master_recovery_repository.dart'
-      - 'tool/security/master_recovery_verification_test.mjs'
+      - 'tool/security/master_recovery_verification_check.mjs'
       - '.github/workflows/master-recovery-verification.yml'
 permissions:
   contents: read
@@ -38,4 +38,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
-      - run: node tool/security/master_recovery_verification_test.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+      - run: node tool/security/master_recovery_verification_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

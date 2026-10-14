@@ -1,11 +1,12 @@
 // Isolated PostgreSQL-WASM tests. No production access, real identities or codes.
-// Usage: node tool/security/master_recovery_verification_test.mjs [pglite module]
+// Usage: node tool/security/master_recovery_verification_check.mjs [pglite module]
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const native=Boolean(process.env.SKO_RECOVERY_FIXTURE_URL);
 let db,Client;
 if(native){
-  ({Client}=await import(process.argv[2] ?? 'pg'));
+  const pgModule=await import(process.argv[2] ?? 'pg');
+  Client=pgModule.Client ?? pgModule.default.Client;
   const client=new Client({connectionString:process.env.SKO_RECOVERY_FIXTURE_URL});await client.connect();
   db={exec:sql=>client.query(sql),query:(sql,args)=>client.query(sql,args),close:()=>client.end()};
 }else{
