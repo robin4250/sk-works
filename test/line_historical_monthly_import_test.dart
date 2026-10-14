@@ -15,7 +15,9 @@ void main() {
     expect(merged.rows, hasLength(2));
     expect(merged.rows.every((row) => row['worker_id'] == 'worker'), isTrue);
     expect(merged.rows.every((row) => row['confirmed'] == false), isTrue);
-    expect(merged.rows.first['man_days'], .5);
+    final retained = merged.rows.singleWhere(
+      (row) => row['source_message_id'] == first.single['id']);
+    expect(retained['man_days'], .5);
   });
 
   test('two previously edited copies remain available for explicit duplicate review', () {
