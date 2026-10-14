@@ -52,7 +52,7 @@ class _Backend {
   }
 }
 
-Finder a_mount(String key) => find.byKey(ValueKey('fixed-deduction-$key-amount'));
+Finder amount(String key) => find.byKey(ValueKey('fixed-deduction-$key-amount'));
 Finder card(String key) => find.byKey(ValueKey('fixed-deduction-$key'));
 
 Future<void> _mount(WidgetTester t, _Backend b, {
@@ -94,24 +94,24 @@ void main() {
           greaterThan(t.getTopLeft(card(ordered[i - 1])).dy));
     }
     expect(find.text('社会保険・月額'), findsNothing);
-    expect(t.widget<TextFormField>(a_mount('health_insurance')).controller!.text, '5000');
-    expect(t.widget<TextFormField>(a_mount('nursing_insurance')).controller!.text, '0');
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+    expect(t.widget<TextFormField>(amount('nursing_insurance')).controller!.text, '0');
     expect(b.writes, 0);
-    await t.ensureVisible(a_mount('health_insurance'));
-    await t.enterText(a_mount('health_insurance'), '5100');
-    await t.ensureVisible(a_mount('employment_insurance'));
-    await t.enterText(a_mount('employment_insurance'), '0');
+    await t.ensureVisible(amount('health_insurance'));
+    await t.enterText(amount('health_insurance'), '5100');
+    await t.ensureVisible(amount('employment_insurance'));
+    await t.enterText(amount('employment_insurance'), '0');
     await save(t);
     expect(b.sent!['deduction_overrides'], {
       'health_insurance': 5100, 'employment_insurance': 0,
     });
-    expect(t.widget<TextFormField>(a_mount('health_insurance')).controller!.text, '5100');
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5100');
     final reset = find.descendant(of: card('health_insurance'),
         matching: find.text('自動計算に戻す'));
     await t.ensureVisible(reset);
     await t.tap(reset);
     await t.pumpAndSettle();
-    expect(t.widget<TextFormField>(a_mount('health_insurance')).controller!.text, '5000');
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
     await save(t);
     expect(b.sent!['deduction_overrides'], {'employment_insurance': 0});
     expect(b.writes, 2);
@@ -122,7 +122,7 @@ void main() {
     final b = _Backend()..edit = false;
     var opened = 0;
     await _mount(t, b, rates: () async { opened++; });
-    expect(t.widget<TextFormField>(a_mount('employment_insurance')).enabled, isFalse);
+    expect(t.widget<TextFormField>(amount('employment_insurance')).enabled, isFalse);
     final formula = find.descendant(of: card('employment_insurance'),
         matching: find.text('計算式・設定'));
     await t.ensureVisible(formula);
@@ -139,13 +139,13 @@ void main() {
   testWidgets('missing calculation stays empty and failed save keeps manual input', (t) async {
     final b = _Backend();
     await _mount(t, b, reader: (_, _, _) async => null);
-    expect(t.widget<TextFormField>(a_mount('health_insurance')).controller!.text, isEmpty);
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, isEmpty);
     expect(find.text('給与計算待ち'), findsNWidgets(5));
-    await t.ensureVisible(a_mount('income_tax'));
-    await t.enterText(a_mount('income_tax'), '1234');
+    await t.ensureVisible(amount('income_tax'));
+    await t.enterText(amount('income_tax'), '1234');
     b.failSave = true;
     await save(t);
-    expect(t.widget<TextFormField>(a_mount('income_tax')).controller!.text, '1234');
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1234');
     expect(find.textContaining('保存結果を確認できません'), findsOneWidget);
     expect(t.widget<FilledButton>(find.widgetWithText(FilledButton, '税・保険料を登録')).onPressed, isNull);
     expect(t.takeException(), isNull);

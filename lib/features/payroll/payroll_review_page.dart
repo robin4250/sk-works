@@ -123,7 +123,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     final repository = _repository;
     final workspace = _workspace;
     if (repository == null || workspace == null || !workspace.isAdmin ||
-        !const {'owner', 'admin'}.contains(workspace.role)) return;
+        !const {'owner', 'admin'}.contains(workspace.role)) {
+      return;
+    }
     await repository.setManagerVisibility(
       workerId: worker.workerId,
       visible: !hidden,
