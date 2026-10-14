@@ -10,10 +10,18 @@ class PayrollUnitConditionsPage extends StatefulWidget {
     required this.repository,
     required this.companyId,
     required this.workerId,
+    this.embedded = false,
+    this.section,
+    this.unit,
+    this.onValidationSelection,
   });
   final PayrollUnitConditionsRepository repository;
   final String companyId;
   final String workerId;
+  final bool embedded;
+  final PayrollItemSection? section;
+  final PayrollItemUnit? unit;
+  final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
   @override
   State<PayrollUnitConditionsPage> createState() =>
       _PayrollUnitConditionsPageState();
@@ -32,6 +40,14 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant PayrollUnitConditionsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workerId != widget.workerId || oldWidget.companyId != widget.companyId) {
+      _load();
+    }
   }
 
   String get _monthKey =>
@@ -91,35 +107,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     String tr(String x) => SkoLanguageController.tr(x);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('単位別の支給・控除')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: Text(tr('単位別の支給・控除')),
-                content: SingleChildScrollView(
-                  child: Text(
-                    tr(
-                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。',
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(tr('閉じる')),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: _loading
+    final body = _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
@@ -132,6 +120,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
               ),
             )
           : Column(
+              mainAxisSize: widget.embedded ? MainAxisSize.min : MainAxisSize.max,
               children: [
                 Padding(
                   padding: const EdgeInsets.all(12),
@@ -159,8 +148,13 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     ],
                   ),
                 ),
-                Expanded(
+                Flexible(
+                  fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
                   child: PayrollUnitItemEditor(
+                    embedded: widget.embedded,
+                    section: widget.section,
+                    unit: widget.unit,
+                    onValidationSelection: widget.onValidationSelection,
                     key: ValueKey(
                       '${widget.workerId}/${_value!.month}/${_value!.version}',
                     ),
@@ -191,7 +185,45 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                   ),
                 ),
               ],
+            );
+    if (widget.embedded) {
+      final hasMonthlyItems = _value?.items.any((item) =>
+          item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
+      return Offstage(
+        offstage: widget.unit == PayrollItemUnit.month && !_loading &&
+            _error == null && !hasMonthlyItems,
+        child: body,
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tr('単位別の支給・控除')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(tr('単位別の支給・控除')),
+                content: SingleChildScrollView(
+                  child: Text(
+                    tr(
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。',
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(tr('閉じる')),
+                  ),
+                ],
+              ),
             ),
+          ),
+        ],
+      ),
+      body: body,
     );
   }
 }

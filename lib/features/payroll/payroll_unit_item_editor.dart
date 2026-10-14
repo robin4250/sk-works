@@ -40,10 +40,18 @@ class PayrollUnitItemEditor extends StatefulWidget {
     this.onRegister,
     this.enableQuantitySources = false,
     this.showDailyReportOption = true,
+    this.embedded = false,
+    this.section,
+    this.unit,
+    this.onValidationSelection,
   });
 
   final List<PayrollUnitItemDraft> initialItems;
   final bool canEdit;
+  final bool embedded;
+  final PayrollItemSection? section;
+  final PayrollItemUnit? unit;
+  final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
   final bool enableQuantitySources;
   final bool showDailyReportOption;
   final Future<void> Function(List<PayrollUnitItemDraft> items)? onRegister;
@@ -71,7 +79,16 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       widget.initialItems.map((item) => item.id).toSet().length ==
           widget.initialItems.length,
     );
+    _section = widget.section ?? _section;
+    _unit = widget.unit ?? _unit;
     _rows = widget.initialItems.map(_RowDraft.new).toList();
+  }
+
+  @override
+  void didUpdateWidget(covariant PayrollUnitItemEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _section = widget.section ?? _section;
+    _unit = widget.unit ?? _unit;
   }
 
   @override
@@ -127,6 +144,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
           _unit = row.value.unit;
           _error = error;
         });
+        widget.onValidationSelection?.call(row.value.section, row.value.unit);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           final context = row.key.currentContext;
@@ -161,12 +179,13 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
         )
         .toList();
     return Column(
+      mainAxisSize: widget.embedded ? MainAxisSize.min : MainAxisSize.max,
       children: [
-        Padding(
+        if (widget.section == null || widget.unit == null) Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              Row(
+              if (widget.section == null) Row(
                 children: [
                   for (final section in PayrollItemSection.values)
                     Expanded(
@@ -182,7 +201,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
+              if (widget.unit == null) Row(
                 children: [
                   for (final unit in PayrollItemUnit.values)
                     Expanded(
@@ -208,8 +227,11 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-        Expanded(
+        Flexible(
+          fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
           child: ListView(
+            shrinkWrap: widget.embedded,
+            physics: widget.embedded ? const NeverScrollableScrollPhysics() : null,
             controller: _scroll,
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             children: [
