@@ -7,17 +7,33 @@ class SkoScrollChromeController {
       GlobalKey<NavigatorState>();
   static final ValueNotifier<bool> visible = ValueNotifier<bool>(true);
 
+  static double _dragDistance = 0;
+
   static bool handle(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
 
+    if (notification is ScrollStartNotification ||
+        notification is ScrollEndNotification) {
+      _dragDistance = 0;
+    }
+
     if (notification is ScrollUpdateNotification) {
-      final delta = notification.scrollDelta ?? 0;
       if (notification.metrics.pixels <= 2) {
+        _dragDistance = 0;
         if (!visible.value) visible.value = true;
-      } else if (delta > 2 && visible.value) {
-        visible.value = false;
-      } else if (delta < -2 && !visible.value) {
-        visible.value = true;
+      } else if (notification.dragDetails != null) {
+        // Ignore inertial rebound and require a deliberate direction change.
+        // Tiny finger oscillations otherwise rebuild the entire app shell.
+        final delta = notification.scrollDelta ?? 0;
+        if (delta != 0) {
+          if (_dragDistance.sign != delta.sign) _dragDistance = 0;
+          _dragDistance += delta;
+          if (_dragDistance.abs() >= 24) {
+            final next = _dragDistance < 0;
+            _dragDistance = 0;
+            if (visible.value != next) visible.value = next;
+          }
+        }
       }
     }
 

@@ -2,6 +2,118 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
 
 void main() {
+  test('resolved new rows cannot bypass review alongside an already edited worker ID', () {
+    final first = lineHistorySources(
+      '2026/09/01\n08:10\t投稿者\t9月1日\n現場A 山田\n現場A 定時');
+    final later = lineHistorySources(
+      '2026/09/01\n08:15\t別の投稿者\t9月1日\n現場A 山田\n現場A 定時');
+    final refs = <Map<String, dynamic>>[{'id': 'worker', 'name': '山田'}];
+    final initial = lineMonthlyCandidates(first, DateTime(2026, 9), workers: refs);
+    final corrected = {...initial.rows.single, 'man_days': .5, 'confirmed': true};
+    final merged = lineMonthlyCandidates([...first, ...later], DateTime(2026, 9),
+      previous: [corrected], workers: refs);
+    expect(merged.rows, hasLength(2));
+    expect(merged.rows.every((row) => row['worker_id'] == 'worker'), isTrue);
+    expect(merged.rows.every((row) => row['confirmed'] == false), isTrue);
+    final retained = merged.rows.singleWhere(
+      (row) => row['source_message_id'] == first.single['id']);
+    expect(retained['man_days'], .5);
+  });
+
+  test('two previously edited copies remain available for explicit duplicate review', () {
+    final history = <String, dynamic>{
+      'id': 'history-copy', 'body': '9月1日\n現場A 山田\n現場A 定時',
+      'sent_at': '2026-09-01T08:10:00Z',
+      'sender_display_name': '投稿者', 'source_type': 'history',
+    };
+    final received = <String, dynamic>{
+      ...history, 'id': 'received-copy', 'source_type': 'received',
+    };
+    final historyRows = lineMonthlyCandidates([history], DateTime(2026, 9)).rows;
+    final receivedRows = lineMonthlyCandidates([received], DateTime(2026, 9)).rows;
+    final prepared = lineMonthlyCandidates([history, received], DateTime(2026, 9),
+      previous: [
+        {...historyRows.single, 'man_days': .5},
+        {...receivedRows.single, 'man_days': 1.0},
+      ]);
+    expect(prepared.rows, hasLength(2));
+    expect(prepared.rows.map((row) => row['man_days']).toSet(), {.5, 1.0});
+    expect(prepared.rows.every((row) => row['confirmed'] == false), isTrue);
+  });
+
+  test('received and exported copies count once and retain the saved history correction', () {
+    const body = '9月1日\n現場A 山田\n現場A 定時';
+    final history = <String, dynamic>{
+      'id': 'history-copy', 'body': body, 'sent_at': '2026-09-01T08:10:00Z',
+      'sender_display_name': '投稿者', 'source_type': 'history',
+    };
+    final received = <String, dynamic>{
+      ...history, 'id': 'received-copy', 'source_type': 'received',
+      'sent_at': '2026-09-01T08:10:20Z',
+    };
+    final initial = lineMonthlyCandidates([history], DateTime(2026, 9));
+    final corrected = {...initial.rows.single, 'man_days': .5, 'confirmed': true};
+    final merged = lineMonthlyCandidates([history, received], DateTime(2026, 9),
+      previous: [corrected]);
+    expect(merged.sources, hasLength(2));
+    expect(merged.rows, hasLength(1));
+    expect(merged.rows.single['source_message_id'], 'history-copy');
+    expect(merged.rows.single['man_days'], .5);
+    expect(merged.rows.single['confirmed'], true);
+    final firstImport = lineMonthlyCandidates([history, received], DateTime(2026, 9));
+    expect(firstImport.rows.single['source_message_id'], 'received-copy');
+    expect(firstImport.rows.single['confirmed'], false);
+  });
+  test('ambiguous repeated received posts are retained for review', () {
+    final base = <String, dynamic>{
+      'body': '9月1日\n現場A 山田\n現場A 定時',
+      'sent_at': '2026-09-01T08:10:00Z', 'sender_display_name': '投稿者',
+    };
+    final result = lineMonthlyCandidates([
+      {...base, 'id': 'one', 'source_type': 'received'},
+      {...base, 'id': 'two', 'source_type': 'received'},
+      {...base, 'id': 'history', 'source_type': 'history'},
+    ], DateTime(2026, 9));
+    expect(result.rows, hasLength(3));
+    expect(result.rows.every((row) => row['confirmed'] == false), isTrue);
+  });
+
+  test('supplement window includes October without dropping the 33 original months', () {
+    final months = lineHistoryImportMonths(through: DateTime(2026, 10, 14));
+    expect(months, hasLength(34));
+    expect(months.first, DateTime(2024, 1));
+    expect(months.last, DateTime(2026, 10));
+    expect(months.take(33), lineHistoricalMonths());
+  });
+  test('overlapping file supplements preserve old corrections and deduplicate posts', () {
+    final earlier = lineHistorySources(
+      '2026/09/01\n08:10\t投稿者\t9月1日\n現場A 山田\n現場A 定時');
+    final extra = lineHistorySources(
+      '2026/09/02\n08:10\t投稿者\t9月2日\n現場A 山田\n現場A 定時');
+    final initial = lineMonthlyCandidates(earlier, DateTime(2026, 9));
+    final corrected = {...initial.rows.single, 'man_days': .5, 'confirmed': true};
+    final merged = lineMergeImportSources(earlier, [...earlier, ...extra]);
+    expect(merged, hasLength(2));
+    final supplemented = lineMonthlyCandidates(merged, DateTime(2026, 9),
+      previous: [corrected]);
+    expect(supplemented.rows, hasLength(2));
+    final retained = supplemented.rows.singleWhere(
+      (row) => row['source_message_id'] == earlier.single['id']);
+    expect(retained['man_days'], .5);
+    expect(retained['confirmed'], true);
+    final oct = lineHistorySources(
+      '2026/10/01\n08:10\t投稿者\t10月1日\n現場A 山田\n現場A 定時');
+    expect(lineMonthlyCandidates(oct, DateTime(2026, 9)).sources, isEmpty);
+    expect(lineMonthlyCandidates(oct, DateTime(2026, 10)).rows, hasLength(1));
+  });
+  test('explicit month replacement retains received evidence', () {
+    final rows = lineMergeImportSources([
+      {'id': 'old', 'source_type': 'history'},
+      {'id': 'received', 'source_type': 'received'},
+    ], [{'id': 'new', 'source_type': 'history'}], replaceHistory: true);
+    expect(rows.map((row) => row['id']), ['received', 'new']);
+  });
+
   test('33 historical months include January 2024 and September 2026', () {
     final months = lineHistoricalMonths();
     expect(months, hasLength(33));

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'line_history_parser.dart';
 import 'line_import_draft.dart';
 
@@ -20,12 +21,14 @@ List<Map<String, dynamic>> lineHistorySources(String text) {
   return unique.values.toList(growable: false);
 }
 
-({List<Map<String, dynamic>> sources, List<Map<String, dynamic>> rows})
+({List<Map<String, dynamic>> sources, List<Map<String, dynamic>> rows,
+  List<String> unreadableSourceIds})
 lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
     {List<Map<String, dynamic>> previous = const [],
      List<Map<String, dynamic>> workers = const [],
      List<Map<String, dynamic>> sites = const []}) {
-  final extracted = LineImportDraft.extract(history, month, previous: previous);
+  final extracted = LineImportDraft.extract(
+    lineCanonicalImportPosts(history, previous: previous), month, previous: previous);
   final rows = [for (final row in extracted.rows) Map<String, dynamic>.from(row)];
   for (final row in rows) {
     if (row['worker_id'] == null) {
@@ -40,13 +43,28 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
       }
     }
   }
+  // Recheck after resolving names to IDs: an old edited row has an ID,
+  // while a newly imported copy initially has only the worker's name.
+  final counts = <String, int>{};
+  String workerDay(Map<String, dynamic> row) =>
+    '${row['work_date']}:${row['worker_id'] ?? row['worker_name']}';
+  for (final row in rows.where((row) => row['excluded'] != true)) {
+    final key = workerDay(row);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  for (final row in rows.where((row) => row['excluded'] != true)) {
+    if ((counts[workerDay(row)] ?? 0) > 1) {
+      row['confirmed'] = false;
+      row['review_reason'] = '同日の作業員が複数行あります。重複・複数現場を確認してください。';
+    }
+  }
   final used = rows.map((r) => r['source_message_id']).toSet();
   final sources = history.where((source) {
     final at = DateTime.tryParse(source['sent_at']?.toString() ?? '')?.toLocal();
     return used.contains(source['id']) ||
       (at?.year == month.year && at?.month == month.month);
   }).toList(growable: false);
-  return (sources: sources, rows: rows);
+  return (sources: sources, rows: rows, unreadableSourceIds: extracted.unreadableSourceIds);
 }
 
 /// Reuse only a name explicitly saved with this historical quote.
@@ -60,4 +78,64 @@ String? lineHistoricalFormalSiteName(Map<String, dynamic> snapshot, String siteI
     if (name != null && name.isNotEmpty) names.add(name);
   }
   return names.length == 1 ? names.single : null;
+}
+
+/// Keep the original 33 months and allow later months, including this October.
+List<DateTime> lineHistoryImportMonths({DateTime? through}) {
+  final end = through ?? DateTime.now();
+  final count = (end.year - 2024) * 12 + end.month;
+  return List.unmodifiable(List.generate(count < 33 ? 33 : count,
+    (index) => DateTime(2024, index + 1)));
+}
+
+/// File supplements keep prior posts; explicit replacement keeps received posts.
+List<Map<String, dynamic>> lineMergeImportSources(
+    List<Map<String, dynamic>> existing, List<Map<String, dynamic>> incoming,
+    {bool replaceHistory = false}) {
+  final merged = <String, Map<String, dynamic>>{};
+  for (final source in [
+    ...existing.where((source) =>
+      !replaceHistory || source['source_type'] == 'received'),
+    ...incoming,
+  ]) {
+    final id = source['id']?.toString();
+    if (id != null && id.isNotEmpty) merged[id] = source;
+  }
+  return merged.values.toList(growable: false);
+}
+
+/// Coalesce only an unambiguous one-to-one received/exported copy.
+/// Multiple identical posts remain separate and require the existing review.
+List<Map<String, dynamic>> lineCanonicalImportPosts(
+    List<Map<String, dynamic>> sources,
+    {List<Map<String, dynamic>> previous = const []}) {
+  final groups = <String, List<Map<String, dynamic>>>{};
+  for (final source in sources) {
+    final at = DateTime.tryParse(source['sent_at']?.toString() ?? '');
+    final body = source['body'];
+    final sender = source['sender_display_name'];
+    if (at == null || body is! String || sender is! String ||
+        sender.trim().isEmpty) {
+      continue;
+    }
+    final key = jsonEncode([at.millisecondsSinceEpoch ~/ 60000,
+      sender.trim(), body.replaceAll('\r\n', '\n').trim()]);
+    groups.putIfAbsent(key, () => []).add(source);
+  }
+  final suppressed = <String>{};
+  for (final group in groups.values) {
+    final received = group.where((s) => s['source_type'] == 'received').toList();
+    final history = group.where((s) => s['source_type'] == 'history').toList();
+    if (received.length != 1 || history.length != 1) continue;
+    final copies = [received.single, history.single];
+    final saved = copies.where((source) => previous.any((row) =>
+      row['source_message_id'] == source['id'] &&
+      row['source_fingerprint'] == lineSourceFingerprint(source))).toList();
+    if (saved.length > 1) continue;
+    final keep = saved.isNotEmpty ? saved.first : received.single;
+    for (final copy in copies) {
+      if (copy['id'] != keep['id']) suppressed.add(copy['id'].toString());
+    }
+  }
+  return sources.where((s) => !suppressed.contains(s['id'])).toList(growable: false);
 }

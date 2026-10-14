@@ -60,8 +60,8 @@ void main() {
 
     expect(chrome, contains('NotificationListener<ScrollNotification>'));
     expect(chrome, contains('toolbarHeight: visible ? kToolbarHeight : 0'));
-    expect(chrome, contains('delta > 2'));
-    expect(chrome, contains('delta < -2'));
+    // Scroll thresholds and inertial updates are verified through actual
+    // notifications in sko_scroll_chrome_direction_test and widget drags.
   });
   test('attendance linkage survives optional vehicle route lookup failures', () {
     final repository = File(
