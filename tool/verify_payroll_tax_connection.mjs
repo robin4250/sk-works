@@ -37,6 +37,7 @@ try {
  assert.equal((await db.query("select to_regnamespace('payroll_tax_private') n")).rows[0].n,null);
  await db.exec(originalCalculator);
  await db.exec(read('supabase/migrations/20261010030208_connect_payroll_tax_calculation.sql'));
+ await db.exec(read('supabase/migrations/20261014033249_payroll_fixed_deduction_overrides.sql'));
  // All 231 official rows: lower endpoint, upper endpoint minus one, 8 koh columns and otsu.
  const official=JSON.parse(read('test/fixtures/nta_monthly_2026.json'));
  const tax=async(a,col='koh',n=0,date='2026-11-25')=>(await db.query('select payroll_tax_private.monthly_income_tax($1,$2,$3,$4) tax',[date,a,col,n])).rows[0].tax;
@@ -105,6 +106,42 @@ try {
  assert.equal(rated.deductions,64945);
  assert.equal(rated.net_pay,235055);
  assert.equal(rated.detail['社会保険'],undefined,'legacy aggregate cannot double count');
+ // Explicit item corrections replace the generated item, never add a second
+ // custom deduction. Insurance corrections feed the income-tax base too.
+ await db.exec('reset role;begin');
+ await actor(editor);
+ const manual={...automatic,deduction_overrides:{
+  health_insurance:16000,employment_insurance:0,income_tax:1234,
+ }};
+ await saveTax(2,manual);
+ const corrected=await statement(month);
+ assert.equal(corrected.detail['健康保険料'],16000);
+ assert.equal(corrected.detail['雇用保険料'],0);
+ assert.equal(corrected.detail['所得税'],1234);
+ assert.equal(corrected.detail.tax_calculation.automatic_premiums['健康保険料'],15000);
+ assert.equal(corrected.detail.tax_calculation.social_yen,46225);
+ assert.equal(corrected.detail.tax_calculation.income_tax_base_yen,253775);
+ assert.equal(corrected.deductions,46225+1234+12000);
+ assert.equal(corrected.net_pay,300000-corrected.deductions);
+ assert.deepEqual(corrected.detail.tax_calculation.deduction_overrides,manual.deduction_overrides);
+ await actor(editor);await saveTax(3,automatic);
+ const restored=await statement(month);
+ assert.equal(restored.deductions,rated.deductions);
+ assert.equal(restored.net_pay,rated.net_pay);
+ for(const overrides of [
+  {health_insurance:-1},{health_insurance:0.5},
+  {health_insurance:2147483648},{unknown:10},{health_insurance:null},
+ ]) {
+  await actor(editor);
+  await db.exec('savepoint invalid_override');
+  await assert.rejects(saveTax(4,{...automatic,deduction_overrides:overrides}));
+  await db.exec('rollback to savepoint invalid_override;release savepoint invalid_override');
+ }
+ await actor(editor);
+ await db.exec('savepoint invalid_fixed_override');
+ await assert.rejects(saveTax(4,{...profile,deduction_overrides:{health_insurance:100}}),/個別の自動計算条件/);
+ await db.exec('rollback to savepoint invalid_fixed_override;release savepoint invalid_fixed_override');
+ await db.exec('reset role;rollback');
  fs.mkdirSync('test/fixtures/payroll_tax_connection',{recursive:true});
  fs.writeFileSync('test/fixtures/payroll_tax_connection/automatic.json',JSON.stringify({gross_pay:rated.gross_pay,deductions:rated.deductions,net_pay:rated.net_pay,detail:{...rated.detail,company_seal_enabled:false}},null,2)+'\n');
  // Exercise real attendance INSERT/UPDATE/DELETE triggers, not only refresh RPCs.

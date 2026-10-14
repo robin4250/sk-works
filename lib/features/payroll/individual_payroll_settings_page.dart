@@ -1,4 +1,6 @@
 import 'payroll_tax_conditions_page.dart';
+import 'payroll_fixed_deductions.dart';
+import '../settings/company_payroll_rates_page.dart';
 import '../../international/language_controller.dart';
 import 'dart:convert';
 
@@ -224,7 +226,7 @@ class _IndividualPayrollSettingsPageState
         ..addAll(
           _customMoneyDrafts(
             setting.values['custom_deductions'],
-            defaults: const ['介護保険料', '厚生年金保険', '雇用保険料', 'SKO会費'],
+            defaults: const ['SKO会費'],
           ),
         );
       if (!mounted || generation != _loadGeneration) return;
@@ -698,37 +700,37 @@ class _IndividualPayrollSettingsPageState
                         title: '控除',
                         icon: Icons.remove_circle_outline,
                         children: [
-                          if (_workerId != null &&
-                              companyId != null &&
-                              companyId.isNotEmpty)
-                            OutlinedButton.icon(
-                              icon: const Icon(Icons.calculate_outlined),
-                              label: const Text('給与の税計算・自動反映'),
-                              onPressed: _saving
-                                  ? null
-                                  : () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            PayrollTaxConditionsPage(
-                                              companyId: companyId,
-                                              workerId: _workerId!,
-                                            ),
-                                      ),
-                                    ),
-                            ),
-                          _sectionTitle(
-                            SkoLanguageController.tr('税・社会保険の月額設定'),
-                          ),
-                          _amountField(
-                            'income_tax_monthly',
-                            SkoLanguageController.tr('所得税・月額'),
-                          ),
-                          _amountField(
-                            'social_insurance_monthly',
-                            SkoLanguageController.tr('社会保険・月額'),
-                          ),
-                          SizedBox(height: 12),
-                          _sectionTitle(SkoLanguageController.tr('住民税')),
+                          if (_workerId != null)
+                            PayrollFixedDeductions(
+                              key: ValueKey('fixed-deductions-$_workerId'),
+                              companyId: companyId ?? '',
+                              workerId: _workerId!,
+                              canEdit: workspace.canEdit && !_saving,
+                              refreshRevision: _loadGeneration,
+                              legacySocialAmount: num.tryParse(
+                                _controllers['social_insurance_monthly']!.text,
+                              ) ?? 0,
+                              readStatement: _repository!.loadMonthlyDeductionStatement,
+                              openConditions: companyId == null || companyId.isEmpty
+                                  ? null : () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute<void>(builder: (_) =>
+                                          PayrollTaxConditionsPage(
+                                            companyId: companyId,
+                                            workerId: _workerId!,
+                                          )),
+                                      );
+                                    },
+                              openRates: companyId == null || companyId.isEmpty
+                                  ? null : () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute<void>(builder: (_) =>
+                                          CompanyPayrollRatesPage(companyId: companyId)),
+                                      );
+                                    },
+                              residentTax: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
                           if (_residentTaxCapability ==
                               ResidentTaxCapability.legacy)
                             _amountField(
@@ -760,7 +762,10 @@ class _IndividualPayrollSettingsPageState
                                   ) ??
                                   0,
                             ),
-                          SizedBox(height: 12),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 12),
                           _sectionTitle(SkoLanguageController.tr('その他の控除')),
                           for (var i = 0; i < _customDeductions.length; i++)
                             _customMoneyField(

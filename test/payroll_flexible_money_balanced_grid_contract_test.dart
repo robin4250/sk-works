@@ -34,7 +34,7 @@ void main() {
         '雇用保険料',
         'SKO会費',
       ]) {
-        expect(page, contains(label));
+        expect(page + read('lib/features/payroll/payroll_fixed_deductions.dart'), contains(label));
         expect(migration, contains(label));
       }
 
