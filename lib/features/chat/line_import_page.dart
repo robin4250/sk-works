@@ -8,6 +8,7 @@ import 'line_import_draft.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 import 'line_historical_monthly_import_page.dart';
+import 'line_historical_invoice_page.dart';
 
 class LineImportPage extends StatefulWidget {
   const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
@@ -329,6 +330,16 @@ class _LineImportPageState extends State<LineImportPage> {
     if (mounted) await _load();
   }
 
+  Future<void> _openHistorical(bool rates) async {
+    final group = _groupId;
+    if (group == null || _monthLocked) return;
+    final page = rates
+      ? LineHistoricalInvoicePage.rates(initialGroupId: group, initialMonth: _month)
+      : LineHistoricalInvoicePage(initialGroupId: group, initialMonth: _month);
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
+    if (mounted) await _load();
+  }
+
   Widget _monthlyNavigation() => GestureDetector(
     key: const ValueKey('line-month-swipe'),
     behavior: HitTestBehavior.opaque,
@@ -390,7 +401,9 @@ class _LineImportPageState extends State<LineImportPage> {
         DropdownButtonFormField<String>(initialValue: workerOptions.containsKey(_workerFilter) ? _workerFilter : null, decoration: const InputDecoration(labelText: '個人別表示'),
           items: [const DropdownMenuItem<String>(value: null, child: Text('表示できる全員')), for (final item in workerOptions.entries) DropdownMenuItem(value: item.key, child: Text(item.value))],
           onChanged: _busy || _formalPending != null ? null : (value) => setState(() => _workerFilter = value)),
-        if (widget.target == 'invoice') const Text('請求書はこの月の確認済み全員分を作成します。'),
+        if (widget.target == 'invoice') Text(widget.monthlyTable
+          ? '照合して保存した月間表から、その月の単価設定と請求書へ進みます。'
+          : '請求書はこの月の確認済み全員分を作成します。'),
         Text('確認済み集計', style: Theme.of(context).textTheme.titleMedium),
         if (totals.isEmpty) const Text('確認済みの候補はありません。'),
         for (final total in totals) ListTile(contentPadding: EdgeInsets.zero, title: Text(total['name'].toString()), subtitle: Text('人工 ${total['man_days']} ／ 残業 ${total['overtime_hours']}時間 ／ 早出 ${total['early_hours']}時間')),
@@ -432,8 +445,15 @@ class _LineImportPageState extends State<LineImportPage> {
             title: const Text('明細とLINEノートの集計を照合しました')),
           FilledButton(onPressed: _busy || !_enabled ? null : _save, child: Text(_pending == null ? '保存する' : '同じ内容を再送')),
           const SizedBox(height: 12),
-          OutlinedButton.icon(onPressed: _busy || !_enabled || _dirty || _draftId == null || !_comparisonConfirmed || _pending != null ? null : _formal, icon: const Icon(Icons.fact_check_outlined), label: Text(_formalPending != null ? '同じ登録を再送' : widget.target == 'attendance' ? '署名して出勤を申請' : '金額を確認して請求書を作成')),
-          const Text('出勤は既存の承認待ちへ、請求書は下書きとして保存します。同じ日の出勤や同じ月の請求書がある場合は、既存データの確認へ進んでください。'),
+          if (!widget.monthlyTable) OutlinedButton.icon(onPressed: _busy || !_enabled || _dirty || _draftId == null || !_comparisonConfirmed || _pending != null ? null : _formal, icon: const Icon(Icons.fact_check_outlined), label: Text(_formalPending != null ? '同じ登録を再送' : widget.target == 'attendance' ? '署名して出勤を申請' : '金額を確認して請求書を作成')),
+          if (widget.monthlyTable) ...[
+            OutlinedButton.icon(onPressed: _monthLocked || _groupId == null ? null : () => _openHistorical(true),
+              icon: const Icon(Icons.price_change_outlined), label: const Text('この月の単価設定')),
+            OutlinedButton.icon(onPressed: _monthLocked || _groupId == null ? null : () => _openHistorical(false),
+              icon: const Icon(Icons.receipt_long_outlined), label: const Text('この月の請求書')),
+            const Text('照合済みの表に過去月の単価を設定し、保存した履歴から請求書の下書きを作成します。'),
+          ] else
+            const Text('出勤は既存の承認待ちへ、請求書は下書きとして保存します。同じ日の出勤や同じ月の請求書がある場合は、既存データの確認へ進んでください。'),
         ],
       ]));
   }

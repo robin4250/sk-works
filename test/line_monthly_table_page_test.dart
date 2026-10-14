@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/chat/line_import_page.dart';
 import 'package:sk_works/features/chat/line_import_repository.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import_page.dart';
+import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
 
 class _Auth extends Fake implements GoTrueClient {
   @override
@@ -135,6 +136,24 @@ void main() {
     expect(rows.single['overtime_hours'], 2.5);
     expect(rows.single['worker_id'], 'w');
     expect(repository.saves.single['p_month'], '2026-09-01');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('monthly table keeps the selected group and month in historical rates and invoices', (tester) async {
+    await _mount(tester, _Repository());
+    expect(find.text('金額を確認して請求書を作成'), findsNothing);
+    for (final rates in [true, false]) {
+      final button = find.text(rates ? 'この月の単価設定' : 'この月の請求書');
+      await _reveal(tester, button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      final page = tester.widget<LineHistoricalInvoicePage>(find.byType(LineHistoricalInvoicePage));
+      expect(page.editingRates, rates);
+      expect(page.initialGroupId, 'g');
+      expect(page.initialMonth, DateTime(2026, 9));
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+    }
     expect(tester.takeException(), isNull);
   });
 

@@ -142,7 +142,7 @@ class _LineHistoricalInvoicePageState extends State<LineHistoricalInvoicePage> {
   Future<void> _chooseMonth() async {
     final now = DateTime.now();
     final date = await showDatePicker(context: context, initialDate: _month,
-      firstDate: DateTime(1900), lastDate: DateTime(now.year, now.month, 0));
+      firstDate: DateTime(1900), lastDate: DateTime(now.year, now.month + 1, 0));
     if (date == null || !mounted) return;
     setState(() => _month = DateTime(date.year, date.month));
     await _load();
