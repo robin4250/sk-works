@@ -15,6 +15,7 @@ import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
 import 'master_operations_dashboard_page.dart';
 import '../security/security_incident_page.dart';
+import '../security/master_self_audit_page.dart';
 import '../security/security_actor_boundary.dart';
 import 'master_protected_page.dart';
 import 'master_recovery_contacts_page.dart';
@@ -368,6 +369,25 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.history_outlined),
+                              title: const Text('本人の実監査ログ'),
+                              subtitle: const Text('マスター操作と本人の認証記録・各最新100件'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MasterProtectedPage(
+                                    title: '本人の実監査ログ',
+                                    child: SecurityActorBoundary(
+                                      child: MasterSelfAuditPage(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.policy_outlined),
