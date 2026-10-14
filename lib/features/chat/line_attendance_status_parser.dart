@@ -9,6 +9,7 @@ class LineAttendanceStatus {
     required this.isNightWork,
     required this.hasSteelAllowance,
     this.isHolidayWork = false,
+    this.allowanceNames = const [],
   });
 
   final String siteName;
@@ -18,6 +19,7 @@ class LineAttendanceStatus {
   final bool isNightWork;
   final bool hasSteelAllowance;
   final bool isHolidayWork;
+  final List<String> allowanceNames;
 }
 
 class LineAttendanceStatusParser {
@@ -51,6 +53,10 @@ class LineAttendanceStatusParser {
           isNightWork: detail.contains('夜勤'),
           hasSteelAllowance: detail.contains('鉄骨') || RegExp(r'\bPC\b', caseSensitive: false).hasMatch(detail),
           isHolidayWork: detail.contains('休日'),
+          allowanceNames: [
+            if (RegExp(r'\bPC\b', caseSensitive: false).hasMatch(detail)) 'PC手当',
+            if (detail.contains('鉄骨')) '鉄骨手当',
+          ],
         ),
       );
     }

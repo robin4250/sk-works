@@ -10,6 +10,8 @@ import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
+import 'line_historical_amount_preview.dart';
+import '../invoices/invoice_pdf_service.dart';
 
 class LineImportPage extends StatelessWidget {
   const LineImportPage({super.key, required this.target, this.initialGroupId, this.initialMonth, this.repositoryOverride, this.groupsLoader}) : monthlyTable = false;
@@ -253,7 +255,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           if (steel && allowance.text.trim().isEmpty) { update(() => validation = 'PC・鉄骨手当の登録名を入力してください。'); return; }
           final w = _workers.singleWhere((item) => item['id'] == worker), s = _sites.singleWhere((item) => item['id'] == site);
           Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'], 'formal_site_name': formalName.text.trim(),
-            'man_days': quantity, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
+            'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
         }, child: const Text('確認済みにする'))],
     )));
     date.dispose(); formalName.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
@@ -352,7 +354,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     }
     final next = DateTime(_month.year, _month.month + delta);
     final now = DateTime.now();
-    if (next.isBefore(DateTime(2024)) || next.isAfter(DateTime(now.year, now.month))) return;
+    if (next.isBefore(DateTime(1900)) || next.isAfter(DateTime(now.year, now.month))) return;
     FocusScope.of(context).unfocus();
     setState(() { _month = next; _workerFilter = null; });
     await _load();
@@ -401,7 +403,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   void _show(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(_title),
-    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
+    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。指定初期単価の参考請求額を表示し、数量を修正すると再計算します。数量不明・不明手当・重複疑いは対象外件数を表示します。正式な金額は現場別単価を保存し、請求書の正式下書きプレビューで確認します。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
 
   @override
@@ -410,6 +412,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     final shown = _rows.where((row) => _workerFilter == null || row['worker_id'] == _workerFilter).toList();
     final workerOptions = <String, String>{for (final row in _rows) if (row['worker_id'] is String) row['worker_id'] as String: row['worker_name'].toString()};
     final totals = LineImportDraft.aggregate(shown, bySite: widget.target == 'invoice');
+    final estimate = lineHistoricalAmountPreview(_rows);
     return Scaffold(appBar: AppBar(title: Text(_title), actions: [IconButton(onPressed: _help, icon: const Icon(Icons.help_outline), tooltip: '使い方'),
       IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: _error != null ? Center(child: Text(_error!)) : ListView(padding: const EdgeInsets.all(16), children: [
@@ -440,6 +443,19 @@ class _LineImportPageState extends State<_LineImportPageContent> {
         if (widget.target == 'invoice') Text(widget.monthlyTable
           ? '照合して保存した月間表から、その月の単価設定と請求書へ進みます。'
           : '請求書はこの月の確認済み全員分を作成します。'),
+        if (_canEdit && _enabled && widget.target == 'invoice' && _rows.isNotEmpty) Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(estimate.sites.isEmpty ? '参考請求額：数量の確認が必要です' : '読取数量の参考請求額 ${estimate.total}円', style: Theme.of(context).textTheme.titleMedium),
+            const Text('指定初期単価での参考計算・月全体。通常日32800円／通常残業・早出5125円／PC・鉄骨各3000円／福利15%／税10%。現場別に変更・保存した単価と登録経費は、正式下書きの金額プレビューで反映します。'),
+            Text('未確認 ${estimate.pendingRows}行 ／ 数量・手当・重複などの要確認で計算対象外 ${estimate.incompleteRows}行。未振り分けの原文・訂正は別途照合してください。'),
+            Text('残業・早出報告から1人工を仮置きした行 ${_rows.where((row) => row['excluded'] != true && row['man_days_inferred'] == true).length}件：表で確認・修正してください。'),
+            for (final site in estimate.sites) Text('${site.name}：${site.total}円（作業・手当 ${site.base}円＋福利 ${site.welfare}円＋税 ${site.tax}円）'),
+            const Text('正式請求の確定額ではありません。表を修正すると再計算します。'),
+            OutlinedButton.icon(onPressed: _busy || estimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(
+                invoices: [estimate.invoice(_month)], title: 'SKO請求書・参考／未確認'))),
+              icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('SKO請求書の書式で参考金額を確認')),
+          ]))),
         Text('確認済み集計', style: Theme.of(context).textTheme.titleMedium),
         if (totals.isEmpty) const Text('確認済みの候補はありません。'),
         for (final total in totals) ListTile(contentPadding: EdgeInsets.zero, title: Text(total['name'].toString()), subtitle: Text('人工 ${total['man_days']} ／ 残業 ${total['overtime_hours']}時間 ／ 早出 ${total['early_hours']}時間')),
@@ -461,7 +477,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
                   DataCell(Text(row['worker_name']?.toString() ?? '')),
                   DataCell(Text(row['site_name']?.toString() ?? '')),
                   DataCell(Text(row['formal_site_name']?.toString() ?? '未入力')),
-                  DataCell(Text(row['man_days']?.toString() ?? '要確認')),
+                  DataCell(Text(row['man_days'] == null ? '要確認' : '${row['man_days']}${row['man_days_inferred'] == true ? '（仮）' : ''}')),
                   DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
                   DataCell(Text(row['early_hours']?.toString() ?? '要確認')),
                   DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),

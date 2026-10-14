@@ -1,5 +1,8 @@
 import 'line_release_access.dart';
 import '../../domain/rate_formula_settings.dart';
+import '../../domain/invoice_engine.dart';
+import 'line_historical_amount_preview.dart';
+import '../invoices/invoice_pdf_service.dart';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'chat_cloud_repository.dart';
@@ -9,6 +12,7 @@ import 'line_historical_invoice_bridge_page.dart';
 import 'line_import_page.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_historical_monthly_import_page.dart';
+import 'line_import_repository.dart';
 import '../../international/language_controller.dart';
 
 class LineHistoricalInvoicePage extends StatelessWidget {
@@ -40,6 +44,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
   final _siteNames = <String, TextEditingController>{};
   List<Map<String, dynamic>> _groups = [];
   List<LineHistoricalGroup> _summary = [];
+  List<Map<String, dynamic>> _candidateRows = [];
   Map<String, dynamic> _data = {};
   Map<String, dynamic>? _pending;
   String? _group, _error;
@@ -70,9 +75,18 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
   }
   Future<void> _load() async {
     if (_group == null) { setState(() => _busy = false); return; }
-    setState(() { _busy = true; _error = null; _data = {}; _summary = []; });
+    setState(() { _busy = true; _error = null; _data = {}; _summary = []; _candidateRows = []; });
     try {
-      final data = await _repository!.load(_group!, _month);
+      final workspace = await LineImportRepository.maybeCreate()!.load(_group!, 'invoice', _month);
+      if (workspace['can_edit'] != true || !LineImportFeatures.fromJson(workspace['features']).invoice) {
+        throw StateError('請求書取込の権限とON設定を確認してください。');
+      }
+      final candidates = [for (final row in workspace['candidate_rows'] as List)
+        Map<String, dynamic>.from(row as Map)];
+      final now = DateTime.now();
+      final data = _month.isBefore(DateTime(now.year, now.month))
+        ? await _repository!.load(_group!, _month)
+        : <String, dynamic>{'rows': <Map<String, dynamic>>[], 'saved': <Map<String, dynamic>>[]};
       final rows = [for (final row in data['rows'] as List) Map<String, dynamic>.from(row as Map)];
       final summary = historicalGroups(rows);
       if (!mounted) return;
@@ -100,23 +114,27 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
           }
         }
       }
-      setState(() { _data = data; _summary = summary; _pending = null; _edited = false; });
+      setState(() { _data = data; _summary = summary; _candidateRows = candidates; _pending = null; _edited = false; });
     } catch (_) { if (mounted) setState(() => _error = '確認済み過去月データを取得できませんでした。権限・接続・元データを確認してください。'); }
     finally { if (mounted) setState(() => _busy = false); }
   }
   String _key(LineHistoricalGroup g, String unit) => '${g.siteId}:${g.category}:$unit';
-  TextEditingController _controller(LineHistoricalGroup g, String unit) => _rates.putIfAbsent(_key(g, unit), () => TextEditingController(text: unit == 'day' ? '32800' : unit == 'overtime' || unit == 'early' ? const RateFormulaSettings().overtime(_rate(g, 'day') ?? 32800).toString() : unit == 'allowance:PC' || unit == 'allowance:PC手当' || unit == 'allowance:鉄骨' || unit == 'allowance:鉄骨手当' ? '3000' : ''));
+  TextEditingController _controller(LineHistoricalGroup g, String unit) => _rates.putIfAbsent(_key(g, unit), () => TextEditingController(text: unit == 'day' ? lineHistoricalDefaultDayRate(g.category).toString() : unit == 'overtime' || unit == 'early' ? const RateFormulaSettings().overtime(_rate(g, 'day') ?? 32800).toString() : unit == 'allowance:PC' || unit == 'allowance:PC手当' || unit == 'allowance:鉄骨' || unit == 'allowance:鉄骨手当' ? '3000' : ''));
   int? _rate(LineHistoricalGroup g, String unit) => historicalUnitRate(_controller(g, unit).text);
+  List<InvoiceLine> _invoiceLines(LineHistoricalGroup g) => [
+    InvoiceLine(label: '作業（${g.category}）', quantity: g.manDays, unitPriceYen: _rate(g, 'day')!),
+    if (g.overtime > 0) InvoiceLine(label: '残業', quantity: g.overtime, unitPriceYen: _rate(g, 'overtime')!),
+    if (g.early > 0) InvoiceLine(label: '早出', quantity: g.early, unitPriceYen: _rate(g, 'early')!),
+    for (final entry in g.allowances.entries) InvoiceLine(label: entry.key, quantity: entry.value.toDouble(), unitPriceYen: _rate(g, 'allowance:${entry.key}')!),
+  ];
   int? _subtotal(LineHistoricalGroup g) {
     final day = _rate(g, 'day'), ot = _rate(g, 'overtime'), early = _rate(g, 'early');
     if (day == null || (g.overtime > 0 && ot == null) || (g.early > 0 && early == null)) return null;
-    var amount = (g.manDays * day).round() + (g.overtime * (ot ?? 0)).round() + (g.early * (early ?? 0)).round();
     for (final entry in g.allowances.entries) {
       final rate = _rate(g, 'allowance:${entry.key}');
       if (rate == null) return null;
-      amount += entry.value * rate;
     }
-    return amount;
+    return _invoiceLines(g).fold<int>(0, (sum, line) => sum + line.amountYen);
   }
   Future<void> _save() async {
     if (!widget.editingRates) return;
@@ -227,8 +245,29 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
     final people = <String>{for (final g in _summary) ...g.workers}.length;
     final days = _summary.fold<double>(0, (n, g) => n + g.manDays);
     final saved = _data['saved'] as List? ?? [];
+    final candidateEstimate = lineHistoricalAmountPreview(_candidateRows);
+    final bases = <String, int>{};
+    var complete = _summary.isNotEmpty;
+    for (final group in _summary) {
+      final amount = _subtotal(group);
+      if (amount == null) { complete = false; continue; }
+      bases[group.siteId] = (bases[group.siteId] ?? 0) + amount;
+    }
+    final siteCalculations = complete ? [for (final site in bases.keys) SiteInvoiceCalculation(
+      siteId: site, siteName: _siteNames[site]!.text,
+      lines: [for (final group in _summary.where((g) => g.siteId == site)) ..._invoiceLines(group)],
+      welfareRateBps: 1500,
+    )] : <SiteInvoiceCalculation>[];
+    final reference = complete ? InvoiceEngine.calculate(
+      customerId: '取引先未確認（参考）', billingPeriod: '${_month.year}年${_month.month}月',
+      detailMode: InvoiceDetailMode.siteBreakdownOnInvoice, sites: siteCalculations,
+      taxRateBps: 1000, invoiceNumber: '参考・未確認',
+      taxYenOverride: siteCalculations.fold<int>(0, (sum, site) => sum +
+        InvoiceEngine.calculate(customerId: '参考', billingPeriod: '参考',
+          detailMode: InvoiceDetailMode.siteBreakdownOnInvoice, sites: [site], taxRateBps: 1000).taxYen),
+    ) : null;
     return Scaffold(appBar: AppBar(title: Text(_tr(widget.editingRates ? 'LINE単価設定' : 'LINE月別請求書')), actions: [
-      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
+      IconButton(onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('履歴小計'), content: const Text('取込済みの未確認数量でも指定初期単価の参考金額を表示し、既存SKO請求書の書式で確認できます。残業・早出だけの報告は1人工を仮置きと明示し、確認済みにはしません。現場別単価は確認済みの表から編集でき、保存済み帳票の金額は変更しません。過去33ヶ月と当月までの追加月を、書き出しファイルと連携LINEの受信データから同じ月別候補へ取り込めます。通常は既存履歴を残して不足分を追加し、一致するコピーをまとめます。各月の確認済み表から単価設定へ進み、正式現場名・1日単価・残業・手当を保存して、正式下書きへ引き継ぎます。同月の直近保存単価を表示し、変更して別の履歴として保存できます。実人数は重複を除いた人数、延べ人工は各日の人工の合計です。過去月の確認済み候補へ単価を入力して保存します。空欄は未取得、0円は明示入力として扱います。保存は通常請求書の発行とは別です。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))])), icon: const Icon(Icons.help_outline), tooltip: 'ヘルプ'),
       IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh), tooltip: '再読み込み')]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(_tr(widget.editingRates
@@ -258,6 +297,25 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         if (_busy) const LinearProgressIndicator(),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (_data.isNotEmpty) Text('実人数 $people人 ／ 延べ ${days.toStringAsFixed(1)}人工', style: Theme.of(context).textTheme.titleMedium),
+        if (_data.isNotEmpty && _summary.isEmpty && _candidateRows.isNotEmpty) Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(candidateEstimate.sites.isEmpty ? '請求金額：数量の確認が必要です' : '現在の読取数量による参考請求額 ${candidateEstimate.total}円', style: Theme.of(context).textTheme.titleLarge),
+            Text('未確認 ${candidateEstimate.pendingRows}行 ／ 計算対象外 ${candidateEstimate.incompleteRows}行。指定初期単価・福利15%・消費税10%。全件確定額ではありません。'),
+            Text('残業・早出報告から1人工を仮置き ${_candidateRows.where((row) => row['excluded'] != true && row['man_days_inferred'] == true).length}行。半日・訂正・未振り分けの原文も月別表で確認してください。'),
+            const Text('数量・正式現場名は月別表で修正できます。現場別変更単価と登録経費は確認後の正式下書きプレビューへ反映します。'),
+            OutlinedButton.icon(onPressed: _busy || candidateEstimate.sites.isEmpty ? null : () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(invoices: [candidateEstimate.invoice(_month)], title: 'SKO請求書・参考／未確認'))),
+              icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('SKO請求書の書式で読取金額を確認')),
+          ]))),
+        if (_data.isNotEmpty && complete) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('入力単価による参考請求額 ${reference?.grandTotalYen}円', style: Theme.of(context).textTheme.titleLarge),
+            const Text('現場別の入力単価＋福利15%＋消費税10%。登録経費は含みません。正式下書きの金額プレビューで対象月の条件と経費を確認してください。'),
+            for (final entry in bases.entries) Text('${_siteNames[entry.key]?.text ?? entry.key}：作業・手当小計 ${entry.value}円'),
+            OutlinedButton.icon(onPressed: _busy || reference == null ? null : () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => InvoicePdfPreviewPage(invoices: [reference], title: 'SKO請求書・参考／未確認'))),
+              icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('SKO請求書の書式で金額を確認')),
+          ]))),
         if (!_busy && _error == null && _data.isNotEmpty && _summary.isEmpty) Text(_tr('確認済みの請求候補がありません。LINE請求候補を取り込み、照合して保存してください。')),
         if (!_busy && _error == null && _groups.isEmpty) Text(_tr('表示できるLINEグループがありません。連携状態を確認してください。')),
         if (widget.editingRates) for (final entry in _siteNames.entries)
@@ -267,7 +325,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
             onTap: _busy || _pending != null ? null : () => _openSiteRates(entry.key))),
         if (!widget.editingRates) for (final g in _summary)
           Card(child: ListTile(title: Text('${_siteNames[g.siteId]?.text ?? g.siteName} ／ ${g.category}'),
-            subtitle: Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工\n残業 ${g.overtime}時間 ／ 早出 ${g.early}時間'))),
+            subtitle: Text('実人数 ${g.workers.length}人 ／ 延べ ${g.manDays}人工\n残業 ${g.overtime}時間 ／ 早出 ${g.early}時間\n作業・手当小計 ${_subtotal(g)?.toString() ?? '単価を確認'}円'))),
         if (widget.editingRates) FilledButton(onPressed: _busy || _summary.isEmpty ? null : _save,
           child: Text(_pending == null ? '履歴小計を保存' : '同じ保存を再送')),
         const SizedBox(height: 20), const Text('保存済み履歴（現在単価で再計算しません）'),

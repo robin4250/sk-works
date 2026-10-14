@@ -18,7 +18,7 @@ class LineAttendanceCandidate {
 
 class LineAttendanceCandidateParser {
   static final RegExp _workDatePattern = RegExp(
-    r'^(?:(\d{4})[/.年])?(\d{1,2})[/.月](\d{1,2})日?(?:[（(][^）)]*[）)])?$',
+    r'^(?:(\d{4})[/.年])?(\d{1,2})[/.月](\d{1,2})日?(?:[（(][^）)]*[）)])?(?:[ 　]*夜勤)?$',
   );
   static final RegExp _siteAndWorkersPattern = RegExp(r'^(.+?)[　\s]+(.+)$');
   static final RegExp _workerSeparatorPattern = RegExp(r'[、,，／/]');
