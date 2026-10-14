@@ -24,6 +24,7 @@ class TradeDocumentAttachmentRepository {
   Future<TradeDocumentAttachment?> load({required String subjectKind,
       required String subjectId,required String sourceRevision}) async {
     final raw = await loadWorkspace(subjectKind:subjectKind,subjectId:subjectId,sourceRevision:sourceRevision);
+    if(raw['source_changed']==true)throw StateError('元帳票が更新されています。注文書・注文請書を開き、内容を確認して保存し直してください。');
     final value=raw['attachment'];
     return value==null?null:TradeDocumentAttachment.fromJson(Map<String,dynamic>.from(value as Map));
   }

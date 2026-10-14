@@ -14,7 +14,7 @@ void main(){
   'version':1,'kind':'order','month':'2026-10','issue_date':'2026-10-15',
   'work_name':long?List.filled(120,'工事').join():'内装補修工事','work_address':long?List.filled(120,'住所').join():'東京都墨田区1-2-3',
   'period_start':'2026-10-01','period_end':'2026-10-31','total_amount_yen':110000,'tax_amount_yen':10000,
-  'intro_text':'発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。',
+  'intro_text':long?List.filled(100,'発注条件').join():'発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。',
   'payment_conditions':long?List.filled(100,'完了確認').join():'工事完了確認後、2026年11月末日までに乙の指定口座に振り込む。',
   'notes':long?List.filled(200,'特記事項').join().substring(0,600):'当月の合意事項を記録します。',
   'issuer':{'name':'株式会社発注','address':long?List.filled(120,'住所').join():'東京都1-1-1','corporate_number':'1234567890123','representative_name':'発注 太郎'},

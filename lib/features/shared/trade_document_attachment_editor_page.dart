@@ -23,7 +23,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
   bool get _sameActor=>_actor!=null&&SupabaseBackend.isInitialized&&SupabaseBackend.client.auth.currentUser?.id==_actor;
   bool _revoked=false;
   bool get _canEdit=>!_revoked&&_sameActor&&(_workspace?['can_manage']==true)&&
-    !(_version>0&&_workspace?['source_locked']==true);
+    !(_version>0&&_workspace?['source_locked']==true)&&_workspace?['source_blocked']!=true;
   bool get _order=>widget.subjectKind=='payment_certificate';
   @override void initState(){super.initState();
     _actor=SupabaseBackend.isInitialized?SupabaseBackend.client.auth.currentUser?.id:null;
@@ -40,9 +40,9 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       final data=await _repo.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
       if(!mounted||!_sameActor||_revoked)return;
       final saved=data['attachment'];
-      _payload=Map<String,dynamic>.from(saved is Map?saved['payload'] as Map:data['defaults'] as Map);
+      _payload=Map<String,dynamic>.from(saved is Map&&data['source_changed']!=true?saved['payload'] as Map:data['defaults'] as Map);
       _version=saved is Map?saved['version'] as int:0;
-      if(_version==0){
+      if(_version==0||data['source_changed']==true){
         final defaults=data['template'] is Map?Map<String,dynamic>.from(data['template'] as Map):<String,dynamic>{};
         for(final entry in defaults.entries){_payload[entry.key]=entry.value;}
         _payload.putIfAbsent('intro_text',()=> '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。');
@@ -93,7 +93,9 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
     ListView(padding:const EdgeInsets.all(16),children:[
       Text('対象月：${_payload['month']}  ／ ${_version==0?'未添付':'保存済み 第$_version版'}',style:Theme.of(context).textTheme.titleMedium),
       const SizedBox(height:8),
+      if(_workspace?['source_changed']==true)const Text('元の帳票が更新されています。旧版の別添は保持しています。新しい当月の内容を確認して保存し直してください。'),
       const Text('この月の短期工事契約の別添です。保存して添付すると通常のPDFの2ページ目に入ります。元の帳票の承認・再発行は行いません。'),
+      if(_workspace?['source_blocked']==true)const Text('元帳票の計算条件が未確定です。先に元帳票を確認してください。'),
       if(!_canEdit)const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('閲覧のみ（確定済みの別添は変更できません）')),
       const SizedBox(height:16),
       _input('issue_date',_order?'発行日（YYYY-MM-DD）':'承諾日（YYYY-MM-DD）',max:10),

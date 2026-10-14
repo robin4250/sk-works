@@ -48,10 +48,13 @@ jobs:
           python - <<'PY'
           import fitz
           from pathlib import Path
+          with fitz.open('build/payment-order-proof/payment-legacy.pdf') as baseline:
+              first_page_text=''.join(baseline[0].get_text().split())
           for path in Path('build/payment-order-proof').glob('*.pdf'):
               with fitz.open(path) as doc:
                   assert len(doc)==(1 if path.stem=='payment-legacy' else 3 if path.stem=='payment-expenses' else 2), (path,len(doc))
-                  assert '支払証明書' in ''.join(doc[0].get_text().split()),path
+                  assert '工事代金支払明細書' in ''.join(doc[0].get_text().split()),path
+                  assert ''.join(doc[0].get_text().split())==first_page_text,path
                   if len(doc)>=2:
                       text=''.join(doc[1].get_text().split())
                       for expected in ['注文書','2026-10','110,000','10,000','甲・発注者','乙・受注者']:

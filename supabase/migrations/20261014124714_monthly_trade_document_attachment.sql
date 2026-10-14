@@ -12,6 +12,14 @@ create table private.trade_document_attachments (
 alter table private.trade_document_attachments enable row level security;
 revoke all on private.trade_document_attachments from public,anon,authenticated,service_role;
 
+create table private.trade_document_attachment_history (
+ subject_kind text not null,subject_id uuid not null,version integer not null,company_id uuid not null,
+ source_revision text not null,source_fingerprint text not null,month date not null,payload jsonb not null,
+ saved_by uuid not null,saved_at timestamptz not null,primary key(subject_kind,subject_id,version)
+);
+alter table private.trade_document_attachment_history enable row level security;
+revoke all on private.trade_document_attachment_history from public,anon,authenticated,service_role;
+
 create table private.trade_document_templates (
  company_id uuid not null references public.companies(id),subject_kind text not null check(subject_kind in ('payment_certificate','invoice')),
  version integer not null,payload jsonb not null,primary key(company_id,subject_kind)
@@ -52,18 +60,18 @@ grant execute on function public.trade_document_template(text,uuid,integer,jsonb
 create function private.trade_document_source(p_kind text,p_subject uuid,p_source_revision text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare cid uuid; counter_id uuid; start_day date; end_day date; rev text; st text;
- final_at timestamptz; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;
+ final_at timestamptz; is_blocked boolean; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;
  company public.companies; role_name text; result jsonb;
 begin
  if auth.uid() is null or not private.account_access_allowed() then
   raise exception 'ログインが必要です。' using errcode='42501'; end if;
  if p_kind='payment_certificate' then
-  select company_id,partner_company_id,period_start,period_end,revision::text,status,finalized_at,gross_amount,snapshot
-  into cid,counter_id,start_day,end_day,rev,st,final_at,total,source_snapshot
+  select company_id,partner_company_id,period_start,period_end,revision::text,status,finalized_at,gross_amount,snapshot,calculation_blocked
+  into cid,counter_id,start_day,end_day,rev,st,final_at,total,source_snapshot,is_blocked
   from public.payment_certificates where id=p_subject for share;
  elsif p_kind='invoice' then
-  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot
-  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot
+  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot,calculation_blocked
+  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot,is_blocked
   from public.invoices where id=p_subject for share;
  else raise exception '書類の種類を確認してください。' using errcode='22023'; end if;
  select role::text into role_name from public.company_members where company_id=cid and user_id=auth.uid();
@@ -88,7 +96,7 @@ begin
  if counter is null then raise exception '相手先の会社を確認できません。' using errcode='22023'; end if;
  result:=jsonb_build_object('company_id',cid,'source_revision',rev,
   'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',source_snapshot)::text),'month',to_char(start_day,'YYYY-MM'),
-  'can_manage',role_name in ('owner','admin'),'source_locked',st<>'draft' or final_at is not null,
+  'can_manage',role_name in ('owner','admin'),'source_blocked',coalesce(is_blocked,false),'source_locked',st<>'draft' or final_at is not null,
   'defaults',jsonb_build_object('version',1,'kind',case when p_kind='invoice' then 'acceptance' else 'order' end,
    'month',to_char(start_day,'YYYY-MM'),'period_start',date_trunc('month',start_day)::date,
    'period_end',(date_trunc('month',start_day)+interval '1 month - 1 day')::date,
@@ -107,10 +115,9 @@ declare source jsonb; saved private.trade_document_attachments;
 begin
  source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject;
- if saved.subject_id is not null and (saved.company_id<>(source->>'company_id')::uuid or
-  saved.source_fingerprint<>source->>'source_fingerprint' or to_char(saved.month,'YYYY-MM')<>source->>'month') then
-  raise exception '元帳票変更後の別添は再確認が必要です。' using errcode='40001'; end if;
- return source||jsonb_build_object('template',coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb),'attachment',case when saved.subject_id is null then null else
+ if saved.subject_id is not null and saved.company_id<>(source->>'company_id')::uuid then
+  raise exception '別添書類の会社が一致しません。' using errcode='42501'; end if;
+ return source||jsonb_build_object('source_changed',saved.subject_id is not null and (saved.source_fingerprint<>source->>'source_fingerprint' or to_char(saved.month,'YYYY-MM')<>source->>'month'),'template',coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb),'attachment',case when saved.subject_id is null then null else
   jsonb_build_object('version',saved.version,'payload',saved.payload) end);
 end $$;
 revoke all on function private.trade_document_attachment_workspace(text,uuid,text) from public,anon,service_role;
@@ -129,12 +136,13 @@ begin
  -- Serializes first saves too; row locks alone cannot lock a missing appendix.
  perform pg_advisory_xact_lock(hashtextextended('trade-appendix:'||p_kind||':'||p_subject::text,0));
  source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
+ if source->>'source_blocked'='true' then raise exception '元帳票の計算条件を確認してください。未確定額で別添を保存できません。' using errcode='55000'; end if;
  if source->>'can_manage'<>'true' then raise exception '管理者のみ保存できます。' using errcode='42501'; end if;
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject for update;
  if p_expected_version is null or p_expected_version<>coalesce(saved.version,0) then
   raise exception '別添書類が更新されています。開き直してください。' using errcode='40001'; end if;
- if saved.subject_id is not null and (source->>'source_locked'='true' or saved.source_fingerprint<>source->>'source_fingerprint') then
-  raise exception '確定済み又は元帳票変更後の別添は変更できません。' using errcode='55000'; end if;
+ if saved.subject_id is not null and (source->>'source_locked'='true' or saved.company_id<>(source->>'company_id')::uuid) then
+  raise exception '確定済みの別添は変更できません。' using errcode='55000'; end if;
  if jsonb_typeof(p_payload) is distinct from 'object' or octet_length(p_payload::text)>16384 then
   raise exception '入力内容が長すぎます。' using errcode='22023'; end if;
  if p_payload->>'version' is distinct from '1' or p_payload->>'kind' is distinct from source->'defaults'->>'kind'
@@ -187,13 +195,17 @@ begin
  end if;
  if jsonb_typeof(p_payload->'notes') is distinct from 'string' or length(p_payload->>'notes')>600 then
   raise exception '特記事項は600文字以内にしてください。' using errcode='22023'; end if;
+ if coalesce(saved.version,0)>=100 then raise exception '別添の保存上限です。管理者に確認してください。' using errcode='54000'; end if;
  value:=(p_payload-'company_seal_snapshot'-'company_seal_enabled')||jsonb_build_object(
   'company_seal_snapshot',source->'defaults'->'company_seal_snapshot',
   'company_seal_enabled',source->'defaults'->'company_seal_enabled');
+ if saved.subject_id is not null then
+  insert into private.trade_document_attachment_history values(saved.subject_kind,saved.subject_id,saved.version,saved.company_id,saved.source_revision,saved.source_fingerprint,saved.month,saved.payload,saved.updated_by,saved.updated_at);
+ end if;
  insert into private.trade_document_attachments(subject_kind,subject_id,company_id,source_revision,source_fingerprint,month,version,payload,created_by,updated_by)
  values(p_kind,p_subject,(source->>'company_id')::uuid,source->>'source_revision',source->>'source_fingerprint',((source->>'month')||'-01')::date,
   coalesce(saved.version,0)+1,value,auth.uid(),auth.uid())
- on conflict(subject_kind,subject_id) do update set payload=excluded.payload,version=excluded.version,updated_by=excluded.updated_by,updated_at=now()
+ on conflict(subject_kind,subject_id) do update set payload=excluded.payload,version=excluded.version,source_revision=excluded.source_revision,source_fingerprint=excluded.source_fingerprint,month=excluded.month,updated_by=excluded.updated_by,updated_at=now()
  returning * into saved;
  return jsonb_build_object('version',saved.version,'payload',saved.payload);
 end $$;
