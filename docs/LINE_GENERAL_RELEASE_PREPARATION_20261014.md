@@ -1,6 +1,8 @@
 # LINE一般非開放の実装準備
 
-server準備 #1034 とUI #1035 はmainへ反映済み。server準備migrationは本番履歴 `20261014133202` として適用し、設定は `general_enabled=true` の現状維持である。一般利用を停止する切替・一時封印・配布は未実施。既存LINE出勤表・請求書スイッチの変更も行っていない。\n\n2026年10月14日の確認基準はmain `a87f182ccd050ae8b7598aff308bad84f9012bf9` と [Issue #273の作業記録](https://github.com/robin4250/sk-works/issues/273#issuecomment-6169734708)。#1035の最終headはFlutter・iOSを含む全13ワークフロー成功、mainの合成tree一致も確認した。これらは一般OFFの実運用・実機インストール成功の証拠ではない。
+server準備 #1034 とUI #1035 はmainへ反映済み。server準備migrationは本番履歴 `20261014133202` として適用し、設定は `general_enabled=true` の現状維持である。一般利用を停止する切替・一時封印・配布は未実施。既存LINE出勤表・請求書スイッチの変更も行っていない。
+
+2026年10月14日の確認基準はmain `a87f182ccd050ae8b7598aff308bad84f9012bf9` と [Issue #273の作業記録](https://github.com/robin4250/sk-works/issues/273#issuecomment-6169734708)。#1035の最終headはFlutter・iOSを含む全13ワークフロー成功、mainの合成tree一致も確認した。これらは一般OFFの実運用・実機インストール成功の証拠ではない。
 
 ## 境界
 
@@ -16,7 +18,9 @@ server準備 #1034 とUI #1035 はmainへ反映済み。server準備migrationは
 
 専用fixtureは実際の13関数定義を使用する。ロール／グループの基礎helperはfixture用であり、実会社・実ユーザーを作成・偽装しない。PGliteとPostgres 17の実SQL CIでdefault ON、一般各役割の直接SELECT、専用definer、master元scope、account restriction、既存queue ticketの再確認、通常SKO保持、OFF中の受信保存、ON復帰、元行・既存ACL/owner/search_path保持を確認済み。別検証でbody drift時の全体rollbackも確認した。
 
-Flutterではホーム／メニュー、LINE入口、共有メッセージ・最新プレビュー、通知・直接遷移を同じcapabilityへ接続し、取得失敗・actor往復・背景復帰・modal失効でLINE本文とpreviewを破棄する実装を隔離テストで確認した。通常SKOを維持する検査も含む。\n\nこれはSupabase Realtimeの実サービスへの接続検証ではない。SELECT policyは適用境界になるが、実Realtime配信、既に端末へ渡った本文・取得済みURLの扱い、実機での消去・再読込は未確認である。既取得URLの即時失効や保存済み情報の回収を保証しない。
+Flutterではホーム／メニュー、LINE入口、共有メッセージ・最新プレビュー、通知・直接遷移を同じcapabilityへ接続し、取得失敗・actor往復・背景復帰・modal失効でLINE本文とpreviewを破棄する実装を隔離テストで確認した。通常SKOを維持する検査も含む。
+
+これはSupabase Realtimeの実サービスへの接続検証ではない。SELECT policyは適用境界になるが、実Realtime配信、既に端末へ渡った本文・取得済みURLの扱い、実機での消去・再読込は未確認である。既取得URLの即時失効や保存済み情報の回収を保証しない。
 
 claim完了後からLINE外部HTTPまでの競争はDB transactionだけでは原子的に止められない。封印切替時はdispatch workerの送信直前再確認と、進行中送信を確認する手順が必要であり、このSQLだけで送信中の取消を保証しない。既にLINEへ届いた投稿を消す機能でもない。
 
