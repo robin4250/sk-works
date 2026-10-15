@@ -148,7 +148,30 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
               )
               .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('会社を検索・連携')),
+      appBar: AppBar(
+        title: const Text('会社を検索・連携'),
+        actions: [
+          IconButton(
+            tooltip: '使い方',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('会社検索・連携の使い方'),
+                content: const Text(
+                  '会社名・法人番号で検索し、開始月を選んで申請します。取引会社から申請すると自社は相手の協力会社、協力会社から申請すると自社は相手の取引会社になります。相手の管理者が承認した時だけ双方の一覧へ追加します。\n\n送信済み申請は承認前なら取り消せます。受信した申請は開始月・会社情報を確認して承認または却下してください。社員情報・給与・契約単価は自動共有しません。',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('閉じる'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
