@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/payroll/company_common_payroll_page.dart';
-import '../lib/features/payroll/payroll_unit_item_editor.dart';
+import 'package:sk_works/features/payroll/company_common_payroll_page.dart';
+import 'package:sk_works/features/payroll/payroll_unit_item_editor.dart';
 
 void main() {
   testWidgets('salary type and section changes retain separate drafts', (
