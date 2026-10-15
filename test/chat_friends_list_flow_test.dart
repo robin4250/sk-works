@@ -50,10 +50,28 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('電話番号通知'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('送信は行われていません'), findsOneWidget);
+    expect(find.textContaining('ログイン情報を確認できません'), findsOneWidget);
     await tester.tap(find.byTooltip('使い方'));
     await tester.pumpAndSettle();
     expect(find.textContaining('全履歴'), findsOneWidget);
+  });
+
+  testWidgets('phone add preserves existing invitation callback and friend source', (tester) async {
+    final repo = _Repository();
+    addTearDown(repo.changes.close);
+    final sources = <String>[];
+    await tester.pumpWidget(MaterialApp(home: ChatFriendsPage(
+      repository: repo,
+      selectForChat: true,
+      onPhoneInvitation: (context, source) async { sources.add(source); },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('追加'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('電話番号通知'));
+    await tester.pumpAndSettle();
+    expect(sources, ['friend_add']);
+    expect(find.textContaining('ログイン情報を確認できません'), findsNothing);
   });
 
   testWidgets('pin keeps row, persists per actor and actor change clears identity', (tester) async {
