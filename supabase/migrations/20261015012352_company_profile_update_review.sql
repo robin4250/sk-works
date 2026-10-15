@@ -67,7 +67,7 @@ begin
  select * into t from public.trade_companies where id=r.trade_company_id and company_id=cid for update;
  if t.id is null or t.linked_company_id is distinct from v.company_id or t.link_status<>'linked' then raise exception '会社連携が変更されています';end if;
  if p_accept then
-  if exists(select 1 from private.company_profile_revisions where company_id=v.company_id and created_at>v.created_at) then raise exception 'さらに新しい会社情報があります。最新の通知を確認してください';end if;
+  if (select private.company_contact_value(to_jsonb(c)) from public.companies c where c.id=v.company_id) is distinct from v.new_value then raise exception 'さらに新しい会社情報があります。最新の通知を確認してください';end if;
   if private.company_contact_value(to_jsonb(t))<>r.old_value then raise exception '登録情報が変更されています。更新候補を再確認してください';end if;
   update public.trade_companies set name=v.new_value->>'name',address=v.new_value->>'address',phone=v.new_value->>'phone',
    email=v.new_value->>'email',corporate_number=v.new_value->>'corporate_number',updated_by=auth.uid(),updated_at=now() where id=t.id;
