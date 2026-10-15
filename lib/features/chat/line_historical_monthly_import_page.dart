@@ -138,6 +138,7 @@ class _LineHistoricalMonthlyImportPageState
     setState(() { _busy = true; _error = null; });
     try {
       final refs = await repository.references(_groupId!);
+      final rules = await repository.readingRules(_groupId!);
       final received = await repository.sources(_groupId!);
       final incoming = lineMergeImportSources(_history, received);
       for (final month in _months) {
@@ -161,7 +162,7 @@ class _LineHistoricalMonthlyImportPageState
             final merged = lineMergeImportSources(existing, incoming,
               replaceHistory: _replaceHistory);
             final prepared = lineMonthlyCandidates(merged, month,
-              previous: previous, workers: refs.workers, sites: refs.sites);
+              previous: previous, workers: refs.workers, sites: refs.sites, readingRules: rules);
             final types = prepared.sources.map((s) => s['source_type']).toSet();
             _commands[key] = repository.saveCommand(
               groupId: _groupId!, target: 'invoice', month: month,

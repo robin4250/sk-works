@@ -5,8 +5,25 @@ import 'package:sk_works/features/chat/line_master_workspace_page.dart';
 import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/languages/en/english_language_pack.dart';
 import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
+import 'package:sk_works/features/chat/line_billing_directory_page.dart';
+import 'package:sk_works/features/chat/line_reading_rules_page.dart';
 
 void main() {
+  testWidgets('default rate entry connects the reading rule editor', (tester) async {
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(masterCheck: () async => true)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('line-master-rates')));
+    await tester.pumpAndSettle();
+    final directory = tester.widget<LineBillingDirectoryPage>(find.byType(LineBillingDirectoryPage));
+    expect(directory.readingRulesBuilder, isNotNull);
+    final editor = directory.readingRulesBuilder!(
+      tester.element(find.byType(LineBillingDirectoryPage)), 'history-group',
+      [{'id': 'post', 'body': '新宿 佐藤 残業１'}]);
+    expect(editor, isA<LineReadingRulesPage>());
+    final rulesEditor = editor as LineReadingRulesPage;
+    expect(rulesEditor.groupId, 'history-group');
+    expect(rulesEditor.sources.single['id'], 'post');
+  });
   testWidgets('master workspace has four billing entries plus chat and keeps 320px layout readable',
       (tester) async {
     tester.view.physicalSize = const Size(320, 800);
