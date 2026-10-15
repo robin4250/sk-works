@@ -55,12 +55,13 @@ class LineAttendanceCandidateParser {
       var index = 1;
       while (index < lines.length) {
         final line = lines[index];
-        if (_looksLikeStatusLine(line)) {
+        final attendanceLine = _withoutInlineHours(line);
+        if (_looksLikeStatusLine(attendanceLine)) {
           index += 1;
           continue;
         }
 
-        final sameLine = _splitSiteAndWorkers(line);
+        final sameLine = _splitSiteAndWorkers(attendanceLine);
         if (sameLine != null) {
           _appendCandidates(
             candidates,
@@ -114,6 +115,18 @@ class LineAttendanceCandidateParser {
         ),
       );
     }
+  }
+
+  /// Read explicit trailing hours without treating status words as worker names.
+  /// The original message remains intact for status extraction and provenance.
+  String _withoutInlineHours(String line) {
+    final match = RegExp(
+      r'^(.*?)[　\s]+(?:残業|早出)[　\s:：]*[0-9０-９]+(?:[.．][0-9０-９]+)?(?:時間|[hH])?(?:[　\s]+(?:残業|早出)[　\s:：]*[0-9０-９]+(?:[.．][0-9０-９]+)?(?:時間|[hH])?)*$',
+    ).firstMatch(line);
+    if (match == null) return line;
+    final prefix = match.group(1)!.trim();
+    // A site-only status such as "新宿 残業1" must not become a worker.
+    return _splitSiteAndWorkers(prefix) == null ? line : prefix;
   }
 
   (String, List<String>)? _splitSiteAndWorkers(String line) {

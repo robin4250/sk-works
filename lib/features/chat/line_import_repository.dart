@@ -42,6 +42,16 @@ class LineImportRepository {
     return value;
   }
   Future<LineImportFeatures> features() async => LineImportFeatures.fromJson(await _rpc('line_import_features', const {}));
+  Future<List<Map<String, dynamic>>> destinations() async {
+    final value = await _rpc('line_history_destinations', const {});
+    if (value is! List) throw StateError('履歴の保存先を確認できません。');
+    return [for (final row in value) Map<String, dynamic>.from(row as Map)];
+  }
+  Future<String> createAnalysis(String name, String commandId) async {
+    final value = await _rpc('create_line_history_analysis', {'p_name': name, 'p_command_id': commandId});
+    if (value is! String || value.isEmpty) throw StateError('分析用の保存先を作成できません。');
+    return value;
+  }
   Future<LineImportFeatures> setEnabled(String target, bool enabled) async => LineImportFeatures.fromJson(await _rpc('set_line_import_feature', {'p_target': target, 'p_enabled': enabled}));
   String _month(DateTime value) => '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-01';
   Map<String, dynamic> _workspace(Object? value) {

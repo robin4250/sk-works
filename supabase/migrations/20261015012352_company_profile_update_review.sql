@@ -1,4 +1,13 @@
 -- Contact profile proposals are independent of contract prices and payroll.
+-- Do not inherit the shared helper's manager permission or missing access check.
+create function private.profile_review_company_admin_id() returns uuid
+language sql stable security definer set search_path='' as $$
+ select cm.company_id from public.company_members cm
+ where auth.uid() is not null and private.account_access_allowed()
+ and cm.user_id=auth.uid() and cm.role::text in ('owner','admin')
+ order by cm.company_id limit 1
+$$;
+revoke all on function private.profile_review_company_admin_id() from public,anon,authenticated;
 create table private.company_profile_review_settings(company_id uuid primary key references public.companies(id),enabled boolean not null default false);
 create table private.company_profile_revisions(
  id uuid primary key default gen_random_uuid(),company_id uuid not null references public.companies(id),
@@ -42,7 +51,7 @@ revoke all on function private.capture_company_profile_revision() from public,an
 create trigger company_contact_revision after update of name,address,phone,email,corporate_number on public.companies for each row execute function private.capture_company_profile_revision();
 
 create function private.company_profile_review_workspace() returns jsonb language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id();
+declare cid uuid:=private.profile_review_company_admin_id();
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます';end if;
  return jsonb_build_object('enabled',coalesce((select enabled from private.company_profile_review_settings where company_id=cid),false),
@@ -51,13 +60,13 @@ begin
  from private.company_profile_reviews r join private.company_profile_revisions v on v.id=r.revision_id where r.company_id=cid),'[]'::jsonb));
 end $$;
 create function private.set_company_profile_review_enabled(p_enabled boolean) returns void language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id();
+declare cid uuid:=private.profile_review_company_admin_id();
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます';end if;
  insert into private.company_profile_review_settings values(cid,p_enabled) on conflict(company_id) do update set enabled=excluded.enabled;
 end $$;
 create function private.respond_company_profile_review(p_review_id uuid,p_accept boolean) returns void language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id();r private.company_profile_reviews%rowtype;v private.company_profile_revisions%rowtype;t public.trade_companies%rowtype;
+declare cid uuid:=private.profile_review_company_admin_id();r private.company_profile_reviews%rowtype;v private.company_profile_revisions%rowtype;t public.trade_companies%rowtype;
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます';end if;
  if not coalesce((select enabled from private.company_profile_review_settings where company_id=cid),false) then raise exception '会社情報更新確認は停止中です';end if;

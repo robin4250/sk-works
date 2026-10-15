@@ -393,11 +393,24 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       label: Text('利用日　${_label(_date)}'),
                     ),
                     const Text('領収書の写真（任意）'),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      OutlinedButton.icon(onPressed: editable ? () => _pickReceipt(ImageSource.camera) : null,
-                        icon: const Icon(Icons.camera_alt), label: const Text('写真を撮る')),
-                      OutlinedButton.icon(onPressed: editable ? () => _pickReceipt(ImageSource.gallery) : null,
-                        icon: const Icon(Icons.photo_library), label: const Text('写真を選ぶ')),
+                    Row(children: [
+                      Expanded(child: SizedBox(height: 48,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                          onPressed: editable ? () => _pickReceipt(ImageSource.camera) : null,
+                          icon: const Icon(Icons.camera_alt, size: 20),
+                          label: const FittedBox(fit: BoxFit.scaleDown, child: Text('写真を撮る', maxLines: 1)),
+                        ),
+                      )),
+                      const SizedBox(width: 8),
+                      Expanded(child: SizedBox(height: 48,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                          onPressed: editable ? () => _pickReceipt(ImageSource.gallery) : null,
+                          icon: const Icon(Icons.photo_library, size: 20),
+                          label: const FittedBox(fit: BoxFit.scaleDown, child: Text('写真を選ぶ', maxLines: 1)),
+                        ),
+                      )),
                     ]),
                     if (_receipt != null) ...[
                       const Text('申請前の領収書プレビュー'),

@@ -17,6 +17,41 @@ void main() {
     expect(result.rows.first['worker_id'], isNull);
     expect(result.rows.first['confirmed'], isFalse);
   });
+  test('inline explicit overtime and early hours retain source and remain unconfirmed', () {
+    for (final entry in [
+      ('残業１', 1.0, 0.0), ('残業3', 3.0, 0.0),
+      ('残業３', 3.0, 0.0), ('残業1.5', 1.5, 0.0),
+      ('早出０．５', 0.0, .5), ('残業１ 早出0.5', 1.0, .5),
+    ]) {
+      final original = source('10/15\n新宿 佐藤 ${entry.$1}');
+      final result = LineImportDraft.extract([original], month);
+      expect(result.rows, hasLength(1));
+      final row = result.rows.single;
+      expect(row['site_name'], '新宿');
+      expect(row['worker_name'], '佐藤');
+      expect(row['overtime_hours'], entry.$2);
+      expect(row['early_hours'], entry.$3);
+      expect(row['confirmed'], isFalse);
+      expect(row['source_message_id'], original['id']);
+      expect(original['body'], '10/15\n新宿 佐藤 ${entry.$1}');
+      final edited = {...row, 'overtime_hours': 2.0, 'confirmed': true};
+      expect(LineImportDraft.extract([original], month, previous: [edited]).rows.single,
+          edited);
+    }
+  });
+  test('status-only and correction lines never become workers', () {
+    for (final line in ['新宿 残業１', '新宿 早出1', '訂正 新宿 佐藤 残業1']) {
+      expect(LineImportDraft.extract([source('10/15\n$line')], month).rows, isEmpty);
+    }
+  });
+  test('distinct worker overtime at the same site is not guessed as shared hours', () {
+    final result = LineImportDraft.extract([
+      source('10/15\n新宿 佐藤 残業1\n新宿 田中 残業3'),
+    ], month);
+    expect(result.rows, hasLength(2));
+    expect(result.rows.every((r) => r['confirmed'] == false), isTrue);
+    expect(result.rows.every((r) => r['overtime_hours'] == 0), isTrue);
+  });
   test('same source preserves corrections during reimport; changed source needs review', () {
     final original = source('10月1日\n現場A 山田\n現場A 定時');
     final initial = LineImportDraft.extract([original], month);

@@ -249,10 +249,12 @@ if "comgooglemaps" not in query_schemes:
 data["LSApplicationQueriesSchemes"] = query_schemes
 
 
-# SKO's iPhone UI is designed and acceptance-tested in portrait.
-# Keep the iPad-specific orientation key untouched.
+# Runtime keeps normal iPhone pages portrait; signature capture may rotate.
+# Keep the iPad-specific orientation key and its existing policy untouched.
 data["UISupportedInterfaceOrientations"] = [
     "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight",
 ]
 
 # GPS automatic attendance uses background location only after the user

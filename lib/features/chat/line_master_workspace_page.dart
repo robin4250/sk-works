@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
-import 'line_historical_invoice_page.dart';
 import 'line_joined_groups_page.dart';
-import 'line_import_page.dart';
 import 'line_source_upload_page.dart';
+import 'line_billing_directory_page.dart';
 
 /// Four billing entries plus the existing chat; this screen grants no permissions.
 class LineMasterWorkspacePage extends StatelessWidget {
@@ -124,6 +123,7 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
     builder: (context) => AlertDialog(
       title: Text(_tr('LINEマスター権限')),
       content: SingleChildScrollView(child: Text(_tr(
+        '最初に「元データ取込」で新規TXT・ZIPファイルを選びます。「月別の表」は取り込んだ月の一覧から選択します。「単価設定」は現場名を選び、正式現場名・1日単価・残業・手当単価を確認します。「請求書」は月の一覧から選択します。専用の過去履歴分析先はLINEへの返信先ではありません。'
         'チャットは参加済み一覧からグループを選び、未連携の場合は通常SKOグループへ連携して受信データを開きます。未連携のグループを作成済みとして表示しません。請求書は対象月の確認済み候補と保存履歴を確認します。単価設定は過去月の人工・残業・早出・手当の単価を入力し、履歴小計として保存します。実人数と延べ人工は別です。保存は通常請求書の発行と別で、正式下書きは取引先と税・福利費を確認して作成します。現在の現場単価や給与は変更しません。月別の表は左右にスワイプして月を切り替え、行を押して手入力で修正します。元データ取込でTXT・ZIPをアップロードすると月別表へ候補を自動保存します。読み取れない投稿は月別表の要確認・未振り分け欄で元本文を見ながら手入力します。手直し済み内容は再取込でも保持し、正式請求書は確認後に作成します。',
       ))),
       actions: [TextButton(
@@ -169,16 +169,16 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
             widget.talkBuilder ?? (_) => const LineJoinedGroupsPage()),
           _entry('line-master-invoices', Icons.receipt_long_outlined, '請求書',
             '月別の確認済み候補・保存履歴・正式下書き',
-            widget.invoiceBuilder ?? (_) => const LineHistoricalInvoicePage()),
+            widget.invoiceBuilder ?? (_) => const LineBillingDirectoryPage(kind: LineBillingDirectoryKind.invoices)),
           _entry('line-master-rates', Icons.price_change_outlined, '単価設定',
             '対象月の人工・残業・早出・手当の履歴単価',
-            widget.ratesBuilder ?? (_) => const LineHistoricalInvoicePage.rates()),
+            widget.ratesBuilder ?? (_) => const LineBillingDirectoryPage(kind: LineBillingDirectoryKind.rates)),
           _entry('line-master-upload', Icons.upload_file_outlined, '元データ取込',
             'TXT・ZIPを読み取り、月別表へ自動入力',
             widget.uploadBuilder ?? (_) => const LineSourceUploadPage()),
           _entry('line-master-monthly', Icons.table_view_outlined, '月別の表',
             '月をスライド・手入力修正・チャットとTXT・ZIPの再取込',
-            widget.monthlyBuilder ?? (_) => const LineImportPage.monthly()),
+            widget.monthlyBuilder ?? (_) => const LineBillingDirectoryPage(kind: LineBillingDirectoryKind.monthly)),
         ],
       ],
     ),

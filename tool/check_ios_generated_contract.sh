@@ -56,9 +56,11 @@ if ats.get("NSAllowsArbitraryLoadsInWebContent") is True:
     raise SystemExit("NSAllowsArbitraryLoadsInWebContent must not be enabled")
 
 if data.get("UISupportedInterfaceOrientations") != [
-    "UIInterfaceOrientationPortrait"
+    "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight",
 ]:
-    raise SystemExit("iPhone orientation contract must be portrait-only")
+    raise SystemExit("iPhone signature orientation capability is missing")
 
 project = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
 if f"PRODUCT_BUNDLE_IDENTIFIER = {expected_bundle_id};" not in project:
