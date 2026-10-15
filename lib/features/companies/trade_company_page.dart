@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'company_contact_links.dart';
 import 'company_contact_parser.dart';
 
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import 'trade_company_repository.dart';
+import 'company_link_page.dart';
 
 class TradeCompanyPage extends StatefulWidget {
-  const TradeCompanyPage({super.key, required this.mode, this.onOpenDeliveries});
+  const TradeCompanyPage({
+    super.key,
+    required this.mode,
+    this.onOpenDeliveries,
+  });
   final VoidCallback? onOpenDeliveries;
   final TradeCompanyPageMode mode;
 
@@ -20,6 +26,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   final _repository = TradeCompanyRepository.maybeCreate();
   List<TradeCompanyRecord> _items = const [];
   bool _loading = true;
+  bool _linkEnabled = false;
   String? _error;
 
   String get _title =>
@@ -46,9 +53,16 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     });
     try {
       final items = await repository.loadAll();
+      var linkEnabled = false;
+      try {
+        linkEnabled = (await repository.linkWorkspace())['enabled'] == true;
+      } catch (_) {
+        // Older deployments retain their company directory until migration.
+      }
       if (!mounted) return;
       setState(() {
         _items = items;
+        _linkEnabled = linkEnabled;
         _loading = false;
       });
     } catch (error) {
@@ -60,21 +74,48 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     }
   }
 
-  List<TradeCompanyRecord> get _visible => _items.where((item) {
+  List<TradeCompanyRecord> get _visible => _items
+      .where((item) {
         return widget.mode == TradeCompanyPageMode.customer
             ? item.isCustomer
             : item.isSubcontractor;
-      }).toList(growable: false);
+      })
+      .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
     final visible = _visible;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        title: Text(
+          _title,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
+          if (_linkEnabled)
+            IconButton(
+              tooltip: '会社を検索・連携申請',
+              icon: const Icon(Icons.search),
+              onPressed: _repository == null
+                  ? null
+                  : () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CompanyLinkPage(
+                            repository: _repository,
+                            mode: widget.mode,
+                          ),
+                        ),
+                      );
+                      if (mounted) await _load();
+                    },
+            ),
           if (widget.onOpenDeliveries != null)
-            IconButton(tooltip: SkoLanguageController.tr('受信した社員・書類'), icon: const Icon(Icons.folder_shared_outlined), onPressed: widget.onOpenDeliveries),
+            IconButton(
+              tooltip: SkoLanguageController.tr('受信した社員・書類'),
+              icon: const Icon(Icons.folder_shared_outlined),
+              onPressed: widget.onOpenDeliveries,
+            ),
           const SkoNotificationBell(),
         ],
       ),
@@ -87,51 +128,51 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _ErrorState(message: _error!, onRetry: _load)
-                : visible.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Text(
-                            widget.mode == TradeCompanyPageMode.customer
-                                ? '取引会社はまだ登録されていません\nSKO連携なしでも登録できます'
-                                : '協力会社はまだ登録されていません\nSKO連携なしでも登録できます',
-                            textAlign: TextAlign.center,
+            ? _ErrorState(message: _error!, onRetry: _load)
+            : visible.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Text(
+                    widget.mode == TradeCompanyPageMode.customer
+                        ? '取引会社はまだ登録されていません\nSKO連携なしでも登録できます'
+                        : '協力会社はまだ登録されていません\nSKO連携なしでも登録できます',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+                  itemCount: visible.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = visible[index];
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          child: Icon(
+                            item.linkStatus == 'linked'
+                                ? Icons.link
+                                : Icons.business_outlined,
                           ),
                         ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                          itemCount: visible.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final item = visible[index];
-                            return Card(
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  child: Icon(
-                                    item.linkStatus == 'linked'
-                                        ? Icons.link
-                                        : Icons.business_outlined,
-                                  ),
-                                ),
-                                title: Text(
-                                  item.name,
-                                  style: const TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                subtitle: Text(
-                                  '${_linkLabel(item.linkStatus)} / '
-                                  '${_contractLabel(item.contractMethod)}',
-                                ),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _openCompany(item),
-                              ),
-                            );
-                          },
+                        title: Text(
+                          item.name,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
+                        subtitle: Text(
+                          '${_linkLabel(item.linkStatus)} / '
+                          '${_contractLabel(item.contractMethod)}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openCompany(item),
                       ),
+                    );
+                  },
+                ),
+              ),
       ),
     );
   }
@@ -175,9 +216,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       if (saved.isNotEmpty) await _offerLinkMerge(saved.first);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登録できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('登録できませんでした: $error')));
     }
   }
 
@@ -192,7 +232,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _detailLine('区分', widget.mode == TradeCompanyPageMode.customer ? '取引会社' : '協力会社'),
+                _detailLine(
+                  '区分',
+                  widget.mode == TradeCompanyPageMode.customer
+                      ? '取引会社'
+                      : '協力会社',
+                ),
                 _detailLine('SKO連携', _linkLabel(item.linkStatus)),
                 _detailLine('郵便番号', item.postalCode),
                 _detailLine('住所', item.address),
@@ -224,22 +269,26 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             child: const Text('閉じる'),
           ),
           TextButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.delete),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.delete),
             icon: const Icon(Icons.delete_outline),
             label: const Text('削除'),
           ),
           OutlinedButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.edit),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.edit),
             icon: const Icon(Icons.edit_outlined),
             label: const Text('会社情報を編集'),
           ),
           OutlinedButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.source),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.source),
             icon: const Icon(Icons.rule_outlined),
             label: const Text('計算元を確認・変更'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.contract),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.contract),
             icon: const Icon(Icons.payments_outlined),
             label: const Text('契約設定'),
           ),
@@ -259,16 +308,17 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           await _resolveConflicts(item.id, revise: true);
         } catch (error) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('計算元を変更できませんでした: $error')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('計算元を変更できませんでした: $error')));
         }
     }
   }
 
   Future<void> _launchContact(Uri uri) async {
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('電話・地図を開けませんでした')));
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('電話・地図を開けませんでした')));
     }
   }
 
@@ -281,11 +331,26 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         children: [
           SizedBox(
             width: 92,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
           ),
-          Expanded(child: label == '備考'
-            ? CompanyNotesLinks(text: display, onOpen: _launchContact)
-            : CompanyContactValue(text: display, uri: value.trim().isEmpty ? null : label == '住所' ? companyAddressUri(value) : ['電話番号','代表者電話番号'].contains(label) ? companyPhoneUri(value) : null, onOpen: _launchContact)),
+          Expanded(
+            child: label == '備考'
+                ? CompanyNotesLinks(text: display, onOpen: _launchContact)
+                : CompanyContactValue(
+                    text: display,
+                    uri: value.trim().isEmpty
+                        ? null
+                        : label == '住所'
+                        ? companyAddressUri(value)
+                        : ['電話番号', '代表者電話番号'].contains(label)
+                        ? companyPhoneUri(value)
+                        : null,
+                    onOpen: _launchContact,
+                  ),
+          ),
         ],
       ),
     );
@@ -313,14 +378,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       );
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('会社情報を更新しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('会社情報を更新しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('会社情報を更新できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('会社情報を更新できませんでした: $error')));
     }
   }
 
@@ -345,14 +408,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       await _resolveConflicts(item.id);
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('契約設定を保存しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('契約設定を保存しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('契約設定を保存できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('契約設定を保存できませんでした: $error')));
     }
   }
 
@@ -389,21 +450,17 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       final stillExists = _items.any((value) => value.id == item.id);
       if (!deleted || stillExists) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('会社を削除できませんでした。参照中のデータを確認してください。'),
-          ),
+          const SnackBar(content: Text('会社を削除できませんでした。参照中のデータを確認してください。')),
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('会社を削除しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('会社を削除しました')));
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Bad state: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -415,89 +472,25 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   Future<void> _offerLinkMerge(TradeCompanyRecord item) async {
-    final repository = _repository;
-    if (repository == null || item.linkStatus == 'linked') return;
-
-    final candidates = await repository.linkCandidates(item.id);
-    if (!mounted || candidates.isEmpty) return;
-
-    final candidate = await showDialog<TradeCompanyLinkCandidate>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('SKO連携候補が見つかりました'),
-        content: SizedBox(
-          width: 460,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const Text(
-                '会社名・電話番号・住所などが近いSKO登録会社があります。'
-                '同じ会社の場合だけ統合してください。',
-              ),
-              const SizedBox(height: 12),
-              for (final value in candidates)
-                Card(
-                  child: ListTile(
-                    title: Text(value.companyName),
-                    subtitle: Text([
-                      if (value.phone.isNotEmpty) value.phone,
-                      if (value.address.isNotEmpty) value.address,
-                      '一致度 ${value.matchScore}',
-                    ].join('\n')),
-                    onTap: () => Navigator.of(dialogContext).pop(value),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('今は連携しない'),
-          ),
-        ],
-      ),
-    );
-
-    if (candidate == null || !mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('会社データを統合しますか？'),
-        content: Text(
-          '${item.name}\n↓\n${candidate.companyName}\n\n'
-          '同じ会社であることを確認してから統合してください。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('確認して統合'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    await repository.confirmLink(
-      tradeCompanyId: item.id,
-      linkedCompanyId: candidate.companyId,
-    );
+    // Linking is explicit and requires the other company's approval.
+    // Saving contact or contract information never initiates a merge.
   }
 
-  Future<void> _resolveConflicts(String tradeCompanyId, {bool revise = false}) async {
+  Future<void> _resolveConflicts(
+    String tradeCompanyId, {
+    bool revise = false,
+  }) async {
     final repository = _repository;
     if (repository == null) return;
     final conflicts = await repository.calculationConflicts(tradeCompanyId);
 
-    final choices = conflicts.where(
-      (item) => item.outputType != 'payment_certificate' &&
-          (revise || (item.conflict && item.selectedSource == null)),
-    ).toList(growable: false);
+    final choices = conflicts
+        .where(
+          (item) =>
+              item.outputType != 'payment_certificate' &&
+              (revise || (item.conflict && item.selectedSource == null)),
+        )
+        .toList(growable: false);
     if (revise && choices.isEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('変更できる現場の請求書・給与の計算元がありません。')),
@@ -512,7 +505,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           title: Text(revise ? '計算元を確認・変更' : '計算設定が重複しています'),
           content: Text(
             '${conflict.siteName} の ${conflict.outputLabel} について、'
-            '現在の選択：${conflict.selectedSource == 'trade_company' ? '会社契約' : conflict.selectedSource == 'site' ? '管理現場' : '未選択（管理現場）'}\n'
+            '現在の選択：${conflict.selectedSource == 'trade_company'
+                ? '会社契約'
+                : conflict.selectedSource == 'site'
+                ? '管理現場'
+                : '未選択（管理現場）'}\n'
             '管理現場：${conflict.siteSettingConfigured ? '設定済み' : '未設定'} / '
             '会社契約：${conflict.tradeCompanySettingConfigured ? '設定済み' : '未設定'}\n\n'
             '計算に使う設定を選んでください。',
@@ -528,8 +525,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
               child: const Text('管理現場の設定を使う'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop('trade_company'),
+              onPressed: () => Navigator.of(dialogContext).pop('trade_company'),
               child: Text(
                 widget.mode == TradeCompanyPageMode.customer
                     ? '取引会社の契約を使う'
@@ -550,18 +546,18 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   String _linkLabel(String value) => switch (value) {
-        'linked' => 'SKO連携済み',
-        'merge_pending' => '統合確認待ち',
-        _ => '連携なし',
-      };
+    'linked' => 'SKO連携済み',
+    'merge_pending' => '統合確認待ち',
+    _ => '連携なし',
+  };
 
   String _contractLabel(String value) => switch (value) {
-        'daily' => '1日単価',
-        'monthly' => '月単価',
-        'square_meter' => '平米単価',
-        'contract' => '請負',
-        _ => '契約未設定',
-      };
+    'daily' => '1日単価',
+    'monthly' => '月単価',
+    'square_meter' => '平米単価',
+    'contract' => '請負',
+    _ => '契約未設定',
+  };
 }
 
 enum _CompanyAction { edit, contract, delete, source }
@@ -623,8 +619,12 @@ class _CompanyRegistrationDialogState
     _email = TextEditingController(text: item?.email ?? '');
     _corporateNumber = TextEditingController(text: item?.corporateNumber ?? '');
     _notes = TextEditingController(text: item?.notes ?? '');
-    _representativeName = TextEditingController(text: item?.representativeName ?? '');
-    _representativePhone = TextEditingController(text: item?.representativePhone ?? '');
+    _representativeName = TextEditingController(
+      text: item?.representativeName ?? '',
+    );
+    _representativePhone = TextEditingController(
+      text: item?.representativePhone ?? '',
+    );
   }
 
   @override
@@ -648,7 +648,9 @@ class _CompanyRegistrationDialogState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集'),
+      title: Text(
+        widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集',
+      ),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -686,9 +688,16 @@ class _CompanyRegistrationDialogState
                 decoration: const InputDecoration(labelText: '法人番号'),
               ),
               const SizedBox(height: 10),
-              TextField(controller: _representativeName, decoration: const InputDecoration(labelText: '代表者氏名')),
+              TextField(
+                controller: _representativeName,
+                decoration: const InputDecoration(labelText: '代表者氏名'),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: _representativePhone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: '代表者電話番号')),
+              TextField(
+                controller: _representativePhone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '代表者電話番号'),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _notes,
@@ -696,9 +705,7 @@ class _CompanyRegistrationDialogState
                 decoration: const InputDecoration(labelText: '備考'),
               ),
               const SizedBox(height: 10),
-              const Text(
-                'SKO連携は必須ではありません。連携なしのまま請求書・支払証明書用の会社として利用できます。',
-              ),
+              const Text('SKO連携は必須ではありません。連携なしのまま請求書・支払証明書用の会社として利用できます。'),
             ],
           ),
         ),
@@ -771,16 +778,18 @@ class _ContractDialogState extends State<_ContractDialog> {
     super.initState();
     _method = widget.item.contractMethod;
     _daily = TextEditingController(text: widget.item.dailyRateYen.toString());
-    _monthly =
-        TextEditingController(text: widget.item.monthlyRateYen.toString());
+    _monthly = TextEditingController(
+      text: widget.item.monthlyRateYen.toString(),
+    );
     _squareRate = TextEditingController(
       text: widget.item.squareMeterUnitPriceYen.toString(),
     );
     _squareMeters = TextEditingController(
       text: _number(widget.item.squareMeterQuantity),
     );
-    _contract =
-        TextEditingController(text: widget.item.contractAmountYen.toString());
+    _contract = TextEditingController(
+      text: widget.item.contractAmountYen.toString(),
+    );
   }
 
   @override
@@ -809,9 +818,7 @@ class _ContractDialogState extends State<_ContractDialog> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  widget.item.linkStatus == 'linked'
-                      ? 'SKO連携済み'
-                      : 'SKO連携なし',
+                  widget.item.linkStatus == 'linked' ? 'SKO連携済み' : 'SKO連携なし',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
@@ -823,10 +830,7 @@ class _ContractDialogState extends State<_ContractDialog> {
                   DropdownMenuItem(value: 'none', child: Text('未設定')),
                   DropdownMenuItem(value: 'daily', child: Text('1日単価')),
                   DropdownMenuItem(value: 'monthly', child: Text('月単価')),
-                  DropdownMenuItem(
-                    value: 'square_meter',
-                    child: Text('平米単価'),
-                  ),
+                  DropdownMenuItem(value: 'square_meter', child: Text('平米単価')),
                   DropdownMenuItem(value: 'contract', child: Text('請負')),
                 ],
                 onChanged: (value) =>
@@ -842,17 +846,16 @@ class _ContractDialogState extends State<_ContractDialog> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _squareMeters,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '平米数'),
                 ),
               ],
               if (_method == 'contract')
                 _MoneyField(controller: _contract, label: '請負金額'),
               const SizedBox(height: 12),
-              const Text(
-                '管理現場にも金額設定がある場合は、保存後にどちらを計算へ使うか選択画面を表示します。',
-              ),
+              const Text('管理現場にも金額設定がある場合は、保存後にどちらを計算へ使うか選択画面を表示します。'),
             ],
           ),
         ),
