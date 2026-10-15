@@ -21,6 +21,21 @@ class NotificationExplanationPage extends StatefulWidget {
       _NotificationExplanationPageState();
 }
 
+String notificationExplanationSteps(String? actionKey) {
+  final steps = switch (actionKey) {
+    'company_link_request' => '1. 申請元の会社と連携の種類、開始月を確認します。\n2.「開く」で連携申請の詳細へ進みます。\n3. 内容を確認し、承認または却下を選びます。承認前に会社連携は成立しません。',
+    'site_payment_agreement' => '1. 対象の現場と契約の状態を確認します。\n2.「開く」で単価・手当・適用開始日と帳票を確認します。\n3. 送信側は押印して送信し、受信側は内容を確認して押印承認します。変更案の承認までは現行契約を維持します。',
+    'site_share_approval' => '1. 共有元の会社と現場を確認します。\n2.「開く」で共有現場の詳細へ進みます。\n3. 内容を確認し、現場の受入れを判断します。現場の受入れと契約単価への合意は別の操作です。',
+    'invoice_approval' =>
+      '1. 請求の対象会社・対象月を確認します。\n2.「開く」で請求明細と金額を確認します。\n3. 必要な修正や承認は請求書画面で行います。',
+    'payroll_review' =>
+      '1. 通知の給与対象月を確認します。\n2.「開く」で本人確認後、対象月の給料一覧へ進みます。\n3. 内容の確認や承認は給料一覧で行います。',
+    null || '' => 'この通知の内容をご確認ください。操作が必要なリンクはありません。',
+    _ => '1. この通知の内容と対象を確認します。\n2.「開く」から対象画面へ進みます。\n3. 対象画面で内容を確認し、必要な操作を行います。',
+  };
+  return '$steps\n戻ると、この説明ページに戻れます。';
+}
+
 class _NotificationExplanationPageState
     extends State<NotificationExplanationPage> {
   bool _opening = false;
@@ -101,9 +116,7 @@ class _NotificationExplanationPageState
           const SizedBox(height: 8),
           Text(
             SkoLanguageController.tr(
-              hasTarget
-                  ? '1. この通知の内容と対象を確認します。\n2.「開く」から対象画面へ進みます。\n3. 対象画面で内容を確認し、必要な操作を行います。\n戻ると、この説明ページに戻れます。'
-                  : 'この通知の内容をご確認ください。操作が必要なリンクはありません。',
+              notificationExplanationSteps(item.actionKey),
             ),
           ),
           const SizedBox(height: 12),
