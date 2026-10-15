@@ -5,9 +5,12 @@ await db.exec(`create role anon;create role authenticated;create schema auth;cre
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
 create table public.companies(id uuid primary key,name text,address text,phone text,corporate_number text);
 create table public.company_members(company_id uuid,user_id uuid,role text);
+create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text,requested_by uuid,responded_by uuid,updated_at timestamptz,unique(parent_company_id,child_company_id));
 create table public.app_notifications(company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);
 create function private.current_company_admin_id() returns uuid language sql as $$select company_id from public.company_members where user_id=auth.uid() and role in('owner','admin') limit 1$$;
-create table public.trade_companies(id uuid primary key default gen_random_uuid(),company_id uuid,name text,address text,phone text,corporate_number text,trade_role text,linked_company_id uuid,link_status text,created_by uuid,updated_by uuid,updated_at timestamptz);
+create table public.customers(id uuid primary key default gen_random_uuid(),company_id uuid,name text,billing_name text,billing_address text,created_at timestamptz default now());
+create table public.partner_companies(id uuid primary key default gen_random_uuid(),company_id uuid,name text,phone text,email text,address text,postal_code text,trade_role text,status text,created_at timestamptz default now());
+create table public.trade_companies(id uuid primary key default gen_random_uuid(),company_id uuid,name text,address text,phone text,email text,postal_code text,corporate_number text,trade_role text,linked_company_id uuid,link_status text,created_by uuid,updated_by uuid,updated_at timestamptz,customer_id uuid,partner_company_id uuid);
 insert into public.companies values('00000000-0000-0000-0000-000000000001','Alpha','A','1','111'),('00000000-0000-0000-0000-000000000002','Beta','B','2','222');
 insert into public.company_members values('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','admin'),('00000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','admin');`);
 await db.exec(fs.readFileSync('supabase/migrations/20261015005238_company_link_requests.sql','utf8'));
@@ -20,6 +23,9 @@ await assert.rejects(db.query(`select public.respond_trade_company_link('${id}',
 await login(2);await db.query(`select public.respond_trade_company_link('${id}','accept')`);
 const rows=(await db.query('select company_id,trade_role from public.trade_companies order by company_id')).rows;
 assert.equal(rows.length,2);assert.equal(rows[0].trade_role,'customer');assert.equal(rows[1].trade_role,'subcontractor');
+assert.equal((await db.query('select * from public.customers')).rows.length,1);
+assert.equal((await db.query('select * from public.partner_companies')).rows.length,1);
+assert.equal((await db.query('select * from private.company_connections')).rows[0].status,'accepted');
 await assert.rejects(db.query(`select public.respond_trade_company_link('${id}','accept')`));
 await assert.rejects(db.query(`select private.confirm_trade_company_link(null,null)`));
 await db.exec('select public.set_trade_company_link_enabled(false)');

@@ -1,4 +1,5 @@
 -- Approval-first company relationships. No payroll or contract prices are copied.
+alter table private.company_connections add column if not exists link_start_month date;
 create table private.trade_company_link_settings (
  company_id uuid primary key references public.companies(id), enabled boolean not null default false
 );
@@ -61,7 +62,7 @@ end $$;
 
 -- Preserve local contact data; only identity and reciprocal directory roles change.
 create function private.attach_approved_trade_link(p_owner uuid,p_other uuid,p_role text) returns void language plpgsql security definer set search_path='' as $$
-declare target public.companies%rowtype; tid uuid; n integer;
+declare target public.companies%rowtype; tid uuid; n integer; legacy_id uuid; tc public.trade_companies%rowtype;
 begin
  select * into strict target from public.companies where id=p_other;
  perform pg_advisory_xact_lock(hashtextextended(p_owner::text,0));
@@ -83,8 +84,21 @@ begin
   update public.trade_companies set trade_role=case when trade_role=p_role then p_role else 'both' end,
    linked_company_id=p_other,link_status='linked',updated_by=auth.uid(),updated_at=now() where id=tid;
  end if;
- -- Legacy customer/partner rows are synchronized by the owning administrator
- -- on their next directory load, never by impersonating the other company.
+ select * into strict tc from public.trade_companies where id=tid and company_id=p_owner;
+ if p_role='customer' and tc.customer_id is null then
+  select id into legacy_id from public.customers where company_id=p_owner and lower(trim(name))=lower(trim(tc.name)) order by created_at limit 1;
+  if legacy_id is null then
+   insert into public.customers(company_id,name,billing_name,billing_address) values(p_owner,tc.name,tc.name,tc.address) returning id into legacy_id;
+  end if;
+  update public.trade_companies set customer_id=legacy_id where id=tid and company_id=p_owner;
+ elsif p_role='subcontractor' and tc.partner_company_id is null then
+  select id into legacy_id from public.partner_companies where company_id=p_owner and lower(trim(name))=lower(trim(tc.name)) order by created_at limit 1;
+  if legacy_id is null then
+   insert into public.partner_companies(company_id,name,phone,email,address,postal_code,trade_role,status)
+   values(p_owner,tc.name,tc.phone,tc.email,tc.address,tc.postal_code,'subcontractor','active') returning id into legacy_id;
+  end if;
+  update public.trade_companies set partner_company_id=legacy_id where id=tid and company_id=p_owner;
+ end if;
 end $$;
 create function private.respond_trade_company_link(p_request_id uuid,p_action text) returns void language plpgsql security definer set search_path='' as $$
 declare cid uuid:=private.current_company_admin_id(); r private.trade_company_link_requests%rowtype;
@@ -104,6 +118,12 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(greatest(r.sender_company_id,r.target_company_id)::text,0));
   perform private.attach_approved_trade_link(r.sender_company_id,r.target_company_id,r.local_role);
   perform private.attach_approved_trade_link(r.target_company_id,r.sender_company_id,case when r.local_role='customer' then 'subcontractor' else 'customer' end);
+  insert into private.company_connections(parent_company_id,child_company_id,status,requested_by,responded_by,updated_at,link_start_month)
+  values(case when r.local_role='customer' then r.target_company_id else r.sender_company_id end,
+    case when r.local_role='customer' then r.sender_company_id else r.target_company_id end,
+    'accepted',r.created_by,auth.uid(),now(),r.start_month)
+  on conflict(parent_company_id,child_company_id) do update set status='accepted',requested_by=excluded.requested_by,
+    responded_by=excluded.responded_by,updated_at=excluded.updated_at,link_start_month=excluded.link_start_month;
  end if;
  update private.trade_company_link_requests set status=case p_action when 'accept' then 'accepted' when 'reject' then 'rejected' else 'cancelled' end,
  responded_by=auth.uid(),responded_at=now() where id=r.id;
