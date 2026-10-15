@@ -46,7 +46,7 @@ void main() {
   });
 
   testWidgets('two-finger pinch zooms without double tap and reports zoom state', (tester) async {
-    final bytes = Uint8List.fromList(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBbkAAAAASUVORK5CYII='));
+    final bytes = Uint8List.fromList(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII='));
     final changes = <bool>[];
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: DailyReportZoomPages(
       pages: [PdfPreviewPageData(image: MemoryImage(bytes), width: 600, height: 800)], onZoomChanged: changes.add))));
