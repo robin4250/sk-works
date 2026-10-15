@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment.dart';
+import 'trade_document_date_defaults.dart';
+import '../invoices/invoice_settings_repository.dart';
 
 class TradeDocumentAttachmentRepository {
   TradeDocumentAttachmentRepository(this._client);
@@ -28,6 +30,40 @@ class TradeDocumentAttachmentRepository {
     final value=raw['attachment'];
     return value==null?null:TradeDocumentAttachment.fromJson(Map<String,dynamic>.from(value as Map));
   }
+  /// Generate the second page from the authorized source; no extra save action.
+  Future<TradeDocumentAttachment> loadForPdf({required String subjectKind,
+      required String subjectId, required String sourceRevision}) async {
+    final actor = _actor();
+    final raw = await loadWorkspace(subjectKind: subjectKind,
+        subjectId: subjectId, sourceRevision: sourceRevision);
+    if (raw['source_blocked'] == true) {
+      throw StateError('元帳票の計算条件を確認してください。');
+    }
+    final saved = raw['attachment'];
+    if (saved is Map && raw['source_changed'] != true) {
+      return TradeDocumentAttachment.fromJson(Map<String, dynamic>.from(saved));
+    }
+    final payload = Map<String, dynamic>.from(raw['defaults'] as Map);
+    payload.addAll(tradeDocumentDateDefaults(payload['month'].toString()));
+    payload['notes'] = '';
+    if (subjectKind == 'payment_certificate') {
+      final settings = await InvoiceSettingsRepository(_client).loadForDocument();
+      _sameActor(actor);
+      payload['work_name'] = settings.invoiceSubject;
+      payload['work_address'] = '';
+      payload['intro_text'] = '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。';
+      payload['payment_conditions'] = tradeDocumentDefaultPaymentConditions(payload['month'].toString());
+      payload['notes'] = '・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';
+    } else {
+      payload['issue_date'] = DateTime.now().toUtc().add(const Duration(hours: 9))
+          .toIso8601String().substring(0, 10);
+      payload['acceptance_text'] = '乙は、貴殿から受領した'
+          '${tradeDocumentJapaneseDate(payload['order_date'].toString())}付の注文書記載の条件通り、本工事を請け負うことを承諾いたします。';
+    }
+    _sameActor(actor);
+    return TradeDocumentAttachment.fromJson({'version': 1, 'payload': payload});
+  }
+
   Future<TradeDocumentAttachment> save({required String subjectKind,
       required String subjectId,required String sourceRevision,required int expectedVersion,
       required Map<String,dynamic> payload}) async {
