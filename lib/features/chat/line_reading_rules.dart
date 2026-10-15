@@ -130,6 +130,17 @@ LineReadingRule? lineAutomaticReadingRule(
   return candidates.single;
 }
 
+/// Legacy rows without provenance remain protected, even without edit flags.
+bool lineReadingReapplyEligible(Map<String, dynamic> row) {
+  final origin = row['reading_origin'];
+  return row['confirmed'] != true && row['excluded'] != true &&
+    row['manually_edited'] != true && row['edited'] != true &&
+    !'${row['row_id']}'.startsWith('manual:') &&
+    origin is Map && origin['kind'] == 'automatic' &&
+    row['source_fingerprint'] is String && (row['source_fingerprint'] as String).isNotEmpty &&
+    origin['source_fingerprint'] == row['source_fingerprint'];
+}
+
 /// Return review suggestions, not automatic edits. Confirmed/manual rows are locked.
 List<Map<String, dynamic>> lineReadingSuggestions(
   List<Map<String, dynamic>> rows,
@@ -137,11 +148,7 @@ List<Map<String, dynamic>> lineReadingSuggestions(
 ) {
   final out = <Map<String, dynamic>>[];
   for (final row in rows) {
-    if (row['confirmed'] == true ||
-        row['manually_edited'] == true ||
-        row['edited'] == true) {
-      continue;
-    }
+    if (!lineReadingReapplyEligible(row)) continue;
     for (final field in ['site_name', 'worker_name']) {
       final kind = field == 'site_name'
           ? LineReadingKind.site
@@ -163,4 +170,43 @@ List<Map<String, dynamic>> lineReadingSuggestions(
     }
   }
   return out;
+}
+
+String lineReadingSuggestionKey(Map<String, dynamic> suggestion) =>
+    '${suggestion['row_id']}:${suggestion['field']}';
+
+List<Map<String, dynamic>> lineReadingUniqueTargets(List<Map<String, dynamic>> refs) =>
+  refs.where((r) => r['id'] != null && '${r['id']}'.isNotEmpty && r['name'] is String && (r['name'] as String).trim().isNotEmpty &&
+    refs.where((v) => v['name'] == r['name']).length == 1 &&
+    refs.where((v) => v['id'] == r['id']).length == 1).toList();
+
+/// Accept selected fields only. Quantities, provenance and assumptions stay intact.
+List<Map<String, dynamic>> lineAcceptReadingSuggestions(
+    List<Map<String, dynamic>> rows, List<Map<String, dynamic>> suggestions,
+    Map<String, String> accepted, {required List<Map<String, dynamic>> sites,
+    required List<Map<String, dynamic>> workers}) {
+  return [for (final original in rows) (() {
+    final result = Map<String, dynamic>.from(original);
+    if (!lineReadingReapplyEligible(original)) return result;
+    for (final proposal in suggestions.where((p) => p['row_id'] == original['row_id'])) {
+      final field = proposal['field'];
+      if (!['site_name', 'worker_name'].contains(field) ||
+          original[field] != proposal['before']) continue;
+      final id = accepted[lineReadingSuggestionKey(proposal)];
+      if (id == null) continue;
+      final targets = lineReadingUniqueTargets(field == 'site_name' ? sites : workers)
+        .where((target) => target['id'].toString() == id).toList();
+      if (targets.length != 1) continue;
+      final target = targets.single;
+      result[field as String] = target['name'];
+      if (field == 'site_name') {
+        result['site_id'] = target['id']; result['customer_id'] = target['customer_id'];
+      } else {
+        result['worker_id'] = target['id'];
+      }
+      result['confirmed'] = false;
+      result['reading_origin'] = {'kind': 'manual'};
+    }
+    return result;
+  })()];
 }

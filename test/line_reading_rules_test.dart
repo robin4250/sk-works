@@ -57,7 +57,8 @@ void main() {
   });
   test('exact aliases propose review and preserve source identity', () {
     final rows = [
-      {'row_id': 'r', 'source_message_id': 's', 'site_name': '愛宕'},
+      {'row_id': 'r', 'source_message_id': 's', 'site_name': '愛宕',
+       'source_fingerprint':'fp', 'reading_origin':{'kind':'automatic','source_fingerprint':'fp'}},
     ];
     final rules = [
       const LineReadingRule(

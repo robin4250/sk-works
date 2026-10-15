@@ -16,7 +16,8 @@ Map<String, dynamic> lineRepairAssumedQuantity(
     throw ArgumentError('Invalid work hours');
   }
   final assumptions = lineAssumedFields(row)..remove(field);
-  return {...row, field: value, 'assumed_fields': assumptions};
+  return {...row, field: value, 'assumed_fields': assumptions,
+    'reading_origin': {'kind': 'manual'}};
 }
 
 String _digits(String value) {
