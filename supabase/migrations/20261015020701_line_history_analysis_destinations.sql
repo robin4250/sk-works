@@ -47,4 +47,38 @@ create function public.line_history_destinations() returns jsonb language sql st
 create function public.create_line_history_analysis(p_name text,p_command_id uuid) returns uuid language sql security invoker set search_path='' as $$select private.create_line_history_analysis(p_name,p_command_id)$$;
 revoke all on function private.line_history_destinations(),private.create_line_history_analysis(text,uuid),public.line_history_destinations(),public.create_line_history_analysis(text,uuid) from public,anon;
 grant execute on function private.line_history_destinations(),private.create_line_history_analysis(text,uuid),public.line_history_destinations(),public.create_line_history_analysis(text,uuid) to authenticated;
+-- Classification is independent of LINE feature availability; history remains private.
+create function private.line_history_analysis_ids() returns jsonb
+language sql stable security definer set search_path='' as $$
+ select coalesce(jsonb_agg(a.group_id),'[]'::jsonb)
+ from private.line_history_analysis_groups a
+ where auth.uid() is not null and private.account_access_allowed()
+ and private.can_access_communication_group(a.group_id)
+$$;
+create function public.line_history_analysis_ids() returns jsonb
+language sql stable security invoker set search_path='' as $$select private.line_history_analysis_ids()$$;
+revoke all on function private.line_history_analysis_ids(),public.line_history_analysis_ids() from public,anon;
+grant execute on function private.line_history_analysis_ids(),public.line_history_analysis_ids() to authenticated;
+
+-- Preserve existing signatures, function attributes and ACLs. Refuse definition drift.
+do $guard$
+declare definition text;
+begin
+ if (select md5(prosrc) from pg_proc where oid='private.link_line_source_to_chat(uuid,uuid)'::regprocedure)
+   is distinct from '24724b45e6ac4a104da71855c5cf18dc' then
+  raise exception 'LINE source link definition changed; review analysis guard';
+ end if;
+ definition := pg_get_functiondef('private.link_line_source_to_chat(uuid,uuid)'::regprocedure);
+ definition := replace(definition,'begin' || chr(10), 'begin' || chr(10) ||
+  ' if exists(select 1 from private.line_history_analysis_groups where group_id=p_group_id) then raise exception ''analysis destination cannot link LINE'' using errcode=''42501''; end if;' || chr(10));
+ execute definition;
+ if (select md5(prosrc) from pg_proc where oid='private.line_outbound_actor_allowed(uuid,uuid,uuid)'::regprocedure)
+   is distinct from 'b83336427ece79df3a4a0ad6152674ce' then
+  raise exception 'LINE outbound definition changed; review analysis guard';
+ end if;
+ definition := pg_get_functiondef('private.line_outbound_actor_allowed(uuid,uuid,uuid)'::regprocedure);
+ definition := replace(definition,'select private.line_actor_release_allowed(p_actor)',
+  'select not exists(select 1 from private.line_history_analysis_groups where group_id=p_group) and private.line_actor_release_allowed(p_actor)');
+ execute definition;
+end $guard$;
 commit;
