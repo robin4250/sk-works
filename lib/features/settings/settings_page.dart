@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
+import '../companies/company_link_page.dart';
+import '../companies/trade_company_repository.dart';
 import '../help/floating_help_controller.dart';
 import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
@@ -312,6 +314,32 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         const SizedBox(height: 16),
                         if (_canManageCompany) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.link_outlined),
+                              title: const Text('会社検索・連携設定'),
+                              subtitle: const Text(
+                                '利用のON／OFF・開始月付き申請・承認履歴。'
+                                '相手の承認後に双方の会社一覧へ登録します。'
+                                '操作方法は右上の？から確認できます。',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                final repository =
+                                    TradeCompanyRepository.maybeCreate();
+                                if (repository == null) return;
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => CompanyLinkPage(
+                                      repository: repository,
+                                      mode: TradeCompanyPageMode.customer,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.currency_yen_outlined),

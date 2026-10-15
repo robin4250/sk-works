@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/notifications/attention_center_item.dart';
 import 'package:sk_works/features/notifications/notification_explanation_page.dart';
+import 'package:sk_works/features/notifications/notifications_page.dart';
 
 const item = AttentionCenterItem(
   id: 'notice',
@@ -14,6 +15,43 @@ const item = AttentionCenterItem(
 );
 
 void main() {
+  test(
+    'company link notice fails closed without an authenticated backend',
+    () async {
+      expect(await companyLinkNotificationAvailable(), isFalse);
+      expect(companyLinkNotificationDestination('request-id'), isNull);
+      expect(companyLinkNotificationDestination(null), isNull);
+    },
+  );
+
+  testWidgets(
+    'company link notice keeps its explanation when workspace is OFF',
+    (tester) async {
+      const request = AttentionCenterItem(
+        id: 'company-notice',
+        source: 'notification',
+        title: '会社連携申請',
+        body: '開始月を確認してください',
+        state: AttentionCenterState.pending,
+        actionKey: 'company_link_request',
+        actionId: 'request-id',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationExplanationPage(
+            item: request,
+            canOpenTarget: () async => false,
+            openTarget: (_) async => fail('OFF company linking must not open'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('会社連携申請'), findsOneWidget);
+      expect(find.textContaining('承認前に会社連携は成立しません'), findsOneWidget);
+      expect(find.text('開く'), findsNothing);
+    },
+  );
+
   testWidgets(
     'explanation never acts until link, and back returns to explanation',
     (tester) async {
