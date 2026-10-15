@@ -1217,7 +1217,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Future<void> _openFriendsForChat() async {
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) => const ChatFriendsPage(selectForChat: true),
+        builder: (_) => ChatFriendsPage(
+          selectForChat: true,
+          existingGroups: [
+            for (final group in _groups)
+              if (group['group_type'] == 'direct' &&
+                  (group['direct_other_user_id']?.toString() ?? '').isNotEmpty &&
+                  group['direct_other_user_id'] != _repository?.currentUserId)
+                group,
+          ],
+        ),
       ),
     );
     if (friend == null || !mounted) return;
