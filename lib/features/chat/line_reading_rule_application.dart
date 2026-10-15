@@ -132,5 +132,9 @@ void lineApplyReadingFacts(Map<String, dynamic> row,
     if (phrase == '鉄骨') { allowances.remove('鉄骨'); allowances.remove('鉄骨手当'); }
   }
   row['allowance_names'] = allowances.toList();
+  if (allowances.isEmpty && rules.any((r) => r.kind == LineReadingKind.ignore &&
+      (r.phrase == 'PC' || r.phrase == '鉄骨'))) {
+    row['steel_allowance'] = false;
+  }
   if (row.containsKey('assumed_fields')) row['assumed_fields'] = assumptions;
 }

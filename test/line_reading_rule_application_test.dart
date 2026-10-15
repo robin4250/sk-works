@@ -71,6 +71,14 @@ void main() {
     expect(rows.every((r) => r['excluded'] != true), true);
     expect(rows.every((r) => r['work_category'] == 'day'), true);
   });
+  test('ignoring a built-in allowance clears its matching legacy marker without deleting row', () {
+    final row = lineMonthlyCandidates([source('新宿 佐藤 PC')], month,
+      readingRules: const [LineReadingRule(phrase:'PC',kind:LineReadingKind.ignore,value:'対象外')]).rows.single;
+    expect(row['worker_name'], '佐藤');
+    expect(row['allowance_names'], isEmpty);
+    expect(row['steel_allowance'], false);
+    expect(row['excluded'], isNot(true));
+  });
   test('canonical aliases never change sibling raw-name matching or drop assumed hours', () {
     final original = source('新宿 佐藤\n新宿 田中\n新宿 残業');
     final rows = lineMonthlyCandidates([original], month,

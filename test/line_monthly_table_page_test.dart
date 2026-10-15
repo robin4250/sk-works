@@ -95,6 +95,7 @@ void main() {
     final repaired = tester.widget<DataTable>(find.byType(DataTable));
     expect((repaired.rows.single.cells[5].child as Text).data, '3.0');
     expect((repaired.rows.single.cells[6].child as Text).data, '1（仮）');
+    await _reveal(tester, find.text('確認済みの候補はありません。'), delta: -250);
     expect(find.text('確認済みの候補はありません。'), findsOneWidget);
   });
   testWidgets('swipe switches months and reimport opens the same group', (tester) async {
