@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
+import '../referrals/app_referral_personal_entry.dart';
+import '../referrals/app_referral_repository.dart';
 import '../companies/company_profile_review_page.dart';
 import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
@@ -165,6 +167,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_usesCloud)
+                        AppReferralPersonalEntry(
+                          repository: AppReferralRepository(SupabaseBackend.client),
+                        ),
                       Text(
                         SkoLanguageController.tr('表示言語'),
                         style: Theme.of(context).textTheme.titleMedium,
