@@ -110,6 +110,11 @@ class CompanySubmittedDocumentRepository {
     );
   }
 
+  Future<bool> companyChangeNoticeEnabled() async {
+    final raw = await _client.rpc('company_profile_review_workspace');
+    return raw is Map && raw['enabled'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> listDocuments() async {
     final value = await membership();
     try {

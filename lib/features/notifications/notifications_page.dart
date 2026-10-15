@@ -9,6 +9,8 @@ import 'attention_center_repository.dart';
 import 'attention_center_item.dart';
 import 'notification_explanation_page.dart';
 import '../settings/company_module_settings_repository.dart';
+import '../../data/supabase_backend.dart';
+import '../companies/company_profile_review_page.dart';
 import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
 import '../people/own_document_registration_page.dart';
@@ -125,6 +127,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
             if (item.actionKey == 'company_link_request') {
               return companyLinkNotificationAvailable();
             }
+            if (item.actionKey == 'company_profile_review') {
+              return companyProfileNotificationAvailable();
+            }
             final module = notificationModule(item.actionKey);
             if (module == null) return true;
             final settings = CompanyModuleSettingsRepository.maybeCreate();
@@ -168,6 +173,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (target.actionKey == 'company_link_request' &&
           !await companyLinkNotificationAvailable()) {
         throw StateError('会社検索・連携申請は現在停止中です');
+      }
+      if (target.actionKey == 'company_profile_review' &&
+          !await companyProfileNotificationAvailable()) {
+        throw StateError('会社情報更新確認は現在停止中です');
       }
       final module = notificationModule(target.actionKey);
       if (module != null) {
@@ -410,6 +419,9 @@ Widget? notificationDestination(
   DateTime? payrollMonth,
 }) => switch (item.actionKey) {
   'company_link_request' => companyLinkNotificationDestination(item.actionId),
+  'company_profile_review' => item.actionId == null || item.actionId!.isEmpty
+      ? null
+      : CompanyProfileReviewPage(initialReviewId: item.actionId),
   'route_billing_quantity_request' => RouteBillingQuantityApprovalsPage(
     initialRequestId: item.actionId,
   ),
@@ -480,6 +492,16 @@ String? notificationModule(String? actionKey) => switch (actionKey) {
   'attendance_correction_request' => 'attendance',
   _ => null,
 };
+
+/// The server workspace checks current membership and account availability.
+Future<bool> companyProfileNotificationAvailable() async {
+  if (!SupabaseBackend.isInitialized ||
+      SupabaseBackend.client.auth.currentUser == null) {
+    return false;
+  }
+  final raw = await SupabaseBackend.client.rpc('company_profile_review_workspace');
+  return raw is Map && raw['enabled'] == true;
+}
 
 /// Both checks use the server workspace so OFF and changed roles fail closed.
 Future<bool> companyLinkNotificationAvailable() async {

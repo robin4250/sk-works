@@ -365,6 +365,33 @@ class _CompanySubmittedDocumentsPageState
       setState(() => _error = '法人番号は13桁で入力してください。');
       return;
     }
+    var notifyPartners = false;
+    try {
+      notifyPartners = await repository.companyChangeNoticeEnabled();
+    } catch (_) {}
+    if (!mounted) return;
+    if (notifyPartners) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('会社情報を変更しますか？'),
+          content: const Text(
+            '契約会社に変更を通知します。相手の旧登録情報は記録に残り、相手が確認して更新します。契約単価は変更しません。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存して通知'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -652,7 +679,9 @@ class _CompanySubmittedDocumentsPageState
                         await showDialog<void>(
                           context: context,
                           builder: (previewContext) => AlertDialog(
-                            content: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+                            content: InteractiveViewer(
+                              child: Image.memory(bytes, fit: BoxFit.contain),
+                            ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(previewContext),
