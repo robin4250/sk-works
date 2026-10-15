@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../international/language_controller.dart';
+import '../../data/supabase_backend.dart';
+import '../referrals/app_referral_page.dart';
+import '../referrals/app_referral_repository.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_strings.dart';
 import 'chat_friend_profile_page.dart';
@@ -375,12 +378,21 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     if (!mounted || method == null) return;
     if (method == 'phone') {
       final open = widget.onPhoneInvitation;
-      if (open == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('電話番号通知は準備中です。送信は行われていません。')),
-        );
-      } else {
+      if (open != null) {
         await open(context, 'friend_add');
+      } else if (SupabaseBackend.isInitialized &&
+          SupabaseBackend.client.auth.currentUser?.id != null &&
+          SupabaseBackend.client.auth.currentUser?.id == _actor) {
+        await Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => AppReferralPage(
+            repository: AppReferralRepository(SupabaseBackend.client),
+            friendInvite: true,
+          ),
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ログイン情報を確認できません。友達一覧を開き直してください。')),
+        );
       }
       if (mounted) await _load();
       return;
@@ -402,7 +414,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
           '登録済み友達の氏名・公開会社名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
           '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は承認済み友達の公開情報だけを表示します。写真は短時間の閲覧URLを使用し、取得できない場合は標準アイコンになります。\n\n'
           '左から右へスワイプするとピン留め／解除できます。この端末のログイン中ユーザーごとに保存し、友達や会話は削除しません。並びはピン留め、既存の個別チャット相手、その他の登録順です。登録日時が無い行は取得順を保ちます。\n\n'
-          '下の「追加」→「ID検索」で申請・承認を管理します。電話番号通知は準備中で、案内を押しても送信されません。トーク本文や全履歴の検索はこの画面では行いません。',
+          '下の「追加」→「ID検索」で申請・承認を管理します。「電話番号通知」で名前・電話番号を入力する招待画面を開きます。招待機能ONと利用権限が必要です。正式な配布URL未登録ではSMSを作成できません。送信を押すとSMS作成画面が開き、実際の送信はそこで行います。トーク本文や全履歴の検索はこの画面では行いません。',
         )),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
