@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
@@ -32,6 +33,8 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       widget.repository ?? ChatCloudRepository.maybeCreate();
   final _search = TextEditingController();
   String _friendQuery = '';
+  Set<String> _pinnedFriends = {};
+  String? _actor;
 
   Map<String, dynamic> _workspace = const {};
   Map<String, dynamic>? _searchResult;
@@ -72,8 +75,15 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     try {
       final workspace = await repository.loadFriendWorkspace();
-      if (!mounted) return;
+      final actor = repository.currentUserId;
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted || actor != repository.currentUserId) return;
       setState(() {
+        _actor = actor;
+        _pinnedFriends = actor == null
+            ? {}
+            : prefs.getStringList('sko_chat_friend_pinned_$actor')?.toSet() ??
+                  {};
         _workspace = workspace;
         _loading = false;
         _error = null;
@@ -85,6 +95,23 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         _error = error.toString();
       });
     }
+  }
+
+  Future<bool> _pinFriend(Map<String, dynamic> friend) async {
+    final actor = _actor;
+    final id = friend['user_id']?.toString() ?? '';
+    if (actor == null || id.isEmpty || actor != _repository?.currentUserId)
+      return false;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted || actor != _repository?.currentUserId) return false;
+    setState(() {
+      if (!_pinnedFriends.remove(id)) _pinnedFriends.add(id);
+    });
+    await prefs.setStringList(
+      'sko_chat_friend_pinned_$actor',
+      _pinnedFriends.toList(),
+    );
+    return false;
   }
 
   Future<void> _find() async {
@@ -344,17 +371,22 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     SkoLanguageController.watch(context);
     final incoming = _rows('incoming');
     final outgoing = _rows('outgoing');
-    final friends = orderChatFriends(_rows('friends'), widget.existingGroups)
-        .where(
-          (friend) =>
-              _friendQuery.trim().isEmpty ||
-              ['display_name', 'sko_id'].any(
-                (key) => (friend[key]?.toString() ?? '').toLowerCase().contains(
-                  _friendQuery.trim().toLowerCase(),
-                ),
-              ),
-        )
-        .toList();
+    final friends =
+        orderChatFriends(
+              _rows('friends'),
+              widget.existingGroups,
+              pinnedUserIds: _pinnedFriends,
+            )
+            .where(
+              (friend) =>
+                  _friendQuery.trim().isEmpty ||
+                  ['display_name', 'sko_id'].any(
+                    (key) => (friend[key]?.toString() ?? '')
+                        .toLowerCase()
+                        .contains(_friendQuery.trim().toLowerCase()),
+                  ),
+            )
+            .toList();
 
     return Scaffold(
       bottomNavigationBar: widget.selectForChat
@@ -425,23 +457,41 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                                 const SizedBox(height: 6),
                             itemBuilder: (context, index) {
                               final friend = friends[index];
-                              return Card(
-                                child: ListTile(
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.person_outline),
+                              return Dismissible(
+                                key: ValueKey('friend-${friend['user_id']}'),
+                                direction: DismissDirection.startToEnd,
+                                confirmDismiss: (_) => _pinFriend(friend),
+                                background: Container(
+                                  alignment: Alignment.centerLeft,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                  child: Icon(
+                                    _pinnedFriends.contains(
+                                          friend['user_id']?.toString(),
+                                        )
+                                        ? Icons.push_pin
+                                        : Icons.push_pin_outlined,
                                   ),
-                                  title: Text(
-                                    friend['display_name']?.toString() ??
-                                        ChatFriendsStrings.tr('SKOユーザー'),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
+                                ),
+                                child: Card(
+                                  child: ListTile(
+                                    leading: const CircleAvatar(
+                                      child: Icon(Icons.person_outline),
                                     ),
+                                    title: Text(
+                                      friend['display_name']?.toString() ??
+                                          ChatFriendsStrings.tr('SKOユーザー'),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    subtitle: const Text('所属会社：未確認'),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () => widget.selectForGroupInvite
+                                        ? Navigator.of(context).pop(friend)
+                                        : _openFriend(friend),
                                   ),
-                                  subtitle: const Text('所属会社：未確認'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () => widget.selectForGroupInvite
-                                      ? Navigator.of(context).pop(friend)
-                                      : _openFriend(friend),
                                 ),
                               );
                             },

@@ -3,6 +3,23 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/features/chat/chat_friend_order.dart';
 
 void main() {
+  test('pins precede direct peers while preserving registration order', () {
+    final rows = [
+      {'user_id': 'old', 'created_at': '2026-10-01'},
+      {'user_id': 'chat', 'created_at': '2026-10-02'},
+      {'user_id': 'pin', 'created_at': '2026-10-03'},
+    ];
+    expect(
+      orderChatFriends(
+        rows,
+        [
+          {'group_type': 'direct', 'direct_other_user_id': 'chat'},
+        ],
+        pinnedUserIds: {'pin'},
+      ).map((row) => row['user_id']),
+      ['pin', 'chat', 'old'],
+    );
+  });
   test('only direct peers are promoted and both partitions keep registration order', () {
     final rows = [
       {'user_id': 'late', 'created_at': '2026-10-03'},

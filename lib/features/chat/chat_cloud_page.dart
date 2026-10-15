@@ -978,6 +978,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     if (repository == null) return;
     try {
       final id = await repository.startDirectChat(member['user_id'].toString());
+      if (_hiddenGroupIds.remove(id)) await _saveListPreference('hidden', _hiddenGroupIds);
       await _loadGroupsOnly();
       if (!mounted) return;
       await _selectGroup(id);
@@ -2683,6 +2684,19 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     DismissDirection direction,
   ) async {
     if (direction == DismissDirection.endToStart) {
+      if (group['group_type'] == 'direct') {
+        final actor=_repository?.currentUserId;
+        final confirmed=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
+          title:const Text('個別トークを一覧から削除しますか？'),
+          content:const Text('自分のこの端末の一覧から外します。相手の一覧・友達関係・メッセージは削除しません。友達から再開できます。'),
+          actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('戻る')),
+            FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('削除'))]));
+        if(mounted && confirmed==true && actor==_repository?.currentUserId) {
+          setState(()=>_hiddenGroupIds.add(group['id'].toString()));
+          await _saveListPreference('hidden',_hiddenGroupIds);
+        }
+        return false;
+      }
       await _showCustomGroupLeftActions(group);
     } else if (direction == DismissDirection.startToEnd) {
       await _showCustomGroupRightActions(group);
@@ -2858,7 +2872,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           ),
         );
 
-        if (!enableGroupActions || !_isCustomGroup(group)) {
+        if ((!enableGroupActions || !_isCustomGroup(group)) && group['group_type'] != 'direct') {
           return card;
         }
 
