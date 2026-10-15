@@ -24,6 +24,7 @@ import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
 import 'signature_capture_page.dart';
+import 'daily_report_zoom_pages.dart';
 import 'route_visit_report_context.dart';
 import 'daily_report_checkout_navigation.dart';
 
@@ -1018,7 +1019,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
         content: SizedBox(
           width: 460,
-          child: SignaturePreview(strokes: strokes, height: 220),
+          child: SignaturePreview(strokes: strokes, height: 220, canvasSize: SignatureResult.sizeFromJson(signature)),
         ),
         actions: [
           TextButton(
@@ -1911,7 +1912,8 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
               );
           },
         ),
-        Expanded(child: PdfPreview(initialPageFormat: PdfPageFormat.a4,
+        Expanded(child: PdfPreview.builder(initialPageFormat: PdfPageFormat.a4,
+          pagesBuilder: (context, pages) => DailyReportZoomPages(pages: pages, onZoomChanged: widget.onZoomChanged),
           onZoomChanged: widget.onZoomChanged,
           canChangePageFormat: false, canChangeOrientation: false,
           allowPrinting: true, allowSharing: true,
