@@ -12,6 +12,8 @@ await db.exec(`create role anon; create role authenticated; create schema privat
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
 create table public.companies(id uuid primary key);
 create table private.site_share_inbox(data_item_id uuid primary key);
+create table private.site_payment_agreement_rollout(company_id uuid,enabled boolean);
+create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
 create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
 create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid);
 create table private.site_payment_proposals(id uuid primary key default gen_random_uuid(),shared_item_id uuid,revision integer,terms jsonb);

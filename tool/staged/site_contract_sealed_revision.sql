@@ -28,6 +28,12 @@ language plpgsql security definer set search_path='' as $$
 declare pair jsonb; sender uuid; recipient uuid; proposal uuid; seal jsonb; start_day date;
 begin
  pair:=private.site_payment_pair(p_item,p_company);
+ perform 1 from private.site_payment_agreement_rollout r where r.company_id in
+  ((pair->>'parent_company_id')::uuid,(pair->>'child_company_id')::uuid)
+  order by r.company_id for share;
+ perform 1 from private.company_connections c where
+  c.parent_company_id=(pair->>'parent_company_id')::uuid and
+  c.child_company_id=(pair->>'child_company_id')::uuid for share;
  -- Hold the canonical pair before proposal creation, capturing the same actor,
  -- connection and rollout authorization used by existing agreement functions.
  perform 1 from private.site_share_inbox where data_item_id=p_item for update;
@@ -66,6 +72,12 @@ begin
  select * into p from private.site_payment_proposals where id=p_proposal;
  if p.id is null then raise exception '契約が見つかりません。'; end if;
  pair:=private.site_payment_pair(p.shared_item_id,p_company);
+ perform 1 from private.site_payment_agreement_rollout r where r.company_id in
+  ((pair->>'parent_company_id')::uuid,(pair->>'child_company_id')::uuid)
+  order by r.company_id for share;
+ perform 1 from private.company_connections c where
+  c.parent_company_id=(pair->>'parent_company_id')::uuid and
+  c.child_company_id=(pair->>'child_company_id')::uuid for share;
  perform 1 from private.site_share_inbox where data_item_id=p.shared_item_id for update;
  pair:=private.site_payment_pair(p.shared_item_id,p_company);
  select d.sender_company_id,d.recipient_company_id into sender,recipient
