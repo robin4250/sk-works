@@ -220,7 +220,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (mounted) {
         await _load();
       }
-    } catch (_) {
+    } catch (error) {
+      _showError(error);
       rethrow;
     } finally {
       if (mounted) {
