@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
 import '../shared/company_seal_pdf.dart';
 import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_date_defaults.dart';
 
 class PaymentOrderPdf {
  const PaymentOrderPdf._();
@@ -33,10 +34,10 @@ class PaymentOrderPdf {
     pw.SizedBox(height:compact?6:8),pw.Center(child:text('${p['month']} 月分')),pw.SizedBox(height:compact?8:14),
     text(p['intro_text']?.toString()??''),pw.SizedBox(height:compact?8:14),
     field('1. 工事名',p['work_name']),field('2. 工事場所',p['work_address']),
-    field('3. 工期','${p['period_start']} から ${p['period_end']} まで'),
+    field('3. 工期','${tradeDocumentJapaneseDate(p['period_start'].toString())} から ${tradeDocumentJapaneseDate(p['period_end'].toString())} まで'),
     field('4. 請負代金','金 ${_money(p['total_amount_yen'])}円（うち消費税等 金${_money(p['tax_amount_yen'])}円）'),
     field('5. 支払条件',p['payment_conditions']),field('6. その他特記事項',p['notes']),
-    pw.SizedBox(height:compact?6:12),pw.Align(alignment:pw.Alignment.centerRight,child:text(p['issue_date'].toString())),
+    pw.SizedBox(height:compact?6:12),pw.Align(alignment:pw.Alignment.centerRight,child:text(tradeDocumentJapaneseDate(p['issue_date'].toString()))),
     pw.SizedBox(height:compact?8:14),
     if(compact)pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
       pw.Expanded(child:party('（甲・発注者）',issuer,own:true)),pw.SizedBox(width:16),
