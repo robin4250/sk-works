@@ -31,6 +31,8 @@ class ChatFriendProfilePage extends StatelessWidget {
             title: const Text('SKO ID'),
             subtitle: SelectableText(skoId),
           ),
+          const ListTile(title: Text('所属会社'), subtitle: Text('未確認')),
+          const Text('写真・所属会社の公開情報は現在取得できません。'),
         ],
       ),
       bottomNavigationBar: SafeArea(

@@ -1231,6 +1231,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         builder: (_) => ChatFriendsPage(
           repository: _repository,
           selectForChat: true,
+          existingGroups: _groups,
           onPhoneInvitation: widget.onPhoneFriendInvitation,
         ),
       ),
