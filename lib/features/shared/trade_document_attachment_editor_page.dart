@@ -60,7 +60,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
             _payload['payment_conditions'] = tradeDocumentDefaultPaymentConditions(_payload['month'].toString());
           }
           if ((_payload['notes']?.toString().trim() ?? '').isEmpty) {
-            _payload['notes'] = '・本工事は建設業許可を必要としない軽微な工事である。\\n・乙は、工事中の事故等について一切の責任を負う。';
+            _payload['notes'] = '・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';
           }
         } else {
           _payload['issue_date'] = DateTime.now().toUtc().add(const Duration(hours: 9))
