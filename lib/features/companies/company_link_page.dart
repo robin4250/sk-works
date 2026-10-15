@@ -8,9 +8,11 @@ class CompanyLinkPage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.mode,
+    this.initialRequestId,
   });
   final TradeCompanyRepository repository;
   final TradeCompanyPageMode mode;
+  final String? initialRequestId;
 
   @override
   State<CompanyLinkPage> createState() => _CompanyLinkPageState();
@@ -136,7 +138,14 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   @override
   Widget build(BuildContext context) {
     final enabled = _workspace?['enabled'] == true;
-    final requests = (_workspace?['requests'] as List?) ?? const [];
+    final allRequests = (_workspace?['requests'] as List?) ?? const [];
+    final requests = widget.initialRequestId == null
+        ? allRequests
+        : allRequests
+              .where(
+                (row) => row is Map && row['id'] == widget.initialRequestId,
+              )
+              .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('会社を検索・連携')),
       body: ListView(
@@ -161,6 +170,10 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
               _error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
+          if (widget.initialRequestId != null &&
+              _workspace != null &&
+              requests.isEmpty)
+            const Text('対象の連携申請が見つかりません。所属会社や閲覧権限が変更された可能性があります。'),
           TextField(
             controller: _query,
             decoration: const InputDecoration(labelText: '会社名・法人番号（2文字以上）'),
