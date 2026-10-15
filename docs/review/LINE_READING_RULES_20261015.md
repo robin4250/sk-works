@@ -44,7 +44,7 @@ revision 競合防止・初回挿入の排他・入力型/長さ/重複検査。
 
 現場・氏名aliasだけの最小再適用。月別表で未保存変更を保存後に入口を開き、項目ごとに前後確認→採用→採用項目だけ保存。正式確認は自動で進めない。
 
-- 新規自動生成行だけreading_origin.kind=automaticとsource_fingerprintを記録。markerのない旧行は推測で自動扱いせず保護。
+- 新規自動生成行だけreading_origin.kind=automaticとsource_fingerprint、正式名への変換前の現場・氏名phraseを記録。元phraseから最新ルールを引き、保存中の正式名Aから新しい正式名Bへの変更も提案。由来phrase不明の行も保護。markerのない旧行は推測で自動扱いせず保護。
 - プレビュー時に現存原文のfingerprintとの一致も確認。確認済み・manual由来・手修正flag・manual:行・除外行は対象外。
 - 仮値セル補修・通常の行編集・除外checkbox・再適用採用の各入力でmanual由来に変更。再取込は同fingerprintの由来を保持。
 - 一意に解決できない登録先は保留。登録一覧にある一意な対象を選び直せるが、同名候補を見分ける情報がない場合は既存個別編集へ案内。
