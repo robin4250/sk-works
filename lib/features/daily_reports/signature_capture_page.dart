@@ -178,7 +178,12 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Text('画面を横向きにすると大きくサインできます。記入時の縦横比を保って保存します。'),
+              child: Text(
+                '横向き・横書きでの記入をおすすめします。\n'
+                '端末を横向きにして、サイン記入枠いっぱいに大きくお書きください。',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             if (widget.signerNameOptions.any((name) => name.trim().isNotEmpty))
               Padding(
