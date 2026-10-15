@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/referrals/app_referral_personal_entry.dart';
 import 'package:sk_works/features/referrals/app_referral_page.dart';
 import 'package:sk_works/features/referrals/app_referral_repository.dart';
 
-class PersonalReferralRepository extends AppReferralRepository {
-  PersonalReferralRepository() : super(SupabaseClient('https://test.invalid', 'test',
-    authOptions: const AuthClientOptions(autoRefreshToken: false)));
+class PersonalReferralRepository implements AppReferralRepository {
+  // No SDK client is needed for snapshot and navigation-only tests.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
   String actor = 'self';
   bool deny = false;
   bool disableOnOpen = false;
@@ -37,7 +37,6 @@ class PersonalReferralRepository extends AppReferralRepository {
 }
 
 Future<void> show(WidgetTester tester, PersonalReferralRepository repository) async {
-  addTearDown(repository.client.dispose);
   await tester.pumpWidget(MaterialApp(home: Scaffold(
     body: AppReferralPersonalEntry(repository: repository),
   )));

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/referrals/app_referral_master_entry.dart';
 import 'package:sk_works/features/referrals/app_referral_page.dart';
 import 'package:sk_works/features/referrals/app_referral_repository.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 
-class FakeReferralRepository extends AppReferralRepository {
-  FakeReferralRepository() : super(SupabaseClient('https://test.invalid', 'test',
-    authOptions: const AuthClientOptions(autoRefreshToken: false)));
+class FakeReferralRepository implements AppReferralRepository {
+  // These navigation fixtures only read snapshots; constructing an unused SDK
+  // client would introduce token timers and asynchronous network disposal.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
   bool denied = false;
   bool disableOnOpen = false;
   bool switchActorOnOpen = false;
@@ -39,7 +40,6 @@ class FakeReferralRepository extends AppReferralRepository {
 }
 
 Future<void> show(WidgetTester tester, FakeReferralRepository repository) async {
-  addTearDown(repository.client.dispose);
   await tester.pumpWidget(MaterialApp(home: Scaffold(
     body: AppReferralMasterEntry(repository: repository),
   )));
