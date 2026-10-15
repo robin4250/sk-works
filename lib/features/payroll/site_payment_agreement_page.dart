@@ -3,11 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'site_payment_agreement_document.dart';
 import 'site_payment_terms_comparison.dart';
+import 'site_contract_review_page.dart';
 import 'payment_certificates_page.dart';
 
 /// Only the deployed, enabled server workspace exposes editable agreements.
 class SitePaymentAgreementPage extends StatefulWidget {
-  const SitePaymentAgreementPage({super.key});
+  const SitePaymentAgreementPage({super.key, this.sharedItemId});
+  final String? sharedItemId;
   @override
   State<SitePaymentAgreementPage> createState() => _SitePaymentAgreementPageState();
 }
@@ -22,7 +24,7 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
   SupabaseClient get _client => SupabaseBackend.client;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _item = widget.sharedItemId; _load(); }
 
   Future<void> _load() async {
     if (!SupabaseBackend.isInitialized || _client.auth.currentUser == null) {
@@ -53,6 +55,16 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       for (final p in _workspace!['proposals'] as List)
         if (p is Map) Map<String, dynamic>.from(p),
   ];
+
+  Widget _contractReview() => OutlinedButton.icon(
+    icon: const Icon(Icons.fact_check_outlined),
+    label: const Text('契約候補を確認'),
+    onPressed: _company == null || _item == null ? null : () => Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => SiteContractReviewPage(
+        sharedItemId: _item!, companyId: _company!,
+      )),
+    ),
+  );
 
   Future<void> _confirm(Map<String, dynamic> proposal) async {
     setState(() => _busy = true);
@@ -199,12 +211,13 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。照合には各社が共有した最新提案を使い、未共有の元登録額は推測しません。内訳・追加項目・福利厚生費・税条件・最終額の不一致を表示します。相手の内容は上書きせず、新しい提案で調整してください。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
+    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。「契約候補を確認」では、保存済みの押印記録をもとに現在の合意・変更候補・適用開始待ちを分けて確認できます。契約確認画面を見るだけでは送信・押印・承認しません。従来の「この内訳を確認」は双方押印の契約承認とは区別します。金額提案は履歴に保存し、双方が最新版を確認します。照合には各社が共有した最新提案を使い、未共有の元登録額は推測しません。内訳・追加項目・福利厚生費・税条件・最終額の不一致を表示します。相手の内容は上書きせず、新しい提案で調整してください。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
     body:_busy?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
       if(_error!=null) Text(_error!),
       if(_targets.isEmpty) const Text('利用可能な共有現場はありません。双方の会社で機能が有効な承認済み現場が対象です。'),
       for(final target in _targets) ListTile(title:Text('${target['site_name']}／${target['counterparty_name']}'),onTap:(){_item=target['shared_item_id'].toString();_load();}),
       if(_workspace!=null) ...[
+        _contractReview(),
         _comparison(),
         FilledButton(onPressed:_edit,child:const Text('新しい金額を提案')),
         for(var i=0;i<_proposals.length;i++) Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
