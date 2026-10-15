@@ -213,26 +213,25 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   Future<void> _repairAssumed(int index, String field) async {
     final row = _rows[index];
-    final controller = TextEditingController(text: '${row[field] ?? 1}');
+    var rawValue = '${row[field] ?? 1}';
     String? error;
     final value = await showDialog<double>(context: context, builder: (context) =>
       StatefulBuilder(builder: (context, update) => AlertDialog(
         title: Text(field == 'overtime_hours' ? '残業時間（仮）を確認' : '早出時間（仮）を確認'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('${(lineAssumedFields(row)[field] as Map?)?['reason'] ?? ''}'),
-          TextField(controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          TextFormField(initialValue: rawValue, onChanged: (value) => rawValue = value, keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(labelText: '時間', errorText: error)),
         ]),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('戻る')),
           FilledButton(onPressed: () {
-            final parsed = double.tryParse(controller.text);
+            final parsed = double.tryParse(rawValue);
             if (parsed == null || !parsed.isFinite || parsed < 0 || parsed > 24) {
               update(() => error = '0〜24時間で入力してください。'); return;
             }
             Navigator.pop(context, parsed);
           }, child: const Text('この数値を採用'))],
       )));
-    controller.dispose();
     if (value != null && mounted) {
       setState(() {
         _rows[index] = lineRepairAssumedQuantity(row, field, value);
