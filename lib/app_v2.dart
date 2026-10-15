@@ -1047,6 +1047,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     if (key == 'chat' || key == 'friends') {
+      if (key == 'friends') {
+        // A fresh ON response may have just replaced the disabled chat page.
+        // Mount that existing surface before delivering its one-time request.
+        final actor = _currentHomeActor;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || actor != _currentHomeActor || !_moduleEnabled('chat')) {
+          return;
+        }
+      }
       if (key == 'friends' && SupabaseBackend.isInitialized &&
           SupabaseBackend.client.auth.currentUser?.id != _tutorialUserId) return;
       setState(() {
