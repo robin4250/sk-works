@@ -1,0 +1,21 @@
+name: App referral RPC boundaries
+on:
+  pull_request:
+    paths: ['lib/features/referrals/**', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
+  push:
+    branches: [main]
+    paths: ['lib/features/referrals/**', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
+permissions:
+  contents: read
+jobs:
+  postgres-boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/referral-sql-test --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/test_app_referral_rpc.mjs
+        env:
+          PGLITE_PACKAGE: /tmp/referral-sql-test/node_modules/@electric-sql/pglite/dist/index.js
