@@ -2,7 +2,6 @@ import '../shared/trade_document_actor_boundary.dart';
 import '../shared/document_display_totals.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
-import '../shared/trade_document_attachment_editor_page.dart';
 import 'invoice_order_acceptance_pdf.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
@@ -74,7 +73,7 @@ class InvoicePdfService {
           : invoice.invoiceId.isEmpty || invoice.documentUpdatedAt == null ||
               attachmentRepository == null
           ? null
-          : await attachmentRepository.load(
+          : await attachmentRepository.loadForPdf(
               subjectKind: 'invoice', subjectId: invoice.invoiceId,
               sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
@@ -1167,27 +1166,6 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     return TradeDocumentActorBoundary(child: Scaffold(
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
-        actions: [
-          if (_singleInvoice?.invoiceId.isNotEmpty == true &&
-              _singleInvoice?.documentUpdatedAt != null)
-            TextButton(
-              onPressed: () async {
-                final invoice = _singleInvoice!;
-                final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-                  builder: (_) => TradeDocumentAttachmentEditorPage(
-                    subjectKind: 'invoice', subjectId: invoice.invoiceId,
-                    sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
-                ));
-                if (saved == true && mounted) {
-                  setState(() {
-                    _previewRevision++;
-                    _previewData = _buildPreviewData();
-                  });
-                }
-              },
-              child: const Text('注文請書'),
-            ),
-        ],
       ),
       body: FutureBuilder<_InvoicePreviewData>(
         future: _previewData,
