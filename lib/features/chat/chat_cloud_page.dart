@@ -172,12 +172,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   void didUpdateWidget(covariant ChatCloudPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.friendsRequest == oldWidget.friendsRequest ||
-        widget.friendsRequest == 0) return;
+        widget.friendsRequest == 0) {
+      return;
+    }
     final actor = _repository?.currentUserId;
     final epoch = _dispatchEpoch;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || actor == null || actor != _repository?.currentUserId ||
-          epoch != _dispatchEpoch) return;
+          epoch != _dispatchEpoch) {
+        return;
+      }
       unawaited(_openFriendsForChat());
     });
   }

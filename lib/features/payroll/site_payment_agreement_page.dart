@@ -3,11 +3,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'site_payment_agreement_document.dart';
 import 'site_payment_terms_comparison.dart';
+import 'site_contract_review_page.dart';
+import 'site_contract_action_coordinator.dart';
+import 'site_contract_action_review_page.dart';
+import 'site_contract_confirmation_mode.dart';
 import 'payment_certificates_page.dart';
 
 /// Only the deployed, enabled server workspace exposes editable agreements.
 class SitePaymentAgreementPage extends StatefulWidget {
-  const SitePaymentAgreementPage({super.key});
+  const SitePaymentAgreementPage({super.key, this.sharedItemId});
+  final String? sharedItemId;
   @override
   State<SitePaymentAgreementPage> createState() => _SitePaymentAgreementPageState();
 }
@@ -19,17 +24,18 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
   List<Map<String, dynamic>> _targets = [];
   bool _busy = true;
   String? _error;
+  var _confirmationMode = SiteContractConfirmationMode.unknown;
   SupabaseClient get _client => SupabaseBackend.client;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _item = widget.sharedItemId; _load(); }
 
   Future<void> _load() async {
     if (!SupabaseBackend.isInitialized || _client.auth.currentUser == null) {
       if (mounted) setState(() { _busy = false; _error = 'ログインが必要です。'; });
       return;
     }
-    setState(() { _busy = true; _error = null; });
+    setState(() { _busy = true; _error = null; _workspace = null; _confirmationMode = SiteContractConfirmationMode.unknown; });
     try {
       final memberships = await _client.from('company_members').select('company_id')
           .eq('user_id', _client.auth.currentUser!.id).limit(1);
@@ -40,6 +46,17 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       if (_item != null) {
         final rawWorkspace = await _client.rpc('site_payment_agreement_workspace', params: {'p_item': _item, 'p_company': _company});
         _workspace = Map<String, dynamic>.from(rawWorkspace as Map);
+        try {
+          final sealed = await _client.rpc('site_contract_workspace',
+            params: {'p_item': _item, 'p_company': _company});
+          _confirmationMode = siteContractConfirmationMode(sealed);
+        } on PostgrestException catch (error) {
+          // Only an explicitly absent sealed API permits the deployed legacy path.
+          _confirmationMode = const {'42883', 'PGRST202'}.contains(error.code)
+            ? SiteContractConfirmationMode.legacy : SiteContractConfirmationMode.unknown;
+        } catch (_) {
+          _confirmationMode = SiteContractConfirmationMode.unknown;
+        }
       }
     } on PostgrestException catch (e) {
       _error = e.code == '42883' || e.code == 'PGRST202' || e.code == '55000'
@@ -54,7 +71,20 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
         if (p is Map) Map<String, dynamic>.from(p),
   ];
 
+  Widget _contractReview() => OutlinedButton.icon(
+    icon: const Icon(Icons.fact_check_outlined),
+    label: const Text('契約候補を確認'),
+    onPressed: _company == null || _item == null ? null : () => Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => SiteContractReviewPage(
+        sharedItemId: _item!, companyId: _company!,
+      )),
+    ),
+  );
+
   Future<void> _confirm(Map<String, dynamic> proposal) async {
+    if (_confirmationMode != SiteContractConfirmationMode.legacy) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _client.rpc('confirm_site_payment_terms', params: {'p_proposal': proposal['id'], 'p_company': _company});
@@ -199,12 +229,13 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。金額提案は履歴に保存し、双方が最新版を確認します。照合には各社が共有した最新提案を使い、未共有の元登録額は推測しません。内訳・追加項目・福利厚生費・税条件・最終額の不一致を表示します。相手の内容は上書きせず、新しい提案で調整してください。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
+    appBar:AppBar(title:const Text('現場別の支払金額調整'),actions:[IconButton(onPressed:()=>showDialog<void>(context:context,builder:(c)=>AlertDialog(title:const Text('金額調整の使い方'),content:const Text('承認済みの親会社・下請け会社の共有現場が対象です。「契約候補を確認」では、保存済みの押印記録をもとに現在の合意・変更候補・適用開始待ちを分けて確認できます。契約確認画面を見るだけでは送信・押印・承認しません。従来の「この内訳を確認」は双方押印の契約承認とは区別します。押印方式へ移行した現場では「押印承認内容を確認」へ切り替えます。承認方式を確認できない時は操作を停止し、再読み込みしてください。金額提案は履歴に保存し、双方が最新版を確認します。照合には各社が共有した最新提案を使い、未共有の元登録額は推測しません。内訳・追加項目・福利厚生費・税条件・最終額の不一致を表示します。相手の内容は上書きせず、新しい提案で調整してください。平米・請負では残業などを計算しません。追加項目は必要な数だけ増やし、名称・金額・加算／控除を登録できます。消費税は課税対象・税率・端数処理から計算し、手動変更するときは理由を添えて双方で確認します。会社固有の率や条件は自動設定しません。合意済みの最新版のみ同じPDFをプレビュー・印刷・共有できます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('閉じる'))])),icon:const Icon(Icons.help_outline))]),
     body:_busy?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
       if(_error!=null) Text(_error!),
       if(_targets.isEmpty) const Text('利用可能な共有現場はありません。双方の会社で機能が有効な承認済み現場が対象です。'),
       for(final target in _targets) ListTile(title:Text('${target['site_name']}／${target['counterparty_name']}'),onTap:(){_item=target['shared_item_id'].toString();_load();}),
       if(_workspace!=null) ...[
+        _contractReview(),
         _comparison(),
         FilledButton(onPressed:_edit,child:const Text('新しい金額を提案')),
         for(var i=0;i<_proposals.length;i++) Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -215,7 +246,14 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
           Text('税込 ${(_proposals[i]['terms'] as Map)['tax_included']}／消費税 ${(_proposals[i]['terms'] as Map)['tax_amount_yen']}円／税率 ${(_proposals[i]['terms'] as Map)['tax_rate']}%／課税対象 ${(_proposals[i]['terms'] as Map)['taxable_amount_yen']}円／端数 ${(_proposals[i]['terms'] as Map)['rounding_rule']}'),
           if(((_proposals[i]['terms'] as Map)['tax_override_reason']?.toString().trim() ?? '').isNotEmpty) Text('消費税額の手動変更理由：${(_proposals[i]['terms'] as Map)['tax_override_reason']}'),
           for(final extra in (_proposals[i]['terms'] as Map)['adjustments'] as List) Text('${(extra as Map)['name']}：${extra['direction']=='deduction'?'控除':'加算'} ${extra['amount_yen']}円'),
-          if(i==0) OutlinedButton(onPressed:()=>_confirm(_proposals[i]),child:const Text('この内訳を確認')),
+          if(i==0 && _confirmationMode == SiteContractConfirmationMode.legacy)
+            OutlinedButton(onPressed:()=>_confirm(_proposals[i]),child:const Text('この内訳を確認')),
+          if(i==0 && _confirmationMode == SiteContractConfirmationMode.sealed)
+            OutlinedButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(
+              builder:(_)=>SiteContractActionReviewPage(action:SiteContractAction.approve,
+                sharedItemId:_item!,companyId:_company!))),child:const Text('押印承認内容を確認')),
+          if(i==0 && _confirmationMode == SiteContractConfirmationMode.unknown)
+            const Text('承認方式を確認できません。再読み込みしてから確認してください。'),
           if(i==0 && (_proposals[i]['confirmations'] as List).length==2) OutlinedButton(onPressed:()=>_preview(_proposals[i]),child:const Text('合意額の支払証明書')),
         ]))),
       ],

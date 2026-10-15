@@ -1057,7 +1057,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
       }
       if (key == 'friends' && SupabaseBackend.isInitialized &&
-          SupabaseBackend.client.auth.currentUser?.id != _tutorialUserId) return;
+          SupabaseBackend.client.auth.currentUser?.id != _tutorialUserId) {
+        return;
+      }
       setState(() {
         _selectedIndex = 3;
         if (key == 'friends') _friendsRequest++;
