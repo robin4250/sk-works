@@ -33,5 +33,6 @@ void main() {
     await SkoOrientationPolicy.enterSignature();
     await SkoOrientationPolicy.leaveSignature();
     expect(orientations, isEmpty, reason: 'iPad keeps its existing orientation policy');
+    debugDefaultTargetPlatformOverride = null;
   });
 }
