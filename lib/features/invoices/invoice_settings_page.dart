@@ -1,4 +1,3 @@
-import '../shared/trade_document_template_settings_page.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -267,7 +266,6 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const TradeDocumentTemplateSettingsButton(subjectKind: 'invoice'),
                       const SizedBox(height: 12),
                       Card(
                         child: ListTile(

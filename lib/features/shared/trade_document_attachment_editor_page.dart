@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
+import 'trade_document_date_defaults.dart';
+import '../invoices/invoice_settings_repository.dart';
 
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
@@ -50,6 +52,27 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _payload.putIfAbsent('payment_conditions',()=> '工事完了確認後、乙の指定口座に振り込む。');
         _payload.putIfAbsent('notes',()=> '');
       }
+      if (_version == 0) {
+        _payload.addAll(tradeDocumentDateDefaults(_payload['month'].toString()));
+        if (_order) {
+          final settingsRepository = InvoiceSettingsRepository.maybeCreate();
+          if (settingsRepository == null) throw StateError('請求書の件名を取得できません。');
+          final invoiceSettings = await settingsRepository.loadForDocument();
+          if (!mounted || !_sameActor || _revoked) return;
+          _payload['work_name'] = invoiceSettings.invoiceSubject;
+          if (_payload['payment_conditions'] == null ||
+              _payload['payment_conditions'].toString().trim().isEmpty ||
+              _payload['payment_conditions'] == '工事完了確認後、乙の指定口座に振り込む。') {
+            _payload['payment_conditions'] = tradeDocumentDefaultPaymentConditions(_payload['month'].toString());
+          }
+          if ((_payload['notes']?.toString().trim() ?? '').isEmpty) {
+            _payload['notes'] = '・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';
+          }
+        } else {
+          _payload['issue_date'] = DateTime.now().toUtc().add(const Duration(hours: 9))
+              .toIso8601String().substring(0, 10);
+        }
+      }
       for(final key in ['issue_date','order_date','work_name','work_address','period_start','period_end','payment_conditions','notes','tax_amount_yen','total_amount_yen','intro_text','acceptance_text']){
         _fields[key]=TextEditingController(text:_payload[key]?.toString()??'');
       }
@@ -79,7 +102,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       for(final party in ['issuer','counterparty']){
         value[party]={for(final key in ['name','address','corporate_number','representative_name'])key:_fields['$party.$key']!.text.trim()};
       }
-      if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',value['order_date'].toString());}
+      if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',tradeDocumentJapaneseDate(value['order_date'].toString()));}
       await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
         sourceRevision:widget.sourceRevision,expectedVersion:_version,payload:value);
       if(!mounted||!_sameActor||_revoked)return;
@@ -94,7 +117,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       Text('対象月：${_payload['month']}  ／ ${_version==0?'未添付':'保存済み 第$_version版'}',style:Theme.of(context).textTheme.titleMedium),
       const SizedBox(height:8),
       if(_workspace?['source_changed']==true)const Text('元の帳票が更新されています。旧版の別添は保持しています。新しい当月の内容を確認して保存し直してください。'),
-      const Text('この月の短期工事契約の別添です。保存して添付すると通常のPDFの2ページ目に入ります。元の帳票の承認・再発行は行いません。'),
+      const Text('この月の短期工事契約の別添です。初期値は工期が対象月の1日〜末日、契約日は前月15日です。日付は変更できます。保存して添付すると通常のPDFの2ページ目に入ります。元の帳票の承認・再発行は行いません。'),
       if(_workspace?['source_blocked']==true)const Text('元帳票の計算条件が未確定です。先に元帳票を確認してください。'),
       if(!_canEdit)const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('閲覧のみ（確定済みの別添は変更できません）')),
       const SizedBox(height:16),
@@ -102,7 +125,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if(!_order)_input('order_date','受領注文書日（YYYY-MM-DD）',max:10),
       if(_order)...[
         _input('intro_text','冒頭文',max:400,lines:3),
-        _input('work_name','工事名'),_input('work_address','工事場所'),
+        _input('work_name','件名'),_input('work_address','工事場所'),
         _input('period_start','工期開始（YYYY-MM-DD）',max:10),_input('period_end','工期終了（YYYY-MM-DD）',max:10),
         _input('total_amount_yen','当月の請負代金（税込・円）',max:10,readOnly:true),
         _input('tax_amount_yen','うち消費税等（円・要確認）',max:10),
