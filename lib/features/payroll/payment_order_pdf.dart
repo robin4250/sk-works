@@ -33,7 +33,7 @@ class PaymentOrderPdf {
     pw.Center(child:pw.Text('注文書',style:pw.TextStyle(font:boldFont,fontSize:compact?18:22,letterSpacing:5))),
     pw.SizedBox(height:compact?6:8),pw.Center(child:text('${p['month']} 月分')),pw.SizedBox(height:compact?8:14),
     text(p['intro_text']?.toString()??''),pw.SizedBox(height:compact?8:14),
-    field('1. 工事名',p['work_name']),field('2. 工事場所',p['work_address']),
+    field('1. 件名',p['work_name']),field('2. 工事場所',p['work_address']),
     field('3. 工期','${tradeDocumentJapaneseDate(p['period_start'].toString())}〜${tradeDocumentJapaneseDate(p['period_end'].toString())}'),
     field('4. 請負代金','金 ${_money(p['total_amount_yen'])}円（うち消費税等 金${_money(p['tax_amount_yen'])}円）'),
     field('5. 支払条件',p['payment_conditions']),field('6. その他特記事項',p['notes']),
