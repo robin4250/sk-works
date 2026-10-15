@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
 import 'trade_document_date_defaults.dart';
+import '../invoices/invoice_settings_repository.dart';
 
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
@@ -54,6 +55,11 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if (_version == 0) {
         _payload.addAll(tradeDocumentDateDefaults(_payload['month'].toString()));
         if (_order) {
+          final settingsRepository = InvoiceSettingsRepository.maybeCreate();
+          if (settingsRepository == null) throw StateError('請求書の件名を取得できません。');
+          final invoiceSettings = await settingsRepository.loadForDocument();
+          if (!mounted || !_sameActor || _revoked) return;
+          _payload['work_name'] = invoiceSettings.invoiceSubject;
           if (_payload['payment_conditions'] == null ||
               _payload['payment_conditions'].toString().trim().isEmpty ||
               _payload['payment_conditions'] == '工事完了確認後、乙の指定口座に振り込む。') {
