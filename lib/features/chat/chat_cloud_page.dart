@@ -16,6 +16,8 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_group_delete_confirmation.dart';
 import 'chat_friends_page.dart';
+import 'chat_direct_search_page.dart';
+import 'chat_actor_guard.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
 import 'line_linked_talk_page.dart';
@@ -129,6 +131,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   StreamSubscription<String?>? _actorSubscription;
   String? _watchedActor;
   int _dispatchEpoch = 0;
+  final _searchActorEpoch = ValueNotifier<int>(0);
 
   bool get _readVisible =>
       mounted &&
@@ -212,6 +215,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     _actorSubscription?.cancel();
     _summarySubscription?.cancel();
     _subscription?.cancel();
+    _searchActorEpoch.dispose();
     _composer.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -220,6 +224,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   void _actorChanged(String? actor) {
     if (!mounted || actor == _watchedActor) return;
     _watchedActor = actor;
+    _searchActorEpoch.value++;
     _dispatchEpoch++;
     _subscription?.cancel();
     _summarySubscription?.cancel();
@@ -1252,6 +1257,64 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     await _startDirect(friend);
   }
 
+  Future<void> _searchDirectConversation() async {
+    final group = _selectedGroup;
+    if (group?['group_type'] != 'direct') {
+      return;
+    }
+    final groupId = _selectedGroupId;
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
+    final sessionEpoch = _searchActorEpoch.value;
+    final id = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ChatActorGuard(
+          epoch: _searchActorEpoch,
+          initialEpoch: sessionEpoch,
+          child: ChatDirectSearchPage(
+            messages: List<Map<String, dynamic>>.from(_messages),
+            peerName: group?['name']?.toString() ?? '友達',
+          ),
+        ),
+      ),
+    );
+    bool valid() => mounted && groupId == _selectedGroupId &&
+        actor == _repository?.currentUserId && epoch == _dispatchEpoch;
+    if (!valid() || id == null || !_scrollController.hasClients) {
+      return;
+    }
+    setState(() => _chatChromeVisible = true);
+    _scrollController.jumpTo(0);
+    for (var step = 0; step <= _messages.length && valid(); step++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!valid()) {
+        return;
+      }
+      final target = _messageKeys[id]?.currentContext;
+      if (target != null) {
+        await Scrollable.ensureVisible(
+          target, alignment: 0.5, duration: const Duration(milliseconds: 200),
+        );
+        return;
+      }
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      final position = _scrollController.position;
+      final next = (position.pixels + position.viewportDimension * 0.8)
+          .clamp(0.0, position.maxScrollExtent);
+      if (next <= position.pixels) {
+        break;
+      }
+      _scrollController.jumpTo(next);
+    }
+    if (valid()) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('該当メッセージは削除または更新されました。再検索してください。'),
+      ));
+    }
+  }
+
   Future<void> _createCustomGroup() async {
     await _editGroupPhoto(create: true);
   }
@@ -2162,6 +2225,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             ),
                           ),
                     actions: [
+                      if (selected?['group_type'] == 'direct')
+                        IconButton(tooltip: '読み込み済みトーク内検索', onPressed: _searchDirectConversation, icon: const Icon(Icons.search)),
                       IconButton(
                           tooltip: SkoLanguageController.tr('再読み込み'),
                           onPressed: _loading ? null : _loadGroupsOnly,

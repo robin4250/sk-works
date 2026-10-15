@@ -1108,10 +1108,99 @@ class ChatCloudRepository {
   }
 
   Future<Map<String, dynamic>> loadFriendWorkspace() async {
-    final raw = await _client.rpc('sko_friend_workspace');
-    return raw is Map
+    final actor = currentUserId;
+    var invalidated = actor == null;
+    final subscription = watchActorChanges().listen((next) {
+      if (next != actor) invalidated = true;
+    });
+    bool valid() => !invalidated && actor == currentUserId;
+    Map<String, dynamic> asWorkspace(dynamic raw) => raw is Map
         ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+        : <String, dynamic>{};
+    try {
+      var workspace = asWorkspace(await _client.rpc('sko_friend_workspace'));
+      if (!valid()) {
+        return <String, dynamic>{};
+      }
+      try {
+        final profiles = await _client.rpc('sko_friend_public_profiles');
+        if (!valid()) {
+          return <String, dynamic>{};
+        }
+        final byUser = <String, Map<String, dynamic>>{
+          if (profiles is List)
+            for (final row in profiles.whereType<Map>())
+              row['user_id'].toString(): Map<String, dynamic>.from(row),
+        };
+        final enriched = <String, Map<String, dynamic>>{};
+        for (final entry in byUser.entries) {
+          if (!valid()) {
+            return <String, dynamic>{};
+          }
+          final profile = entry.value;
+          // Never spread unknown fields from this additive API into the UI.
+          final result = <String, dynamic>{
+            'public_profile_loaded': true,
+            'display_name': profile['display_name'],
+            'company_name': profile['company_name'],
+          };
+          final path = profile['avatar_storage_path']?.toString();
+          if (path != null && path.startsWith('${entry.key}/')) {
+            try {
+              result['avatar_url'] = await _client.storage
+                  .from('profile-photos').createSignedUrl(path, 60);
+            } catch (_) {
+              // No employee/private-profile fallback when photo access changes.
+            }
+          }
+          enriched[entry.key] = result;
+        }
+        if (!valid()) {
+          return <String, dynamic>{};
+        }
+        // Reconcile after signing: a removed friend must not return from a slow
+        // earlier request. Recheck public access restrictions at the same point.
+        workspace = asWorkspace(await _client.rpc('sko_friend_workspace'));
+        final currentProfiles = await _client.rpc('sko_friend_public_profiles');
+        if (!valid()) {
+          return <String, dynamic>{};
+        }
+        final allowed = <String, Map<String, dynamic>>{
+          if (currentProfiles is List)
+            for (final row in currentProfiles.whereType<Map>())
+              row['user_id'].toString(): Map<String, dynamic>.from(row),
+        };
+        final freshPublic = <String, Map<String, dynamic>>{};
+        for (final entry in allowed.entries) {
+          final profile = entry.value;
+          freshPublic[entry.key] = {
+            'public_profile_loaded': true,
+            'display_name': profile['display_name'],
+            'company_name': profile['company_name'],
+            if (profile['avatar_storage_path'] ==
+                byUser[entry.key]?['avatar_storage_path'])
+              'avatar_url': enriched[entry.key]?['avatar_url'],
+          };
+        }
+        final friends = workspace['friends'];
+        if (friends is List) {
+          workspace['friends'] = [
+            for (final row in friends.whereType<Map>())
+              <String, dynamic>{
+                ...Map<String, dynamic>.from(row),
+                'public_profile_loaded': false,
+                ...?(freshPublic[row['user_id']?.toString()]),
+              },
+          ];
+        }
+      } catch (_) {
+        // API unavailable/restricted: retain only the base authorized workspace.
+        // Never fetch private employee data as a fallback.
+      }
+      return valid() ? workspace : <String, dynamic>{};
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   Future<Map<String, dynamic>?> searchFriendBySkoId(String skoId) async {

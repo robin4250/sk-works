@@ -5,6 +5,9 @@ on:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
       - 'test/chat_direct_swipe_test.dart'
+      - 'test/chat_actor_guard_test.dart'
+      - 'test/chat_direct_search_page_test.dart'
+      - 'test/chat_friend_public_repository_test.dart'
       - 'lib/features/chat/chat_group_delete_confirmation.dart'
       - 'test/chat_line_surface_flow_test.dart'
       - 'test/line_shared_chat_list_test.dart'
@@ -17,6 +20,9 @@ on:
       - 'lib/features/chat/**'
       - 'test/chat_latest_preview_flow_test.dart'
       - 'test/chat_direct_swipe_test.dart'
+      - 'test/chat_actor_guard_test.dart'
+      - 'test/chat_direct_search_page_test.dart'
+      - 'test/chat_friend_public_repository_test.dart'
       - 'lib/features/chat/chat_group_delete_confirmation.dart'
       - 'test/chat_line_surface_flow_test.dart'
       - 'test/line_shared_chat_list_test.dart'
@@ -41,5 +47,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter analyze lib/features/chat/chat_friend_order.dart lib/features/chat/chat_friend_profile_page.dart lib/features/chat/chat_friends_page.dart test/chat_friend_order_test.dart test/chat_friend_profile_page_test.dart test/chat_friends_list_flow_test.dart
-      - run: flutter test test/chat_direct_swipe_test.dart test/chat_friend_order_test.dart test/chat_friend_profile_page_test.dart test/chat_friends_list_flow_test.dart test/chat_friends_language_test.dart test/chat_latest_preview_flow_test.dart test/chat_line_surface_flow_test.dart test/line_shared_chat_list_test.dart test/line_talk_hub_page_test.dart test/line_shared_groups_page_test.dart --reporter expanded
+      - run: flutter analyze lib/features/chat/chat_actor_guard.dart lib/features/chat/chat_direct_search_page.dart test/chat_actor_guard_test.dart test/chat_direct_search_page_test.dart test/chat_friend_public_repository_test.dart lib/features/chat/chat_friend_order.dart lib/features/chat/chat_friend_profile_page.dart lib/features/chat/chat_friends_page.dart test/chat_friend_order_test.dart test/chat_friend_profile_page_test.dart test/chat_friends_list_flow_test.dart
+      - run: flutter test test/chat_actor_guard_test.dart test/chat_direct_search_page_test.dart test/chat_friend_public_repository_test.dart test/chat_direct_swipe_test.dart test/chat_friend_order_test.dart test/chat_friend_profile_page_test.dart test/chat_friends_list_flow_test.dart test/chat_friends_language_test.dart test/chat_latest_preview_flow_test.dart test/chat_line_surface_flow_test.dart test/line_shared_chat_list_test.dart test/line_talk_hub_page_test.dart test/line_shared_groups_page_test.dart --reporter expanded

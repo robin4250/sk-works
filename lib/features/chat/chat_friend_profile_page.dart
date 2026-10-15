@@ -16,10 +16,7 @@ class ChatFriendProfilePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const CircleAvatar(
-            radius: 36,
-            child: Icon(Icons.person_outline, size: 40),
-          ),
+          Center(child: ChatFriendAvatar(friend: friend, radius: 36)),
           const SizedBox(height: 20),
           Text(
             name == null || name.isEmpty ? 'SKOユーザー' : name,
@@ -31,8 +28,12 @@ class ChatFriendProfilePage extends StatelessWidget {
             title: const Text('SKO ID'),
             subtitle: SelectableText(skoId),
           ),
-          const ListTile(title: Text('所属会社'), subtitle: Text('未確認')),
-          const Text('写真・所属会社の公開情報は現在取得できません。'),
+          ListTile(
+            title: const Text('所属会社'),
+            subtitle: Text(friendCompanyLabel(friend)),
+          ),
+          if (friend['public_profile_loaded'] != true)
+            const Text('写真・所属会社の公開情報は現在取得できません。'),
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -47,6 +48,38 @@ class ChatFriendProfilePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+String friendCompanyLabel(Map<String, dynamic> friend) {
+  if (friend['public_profile_loaded'] != true) return '未確認';
+  final company = friend['company_name']?.toString().trim() ?? '';
+  return company.isEmpty ? '登録なし' : company;
+}
+
+class ChatFriendAvatar extends StatelessWidget {
+  const ChatFriendAvatar({super.key, required this.friend, this.radius = 20});
+  final Map<String, dynamic> friend;
+  final double radius;
+  @override
+  Widget build(BuildContext context) {
+    final url = friend['public_profile_loaded'] == true
+        ? friend['avatar_url']?.toString() ?? ''
+        : '';
+    return CircleAvatar(
+      radius: radius,
+      child: url.isEmpty
+          ? const Icon(Icons.person_outline)
+          : ClipOval(
+              child: Image.network(
+                url,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.person_outline),
+              ),
+            ),
     );
   }
 }
