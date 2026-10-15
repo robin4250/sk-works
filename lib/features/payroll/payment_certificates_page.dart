@@ -1,5 +1,4 @@
 import '../shared/trade_document_actor_boundary.dart';
-import '../shared/trade_document_attachment_editor_page.dart';
 import '../shared/trade_document_template_settings_page.dart';
 import '../shared/related_action_footer.dart';
 import 'site_payment_certificates_repository.dart';
@@ -302,12 +301,6 @@ class _PaymentCertificatePreviewPageState
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
-            TextButton(onPressed:()async{
-              final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
-                subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
-              if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
-            },child:const Text('注文書')),
           const SkoNotificationBell()],
       ),
       body: Column(children: [
