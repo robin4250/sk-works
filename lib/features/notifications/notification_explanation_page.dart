@@ -23,6 +23,7 @@ class NotificationExplanationPage extends StatefulWidget {
 
 String notificationExplanationSteps(String? actionKey) {
   final steps = switch (actionKey) {
+    'company_profile_review' => '1. 連携会社の旧情報と更新候補を確認します。\n2.「開く」で対象の会社情報更新確認へ進みます。\n3. 更新または見送りを選びます。確認前に登録内容は変わらず、旧情報・契約単価・過去帳票は保持します。',
     'company_link_request' => '1. 申請元の会社と連携の種類、開始月を確認します。\n2.「開く」で連携申請の詳細へ進みます。\n3. 内容を確認し、承認または却下を選びます。承認前に会社連携は成立しません。',
     'site_payment_agreement' => '1. 対象の現場と契約の状態を確認します。\n2.「開く」で単価・手当・適用開始日と帳票を確認します。\n3. 送信側は押印して送信し、受信側は内容を確認して押印承認します。変更案の承認までは現行契約を維持します。',
     'site_share_approval' => '1. 共有元の会社と現場を確認します。\n2.「開く」で共有現場の詳細へ進みます。\n3. 内容を確認し、現場の受入れを判断します。現場の受入れと契約単価への合意は別の操作です。',

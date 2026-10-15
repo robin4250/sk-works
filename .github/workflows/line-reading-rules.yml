@@ -4,6 +4,8 @@ on:
     paths:
       - 'lib/features/chat/line_reading_rules*'
       - 'test/line_reading_rules_test.dart'
+      - 'test/line_reading_reapply_test.dart'
+      - 'lib/features/chat/line_reading_reapply_page.dart'
       - 'supabase/migrations/*line_reading_rules.sql'
       - 'tool/verify_line_reading_rules.mjs'
       - '.github/workflows/line-reading-rules.yml'
@@ -17,7 +19,7 @@ jobs:
           flutter-version: '3.47.5'
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/chat/line_reading_rules.dart lib/features/chat/line_reading_rules_page.dart lib/features/chat/line_reading_rules_repository.dart
-      - run: flutter test test/line_reading_rules_test.dart
+      - run: flutter analyze lib/features/chat/line_reading_rules.dart lib/features/chat/line_reading_rules_page.dart lib/features/chat/line_reading_rules_repository.dart lib/features/chat/line_reading_reapply_page.dart
+      - run: flutter test test/line_reading_rules_test.dart test/line_reading_reapply_test.dart
       - run: npm ci --prefix tool/line_release_fixture_dependencies
       - run: node tool/verify_line_reading_rules.mjs

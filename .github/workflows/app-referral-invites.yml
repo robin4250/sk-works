@@ -1,13 +1,27 @@
 name: App referral RPC boundaries
 on:
   pull_request:
-    paths: ['lib/features/referrals/**', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
+    paths: ['lib/features/referrals/**', 'test/app_referral_*', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
   push:
     branches: [main]
-    paths: ['lib/features/referrals/**', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
+    paths: ['lib/features/referrals/**', 'test/app_referral_*', 'supabase/migrations/*app_referral_invites.sql', 'tool/test_app_referral_rpc.mjs', '.github/workflows/app-referral-invites.yml']
 permissions:
   contents: read
 jobs:
+  referral-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/referrals test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart
+      - run: flutter test test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart --reporter expanded
   postgres-boundaries:
     runs-on: ubuntu-latest
     steps:

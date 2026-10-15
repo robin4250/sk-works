@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/chat_cloud_repository.dart';
@@ -14,6 +15,10 @@ const person = <String, dynamic>{
 };
 
 class FriendsRepository implements ChatCloudRepository {
+  @override
+  String get currentUserId => 'actor';
+  @override
+  Stream<String?> watchActorChanges() => const Stream.empty();
   Map<String, dynamic> workspace = {
     'my_sko_id': 'SKO-0123456789',
     'friends': <Map<String, dynamic>>[],
@@ -93,6 +98,7 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     final original = SkoLanguageController.pack.value;
     addTearDown(() => SkoLanguageController.pack.value = original);
   });
@@ -203,8 +209,12 @@ void main() {
         find.text(group ? 'Invite friends' : 'Friends list'),
         findsOneWidget,
       );
-      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
       await tapVisible(tester, find.text(person['display_name']));
+      if (!group) {
+        expect(selected, isNull);
+        await tapVisible(tester, find.text('チャットを始める'));
+      }
       expect(selected, person);
       expect(repo.sent, isEmpty);
       expect(repo.removed, isEmpty);

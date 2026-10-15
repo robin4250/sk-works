@@ -17,8 +17,8 @@ class _Client extends Fake implements SupabaseClient {
   GoTrueClient get auth => _Auth();
 }
 class _Repository extends LineImportRepository {
-  _Repository({this.editable = true}) : super(_Client());
-  final bool editable;
+  _Repository({this.editable = true, this.assumed = false}) : super(_Client());
+  final bool editable, assumed;
   final months = <DateTime>[];
   final saves = <Map<String, dynamic>>[];
   bool failSave = false;
@@ -31,7 +31,12 @@ class _Repository extends LineImportRepository {
       'worker_id': 'w', 'worker_name': '山田', 'site_id': 's', 'site_name': '現場A',
       'man_days': 1, 'overtime_hours': 0, 'early_hours': 0,
       'work_category': 'day', 'allowance_names': <String>[],
-      'confirmed': true, 'excluded': false,
+      'confirmed': !assumed, 'excluded': false,
+      if (assumed) ...{
+        'overtime_hours': 1, 'early_hours': 1,
+        'assumed_fields': {'overtime_hours': {'value': 1, 'reason': '残業の時間未記載'},
+          'early_hours': {'value': 1, 'reason': '早出の時間未記載'}},
+      },
     }],
     'note_comparison': '', 'confirmed': false,
   };
@@ -74,6 +79,25 @@ Future<void> _reveal(WidgetTester tester, Finder finder, {double delta = 250}) a
 }
 
 void main() {
+  testWidgets('one assumed quantity can be repaired without clearing another or confirming row', (tester) async {
+    final repository = _Repository(assumed: true);
+    await _mount(tester, repository);
+    await _reveal(tester, find.byType(DataTable));
+    final table = tester.widget<DataTable>(find.byType(DataTable));
+    final overtimeCell = table.rows.single.cells[5];
+    expect((overtimeCell.child as Text).data, '1（仮）');
+    overtimeCell.onTap!();
+    await tester.pumpAndSettle();
+    expect(find.text('残業時間（仮）を確認'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '1'), '3');
+    await tester.tap(find.text('この数値を採用'));
+    await tester.pumpAndSettle();
+    final repaired = tester.widget<DataTable>(find.byType(DataTable));
+    expect((repaired.rows.single.cells[5].child as Text).data, '3.0');
+    expect((repaired.rows.single.cells[6].child as Text).data, '1（仮）');
+    await _reveal(tester, find.text('確認済みの候補はありません。'), delta: -250);
+    expect(find.text('確認済みの候補はありません。'), findsOneWidget);
+  });
   testWidgets('swipe switches months and reimport opens the same group', (tester) async {
     final repository = _Repository();
     await _mount(tester, repository);

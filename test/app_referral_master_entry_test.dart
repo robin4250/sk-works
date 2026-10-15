@@ -7,7 +7,8 @@ import 'package:sk_works/features/referrals/app_referral_repository.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 
 class FakeReferralRepository extends AppReferralRepository {
-  FakeReferralRepository() : super(SupabaseClient('https://test.invalid', 'test'));
+  FakeReferralRepository() : super(SupabaseClient('https://test.invalid', 'test',
+    authOptions: const AuthClientOptions(autoRefreshToken: false)));
   bool denied = false;
   bool disableOnOpen = false;
   bool switchActorOnOpen = false;
