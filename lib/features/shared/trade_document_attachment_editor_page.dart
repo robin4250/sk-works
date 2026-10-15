@@ -54,6 +54,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if (_version == 0) {
         _payload.addAll(tradeDocumentDateDefaults(_payload['month'].toString()));
         if (_order) {
+          _payload['work_name'] = '鳶工・安全設備・足場組み立て解体作業';
           if (_payload['payment_conditions'] == null ||
               _payload['payment_conditions'].toString().trim().isEmpty ||
               _payload['payment_conditions'] == '工事完了確認後、乙の指定口座に振り込む。') {
@@ -119,7 +120,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if(!_order)_input('order_date','受領注文書日（YYYY-MM-DD）',max:10),
       if(_order)...[
         _input('intro_text','冒頭文',max:400,lines:3),
-        _input('work_name','工事名'),_input('work_address','工事場所'),
+        _input('work_name','件名'),_input('work_address','工事場所'),
         _input('period_start','工期開始（YYYY-MM-DD）',max:10),_input('period_end','工期終了（YYYY-MM-DD）',max:10),
         _input('total_amount_yen','当月の請負代金（税込・円）',max:10,readOnly:true),
         _input('tax_amount_yen','うち消費税等（円・要確認）',max:10),
