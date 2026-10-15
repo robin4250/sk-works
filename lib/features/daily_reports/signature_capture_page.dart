@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/sko_orientation_policy.dart';
 
 class SignatureResult {
   const SignatureResult({
@@ -93,11 +94,13 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   void initState() {
     super.initState();
     _signer.text = widget.initialSignerName;
+    SkoOrientationPolicy.enterSignature();
   }
 
   @override
   void dispose() {
     _signer.dispose();
+    SkoOrientationPolicy.leaveSignature();
     super.dispose();
   }
 

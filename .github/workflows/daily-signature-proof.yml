@@ -14,7 +14,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/daily_report_signature_aspect_test.dart test/daily_report_signature_pdf_proof_test.dart test/signature_capture_member_names_test.dart test/saved_route_report_reading_test.dart
+      - run: flutter test test/daily_report_signature_aspect_test.dart test/daily_report_signature_pdf_proof_test.dart test/sko_signature_orientation_test.dart test/signature_capture_member_names_test.dart test/saved_route_report_reading_test.dart
         env: {SKO_SIGNATURE_PROOF: build/daily-signature-proof}
       - run: python -m pip install PyMuPDF==1.26.6
       - run: |
