@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 import 'daily_report_repository.dart';
 import 'daily_report_pdf_evidence.dart';
 import 'daily_report_photo_pages.dart';
+import 'signature_capture_page.dart';
 
 class DailyReportPdfService {
   const DailyReportPdfService._();
@@ -412,7 +413,7 @@ class DailyReportPdfService {
             ),
           pw.SizedBox(height: 2),
           if (svg != null)
-            pw.Expanded(child: pw.SvgImage(svg: svg))
+            pw.Expanded(child: pw.SvgImage(svg: svg, fit: pw.BoxFit.contain))
           else
             pw.Spacer(),
         ],
@@ -450,8 +451,9 @@ class DailyReportPdfService {
     // Saved signatures use {strokes: [...]}; older records contain the list.
     final strokes = value is Map ? value['strokes'] : value;
     if (strokes is! List) return null;
-    const width = 400.0;
-    const height = 120.0;
+    final captureSize = SignatureResult.sizeFromJson(value);
+    final width = captureSize?.width ?? 400.0;
+    final height = captureSize?.height ?? 120.0;
     final elements = <String>[];
 
     for (final rawStroke in strokes) {
@@ -484,8 +486,10 @@ class DailyReportPdfService {
     }
 
     if (elements.isEmpty) return null;
+    final svgWidth = width == width.truncateToDouble() ? '${width.toInt()}' : '$width';
+    final svgHeight = height == height.truncateToDouble() ? '${height.toInt()}' : '$height';
     return '<svg xmlns="http://www.w3.org/2000/svg" '
-        'viewBox="0 0 ${width.toInt()} ${height.toInt()}">'
+        'viewBox="0 0 $svgWidth $svgHeight">'
         '${elements.join()}'
         '</svg>';
   }

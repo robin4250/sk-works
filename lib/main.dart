@@ -4,11 +4,13 @@ import 'app_v2.dart';
 import 'branding/sko_theme.dart';
 import 'data/supabase_backend.dart';
 import 'international/language_controller.dart';
+import 'widgets/sko_orientation_policy.dart';
 
 export 'app_v2.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SkoOrientationPolicy.initialize(WidgetsBinding.instance.platformDispatcher.implicitView);
   try {
     await SkoThemeController.load();
   } catch (_) {

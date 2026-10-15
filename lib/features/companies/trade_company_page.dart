@@ -1,3 +1,5 @@
+import 'trade_company_dialog.dart';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -224,7 +226,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   Future<void> _openCompany(TradeCompanyRecord item) async {
     final action = await showDialog<_CompanyAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => TradeCompanyDialog(
         title: Text(item.name),
         content: SizedBox(
           width: 500,
@@ -423,7 +425,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => TradeCompanyDialog(
         title: const Text('会社を削除しますか？'),
         content: Text(
           both
@@ -501,7 +503,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       final source = await showDialog<String>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => TradeCompanyDialog(
           title: Text(revise ? '計算元を確認・変更' : '計算設定が重複しています'),
           content: Text(
             '${conflict.siteName} の ${conflict.outputLabel} について、'
@@ -647,7 +649,7 @@ class _CompanyRegistrationDialogState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return TradeCompanyDialog(
       title: Text(
         widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集',
       ),
@@ -808,7 +810,7 @@ class _ContractDialogState extends State<_ContractDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return TradeCompanyDialog(
       title: Text(widget.item.name),
       content: SizedBox(
         width: 480,
