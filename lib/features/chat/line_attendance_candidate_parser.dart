@@ -26,8 +26,9 @@ class LineAttendanceCandidateParser {
   const LineAttendanceCandidateParser();
 
   List<LineAttendanceCandidate> parseMessages(
-    Iterable<LineHistoryMessage> messages,
-  ) {
+    Iterable<LineHistoryMessage> messages, {
+    Iterable<String> trailingLabels = const [],
+  }) {
     final candidates = <LineAttendanceCandidate>[];
 
     for (final message in messages) {
@@ -55,7 +56,7 @@ class LineAttendanceCandidateParser {
       var index = 1;
       while (index < lines.length) {
         final line = lines[index];
-        final attendanceLine = _withoutInlineHours(line);
+        final attendanceLine = _withoutInlineHours(line, trailingLabels);
         if (_looksLikeStatusLine(attendanceLine)) {
           index += 1;
           continue;
@@ -117,12 +118,13 @@ class LineAttendanceCandidateParser {
     }
   }
 
-  /// Read explicit trailing hours without treating status words as worker names.
+  /// Separate trailing hour labels without treating them as worker names.
   /// The original message remains intact for status extraction and provenance.
-  String _withoutInlineHours(String line) {
-    final match = RegExp(
-      r'^(.*?)[　\s]+(?:残業|早出)[　\s:：]*[0-9０-９]+(?:[.．][0-9０-９]+)?(?:時間|[hH])?(?:[　\s]+(?:残業|早出)[　\s:：]*[0-9０-９]+(?:[.．][0-9０-９]+)?(?:時間|[hH])?)*$',
-    ).firstMatch(line);
+  String _withoutInlineHours(String line, Iterable<String> trailingLabels) {
+    final labels = {'残業', '早出', ...trailingLabels.where((v) => v.isNotEmpty)}
+      .map(RegExp.escape).join('|');
+    final unit = '(?:$labels)[　\\s:：]*(?:[0-9０-９]+(?:[.．][0-9０-９]+)?(?:時間|[hH])?)?';
+    final match = RegExp('^(.*?)[　\\s]+$unit(?:[　\\s]+$unit)*\$').firstMatch(line);
     if (match == null) return line;
     final prefix = match.group(1)!.trim();
     // A site-only status such as "新宿 残業1" must not become a worker.

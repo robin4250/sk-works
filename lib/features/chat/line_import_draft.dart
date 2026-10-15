@@ -17,7 +17,8 @@ class LineImportDraft {
 
   /// Unchanged sources retain explicit corrections. Changed sources need review.
   static LineImportDraft extract(List<Map<String, dynamic>> sources, DateTime month,
-      {List<Map<String, dynamic>> previous = const []}) {
+      {List<Map<String, dynamic>> previous = const [],
+       Iterable<String> readingLabels = const []}) {
     final result = <Map<String, dynamic>>[];
     final unreadable = <String>[];
     final previousById = {for (final row in previous) row['row_id']: row};
@@ -73,7 +74,7 @@ class LineImportDraft {
       }
       final candidates = const LineAttendanceCandidateParser().parseMessages([
         LineHistoryMessage(timestamp: timestamp.toLocal(), sender: source['sender_display_name']?.toString() ?? 'LINE', body: body),
-      ]);
+      ], trailingLabels: readingLabels);
       final ownStatuses = const LineAttendanceStatusParser().parse(body);
       final completion = ownStatuses.isEmpty ? completionBySource[id] : null;
       final completionFingerprint = completion == null ? null : lineSourceFingerprint(completion);
@@ -155,7 +156,8 @@ class LineImportDraft {
 
   static List<Map<String, dynamic>> aggregate(List<Map<String, dynamic>> rows, {required bool bySite}) {
     final totals = <String, Map<String, dynamic>>{};
-    for (final row in rows.where((row) => row['confirmed'] == true && row['excluded'] != true)) {
+    for (final row in rows.where((row) => row['confirmed'] == true && row['excluded'] != true &&
+        (row['assumed_fields'] is! Map || (row['assumed_fields'] as Map).isEmpty))) {
       final key = row[bySite ? 'site_id' : 'worker_id']?.toString();
       if (key == null || key.isEmpty) continue;
       final total = totals.putIfAbsent(key, () => {'id': key, 'name': row[bySite ? 'site_name' : 'worker_name'],
