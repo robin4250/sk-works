@@ -51,7 +51,9 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: ChatFriendProfilePage(friend: {})),
     );
-    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    final button = tester.widget<FilledButton>(
+      find.byWidgetPredicate((widget) => widget is FilledButton),
+    );
     expect(button.onPressed, isNull);
   });
 }
