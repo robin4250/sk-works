@@ -205,7 +205,8 @@ class _LineHistoricalMonthlyImportPageState
         const Text('新規ファイル', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const Text('LINEのTXT・ZIPを選ぶと、専用の過去履歴分析先に保存します。LINEへの送信・グループ連携は行いません。'),
       ],
-      Text('${_months.first.year}年${_months.first.month}月〜${_months.last.year}年${_months.last.month}月'),
+      if (_history.isNotEmpty || widget.groupId != null)
+        Text('${_months.first.year}年${_months.first.month}月〜${_months.last.year}年${_months.last.month}月'),
       const SizedBox(height: 8),
       const Text('LINEの書き出しファイルを選ぶと、含まれる全期間を月別表の候補として自動保存します。正式請求書の確定・発行はしません。各月を開いて作業員・現場・数量を照合してから、単価設定と請求書へ進んでください。再取込は変わっていない投稿の修正を保持し、変わった投稿を要確認に戻します。'),
       const SizedBox(height: 12),
@@ -216,14 +217,14 @@ class _LineHistoricalMonthlyImportPageState
         child: const Text('マスター設定で請求書取込を有効にする')),
       OutlinedButton.icon(onPressed: _busy || !_enabled || _commands.isNotEmpty || _repository == null ? null : _pick,
         icon: const Icon(Icons.file_open_outlined),
-        label: Text(_fileName ?? 'TXT・ZIPをアップロードして月別表へ自動入力')),
-      OutlinedButton.icon(
+        label: Text(_fileName ?? (widget.groupId == null ? '新規ファイルを選ぶ（TXT・ZIP）' : 'TXT・ZIPをアップロードして月別表へ自動入力'))),
+      if (widget.groupId != null) OutlinedButton.icon(
         onPressed: _busy || _commands.isNotEmpty || _repository == null || _groupId == null || widget.groupId == null ? null : _receive,
         icon: const Icon(Icons.sync),
         label: const Text('連携LINEの受信データを更新'),
       ),
-      const Text('受信済みの投稿も同じ月別表に含めます。ファイルと一致する投稿はまとめ、曖昧な重複は要確認にします。'),
-      SwitchListTile(
+      if (widget.groupId != null) const Text('受信済みの投稿も同じ月別表に含めます。ファイルと一致する投稿はまとめ、曖昧な重複は要確認にします。'),
+      if (_history.isNotEmpty || widget.groupId != null) SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('対象月の過去履歴を入れ替える'),
         subtitle: const Text('通常は既存の履歴を残して不足分を追加します。入れ替えはファイルに投稿がある月だけ。受信トークは残します。'),
@@ -231,9 +232,10 @@ class _LineHistoricalMonthlyImportPageState
         onChanged: _busy || _commands.isNotEmpty ? null :
           (value) => setState(() => _replaceHistory = value),
       ),
-      FilledButton(onPressed: _busy || !_enabled || _history.isEmpty ? null : _save,
+      if (_history.isNotEmpty || widget.groupId != null) FilledButton(onPressed: _busy || !_enabled || _history.isEmpty ? null : _save,
         child: const Text('ファイル・受信データの対象月を保存・未確認分を再送')),
       const SizedBox(height: 12),
+      if (_history.isNotEmpty || widget.groupId != null)
       for (final month in _months) Card(child: ListTile(
         title: Text('${month.year}年${month.month}月'),
         subtitle: Text((_counts.containsKey(_key(month)) ?
