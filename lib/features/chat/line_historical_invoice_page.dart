@@ -16,24 +16,26 @@ import '../../international/language_controller.dart';
 
 class LineHistoricalInvoicePage extends StatelessWidget {
   const LineHistoricalInvoicePage({super.key, this.initialGroupId, this.initialMonth})
-      : editingRates = false;
-  const LineHistoricalInvoicePage.rates({super.key, this.initialGroupId, this.initialMonth})
+      : editingRates = false, initialSiteId = null;
+  const LineHistoricalInvoicePage.rates({super.key, this.initialGroupId, this.initialMonth, this.initialSiteId})
       : editingRates = true;
   final bool editingRates;
   final String? initialGroupId;
   final DateTime? initialMonth;
+  final String? initialSiteId;
   @override
-  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => editingRates ? _LineHistoricalInvoicePageContent.rates(initialGroupId: initialGroupId, initialMonth: initialMonth) : _LineHistoricalInvoicePageContent(initialGroupId: initialGroupId, initialMonth: initialMonth));
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => editingRates ? _LineHistoricalInvoicePageContent.rates(initialGroupId: initialGroupId, initialMonth: initialMonth, initialSiteId: initialSiteId) : _LineHistoricalInvoicePageContent(initialGroupId: initialGroupId, initialMonth: initialMonth));
 }
 
 class _LineHistoricalInvoicePageContent extends StatefulWidget {
   const _LineHistoricalInvoicePageContent({this.initialGroupId, this.initialMonth})
-      : editingRates = false;
-  const _LineHistoricalInvoicePageContent.rates({this.initialGroupId, this.initialMonth})
+      : editingRates = false, initialSiteId = null;
+  const _LineHistoricalInvoicePageContent.rates({this.initialGroupId, this.initialMonth, this.initialSiteId})
       : editingRates = true;
   final bool editingRates;
   final String? initialGroupId;
   final DateTime? initialMonth;
+  final String? initialSiteId;
   @override
   State<_LineHistoricalInvoicePageContent> createState() => _LineHistoricalInvoicePageState();
 }
@@ -49,6 +51,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
   String? _group, _error;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month - 1);
   bool _busy = true, _edited = false;
+  bool _openedInitialSite = false;
   @override
   void initState() {
     super.initState();
@@ -116,6 +119,11 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
       setState(() { _data = data; _summary = summary; _candidateRows = candidates; _pending = null; _edited = false; });
     } catch (_) { if (mounted) setState(() => _error = '確認済み過去月データを取得できませんでした。権限・接続・元データを確認してください。'); }
     finally { if (mounted) setState(() => _busy = false); }
+    final site = widget.initialSiteId;
+    if (mounted && !_openedInitialSite && site != null && _siteNames.containsKey(site)) {
+      _openedInitialSite = true;
+      await _openSiteRates(site);
+    }
   }
   String _key(LineHistoricalGroup g, String unit) => '${g.siteId}:${g.category}:$unit';
   TextEditingController _controller(LineHistoricalGroup g, String unit) => _rates.putIfAbsent(_key(g, unit), () => TextEditingController(text: unit == 'day' ? lineHistoricalDefaultDayRate(g.category).toString() : unit == 'overtime' || unit == 'early' ? const RateFormulaSettings().overtime(_rate(g, 'day') ?? 32800).toString() : unit == 'allowance:PC' || unit == 'allowance:PC手当' || unit == 'allowance:鉄骨' || unit == 'allowance:鉄骨手当' ? '3000' : ''));
