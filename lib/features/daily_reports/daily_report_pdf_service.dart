@@ -2,6 +2,7 @@
 
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:ui' show Offset, Size;
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -388,7 +389,7 @@ class DailyReportPdfService {
     String name,
     Object? signatureJson,
   ) {
-    final svg = signatureSvg(signatureJson);
+    final svg = signatureSvg(signatureJson, fitInk: true);
     return pw.Container(
       height: 78,
       padding: const pw.EdgeInsets.all(5),
@@ -447,7 +448,7 @@ class DailyReportPdfService {
         ),
       );
 
-  static String? signatureSvg(Object? value) {
+  static String? signatureSvg(Object? value, {bool fitInk = false}) {
     // Saved signatures use {strokes: [...]}; older records contain the list.
     final strokes = value is Map ? value['strokes'] : value;
     if (strokes is! List) return null;
@@ -455,10 +456,12 @@ class DailyReportPdfService {
     final width = captureSize?.width ?? 400.0;
     final height = captureSize?.height ?? 120.0;
     final elements = <String>[];
+    final inkStrokes = <List<Offset>>[];
 
     for (final rawStroke in strokes) {
       if (rawStroke is! List || rawStroke.isEmpty) continue;
       final points = <String>[];
+      final inkPoints = <Offset>[];
       for (final rawPoint in rawStroke) {
         if (rawPoint is! Map) continue;
         final rawX = rawPoint['x'];
@@ -467,10 +470,12 @@ class DailyReportPdfService {
         final x = rawX.toDouble();
         final y = rawY.toDouble();
         if (!x.isFinite || !y.isFinite) continue;
+        inkPoints.add(Offset(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
         final px = (x.clamp(0, 1) * width).toStringAsFixed(1);
         final py = (y.clamp(0, 1) * height).toStringAsFixed(1);
         points.add('$px,$py');
       }
+      inkStrokes.add(inkPoints);
       if (points.length >= 2) {
         elements.add(
           '<polyline points="${points.join(' ')}" '
@@ -488,8 +493,12 @@ class DailyReportPdfService {
     if (elements.isEmpty) return null;
     final svgWidth = width == width.truncateToDouble() ? '${width.toInt()}' : '$width';
     final svgHeight = height == height.truncateToDouble() ? '${height.toInt()}' : '$height';
+    final bounds = signatureInkBounds(inkStrokes, Size(width, height));
+    final viewBox = fitInk
+        ? '${bounds.left} ${bounds.top} ${bounds.width} ${bounds.height}'
+        : '0 0 $svgWidth $svgHeight';
     return '<svg xmlns="http://www.w3.org/2000/svg" '
-        'viewBox="0 0 $svgWidth $svgHeight">'
+        'viewBox="$viewBox">'
         '${elements.join()}'
         '</svg>';
   }
