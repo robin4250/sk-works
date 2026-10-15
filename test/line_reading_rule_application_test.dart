@@ -71,6 +71,23 @@ void main() {
     expect(rows.every((r) => r['excluded'] != true), true);
     expect(rows.every((r) => r['work_category'] == 'day'), true);
   });
+  test('canonical aliases never change sibling raw-name matching or drop assumed hours', () {
+    final original = source('新宿 佐藤\n新宿 田中\n新宿 残業');
+    final rows = lineMonthlyCandidates([original], month,
+      sites: [{'id':'site','name':'新宿ビル工事'}],
+      workers: [{'id':'sato','name':'佐藤太郎'},{'id':'tanaka','name':'田中一郎'}],
+      readingRules: const [
+        LineReadingRule(phrase:'新宿',kind:LineReadingKind.site,value:'新宿ビル工事'),
+        LineReadingRule(phrase:'佐藤',kind:LineReadingKind.worker,value:'佐藤太郎'),
+        LineReadingRule(phrase:'田中',kind:LineReadingKind.worker,value:'田中一郎'),
+      ]).rows;
+    expect(rows, hasLength(2));
+    expect(rows.map((r) => r['worker_name']).toSet(), {'佐藤太郎','田中一郎'});
+    expect(rows.every((r) => r['site_name'] == '新宿ビル工事'), true);
+    expect(rows.every((r) => r['overtime_hours'] == 1), true);
+    expect(rows.every((r) => lineAssumedFields(r).containsKey('overtime_hours')), true);
+    expect(original['body'], '10/15\n新宿 佐藤\n新宿 田中\n新宿 残業');
+  });
   test('reimport preserves saved repairs and assumptions without re-estimating', () {
     final original = source('新宿 佐藤 残業 早出');
     final row = lineMonthlyCandidates([original], month).rows.single;

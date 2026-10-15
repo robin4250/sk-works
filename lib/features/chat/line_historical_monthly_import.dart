@@ -38,6 +38,8 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
     lineCanonicalImportPosts(history, previous: previous), month, previous: previous, readingLabels: readingRules.where((r) =>
       r.kind != LineReadingKind.site && r.kind != LineReadingKind.worker).map((r) => r.phrase));
   final rows = [for (final row in extracted.rows) Map<String, dynamic>.from(row)];
+  // Interpret every worker against the same original names before any aliases.
+  final readingRows = [for (final row in rows) Map<String, dynamic>.from(row)];
   // A saved row may contain an older explicit correction without a marker.
   // Apply aliases only to newly extracted rows, never to retained fingerprints.
   final retained = {for (final row in previous)
@@ -45,7 +47,7 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
   for (final row in rows) {
     if (!retained.contains('${row['row_id']}:${row['source_fingerprint']}') &&
         row['confirmed'] != true && row['manually_edited'] != true && row['edited'] != true) {
-      lineApplyReadingFacts(row, history, rows, readingRules);
+      lineApplyReadingFacts(row, history, readingRows, readingRules);
       for (final entry in [
         ('site_name', LineReadingKind.site, sites),
         ('worker_name', LineReadingKind.worker, workers),
