@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
     final after = tester.getSize(paint);
     expect(after.aspectRatio, closeTo(before.aspectRatio, .001));
-    expect(find.textContaining('画面を横向き'), findsOneWidget);
+    expect(find.textContaining('端末を横向き'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
