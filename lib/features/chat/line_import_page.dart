@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../daily_reports/signature_capture_page.dart';
-import 'chat_cloud_repository.dart';
 import 'line_history_parser.dart';
 import 'line_import_draft.dart';
 import 'line_historical_monthly_import.dart';
@@ -45,7 +44,6 @@ class _LineImportPageContent extends StatefulWidget {
 
 class _LineImportPageState extends State<_LineImportPageContent> {
   late final _repository = widget.repositoryOverride ?? LineImportRepository.maybeCreate();
-  final _chat = ChatCloudRepository.maybeCreate();
   final _note = TextEditingController();
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   List<Map<String, dynamic>> _groups = const [], _workers = const [], _sites = const [], _sources = const [], _rows = const [];
@@ -69,12 +67,12 @@ class _LineImportPageState extends State<_LineImportPageContent> {
   String get _title => widget.monthlyTable ? 'LINE月別の表' : widget.target == 'attendance' ? 'LINE出勤表' : 'LINE請求書';
 
   Future<void> _initialize() async {
-    if (_repository == null || (_chat == null && widget.groupsLoader == null)) {
+    if (_repository == null) {
       setState(() { _busy = false; _error = 'ログインを確認してください。'; });
       return;
     }
     try {
-      final groups = await (widget.groupsLoader?.call() ?? _chat!.loadGroups());
+      final groups = await (widget.groupsLoader?.call() ?? _repository.destinations());
       if (!mounted) return;
       setState(() { _groups = groups.where((group) => group['group_type'] != 'direct').toList(); _groupId = _groups.any((g) => g['id'].toString() == widget.initialGroupId)
           ? widget.initialGroupId : _groups.isEmpty ? null : _groups.first['id'].toString(); });
