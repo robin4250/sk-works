@@ -60,8 +60,7 @@ class _ReapplyState extends State<_Reapply> {
             .where((target) => target['name'] == proposal['after']).toList();
           if (targets.length == 1) selected[lineReadingSuggestionKey(proposal)] = '${targets.single['id']}';
         }
-        });
-      }
+      });
     } catch (_) {
       if (mounted) setState(() => error = '再適用候補を取得できません。マスター権限・接続・設定を確認してください。');
     } finally { if (mounted) setState(() => busy = false); }
