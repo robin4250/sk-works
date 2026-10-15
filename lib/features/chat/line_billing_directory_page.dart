@@ -6,11 +6,12 @@ import 'line_source_upload_page.dart';
 import 'line_release_access.dart';
 
 enum LineBillingDirectoryKind { monthly, invoices, rates }
+typedef LineReadingRulesBuilder = Widget Function(BuildContext context, String groupId, List<Map<String,dynamic>> sources);
 
 class LineBillingDirectoryPage extends StatelessWidget {
   const LineBillingDirectoryPage({super.key, required this.kind, this.readingRulesBuilder, this.repositoryOverride});
   final LineBillingDirectoryKind kind;
-  final WidgetBuilder? readingRulesBuilder;
+  final LineReadingRulesBuilder? readingRulesBuilder;
   @visibleForTesting
   final LineImportRepository? repositoryOverride;
   @override
@@ -21,7 +22,7 @@ class LineBillingDirectoryPage extends StatelessWidget {
 class _Directory extends StatefulWidget {
   const _Directory({required this.kind, this.readingRulesBuilder, this.repositoryOverride});
   final LineBillingDirectoryKind kind;
-  final WidgetBuilder? readingRulesBuilder;
+  final LineReadingRulesBuilder? readingRulesBuilder;
   final LineImportRepository? repositoryOverride;
   @override
   State<_Directory> createState() => _DirectoryState();
@@ -30,6 +31,7 @@ class _Directory extends StatefulWidget {
 class _DirectoryState extends State<_Directory> {
   late final _repository = widget.repositoryOverride ?? LineImportRepository.maybeCreate();
   final _entries = <Map<String, dynamic>>[];
+  List<Map<String,dynamic>> _destinations = const [];
   bool _loading = true;
   String? _error;
   String get _title => switch (widget.kind) {
@@ -44,6 +46,7 @@ class _DirectoryState extends State<_Directory> {
     try {
       if (_repository == null) throw StateError('Login required');
       final destinations = await _repository.destinations();
+      _destinations = destinations;
       final entries = <Map<String, dynamic>>[];
       for (final group in destinations) {
         for (final raw in (group['months'] as List? ?? const [])) {
@@ -96,6 +99,33 @@ class _DirectoryState extends State<_Directory> {
     await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
     if (mounted) await _load();
   }
+  Future<void> _openRules() async {
+    final builder = widget.readingRulesBuilder;
+    if (builder == null || _repository == null) return;
+    final group = await showDialog<Map<String,dynamic>>(context: context, builder: (dialogContext) => SimpleDialog(
+      title: const Text('読み取りルールを設定する履歴'), children: [
+        for (final destination in _destinations) SimpleDialogOption(
+          onPressed: () => Navigator.pop(dialogContext,destination), child: Text('${destination['name']}')),
+      ]));
+    if (group == null || !mounted) return;
+    setState(() { _loading = true; _error = null; });
+    try {
+      final sources = <String,Map<String,dynamic>>{};
+      for (final raw in group['months'] as List? ?? const []) {
+        final month = DateTime.tryParse('${raw['month']}');
+        if (month == null) continue;
+        final workspace = await _repository.load('${group['id']}', 'invoice', month);
+        for (final source in workspace['source_messages'] as List) {
+          final row = Map<String,dynamic>.from(source as Map);
+          sources['${row['id']}'] = row;
+        }
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (context) => builder(context,'${group['id']}',sources.values.toList())));
+    } catch (_) {
+      if (mounted) setState(() => _error = '読み取りルール用の元データを取得できませんでした。');
+    } finally { if (mounted) setState(() => _loading = false); }
+  }
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(_title), actions: [IconButton(
@@ -104,8 +134,7 @@ class _DirectoryState extends State<_Directory> {
       if (_loading) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
       if (widget.kind == LineBillingDirectoryKind.rates && widget.readingRulesBuilder != null)
-        OutlinedButton.icon(onPressed: () => Navigator.of(context).push<void>(
-          MaterialPageRoute(builder: widget.readingRulesBuilder!)),
+        OutlinedButton.icon(onPressed: _loading ? null : _openRules,
           icon: const Icon(Icons.tune), label: const Text('初期設定・読み取りルール')),
       if (!_loading && _error == null && _entries.isEmpty) ...[
         const Text('取り込んだデータはまだありません。元データ取込から新規ファイルを選んでください。'),
