@@ -60,7 +60,7 @@ class PaymentCertificatePdfService {
 
     final savedOrder = orderAttachment ?? (record.isPreview || record.isAgreementSnapshot ||
         !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id) ? null :
-        await TradeDocumentAttachmentRepository.maybeCreate()?.load(subjectKind:'payment_certificate',
+        await TradeDocumentAttachmentRepository.maybeCreate()?.loadForPdf(subjectKind:'payment_certificate',
           subjectId:record.id,sourceRevision:record.revision.toString()));
     if(savedOrder!=null){
       if(savedOrder.payload['month']!='${record.periodStart.year}-${record.periodStart.month.toString().padLeft(2,'0')}') {
