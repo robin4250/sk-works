@@ -188,13 +188,19 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         prefs.getBool('sko_app_notification_sound_enabled') ?? true;
   }
 
-  Future<void> _saveListPreference(String kind, Set<String> values) async {
-    final repository = _repository;
-    final userId = repository?.currentUserId ?? 'anonymous';
+  Future<void> _saveListPreference(
+    String kind,
+    Set<String> values, {
+    String? expectedActor,
+  }) async {
+    final userId = expectedActor ?? _repository?.currentUserId;
+    if (userId == null) return;
+    final snapshot = values.toList(growable: false);
     final prefs = await SharedPreferences.getInstance();
+    if (_repository?.currentUserId != userId) return;
     await prefs.setStringList(
       'sko_chat_${kind}_$userId',
-      values.toList(growable: false),
+      snapshot,
     );
   }
 
@@ -965,10 +971,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Future<void> _startDirect(Map<String, dynamic> member) async {
     final repository = _repository;
     if (repository == null) return;
+    final actor = repository.currentUserId;
+    if (actor == null) return;
     try {
       final id = await repository.startDirectChat(member['user_id'].toString());
+      if (!mounted || repository.currentUserId != actor) return;
+      if (_hiddenGroupIds.remove(id)) {
+        await _saveListPreference('hidden', _hiddenGroupIds, expectedActor: actor);
+      }
       await _loadGroupsOnly();
-      if (!mounted) return;
+      if (!mounted || repository.currentUserId != actor) return;
       await _selectGroup(id);
     } catch (error) {
       if (!mounted) return;
@@ -1215,9 +1227,12 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _openFriendsForChat() async {
+    final actor = _repository?.currentUserId;
+    if (actor == null) return;
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ChatFriendsPage(
+          repository: _repository,
           selectForChat: true,
           existingGroups: [
             for (final group in _groups)
@@ -1229,7 +1244,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (friend == null || !mounted) return;
+    if (friend == null || !mounted || _repository?.currentUserId != actor) return;
     await _startDirect(friend);
   }
 
@@ -1984,9 +1999,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     _ChatTab.partner => _partnerGroups,
   }, _unreadCounts);
 
+  int _compareListActivity(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aPinned = _pinnedGroupIds.contains(a['id']?.toString());
+    final bPinned = _pinnedGroupIds.contains(b['id']?.toString());
+    if (aPinned != bPinned) return aPinned ? -1 : 1;
+    return _lastActivity(b).compareTo(_lastActivity(a));
+  }
+
   List<Map<String, dynamic>> get _allGroups {
     final groups = _accessibleListGroups.toList();
-    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
+    groups.sort(_compareListActivity);
     return groups;
   }
 
@@ -2011,7 +2033,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final groups = _accessibleListGroups
         .where((g) => g['group_type'] == 'direct')
         .toList();
-    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
+    groups.sort(_compareListActivity);
     return groups;
   }
 
@@ -2049,7 +2071,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final groups = _accessibleListGroups
         .where((g) => g['group_type'] == 'partner')
         .toList();
-    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
+    groups.sort(_compareListActivity);
     return groups;
   }
 
@@ -2676,6 +2698,26 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     DismissDirection direction,
   ) async {
     if (direction == DismissDirection.endToStart) {
+      if (group['group_type'] == 'direct') {
+        final actor = _repository?.currentUserId;
+        final groupId = group['id']?.toString() ?? '';
+        if (actor == null || groupId.isEmpty) return false;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('個別トークを一覧から削除しますか？'),
+            content: const Text('自分のこの端末の一覧から外します。相手の一覧・友達関係・メッセージは削除しません。友達から再開できます。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('削除')),
+            ],
+          ),
+        );
+        if (!mounted || confirmed != true || _repository?.currentUserId != actor) return false;
+        setState(() => _hiddenGroupIds.add(groupId));
+        await _saveListPreference('hidden', _hiddenGroupIds, expectedActor: actor);
+        return false;
+      }
       await _showCustomGroupLeftActions(group);
     } else if (direction == DismissDirection.startToEnd) {
       await _showCustomGroupRightActions(group);
@@ -2759,6 +2801,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _showCustomGroupRightActions(Map<String, dynamic> group) async {
+    final actor = _repository?.currentUserId;
+    if (actor == null) return;
     final groupId = group['id']?.toString() ?? '';
     if (groupId.isEmpty) return;
     final pinned = _pinnedGroupIds.contains(groupId);
@@ -2787,7 +2831,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (!mounted || action == null) return;
+    if (!mounted || action == null || _repository?.currentUserId != actor) return;
     if (action == 'pin') {
       setState(() {
         if (pinned) {
@@ -2796,7 +2840,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _pinnedGroupIds.add(groupId);
         }
       });
-      await _saveListPreference('pinned', _pinnedGroupIds);
+      await _saveListPreference('pinned', _pinnedGroupIds, expectedActor: actor);
     } else if (action == 'sound') {
       setState(() {
         if (muted) {
@@ -2805,7 +2849,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _mutedGroupIds.add(groupId);
         }
       });
-      await _saveListPreference('muted', _mutedGroupIds);
+      await _saveListPreference('muted', _mutedGroupIds, expectedActor: actor);
     }
   }
 
@@ -2851,13 +2895,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           ),
         );
 
-        if (!enableGroupActions || !_isCustomGroup(group)) {
+        if ((!enableGroupActions || !_isCustomGroup(group)) &&
+            group['group_type'] != 'direct') {
           return card;
         }
 
         final groupId = group['id']?.toString() ?? '';
         return Dismissible(
-          key: ValueKey('custom-group-$groupId'),
+          key: ValueKey('chat-list-actions-$groupId'),
           confirmDismiss: (direction) =>
               _handleCustomGroupSwipe(group, direction),
           background: Container(
@@ -2890,12 +2935,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               color: Theme.of(context).colorScheme.errorContainer,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Icon(Icons.visibility_off_outlined),
-                SizedBox(width: 10),
-                Icon(Icons.delete_outline),
+                if (group['group_type'] != 'direct') ...[
+                  const Icon(Icons.visibility_off_outlined),
+                  const SizedBox(width: 10),
+                ],
+                const Icon(Icons.delete_outline),
               ],
             ),
           ),
