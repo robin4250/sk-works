@@ -5,7 +5,6 @@ import 'line_historical_amount_preview.dart';
 import '../invoices/invoice_pdf_service.dart';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
-import 'chat_cloud_repository.dart';
 import 'line_historical_invoice_model.dart';
 import 'line_historical_invoice_repository.dart';
 import 'line_historical_invoice_bridge_page.dart';
@@ -64,7 +63,7 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
     try {
       final master = await SupabaseBackend.client.rpc('is_current_user_master_admin');
       if (master != true) throw StateError('Master required');
-      final groups = await ChatCloudRepository.maybeCreate()!.loadGroups();
+      final groups = await LineImportRepository.maybeCreate()!.destinations();
       if (!mounted) return;
       _groups = groups.where((x) => x['group_type'] != 'direct').toList();
       final initial = widget.initialGroupId;
