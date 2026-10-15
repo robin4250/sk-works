@@ -82,6 +82,7 @@ void main() {
   testWidgets('one assumed quantity can be repaired without clearing another or confirming row', (tester) async {
     final repository = _Repository(assumed: true);
     await _mount(tester, repository);
+    await _reveal(tester, find.byType(DataTable));
     final table = tester.widget<DataTable>(find.byType(DataTable));
     final overtimeCell = table.rows.single.cells[5];
     expect((overtimeCell.child as Text).data, '1（仮）');

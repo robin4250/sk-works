@@ -233,10 +233,12 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           }, child: const Text('この数値を採用'))],
       )));
     controller.dispose();
-    if (value != null && mounted) setState(() {
-      _rows[index] = lineRepairAssumedQuantity(row, field, value);
-      _comparisonConfirmed = false; _dirty = true;
-    });
+    if (value != null && mounted) {
+      setState(() {
+        _rows[index] = lineRepairAssumedQuantity(row, field, value);
+        _comparisonConfirmed = false; _dirty = true;
+      });
+    }
   }
 
   Future<void> _edit(int index) async {
