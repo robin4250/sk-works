@@ -1,7 +1,62 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import.dart';
+import 'package:sk_works/features/chat/line_reading_rules.dart';
 
 void main() {
+  test('saved site and worker aliases resolve new inline rows without changing source', () {
+    final source = <String, dynamic>{
+      'id': 'new', 'body': '10/15\n新宿 佐藤 残業１',
+      'sent_at': '2026-10-15T08:10:00Z', 'sender_display_name': '投稿者',
+    };
+    final result = lineMonthlyCandidates([source], DateTime(2026, 10),
+      workers: [{'id': 'worker', 'name': '佐藤太郎'}],
+      sites: [{'id': 'site', 'name': '新宿ビル工事', 'customer_id': 'customer'}],
+      readingRules: const [
+        LineReadingRule(phrase: '新宿', kind: LineReadingKind.site, value: '新宿ビル工事'),
+        LineReadingRule(phrase: '佐藤', kind: LineReadingKind.worker, value: '佐藤太郎'),
+      ]);
+    final row = result.rows.single;
+    expect(row['worker_name'], '佐藤太郎');
+    expect(row['worker_id'], 'worker');
+    expect(row['site_name'], '新宿ビル工事');
+    expect(row['site_id'], 'site');
+    expect(row['customer_id'], 'customer');
+    expect(row['overtime_hours'], 1);
+    expect(row['confirmed'], false);
+    expect(source['body'], '10/15\n新宿 佐藤 残業１');
+    expect(result.sources.single, source);
+  });
+  test('dictionary changes preserve retained corrections even without edit flags', () {
+    final source = <String, dynamic>{
+      'id': 'old', 'body': '10/15\n新宿 佐藤 残業１',
+      'sent_at': '2026-10-15T08:10:00Z', 'sender_display_name': '投稿者',
+    };
+    final old = lineMonthlyCandidates([source], DateTime(2026, 10)).rows.single;
+    for (final confirmed in [false, true]) {
+      final corrected = {...old, 'overtime_hours': 2.5, 'confirmed': confirmed};
+      final result = lineMonthlyCandidates([source], DateTime(2026, 10),
+        previous: [corrected], sites: [{'id': 'site', 'name': '正式現場'}],
+        readingRules: const [LineReadingRule(
+          phrase: '新宿', kind: LineReadingKind.site, value: '正式現場')]);
+      expect(result.rows.single, corrected);
+    }
+  });
+  test('ambiguous missing and duplicate alias targets never assign an identity', () {
+    final source = <String, dynamic>{
+      'id': 'new', 'body': '10/15\n新宿 佐藤 残業１',
+      'sent_at': '2026-10-15T08:10:00Z', 'sender_display_name': '投稿者',
+    };
+    const rule = LineReadingRule(phrase: '新宿', kind: LineReadingKind.site, value: '正式現場');
+    for (final refs in [<Map<String,dynamic>>[], [
+      <String,dynamic>{'id': 'one', 'name': '正式現場'},
+      <String,dynamic>{'id': 'two', 'name': '正式現場'},
+    ]]) {
+      final row = lineMonthlyCandidates([source], DateTime(2026, 10),
+        sites: refs, readingRules: const [rule]).rows.single;
+      expect(row['site_id'], null);
+      expect(row['site_name'], '新宿');
+    }
+  });
   test('resolved new rows cannot bypass review alongside an already edited worker ID', () {
     final first = lineHistorySources(
       '2026/09/01\n08:10\t投稿者\t9月1日\n現場A 山田\n現場A 定時');
