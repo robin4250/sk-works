@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../daily_reports/signature_capture_page.dart';
-import 'chat_cloud_repository.dart';
 import 'line_history_parser.dart';
 import 'line_import_draft.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
+import 'line_reading_rules.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_historical_amount_preview.dart';
@@ -45,11 +45,11 @@ class _LineImportPageContent extends StatefulWidget {
 
 class _LineImportPageState extends State<_LineImportPageContent> {
   late final _repository = widget.repositoryOverride ?? LineImportRepository.maybeCreate();
-  final _chat = ChatCloudRepository.maybeCreate();
   final _note = TextEditingController();
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   List<Map<String, dynamic>> _groups = const [], _workers = const [], _sites = const [], _sources = const [], _rows = const [];
   String? _groupId, _error, _workerFilter;
+  List<LineReadingRule> _readingRules = const [];
   String _sourceKind = 'received';
   int _revision = 0, _unreadable = 0;
   String? _draftId;
@@ -69,12 +69,12 @@ class _LineImportPageState extends State<_LineImportPageContent> {
   String get _title => widget.monthlyTable ? 'LINE月別の表' : widget.target == 'attendance' ? 'LINE出勤表' : 'LINE請求書';
 
   Future<void> _initialize() async {
-    if (_repository == null || (_chat == null && widget.groupsLoader == null)) {
+    if (_repository == null) {
       setState(() { _busy = false; _error = 'ログインを確認してください。'; });
       return;
     }
     try {
-      final groups = await (widget.groupsLoader?.call() ?? _chat!.loadGroups());
+      final groups = await (widget.groupsLoader?.call() ?? _repository.destinations());
       if (!mounted) return;
       setState(() { _groups = groups.where((group) => group['group_type'] != 'direct').toList(); _groupId = _groups.any((g) => g['id'].toString() == widget.initialGroupId)
           ? widget.initialGroupId : _groups.isEmpty ? null : _groups.first['id'].toString(); });
@@ -97,6 +97,8 @@ class _LineImportPageState extends State<_LineImportPageContent> {
       final features = LineImportFeatures.fromJson(data['features']);
       final refs = canEdit ? await _repository.references(id) : (workers: <Map<String, dynamic>>[], sites: <Map<String, dynamic>>[]);
       final enabled = widget.target == 'attendance' ? features.attendance : features.invoice;
+      final rules = canEdit && enabled && widget.target == 'invoice'
+        ? await _repository.readingRules(id) : <LineReadingRule>[];
       final received = canEdit && enabled ? await _repository.sources(id) : <Map<String, dynamic>>[];
       final existing = [for (final source in data['source_messages'] as List)
         <String, dynamic>{...Map<String, dynamic>.from(source as Map),
@@ -104,7 +106,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
       final previous = [for (final row in data['candidate_rows'] as List)
         Map<String, dynamic>.from(row as Map)];
       final prepared = lineMonthlyCandidates(lineMergeImportSources(existing, received),
-        month, previous: previous, workers: refs.workers, sites: refs.sites);
+        month, previous: previous, workers: refs.workers, sites: refs.sites, readingRules: rules);
       final oldKeys = existing.map(lineSourceFingerprint).toSet();
       final newKeys = prepared.sources.map(lineSourceFingerprint).toSet();
       final changed = received.isNotEmpty &&
@@ -112,7 +114,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
       if (!mounted || generation != _loadGeneration || _groupId != id || _month != month) return;
       setState(() {
         _canEdit = canEdit; _enabled = widget.target == 'attendance' ? features.attendance : features.invoice;
-        _workers = refs.workers; _sites = refs.sites; _apply(data);
+        _workers = refs.workers; _sites = refs.sites; _readingRules = rules; _apply(data);
         if (changed) {
           _sources = prepared.sources; _rows = prepared.rows;
           final types = prepared.sources.map((source) => source['source_type']).toSet();
@@ -141,7 +143,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   void _extract(List<Map<String, dynamic>> sources, String kind) {
     final prepared = lineMonthlyCandidates(sources, _month,
-      previous: _rows, workers: _workers, sites: _sites);
+      previous: _rows, workers: _workers, sites: _sites, readingRules: _readingRules);
     final types = prepared.sources.map((source) =>
       source['source_type']?.toString() ?? kind).toSet();
     setState(() {

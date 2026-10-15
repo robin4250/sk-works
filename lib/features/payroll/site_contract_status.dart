@@ -54,7 +54,9 @@ class SiteContractStatus {
     }
     // Older unconfirmed proposals are history, not current pending changes.
     if (pending != null && ordered.isNotEmpty &&
-        pending['revision'] != ordered.first['revision']) pending = null;
+        pending['revision'] != ordered.first['revision']) {
+      pending = null;
+    }
     return SiteContractStatus._(active, pending, scheduled);
   }
 }

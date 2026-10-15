@@ -10,14 +10,15 @@ import 'line_import_repository.dart';
 /// Saves reviewable monthly drafts through the existing authenticated contract.
 class LineHistoricalMonthlyImportPage extends StatelessWidget {
   const LineHistoricalMonthlyImportPage({super.key, required this.groupId});
-  final String groupId;
+  const LineHistoricalMonthlyImportPage.newFile({super.key}) : groupId = null;
+  final String? groupId;
   @override
   Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineHistoricalMonthlyImportPageContent(groupId: groupId));
 }
 
 class _LineHistoricalMonthlyImportPageContent extends StatefulWidget {
   const _LineHistoricalMonthlyImportPageContent({required this.groupId});
-  final String groupId;
+  final String? groupId;
   @override
   State<_LineHistoricalMonthlyImportPageContent> createState() =>
       _LineHistoricalMonthlyImportPageState();
@@ -25,6 +26,8 @@ class _LineHistoricalMonthlyImportPageContent extends StatefulWidget {
 class _LineHistoricalMonthlyImportPageState
     extends State<_LineHistoricalMonthlyImportPageContent> {
   final _repository = LineImportRepository.maybeCreate();
+  String? _groupId;
+  final _analysisCommand = LineImportRepository.commandId();
   List<DateTime> _months = lineHistoryImportMonths();
   final _commands = <String, Map<String, dynamic>>{};
   final _status = <String, String>{};
@@ -37,12 +40,12 @@ class _LineHistoricalMonthlyImportPageState
   String _key(DateTime month) =>
       '${month.year}-${month.month.toString().padLeft(2, '0')}';
   @override
-  void initState() { super.initState(); _loadFeatures(); }
+  void initState() { super.initState(); _groupId = widget.groupId; _loadFeatures(); }
   Future<void> _loadFeatures() async {
     try {
       final features = await _repository?.features();
       if (mounted) setState(() => _enabled = features?.invoice == true);
-      if (_enabled && mounted && _commands.isEmpty) await _receive();
+      if (_enabled && mounted && _commands.isEmpty && _groupId != null) await _receive();
     } catch (_) {
       if (mounted) setState(() => _error = '取込設定とログイン状態を確認してください。');
     }
@@ -52,7 +55,7 @@ class _LineHistoricalMonthlyImportPageState
     try {
       final result = await _repository!.setEnabled('invoice', true);
       if (mounted) setState(() => _enabled = result.invoice);
-      if (_enabled && mounted) await _receive();
+      if (_enabled && mounted && _groupId != null) await _receive();
     } catch (_) {
       if (mounted) setState(() => _error = 'マスター権限と取込設定を確認してください。');
     } finally { if (mounted) setState(() => _busy = false); }
@@ -74,7 +77,9 @@ class _LineHistoricalMonthlyImportPageState
       }
       final fileHistory = lineHistorySources(decodeLineHistoryFile(bytes, file.name));
       if (fileHistory.isEmpty) throw const FormatException('No LINE messages');
-      final received = await _repository!.sources(widget.groupId);
+      // Create only after valid input; file titles never imply a LINE binding.
+      _groupId ??= await _repository!.createAnalysis(file.name, _analysisCommand);
+      final received = await _repository!.sources(_groupId!);
       final history = lineMergeImportSources(received, fileHistory);
       final months = lineHistoryMonthsForSources(history);
       final counts = <String, int>{};
@@ -102,10 +107,10 @@ class _LineHistoricalMonthlyImportPageState
     if (prepared && mounted && _enabled) await _save();
   }
   Future<void> _receive() async {
-    if (_repository == null || _commands.isNotEmpty) return;
+    if (_repository == null || _commands.isNotEmpty || _groupId == null) return;
     setState(() { _busy = true; _error = null; });
     try {
-      final received = await _repository.sources(widget.groupId);
+      final received = await _repository.sources(_groupId!);
       final retainedHistory = _history.where(
         (source) => source['source_type'] == 'history').toList();
       final history = lineMergeImportSources(received, retainedHistory);
@@ -129,11 +134,12 @@ class _LineHistoricalMonthlyImportPageState
   }
   Future<void> _save() async {
     final repository = _repository;
-    if (repository == null || _history.isEmpty || !_enabled) return;
+    if (repository == null || _history.isEmpty || !_enabled || _groupId == null) return;
     setState(() { _busy = true; _error = null; });
     try {
-      final refs = await repository.references(widget.groupId);
-      final received = await repository.sources(widget.groupId);
+      final refs = await repository.references(_groupId!);
+      final rules = await repository.readingRules(_groupId!);
+      final received = await repository.sources(_groupId!);
       final incoming = lineMergeImportSources(_history, received);
       for (final month in _months) {
         if (!mounted) return;
@@ -146,7 +152,7 @@ class _LineHistoricalMonthlyImportPageState
         setState(() => _status[key] = '保存中');
         try {
           if (!_commands.containsKey(key)) {
-            final workspace = await repository.load(widget.groupId, 'invoice', month);
+            final workspace = await repository.load(_groupId!, 'invoice', month);
             if (workspace['can_edit'] != true) throw StateError('Invoice management required');
             final previous = [for (final row in workspace['candidate_rows'] as List)
               Map<String, dynamic>.from(row as Map)];
@@ -156,10 +162,10 @@ class _LineHistoricalMonthlyImportPageState
             final merged = lineMergeImportSources(existing, incoming,
               replaceHistory: _replaceHistory);
             final prepared = lineMonthlyCandidates(merged, month,
-              previous: previous, workers: refs.workers, sites: refs.sites);
+              previous: previous, workers: refs.workers, sites: refs.sites, readingRules: rules);
             final types = prepared.sources.map((s) => s['source_type']).toSet();
             _commands[key] = repository.saveCommand(
-              groupId: widget.groupId, target: 'invoice', month: month,
+              groupId: _groupId!, target: 'invoice', month: month,
               revision: workspace['revision'] as int,
               sourceKind: types.length > 1 ? 'mixed' : types.isEmpty ? 'history' : types.single.toString(),
               sources: prepared.sources, rows: prepared.rows,
@@ -186,8 +192,9 @@ class _LineHistoricalMonthlyImportPageState
     } finally { if (mounted) setState(() => _busy = false); }
   }
   Future<void> _open(DateTime month) async {
+    if (_groupId == null) return;
     await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-      LineImportPage(target: 'invoice', initialGroupId: widget.groupId,
+      LineImportPage(target: 'invoice', initialGroupId: _groupId,
         initialMonth: month)));
     if (mounted) await _loadFeatures();
   }
@@ -195,7 +202,12 @@ class _LineHistoricalMonthlyImportPageState
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('元データ取込')),
     body: ListView(padding: const EdgeInsets.all(16), children: [
-      Text('${_months.first.year}年${_months.first.month}月〜${_months.last.year}年${_months.last.month}月'),
+      if (widget.groupId == null) ...[
+        const Text('新規ファイル', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text('LINEのTXT・ZIPを選ぶと、専用の過去履歴分析先に保存します。LINEへの送信・グループ連携は行いません。'),
+      ],
+      if (_history.isNotEmpty || widget.groupId != null)
+        Text('${_months.first.year}年${_months.first.month}月〜${_months.last.year}年${_months.last.month}月'),
       const SizedBox(height: 8),
       const Text('LINEの書き出しファイルを選ぶと、含まれる全期間を月別表の候補として自動保存します。正式請求書の確定・発行はしません。各月を開いて作業員・現場・数量を照合してから、単価設定と請求書へ進んでください。再取込は変わっていない投稿の修正を保持し、変わった投稿を要確認に戻します。'),
       const SizedBox(height: 12),
@@ -206,14 +218,14 @@ class _LineHistoricalMonthlyImportPageState
         child: const Text('マスター設定で請求書取込を有効にする')),
       OutlinedButton.icon(onPressed: _busy || !_enabled || _commands.isNotEmpty || _repository == null ? null : _pick,
         icon: const Icon(Icons.file_open_outlined),
-        label: Text(_fileName ?? 'TXT・ZIPをアップロードして月別表へ自動入力')),
-      OutlinedButton.icon(
-        onPressed: _busy || _commands.isNotEmpty || _repository == null ? null : _receive,
+        label: Text(_fileName ?? (widget.groupId == null ? '新規ファイルを選ぶ（TXT・ZIP）' : 'TXT・ZIPをアップロードして月別表へ自動入力'))),
+      if (widget.groupId != null) OutlinedButton.icon(
+        onPressed: _busy || _commands.isNotEmpty || _repository == null || _groupId == null || widget.groupId == null ? null : _receive,
         icon: const Icon(Icons.sync),
         label: const Text('連携LINEの受信データを更新'),
       ),
-      const Text('受信済みの投稿も同じ月別表に含めます。ファイルと一致する投稿はまとめ、曖昧な重複は要確認にします。'),
-      SwitchListTile(
+      if (widget.groupId != null) const Text('受信済みの投稿も同じ月別表に含めます。ファイルと一致する投稿はまとめ、曖昧な重複は要確認にします。'),
+      if (_history.isNotEmpty || widget.groupId != null) SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('対象月の過去履歴を入れ替える'),
         subtitle: const Text('通常は既存の履歴を残して不足分を追加します。入れ替えはファイルに投稿がある月だけ。受信トークは残します。'),
@@ -221,9 +233,10 @@ class _LineHistoricalMonthlyImportPageState
         onChanged: _busy || _commands.isNotEmpty ? null :
           (value) => setState(() => _replaceHistory = value),
       ),
-      FilledButton(onPressed: _busy || !_enabled || _history.isEmpty ? null : _save,
+      if (_history.isNotEmpty || widget.groupId != null) FilledButton(onPressed: _busy || !_enabled || _history.isEmpty ? null : _save,
         child: const Text('ファイル・受信データの対象月を保存・未確認分を再送')),
       const SizedBox(height: 12),
+      if (_history.isNotEmpty || widget.groupId != null)
       for (final month in _months) Card(child: ListTile(
         title: Text('${month.year}年${month.month}月'),
         subtitle: Text((_counts.containsKey(_key(month)) ?
@@ -231,7 +244,7 @@ class _LineHistoricalMonthlyImportPageState
           (_status[_key(month)] ?? ((_sourceCounts[_key(month)] ?? 0) == 0 && _history.isNotEmpty
             ? '今回のファイル・受信データに対象投稿なし・保存版を維持' : '月別表を開いて確認・入れ直し'))),
         trailing: const Icon(Icons.chevron_right),
-        onTap: _busy ? null : () => _open(month))),
+        onTap: _busy || _groupId == null ? null : () => _open(month))),
     ]),
   );
 }

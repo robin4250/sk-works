@@ -165,7 +165,9 @@ jobs:
           assert ats.get("NSAllowsArbitraryLoads") is not True
           assert ats.get("NSAllowsArbitraryLoadsInWebContent") is not True
           assert data.get("UISupportedInterfaceOrientations") == [
-              "UIInterfaceOrientationPortrait"
+              "UIInterfaceOrientationPortrait",
+              "UIInterfaceOrientationLandscapeLeft",
+              "UIInterfaceOrientationLandscapeRight",
           ]
           assert data.get("ITSAppUsesNonExemptEncryption") is False
           PY

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/payroll/site_contract_status.dart';
+import 'package:sk_works/features/payroll/site_contract_status.dart';
 
 Map<String, dynamic> proposal(int revision, List<String> companies,
     {String start = '2026-10-01'}) => {
